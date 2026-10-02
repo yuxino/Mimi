@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ChevronUp,
   Cloud,
+  CircleHelp,
   Eraser,
   Download,
   Key,
@@ -59,6 +60,7 @@ export type IconName =
   | "exclamation-triangle"
   | "app-window"
   | "cloud"
+  | "help"
   | "languages"
   | "lock"
   | "unlock"
@@ -90,6 +92,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   "exclamation-triangle": AlertTriangle,
   "app-window": AppWindow,
   cloud: Cloud,
+  help: CircleHelp,
   languages: Languages,
   lock: LockKeyhole,
   unlock: LockKeyholeOpen,

@@ -1,14 +1,26 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./Icon";
 import "./select.css";
 
-type MenuStyle = CSSProperties & { "--select-hover": string };
+type MenuStyle = CSSProperties & {
+  "--select-hover": string;
+  "--provider-light-display": string;
+  "--provider-dark-display": string;
+  "--provider-backing-background": string;
+};
+
+export interface SelectOption {
+  value: string;
+  label: string;
+  /** Decorative mark; the label remains the option's searchable name. */
+  icon?: ReactNode;
+}
 
 interface SelectProps {
   label: string;
   value: string;
-  options: readonly { value: string; label: string }[];
+  options: readonly SelectOption[];
   disabled?: boolean;
   /** Enables an explicit filter input; callers supply localized copy. */
   searchLabel?: string;
@@ -76,6 +88,9 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       borderColor: theme.getPropertyValue("--select-menu-border"),
       fontFamily: theme.fontFamily,
       "--select-hover": theme.getPropertyValue("--select-hover"),
+      "--provider-light-display": theme.getPropertyValue("--provider-light-display"),
+      "--provider-dark-display": theme.getPropertyValue("--provider-dark-display"),
+      "--provider-backing-background": theme.getPropertyValue("--provider-backing-background"),
     });
     setQuery("");
     setCursor({ selection: value, query: "", index: Math.max(0, selected) });
@@ -176,7 +191,10 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       aria-selected={option.value === value} data-active={index === active}
       onPointerMove={() => setActive(index)} onPointerDown={(event) => event.preventDefault()}
       onClick={() => choose(index)}>
-      <span>{option.label}</span>{option.value === value && <Icon name="checkmark" />}
+      <span className="mimi-select__content">
+        {option.icon && <span className="mimi-select__icon" aria-hidden="true">{option.icon}</span>}
+        <span className="mimi-select__label">{option.label}</span>
+      </span>{option.value === value && <Icon name="checkmark" />}
     </div>
   ));
   const activeId = open && active >= 0 ? `${id}-${active}` : undefined;
@@ -190,7 +208,10 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
         onClick={() => open ? setPopup(null) : show()}>
         {/* Replacing the label node also invalidates retained WebKit pixels on
             external value changes, while the focused trigger remains stable. */}
-        <span key={value}>{options[selected]?.label ?? value}</span><Icon name="chevron-down" />
+        <span key={value} className="mimi-select__content">
+          {options[selected]?.icon && <span className="mimi-select__icon" aria-hidden="true">{options[selected].icon}</span>}
+          <span className="mimi-select__label">{options[selected]?.label ?? value}</span>
+        </span><Icon name="chevron-down" />
       </button>
       {open && createPortal(
         <div ref={menu} id={searchable ? undefined : id} className={`mimi-select__menu${searchable ? " mimi-select__menu--searchable" : ""}`}

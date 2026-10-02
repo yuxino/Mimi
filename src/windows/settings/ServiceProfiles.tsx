@@ -1,6 +1,6 @@
 import { testProfileConnection, type ConnectionDiagnostic, type StoredCredentialField } from "../../lib/ipc";
 import { profileErrorMessage, diagnosticCopy } from "../../lib/connectionDiagnostics";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { I18N, providerDisplayName } from "../../lib/i18n";
@@ -29,6 +29,7 @@ import { InlineFeedback, SettingsSection } from "./SettingsPrimitives";
 import { DestructiveConfirmation } from "./DestructiveConfirmation";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 
+import { SettingsHelp } from "./SettingsHelp";
 import { ConnectionCheck } from "./ConnectionCheck";
 import { saveAndSelectProfile } from "./saveAndSelectProfile";
 import { StoredCredentialReveal } from "./StoredCredentialReveal";
@@ -370,7 +371,7 @@ export function ServiceProfiles({
           </button>
           <div className="service-detail__header">
             <div className="service-detail__identity">
-              <ProviderIcon provider={selectedProfile.provider} />
+              <ProviderIcon provider={selectedProfile.provider === "deepLX" ? "alibabaCloud" : selectedProfile.provider} />
               <div className="service-detail__copy">
                 <div className="service-detail__title">
                   <h2>{profileTitle(selectedProfile)}</h2>
@@ -384,7 +385,7 @@ export function ServiceProfiles({
                     )}
                   </div>
                 </div>
-                <p>{profileTitle(selectedProfile) !== profileProviderName(selectedProfile) && <>{profileProviderName(selectedProfile)} · </>}{profileDescription(selectedProfile)}</p>
+                <span className="service-detail__description"><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></span>
               </div>
             </div>
           </div>
@@ -402,10 +403,9 @@ export function ServiceProfiles({
             </div>
           </form>
           <div className="service-detail__connection">
-            <ConnectionCheck result={diagnostic?.profileId === selectedProfile.id ? diagnostic.result : null} error={diagnostic?.profileId === selectedProfile.id ? diagnostic.error : null} pending={pendingAction === "test-connection"} disabled={mutationsDisabled} onCheck={handleConnectionCheck} />
-            {settings.credentialStorage === "localDevFile" ? <p role="status" className="settings-caption">
-              {selectedProfile.credentialState === "unavailable" ? diagnosticCopy().localDevUnavailable : diagnosticCopy().localDevReadOnly}
-            </p> : <SelectedCredentialEditor
+            <SelectedCredentialEditor
+              connectionCheck={<ConnectionCheck result={diagnostic?.profileId === selectedProfile.id ? diagnostic.result : null} error={diagnostic?.profileId === selectedProfile.id ? diagnostic.error : null} pending={pendingAction === "test-connection"} disabled={mutationsDisabled} onCheck={handleConnectionCheck} />}
+              readOnly={settings.credentialStorage === "localDevFile"}
               key={selectedProfile.id}
               profile={selectedProfile}
               inputId={`profile-api-key-${selectedProfile.id}`}
@@ -421,7 +421,7 @@ export function ServiceProfiles({
                 pendingConfirmation.profileId === selectedProfile.id
               }
               onCancelDelete={() => setPendingConfirmation(null)}
-            />}
+            />
           </div>
           {selectedProfile.id === settings.activeProfileId
             ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} />
@@ -441,7 +441,7 @@ export function ServiceProfiles({
               )}
             <button
               type="button"
-              className="settings-link settings-link--danger"
+              className="settings-button settings-button--quiet settings-button--compact"
               disabled={mutationsDisabled || settings.profiles.length <= 1}
               onClick={requestProfileDelete}
             >
@@ -495,10 +495,11 @@ export function ServiceProfiles({
                   }}
                   aria-label={`${profile.name}: ${profile.credentialState === "present" && profile.id !== settings.activeProfileId ? I18N.settings.useProfile : I18N.settings.editProfile}`}
                 >
-                  <ProviderIcon provider={profile.provider} />
+                  <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
                     <strong>{profileTitle(profile)}</strong>
                     {profileSecondaryLabel(profile) && <small>{profileSecondaryLabel(profile)}</small>}
+                    {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible"} size={32} /><span>{I18N.settings.textTranslationLabel} · {translationName(profile)}</span></span>}
                   </span>
                   <span className="service-row__state">
                     <CredentialBadge state={profile.credentialState} />
@@ -522,10 +523,7 @@ export function ServiceProfiles({
               </div>
             ))}
           </div>
-          <p className="settings-caption services-hint">
-            <Icon name="shield-check" />
-            {settings.credentialStorage === "localDevFile" ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint}
-          </p>
+          <div className="services-hint"><SettingsHelp icon="shield-check" label={I18N.settings.helpLabel} text={settings.credentialStorage === "localDevFile" ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint} /></div>
           {atProfileLimit && (
             <InlineFeedback tone="info">{I18N.settings.profileLimitReached}</InlineFeedback>
           )}
@@ -548,7 +546,11 @@ function CredentialEditor({
   onConfirmDelete,
   confirmingDelete,
   onCancelDelete,
+  connectionCheck,
+  readOnly = false,
 }: {
+  connectionCheck?: ReactNode;
+  readOnly?: boolean;
   profile: ServiceProfile;
   inputId: string;
   disabled: boolean;
@@ -611,32 +613,35 @@ function CredentialEditor({
     void onConfirmDelete();
   };
 
+  const serviceIdentity = <section className="service-stage service-stage--integrated">
+    <header className="service-stage__heading"><h3>{I18N.settings.voiceTranslation}</h3><SettingsHelp text={I18N.settings.textTranslationUnsupported} label={I18N.settings.helpLabel} /></header>
+    <div className="settings-field service-stage__selector"><span>{I18N.settings.serviceProvider}</span><span className="service-stage__provider"><ProviderIcon provider={profile.provider} size={32} />{providerDisplayName(profile.provider)}</span></div>
+  </section>;
+  const storageHelp = <SettingsHelp id={noteId} text={readOnly ? profile.credentialState === "unavailable" ? diagnosticCopy().localDevUnavailable : diagnosticCopy().localDevReadOnly : I18N.settings.credentialNote} icon="shield-check" label={I18N.settings.helpLabel} />;
+  if (readOnly) return <div className="credential-panel"><div className="service-credential-toolbar">{connectionCheck}{storageHelp}</div>{serviceIdentity}</div>;
+
   if (profile.credentialState === "present" && !editingSavedCredential) {
     return (
       <div className="credential-panel credential-panel--saved">
-        <span className="credential-panel__saved-actions">
+        <div className="service-credential-toolbar">{connectionCheck}<span className="credential-panel__saved-actions">
           <button
             type="button"
-            className="settings-button settings-button--quiet"
+            className="settings-button settings-button--quiet settings-button--compact"
             disabled={disabled}
             onClick={() => setEditingSavedCredential(true)}
           >
-            {I18N.settings.replaceCredentials}
+            <Icon name="key" />{I18N.settings.replaceCredentials}
           </button>
           <button
             type="button"
-            className="settings-link settings-link--danger"
+            className="settings-button settings-button--quiet settings-button--compact"
             disabled={disabled || confirmingDelete}
             onClick={onRequestDelete}
           >
-            {I18N.settings.deleteCredentials}
+            <Icon name="trash" />{I18N.settings.deleteCredentials}
           </button>
-        </span>
-        <details className="settings-advanced">
-          <summary>{I18N.settings.advancedTranslation}</summary>
-          <p>{I18N.settings.textTranslationLabel}: {I18N.settings.textTranslationFollow}</p>
-          <p className="settings-caption">{I18N.settings.textTranslationUnsupported}</p>
-        </details>
+        </span>{storageHelp}</div>
+        {serviceIdentity}
         {saveFeedback}
         {confirmingDelete && (
           <DestructiveConfirmation
@@ -652,6 +657,8 @@ function CredentialEditor({
 
   return (
     <div className="credential-panel" aria-busy={busy}>
+      <div className="service-credential-toolbar">{connectionCheck}{storageHelp}</div>
+      {serviceIdentity}
       <div className="credential-panel__heading">
         <span>
           <span className="credential-panel__label">{I18N.settings.credentials}</span>
@@ -659,11 +666,11 @@ function CredentialEditor({
         {profile.credentialState === "present" && (
           <button
             type="button"
-            className="settings-link settings-link--danger"
+            className="settings-button settings-button--quiet settings-button--compact"
             disabled={disabled || confirmingDelete}
             onClick={onRequestDelete}
           >
-            {I18N.settings.deleteCredentials}
+            <Icon name="trash" />{I18N.settings.deleteCredentials}
           </button>
         )}
       </div>
@@ -716,16 +723,12 @@ function CredentialEditor({
             );
           })}
         </div>
-        <p id={noteId} className="settings-caption">
-          <Icon name="shield-check" />
-          <span>{I18N.settings.credentialNote}</span>
-        </p>
         {saveFeedback}
         <span className="credential-form__actions">
           {profile.credentialState === "present" && (
             <button
               type="button"
-              className="settings-link"
+              className="settings-button settings-button--quiet settings-button--compact"
               disabled={disabled}
               onClick={() => {
                 setDraft(emptyCredentialDraft());
@@ -737,20 +740,15 @@ function CredentialEditor({
           )}
           <button
             type="submit"
-            className="settings-button settings-button--primary"
+            className="settings-button settings-button--primary settings-button--compact"
             disabled={disabled || !credentials}
           >
-            {profile.credentialState === "present"
+            <Icon name="key" />{profile.credentialState === "present"
               ? I18N.settings.replaceCredentials
               : I18N.settings.saveAndUse}
           </button>
         </span>
       </form>
-      <details className="settings-advanced">
-        <summary>{I18N.settings.advancedTranslation}</summary>
-        <p>{I18N.settings.textTranslationLabel}: {I18N.settings.textTranslationFollow}</p>
-        <p className="settings-caption">{I18N.settings.textTranslationUnsupported}</p>
-      </details>
     </div>
   );
 }
@@ -768,8 +766,13 @@ function profileDescription(profile: ServiceProfile): string {
   return translation === "deepL" ? I18N.settings.deepLChain : translation === "deepLX" ? I18N.settings.deepLXChain : translation === "openAICompatible" ? I18N.settings.openAICompatibleChain : providerDescription(profile.provider);
 }
 
+function translationName(profile: ServiceProfile): string {
+  const translation = textTranslationForProfile(profile);
+  return translation === "deepL" ? "DeepL" : translation === "deepLX" ? "DeepLX" : translation === "openAICompatible" ? I18N.settings.textTranslationOpenAICompatible : profileProviderName(profile);
+}
+
 function profileSecondaryLabel(profile: ServiceProfile): string | null {
-  if (textTranslationForProfile(profile) !== "followService") return profileDescription(profile);
+  if (textTranslationForProfile(profile) !== "followService") return `${I18N.settings.speechRecognition} · ${profileProviderName(profile)}`;
   const provider = profileProviderName(profile);
   return profileTitle(profile).trim().toLowerCase() === provider.toLowerCase() ? null : provider;
 }

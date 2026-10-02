@@ -12,14 +12,31 @@
   object-fit: contain;
 }
 
+.settings-console {
+  --provider-light-display: none;
+  --provider-dark-display: block;
+  --provider-backing-background: #fff;
+}
+
+.settings-console--light {
+  --provider-light-display: block;
+  --provider-dark-display: none;
+  --provider-backing-background: transparent;
+}
+
+.provider-icon__image--light {
+  display: var(--provider-light-display, block);
+}
+
 .provider-icon__image--dark {
-  display: none;
+  display: var(--provider-dark-display, none);
 }
 
-.settings-console:not(.settings-console--light) .provider-icon__image--light {
-  display: none;
+.provider-icon__generic {
+  color: inherit;
 }
 
-.settings-console:not(.settings-console--light) .provider-icon__image--dark {
-  display: block;
+.provider-icon__image--deeplx {
+  background: var(--provider-backing-background, transparent);
+  border-radius: 6px;
 }

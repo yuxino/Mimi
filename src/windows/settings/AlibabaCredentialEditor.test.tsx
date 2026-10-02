@@ -8,7 +8,7 @@ import { profileRevealCredential } from "../../lib/ipc";
 import type { ServiceProfile, TextTranslation } from "../../lib/types";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 
-vi.mock("../../lib/ipc", () => ({ isTauri: false, profileRevealCredential: vi.fn() }));
+vi.mock("../../lib/ipc", () => ({ isTauri: false, profileRevealCredential: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -16,6 +16,7 @@ let props: Parameters<typeof AlibabaCredentialEditor>[0];
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "present" };
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   vi.stubGlobal("scrollIntoView", vi.fn());
   Element.prototype.scrollIntoView = vi.fn();
   vi.mocked(profileRevealCredential).mockReset();
@@ -31,16 +32,8 @@ async function change(selector: string, value: string) {
     node.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
-function picker() { return host.querySelector<HTMLButtonElement>('[role="combobox"]')!; }
-async function expandAdvanced() {
-  await act(() => {
-    const advanced = host.querySelector("details")!;
-    advanced.open = true;
-    advanced.dispatchEvent(new Event("toggle"));
-  });
-}
+function picker() { return host.querySelector<HTMLButtonElement>('.service-stage--translation [role="combobox"]')!; }
 async function chooseTranslation(value: TextTranslation) {
-  await expandAdvanced();
   await act(() => picker().click());
   const label = value === "openAICompatible" ? I18N.settings.textTranslationOpenAICompatible : value === "deepLX" ? I18N.settings.textTranslationCustom : value === "deepL" ? "DeepL" : I18N.settings.textTranslationFollow;
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === label)!;
@@ -51,9 +44,12 @@ async function key(value: string) {
 }
 async function submit() { await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); }
 
-it("keeps normal first-time setup to one key and a collapsed default translation setting", async () => {
+it("separates recognition and translation during first-time setup while requiring only the recognition key", async () => {
   await render({ ...props, profile: { ...profile, credentialState: "missing" } });
-  expect(host.querySelector("details")!.open).toBe(false);
+  expect(host.querySelector("details")).toBeNull();
+  expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
+  expect(host.querySelector('.service-stage:not(.service-stage--translation) .provider-icon[data-provider="alibabaCloud"]')).not.toBeNull();
+  expect(host.querySelectorAll(".service-stage--translation [role=combobox]")).toHaveLength(1);
   expect(host.querySelectorAll("input")).toHaveLength(1);
   expect(host.querySelector("select")).toBeNull();
   expect(picker().textContent).toBe(I18N.settings.textTranslationFollow);
@@ -62,7 +58,7 @@ it("keeps normal first-time setup to one key and a collapsed default translation
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "synthetic-asr", textTranslation: "followService", endpoint: "", token: "" });
 });
 
-it("configures only the advanced text destination while reusing a saved key", async () => {
+it("configures only the text translation destination while reusing a saved recognition key", async () => {
   await render();
   await chooseTranslation("deepLX");
   expect(host.textContent).toContain(I18N.settings.deepLXChain);
@@ -94,11 +90,28 @@ it("preserves an unsaved key when saving succeeds but activation fails", async (
 it("retains the historical DeepLX route and switches back without repeating the key", async () => {
   await render({ ...props, profile: { ...profile, provider: "deepLX" } });
   expect(picker().textContent).toBe(I18N.settings.textTranslationCustom);
+  expect(picker().querySelector('.provider-icon[data-provider="deepLX"]')).not.toBeNull();
+  expect(host.querySelector('.service-stage:not(.service-stage--translation) .provider-icon[data-provider="alibabaCloud"]')).not.toBeNull();
   expect(host.textContent).toContain(I18N.settings.deepLXChain);
   expect(host.querySelector('input[type="password"]')?.getAttribute("id")).toBe("test-token");
   expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.placeholder).toBe(I18N.settings.savedServiceAddressPlaceholder);
   await chooseTranslation("followService"); await submit();
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "followService", endpoint: "", token: "" });
+});
+
+it.each(["en", "zh", "ja"] as const)("shows both stages in read-only file mode without exposing any credential editor in %s", async (language) => {
+  setStoredUiLanguage(language);
+  await render({ ...props, readOnly: true, profile: { ...profile, textTranslation: "openAICompatible" } });
+  expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
+  expect(picker().textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
+  expect(picker().disabled).toBe(true);
+  expect(host.querySelector(".credential-form, input, .stored-credential-reveal, .credential-panel__saved-actions, .credential-form__actions, button[type=submit]")).toBeNull();
+  expect(host.querySelector(".service-credential-toolbar .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
+  expect(host.querySelector(".service-credential-toolbar p")).toBeNull();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(props.onRequestDelete).not.toHaveBeenCalled();
+  expect(props.onConfirmDelete).not.toHaveBeenCalled();
 });
 
 it("clears drafts before confirmed deletion and respects an active-session lock", async () => {
@@ -116,7 +129,6 @@ it("clears drafts before confirmed deletion and respects an active-session lock"
 
 it("uses the unified picker with keyboard selection without submitting the form", async () => {
   await render();
-  await expandAdvanced();
   expect(picker().getAttribute("aria-label")).toBe(I18N.settings.textTranslationLabel);
   await key("Enter"); await key("End"); await key("Enter");
   expect(picker().textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
@@ -126,7 +138,7 @@ it("uses the unified picker with keyboard selection without submitting the form"
 });
 
 it("follows externally updated saved destinations while the picker is open", async () => {
-  await render(); await expandAdvanced();
+  await render();
   await act(() => picker().click());
   await render({ ...props, profile: { ...profile, textTranslation: "deepLX" } });
   expect(picker().textContent).toBe(I18N.settings.textTranslationCustom);
@@ -171,30 +183,31 @@ it("keeps a saved DeepL key hidden by default and permits replacing only the Ali
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "synthetic-new-asr", textTranslation: "deepL", endpoint: "", token: "" });
 });
 
-it("shows a saved destination key only on demand for its saved route and clears it when translation settings close", async () => {
+it("reveals a saved translation key only on demand and clears it on blur or a hidden editor", async () => {
   await render({ ...props, profile: { ...profile, textTranslation: "deepL" } });
   expect(profileRevealCredential).not.toHaveBeenCalled();
-  expect(host.querySelector(".stored-credential-reveal")).toBeNull();
-  await expandAdvanced();
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal button")).not.toBeNull();
+  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
   vi.mocked(profileRevealCredential).mockResolvedValue("synthetic-saved-deepl-key");
   await act(async () => { host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click(); });
   expect(profileRevealCredential).toHaveBeenCalledExactlyOnceWith({ profileId: profile.id, field: "token", textTranslation: "deepL" });
   expect(host.querySelector<HTMLInputElement>(".stored-credential-reveal input")!.value).toBe("synthetic-saved-deepl-key");
   expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("");
   expect(props.onSave).not.toHaveBeenCalled();
-  await act(() => {
-    const advanced = host.querySelector<HTMLDetailsElement>("details")!;
-    advanced.open = false; advanced.dispatchEvent(new Event("toggle"));
-  });
+  await act(() => window.dispatchEvent(new Event("blur")));
+  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
+  await act(async () => { host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click(); });
+  expect(host.querySelector<HTMLInputElement>(".stored-credential-reveal input")!.value).toBe("synthetic-saved-deepl-key");
+  await render({ ...props, visible: false });
   expect(host.querySelector(".stored-credential-reveal")).toBeNull();
-  await expandAdvanced();
+  await render({ ...props, visible: true });
   expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
 });
 
 it("discards an in-flight saved DeepL reveal when the draft selects another route", async () => {
   let complete!: (value: string) => void;
   vi.mocked(profileRevealCredential).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
-  await render({ ...props, profile: { ...profile, textTranslation: "deepL" } }); await expandAdvanced();
+  await render({ ...props, profile: { ...profile, textTranslation: "deepL" } });
   await act(() => host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click());
   await chooseTranslation("deepLX");
   await act(async () => { complete("synthetic-old-route-key"); });
@@ -254,6 +267,10 @@ it("adds an OpenAI-compatible destination without repeating the saved recognitio
   expect(host.textContent).toContain(I18N.settings.openAICompatibleRequirements);
   expect(host.textContent).toContain(I18N.settings.openAICompatibleLanguages);
   expect(host.textContent).toContain(I18N.settings.openAICompatibleRequired);
+  expect(host.querySelectorAll(".service-stage p")).toHaveLength(0);
+  expect(host.querySelector(".service-stage--translation .settings-help-control__description")?.textContent).toContain(I18N.settings.openAICompatibleRequirements);
+  expect(host.querySelector('.service-stage:not(.service-stage--translation) .provider-icon[data-provider="alibabaCloud"]')).not.toBeNull();
+  expect(picker().querySelector('.provider-icon[data-provider="openAICompatible"]')).not.toBeNull();
   expect(host.querySelector("#test-apiKey")).toBeNull();
   const endpoint = host.querySelector<HTMLInputElement>("#test-endpoint")!;
   const model = host.querySelector<HTMLInputElement>("#test-model")!;
@@ -271,7 +288,7 @@ it("adds an OpenAI-compatible destination without repeating the saved recognitio
 });
 
 it("keeps saved OpenAI-compatible fields write-only and permits changing only the model", async () => {
-  await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" } }); await expandAdvanced();
+  await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" } });
   expect(host.querySelector(".stored-credential-reveal")).toBeNull();
   expect(profileRevealCredential).not.toHaveBeenCalled();
   expect(host.querySelector<HTMLInputElement>("#test-model")!.placeholder).toBe(I18N.settings.savedTranslationModelPlaceholder);

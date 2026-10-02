@@ -16,7 +16,7 @@ const actions = vi.hoisted(() => ({
 }));
 const boot = vi.hoisted(() => ({ initializationStatus: "ready" as "ready" | "loading" | "error", initializationError: null as "timeout" | "unavailable" | null, init: vi.fn() }));
 vi.mock("../../lib/store", () => ({ useStore: (select: (state: typeof actions & typeof boot & { settings: { windowsAudioSource: string }; session: { isActive: boolean; isPaused: boolean } }) => unknown) => select({ ...actions, ...boot, settings: { windowsAudioSource: "" }, session: { isActive: false, isPaused: false } }) }));
-vi.mock("../../lib/ipc", () => ({ isTauri: false, testProfileConnection: vi.fn(), profileRevealCredential: vi.fn() }));
+vi.mock("../../lib/ipc", () => ({ isTauri: false, testProfileConnection: vi.fn(), profileRevealCredential: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "unavailable" };
 const settings: SettingsSnapshot = {
@@ -31,6 +31,7 @@ const settings: SettingsSnapshot = {
 let host: HTMLDivElement, root: Root;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla Linux");
   for (const action of Object.values(actions)) action.mockReset();
@@ -50,11 +51,16 @@ it.each(["en", "zh", "ja"] as const)("keeps local dev file credentials out of ed
   setStoredUiLanguage(language);
   const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", profiles: [{ ...profile, credentialState: "present" }] };
   await render(snapshot);
-  expect(host.querySelector(".services-hint")?.textContent).toContain(diagnosticCopy().localDevReadOnly);
+  expect(host.querySelector(".services-hint .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
+  expect(host.querySelector("p.services-hint")).toBeNull();
   await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.textContent).toContain(diagnosticCopy().localDevReadOnly);
   expect(host.querySelector('input[type="password"]')).toBeNull();
   expect(host.querySelector(".credential-form")).toBeNull();
+  expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
+  expect(host.querySelector<HTMLButtonElement>('.service-stage--translation [role="combobox"]')?.disabled).toBe(true);
+  expect(host.querySelector(".stored-credential-reveal, .credential-panel__saved-actions, .credential-form__actions")).toBeNull();
+  expect(host.querySelector('button[type="submit"]:not(.service-detail__save-name)')).toBeNull();
   expect(host.querySelector<HTMLInputElement>(`#profile-name-${profile.id}`)?.disabled).toBe(false);
   expect(vi.mocked(profileRevealCredential)).not.toHaveBeenCalled();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
@@ -76,12 +82,7 @@ async function change(selector: string, value: string) {
   });
 }
 async function chooseCustomTranslation() {
-  await act(() => {
-    const advanced = host.querySelector<HTMLDetailsElement>(".settings-advanced")!;
-    advanced.open = true;
-    advanced.dispatchEvent(new Event("toggle"));
-  });
-  await act(() => host.querySelector<HTMLButtonElement>('.settings-advanced [role="combobox"]')!.click());
+  await act(() => host.querySelector<HTMLButtonElement>('.service-stage--translation [role="combobox"]')!.click());
   const custom = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === I18N.settings.textTranslationCustom)!;
   await act(() => custom.click());
 }
@@ -196,7 +197,8 @@ it.each(["zh", "en", "ja"] as const)("groups the service identity, credential st
   expect(identity.querySelector("h2")?.textContent).toBe(profile.name);
   expect(identity.querySelector(".service-detail__title .credential-badge")?.textContent).toBe(I18N.settings.credentialPresent);
   expect(identity.querySelector(".service-detail__title .profile-active-badge")?.textContent).toBe(I18N.settings.activeProfile);
-  expect(identity.querySelector(".service-detail__copy > p")?.textContent).toContain(I18N.settings.providerOpenAIDescription);
+  expect(identity.querySelector(".service-detail__description .settings-help-control__description")?.textContent).toContain(I18N.settings.providerOpenAIDescription);
+  expect(identity.querySelector(".service-detail__copy > p")).toBeNull();
   expect(identity.querySelector(".service-language-support")).toBeNull();
   expect(host.querySelector(".service-detail__configuration #translation-languages")).not.toBeNull();
   const connection = host.querySelector(".service-detail__connection")!;
@@ -204,14 +206,17 @@ it.each(["zh", "en", "ja"] as const)("groups the service identity, credential st
   expect(connection.querySelector(".credential-panel__saved-actions")?.textContent).toContain(I18N.settings.replaceCredentials);
   await click(I18N.settings.replaceCredentials);
   expect(connection.querySelector('input[type="password"]')).not.toBeNull();
-  expect(connection.querySelector(".credential-form .settings-advanced")).toBeNull();
-  expect(connection.querySelector(".credential-form + .settings-advanced")).not.toBeNull();
+  expect(connection.querySelector(".settings-advanced, details")).toBeNull();
+  const integratedStage = connection.querySelector(".service-stage--integrated")!;
+  expect(integratedStage.querySelector("h3")?.textContent).toBe(I18N.settings.voiceTranslation);
+  expect(integratedStage.querySelector('.provider-icon[data-provider="openAIRealtime"]')).not.toBeNull();
+  expect(integratedStage.querySelector(".settings-help-control__description")?.textContent).toBe(I18N.settings.textTranslationUnsupported);
+  expect(integratedStage.querySelector('[role="combobox"], p')).toBeNull();
   expect(host.querySelector(".service-detail__name label")?.textContent).toBe(I18N.settings.profileName);
   expect(host.querySelector(".service-detail__name")?.closest("details")).toBeNull();
   expect(host.querySelector(".service-detail__name button")).toBeNull();
   expect(host.querySelector(".service-detail__configuration .credential-panel")).not.toBeNull();
   expect(host.querySelector(".service-detail__actions")?.textContent).toContain(I18N.settings.deleteProfile);
-  expect(host.querySelector(".settings-advanced summary")?.textContent).toBe(I18N.settings.advancedTranslation);
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
   expect(actions.deleteProfileAPIKey).not.toHaveBeenCalled();
   expect(testProfileConnection).not.toHaveBeenCalled();

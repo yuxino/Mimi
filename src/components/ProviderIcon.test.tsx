@@ -4,6 +4,9 @@ import { expect, it } from "vitest";
 import type { ServiceProvider } from "../lib/types";
 import openAILight from "../assets/providers/openai-black.svg";
 import openAIDark from "../assets/providers/openai-white.svg";
+import deepL from "../assets/providers/deepl-blue.svg";
+import deepLDark from "../assets/providers/deepl-white.svg";
+import deepLX from "../assets/providers/deeplx.svg";
 import { ProviderIcon } from "./ProviderIcon";
 
 it("bundles distinct official assets for the eight speech providers", () => {
@@ -32,4 +35,28 @@ it("uses official light and dark OpenAI artwork without recoloring it", () => {
   expect(host.querySelector(".provider-icon__image--dark")?.getAttribute("src")).toBe(openAIDark);
   expect(html).toContain("width:32px;height:32px");
   expect(html).toContain("picker-icon");
+});
+
+it("uses official DeepL artwork for text translation in both themes", () => {
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(<ProviderIcon provider="deepL" />);
+  expect(host.querySelector(".provider-icon__image--light")?.getAttribute("src")).toBe(deepL);
+  expect(host.querySelector(".provider-icon__image--dark")?.getAttribute("src")).toBe(deepLDark);
+  expect(host.querySelector(".provider-icon")?.getAttribute("aria-hidden")).toBe("true");
+});
+
+it("uses the legacy DeepLX documentation mark for its text translation route", () => {
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(<ProviderIcon provider="deepLX" />);
+  expect(host.querySelector(".provider-icon__image--deeplx")?.getAttribute("src")).toBe(deepLX);
+  expect(host.querySelector("img")?.getAttribute("alt")).toBe("");
+  expect(host.querySelector(".provider-icon")?.getAttribute("aria-hidden")).toBe("true");
+});
+
+it("uses a neutral decorative glyph for OpenAI-compatible third parties", () => {
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(<ProviderIcon provider="openAICompatible" size={32} />);
+  expect(host.querySelector("svg.provider-icon__generic")).not.toBeNull();
+  expect(host.querySelector("img")).toBeNull();
+  expect(host.querySelector(".provider-icon")?.getAttribute("aria-hidden")).toBe("true");
 });

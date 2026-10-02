@@ -6,11 +6,12 @@ import "./tooltip.css";
 
 interface TooltipProps {
   label: string;
+  popupClassName?: string;
   children: (descriptionId: string | undefined, hovered: boolean) => ReactNode;
 }
 
 /** Shared visible label for compact controls, including keyboard focus. */
-export function Tooltip({ label, children }: TooltipProps) {
+export function Tooltip({ label, popupClassName, children }: TooltipProps) {
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const popup = useRef<HTMLDivElement>(null);
@@ -127,7 +128,7 @@ export function Tooltip({ label, children }: TooltipProps) {
     >
       {children(open ? id : undefined, isHovered)}
       {open && createPortal(
-        <div ref={popup} id={id} className="mimi-tooltip" role="tooltip">{label}</div>,
+        <div ref={popup} id={id} className={popupClassName ? `mimi-tooltip ${popupClassName}` : "mimi-tooltip"} role="tooltip">{label}</div>,
         document.body,
       )}
     </span>

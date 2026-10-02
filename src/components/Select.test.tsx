@@ -39,6 +39,54 @@ async function render(value: string) {
 }
 function trigger() { return host.querySelector<HTMLButtonElement>('[role="combobox"]')!; }
 
+const translatorOptions = [
+  { value: "default", label: "Alibaba", icon: <svg width="32" height="32"><circle cx="16" cy="16" r="8" /></svg> },
+  { value: "deepL", label: "DeepL", icon: <img src="synthetic-deepl.svg" alt="" /> },
+  { value: "deepLX", label: "DeepLX" },
+];
+
+it("keeps decorative option icons beside unchanged labels and preserves keyboard typeahead", async () => {
+  await act(() => root.render(<Select label="文字翻译" value="default" options={translatorOptions} onChange={onChange} />));
+  expect(trigger().textContent).toBe("Alibaba");
+  expect(trigger().getAttribute("aria-label")).toBe("文字翻译");
+  expect(trigger().querySelector('.mimi-select__icon[aria-hidden="true"] svg')).not.toBeNull();
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "D", bubbles: true })));
+  expect(visibleLabels()).toEqual(["Alibaba", "DeepL", "DeepLX"]);
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("DeepL");
+  expect(document.querySelectorAll('.mimi-select__menu .mimi-select__icon[aria-hidden="true"]')).toHaveLength(2);
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("deepL");
+  await act(() => root.render(<Select label="文字翻译" value="deepL" options={translatorOptions} onChange={onChange} />));
+  expect(trigger().textContent).toBe("DeepL");
+  expect(trigger().querySelector('.mimi-select__icon[aria-hidden="true"] img')).not.toBeNull();
+});
+
+it("filters icon-bearing options by label and value without changing searchable keyboard selection", async () => {
+  await act(() => root.render(<Select label="文字翻译" value="default" options={translatorOptions}
+    searchLabel="搜索翻译服务" emptyMessage="没有匹配服务" onChange={onChange} />));
+  await act(() => trigger().click());
+  await typeQuery("deep");
+  expect(visibleLabels()).toEqual(["DeepL", "DeepLX"]);
+  await key("End");
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("DeepLX");
+  await key("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("deepLX");
+  expect(document.activeElement).toBe(trigger());
+});
+
+it("passes the trigger's provider theme variables to portalled option icons", async () => {
+  await act(() => root.render(<Select label="文字翻译" value="default" options={translatorOptions} onChange={onChange} />));
+  trigger().style.setProperty("--provider-light-display", "none");
+  trigger().style.setProperty("--provider-dark-display", "block");
+  trigger().style.setProperty("--provider-backing-background", "#fff");
+  await act(() => trigger().click());
+  const popup = document.querySelector<HTMLElement>(".mimi-select__menu")!;
+  expect(popup.parentElement).toBe(document.body);
+  expect(popup.style.getPropertyValue("--provider-light-display")).toBe("none");
+  expect(popup.style.getPropertyValue("--provider-dark-display")).toBe("block");
+  expect(popup.style.getPropertyValue("--provider-backing-background")).toBe("#fff");
+});
+
 it("updates the visible label on an external value change without losing trigger focus", async () => {
   await render("translation");
   const button = trigger();

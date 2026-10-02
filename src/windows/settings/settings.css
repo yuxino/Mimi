@@ -1946,15 +1946,16 @@
 .service-detail .credential-panel__saved-actions {
   gap: 8px 12px;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 .service-detail .credential-form__actions {
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 .service-detail__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 14px;
@@ -2507,70 +2508,6 @@
 
 
 /* Optional text translation stays inside the existing credential layout. */
-.settings-advanced {
-  display: block;
-  grid-column: 1 / -1;
-  min-width: 0;
-  margin-block: 6px;
-}
-
-.settings-advanced > summary {
-  cursor: pointer;
-  color: var(--settings-text-muted);
-  font-size: 12px;
-  padding-block: 6px;
-}
-
-.settings-advanced[open] > .settings-field,
-.settings-advanced[open] > .credential-form__fields {
-  margin-block: 8px;
-}
-
-.settings-advanced .settings-select-wrap {
-  width: 100%;
-}
-
-.service-detail .settings-advanced {
-  margin: 8px 0 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--settings-border);
-}
-.service-detail .settings-advanced > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 25px;
-  padding-block: 2px;
-  list-style: none;
-  color: var(--settings-text);
-  font-weight: 600;
-}
-.service-detail .settings-advanced > summary::-webkit-details-marker {
-  display: none;
-}
-.service-detail .settings-advanced > summary::after {
-  content: "";
-  width: 6px;
-  height: 6px;
-  flex: 0 0 auto;
-  margin-right: 3px;
-  border-right: 1px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  transform: rotate(45deg);
-}
-.service-detail .settings-advanced[open] > summary {
-  margin-bottom: 10px;
-}
-.service-detail .settings-advanced[open] > summary::after {
-  transform: rotate(225deg);
-}
-.service-detail .settings-advanced > p {
-  margin-top: 8px;
-  color: var(--settings-text-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
 .connection-check {
   display: flex;
   align-items: center;
@@ -2581,9 +2518,6 @@
 .connection-check > .settings-button {
   flex: 0 0 auto;
   width: auto;
-  min-height: 30px;
-  padding-inline: 10px;
-  font-size: 11.5px;
 }
 .connection-check .settings-feedback {
   flex: 1 1 160px;
@@ -2613,5 +2547,135 @@
     border-color: Highlight;
     color: HighlightText;
     background: Highlight;
+  }
+}
+
+/* A profile links speech input and a separate text translation destination. */
+.service-credential-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.service-credential-toolbar .credential-panel__saved-actions {
+  gap: 8px;
+}
+.service-credential-toolbar .connection-check {
+  justify-content: flex-end;
+}
+.service-credential-toolbar .settings-button,
+.service-detail .credential-form__actions .settings-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+.service-stages,
+.service-stage {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+.service-stages {
+  margin-top: 4px;
+  gap: 18px;
+}
+.service-stage {
+  padding-top: 16px;
+  border-top: 1px solid var(--settings-border);
+}
+.service-stage__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.service-stage__heading h3 {
+  margin: 0;
+  color: var(--settings-text);
+  font-size: 12px;
+  font-weight: 630;
+}
+.service-stage .settings-field {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+}
+.service-stage .settings-field > input,
+.service-stage .settings-field > .settings-select-wrap,
+.service-stage .settings-field > .stored-credential-reveal,
+.service-stage .settings-field > .credential-unavailable {
+  grid-column: 2;
+}
+.service-stage__provider,
+.service-stage__field-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.service-stage__provider {
+  min-height: 36px;
+  padding-inline: 10px;
+  font-size: 12px;
+  font-weight: 560;
+}
+.service-stage__provider .provider-icon {
+  width: 20px !important;
+  height: 20px !important;
+}
+.service-stage__provider .provider-icon__image {
+  width: 20px;
+  height: 20px;
+}
+.service-stage__selector .settings-select-wrap {
+  width: 100%;
+}
+.service-stage__field-label label {
+  min-width: 0;
+}
+.services-hint {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.service-detail__copy {
+  position: relative;
+  flex: 1;
+  padding-right: 30px;
+}
+.service-detail__description {
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+.service-row__translation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--settings-text-muted);
+  font-size: 11px;
+}
+.service-row__translation .provider-icon {
+  width: 16px !important;
+  height: 16px !important;
+}
+.service-row__translation .provider-icon__image,
+.service-row__translation .provider-icon > svg {
+  width: 16px;
+  height: 16px;
+}
+@media (max-width: 680px) {
+  .service-stage .settings-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .service-stage .settings-field > input,
+  .service-stage .settings-field > .settings-select-wrap,
+  .service-stage .settings-field > .stored-credential-reveal,
+  .service-stage .settings-field > .credential-unavailable {
+    grid-column: 1;
   }
 }

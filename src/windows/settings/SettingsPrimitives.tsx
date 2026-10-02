@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Select } from "../../components/Select";
+import { Select, type SelectOption } from "../../components/Select";
 import { Icon, type IconName } from "../../components/Icon";
 
 export function SettingsSection({
@@ -63,7 +63,7 @@ export function SettingsSelect({
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
-  options: readonly { value: string; label: string }[];
+  options: readonly SelectOption[];
   label: string;
 }) {
   return (

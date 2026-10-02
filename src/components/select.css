@@ -24,11 +24,42 @@
   text-align: left;
   cursor: pointer;
 }
-.mimi-select__trigger > span {
+.mimi-select__content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
+}
+.mimi-select__label {
+  min-width: 0;
+}
+.mimi-select__trigger .mimi-select__label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.mimi-select__icon {
+  display: inline-flex;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+}
+.mimi-select__icon > * {
+  max-width: 20px;
+  max-height: 20px;
+}
+.mimi-select__icon .provider-icon,
+.mimi-select__icon .provider-icon__initials {
+  width: 20px !important;
+  height: 20px !important;
+}
+.mimi-select__icon img,
+.mimi-select__icon svg {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 .mimi-select__trigger > svg { flex-shrink: 0; font-size: 11px; opacity: 0.6; }
 .mimi-select__trigger:hover:not(:disabled) { border-color: currentColor; }
