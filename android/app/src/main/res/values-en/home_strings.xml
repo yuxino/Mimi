@@ -38,4 +38,5 @@
     <string name="capture_source_hint">Source: app playback · no microphone. Sound detection does not prove speech recognition.</string>
     <string name="copy_capture_diagnostics">Copy capture diagnostics</string>
     <string name="capture_diagnostics_copied">Copied without audio, captions or credentials</string>
+    <string name="capture_diagnostics_copy_failed">Could not copy diagnostics. Try again.</string>
 </resources>

@@ -38,4 +38,5 @@
     <string name="capture_source_hint">取得元：アプリの再生音声 · マイクは使いません。音声の検出だけでは認識成功を確認できません。</string>
     <string name="copy_capture_diagnostics">取得診断をコピー</string>
     <string name="capture_diagnostics_copied">音声、字幕、認証情報を含めずコピーしました</string>
+    <string name="capture_diagnostics_copy_failed">診断をコピーできませんでした。もう一度お試しください。</string>
 </resources>

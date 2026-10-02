@@ -32,6 +32,7 @@ class UiSmokeInstrumentation : Instrumentation() {
     private var demo = false
     private var guideCopy = false
     private var firstRun = false
+    private var immersiveHelp = false
     private var guideLocale = "en"
     private var overlayPreview = false
     private var expectLandscape = false
@@ -48,6 +49,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         demo = arguments?.getString("demo") == "true"
         guideCopy = arguments?.getString("guide_copy") == "true"
         firstRun = arguments?.getString("first_run") == "true"
+        immersiveHelp = arguments?.getString("immersive_help") == "true"
         guideLocale = arguments?.getString("locale") ?: "en"
         overlayPreview = arguments?.getString("overlay_preview") == "true"
         expectLandscape = arguments?.getString("expect_landscape") == "true"
@@ -67,7 +69,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         try {
             check(!MimiService.isRunning) { "Stop the active session before running UI checks." }
             onUi {
-                if (firstRun || guideCopy) {
+                if (firstRun || guideCopy || immersiveHelp) {
                     if (android.os.Build.VERSION.SDK_INT >= 33) {
                         targetContext.getSystemService(android.app.LocaleManager::class.java).applicationLocales = android.os.LocaleList.forLanguageTags(guideLocale)
                     } else AppCompatDelegate.setApplicationLocales(androidx.core.os.LocaleListCompat.forLanguageTags(guideLocale))
@@ -78,6 +80,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             when {
                 guideCopy -> guideCopyScreens()
                 firstRun -> firstRunGuide()
+                immersiveHelp -> immersiveHelpChecks()
                 overlayPreview -> previewOverlay()
                 demo -> demonstrate()
                 else -> smoke()
@@ -94,6 +97,8 @@ class UiSmokeInstrumentation : Instrumentation() {
         finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (failure == null && guideCopy)
                 "Guide copy UI passed ($guideLocale): $screenshots real emulator screenshots; synthetic stopped-sharing state, no credentials, permissions or provider session requested.\n"
+            else if (failure == null && immersiveHelp)
+                "Immersive help passed ($guideLocale/$theme): $screenshots native screenshots; both entries, cancel, duplicate taps, acknowledgement, exit and service teardown; synthetic overlay only, no provider or capture started.\n"
             else if (failure == null && firstRun)
                 "First-run UI passed ($theme): $screenshots real emulator screenshots; synthetic credential fixture only, no provider or capture session started. Clear the dedicated emulator app data after review.\n"
             else if (failure == null)
@@ -264,6 +269,150 @@ class UiSmokeInstrumentation : Instrumentation() {
         onUi { upgraded.finish() }
     }
 
+    private fun immersiveHelpWindow(): View? = WindowInspector.getGlobalWindowViews().firstOrNull {
+        containsText(it, targetContext.getString(R.string.guide_immersive_hint))
+    }
+
+    /** Sample the actual shown surface; service and dialog can initially have different night modes. */
+    private fun checkImmersiveHelpContrast() {
+        var sampleX = 0
+        var sampleY = 0
+        var titleColor = 0
+        var buttonColors = emptyList<Int>()
+        onUi {
+            val root = checkNotNull(immersiveHelpWindow())
+            fun findTitle(view: View): TextView? {
+                if (view is TextView && view.text.toString() == targetContext.getString(R.string.guide_immersive)) return view
+                if (view is android.view.ViewGroup) {
+                    for (index in 0 until view.childCount) findTitle(view.getChildAt(index))?.let { return it }
+                }
+                return null
+            }
+            val title = checkNotNull(findTitle(root))
+            val location = IntArray(2)
+            title.getLocationOnScreen(location)
+            sampleX = location[0] + title.width / 2
+            sampleY = location[1] - (4 * title.resources.displayMetrics.density).toInt()
+            titleColor = title.currentTextColor
+            buttonColors = listOf(android.R.id.button1, android.R.id.button2).map {
+                root.findViewById<TextView>(it).currentTextColor
+            }
+        }
+        val screenshot = checkNotNull(uiAutomation.takeScreenshot())
+        try {
+            val background = screenshot.getPixel(sampleX, sampleY)
+            check(androidx.core.graphics.ColorUtils.calculateContrast(titleColor, background) >= 3.0) {
+                "Immersive help title is unreadable against its actual surface"
+            }
+            check(buttonColors.all { androidx.core.graphics.ColorUtils.calculateContrast(it, background) >= 4.5 }) {
+                "Immersive help actions are unreadable against its actual surface"
+            }
+        } finally { screenshot.recycle() }
+    }
+
+    private fun acknowledgeImmersiveHelpIfShown() {
+        onUi { immersiveHelpWindow()?.findViewById<View>(android.R.id.button1)?.performClick() }
+        waitForIdleSync()
+    }
+
+    /** Both real UI entry points; preview service never opens capture or a provider. */
+    private fun immersiveHelpChecks() {
+        check(Settings.canDrawOverlays(targetContext)) { "Grant overlay permission on the dedicated emulator." }
+        check(!SettingsStore.isConfigured(targetContext)) { "Use a blank emulator for immersive help checks." }
+        val prefs = targetContext.getSharedPreferences("first_run", 0)
+        prefs.edit().putBoolean("seen", true).remove("immersive_seen").commit()
+        SettingsStore.setImmersiveSubtitles(targetContext, false)
+        val home = launchHome()
+        val settings = openSettings(home, appearance = true)
+        val toggle = settings.findViewById<MaterialSwitch>(R.id.immersive_subtitles)
+        try {
+            click(settings, R.id.immersive_subtitles)
+            check(!SettingsStore.immersiveSubtitles(targetContext) && !toggle.isChecked) {
+                "First settings entry enabled immersion before acknowledgement"
+            }
+            capture("immersive-settings-before-confirm-$guideLocale-$theme")
+            checkImmersiveHelpContrast()
+            onUi {
+                val explanation = checkNotNull(immersiveHelpWindow()) { "Settings explanation missing" }
+                explanation.findViewById<View>(android.R.id.button2).performClick()
+            }
+            waitForIdleSync()
+            check(!prefs.getBoolean("immersive_seen", false) && !toggle.isChecked)
+            // Repeated taps share one pending explanation instead of changing the mode.
+            click(settings, R.id.immersive_subtitles)
+            click(settings, R.id.immersive_subtitles)
+            onUi {
+                check(WindowInspector.getGlobalWindowViews().count {
+                    containsText(it, targetContext.getString(R.string.guide_immersive_hint))
+                } == 1)
+            }
+            acknowledgeImmersiveHelpIfShown()
+            check(prefs.getBoolean("immersive_seen", false) && SettingsStore.immersiveSubtitles(targetContext))
+            click(settings, R.id.immersive_subtitles)
+            click(settings, R.id.immersive_subtitles)
+            onUi { check(immersiveHelpWindow() == null) { "Acknowledged settings explanation repeated" } }
+            check(toggle.isChecked)
+            click(settings, R.id.immersive_subtitles)
+            onUi { settings.finish() }
+            waitForIdleSync()
+
+            prefs.edit().remove("immersive_seen").commit()
+            targetContext.startService(Intent(targetContext, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW))
+            val overlay = checkNotNull(waitForOverlayTag("mimi-overlay"))
+            val compact = overlay.findViewWithTag<View>("compact-subtitle")
+            onUi { compact.performClick() }
+            val entry = overlay.findViewWithTag<View>("enter-immersive")
+            onUi { entry.performClick(); entry.performClick() }
+            check(!SettingsStore.immersiveSubtitles(targetContext)) { "Overlay enabled immersion before acknowledgement" }
+            onUi {
+                val explanation = checkNotNull(immersiveHelpWindow()) { "Overlay explanation missing" }
+                check((explanation.layoutParams as WindowManager.LayoutParams).type == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+                check(WindowInspector.getGlobalWindowViews().count {
+                    containsText(it, targetContext.getString(R.string.guide_immersive_hint))
+                } == 1)
+            }
+            capture("immersive-overlay-before-confirm-$guideLocale-$theme")
+            checkImmersiveHelpContrast()
+            onUi { immersiveHelpWindow()!!.findViewById<View>(android.R.id.button2).performClick() }
+            waitForIdleSync()
+            check(!prefs.getBoolean("immersive_seen", false) && !SettingsStore.immersiveSubtitles(targetContext))
+            onUi { entry.performClick() }
+            acknowledgeImmersiveHelpIfShown()
+            val exit = checkNotNull(waitForOverlayTag("exit-immersive"))
+            check(SettingsStore.immersiveSubtitles(targetContext) && prefs.getBoolean("immersive_seen", false))
+            capture("immersive-overlay-after-confirm-$guideLocale-$theme")
+            onUi { exit.performClick() }
+            waitForIdleSync()
+            check(!SettingsStore.immersiveSubtitles(targetContext))
+            val restored = checkNotNull(waitForOverlayTag("mimi-overlay"))
+            onUi {
+                check(restored.findViewWithTag<View>("compact-subtitle").isShown)
+                restored.findViewWithTag<View>("compact-subtitle").performClick()
+                restored.findViewWithTag<View>("enter-immersive").performClick()
+                check(immersiveHelpWindow() == null) { "Acknowledged overlay explanation repeated" }
+            }
+            val secondExit = checkNotNull(waitForOverlayTag("exit-immersive"))
+            onUi { secondExit.performClick() }
+            waitForIdleSync()
+            // A pending overlay explanation belongs to its service lifecycle.
+            prefs.edit().remove("immersive_seen").commit()
+            val lastOverlay = checkNotNull(waitForOverlayTag("mimi-overlay"))
+            onUi {
+                lastOverlay.findViewWithTag<View>("compact-subtitle").performClick()
+                lastOverlay.findViewWithTag<View>("enter-immersive").performClick()
+                check(immersiveHelpWindow() != null)
+            }
+            targetContext.startService(MimiService.stopIntent(targetContext))
+            waitForIdleSync()
+            onUi { check(immersiveHelpWindow() == null) { "Stopped service retained its explanation" } }
+            check(!MimiService.isRunning && !MimiService.firstRunEvidence.complete && !SettingsStore.immersiveSubtitles(targetContext))
+        } finally {
+            targetContext.startService(MimiService.stopIntent(targetContext))
+            onUi { settings.finish(); home.finish() }
+            waitForIdleSync()
+        }
+    }
+
     private fun smoke() {
         val home = launchHome()
         onUi { WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull { it.findViewWithTag<View>("guide-skip") }?.performClick() }
@@ -303,6 +452,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         val immersive = settings.findViewById<MaterialSwitch>(R.id.immersive_subtitles)
         check(immersive.isChecked == initialImmersive)
         click(settings, R.id.immersive_subtitles)
+        acknowledgeImmersiveHelpIfShown()
         check(SettingsStore.immersiveSubtitles(targetContext) != initialImmersive)
         check(settings.findViewById<SeekBar>(R.id.overlay_bg_alpha).isEnabled == initialImmersive)
         capture("settings-immersive-$theme")
@@ -436,6 +586,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             check(compact.isShown && !expanded.isShown) { "Floating overlay did not collapse" }
             onUi { check(compact.performClick()) { "Compact reopen click failed" } }
             onUi { check(expanded.findViewWithTag<View>("enter-immersive").performClick()) { "Immersive entry click failed" } }
+            acknowledgeImmersiveHelpIfShown()
             check(SettingsStore.immersiveSubtitles(targetContext)) { "Immersive entry did not update preference" }
             val exit = WindowInspector.getGlobalWindowViews()
                 .firstOrNull { it.tag == "exit-immersive" }
@@ -667,6 +818,9 @@ class UiSmokeInstrumentation : Instrumentation() {
         private val background = restoreBackground ?: SettingsStore.overlayBgAlpha(targetContext)
         private val history = SettingsStore.historyLines(targetContext)
         private val immersive = SettingsStore.immersiveSubtitles(targetContext)
+        private val helpPrefs = targetContext.getSharedPreferences("first_run", 0)
+        private val hadImmersiveSeen = helpPrefs.contains("immersive_seen")
+        private val immersiveSeen = helpPrefs.getBoolean("immersive_seen", false)
         fun restore() {
             SettingsStore.setSourceLang(targetContext, source)
             SettingsStore.setTargetLang(targetContext, target)
@@ -676,6 +830,9 @@ class UiSmokeInstrumentation : Instrumentation() {
             SettingsStore.setOverlayBgAlpha(targetContext, background)
             SettingsStore.setHistoryLines(targetContext, history)
             SettingsStore.setImmersiveSubtitles(targetContext, immersive)
+            helpPrefs.edit().apply {
+                if (hadImmersiveSeen) putBoolean("immersive_seen", immersiveSeen) else remove("immersive_seen")
+            }.commit()
             SubtitleBus.clear()
         }
     }

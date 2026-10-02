@@ -9,7 +9,7 @@ internal fun providerHelp(provider: ServiceProvider): ProviderHelp = when (provi
         "https://help.aliyun.com/zh/model-studio/get-api-key",
         "https://help.aliyun.com/zh/model-studio/model-pricing")
     ServiceProvider.OPENAI -> ProviderHelp(R.string.guide_help_openai,
-        "https://developers.openai.com/api/docs/guides/realtime",
+        "https://developers.openai.com/api/docs/guides/realtime-translation",
         "https://developers.openai.com/api/docs/pricing")
     ServiceProvider.GEMINI -> ProviderHelp(R.string.guide_help_gemini,
         "https://ai.google.dev/gemini-api/docs/api-key",

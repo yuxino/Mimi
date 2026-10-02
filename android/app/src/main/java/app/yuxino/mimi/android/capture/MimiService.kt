@@ -30,6 +30,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
+import android.view.ContextThemeWrapper
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -42,6 +43,7 @@ import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.SettingsStore
+import app.yuxino.mimi.android.ImmersiveModeHelp
 import app.yuxino.mimi.android.provider.DashScopeEngine
 import app.yuxino.mimi.android.provider.EngineListener
 import app.yuxino.mimi.android.provider.OpenAIRealtimeEngine
@@ -84,6 +86,7 @@ class MimiService : Service() {
     private var generation = 0
     private var projectionCallback: MediaProjection.Callback? = null
     private var engine: ProviderEngine? = null
+    private lateinit var immersiveHelp: ImmersiveModeHelp
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
@@ -142,6 +145,7 @@ class MimiService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        immersiveHelp = ImmersiveModeHelp(ContextThemeWrapper(this, R.style.Theme_Mimi), overlayWindow = true)
         createChannel()
         SubtitleBus.addListener(busListener)
     }
@@ -377,6 +381,7 @@ class MimiService : Service() {
     }
 
     private fun releaseSession() {
+        immersiveHelp.dismiss()
         ++generation
         health = null
         captureObservation = null
@@ -627,6 +632,15 @@ class MimiService : Service() {
 
     private fun setImmersiveMode(enabled: Boolean) {
         if (immersiveSession == enabled) return
+        if (enabled) {
+            immersiveHelp.requestEnable(onConfirmed = { applyImmersiveMode(true) })
+        } else {
+            immersiveHelp.dismiss()
+            runCatching { applyImmersiveMode(false) }
+        }
+    }
+
+    private fun applyImmersiveMode(enabled: Boolean) {
         SettingsStore.setImmersiveSubtitles(this, enabled)
         rebuildOverlay()
     }

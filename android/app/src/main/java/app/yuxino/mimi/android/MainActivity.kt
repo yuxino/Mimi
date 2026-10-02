@@ -75,9 +75,17 @@ class MainActivity : AppCompatActivity() {
                 "pcmAgeMs=${observation?.pcmAgeMs ?: "unknown"}\n" +
                 "soundAgeMs=${observation?.soundAgeMs ?: "unknown"}\n" +
                 "captureError=${MimiService.lastCaptureError ?: "none"}"
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mimi capture diagnostics", report))
-            Toast.makeText(this, R.string.capture_diagnostics_copied, Toast.LENGTH_SHORT).show()
+            val copied = try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mimi capture diagnostics", report))
+                true
+            } catch (_: RuntimeException) {
+                false
+            }
+            Toast.makeText(this,
+                if (copied) R.string.capture_diagnostics_copied else R.string.capture_diagnostics_copy_failed,
+                if (copied) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+            ).show()
         }
         startStop.setOnClickListener {
             if (MimiService.isRunning) {
@@ -319,6 +327,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQ_PROJECTION) {
             starting = false
             if (resultCode == Activity.RESULT_OK && data != null) {
+                getSharedPreferences("first_run", 0).edit().remove("projection-denied").apply()
                 ContextCompat.startForegroundService(
                     this, MimiService.startIntent(this, resultCode, data),
                 )

@@ -23,6 +23,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var bgAlphaSeek: SeekBar
     private lateinit var historySeek: SeekBar
     private lateinit var colorSpinner: Spinner
+    private val immersiveHelp = ImmersiveModeHelp(this)
 
     // Display the neutral default first without changing persisted preset indices.
     private val colorIndices = listOf(1, 0, 2, 3, 4)
@@ -67,21 +68,33 @@ class SettingsActivity : AppCompatActivity() {
         colorSpinner = findViewById(R.id.translation_color)
         val immersiveSwitch = findViewById<MaterialSwitch>(R.id.immersive_subtitles)
         immersiveSwitch.isChecked = SettingsStore.immersiveSubtitles(this)
-        immersiveSwitch.setOnCheckedChangeListener { _, enabled ->
-            if (enabled && !getSharedPreferences("first_run", 0).getBoolean("immersive_seen", false)) {
-                com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                    .setTitle(getString(R.string.guide_immersive))
-                    .setMessage(getString(R.string.guide_immersive_hint))
-                    .setPositiveButton(getString(R.string.guide_understood)) { _, _ ->
-                        getSharedPreferences("first_run", 0).edit().putBoolean("immersive_seen", true).apply()
-                    }.show()
-            }
+        var updatingImmersiveSwitch = false
+        fun syncImmersiveSwitch() {
+            updatingImmersiveSwitch = true
+            try { immersiveSwitch.isChecked = SettingsStore.immersiveSubtitles(this) }
+            finally { updatingImmersiveSwitch = false }
+        }
+        fun applyImmersiveMode(enabled: Boolean) {
             SettingsStore.setImmersiveSubtitles(this, enabled)
+            syncImmersiveSwitch()
             if (MimiService.isRunning) {
                 startService(Intent(this, MimiService::class.java)
                     .setAction(MimiService.ACTION_APPLY_APPEARANCE))
             }
             refreshPreview()
+        }
+        immersiveSwitch.setOnCheckedChangeListener { _, enabled ->
+            if (updatingImmersiveSwitch) return@setOnCheckedChangeListener
+            if (enabled) {
+                syncImmersiveSwitch()
+                immersiveHelp.requestEnable(
+                    onConfirmed = { applyImmersiveMode(true) },
+                    onCancelled = { syncImmersiveSwitch(); refreshPreview() },
+                )
+            } else {
+                immersiveHelp.dismiss()
+                runCatching { applyImmersiveMode(false) }.onFailure { syncImmersiveSwitch() }
+            }
         }
 
         fontSeek.progress = SettingsStore.fontSize(this)
@@ -132,6 +145,11 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ServiceSettingsUi.renderList(this, findViewById(R.id.service_panel))
+    }
+
+    override fun onDestroy() {
+        immersiveHelp.dismiss()
+        super.onDestroy()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

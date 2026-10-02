@@ -39,4 +39,5 @@
     <string name="capture_source_hint">来源：应用内部播放流 · 不采集麦克风。检测到声音不代表已识别到语音。</string>
     <string name="copy_capture_diagnostics">复制采音诊断</string>
     <string name="capture_diagnostics_copied">已复制，不含音频、字幕或凭证</string>
+    <string name="capture_diagnostics_copy_failed">无法复制诊断，请重试。</string>
 </resources>
