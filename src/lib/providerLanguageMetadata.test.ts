@@ -43,7 +43,7 @@ it("keeps display evidence aligned with the actual Rust model and exact Lite tab
 });
 
 it("never borrows Lite's target list for independent official or custom destinations", () => {
-  for (const [textTranslation, limitation] of [["deepL", "resourceQueryRequired"], ["deepLX", "customUnknown"]] as const) {
+  for (const [textTranslation, limitation] of [["deepL", "resourceQueryRequired"], ["deepLX", "customUnknown"], ["openAICompatible", "customUnknown"]] as const) {
     const metadata = languageMetadataForProfile({ ...profile, textTranslation });
     expect(metadata.providerAvailable.recognition.languageCodes).toEqual(AUDIO3_RECOGNITION_LANGUAGE_CODES);
     expect(metadata.providerAvailable.translation.languageCodes).toBeNull();

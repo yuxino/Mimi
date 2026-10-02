@@ -54,7 +54,7 @@ describe("save and select a service", () => {
 it("normalizes capabilities after changing the text route of an already active profile", async () => {
   const save = vi.fn().mockResolvedValue(snapshot("ali"));
   const select = vi.fn().mockResolvedValue({ ...snapshot("ali"), translationMode: "turbo" });
-  const update: ProviderCredentialsInput = { kind: "alibabaTranslation", apiKey: "", textTranslation: "deepLX", endpoint: "https://example.com", token: "" };
+  const update: ProviderCredentialsInput = { kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "deepLX", endpoint: "https://example.com", token: "" };
   expect((await saveAndSelectProfile("ali", update, save, select)).translationMode).toBe("turbo");
   expect(select).toHaveBeenCalledWith("ali");
 });

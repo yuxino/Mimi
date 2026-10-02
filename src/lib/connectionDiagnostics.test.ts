@@ -33,6 +33,23 @@ it("localizes shortcut and storage errors without losing recovery guidance", () 
 it("never interpolates arbitrary native errors or synthetic secrets", () => {
   expect(profileErrorMessage("synthetic-secret-private-value")).not.toContain("synthetic-secret");
 });
+
+it("localizes sanitized third-party translation errors without provider response content", () => {
+  for (const language of ["zh", "en", "ja"] as const) {
+    setStoredUiLanguage(language);
+    expect(profileErrorMessage("The OpenAI-compatible endpoint is invalid.")).toBe(I18N.settings.deepLXEndpointInvalid);
+    expect(profileErrorMessage("Use an HTTPS OpenAI-compatible endpoint (or HTTP on localhost), without URL credentials, query or fragment.")).toBe(I18N.settings.deepLXEndpointInvalid);
+    expect(profileErrorMessage("The OpenAI-compatible model name is invalid.")).toBe(I18N.settings.openAICompatibleModelInvalid);
+    expect(credentialErrorMessage("Enter a valid API key for the custom translation service.")).toBe(I18N.settings.openAICompatibleApiKeyInvalid);
+    expect(credentialErrorMessage("The custom translation service rejected the request (HTTP 401). Check its API key, model and service address. synthetic-private-value")).toContain("401");
+    expect(credentialErrorMessage("The custom translation service rejected the request (HTTP 401). Check its API key, model and service address. synthetic-private-value")).not.toContain("synthetic-private-value");
+    for (const error of ["The custom translation service timed out.", "Could not connect to the custom translation service.", "The custom translation service returned invalid or empty text.", "The custom translation service returned too much data."]) {
+      expect(credentialErrorMessage(error)).not.toBeNull();
+      expect(credentialErrorMessage(error + " synthetic-private-value")).not.toContain("synthetic-private-value");
+    }
+    expect(credentialErrorMessage("The selected language is not supported by this custom translation route.")).toBe(diagnosticCopy().translationSourceUnsupported);
+  }
+});
 it("shows a short unavailable reason instead of a reachability disclaimer", () => {
   setStoredUiLanguage("zh");
   const message = connectionDiagnosticMessage({ credential: "missing", service: "unavailable", reason: "credentialsMissing" });

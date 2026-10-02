@@ -97,6 +97,7 @@ impl LiveTranslationConfiguration {
         let route = match self.credentials {
             ProviderCredentials::DeepL { .. } => TextTranslation::DeepL,
             ProviderCredentials::DeepLX { .. } => TextTranslation::DeepLX,
+            ProviderCredentials::OpenAICompatible { .. } => TextTranslation::OpenAICompatible,
             _ => TextTranslation::FollowService,
         };
         self.provider

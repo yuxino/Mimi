@@ -135,6 +135,7 @@ enum MTBudgetRoute {
     Qwen(QwenMTModel),
     DeepL,
     DeepLX,
+    OpenAICompatible,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -152,6 +153,7 @@ impl MTBudgetScope {
         let route = match &configuration.credentials {
             ProviderCredentials::DeepL { .. } => MTBudgetRoute::DeepL,
             ProviderCredentials::DeepLX { .. } => MTBudgetRoute::DeepLX,
+            ProviderCredentials::OpenAICompatible { .. } => MTBudgetRoute::OpenAICompatible,
             ProviderCredentials::ApiKey { .. }
                 if configuration.provider == ProviderKind::AlibabaCloud =>
             {

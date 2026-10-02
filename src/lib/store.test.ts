@@ -147,12 +147,34 @@ describe("local preview store", () => {
       session: { ...original.session, isActive: false, status: { kind: "idle" } },
     });
     try {
-      const credentials = { kind: "alibabaTranslation" as const, apiKey: "", textTranslation: "deepL" as const, endpoint: "", token: "" };
+      const credentials = { kind: "alibabaTranslation" as const, model: "", apiKey: "", textTranslation: "deepL" as const, endpoint: "", token: "" };
       await expect(useStore.getState().saveProfileCredentials(profile.id, credentials)).rejects.toThrow("credential-empty");
       const saved = await useStore.getState().saveProfileCredentials(profile.id, { ...credentials, token: "synthetic-deepl-key" });
       expect(saved.profiles[0].textTranslation).toBe("deepL");
       expect(JSON.stringify(saved)).not.toContain("synthetic-deepl-key");
       await expect(useStore.getState().saveProfileCredentials(profile.id, credentials)).resolves.toMatchObject({ profiles: [{ textTranslation: "deepL" }] });
+    } finally {
+      useStore.setState({ settings: original.settings, session: original.session });
+    }
+  });
+
+  it("requires explicit third-party configuration and never includes it in preview snapshots", async () => {
+    const original = useStore.getState();
+    const profile = { ...original.settings.profiles[0], provider: "alibabaCloud" as const, credentialState: "present" as const, textTranslation: "followService" as const };
+    useStore.setState({
+      settings: { ...original.settings, profiles: [profile], activeProfileId: profile.id },
+      session: { ...original.session, isActive: false, status: { kind: "idle" } },
+    });
+    try {
+      const credentials = { kind: "alibabaTranslation" as const, apiKey: "", textTranslation: "openAICompatible" as const, endpoint: "https://synthetic.example/v1", token: "synthetic-translation-key", model: "synthetic-model" };
+      for (const field of ["endpoint", "token", "model"] as const) {
+        await expect(useStore.getState().saveProfileCredentials(profile.id, { ...credentials, [field]: "" })).rejects.toThrow("credential-empty");
+      }
+      const saved = await useStore.getState().saveProfileCredentials(profile.id, credentials);
+      expect(saved.profiles[0].textTranslation).toBe("openAICompatible");
+      expect(JSON.stringify(saved)).not.toMatch(/synthetic-translation-key|synthetic-model|synthetic.example/);
+      await expect(useStore.getState().saveProfileCredentials(profile.id, { ...credentials, endpoint: "", token: "", model: "new-model" })).resolves.toMatchObject({ profiles: [{ textTranslation: "openAICompatible" }] });
+      await expect(useStore.getState().saveProfileCredentials(profile.id, { ...credentials, token: "" })).rejects.toThrow("credential-empty");
     } finally {
       useStore.setState({ settings: original.settings, session: original.session });
     }

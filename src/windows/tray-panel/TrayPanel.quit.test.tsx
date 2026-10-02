@@ -137,7 +137,7 @@ it("offers 31 Original-mode sources and selects Norwegian after Chinese", async 
   expect(switchSourceLanguage).toHaveBeenCalledExactlyOnceWith("no");
 });
 
-it.each(["deepL", "deepLX"] as const)("keeps %s route limits and uses a non-searchable five-language tray picker", async route => {
+it.each(["deepL", "deepLX", "openAICompatible"] as const)("keeps %s route limits and uses a non-searchable five-language tray picker", async route => {
   const settings = languageSettings();
   settings.profiles = [{ ...settings.profiles[0], textTranslation: route }];
   useStore.setState({ ...initial, settings }, true);

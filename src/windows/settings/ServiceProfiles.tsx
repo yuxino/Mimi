@@ -765,7 +765,7 @@ function profileTitle(profile: ServiceProfile): string {
 
 function profileDescription(profile: ServiceProfile): string {
   const translation = textTranslationForProfile(profile);
-  return translation === "deepL" ? I18N.settings.deepLChain : translation === "deepLX" ? I18N.settings.deepLXChain : providerDescription(profile.provider);
+  return translation === "deepL" ? I18N.settings.deepLChain : translation === "deepLX" ? I18N.settings.deepLXChain : translation === "openAICompatible" ? I18N.settings.openAICompatibleChain : providerDescription(profile.provider);
 }
 
 function profileSecondaryLabel(profile: ServiceProfile): string | null {

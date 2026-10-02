@@ -74,7 +74,7 @@ describe("overlay control panel model", () => {
     expect(overlayControlPanelModel(settings).sourceOptions).toContain("no");
   });
 
-  it.each(["deepL", "deepLX"] as const)("keeps %s route limits separate from Lite's expanded languages", route => {
+  it.each(["deepL", "deepLX", "openAICompatible"] as const)("keeps %s route limits separate from Lite's expanded languages", route => {
     const settings = { ...BASE_SETTINGS,
       profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: route }],
     };

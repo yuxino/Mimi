@@ -93,6 +93,7 @@ pub enum QwenMTProtocolError {
 pub enum QwenMTClientError {
     DeepLX(super::deeplx::DeepLXError),
     DeepL(super::deepl::DeepLError),
+    OpenAICompatible(super::openai_compatible::OpenAICompatibleError),
     MissingAPIKey,
     UnsupportedSource,
     InvalidHTTPResponse,
@@ -106,6 +107,7 @@ impl std::fmt::Display for QwenMTClientError {
         match self {
             Self::DeepLX(error) => write!(f, "{error}"),
             Self::DeepL(error) => write!(f, "{error}"),
+            Self::OpenAICompatible(error) => write!(f, "{error}"),
             Self::MissingAPIKey => {
                 write!(f, "Add an Alibaba Cloud Model Studio API key in Settings.")
             }
@@ -139,6 +141,9 @@ impl QwenMTClientError {
                 ..
             } | Self::DeepL(super::deepl::DeepLError::Rejected(429))
                 | Self::DeepLX(super::deeplx::DeepLXError::Rejected(429))
+                | Self::OpenAICompatible(
+                    super::openai_compatible::OpenAICompatibleError::Rejected(429)
+                )
         );
         if rate_limited {
             Some(TranslationRecoveryReason::RateLimited)
@@ -153,6 +158,7 @@ impl QwenMTClientError {
         match self {
             Self::DeepLX(error) => error.authentication_failure(),
             Self::DeepL(error) => error.authentication_failure(),
+            Self::OpenAICompatible(error) => error.authentication_failure(),
             Self::RequestFailed { status_code, .. } => *status_code == 401 || *status_code == 403,
             Self::MissingAPIKey => true,
             Self::UnsupportedSource
@@ -167,6 +173,7 @@ impl QwenMTClientError {
         match self {
             Self::DeepLX(error) => error.diagnostic_label(),
             Self::DeepL(error) => error.diagnostic_label(),
+            Self::OpenAICompatible(error) => error.diagnostic_label(),
             Self::MissingAPIKey => "QwenMTClientError.missingAPIKey".to_string(),
             Self::UnsupportedSource => "QwenMTClientError.unsupportedSource".to_string(),
             Self::InvalidHTTPResponse => "QwenMTClientError.invalidHTTPResponse".to_string(),
@@ -188,6 +195,7 @@ impl QwenMTRetryPolicy {
         let is_transient = match error {
             QwenMTClientError::DeepLX(error) => error.retryable(),
             QwenMTClientError::DeepL(error) => error.retryable(),
+            QwenMTClientError::OpenAICompatible(error) => error.retryable(),
             QwenMTClientError::RequestTimedOut | QwenMTClientError::InvalidHTTPResponse => true,
             QwenMTClientError::RequestFailed { status_code, .. } => {
                 *status_code == 408 || *status_code == 429 || *status_code >= 500
@@ -206,6 +214,9 @@ impl QwenMTRetryPolicy {
                 ..
             } | QwenMTClientError::DeepL(super::deepl::DeepLError::Rejected(429))
                 | QwenMTClientError::DeepLX(super::deeplx::DeepLXError::Rejected(429))
+                | QwenMTClientError::OpenAICompatible(
+                    super::openai_compatible::OpenAICompatibleError::Rejected(429)
+                )
         );
         if rate_limited {
             return Some(Duration::from_millis(
@@ -1330,6 +1341,9 @@ mod tests {
             },
             QwenMTClientError::DeepL(super::super::deepl::DeepLError::Rejected(429)),
             QwenMTClientError::DeepLX(super::super::deeplx::DeepLXError::Rejected(429)),
+            QwenMTClientError::OpenAICompatible(
+                super::super::openai_compatible::OpenAICompatibleError::Rejected(429),
+            ),
         ] {
             assert_eq!(
                 error.recovery_reason(),
@@ -1356,9 +1370,21 @@ mod tests {
             };
             assert!(error.is_authentication_failure());
             assert_eq!(error.recovery_reason(), None);
+            let error = QwenMTClientError::OpenAICompatible(
+                super::super::openai_compatible::OpenAICompatibleError::Rejected(status_code),
+            );
+            assert!(error.is_authentication_failure());
+            assert_eq!(error.recovery_reason(), None);
+            assert_eq!(QwenMTRetryPolicy::delay(&error, 1), None);
         }
         for error in [
             QwenMTClientError::RequestTimedOut,
+            QwenMTClientError::OpenAICompatible(
+                super::super::openai_compatible::OpenAICompatibleError::Timeout,
+            ),
+            QwenMTClientError::OpenAICompatible(
+                super::super::openai_compatible::OpenAICompatibleError::Rejected(503),
+            ),
             QwenMTClientError::RequestFailed {
                 status_code: 503,
                 message: String::new(),

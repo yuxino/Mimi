@@ -45,13 +45,23 @@ const PREFERENCES_UNAVAILABLE: &str = "Settings could not be saved.";
 const PROFILE_NOT_FOUND: &str = "The service profile does not exist.";
 const LAST_PROFILE: &str = "At least one service profile is required.";
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TextTranslationDestination {
     endpoint: String,
     token: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     deep_l_api_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    open_ai_compatible: Option<OpenAICompatibleDestination>,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OpenAICompatibleDestination {
+    endpoint: String,
+    api_key: String,
+    model: String,
 }
 
 pub const MAXIMUM_PROFILE_COUNT: usize = 20;
@@ -983,6 +993,15 @@ impl SettingsStore {
                         endpoint: destination.endpoint,
                         token: destination.token,
                     },
+                    TextTranslation::OpenAICompatible => {
+                        let destination = destination.open_ai_compatible.unwrap_or_default();
+                        ProviderCredentials::OpenAICompatible {
+                            asr_api_key: String::new(),
+                            endpoint: destination.endpoint,
+                            api_key: destination.api_key,
+                            model: destination.model,
+                        }
+                    }
                     TextTranslation::FollowService => unreachable!(),
                 };
                 return credentials
@@ -1032,6 +1051,7 @@ impl SettingsStore {
             text_translation,
             endpoint,
             token,
+            model,
         } = credentials
         {
             return self.save_text_translation(
@@ -1040,6 +1060,23 @@ impl SettingsStore {
                 *text_translation,
                 endpoint,
                 token,
+                model,
+            );
+        }
+        if let ProviderCredentials::OpenAICompatible {
+            asr_api_key,
+            endpoint,
+            api_key,
+            model,
+        } = credentials
+        {
+            return self.save_text_translation(
+                &profile,
+                asr_api_key,
+                TextTranslation::OpenAICompatible,
+                endpoint,
+                api_key,
+                model,
             );
         }
         let value = credentials
@@ -1124,7 +1161,13 @@ impl SettingsStore {
         ) && profile.text_translation() != TextTranslation::FollowService
         {
             let Some(destination) = self.destination_value(profile)? else {
-                if profile.provider == ProviderKind::DeepLX {
+                if profile.provider == ProviderKind::DeepLX
+                    && matches!(
+                        (profile.text_translation(), &credentials),
+                        (TextTranslation::DeepLX, ProviderCredentials::DeepLX { .. })
+                            | (TextTranslation::DeepL, ProviderCredentials::DeepL { .. })
+                    )
+                {
                     return Ok(Some(credentials));
                 }
                 return Err(
@@ -1148,6 +1191,15 @@ impl SettingsStore {
                     endpoint: destination.endpoint,
                     token: destination.token,
                 },
+                TextTranslation::OpenAICompatible => {
+                    let destination = destination.open_ai_compatible.unwrap_or_default();
+                    ProviderCredentials::OpenAICompatible {
+                        asr_api_key,
+                        endpoint: destination.endpoint,
+                        api_key: destination.api_key,
+                        model: destination.model,
+                    }
+                }
                 TextTranslation::FollowService => unreachable!(),
             };
             return credentials
@@ -1165,18 +1217,33 @@ impl SettingsStore {
         translation: TextTranslation,
         endpoint: &str,
         token: &str,
+        model: &str,
     ) -> Result<(), String> {
         if !matches!(
             profile.provider,
             ProviderKind::AlibabaCloud | ProviderKind::DeepLX
         ) {
-            return Err("DeepLX text translation requires Alibaba speech recognition.".into());
+            return Err("Independent text translation requires Alibaba speech recognition.".into());
         }
         if translation == TextTranslation::DeepLX && !endpoint.trim().is_empty() {
             crate::core::protocols::deeplx::endpoint(endpoint).map_err(|_| {
                 crate::core::credentials::ProviderCredentialsError::InvalidDeepLXEndpoint
                     .to_string()
             })?;
+        }
+        if translation == TextTranslation::OpenAICompatible {
+            if !endpoint.trim().is_empty() {
+                crate::core::protocols::openai_compatible::endpoint(endpoint).map_err(|_| {
+                    crate::core::credentials::ProviderCredentialsError::InvalidOpenAICompatibleEndpoint
+                        .to_string()
+                })?;
+            }
+            if !model.trim().is_empty() {
+                crate::core::protocols::openai_compatible::validate_model(model).map_err(|_| {
+                    crate::core::credentials::ProviderCredentialsError::InvalidOpenAICompatibleModel
+                        .to_string()
+                })?;
+            }
         }
         let previous = self
             .load_api_key_for_profile(profile)
@@ -1204,12 +1271,14 @@ impl SettingsStore {
                             endpoint: endpoint.clone(),
                             token: token.clone(),
                             deep_l_api_key: None,
+                            open_ai_compatible: None,
                         }),
                         ProviderCredentials::DeepL { api_key, .. } => {
                             Some(TextTranslationDestination {
                                 endpoint: String::new(),
                                 token: String::new(),
                                 deep_l_api_key: Some(api_key.clone()),
+                                open_ai_compatible: None,
                             })
                         }
                         _ => None,
@@ -1229,11 +1298,7 @@ impl SettingsStore {
         let mut destination = retained;
         match translation {
             TextTranslation::DeepL => {
-                let value = destination.get_or_insert_with(|| TextTranslationDestination {
-                    endpoint: String::new(),
-                    token: String::new(),
-                    deep_l_api_key: None,
-                });
+                let value = destination.get_or_insert_with(TextTranslationDestination::default);
                 if !token.trim().is_empty() {
                     value.deep_l_api_key = Some(token.trim().into());
                 }
@@ -1249,11 +1314,7 @@ impl SettingsStore {
                 value.deep_l_api_key = Some(api_key);
             }
             TextTranslation::DeepLX => {
-                let value = destination.get_or_insert_with(|| TextTranslationDestination {
-                    endpoint: String::new(),
-                    token: String::new(),
-                    deep_l_api_key: None,
-                });
+                let value = destination.get_or_insert_with(TextTranslationDestination::default);
                 if !endpoint.trim().is_empty() {
                     value.endpoint = endpoint.into();
                     value.token = token.into();
@@ -1275,6 +1336,51 @@ impl SettingsStore {
                 };
                 value.endpoint = endpoint;
                 value.token = token;
+            }
+            TextTranslation::OpenAICompatible => {
+                let value = destination
+                    .get_or_insert_with(TextTranslationDestination::default)
+                    .open_ai_compatible
+                    .get_or_insert_with(OpenAICompatibleDestination::default);
+                if !endpoint.trim().is_empty() {
+                    let endpoint = crate::core::protocols::openai_compatible::endpoint(endpoint)
+                        .map_err(|_| {
+                            crate::core::credentials::ProviderCredentialsError::InvalidOpenAICompatibleEndpoint
+                                .to_string()
+                        })?
+                        .to_string();
+                    // Never send a retained key to a newly entered service.
+                    if endpoint != value.endpoint {
+                        value.api_key = token.into();
+                    }
+                    value.endpoint = endpoint;
+                }
+                if !token.trim().is_empty() {
+                    value.api_key = token.into();
+                }
+                if !model.trim().is_empty() {
+                    value.model = model.into();
+                }
+                let checked = ProviderCredentials::OpenAICompatible {
+                    asr_api_key: key.clone(),
+                    endpoint: value.endpoint.clone(),
+                    api_key: value.api_key.clone(),
+                    model: value.model.clone(),
+                }
+                .validated_for(ProviderKind::AlibabaCloud)
+                .map_err(|error| error.to_string())?;
+                let ProviderCredentials::OpenAICompatible {
+                    endpoint,
+                    api_key,
+                    model,
+                    ..
+                } = checked
+                else {
+                    unreachable!()
+                };
+                value.endpoint = endpoint;
+                value.api_key = api_key;
+                value.model = model;
             }
             TextTranslation::FollowService => {}
         }
@@ -1445,8 +1551,10 @@ impl SettingsStore {
         })?;
         let provider = profile.effective_provider();
         let credentials = if provider == ProviderKind::AlibabaCloud
-            && profile.text_translation() != TextTranslation::DeepL
-        {
+            && !matches!(
+                profile.text_translation(),
+                TextTranslation::DeepL | TextTranslation::OpenAICompatible
+            ) {
             ProviderCredentials::api_key(credentials.alibaba_key().unwrap_or_default())
         } else {
             credentials
@@ -2847,6 +2955,369 @@ mod tests {
             text_translation: translation,
             endpoint: endpoint.into(),
             token: token.into(),
+            model: String::new(),
+        }
+    }
+
+    fn openai_compatible_request(
+        asr_key: &str,
+        endpoint: &str,
+        api_key: &str,
+        model: &str,
+    ) -> ProviderCredentials {
+        ProviderCredentials::AlibabaTranslation {
+            api_key: asr_key.into(),
+            text_translation: TextTranslation::OpenAICompatible,
+            endpoint: endpoint.into(),
+            token: api_key.into(),
+            model: model.into(),
+        }
+    }
+
+    #[test]
+    fn openai_compatible_destination_survives_restart_and_route_switches_without_crossing_secrets()
+    {
+        for provider in [ProviderKind::AlibabaCloud, ProviderKind::DeepLX] {
+            let directory = tempfile::tempdir().unwrap();
+            let fake = FakeSecretStore::default();
+            let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            let profile = store.create_profile(provider, "Speech").unwrap();
+            if provider == ProviderKind::DeepLX {
+                store
+                    .save_credentials(
+                        &profile.id,
+                        &ProviderCredentials::DeepLX {
+                            asr_api_key: "synthetic-asr".into(),
+                            endpoint: "https://example.com/translate".into(),
+                            token: "synthetic-deeplx".into(),
+                        },
+                    )
+                    .unwrap();
+            } else {
+                store.save_api_key(&profile.id, "synthetic-asr").unwrap();
+                store
+                    .save_credentials(
+                        &profile.id,
+                        &translation_request(
+                            TextTranslation::DeepLX,
+                            "",
+                            "https://example.com/translate",
+                            "synthetic-deeplx",
+                        ),
+                    )
+                    .unwrap();
+            }
+            store.select_profile(&profile.id).unwrap();
+            let account = credential_account(&profile);
+            let original_asr_item = fake.value(PROFILE_KEYCHAIN_SERVICE, &account).unwrap();
+            fake.make_delete_unavailable(PROFILE_KEYCHAIN_SERVICE, &account);
+            fake.make_delete_unavailable(
+                PROFILE_KEYCHAIN_SERVICE,
+                &SettingsStore::destination_account(&profile),
+            );
+            store
+                .save_credentials(
+                    &profile.id,
+                    &translation_request(TextTranslation::DeepL, "", "", "synthetic-deepl:fx"),
+                )
+                .unwrap();
+            store
+                .save_credentials(
+                    &profile.id,
+                    &openai_compatible_request(
+                        "",
+                        "https://third-party.example/v1",
+                        "synthetic-openai",
+                        "synthetic-model",
+                    ),
+                )
+                .unwrap();
+            let destination_before = fake
+                .value(
+                    PROFILE_KEYCHAIN_SERVICE,
+                    &SettingsStore::destination_account(&profile),
+                )
+                .unwrap();
+            for private in [
+                "synthetic-asr",
+                "synthetic-deepl",
+                "synthetic-openai",
+                "synthetic-model",
+                "third-party.example",
+            ] {
+                for path in [&store.prefs_path, &store.catalog_path] {
+                    assert!(!std::fs::read_to_string(path).unwrap().contains(private));
+                }
+            }
+            drop(store);
+            fake.state.lock().unwrap().loads.clear();
+            let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(fake.load_count(PROFILE_KEYCHAIN_SERVICE, &account), 0);
+            for route in [
+                TextTranslation::OpenAICompatible,
+                TextTranslation::DeepL,
+                TextTranslation::DeepLX,
+                TextTranslation::FollowService,
+                TextTranslation::OpenAICompatible,
+            ] {
+                let request = translation_request(route, "", "", "");
+                reloaded.save_credentials(&profile.id, &request).unwrap();
+                let credentials = reloaded.configuration().unwrap().credentials;
+                assert_eq!(credentials.alibaba_key(), Some("synthetic-asr"));
+                match route {
+                    TextTranslation::OpenAICompatible => {
+                        let ProviderCredentials::OpenAICompatible {
+                            endpoint,
+                            api_key,
+                            model,
+                            ..
+                        } = &credentials
+                        else {
+                            panic!("expected OpenAI-compatible credentials")
+                        };
+                        assert!(endpoint.starts_with("https://third-party.example/v1"));
+                        assert_eq!(api_key, "synthetic-openai");
+                        assert_eq!(model, "synthetic-model");
+                    }
+                    TextTranslation::DeepL => assert!(
+                        matches!(credentials, ProviderCredentials::DeepL { api_key, .. } if api_key == "synthetic-deepl:fx")
+                    ),
+                    TextTranslation::DeepLX => assert!(
+                        matches!(credentials, ProviderCredentials::DeepLX { token, endpoint, .. } if token == "synthetic-deeplx" && endpoint == "https://example.com/translate")
+                    ),
+                    TextTranslation::FollowService => {
+                        assert_eq!(credentials.direct_api_key(), Some("synthetic-asr"))
+                    }
+                }
+                assert_eq!(
+                    fake.value(PROFILE_KEYCHAIN_SERVICE, &account).as_deref(),
+                    Some(original_asr_item.as_str())
+                );
+                assert_eq!(
+                    fake.value(
+                        PROFILE_KEYCHAIN_SERVICE,
+                        &SettingsStore::destination_account(&profile)
+                    )
+                    .as_deref(),
+                    Some(destination_before.as_str())
+                );
+            }
+            assert_eq!(fake.load_count(PROFILE_KEYCHAIN_SERVICE, &account), 1);
+        }
+    }
+
+    #[test]
+    fn missing_openai_compatible_fields_leave_route_and_secret_items_unchanged() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store.active_profile().unwrap();
+        store.save_api_key(&profile.id, "synthetic-asr").unwrap();
+        for request in [
+            openai_compatible_request("", "", "synthetic-key", "synthetic-model"),
+            openai_compatible_request("", "https://example.com/v1", "", "synthetic-model"),
+            openai_compatible_request("", "https://example.com/v1", "synthetic-key", ""),
+        ] {
+            assert!(store.save_credentials(&profile.id, &request).is_err());
+            assert_eq!(
+                store.profile(&profile.id).unwrap().text_translation(),
+                TextTranslation::FollowService
+            );
+            assert_eq!(
+                fake.value(PROFILE_KEYCHAIN_SERVICE, &credential_account(&profile))
+                    .as_deref(),
+                Some("synthetic-asr")
+            );
+            assert!(fake
+                .value(
+                    PROFILE_KEYCHAIN_SERVICE,
+                    &SettingsStore::destination_account(&profile)
+                )
+                .is_none());
+        }
+        let before_loads = fake.state.lock().unwrap().loads.len();
+        for request in [
+            openai_compatible_request(
+                "",
+                "http://example.com/v1",
+                "synthetic-key",
+                "synthetic-model",
+            ),
+            openai_compatible_request(
+                "",
+                "https://example.com/v1",
+                "synthetic-key",
+                "invalid\nmodel",
+            ),
+        ] {
+            let error = store.save_credentials(&profile.id, &request).unwrap_err();
+            assert!(!error.contains("synthetic"));
+        }
+        assert_eq!(fake.state.lock().unwrap().loads.len(), before_loads);
+    }
+
+    #[test]
+    fn read_only_local_credentials_do_not_supply_or_read_an_openai_compatible_destination() {
+        struct ReadOnlyCredentials;
+        impl SecretStore for ReadOnlyCredentials {
+            fn load(&self, _: &str, _: &str) -> Result<Option<String>, SecretStoreError> {
+                panic!("independent routes must not read the Alibaba-only development file or OS slots")
+            }
+            fn save(&self, _: &str, _: &str, _: &str) -> Result<(), SecretStoreError> {
+                Err(SecretStoreError::ReadOnly)
+            }
+            fn delete(&self, _: &str, _: &str) -> Result<(), SecretStoreError> {
+                Err(SecretStoreError::ReadOnly)
+            }
+            fn is_read_only(&self) -> bool {
+                true
+            }
+        }
+        let store = SettingsStore::in_memory(Box::new(ReadOnlyCredentials), false);
+        let mut profile = store.active_profile().unwrap();
+        profile.text_translation = Some(TextTranslation::OpenAICompatible);
+        assert!(store.credentials_for_profile(&profile).unwrap().is_none());
+        assert_eq!(store.credential_state(&profile), CredentialState::Missing);
+        assert_eq!(
+            store.configuration_for_profile(&profile).unwrap_err(),
+            crate::core::credentials::ProviderCredentialsError::Missing(ProviderKind::AlibabaCloud)
+                .to_string()
+        );
+        assert_eq!(
+            store.save_credentials(
+                &profile.id,
+                &openai_compatible_request(
+                    "synthetic-asr",
+                    "https://example.com/v1",
+                    "synthetic-key",
+                    "synthetic-model"
+                )
+            ),
+            Err("local_dev_credentials_read_only".into())
+        );
+    }
+
+    #[test]
+    fn openai_compatible_new_endpoint_requires_a_new_key_and_model_only_updates_reuse_the_saved_key(
+    ) {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store.active_profile().unwrap();
+        store
+            .save_credentials(
+                &profile.id,
+                &openai_compatible_request(
+                    "synthetic-asr",
+                    "https://first.example/v1",
+                    "synthetic-first",
+                    "first-model",
+                ),
+            )
+            .unwrap();
+        let before = fake.value(
+            PROFILE_KEYCHAIN_SERVICE,
+            &SettingsStore::destination_account(&profile),
+        );
+        assert!(store
+            .save_credentials(
+                &profile.id,
+                &openai_compatible_request("", "https://second.example/v1", "", "second-model")
+            )
+            .is_err());
+        assert_eq!(
+            fake.value(
+                PROFILE_KEYCHAIN_SERVICE,
+                &SettingsStore::destination_account(&profile)
+            ),
+            before
+        );
+        store
+            .save_credentials(
+                &profile.id,
+                &openai_compatible_request("", "", "", "updated-model"),
+            )
+            .unwrap();
+        let config = store.configuration().unwrap();
+        let ProviderCredentials::OpenAICompatible {
+            endpoint,
+            api_key,
+            model,
+            ..
+        } = &config.credentials
+        else {
+            panic!("expected OpenAI-compatible credentials")
+        };
+        assert!(endpoint.starts_with("https://first.example/"));
+        assert_eq!(api_key, "synthetic-first");
+        assert_eq!(model, "updated-model");
+    }
+
+    #[test]
+    fn failed_openai_compatible_destination_or_catalog_write_preserves_the_working_configuration() {
+        for fail_destination in [false, true] {
+            let fake = FakeSecretStore::default();
+            let mut store = settings(&fake);
+            let profile = store.active_profile().unwrap();
+            store
+                .save_credentials(
+                    &profile.id,
+                    &openai_compatible_request(
+                        "synthetic-old-asr",
+                        "https://old.example/v1",
+                        "synthetic-old-key",
+                        "old-model",
+                    ),
+                )
+                .unwrap();
+            let before_key = fake.value(PROFILE_KEYCHAIN_SERVICE, &credential_account(&profile));
+            let before_destination = fake.value(
+                PROFILE_KEYCHAIN_SERVICE,
+                &SettingsStore::destination_account(&profile),
+            );
+            let before_prefs = store.preferences();
+            let blocked_catalog = tempfile::tempdir().unwrap();
+            if fail_destination {
+                fake.make_unavailable(
+                    PROFILE_KEYCHAIN_SERVICE,
+                    &SettingsStore::destination_account(&profile),
+                );
+            } else {
+                store.catalog_path = blocked_catalog.path().into();
+            }
+            assert!(store
+                .save_credentials(
+                    &profile.id,
+                    &openai_compatible_request(
+                        "synthetic-new-asr",
+                        "https://new.example/v1",
+                        "synthetic-new-key",
+                        "new-model"
+                    )
+                )
+                .is_err());
+            assert_eq!(store.preferences(), before_prefs);
+            assert_eq!(
+                store.profile(&profile.id).unwrap().text_translation(),
+                TextTranslation::OpenAICompatible
+            );
+            assert_eq!(
+                fake.value(PROFILE_KEYCHAIN_SERVICE, &credential_account(&profile)),
+                before_key
+            );
+            assert_eq!(
+                fake.value(
+                    PROFILE_KEYCHAIN_SERVICE,
+                    &SettingsStore::destination_account(&profile)
+                ),
+                before_destination
+            );
+            fake.state.lock().unwrap().unavailable.clear();
+            assert_eq!(
+                store.credential_diagnostic(&store.active_profile().unwrap()),
+                "present"
+            );
+            assert!(
+                matches!(store.configuration().unwrap().credentials, ProviderCredentials::OpenAICompatible { asr_api_key, api_key, model, .. } if asr_api_key == "synthetic-old-asr" && api_key == "synthetic-old-key" && model == "old-model")
+            );
         }
     }
 
@@ -2972,6 +3443,7 @@ mod tests {
                     store.configuration().unwrap().credentials.direct_api_key(),
                     Some("synthetic-asr")
                 ),
+                TextTranslation::OpenAICompatible => unreachable!(),
             }
             assert_eq!(
                 fake.value(PROFILE_KEYCHAIN_SERVICE, &account).as_deref(),
@@ -3809,6 +4281,7 @@ mod tests {
                 endpoint: "https://example.com/translate".into(),
                 token: "synthetic-custom-token".into(),
                 deep_l_api_key: None,
+                open_ai_compatible: None,
             })
             .unwrap(),
         );

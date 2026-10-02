@@ -5,6 +5,7 @@ pub mod azure_openai_realtime;
 pub mod baidu_translate;
 pub mod gemini_live;
 pub mod live_translate;
+pub mod openai_compatible;
 pub mod openai_realtime;
 pub mod qwen_mt;
 pub mod tencent_cloud;

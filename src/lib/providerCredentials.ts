@@ -17,7 +17,7 @@ export type CredentialFieldName =
   | "secretKey"
   | "appKey";
 
-export type CredentialDraft = Record<CredentialFieldName, string>;
+export type CredentialDraft = Record<CredentialFieldName, string> & { model: string };
 
 interface CredentialEditorLocalState {
   draft: CredentialDraft;
@@ -30,6 +30,7 @@ export function emptyCredentialDraft(): CredentialDraft {
     token: "",
     apiKey: "",
     endpoint: "",
+    model: "",
     deployment: "",
     transcriptionDeployment: "",
     appId: "",
@@ -123,10 +124,19 @@ export function buildAlibabaTranslationCredentials(profile: ServiceProfile, draf
   const keepsSavedDestination = profile.credentialState === "present" && translation === savedTranslation;
   if (translation === "deepLX" && !draft.endpoint.trim() && !keepsSavedDestination) return null;
   if (translation === "deepL" && !draft.token.trim() && !keepsSavedDestination) return null;
-  return { kind: "alibabaTranslation", apiKey: draft.apiKey.trim(), textTranslation: translation, endpoint: translation === "deepLX" ? draft.endpoint.trim() : "", token: translation === "followService" ? "" : draft.token.trim() };
+  if (translation === "openAICompatible" && !keepsSavedDestination && (!draft.endpoint.trim() || !draft.token.trim() || !draft.model.trim())) return null;
+  if (translation === "openAICompatible" && draft.endpoint.trim() && !draft.token.trim()) return null;
+  return {
+    kind: "alibabaTranslation",
+    apiKey: draft.apiKey.trim(),
+    textTranslation: translation,
+    endpoint: translation === "deepLX" || translation === "openAICompatible" ? draft.endpoint.trim() : "",
+    token: translation === "followService" ? "" : draft.token.trim(),
+    model: translation === "openAICompatible" ? draft.model.trim() : "",
+  };
 }
 
-/** Mirrors native DeepLX endpoint safety checks before any credential I/O. */
+/** Mirrors native text translation endpoint safety checks before credential I/O. */
 export function deepLXEndpointIsValid(value: string): boolean {
   if (new TextEncoder().encode(value).length > 2048 || Array.from(value).some((char) => { const code = char.codePointAt(0)!; return code < 32 || (code >= 127 && code <= 159); })) return false;
   try {
@@ -137,4 +147,9 @@ export function deepLXEndpointIsValid(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function openAICompatibleModelIsValid(value: string): boolean {
+  return !!value.trim() && new TextEncoder().encode(value).length <= 256 &&
+    !Array.from(value).some((char) => { const code = char.codePointAt(0)!; return code < 32 || (code >= 127 && code <= 159); });
 }

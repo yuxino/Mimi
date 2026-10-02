@@ -6,6 +6,7 @@ import {
   credentialEditorStateAfterDeleteRequest,
   credentialFieldsForProvider,
   emptyCredentialDraft,
+  openAICompatibleModelIsValid,
 } from "./providerCredentials";
 
 describe("provider credential payloads", () => {
@@ -92,7 +93,7 @@ it("keeps DeepLX recognition credentials separate and makes its token optional",
 it("reuses a saved Alibaba key without sending a replacement over IPC", () => {
   const profile = { id: "ali", name: "Ali", provider: "alibabaCloud", credentialState: "present" } as const;
   const draft = { ...emptyCredentialDraft(), endpoint: " https://example.com " };
-  expect(buildAlibabaTranslationCredentials(profile, draft, "deepLX")).toEqual({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepLX", endpoint: "https://example.com", token: "" });
+  expect(buildAlibabaTranslationCredentials(profile, draft, "deepLX")).toEqual({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "deepLX", endpoint: "https://example.com", token: "" });
   expect(buildAlibabaTranslationCredentials({ ...profile, credentialState: "missing" }, draft, "deepLX")).toBeNull();
   expect(buildAlibabaTranslationCredentials({ ...profile, provider: "openAIRealtime" }, draft, "deepLX")).toBeNull();
   expect(buildAlibabaTranslationCredentials(profile, emptyCredentialDraft(), "deepLX")).toBeNull();
@@ -104,8 +105,34 @@ it("requires a DeepL key for a new destination and never sends an address", () =
   const profile = { id: "ali", name: "Ali", provider: "alibabaCloud", credentialState: "present" } as const;
   const draft = { ...emptyCredentialDraft(), endpoint: "https://example.com/translate", token: " synthetic-deepl-key " };
   expect(buildAlibabaTranslationCredentials(profile, emptyCredentialDraft(), "deepL")).toBeNull();
-  expect(buildAlibabaTranslationCredentials(profile, draft, "deepL")).toEqual({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key" });
-  expect(buildAlibabaTranslationCredentials({ ...profile, textTranslation: "deepL" }, emptyCredentialDraft(), "deepL")).toEqual({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepL", endpoint: "", token: "" });
+  expect(buildAlibabaTranslationCredentials(profile, draft, "deepL")).toEqual({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key" });
+  expect(buildAlibabaTranslationCredentials({ ...profile, textTranslation: "deepL" }, emptyCredentialDraft(), "deepL")).toEqual({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "deepL", endpoint: "", token: "" });
   expect(buildAlibabaTranslationCredentials({ ...profile, credentialState: "missing" }, draft, "deepL")).toBeNull();
-  expect(buildAlibabaTranslationCredentials({ ...profile, credentialState: "missing" }, { ...draft, apiKey: " synthetic-asr " }, "deepL")).toEqual({ kind: "alibabaTranslation", apiKey: "synthetic-asr", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key" });
+  expect(buildAlibabaTranslationCredentials({ ...profile, credentialState: "missing" }, { ...draft, apiKey: " synthetic-asr " }, "deepL")).toEqual({ kind: "alibabaTranslation", model: "", apiKey: "synthetic-asr", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key" });
+});
+
+it("requires an explicit model, endpoint and key for an OpenAI-compatible destination", () => {
+  const profile = { id: "ali", name: "Ali", provider: "alibabaCloud", credentialState: "present" } as const;
+  const draft = { ...emptyCredentialDraft(), endpoint: " https://dashscope.aliyuncs.com/compatible-mode/v1 ", token: " synthetic-translation-key ", model: " qwen-turbo " };
+  expect(buildAlibabaTranslationCredentials(profile, draft, "openAICompatible")).toEqual({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", token: "synthetic-translation-key", model: "qwen-turbo" });
+  for (const field of ["endpoint", "token", "model"] as const) {
+    expect(buildAlibabaTranslationCredentials(profile, { ...draft, [field]: "" }, "openAICompatible")).toBeNull();
+  }
+  expect(buildAlibabaTranslationCredentials({ ...profile, credentialState: "missing" }, draft, "openAICompatible")).toBeNull();
+  expect(buildAlibabaTranslationCredentials({ ...profile, textTranslation: "openAICompatible" }, emptyCredentialDraft(), "openAICompatible")).toEqual({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "", token: "", model: "" });
+});
+
+it("requires a replacement OpenAI-compatible key with every changed address", () => {
+  const profile = { id: "ali", name: "Ali", provider: "alibabaCloud", credentialState: "present", textTranslation: "openAICompatible" } as const;
+  expect(buildAlibabaTranslationCredentials(profile, { ...emptyCredentialDraft(), endpoint: "https://new.example/v1" }, "openAICompatible")).toBeNull();
+  expect(buildAlibabaTranslationCredentials(profile, { ...emptyCredentialDraft(), model: "new-model" }, "openAICompatible")).toMatchObject({ endpoint: "", token: "", model: "new-model" });
+});
+
+it("bounds OpenAI-compatible model names by bytes and rejects control characters", () => {
+  for (const value of ["", "   ", "model\n", "model\u007f", "model\u0085", "x".repeat(257), "模".repeat(86)]) {
+    expect(openAICompatibleModelIsValid(value), value).toBe(false);
+  }
+  for (const value of ["qwen-turbo", "provider/model-name", "x".repeat(256), "模".repeat(85)]) {
+    expect(openAICompatibleModelIsValid(value), value).toBe(true);
+  }
 });

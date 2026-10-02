@@ -50,5 +50,11 @@ it("keeps the text destination labels short in all UI languages", () => {
     expect(I18N.settings.deepLXToken).not.toContain("Bearer");
     expect(I18N.settings.savedServiceAddressPlaceholder).not.toBe("");
     expect(I18N.settings.asrApiKey).not.toBe(I18N.settings.deepLXEndpoint);
+    expect(I18N.settings.textTranslationCustom).toBe("DeepLX");
+    expect(I18N.settings.openAICompatibleRequirements).toContain("POST /chat/completions");
+    expect(I18N.settings.openAICompatibleRequirements).toContain("model/messages");
+    expect(I18N.settings.openAICompatibleRequirements).toContain("choices[0].message.content");
+    expect(I18N.settings.openAICompatibleRequired).not.toBe("");
+    expect(I18N.settings.openAICompatibleAddressKey).not.toBe("");
   }
 });

@@ -281,6 +281,8 @@ it("keeps inactive profile routes isolated, including migrated legacy DeepLX pro
     expect(capabilitiesForProfile({ ...profile, textTranslation: "deepL" }).sourceLanguages).toEqual(["auto", "ja", "en", "ko", "zh"]);
     expect(capabilitiesForProfile({ ...profile, textTranslation: "deepL" }).targetLanguages).toEqual(["original", "zh", "en", "ja"]);
     expect(capabilitiesForProfile({ ...profile, textTranslation: "deepLX" }).targetLanguages).toEqual(["zh", "en", "ja"]);
+    expect(capabilitiesForProfile({ ...profile, textTranslation: "openAICompatible" }).sourceLanguages).toEqual(["auto", "ja", "en", "ko", "zh"]);
+    expect(capabilitiesForProfile({ ...profile, textTranslation: "openAICompatible" }).targetLanguages).toEqual(["original", "zh", "en", "ja"]);
     expect(capabilitiesForProfile({ ...profile, textTranslation: "followService" }).targetLanguages).toHaveLength(32);
   }
 });

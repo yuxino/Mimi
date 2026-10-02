@@ -158,6 +158,29 @@ const deepLXErrors = {
     rejected: "DeepLX がリクエストを拒否しました。文字翻訳 URL と任意の Bearer token をサーバー管理者に確認してください。",
   },
 };
+const openAICompatibleErrors = {
+  zh: {
+    timeout: "第三方翻译服务响应超时。请检查服务和网络，再重新启动字幕。",
+    connection: "无法连接第三方翻译服务。请检查服务地址和网络，再重新启动字幕。",
+    response: "第三方翻译服务返回无效或空文本。请确认支持非流式 Chat Completions，并返回 choices[0].message.content。",
+    size: "第三方翻译服务返回数据过大。请检查服务器的响应。",
+    rejected: "第三方翻译服务拒绝请求。请检查 API Key、模型名称和服务地址。",
+  },
+  en: {
+    timeout: "The third-party translation service timed out. Check the service and network, then restart subtitles.",
+    connection: "Could not connect to the third-party translation service. Check its address and network, then restart subtitles.",
+    response: "The third-party service returned invalid or empty text. Check that it supports non-streaming Chat Completions and returns choices[0].message.content.",
+    size: "The third-party translation service returned too much data. Check the server response.",
+    rejected: "The third-party translation service rejected the request. Check its API key, model name and service address.",
+  },
+  ja: {
+    timeout: "外部翻訳サービスがタイムアウトしました。サービスとネットワークを確認し、字幕を再開してください。",
+    connection: "外部翻訳サービスに接続できません。URL とネットワークを確認し、字幕を再開してください。",
+    response: "外部翻訳サービスのテキストが無効または空です。非ストリーミング Chat Completions と choices[0].message.content の応答に対応しているか確認してください。",
+    size: "外部翻訳サービスの応答が大きすぎます。サーバーの応答を確認してください。",
+    rejected: "外部翻訳サービスがリクエストを拒否しました。API Key、モデル名、サービス URL を確認してください。",
+  },
+};
 /** Match only sanitized backend labels; never interpolate arbitrary native errors. */
 export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlatform): string | null {
   if (typeof error !== "string") return null;
@@ -174,6 +197,18 @@ export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlat
   if (error.startsWith("DeepLX returned too much data.")) return dlx.size;
   const rejected = /^DeepLX rejected the request \(code (\d{1,3})\)\./.exec(error);
   if (rejected) return `${dlx.rejected} (${rejected[1]})`;
+
+  const compatible = openAICompatibleErrors[effectiveUiLanguage()];
+  if (error === "The OpenAI-compatible endpoint is invalid." || error.startsWith("Use an HTTPS OpenAI-compatible endpoint") || error.startsWith("Check the custom translation service address.")) return I18N.settings.deepLXEndpointInvalid;
+  if (error === "The OpenAI-compatible model name is invalid." || error.startsWith("Enter a model name without control characters")) return I18N.settings.openAICompatibleModelInvalid;
+  if (error.startsWith("Enter a valid API key for the custom translation service.")) return I18N.settings.openAICompatibleApiKeyInvalid;
+  if (error.startsWith("The selected language is not supported by this custom translation route.")) return diagnosticCopy().translationSourceUnsupported;
+  if (error.startsWith("The custom translation service timed out.")) return compatible.timeout;
+  if (error.startsWith("Could not connect to the custom translation service.")) return compatible.connection;
+  if (error.startsWith("The custom translation service returned invalid or empty text.")) return compatible.response;
+  if (error.startsWith("The custom translation service returned too much data.")) return compatible.size;
+  const compatibleRejected = /^The custom translation service rejected the request \(HTTP (\d{1,3})\)\./.exec(error);
+  if (compatibleRejected) return `${compatible.rejected} (HTTP ${compatibleRejected[1]})`;
 
   if (error === "local_dev_credentials_read_only") return diagnosticCopy(platform).localDevReadOnly;
   if (error === "local_dev_credentials_unavailable") return diagnosticCopy(platform).localDevUnavailable;

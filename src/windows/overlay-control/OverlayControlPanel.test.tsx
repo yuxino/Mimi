@@ -146,7 +146,7 @@ it("offers all Original-mode recognition hints including searchable Norwegian", 
   expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith("no");
 });
 
-it.each(["deepL", "deepLX"] as const)("keeps the %s small route list non-searchable and matches settings language labels", async route => {
+it.each(["deepL", "deepLX", "openAICompatible"] as const)("keeps the %s small route list non-searchable and matches settings language labels", async route => {
   configure({ profiles: [{ ...props.settings.profiles[0], textTranslation: route }] });
   await mount();
   await act(async () => picker(I18N.overlay.sourceLanguage).click());

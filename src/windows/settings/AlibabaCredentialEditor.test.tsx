@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { diagnosticCopy } from "../../lib/connectionDiagnostics";
 import { profileRevealCredential } from "../../lib/ipc";
-import type { ServiceProfile } from "../../lib/types";
+import type { ServiceProfile, TextTranslation } from "../../lib/types";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 
 vi.mock("../../lib/ipc", () => ({ isTauri: false, profileRevealCredential: vi.fn() }));
@@ -39,10 +39,10 @@ async function expandAdvanced() {
     advanced.dispatchEvent(new Event("toggle"));
   });
 }
-async function chooseTranslation(value: "followService" | "deepL" | "deepLX") {
+async function chooseTranslation(value: TextTranslation) {
   await expandAdvanced();
   await act(() => picker().click());
-  const label = value === "deepLX" ? I18N.settings.textTranslationCustom : value === "deepL" ? "DeepL" : I18N.settings.textTranslationFollow;
+  const label = value === "openAICompatible" ? I18N.settings.textTranslationOpenAICompatible : value === "deepLX" ? I18N.settings.textTranslationCustom : value === "deepL" ? "DeepL" : I18N.settings.textTranslationFollow;
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === label)!;
   await act(() => option.click());
 }
@@ -59,7 +59,7 @@ it("keeps normal first-time setup to one key and a collapsed default translation
   expect(picker().textContent).toBe(I18N.settings.textTranslationFollow);
   expect(host.querySelector('button[type="submit"]')!.hasAttribute("disabled")).toBe(true);
   await change("input", "synthetic-asr"); await submit();
-  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "synthetic-asr", textTranslation: "followService", endpoint: "", token: "" });
+  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "synthetic-asr", textTranslation: "followService", endpoint: "", token: "" });
 });
 
 it("configures only the advanced text destination while reusing a saved key", async () => {
@@ -68,7 +68,7 @@ it("configures only the advanced text destination while reusing a saved key", as
   expect(host.textContent).toContain(I18N.settings.deepLXChain);
   expect(host.querySelector('input[id="test-apiKey"]')).toBeNull();
   await change("#test-endpoint", "https://example.com/translate"); await submit();
-  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepLX", endpoint: "https://example.com/translate", token: "" });
+  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "deepLX", endpoint: "https://example.com/translate", token: "" });
 });
 
 it("retains invalid input and focuses the adjacent error before any credential call", async () => {
@@ -98,7 +98,7 @@ it("retains the historical DeepLX route and switches back without repeating the 
   expect(host.querySelector('input[type="password"]')?.getAttribute("id")).toBe("test-token");
   expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.placeholder).toBe(I18N.settings.savedServiceAddressPlaceholder);
   await chooseTranslation("followService"); await submit();
-  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "followService", endpoint: "", token: "" });
+  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "followService", endpoint: "", token: "" });
 });
 
 it("clears drafts before confirmed deletion and respects an active-session lock", async () => {
@@ -119,7 +119,7 @@ it("uses the unified picker with keyboard selection without submitting the form"
   await expandAdvanced();
   expect(picker().getAttribute("aria-label")).toBe(I18N.settings.textTranslationLabel);
   await key("Enter"); await key("End"); await key("Enter");
-  expect(picker().textContent).toBe(I18N.settings.textTranslationCustom);
+  expect(picker().textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
   expect(document.activeElement).toBe(picker());
   expect(props.onSave).not.toHaveBeenCalled();
   expect(host.querySelector('button[type="submit"]')!.hasAttribute("disabled")).toBe(true);
@@ -144,7 +144,7 @@ it("configures the official DeepL destination with a key and no address field", 
   expect(host.querySelector('button[type="submit"]')!.hasAttribute("disabled")).toBe(true);
   expect(host.textContent).toContain(I18N.settings.deepLApiKey);
   await change("#test-token", " synthetic-deepl-key "); await submit();
-  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key" });
+  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key" });
 });
 
 it("clears destination secrets when switching between DeepL and a custom service", async () => {
@@ -168,7 +168,7 @@ it("keeps a saved DeepL key hidden by default and permits replacing only the Ali
   expect(host.querySelector<HTMLInputElement>("#test-token")!.placeholder).toBe(I18N.settings.savedTranslationKeyPlaceholder);
   const replace = [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === I18N.settings.replaceCredentials)!;
   await act(() => replace.click()); await change("#test-apiKey", "synthetic-new-asr"); await submit();
-  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "synthetic-new-asr", textTranslation: "deepL", endpoint: "", token: "" });
+  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "synthetic-new-asr", textTranslation: "deepL", endpoint: "", token: "" });
 });
 
 it("shows a saved destination key only on demand for its saved route and clears it when translation settings close", async () => {
@@ -247,4 +247,80 @@ it("discards the write-only draft after a successful save", async () => {
   await render({ ...props, profile: { ...profile, credentialState: "unavailable" }, onSave: vi.fn().mockResolvedValue({}) });
   await change("input", "synthetic-asr"); await submit();
   expect((host.querySelector("input") as HTMLInputElement).value).toBe("");
+});
+
+it("adds an OpenAI-compatible destination without repeating the saved recognition key", async () => {
+  await render(); await chooseTranslation("openAICompatible");
+  expect(host.textContent).toContain(I18N.settings.openAICompatibleRequirements);
+  expect(host.textContent).toContain(I18N.settings.openAICompatibleLanguages);
+  expect(host.textContent).toContain(I18N.settings.openAICompatibleRequired);
+  expect(host.querySelector("#test-apiKey")).toBeNull();
+  const endpoint = host.querySelector<HTMLInputElement>("#test-endpoint")!;
+  const model = host.querySelector<HTMLInputElement>("#test-model")!;
+  const token = host.querySelector<HTMLInputElement>("#test-token")!;
+  expect(endpoint.value).toBe(""); expect(model.value).toBe(""); expect(token.value).toBe("");
+  expect(endpoint.placeholder).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1");
+  expect(model.placeholder).toBe("qwen-turbo");
+  expect([endpoint, model, token].every(node => node.required)).toBe(true);
+  await change("#test-endpoint", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+  await change("#test-token", " synthetic-translation-key ");
+  expect(host.querySelector('button[type="submit"]')!.hasAttribute("disabled")).toBe(true);
+  await change("#test-model", " qwen-turbo "); await submit();
+  expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", token: "synthetic-translation-key", model: "qwen-turbo" });
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it("keeps saved OpenAI-compatible fields write-only and permits changing only the model", async () => {
+  await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" } }); await expandAdvanced();
+  expect(host.querySelector(".stored-credential-reveal")).toBeNull();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(host.querySelector<HTMLInputElement>("#test-model")!.placeholder).toBe(I18N.settings.savedTranslationModelPlaceholder);
+  await change("#test-model", "new-model"); await submit();
+  expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "", token: "", model: "new-model" });
+  await change("#test-endpoint", "https://new.example/v1");
+  expect(host.querySelector<HTMLInputElement>("#test-token")!.required).toBe(true);
+  expect(host.querySelector('button[type="submit"]')!.hasAttribute("disabled")).toBe(true);
+  expect(host.textContent).toContain(I18N.settings.openAICompatibleAddressKey);
+});
+
+it("focuses an unsafe OpenAI-compatible address before saving any key", async () => {
+  await render(); await chooseTranslation("openAICompatible");
+  await change("#test-endpoint", "https://example.com/v1?key=synthetic-key");
+  await change("#test-model", "model"); await change("#test-token", "synthetic-key"); await submit();
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(document.activeElement?.id).toBe("test-endpoint");
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.deepLXEndpointInvalid);
+  expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("synthetic-key");
+});
+
+it("focuses an invalid model and clears all destination drafts when changing routes", async () => {
+  await render(); await chooseTranslation("openAICompatible");
+  await change("#test-endpoint", "https://example.com/v1/chat/completions");
+  await change("#test-model", "x".repeat(257)); await change("#test-token", "synthetic-key"); await submit();
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(document.activeElement?.id).toBe("test-model");
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.openAICompatibleModelInvalid);
+  await chooseTranslation("deepLX");
+  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.value).toBe("");
+  expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("");
+  expect(host.querySelector("#test-model")).toBeNull();
+  await chooseTranslation("openAICompatible");
+  expect(host.querySelector<HTMLInputElement>("#test-model")!.value).toBe("");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("retains third-party drafts after a storage error and clears them after successful saving", async () => {
+  await render(); await chooseTranslation("openAICompatible");
+  await change("#test-endpoint", "https://synthetic.example/v1");
+  await change("#test-model", "synthetic-model"); await change("#test-token", "synthetic-translation-key"); await submit();
+  await render({ ...props, feedback: { tone: "error", message: diagnosticCopy("linux").storage } });
+  expect(host.textContent).toContain(diagnosticCopy("linux").storage);
+  expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("synthetic-translation-key");
+  expect(host.querySelector<HTMLInputElement>("#test-model")!.value).toBe("synthetic-model");
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" }, feedback: null, onSave: vi.fn().mockResolvedValue({}) });
+  await submit();
+  expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("");
+  expect(host.querySelector<HTMLInputElement>("#test-model")!.value).toBe("");
+  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.value).toBe("");
 });

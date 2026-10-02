@@ -172,6 +172,16 @@ mod tests {
         assert_eq!(deep_l.text_translation, TextTranslation::DeepL);
         assert_eq!(deep_l.source_languages.len(), 5);
         assert_eq!(deep_l.target_languages.len(), 4);
+        profile.text_translation = Some(TextTranslation::OpenAICompatible);
+        let custom = LanguageCapabilitiesPayload::from_profile(&profile, TargetLanguage::Original);
+        assert_eq!(custom.source_languages.len(), 5);
+        assert_eq!(custom.target_languages.len(), 4);
+        let custom = serde_json::to_value(custom).unwrap();
+        assert_eq!(custom["provider"], "alibabaCloud");
+        assert_eq!(custom["textTranslation"], "openAICompatible");
+        for secret_field in ["endpoint", "apiKey", "token", "model"] {
+            assert!(custom.get(secret_field).is_none());
+        }
     }
 
     #[test]

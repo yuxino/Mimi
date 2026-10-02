@@ -137,7 +137,10 @@ fn alibaba_capabilities(route: TextTranslation, target: TargetLanguage) -> Provi
     if route == TextTranslation::DeepLX {
         return ProviderKind::DeepLX.capabilities();
     }
-    if route == TextTranslation::DeepL {
+    if matches!(
+        route,
+        TextTranslation::DeepL | TextTranslation::OpenAICompatible
+    ) {
         return ProviderCapabilities {
             source_languages: vec![
                 SourceLanguage::Automatic,
@@ -302,7 +305,7 @@ pub struct ProviderPreferences {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ServiceProfileError {
-    #[error("DeepLX text translation requires Alibaba speech recognition.")]
+    #[error("Separate text translation requires Alibaba speech recognition.")]
     UnsupportedTextTranslation,
     #[error("The service profile ID is invalid.")]
     InvalidID,
@@ -321,6 +324,8 @@ pub enum TextTranslation {
     DeepL,
     #[serde(rename = "deepLX")]
     DeepLX,
+    #[serde(rename = "openAICompatible")]
+    OpenAICompatible,
 }
 
 /// Non-secret metadata for one named provider configuration.
@@ -381,7 +386,11 @@ impl ServiceProfile {
         let mut profile = Self::new(self.id.clone(), self.name.clone(), self.provider)?;
         if matches!(
             self.text_translation,
-            Some(TextTranslation::DeepLX | TextTranslation::DeepL)
+            Some(
+                TextTranslation::DeepLX
+                    | TextTranslation::DeepL
+                    | TextTranslation::OpenAICompatible
+            )
         ) && !matches!(
             self.provider,
             ProviderKind::AlibabaCloud | ProviderKind::DeepLX
@@ -422,9 +431,12 @@ impl ServiceProfile {
             (ProviderKind::AlibabaCloud | ProviderKind::DeepLX, TextTranslation::DeepLX) => {
                 ProviderKind::DeepLX
             }
-            (ProviderKind::DeepLX, TextTranslation::FollowService | TextTranslation::DeepL) => {
-                ProviderKind::AlibabaCloud
-            }
+            (
+                ProviderKind::DeepLX,
+                TextTranslation::FollowService
+                | TextTranslation::DeepL
+                | TextTranslation::OpenAICompatible,
+            ) => ProviderKind::AlibabaCloud,
             _ => self.provider,
         }
     }
@@ -511,6 +523,53 @@ mod tests {
             assert!(!caps.source_languages.contains(&SourceLanguage::French));
             assert!(!caps.target_languages.contains(&TargetLanguage::French));
         }
+    }
+
+    #[test]
+    fn openai_compatible_route_stays_on_alibaba_and_has_bounded_language_catalog() {
+        for provider in [ProviderKind::AlibabaCloud, ProviderKind::DeepLX] {
+            let mut profile =
+                ServiceProfile::new("custom", "Custom translation", provider).unwrap();
+            profile.text_translation = Some(TextTranslation::OpenAICompatible);
+            assert_eq!(
+                profile.validated().unwrap().effective_provider(),
+                ProviderKind::AlibabaCloud
+            );
+            let body = serde_json::to_value(&profile).unwrap();
+            assert_eq!(body["textTranslation"], "openAICompatible");
+            assert_eq!(
+                serde_json::from_value::<ServiceProfile>(body).unwrap(),
+                profile
+            );
+            let caps = profile.capabilities(TargetLanguage::Original);
+            assert_eq!(
+                caps.source_languages,
+                vec![
+                    SourceLanguage::Automatic,
+                    SourceLanguage::Chinese,
+                    SourceLanguage::English,
+                    SourceLanguage::Japanese,
+                    SourceLanguage::Korean
+                ]
+            );
+            assert_eq!(
+                caps.target_languages,
+                vec![
+                    TargetLanguage::Original,
+                    TargetLanguage::SimplifiedChinese,
+                    TargetLanguage::English,
+                    TargetLanguage::Japanese
+                ]
+            );
+            assert_eq!(caps.translation_modes, vec![TranslationMode::Turbo]);
+        }
+        let mut unsupported =
+            ServiceProfile::new("openai", "OpenAI", ProviderKind::OpenAIRealtime).unwrap();
+        unsupported.text_translation = Some(TextTranslation::OpenAICompatible);
+        assert_eq!(
+            unsupported.validated(),
+            Err(ServiceProfileError::UnsupportedTextTranslation)
+        );
     }
 
     use serde_json::json;

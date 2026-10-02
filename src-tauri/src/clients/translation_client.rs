@@ -178,6 +178,25 @@ impl TranslationClient {
                 .map_err(TranslationClientError::MT);
             }
             ProviderKind::AlibabaCloud => {
+                if let ProviderCredentials::OpenAICompatible {
+                    asr_api_key,
+                    endpoint,
+                    api_key,
+                    model,
+                } = &credentials
+                {
+                    return HighQualityTranslationClient::new_openai_compatible(
+                        asr_api_key,
+                        endpoint,
+                        api_key,
+                        model,
+                        configuration.source_language,
+                        configuration.target_language,
+                        events,
+                    )
+                    .map(Self::HighQuality)
+                    .map_err(TranslationClientError::MT);
+                }
                 if let ProviderCredentials::DeepL {
                     asr_api_key,
                     api_key,
@@ -587,6 +606,36 @@ mod tests {
                 TranslationClient::new(&configuration, events).unwrap(),
                 TranslationClient::HighQuality(_)
             ));
+        }
+    }
+
+    #[test]
+    fn openai_compatible_override_uses_audio3_and_preserves_original_mode() {
+        for target in [TargetLanguage::Japanese, TargetLanguage::Original] {
+            let configuration = LiveTranslationConfiguration::with_credentials(
+                ProviderKind::AlibabaCloud,
+                ProviderCredentials::OpenAICompatible {
+                    asr_api_key: "synthetic-asr".into(),
+                    endpoint: "https://example.com/proxy/v1".into(),
+                    api_key: "synthetic-translation-key".into(),
+                    model: "synthetic-model".into(),
+                },
+                SourceLanguage::Automatic,
+                target,
+                TranslationMode::Turbo,
+            )
+            .validated()
+            .unwrap();
+            assert_eq!(configuration.capabilities().source_languages.len(), 5);
+            assert_eq!(configuration.capabilities().target_languages.len(), 4);
+            let (events, _receiver) = provider_event_channel();
+            assert!(matches!(
+                TranslationClient::new(&configuration, events).unwrap(),
+                TranslationClient::HighQuality(_)
+            ));
+            let mut unsupported = configuration;
+            unsupported.source_language = SourceLanguage::French;
+            assert!(matches!(unsupported.validated(), Err(crate::core::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage)));
         }
     }
 

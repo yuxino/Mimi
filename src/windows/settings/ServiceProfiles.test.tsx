@@ -260,7 +260,7 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
   expect(profileRevealCredential).not.toHaveBeenCalled();
 });
 
-it.each(["deepL", "deepLX"] as const)("keeps %s choices scoped to the actual translation route", async (textTranslation) => {
+it.each(["deepL", "deepLX", "openAICompatible"] as const)("keeps %s choices scoped to the actual translation route", async (textTranslation) => {
   const snapshot = { ...settings, profiles: [{ ...profile, textTranslation }] };
   await render(snapshot);
   await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
@@ -344,7 +344,7 @@ it.each(["credential_service_unavailable", "credential_store_access_denied", "cr
   await render({ ...settings, profiles: [{ ...profile, credentialState: "missing" }] });
   await submit();
   expect(actions.saveProfileCredentials).toHaveBeenLastCalledWith(profile.id, {
-    kind: "alibabaTranslation", apiKey: "synthetic-asr", textTranslation: "deepLX",
+    kind: "alibabaTranslation", model: "", apiKey: "synthetic-asr", textTranslation: "deepLX",
     endpoint: "https://example.com/translate", token: "synthetic-token",
   });
   expect(actions.saveProfileCredentials).toHaveBeenCalledTimes(2);
@@ -387,7 +387,7 @@ it.each(["alibabaCloud", "openAIRealtime"] as const)("keeps an unsaved %s key vi
   actions.selectProfile.mockResolvedValue(recovered);
   await submit();
   expect(actions.saveProfileCredentials).toHaveBeenCalledExactlyOnceWith(profile.id, provider === "alibabaCloud" ? {
-    kind: "alibabaTranslation", apiKey: "synthetic-unsaved-replacement", textTranslation: "followService", endpoint: "", token: "",
+    kind: "alibabaTranslation", model: "", apiKey: "synthetic-unsaved-replacement", textTranslation: "followService", endpoint: "", token: "",
   } : { kind: "apiKey", apiKey: "synthetic-unsaved-replacement" });
   expect(host.querySelector('input[type="password"]')).toBeNull();
   await click(I18N.settings.replaceCredentials);

@@ -119,7 +119,7 @@ export function capabilitiesForProfile(
     return capabilitiesForProvider(profile.provider);
   }
   const route = textTranslationForProfile(profile);
-  if (route === "deepL") return LEGACY_ALIBABA_CAPABILITIES;
+  if (route === "deepL" || route === "openAICompatible") return LEGACY_ALIBABA_CAPABILITIES;
   if (route === "deepLX") return PROVIDER_CAPABILITIES.deepLX;
   const capabilities = PROVIDER_CAPABILITIES.alibabaCloud;
   return targetLanguage === "original"

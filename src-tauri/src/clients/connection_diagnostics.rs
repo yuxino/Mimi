@@ -3,6 +3,7 @@
 use crate::clients::audio3_client::{Audio3ASRClient, Audio3ASRClientError};
 use crate::clients::deepl_client::DeepLClient;
 use crate::clients::deeplx_client::DeepLXClient;
+use crate::clients::openai_compatible_client::OpenAICompatibleClient;
 use crate::clients::provider_events::provider_event_channel;
 use crate::clients::provider_network::ProviderNetwork;
 use crate::clients::qwen_mt_client::QwenMTClient;
@@ -12,6 +13,7 @@ use crate::core::credentials::ProviderCredentials;
 use crate::core::models::{SourceLanguage, TargetLanguage};
 use crate::core::protocols::deepl::DeepLError;
 use crate::core::protocols::deeplx::DeepLXError;
+use crate::core::protocols::openai_compatible::OpenAICompatibleError;
 use crate::core::protocols::qwen_mt::{QwenMTClientError, REALTIME_MT_MODEL};
 use crate::core::provider::ProviderKind;
 use serde::Serialize;
@@ -130,7 +132,8 @@ async fn probe_alibaba(
     let key = match &configuration.credentials {
         ProviderCredentials::ApiKey { api_key } => api_key,
         ProviderCredentials::DeepLX { asr_api_key, .. }
-        | ProviderCredentials::DeepL { asr_api_key, .. } => asr_api_key,
+        | ProviderCredentials::DeepL { asr_api_key, .. }
+        | ProviderCredentials::OpenAICompatible { asr_api_key, .. } => asr_api_key,
         _ => return Err(ConnectionCheckReason::InvalidConfiguration),
     };
     let mut asr = Audio3ASRClient::new(key, configuration.source_language)
@@ -220,6 +223,22 @@ async fn probe_text_translation(
                 .await
                 .map_err(|error| deepl_reason(&error))?
         }
+        ProviderCredentials::OpenAICompatible {
+            endpoint,
+            api_key,
+            model,
+            ..
+        } => {
+            let mut client = OpenAICompatibleClient::new(endpoint, api_key, model, source, target)
+                .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
+            client
+                .set_network(network.clone())
+                .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
+            client
+                .translate(phrase, Some(source))
+                .await
+                .map_err(|error| openai_compatible_reason(&error))?
+        }
         _ => return Err(ConnectionCheckReason::InvalidConfiguration),
     };
     if translation.trim().is_empty() {
@@ -271,6 +290,7 @@ fn deepl_reason(error: &DeepLError) -> ConnectionCheckReason {
 
 fn qwen_reason(error: &QwenMTClientError) -> ConnectionCheckReason {
     match error {
+        QwenMTClientError::OpenAICompatible(error) => openai_compatible_reason(error),
         QwenMTClientError::DeepLX(error) => deeplx_reason(error),
         QwenMTClientError::MissingAPIKey => ConnectionCheckReason::CredentialsMissing,
         QwenMTClientError::RequestFailed {
@@ -278,6 +298,19 @@ fn qwen_reason(error: &QwenMTClientError) -> ConnectionCheckReason {
             ..
         } => ConnectionCheckReason::AuthenticationRejected,
         QwenMTClientError::RequestTimedOut => ConnectionCheckReason::Timeout,
+        _ => ConnectionCheckReason::ServiceRejected,
+    }
+}
+
+fn openai_compatible_reason(error: &OpenAICompatibleError) -> ConnectionCheckReason {
+    match error {
+        OpenAICompatibleError::APIKey => ConnectionCheckReason::CredentialsMissing,
+        OpenAICompatibleError::Rejected(401 | 403) => ConnectionCheckReason::AuthenticationRejected,
+        OpenAICompatibleError::Timeout => ConnectionCheckReason::Timeout,
+        OpenAICompatibleError::Connection => ConnectionCheckReason::Unreachable,
+        OpenAICompatibleError::Endpoint
+        | OpenAICompatibleError::Model
+        | OpenAICompatibleError::Language => ConnectionCheckReason::InvalidConfiguration,
         _ => ConnectionCheckReason::ServiceRejected,
     }
 }
@@ -342,6 +375,101 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_tungstenite::tungstenite::Message;
+
+    #[tokio::test]
+    async fn custom_chat_probe_checks_the_configured_model_and_rejects_invalid_responses() {
+        for (status, body, expected) in [
+            (
+                200,
+                r#"{"choices":[{"message":{"content":"こんにちは。"}}]}"#,
+                Ok(()),
+            ),
+            (
+                200,
+                r#"{"choices":[{"message":{"content":" "}}]}"#,
+                Err(ConnectionCheckReason::ServiceRejected),
+            ),
+            (
+                200,
+                r#"{"code":200,"data":"wrong protocol"}"#,
+                Err(ConnectionCheckReason::ServiceRejected),
+            ),
+            (
+                401,
+                "private response",
+                Err(ConnectionCheckReason::AuthenticationRejected),
+            ),
+            (
+                403,
+                "private response",
+                Err(ConnectionCheckReason::AuthenticationRejected),
+            ),
+            (
+                302,
+                "private response",
+                Err(ConnectionCheckReason::ServiceRejected),
+            ),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                loop {
+                    let mut buffer = [0; 2048];
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    assert!(read > 0);
+                    bytes.extend_from_slice(&buffer[..read]);
+                    if let Some(end) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
+                        let length: usize = String::from_utf8_lossy(&bytes[..end])
+                            .lines()
+                            .find_map(|line| {
+                                line.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|n| n.trim().parse().unwrap())
+                            })
+                            .unwrap();
+                        if bytes.len() >= end + 4 + length {
+                            break;
+                        }
+                    }
+                }
+                let request = String::from_utf8(bytes).unwrap();
+                assert!(request.starts_with("POST /proxy/v1/chat/completions HTTP/1.1"));
+                assert!(request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer fixture-chat-key"));
+                let body_start = request.find("\r\n\r\n").unwrap() + 4;
+                let sent: serde_json::Value = serde_json::from_str(&request[body_start..]).unwrap();
+                assert_eq!(sent["model"], "fixture-model");
+                assert_eq!(sent["stream"], false);
+                assert_eq!(sent["messages"][1]["content"], "Hello.");
+                socket.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            });
+            let configuration = LiveTranslationConfiguration::with_credentials(
+                ProviderKind::AlibabaCloud,
+                ProviderCredentials::OpenAICompatible {
+                    asr_api_key: "fixture-asr".into(),
+                    endpoint: format!("http://{address}/proxy/v1"),
+                    api_key: "fixture-chat-key".into(),
+                    model: "fixture-model".into(),
+                },
+                SourceLanguage::Automatic,
+                TargetLanguage::Japanese,
+                TranslationMode::Turbo,
+            );
+            let network = ProviderNetwork::resolve(&crate::core::network_proxy::ProxyConfig {
+                mode: crate::core::network_proxy::ProxyMode::Direct,
+                url: None,
+            })
+            .unwrap();
+            assert_eq!(
+                probe_text_translation(&configuration, &network).await,
+                expected
+            );
+            server.await.unwrap();
+        }
+    }
 
     #[test]
     fn diagnostics_never_mark_credential_failure_available_or_include_raw_errors() {
