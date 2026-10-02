@@ -819,6 +819,32 @@ mod tests {
         assert!(!matches_tone(&tone(32_767.0), 16_000));
     }
 
+    async fn expect_native_silence(
+        pipeline: &AudioSendPipeline,
+        rx: &mut mpsc::Receiver<Vec<u8>>,
+        rate: u32,
+        stage: &str,
+    ) {
+        tokio::time::timeout(Duration::from_secs(6), async {
+            while let Some(pcm) = rx.recv().await {
+                assert_eq!(pcm.len(), rate as usize * 2 * FRAGMENT_MS / 1000);
+                assert!(pcm.len().is_multiple_of(2));
+                let silent = pcm
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .all(|sample| i16::from_le_bytes(*sample).unsigned_abs() <= 2);
+                if silent && pipeline.input_activity() == (true, false) {
+                    return;
+                }
+            }
+            panic!("capture ended before silent PCM was observed");
+        })
+        .await
+        .expect("the monitor must publish silent PCM and let old sound activity expire");
+        eprintln!("linux native rate={rate} stage={stage} pcm=true sound=false");
+    }
+
     /// Run under scripts/linux-audio-smoke.sh: it supplies a private server,
     /// a null playback sink, and a deliberately different default source.
     /// No provider credentials, device capture, or display are needed.
@@ -828,6 +854,11 @@ mod tests {
         let capture = LinuxSystemAudioCapture::new();
         for rate in [16_000, 24_000] {
             let (pipeline, mut rx) = recording_pipeline();
+            assert_eq!(
+                pipeline.input_activity(),
+                (false, false),
+                "a fresh capture generation must not inherit old PCM or sound activity"
+            );
             let (failure_tx, mut failures) = CaptureFailureSender::channel();
             tokio::time::timeout(
                 Duration::from_secs(7),
@@ -840,7 +871,8 @@ mod tests {
             .await
             .expect("monitor capture startup is bounded")
             .expect("default output monitor should open");
-            let (_audio, _playback) = play_test_tone();
+            expect_native_silence(&pipeline, &mut rx, rate, "before-playback").await;
+            let (_audio, playback) = play_test_tone();
             tokio::time::timeout(Duration::from_secs(6), async {
                 let mut window = Vec::new();
                 while let Some(pcm) = rx.recv().await {
@@ -858,9 +890,18 @@ mod tests {
             })
             .await
             .expect("monitor must contain the 997 Hz output tone at the requested sample rate");
+            assert_eq!(pipeline.input_activity(), (true, true));
+            eprintln!("linux native rate={rate} stage=playback pcm=true sound=true");
+            drop(playback);
+            expect_native_silence(&pipeline, &mut rx, rate, "after-playback").await;
+            let stop_started = Instant::now();
             tokio::time::timeout(Duration::from_secs(1), capture.stop())
                 .await
                 .expect("stop must release the monitor without waiting for more audio");
+            eprintln!(
+                "linux native rate={rate} stage=stop elapsedMs={}",
+                milliseconds(stop_started, Instant::now())
+            );
             while rx.try_recv().is_ok() {}
             tokio::time::sleep(Duration::from_millis(75)).await;
             // Anything accepted before stop may finish its bounded send.
@@ -874,6 +915,13 @@ mod tests {
                 failures.try_recv().is_err(),
                 "capture should not report a failure"
             );
+            tokio::time::sleep(Duration::from_millis(2_100)).await;
+            assert_eq!(
+                pipeline.input_activity(),
+                (false, false),
+                "stopped capture must not keep old PCM activity alive"
+            );
+            eprintln!("linux native rate={rate} stage=stopped pcm=false sound=false");
             pipeline.stop();
         }
     }

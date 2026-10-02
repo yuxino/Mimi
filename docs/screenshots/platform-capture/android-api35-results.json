@@ -1,0 +1,115 @@
+{
+  "androidApi": 35,
+  "device": "sdk_gphone64_arm64",
+  "source": "real_audio_playback_capture",
+  "media": "synthetic_tone_and_zero_pcm",
+  "microphone": false,
+  "consentMode": "emulator_ui",
+  "providerStarted": false,
+  "credentialsRead": false,
+  "projectionRevocation": "MediaProjection.stop_callback",
+  "passed": true,
+  "failure": null,
+  "observations": [
+    {
+      "check": "allowed_tone_audio",
+      "chunks": 51,
+      "bytes": 163200,
+      "nonzeroChunks": 51,
+      "zeroChunks": 0,
+      "state": "AUDIO",
+      "pcmAgeMs": 103,
+      "soundAgeMs": 103
+    },
+    {
+      "check": "zero_media_silent",
+      "chunks": 112,
+      "bytes": 358400,
+      "nonzeroChunks": 58,
+      "zeroChunks": 54,
+      "state": "SILENT",
+      "pcmAgeMs": 23,
+      "soundAgeMs": 5340
+    },
+    {
+      "check": "tone_recovers_audio",
+      "chunks": 121,
+      "bytes": 387200,
+      "nonzeroChunks": 63,
+      "zeroChunks": 58,
+      "state": "AUDIO",
+      "pcmAgeMs": 33,
+      "soundAgeMs": 33
+    },
+    {
+      "check": "normal_stop",
+      "chunks": 122,
+      "bytes": 390400,
+      "nonzeroChunks": 64,
+      "zeroChunks": 58,
+      "state": "STOPPED",
+      "pcmAgeMs": null,
+      "soundAgeMs": null
+    },
+    {
+      "check": "fresh_session_zero_only",
+      "chunks": 51,
+      "bytes": 163200,
+      "nonzeroChunks": 0,
+      "zeroChunks": 51,
+      "state": "SILENT",
+      "pcmAgeMs": 45,
+      "soundAgeMs": null
+    },
+    {
+      "check": "opt_out_tone_zero_only",
+      "chunks": 128,
+      "bytes": 409600,
+      "nonzeroChunks": 0,
+      "zeroChunks": 128,
+      "state": "SILENT",
+      "pcmAgeMs": 89,
+      "soundAgeMs": null
+    },
+    {
+      "check": "projection_revoked_cleanup",
+      "chunks": 130,
+      "bytes": 416000,
+      "nonzeroChunks": 0,
+      "zeroChunks": 130,
+      "state": "STOPPED",
+      "pcmAgeMs": null,
+      "soundAgeMs": null
+    },
+    {
+      "check": "restart_after_revoke_audio",
+      "chunks": 51,
+      "bytes": 163200,
+      "nonzeroChunks": 51,
+      "zeroChunks": 0,
+      "state": "AUDIO",
+      "pcmAgeMs": 42,
+      "soundAgeMs": 42
+    },
+    {
+      "check": "final_stop",
+      "chunks": 52,
+      "bytes": 166400,
+      "nonzeroChunks": 52,
+      "zeroChunks": 0,
+      "state": "STOPPED",
+      "pcmAgeMs": null,
+      "soundAgeMs": null
+    },
+    {
+      "check": "cancel_no_capture",
+      "chunks": 0,
+      "bytes": 0,
+      "nonzeroChunks": 0,
+      "zeroChunks": 0,
+      "state": "STOPPED",
+      "pcmAgeMs": null,
+      "soundAgeMs": null
+    }
+  ]
+}

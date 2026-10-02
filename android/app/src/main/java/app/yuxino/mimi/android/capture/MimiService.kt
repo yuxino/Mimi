@@ -170,6 +170,12 @@ class MimiService : Service() {
             return START_NOT_STICKY
         }
         if (isRunning || overlayView != null) return START_NOT_STICKY
+        val testEngine = if (intent?.action == ACTION_CAPTURE_TEST &&
+            applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) captureEngineForTests else null
+        if (intent?.action == ACTION_CAPTURE_TEST && testEngine == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // Debug-only screenshot fixture: the real overlay with synthetic
         // subtitles and no MediaProjection, provider, or credential access.
         if (intent?.action == ACTION_UI_PREVIEW &&
@@ -202,7 +208,7 @@ class MimiService : Service() {
             startAsForeground()
             val projection = checkNotNull(projectionManager.getMediaProjection(resultCode, resultData))
             mediaProjection = projection
-            startCapture(projection)
+            startCapture(projection, testEngine)
             setRunning(true)
         } catch (_: Exception) {
             lastCaptureError = "capture.start_failed"
@@ -244,7 +250,7 @@ class MimiService : Service() {
             PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun startCapture(projection: MediaProjection) {
+    private fun startCapture(projection: MediaProjection, testEngine: ProviderEngine? = null) {
         check(ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             "audio_permission_required"
         }
@@ -269,48 +275,55 @@ class MimiService : Service() {
         fun dispatch(action: () -> Unit) {
             mainHandler.post { if (generation == sessionGeneration) action() }
         }
-        val provider = SettingsStore.provider(this)
-        val apiKey = SettingsStore.apiKey(this)
-        val sourceLang = SettingsStore.sourceLang(this)
-        sessionSourceLanguage = sourceLang
-        val targetLang = SettingsStore.targetLang(this)
-        val listener = object : EngineListener {
-            override fun onSessionReady() = dispatch { Log.i(TAG, "session ready") }
-            override fun onSourceDraft(text: String, language: String?) = dispatch {
-                cancelAutoHide()
-                SubtitleBus.onSourceDraft(text, language)
+        if (testEngine != null) {
+            // Instrumentation exercises real playback capture without credentials or a provider connection.
+            engine = testEngine
+            sessionSourceLanguage = "auto"
+            captureProjectionForTests = projection
+        } else {
+            val provider = SettingsStore.provider(this)
+            val apiKey = SettingsStore.apiKey(this)
+            val sourceLang = SettingsStore.sourceLang(this)
+            sessionSourceLanguage = sourceLang
+            val targetLang = SettingsStore.targetLang(this)
+            val listener = object : EngineListener {
+                override fun onSessionReady() = dispatch { Log.i(TAG, "session ready") }
+                override fun onSourceDraft(text: String, language: String?) = dispatch {
+                    cancelAutoHide()
+                    SubtitleBus.onSourceDraft(text, language)
+                }
+                override fun onSourceFinal(text: String, language: String?) = dispatch {
+                    cancelAutoHide()
+                    SubtitleBus.onSourceFinal(text, language)
+                }
+                override fun onTranslationDraft(text: String) = dispatch {
+                    cancelAutoHide()
+                    SubtitleBus.onTranslationDraft(text)
+                }
+                override fun onTranslationFinal(text: String) = dispatch {
+                    SubtitleBus.onTranslationFinal(text)
+                    scheduleAutoHide()
+                }
+                override fun onError(code: String, message: String) = dispatch {
+                    // Provider error bodies can echo user content or credentials.
+                    Toast.makeText(this@MimiService, R.string.capture_failed, Toast.LENGTH_LONG).show()
+                    stopEverything()
+                }
+                override fun onClosed() = dispatch { stopEverything() }
+                override fun onLog(message: String) = Unit
             }
-            override fun onSourceFinal(text: String, language: String?) = dispatch {
-                cancelAutoHide()
-                SubtitleBus.onSourceFinal(text, language)
+            engine = when (provider) {
+                SettingsStore.PROVIDER_OPENAI -> OpenAIRealtimeEngine(listener)
+                SettingsStore.PROVIDER_DASHSCOPE -> DashScopeEngine(listener)
+                else -> app.yuxino.mimi.android.provider.StreamingServiceEngine(SettingsStore.configuration(this), listener)
             }
-            override fun onTranslationDraft(text: String) = dispatch {
-                cancelAutoHide()
-                SubtitleBus.onTranslationDraft(text)
-            }
-            override fun onTranslationFinal(text: String) = dispatch {
-                SubtitleBus.onTranslationFinal(text)
-                scheduleAutoHide()
-            }
-            override fun onError(code: String, message: String) = dispatch {
-                // Provider error bodies can echo user content or credentials.
-                Toast.makeText(this@MimiService, R.string.capture_failed, Toast.LENGTH_LONG).show()
-                stopEverything()
-            }
-            override fun onClosed() = dispatch { stopEverything() }
-            override fun onLog(message: String) = Unit
+            engine?.setHotwords(SettingsStore.hotwords(this))
+            engine?.start(
+                apiKey, sourceLang, targetLang,
+                SettingsStore.baseUrl(this, provider),
+                SettingsStore.model(this, provider),
+            )
         }
-        engine = when (provider) {
-            SettingsStore.PROVIDER_OPENAI -> OpenAIRealtimeEngine(listener)
-            SettingsStore.PROVIDER_DASHSCOPE -> DashScopeEngine(listener)
-            else -> app.yuxino.mimi.android.provider.StreamingServiceEngine(SettingsStore.configuration(this), listener)
-        }
-        engine?.setHotwords(SettingsStore.hotwords(this))
-        engine?.start(
-            apiKey, sourceLang, targetLang,
-            SettingsStore.baseUrl(this, provider),
-            SettingsStore.model(this, provider),
-        )
 
         // Playback capture at a fixed 48 kHz stereo float; the system resamples
         // whatever the apps actually play into this format for us.
@@ -400,6 +413,7 @@ class MimiService : Service() {
         engine = null
         val projection = mediaProjection
         mediaProjection = null
+        captureProjectionForTests = null
         projectionCallback?.let { projection?.unregisterCallback(it) }
         projectionCallback = null
         try { projection?.stop() } catch (_: Exception) { }
@@ -926,6 +940,17 @@ class MimiService : Service() {
     }
 
     companion object {
+        @Volatile private var captureEngineForTests: ProviderEngine? = null
+        @Volatile internal var captureProjectionForTests: MediaProjection? = null
+            private set
+
+        /** The release app cannot replace its provider or expose its projection through this seam. */
+        internal fun setCaptureEngineForTests(context: Context, value: ProviderEngine?) {
+            check(context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            check(!isRunning)
+            captureEngineForTests = value
+        }
+
         val firstRunEvidence = app.yuxino.mimi.android.FirstRunEvidence()
         private const val TAG = "MimiService"
         private const val CHANNEL_ID = "capture"
@@ -950,6 +975,7 @@ class MimiService : Service() {
         const val ACTION_STOP = "app.yuxino.mimi.android.action.STOP"
         const val ACTION_APPLY_APPEARANCE = "app.yuxino.mimi.android.action.APPLY_APPEARANCE"
         const val ACTION_UI_PREVIEW = "app.yuxino.mimi.android.action.UI_PREVIEW"
+        internal const val ACTION_CAPTURE_TEST = "app.yuxino.mimi.android.action.CAPTURE_TEST"
         const val ACTION_UI_PREVIEW_HISTORY = "app.yuxino.mimi.android.action.UI_PREVIEW_HISTORY"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"

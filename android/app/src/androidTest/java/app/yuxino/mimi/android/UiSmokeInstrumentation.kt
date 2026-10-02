@@ -26,13 +26,15 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.materialswitch.MaterialSwitch
 import java.io.File
 
-/** Real emulator interactions. No credential is saved and no capture/provider session starts. */
+/** Native UI checks plus an explicitly selected synthetic system-playback capture probe. */
 class UiSmokeInstrumentation : Instrumentation() {
     private var theme = "light"
     private var demo = false
     private var guideCopy = false
     private var firstRun = false
     private var immersiveHelp = false
+    private var playbackCapture = false
+    private var captureArguments: Bundle? = null
     private var guideLocale = "en"
     private var overlayPreview = false
     private var expectLandscape = false
@@ -50,6 +52,8 @@ class UiSmokeInstrumentation : Instrumentation() {
         guideCopy = arguments?.getString("guide_copy") == "true"
         firstRun = arguments?.getString("first_run") == "true"
         immersiveHelp = arguments?.getString("immersive_help") == "true"
+        playbackCapture = arguments?.getString("playback_capture") == "true"
+        captureArguments = arguments
         guideLocale = arguments?.getString("locale") ?: "en"
         overlayPreview = arguments?.getString("overlay_preview") == "true"
         expectLandscape = arguments?.getString("expect_landscape") == "true"
@@ -63,6 +67,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (playbackCapture) {
+            PlaybackCaptureChecks(this).run(captureArguments)
+            return
+        }
         val prefs = AppearanceSnapshot()
         pause("Initial preferences: source=${SettingsStore.sourceLang(targetContext)}, target=${SettingsStore.targetLang(targetContext)}, font=${SettingsStore.fontSize(targetContext)}, color=${SettingsStore.translationColorIndex(targetContext)}, background=${SettingsStore.overlayBgAlpha(targetContext)}", 0)
         var failure: Throwable? = null
