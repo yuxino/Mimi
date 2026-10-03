@@ -37,6 +37,11 @@ export function useSettingsToast() {
   const clearToast = useCallback(() => {
     if (ownedGeneration.current === generation) dismissSettingsToast();
   }, []);
-  return { beginToast, clearToast };
+  /** Quiet autosave: the control already shows success; only failure needs a notice. */
+  const runWithToast = useCallback(async (action: () => Promise<unknown>, failureMessage: string) => {
+    const notify = beginToast();
+    try { await action(); return true; }
+    catch { notify(failureMessage, true); return false; }
+  }, [beginToast]);
+  return { beginToast, clearToast, runWithToast };
 }
-

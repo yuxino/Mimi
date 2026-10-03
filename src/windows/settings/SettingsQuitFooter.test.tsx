@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
@@ -57,7 +58,7 @@ it.each(["zh", "en", "ja"] as const)("keeps the %s normal quit action outside th
 it("shows exit progress immediately, blocks rapid duplicate requests and allows a retry after a sanitized failure", async () => {
   let reject!: (error: Error) => void;
   const onQuit = vi.fn(() => new Promise<void>((_resolve, failure) => { reject = failure; }));
-  await act(async () => root.render(<SettingsQuitFooter onQuit={onQuit} />));
+  await act(async () => root.render(<><SettingsQuitFooter onQuit={onQuit} /><SettingsToastRegion /></>));
   const button = host.querySelector<HTMLButtonElement>("button")!;
   await act(async () => { button.click(); button.click(); });
   expect(onQuit).toHaveBeenCalledOnce();

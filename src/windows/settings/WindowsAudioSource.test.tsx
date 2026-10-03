@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { setStoredUiLanguage } from "../../lib/i18n";
+import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { audioSourceCopy } from "../../lib/windowsAudioSource";
 import { WindowsAudioSource } from "./WindowsAudioSource";
 
@@ -22,7 +23,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   fixture.settings.windowsAudioSource = "";
   fixture.session.isActive = false;
-  fixture.saveSettings.mockReset();
+  fixture.saveSettings.mockReset().mockResolvedValue(undefined);
   vi.mocked(invoke).mockResolvedValue({
     devices: [{ id: "speaker-id", name: "Fixture speakers" }], currentDevice: "speaker-id",
     receivingSound: false, receivingAudioData: false,
@@ -34,7 +35,7 @@ afterEach(async () => {
   await act(() => root.unmount()); host.remove();
   setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
-async function render() { await act(async () => root.render(<WindowsAudioSource />)); }
+async function render() { await act(async () => root.render(<><WindowsAudioSource /><SettingsToastRegion /></>)); }
 function trigger() { return host.querySelector<HTMLButtonElement>('[role="combobox"]')!; }
 
 it("offers follow system and concrete outputs without adding experimental role choices", async () => {
@@ -64,4 +65,21 @@ it("keeps a missing manual output visible and locks source changes during captur
   fixture.session.isActive = true; await render();
   expect(trigger().disabled).toBe(true);
   expect(fixture.saveSettings).not.toHaveBeenCalled();
+});
+
+it("blocks overlapping output changes, reports a safe save failure and permits retry", async () => {
+  let fail!: (error: Error) => void;
+  fixture.saveSettings.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await render(); await act(async () => trigger().click());
+  await act(async () => document.querySelectorAll<HTMLElement>('[role="option"]')[1].click());
+  expect(trigger().disabled).toBe(true);
+  await act(async () => fail(new Error("private device details")));
+  expect(trigger().disabled).toBe(false);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(I18N.settings.settingSaveFailed(audioSourceCopy().title));
+  expect(trigger().textContent).toBe(audioSourceCopy().system);
+  expect(host.textContent).not.toContain("private device details");
+  await act(async () => trigger().click());
+  await act(async () => document.querySelectorAll<HTMLElement>('[role="option"]')[1].click());
+  expect(fixture.saveSettings).toHaveBeenCalledTimes(2);
+  expect(host.querySelector(".settings-toast")).toBeNull();
 });

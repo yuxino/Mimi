@@ -200,10 +200,9 @@ export function ServiceProfiles({
       else setFeedback(result);
       return snapshot;
     } catch (error) {
-      setFeedback({
-        tone: "error",
-        message: profileErrorMessage(error),
-      });
+      // Keep unsaved edits actionable in their form; list operations have no field to correct.
+      if (action === "save-key" || action === "rename") setFeedback({ tone: "error", message: profileErrorMessage(error) });
+      else notify(profileErrorMessage(error), true);
       return null;
     } finally {
       mutationInFlight.current = false;

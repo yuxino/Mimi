@@ -5,7 +5,7 @@ import { Switch } from "../../components/Switch";
 import { I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
 import { announceSettingsNavigationReady, isTauri, listenSettingsNavigation } from "../../lib/ipc";
 import { selectSessionStatusKind, useStore } from "../../lib/store";
-import type { SubtitleAlignment } from "../../lib/types";
+import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
 import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
 import { subtitleBackgroundColor, subtitleColorHex } from "../../lib/subtitleColor";
 import type { SubtitleDisplayMode } from "../../lib/types";
@@ -29,6 +29,7 @@ import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
 import { AudioInputSettings } from "./AudioInputSettings";
 import { SettingsToastRegion } from "./SettingsToast";
+import { useSettingsToast } from "./useSettingsToast";
 import "./settings.css";
 
 const DevelopmentDebugger = __MIMI_DEVELOPMENT_BUILD__
@@ -68,6 +69,9 @@ export function SettingsView() {
   const saveSettings = useStore((state) => state.saveSettings);
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const quit = useStore((state) => state.quit);
+  const { runWithToast } = useSettingsToast();
+  const savePreference = (draft: SettingsDraft, label: string) =>
+    runWithToast(() => saveSettings(draft), I18N.settings.settingSaveFailed(label));
 
   const activeProfile =
     settings.profiles.find((profile) => profile.id === settings.activeProfileId) ??
@@ -278,7 +282,7 @@ export function SettingsView() {
                           label={I18N.settings.subtitleDisplay}
                           value={settings.subtitleDisplayMode}
                           options={SUBTITLE_DISPLAY_OPTIONS}
-                          onChange={(value) => void saveSettings({ subtitleDisplayMode: value as SubtitleDisplayMode })}
+                          onChange={(value) => void savePreference({ subtitleDisplayMode: value as SubtitleDisplayMode }, I18N.settings.subtitleDisplay)}
                         />
                       </SettingsRow>
                       <SettingsRow label={I18N.settings.pulseStyle}>
@@ -289,14 +293,14 @@ export function SettingsView() {
                             { value: "syllable", label: I18N.settings.pulseStyleSyllable },
                             { value: "ribbon", label: I18N.settings.pulseStyleRibbon },
                           ]}
-                          onChange={(value) => void saveSettings({ pulseStyle: value as PulseStyle })}
+                          onChange={(value) => void savePreference({ pulseStyle: value as PulseStyle }, I18N.settings.pulseStyle)}
                         />
                       </SettingsRow>
                       <SettingsRow label={I18N.settings.subtitleDividers} description={I18N.settings.subtitleDividersHelp}>
                         <Switch
                           checked={settings.showSubtitleDividers}
                           aria-label={I18N.settings.subtitleDividers}
-                          onChange={(showSubtitleDividers) => void saveSettings({ showSubtitleDividers })}
+                          onChange={(showSubtitleDividers) => void savePreference({ showSubtitleDividers }, I18N.settings.subtitleDividers)}
                         />
                       </SettingsRow>
                       <SettingsRow
@@ -306,7 +310,7 @@ export function SettingsView() {
                           checked={pulseOn}
                           aria-label={I18N.settings.pulseAnimation}
                           onChange={(pulseAnimation) =>
-                            void saveSettings({ pulseAnimation })
+                            void savePreference({ pulseAnimation }, I18N.settings.pulseAnimation)
                           }
                         />
                       </SettingsRow>
@@ -319,20 +323,20 @@ export function SettingsView() {
                           checked={motionOn}
                           aria-label={I18N.settings.textAnimation}
                           onChange={(subtitleAnimation) =>
-                            void saveSettings({ subtitleAnimation })
+                            void savePreference({ subtitleAnimation }, I18N.settings.textAnimation)
                           }
                         />
                       </SettingsRow>
                       <SettingsRow label={I18N.settings.systemSubtitleColor}>
                         <SubtitleColorControl label={I18N.settings.systemSubtitleColor}
                           value={settings.subtitleColor}
-                          onChange={(subtitleColor) => void saveSettings({ subtitleColor })}
+                          onChange={(subtitleColor) => void savePreference({ subtitleColor }, I18N.settings.systemSubtitleColor)}
                         />
                       </SettingsRow>
                       {settings.microphoneInputAvailable && <SettingsRow label={I18N.settings.microphoneSubtitleColor}>
                         <SubtitleColorControl label={I18N.settings.microphoneSubtitleColor}
                           value={settings.microphoneSubtitleColor ?? "yellow"}
-                          onChange={(microphoneSubtitleColor) => void saveSettings({ microphoneSubtitleColor })}
+                          onChange={(microphoneSubtitleColor) => void savePreference({ microphoneSubtitleColor }, I18N.settings.microphoneSubtitleColor)}
                         />
                       </SettingsRow>}
                       <SettingsRow label={I18N.settings.fontSize}>
@@ -348,9 +352,9 @@ export function SettingsView() {
                             value={settings.fontSize}
                             aria-label={I18N.settings.fontSize}
                             onChange={(event) =>
-                              void saveSettings({
+                              void savePreference({
                                 fontSize: Number(event.target.value),
-                              })
+                              }, I18N.settings.fontSize)
                             }
                           />
                           <output aria-live="polite">{Math.round(settings.fontSize)}</output>
@@ -367,9 +371,9 @@ export function SettingsView() {
                             value={100 - (settings.subtitleBackgroundOpacity ?? 80)}
                             aria-label={I18N.settings.backgroundTransparency}
                             disabled={settings.subtitleBlendsWithBackground}
-                            onChange={(event) => void saveSettings({
+                            onChange={(event) => void savePreference({
                               subtitleBackgroundOpacity: 100 - Number(event.target.value),
-                            })}
+                            }, I18N.settings.backgroundTransparency)}
                           />
                           <output aria-live="polite">{100 - (settings.subtitleBackgroundOpacity ?? 80)}%</output>
                         </div>
@@ -378,7 +382,7 @@ export function SettingsView() {
                       <SettingsRow label={I18N.settings.subtitleAlignment}>
                         <SubtitleAlignmentControl
                           value={settings.subtitleAlignment}
-                          onChange={(subtitleAlignment) => void saveSettings({ subtitleAlignment })}
+                          onChange={(subtitleAlignment) => void savePreference({ subtitleAlignment }, I18N.settings.subtitleAlignment)}
                         />
                       </SettingsRow>
                     </div>
@@ -399,7 +403,7 @@ export function SettingsView() {
                         checked={settings.isOverlayLocked}
                         aria-label={I18N.settings.lockPosition}
                         onChange={(checked) => {
-                          void setOverlayLocked(checked).catch(() => {});
+                          void runWithToast(() => setOverlayLocked(checked), I18N.settings.settingSaveFailed(I18N.settings.lockPosition));
                         }}
                       />
                     </SettingsRow>
@@ -437,11 +441,10 @@ export function SettingsView() {
                     label={I18N.settings.appLanguage}
                     onChange={(value) => {
                       const language = value as UiLanguage;
-                      void saveSettings({ uiLanguage: language })
-                        .then(() => {
-                          setStoredUiLanguage(language);
-                        })
-                        .catch(() => {});
+                      void runWithToast(async () => {
+                        await saveSettings({ uiLanguage: language });
+                        setStoredUiLanguage(language);
+                      }, I18N.settings.languageSaveFailed);
                     }}
                     options={[
                       {

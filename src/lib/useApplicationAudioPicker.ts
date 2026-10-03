@@ -40,7 +40,7 @@ export function useApplicationAudioPicker(disabled = false) {
     label: (names.get(app.name) ?? 0) > 1 && app.id.startsWith("windows:") ? `${app.name} · ${app.id.split(":")[1]}` : app.name,
   }))];
 
-  async function refresh() {
+  async function refresh(reportFailure?: (message: string) => void) {
     if (listing.current || locked || !supported) return;
     listing.current = true;
     setLoading(true);
@@ -49,14 +49,17 @@ export function useApplicationAudioPicker(disabled = false) {
       const value = isTauri ? await invoke<ApplicationSnapshot>("audio_applications") : { supported: true, applications: [] };
       if (mounted.current) setSnapshot({ targetKey, value });
     } catch {
-      if (mounted.current) setFailure({ targetKey, message: text.failed });
+      if (mounted.current) {
+        if (reportFailure) reportFailure(text.failed);
+        else setFailure({ targetKey, message: text.failed });
+      }
     } finally {
       listing.current = false;
       if (mounted.current) setLoading(false);
     }
   }
 
-  async function choose(id: string) {
+  async function choose(id: string, reportFailure?: (message: string) => void) {
     if (locked || switching.current || id === selected) return;
     const app = applications.find(app => app.id === id);
     if (id && !app) return;
@@ -73,7 +76,9 @@ export function useApplicationAudioPicker(disabled = false) {
       const current = useStore.getState().settings.systemAudioTarget;
       const currentKey = current?.kind === "application" ? current.id : "";
       if (mounted.current && (currentKey === id || currentKey === targetKey)) {
-        setFailure({ targetKey: currentKey, message: applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? text.saveFailed });
+        const safeMessage = applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? text.saveFailed;
+        if (reportFailure) reportFailure(safeMessage);
+        else setFailure({ targetKey: currentKey, message: safeMessage });
       }
     } finally {
       switching.current = false;

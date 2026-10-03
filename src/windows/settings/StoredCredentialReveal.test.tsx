@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { profileRevealCredential } from "../../lib/ipc";
@@ -72,13 +73,13 @@ it("clears a previous profile or route and discards a response arriving after na
   expect(host.querySelector("input")).toBeNull();
 });
 
-it("shows safe missing/error feedback and never renders a raw rejected value", async () => {
-  await render();
+it("shows safe missing/error feedback as a toast and never renders a raw rejected value", async () => {
+  await act(() => root.render(<><StoredCredentialReveal {...defaults} /><SettingsToastRegion /></>));
   vi.mocked(profileRevealCredential).mockResolvedValue(null); await click();
-  expect(host.querySelector('[role="status"]')?.textContent).toBe(I18N.settings.savedCredentialMissing);
-  await click();
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(I18N.settings.savedCredentialMissing);
+  expect(host.querySelector(".credential-unavailable")).toBeNull();
   vi.mocked(profileRevealCredential).mockRejectedValue("synthetic-sensitive-rejection"); await click();
-  expect(host.querySelector('[role="status"]')?.textContent).toBe(profileErrorMessage("synthetic-sensitive-rejection"));
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(profileErrorMessage("synthetic-sensitive-rejection"));
   expect(host.textContent).not.toContain("synthetic-sensitive-rejection");
   expect(host.querySelector("input")).toBeNull();
 });

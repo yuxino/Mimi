@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { I18N } from "../../lib/i18n";
+import { useSettingsToast } from "./useSettingsToast";
 
 export type SettingsTheme = "system" | "light" | "dark";
 const STORAGE_KEY = "mimi.settings-theme";
@@ -14,6 +16,7 @@ function readTheme(): SettingsTheme {
 }
 
 export function useSettingsTheme() {
+  const { beginToast } = useSettingsToast();
   const [theme, setTheme] = useState<SettingsTheme>(readTheme);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
@@ -40,11 +43,13 @@ export function useSettingsTheme() {
     theme,
     resolvedTheme,
     changeTheme: (value: SettingsTheme) => {
+      const notify = beginToast();
       setTheme(value);
       try {
         localStorage.setItem(STORAGE_KEY, value);
       } catch {
-        // Keep the session choice when preference storage is unavailable.
+        // Keep the session choice, but make the failed persistence visible.
+        notify(I18N.settings.settingSaveFailed(I18N.settings.appearance), true);
       }
     },
   };
