@@ -215,7 +215,9 @@ fn evidence_is_private_and_rejects_outside_output_roots() {
     assert!(validate_root(&root).is_err());
     assert!(Evidence::create(&root, "fixture").is_err());
     assert!(validate_root_under(&allowed.with_extension("outside"), &allowed).is_err());
-    assert!(validate_root_under(&root.join("../outside"), &allowed).is_err());
+    // Windows verbatim paths normalize `..` during join; leave the allowed
+    // root itself, rather than a child whose normalized sibling is permitted.
+    assert!(validate_root_under(&allowed.join("../outside"), &allowed).is_err());
     validate_root_under(&root, &allowed).unwrap();
     let evidence = Evidence::create_in_validated_root(&root, "fixture").unwrap();
     #[cfg(unix)]
