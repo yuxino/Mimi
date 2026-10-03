@@ -103,8 +103,9 @@ it.each(["en", "zh", "ja"] as const)("shows both stages in read-only file mode w
   setStoredUiLanguage(language);
   await render({ ...props, readOnly: true, profile: { ...profile, textTranslation: "openAICompatible" } });
   expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
-  expect(picker().textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
-  expect(picker().disabled).toBe(true);
+  expect(host.querySelector('[role="combobox"]')).toBeNull();
+  expect(host.querySelector('.service-stage--translation .service-stage__provider')?.textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
+  expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
   expect(host.querySelector(".credential-form, input, .stored-credential-reveal, .credential-panel__saved-actions, .credential-form__actions, button[type=submit]")).toBeNull();
   expect(host.querySelector(".service-credential-toolbar .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
   expect(host.querySelector(".service-credential-toolbar p")).toBeNull();

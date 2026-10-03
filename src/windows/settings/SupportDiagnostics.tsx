@@ -1,7 +1,7 @@
 import { SettingsHelp } from "./SettingsHelp";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, X, AlertCircle, Copy, ExternalLink, RotateCw } from "lucide-react";
-import { TransientToast } from "../../lib/transientToast";
+import { AlertCircle, ChevronRight, Copy, ExternalLink, RotateCw } from "lucide-react";
+import { useSettingsToast } from "./useSettingsToast";
 import { invoke } from "@tauri-apps/api/core";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import { isTauri } from "../../lib/ipc";
@@ -10,9 +10,9 @@ import { supportDiagnosticSummary, type DiagnosticStatus, type DiagnosticSummary
 
 const copy = {
   en: {
-    close: "Dismiss notification", title: "Diagnostics", copy: "Copy diagnostics", issue: "GitHub feedback",
+    title: "Diagnostics", copy: "Copy diagnostics", issue: "GitHub feedback",
     refresh: "Refresh diagnostics", refreshing: "Preparing diagnostics…", refreshed: "Diagnostics refreshed.",
-    status: "Session status", lastError: "Latest error", recent: "Recent events", sinceStart: "Since app start",
+    status: "Session status", lastError: "Latest error", recent: "Recent events", sinceStart: "Since app start", noEvents: "No events yet",
     failures: { unknown: "Unclassified error", authentication: "Authentication failed", credential_storage: "Credential storage unavailable", device_unavailable: "Sound output unavailable", timeout: "Service timed out", request_rejected: "Request rejected", service_error: "Service unavailable", rate_limit: "Service rate limited", backlog: "Processing fell behind", transport: "Connection interrupted", stopped: "Audio capture stopped", processing: "Audio processing failed", size_limit: "Subtitle response too large" },
     lifecycle: { start_requested: "Start requested", start_busy: "Start in progress", start_already_active: "Already running", start_superseded: "Start cancelled", stop_requested: "Stop requested", pause_requested: "Pause requested", resume_requested: "Resume requested" },
     recovery: { retrying: "Reconnecting", recovered: "Connection restored", retries_exhausted: "Automatic retries exhausted", user_stopped: "Stopped by user" },
@@ -20,12 +20,12 @@ const copy = {
     prepareFailed: "Could not prepare diagnostics. Try again.",
     opened: "GitHub opened. Review the report and describe the problem before submitting.",
     paste: "GitHub opened. Copy diagnostics, then paste them into the report before submitting.",
-    openFailed: "Could not open GitHub. Copy diagnostics and visit the Mimi repository.", preview: "Diagnostic details",
+    openFailed: "Could not open GitHub. Copy diagnostics and visit the Mimi repository.", preview: "Raw diagnostic data",
   },
   zh: {
-    close: "关闭提示", title: "诊断", copy: "复制诊断信息", issue: "GitHub 反馈",
+    title: "诊断", copy: "复制诊断信息", issue: "GitHub 反馈",
     refresh: "刷新诊断", refreshing: "正在准备诊断信息…", refreshed: "诊断信息已刷新。",
-    status: "字幕状态", lastError: "最近错误", recent: "最近事件", sinceStart: "距应用启动",
+    status: "字幕状态", lastError: "最近错误", recent: "最近事件", sinceStart: "距应用启动", noEvents: "还没有事件",
     failures: { unknown: "未分类错误", authentication: "身份验证失败", credential_storage: "凭据存储不可用", device_unavailable: "声音输出不可用", timeout: "服务超时", request_rejected: "请求被拒绝", service_error: "服务不可用", rate_limit: "服务限流", backlog: "处理速度落后", transport: "连接中断", stopped: "音频捕获停止", processing: "音频处理失败", size_limit: "字幕响应过长" },
     lifecycle: { start_requested: "请求启动", start_busy: "启动处理中", start_already_active: "已在运行", start_superseded: "启动已取消", stop_requested: "请求停止", pause_requested: "请求暂停", resume_requested: "请求继续" },
     recovery: { retrying: "正在重连", recovered: "连接已恢复", retries_exhausted: "自动重试次数已用尽", user_stopped: "用户已停止" },
@@ -33,12 +33,12 @@ const copy = {
     prepareFailed: "暂时无法准备诊断信息，请重试。",
     opened: "已打开 GitHub。请检查内容、描述问题后再提交。",
     paste: "已打开 GitHub。请先复制诊断信息，再粘贴到反馈正文后提交。",
-    openFailed: "暂时无法打开 GitHub，请复制诊断信息并前往 Mimi 仓库。", preview: "诊断详情",
+    openFailed: "暂时无法打开 GitHub，请复制诊断信息并前往 Mimi 仓库。", preview: "原始诊断数据",
   },
   ja: {
-    close: "通知を閉じる", title: "診断", copy: "診断情報をコピー", issue: "GitHub で報告",
+    title: "診断", copy: "診断情報をコピー", issue: "GitHub で報告",
     refresh: "診断を更新", refreshing: "診断情報を準備中…", refreshed: "診断情報を更新しました。",
-    status: "字幕の状態", lastError: "直近のエラー", recent: "最近のイベント", sinceStart: "アプリ起動から",
+    status: "字幕の状態", lastError: "直近のエラー", recent: "最近のイベント", sinceStart: "アプリ起動から", noEvents: "イベントはまだありません",
     failures: { unknown: "未分類のエラー", authentication: "認証に失敗", credential_storage: "認証情報ストアを利用不可", device_unavailable: "音声出力を利用不可", timeout: "サービスがタイムアウト", request_rejected: "リクエストが拒否されました", service_error: "サービスを利用不可", rate_limit: "サービスの利用制限", backlog: "処理が遅れています", transport: "接続が中断", stopped: "音声の取得が停止", processing: "音声処理に失敗", size_limit: "字幕の応答が長すぎます" },
     lifecycle: { start_requested: "開始を要求", start_busy: "開始処理中", start_already_active: "すでに実行中", start_superseded: "開始をキャンセル", stop_requested: "停止を要求", pause_requested: "一時停止を要求", resume_requested: "再開を要求" },
     recovery: { retrying: "再接続中", recovered: "接続が復旧", retries_exhausted: "自動再試行の上限に到達", user_stopped: "ユーザーが停止" },
@@ -46,7 +46,7 @@ const copy = {
     prepareFailed: "診断情報を準備できませんでした。再試行してください。",
     opened: "GitHub を開きました。内容を確認し、問題を説明してから送信してください。",
     paste: "GitHub を開きました。診断情報をコピーして本文に貼り付けてから送信してください。",
-    openFailed: "GitHub を開けませんでした。診断情報をコピーし、Mimi リポジトリにアクセスしてください。", preview: "診断の詳細",
+    openFailed: "GitHub を開けませんでした。診断情報をコピーし、Mimi リポジトリにアクセスしてください。", preview: "診断の生データ",
   },
 };
 const isFailure = (value: Feedback) => value === "failed" || value === "prepareFailed" || value === "openFailed";
@@ -82,16 +82,14 @@ function eventLabel(event: DiagnosticSummaryEvent, text: typeof copy.en | typeof
 export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
   const [report, setReport] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<DiagnosticAction | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>(null);
+  const { beginToast, clearToast } = useSettingsToast();
   const [manualCopy, setManualCopy] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const operation = useRef(false);
   const request = useRef(0);
   const lifetime = useRef(0);
-  const toast = useRef<TransientToast<Feedback> | null>(null);
-  if (toast.current === null) { toast.current = new TransientToast<Feedback>(setFeedback); }
   useEffect(() => {
-    const clear = () => { lifetime.current += 1; toast.current?.clear(); };
+    const clear = () => { lifetime.current += 1; clearToast(); };
     const hidden = () => { if (document.hidden) clear(); };
     window.addEventListener("hashchange", clear);
     window.addEventListener("blur", clear);
@@ -100,22 +98,22 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
       lifetime.current += 1;
       request.current += 1;
       operation.current = false;
-      toast.current?.dispose();
+      clearToast();
       window.removeEventListener("hashchange", clear);
       window.removeEventListener("blur", clear);
       document.removeEventListener("visibilitychange", hidden);
     };
-  }, []);
+  }, [clearToast]);
   const perform = useCallback(async (action: DiagnosticAction, showSuccess = true) => {
     if (operation.current) return;
     operation.current = true;
     const currentRequest = ++request.current;
     setPendingAction(action);
     setManualCopy(false);
-    toast.current?.clear();
+    const showToast = beginToast();
     const currentLifetime = lifetime.current;
     const notify = (value: Feedback) => {
-      if (currentRequest === request.current && currentLifetime === lifetime.current) toast.current?.show(value, isFailure(value));
+      if (value && currentRequest === request.current && currentLifetime === lifetime.current) showToast(copy[effectiveUiLanguage()][value], isFailure(value));
     };
     try {
       if (action === "issue") {
@@ -149,52 +147,48 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
     finally {
       if (currentRequest === request.current) { operation.current = false; setPendingAction(null); }
     }
-  }, []);
+  }, [beginToast]);
   useEffect(() => {
     if (!visible) {
       lifetime.current += 1;
-      toast.current?.clear();
+      clearToast();
       return;
     }
     if (!isTauri) return;
     let disposed = false;
     queueMicrotask(() => { if (!disposed) void perform("refresh", false); });
     return () => { disposed = true; };
-  }, [visible, perform]);
+  }, [visible, perform, clearToast]);
   const text = copy[effectiveUiLanguage()];
   const summary = useMemo(() => supportDiagnosticSummary(report), [report]);
   const busy = pendingAction !== null;
   if (!isTauri) return null;
-  const failed = isFailure(feedback);
   return <section className="settings-support-diagnostics settings-diagnostics-page" aria-label={text.title} aria-busy={busy}>
-    {feedback && <div className="settings-diagnostic-toast" data-error={failed} role={failed ? "alert" : "status"} aria-live={failed ? "assertive" : "polite"} aria-atomic="true">
-      {failed ? <AlertCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}
-      <span>{text[feedback]}</span>
-      <button type="button" aria-label={text.close} onClick={() => toast.current?.clear()}><X size={16} aria-hidden="true" /></button>
-    </div>}
-    {summary && <>
+    {summary && <div className="settings-diagnostic-overview">
       <dl className="settings-diagnostic-summary">
-        <div><dt>{text.status}</dt><dd>{statusLabel(summary.status)}</dd></div>
-        <div><dt>{I18N.overlay.apiLatency}</dt><dd title={I18N.overlay.apiLatencyHelp}>{summary.apiLatencyMs === null ? I18N.overlay.latencyUnavailable : `${summary.apiLatencyMs} ms`}</dd></div>
-        <div><dt>{summary.translationLatencyKind === "follow" ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency}</dt><dd title={summary.translationLatencyKind === "follow" ? I18N.overlay.translationFollowLatencyHelp : I18N.overlay.translationLatencyHelp}>{summary.translationLatencyMs === null ? I18N.overlay.latencyUnavailable : `${summary.translationLatencyMs} ms`}</dd></div>
+        <div><dt>{text.status}</dt><dd className={`settings-diagnostic-status${summary.status === "error" ? " is-error" : ""}`}><span aria-hidden="true" />{statusLabel(summary.status)}</dd></div>
+        <div><dt>{I18N.overlay.apiLatency}<SettingsHelp text={I18N.overlay.apiLatencyHelp} label={I18N.settings.helpLabel} /></dt><dd className={summary.apiLatencyMs === null ? "is-unavailable" : undefined}>{summary.apiLatencyMs === null ? I18N.overlay.latencyUnavailable : <>{summary.apiLatencyMs}<span className="settings-diagnostic-unit"> ms</span></>}</dd></div>
+        <div><dt>{summary.translationLatencyKind === "follow" ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency}<SettingsHelp text={summary.translationLatencyKind === "follow" ? I18N.overlay.translationFollowLatencyHelp : I18N.overlay.translationLatencyHelp} label={I18N.settings.helpLabel} /></dt><dd className={summary.translationLatencyMs === null ? "is-unavailable" : undefined}>{summary.translationLatencyMs === null ? I18N.overlay.latencyUnavailable : <>{summary.translationLatencyMs}<span className="settings-diagnostic-unit"> ms</span></>}</dd></div>
       </dl>
-      {summary.lastError && <p className="settings-diagnostic-error"><span>{text.lastError}</span>{text.failures[summary.lastError]}</p>}
-    </>}
-    <div className="settings-support-diagnostics__actions">
-      <button type="button" className="settings-button settings-button--quiet settings-button--compact" data-action="copy" disabled={busy}
-        onClick={() => void perform("copy")}><Copy size={14} aria-hidden="true" /><span>{text.copy}</span></button>
-      <button type="button" className="settings-link" data-action="refresh" disabled={busy} aria-busy={pendingAction === "refresh" || undefined}
-        onClick={() => void perform("refresh")}><RotateCw size={14} aria-hidden="true" /><span>{pendingAction === "refresh" ? text.refreshing : text.refresh}</span></button>
-      <button type="button" className="settings-link" data-action="issue" disabled={busy}
-        onClick={() => void perform("issue")}><ExternalLink size={14} aria-hidden="true" /><span>{text.issue}</span></button>
+      {summary.lastError && <p className="settings-diagnostic-error"><AlertCircle size={16} aria-hidden="true" /><span>{text.lastError}</span><strong>{text.failures[summary.lastError]}</strong></p>}
+    </div>}
+    <div className="settings-diagnostic-toolbar">
+      <div className="settings-support-diagnostics__actions">
+        <button type="button" className="settings-button settings-button--quiet settings-button--compact" data-action="refresh" disabled={busy} aria-busy={pendingAction === "refresh" || undefined}
+          onClick={() => void perform("refresh")}><RotateCw size={14} aria-hidden="true" /><span>{pendingAction === "refresh" ? text.refreshing : text.refresh}</span></button>
+        <button type="button" className="settings-button settings-button--quiet settings-button--compact" data-action="issue" disabled={busy}
+          onClick={() => void perform("issue")}><ExternalLink size={14} aria-hidden="true" /><span>{text.issue}</span></button>
+        <button type="button" className="settings-button settings-button--quiet settings-button--compact" data-action="copy" disabled={busy}
+          onClick={() => void perform("copy")}><Copy size={14} aria-hidden="true" /><span>{text.copy}</span></button>
+      </div>
+      <div className="settings-diagnostic-privacy"><SettingsHelp text={I18N.settings.diagnosticsHelp} label={I18N.settings.helpLabel} icon="shield-check" /></div>
     </div>
-    <div className="settings-diagnostic-privacy"><SettingsHelp text={I18N.settings.diagnosticsHelp} label={I18N.settings.helpLabel} icon="shield-check" /></div>
+    {summary && <section className="settings-diagnostic-events" aria-label={text.recent}>
+      <div className="settings-diagnostic-events__heading"><h2>{text.recent}</h2><SettingsHelp text={text.sinceStart} label={I18N.settings.helpLabel} /></div>
+      {summary.recentEvents.length > 0 ? <ol>{summary.recentEvents.map((event, index) => <li key={`${event.sequence}-${index}`} className={event.kind === "failure" ? "is-error" : undefined}><span className="settings-diagnostic-events__time">{(event.elapsedMs / 1000).toFixed(1)} s</span><span className="settings-diagnostic-events__rail" aria-hidden="true" /><span>{eventLabel(event, text)}</span></li>)}</ol> : <p className="settings-diagnostic-events__empty">{text.noEvents}</p>}
+    </section>}
     {report !== null && <details className="settings-diagnostic-preview" open={manualCopy || detailsOpen} onToggle={(event) => { const open = event.currentTarget.open; setDetailsOpen(open); if (!open) setManualCopy(false); }}>
-      <summary>{text.preview}</summary>
-      {(manualCopy || detailsOpen) && summary && summary.recentEvents.length > 0 && <div className="settings-diagnostic-events">
-        <div className="settings-diagnostic-events__heading"><h2>{text.recent}</h2><SettingsHelp text={text.sinceStart} label={I18N.settings.helpLabel} /></div>
-        <ol>{summary.recentEvents.map((event, index) => <li key={`${event.sequence}-${index}`}><span className="settings-diagnostic-events__time">{(event.elapsedMs / 1000).toFixed(1)} s</span><span>{eventLabel(event, text)}</span></li>)}</ol>
-      </div>}
+      <summary><ChevronRight size={16} aria-hidden="true" /><span>{text.preview}</span></summary>
       {(manualCopy || detailsOpen) && (manualCopy ? <textarea aria-label={text.preview} value={report} readOnly rows={10} wrap="off" spellCheck={false} /> : <pre tabIndex={0} aria-label={text.preview}>{report}</pre>)}
     </details>}
   </section>;

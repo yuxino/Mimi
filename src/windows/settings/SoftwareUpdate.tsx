@@ -14,6 +14,7 @@ import {
 } from "./softwareUpdateModel";
 import type { SoftwareUpdater, UpdateCandidate } from "./softwareUpdater";
 import { createUpdaterForEnvironment } from "./softwareUpdateEnvironment";
+import { useSettingsToast } from "./useSettingsToast";
 
 /** User-initiated signed updater. It never polls, downloads, or installs in the
  * background. */
@@ -27,6 +28,7 @@ export function SoftwareUpdate() {
   const [state, setState] = useState<UpdateCheckState>({ kind: "idle" });
   const candidateRef = useRef<UpdateCandidate | undefined>(undefined);
   const operationRef = useRef(false);
+  const { beginToast } = useSettingsToast();
 
   useEffect(() => {
     let disposed = false;
@@ -59,6 +61,7 @@ export function SoftwareUpdate() {
   const handleAction = async () => {
     if (!updater || !interaction.action || operationRef.current) return;
     operationRef.current = true;
+    const notify = beginToast();
 
     try {
       if (interaction.action === "check") {
@@ -69,6 +72,7 @@ export function SoftwareUpdate() {
           const candidate = await updater.check();
           if (!candidate) {
             setState({ kind: "noUpdate" });
+            notify(I18N.settings.noUpdateAvailable);
             return;
           }
 
@@ -123,6 +127,7 @@ export function SoftwareUpdate() {
       try {
         await updater.relaunch();
         setState({ kind: "restartRequested", update });
+        notify(I18N.settings.restartRequested);
       } catch {
         setState({ kind: "restartError", update, recovery: "idle" });
       }
@@ -354,11 +359,7 @@ function UpdateDetails({
 function UpdateFeedback({ state }: { state: UpdateCheckState }) {
   switch (state.kind) {
     case "noUpdate":
-      return (
-        <InlineFeedback tone="success">
-          {I18N.settings.noUpdateAvailable}
-        </InlineFeedback>
-      );
+      return null;
     case "downloaded":
       return (
         <InlineFeedback tone="success">
@@ -372,11 +373,7 @@ function UpdateFeedback({ state }: { state: UpdateCheckState }) {
         </InlineFeedback>
       );
     case "restartRequested":
-      return (
-        <InlineFeedback tone="success">
-          {I18N.settings.restartRequested}
-        </InlineFeedback>
-      );
+      return null;
     case "windowsInstallerStarted":
       return (
         <InlineFeedback tone="info">

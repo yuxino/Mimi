@@ -52,6 +52,7 @@ pub struct ServiceProfilePayload {
     pub name: String,
     pub provider: ProviderKind,
     pub credential_state: CredentialState,
+    pub credential_storage: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speech_credential_state: Option<CredentialState>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,6 +70,7 @@ impl ServiceProfilePayload {
             |(speech, text)| speech.combined(text),
         );
         let text_translation = profile.text_translation();
+        let credential_storage = store.profile_credential_storage(&profile.id);
         Self {
             speech_network_proxy: profile.speech_network_proxy,
             text_network_proxy: profile.text_network_proxy,
@@ -76,6 +78,7 @@ impl ServiceProfilePayload {
             name: profile.name,
             provider: profile.provider,
             credential_state,
+            credential_storage,
             speech_credential_state: states.map(|(speech, _)| speech),
             text_credential_state: states.map(|(_, text)| text),
             text_translation,
@@ -91,6 +94,7 @@ impl ServiceProfilePayload {
             name: profile.name,
             provider: profile.provider,
             credential_state: CredentialState::Unavailable,
+            credential_storage: "keychain",
             speech_credential_state: profile
                 .provider
                 .is_custom_speech()
@@ -500,6 +504,7 @@ mod tests {
                 name: "Alibaba Cloud".into(),
                 provider: ProviderKind::AlibabaCloud,
                 credential_state: CredentialState::Present,
+                credential_storage: "keychain",
                 speech_credential_state: None,
                 text_credential_state: None,
                 text_translation: crate::core::provider::TextTranslation::FollowService,

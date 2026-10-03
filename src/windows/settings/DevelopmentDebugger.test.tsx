@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -93,7 +94,7 @@ afterEach(async () => {
   setStoredUiLanguage("system"); vi.useRealTimers(); vi.unstubAllGlobals();
 });
 
-async function mount(visible = true) { await act(async () => root!.render(<DevelopmentDebugger visible={visible} />)); }
+async function mount(visible = true) { await act(async () => root!.render(<><DevelopmentDebugger visible={visible} /><SettingsToastRegion /></>)); }
 function button(label: string, scope: ParentNode = host): HTMLButtonElement {
   const found = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === label);
   if (!found) throw new Error(`Missing debugger button: ${label}`);
@@ -350,13 +351,13 @@ it("explains a full case store without displaying arbitrary error content", asyn
     return originalInvoke(command, args);
   });
   await mount(); await click("Record audio and subtitles");
-  expect(host.querySelector('[role="status"]')?.textContent).toBe("Local case storage is full. Export and remove cases you no longer need.");
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe("Local case storage is full. Export and remove cases you no longer need.");
   mocks.invoke.mockImplementation(async (command, args) => {
     if (command === "development_debug_start") throw "unexpected-private-service-content";
     return originalInvoke(command, args);
   });
   await click("Record audio and subtitles");
-  expect(host.querySelector('[role="status"]')?.textContent).toBe("Operation failed. Try again.");
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe("Operation failed. Try again.");
   expect(host.textContent).not.toContain("unexpected-private-service-content");
 });
 

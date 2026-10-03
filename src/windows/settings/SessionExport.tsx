@@ -23,6 +23,7 @@ import {
 } from "./SettingsPrimitives";
 import { monitorSessionArchive } from "./sessionArchiveMonitor";
 import { SettingsConfirmation } from "./DestructiveConfirmation";
+import { useSettingsToast } from "./useSettingsToast";
 
 export function SessionExport({ visible }: { visible: boolean }) {
   const active = useStore((state) => state.session.isActive);
@@ -46,9 +47,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
   const [audioError, setAudioError] = useState(false);
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<
-    "saved" | "cleared" | "error" | null
-  >(null);
+  const { beginToast, clearToast } = useSettingsToast();
   const monitor = useRef<ReturnType<typeof monitorSessionArchive> | null>(null);
   const operation = useRef(false);
   const lifetime = useRef(0);
@@ -67,7 +66,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
   function selectHistory(id: string | null) {
     if (id === selectedId) return;
     interaction.current += 1;
-    setFeedback(null);
+    clearToast();
     setHistoryError(false);
     audioRequest.current += 1;
     setAudioUrl(null);
@@ -173,12 +172,12 @@ export function SessionExport({ visible }: { visible: boolean }) {
     const currentInteraction = interaction.current;
     operation.current = true;
     setBusy(true);
-    setFeedback(null);
+    const notify = beginToast();
     try {
       const result = await action();
-      if (lifetime.current === currentLifetime && interaction.current === currentInteraction) setFeedback(result);
+      if (result && lifetime.current === currentLifetime && interaction.current === currentInteraction) notify(result === "saved" ? I18N.settings.sessionExportSaved : I18N.settings.sessionArchiveCleared);
     } catch {
-      if (lifetime.current === currentLifetime && interaction.current === currentInteraction) setFeedback("error");
+      if (lifetime.current === currentLifetime && interaction.current === currentInteraction) notify(I18N.settings.sessionExportFailed, true);
     } finally {
       operation.current = false;
       if (lifetime.current === currentLifetime) {
@@ -437,15 +436,6 @@ export function SessionExport({ visible }: { visible: boolean }) {
         {readError && (
           <InlineFeedback tone="error">
             {I18N.settings.sessionArchiveReadFailed}
-          </InlineFeedback>
-        )}
-        {feedback && (
-          <InlineFeedback tone={feedback === "error" ? "error" : "success"}>
-            {feedback === "error"
-              ? I18N.settings.sessionExportFailed
-              : feedback === "saved"
-                ? I18N.settings.sessionExportSaved
-                : I18N.settings.sessionArchiveCleared}
           </InlineFeedback>
         )}
       </div>

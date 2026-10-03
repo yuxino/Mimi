@@ -30,6 +30,7 @@ use std::sync::Mutex;
 
 pub const PROFILE_KEYCHAIN_SERVICE: &str = "app.yuxino.mimi.credentials.profiles";
 pub const DEVELOPMENT_APPLICATION_IDENTIFIER: &str = "app.yuxino.mimi.dev";
+const LOCAL_DEV_ALIBABA_PROFILE_ID: &str = "alibaba-local-dev";
 const DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE: &str = "app.yuxino.mimi.dev.credentials.profiles";
 pub const LEGACY_KEYCHAIN_SERVICE_V3: &str = "app.yuxino.mimi.credentials.v3";
 pub const LEGACY_KEYCHAIN_SERVICE_V2: &str = "app.yuxino.mimi.credentials.v2";
@@ -359,6 +360,9 @@ pub trait SecretStore: Send + Sync {
     fn is_read_only(&self) -> bool {
         false
     }
+    fn local_dev_profile_id(&self) -> Option<&'static str> {
+        None
+    }
 }
 
 struct KeyringSecretStore;
@@ -583,10 +587,48 @@ impl Default for ProfileCatalog {
 }
 
 impl ProfileCatalog {
+    fn with_local_dev_profile(mut self, enabled: bool) -> Self {
+        let existed = self
+            .profiles
+            .iter()
+            .any(|p| p.id == LOCAL_DEV_ALIBABA_PROFILE_ID);
+        let previous = self
+            .profiles
+            .iter()
+            .find(|p| p.id == LOCAL_DEV_ALIBABA_PROFILE_ID)
+            .cloned();
+        self.profiles
+            .retain(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID);
+        if self.profiles.is_empty() && !enabled {
+            self.profiles.push(ServiceProfile::alibaba_default());
+        }
+        if enabled {
+            let mut profile = previous.unwrap_or_else(|| ServiceProfile {
+                id: LOCAL_DEV_ALIBABA_PROFILE_ID.into(),
+                name: "Alibaba Cloud · dev".into(),
+                ..ServiceProfile::alibaba_default()
+            });
+            profile.provider = ProviderKind::AlibabaCloud;
+            profile.text_translation = Some(TextTranslation::FollowService);
+            if !existed && self.active_profile_id == DEFAULT_ALIBABA_PROFILE_ID {
+                self.active_profile_id = LOCAL_DEV_ALIBABA_PROFILE_ID.into();
+            }
+            self.profiles.insert(0, profile);
+        } else if self.active_profile_id == LOCAL_DEV_ALIBABA_PROFILE_ID {
+            self.active_profile_id = self.profiles[0].id.clone();
+        }
+        self
+    }
+
     fn validated(self) -> Result<Self, ()> {
         if self.schema_version != PROFILE_CATALOG_SCHEMA_VERSION
             || self.profiles.is_empty()
-            || self.profiles.len() > MAXIMUM_PROFILE_COUNT
+            || self
+                .profiles
+                .iter()
+                .filter(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID)
+                .count()
+                > MAXIMUM_PROFILE_COUNT
         {
             return Err(());
         }
@@ -651,7 +693,7 @@ impl SettingsStore {
         let secret =
             local_dev_credentials::select(&app_config_dir, is_ui_test, application_identifier)
                 .unwrap_or(secret);
-        let is_file_mode = secret.is_read_only();
+        let is_file_mode = secret.is_read_only() || secret.local_dev_profile_id().is_some();
         Self::load_with_secret(
             app_config_dir,
             is_ui_test,
@@ -708,11 +750,15 @@ impl SettingsStore {
                 }
             };
 
+        let normalized = catalog
+            .clone()
+            .with_local_dev_profile(secret.local_dev_profile_id().is_some());
+        let should_create_catalog = should_create_catalog || normalized != catalog;
         let store = Self {
             prefs_path,
             prefs: Mutex::new(prefs),
             catalog_path,
-            catalog: Mutex::new(catalog),
+            catalog: Mutex::new(normalized),
             catalog_write_blocked,
             secret,
             profile_keychain_service,
@@ -753,11 +799,13 @@ impl SettingsStore {
         profile_keychain_service: &'static str,
         migrate_legacy_alibaba: bool,
     ) -> Self {
+        let catalog = ProfileCatalog::default()
+            .with_local_dev_profile(!is_ui_test && secret.local_dev_profile_id().is_some());
         Self {
             prefs_path: PathBuf::new(),
             prefs: Mutex::new(Preferences::default()),
             catalog_path: PathBuf::new(),
-            catalog: Mutex::new(ProfileCatalog::default()),
+            catalog: Mutex::new(catalog),
             catalog_write_blocked: false,
             secret,
             profile_keychain_service,
@@ -948,7 +996,13 @@ impl SettingsStore {
         name: &str,
     ) -> Result<ServiceProfile, String> {
         self.mutate_catalog(|catalog| {
-            if catalog.profiles.len() >= MAXIMUM_PROFILE_COUNT {
+            if catalog
+                .profiles
+                .iter()
+                .filter(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID)
+                .count()
+                >= MAXIMUM_PROFILE_COUNT
+            {
                 return Err("No more service profiles can be added.".to_string());
             }
             let profile = ServiceProfile::new(
@@ -1032,6 +1086,9 @@ impl SettingsStore {
     }
 
     pub fn delete_profile(&self, profile_id: &str) -> Result<(), String> {
+        if self.profile_uses_local_dev_credentials(profile_id) {
+            return Err(SecretStoreError::ReadOnly.public_error());
+        }
         if self.catalog_write_blocked {
             return Err(PROFILE_CATALOG_UNAVAILABLE.to_string());
         }
@@ -1225,7 +1282,19 @@ impl SettingsStore {
     /// Public source only; never exposes a file path or secret. This is not a
     /// persisted preference and cannot enable file mode from the frontend.
     pub fn credential_storage(&self) -> &'static str {
-        if self.secret.is_read_only() {
+        if self.secret.is_read_only() || self.secret.local_dev_profile_id().is_some() {
+            "localDevFile"
+        } else {
+            "keychain"
+        }
+    }
+
+    pub fn profile_uses_local_dev_credentials(&self, profile_id: &str) -> bool {
+        !self.is_ui_test && self.secret.local_dev_profile_id() == Some(profile_id)
+    }
+
+    pub fn profile_credential_storage(&self, profile_id: &str) -> &'static str {
+        if self.secret.is_read_only() || self.profile_uses_local_dev_credentials(profile_id) {
             "localDevFile"
         } else {
             "keychain"
@@ -1240,7 +1309,7 @@ impl SettingsStore {
         field: CredentialRevealField,
         text_translation: Option<TextTranslation>,
     ) -> Result<Option<String>, String> {
-        self.require_writable_credentials()?;
+        self.require_writable_credentials(profile_id)?;
         let profile = self.profile(profile_id)?;
         if !field.allowed_for(&profile, text_translation) {
             return Err("credential_reveal_field_mismatch".into());
@@ -1321,7 +1390,7 @@ impl SettingsStore {
         profile_id: &str,
         credentials: &ProviderCredentials,
     ) -> Result<(), String> {
-        self.require_writable_credentials()?;
+        self.require_writable_credentials(profile_id)?;
         let profile = self.profile(profile_id)?;
         if let ProviderCredentials::CustomSpeech {
             endpoint,
@@ -1453,6 +1522,12 @@ impl SettingsStore {
         {
             // The local file supplies an Alibaba key only, not an independent
             // MT key/endpoint. Never borrow an OS-store destination instead.
+            return Ok(None);
+        }
+        if self.profile_uses_local_dev_credentials(&profile.id)
+            && (profile.provider != ProviderKind::AlibabaCloud
+                || profile.text_translation() != TextTranslation::FollowService)
+        {
             return Ok(None);
         }
         let Some(value) = self
@@ -2057,7 +2132,7 @@ impl SettingsStore {
     }
 
     fn delete_profile_credentials(&self, profile: &ServiceProfile) -> Result<(), String> {
-        self.require_writable_credentials()?;
+        self.require_writable_credentials(&profile.id)?;
         let destination = self.destination_value(profile)?;
         if destination.is_some() {
             self.write_destination_value(profile, None, false)?;
@@ -2624,8 +2699,8 @@ impl SettingsStore {
             .insert(cache_key(service, account), Ok(value));
     }
 
-    fn require_writable_credentials(&self) -> Result<(), String> {
-        if self.secret.is_read_only() {
+    fn require_writable_credentials(&self, profile_id: &str) -> Result<(), String> {
+        if self.secret.is_read_only() || self.profile_uses_local_dev_credentials(profile_id) {
             return Err(SecretStoreError::ReadOnly.public_error());
         }
         Ok(())
@@ -4411,6 +4486,233 @@ mod tests {
                 .unwrap()
                 .direct_api_key(),
             Some("synthetic-old-key")
+        );
+    }
+
+    #[test]
+    fn local_dev_preset_keeps_other_profiles_and_text_destinations_in_the_os_store() {
+        let fake = FakeSecretStore::default();
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            local_dev_credentials::test_store(
+                Ok(Some("synthetic-file-key".into())),
+                Box::new(fake.clone()),
+            ),
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        let preset = store.active_profile().unwrap();
+        assert_eq!(preset.id, LOCAL_DEV_ALIBABA_PROFILE_ID);
+        assert_eq!(store.credential_state(&preset), CredentialState::Present);
+        assert_eq!(store.profile_credential_storage(&preset.id), "localDevFile");
+        assert_eq!(
+            store.save_credentials(
+                &preset.id,
+                &ProviderCredentials::api_key("synthetic-replacement")
+            ),
+            Err("local_dev_credentials_read_only".into())
+        );
+        assert_eq!(
+            store.delete_profile(&preset.id),
+            Err("local_dev_credentials_read_only".into())
+        );
+        assert_eq!(
+            store.reveal_credential(&preset.id, CredentialRevealField::ApiKey, None),
+            Err("local_dev_credentials_read_only".into())
+        );
+
+        let regular = store
+            .create_profile(ProviderKind::AlibabaCloud, "Regular Alibaba")
+            .unwrap();
+        assert_eq!(store.credential_state(&regular), CredentialState::Missing);
+        store
+            .save_credentials(
+                &regular.id,
+                &ProviderCredentials::api_key("synthetic-regular-asr"),
+            )
+            .unwrap();
+        store.select_profile(&regular.id).unwrap();
+        for request in [
+            translation_request(TextTranslation::DeepL, "", "", "synthetic-deepl:fx"),
+            translation_request(
+                TextTranslation::DeepLX,
+                "",
+                "http://127.0.0.1:8001/translate",
+                "",
+            ),
+            openai_compatible_request(
+                "",
+                "https://text.example/v1",
+                "synthetic-text-key",
+                "text-model",
+            ),
+            ProviderCredentials::AlibabaTranslation {
+                api_key: String::new(),
+                text_translation: TextTranslation::ChatMock,
+                endpoint: "http://127.0.0.1:8000/v1".into(),
+                token: String::new(),
+                model: "chat-model".into(),
+                clear_token: false,
+            },
+            translation_request(TextTranslation::FollowService, "", "", ""),
+        ] {
+            store.save_credentials(&regular.id, &request).unwrap();
+            assert!(store.configuration().is_ok());
+        }
+        assert_eq!(
+            store
+                .reveal_credential(&regular.id, CredentialRevealField::ApiKey, None)
+                .unwrap()
+                .as_deref(),
+            Some("synthetic-regular-asr")
+        );
+        let account = credential_account(&regular);
+        assert_eq!(
+            fake.value(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, &account)
+                .as_deref(),
+            Some("synthetic-regular-asr")
+        );
+        assert!(fake.value(PROFILE_KEYCHAIN_SERVICE, &account).is_none());
+        assert!(fake
+            .value(
+                DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                &credential_account(&preset)
+            )
+            .is_none());
+        for path in [&store.prefs_path, &store.catalog_path] {
+            let metadata = std::fs::read_to_string(path).unwrap();
+            assert!(!metadata.contains("synthetic-file-key"));
+            assert!(!metadata.contains("synthetic-regular-asr"));
+            assert!(!metadata.contains("synthetic-text-key"));
+        }
+        drop(store);
+        let reopened = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            local_dev_credentials::test_store(
+                Ok(Some("synthetic-file-key".into())),
+                Box::new(fake.clone()),
+            ),
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        assert_eq!(reopened.active_profile().unwrap().id, regular.id);
+        assert!(reopened.configuration().is_ok());
+        reopened.select_profile(&preset.id).unwrap();
+        assert!(reopened.configuration().is_ok());
+        drop(reopened);
+        let without_file = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(fake.clone()),
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        assert!(without_file
+            .profile_catalog()
+            .unwrap()
+            .1
+            .iter()
+            .all(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID));
+        assert_eq!(
+            fake.value(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, &account)
+                .as_deref(),
+            Some("synthetic-regular-asr")
+        );
+    }
+
+    #[test]
+    fn an_invalid_local_dev_file_does_not_lock_or_supply_other_provider_profiles() {
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::in_memory_with_scope(
+            local_dev_credentials::test_store(
+                Err(SecretStoreError::LocalDevFileUnavailable),
+                Box::new(fake.clone()),
+            ),
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        let preset = store.active_profile().unwrap();
+        fake.put(
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            &credential_account(&preset),
+            "synthetic-must-not-fallback",
+        );
+        assert_eq!(
+            store.configuration().unwrap_err(),
+            "local_dev_credentials_unavailable"
+        );
+        let regular = store
+            .create_profile(ProviderKind::OpenAIRealtime, "Regular OpenAI")
+            .unwrap();
+        store
+            .save_credentials(
+                &regular.id,
+                &ProviderCredentials::api_key("synthetic-openai"),
+            )
+            .unwrap();
+        store.select_profile(&regular.id).unwrap();
+        assert!(store.configuration().is_ok());
+        assert_eq!(store.profile_credential_storage(&regular.id), "keychain");
+        store.delete_api_key(&regular.id).unwrap();
+        assert_eq!(store.credential_state(&regular), CredentialState::Missing);
+        assert_eq!(
+            store.credential_state(&preset),
+            CredentialState::Unavailable
+        );
+    }
+
+    #[test]
+    fn the_local_dev_preset_does_not_consume_a_user_profile_slot() {
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::in_memory_with_scope(
+            local_dev_credentials::test_store(Ok(None), Box::new(fake)),
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        for _ in 1..MAXIMUM_PROFILE_COUNT {
+            store
+                .create_profile(ProviderKind::AlibabaCloud, "Regular")
+                .unwrap();
+        }
+        assert_eq!(
+            store.profile_catalog().unwrap().1.len(),
+            MAXIMUM_PROFILE_COUNT + 1
+        );
+        assert!(store
+            .create_profile(ProviderKind::AlibabaCloud, "Too many")
+            .is_err());
+    }
+
+    #[test]
+    fn deleting_the_last_regular_dev_profile_does_not_restore_it_on_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let load = || {
+            SettingsStore::load_with_secret(
+                directory.path().into(),
+                false,
+                local_dev_credentials::test_store(
+                    Ok(Some("synthetic-file-key".into())),
+                    Box::new(fake.clone()),
+                ),
+                DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                false,
+            )
+        };
+        let store = load();
+        store.delete_profile(DEFAULT_ALIBABA_PROFILE_ID).unwrap();
+        assert_eq!(store.profile_catalog().unwrap().1.len(), 1);
+        drop(store);
+        let reopened = load();
+        assert_eq!(reopened.profile_catalog().unwrap().1.len(), 1);
+        assert_eq!(
+            reopened.active_profile().unwrap().id,
+            LOCAL_DEV_ALIBABA_PROFILE_ID
         );
     }
 

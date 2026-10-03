@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,7 +53,7 @@ beforeEach(async () => {
   ipc.sessionExport.mockResolvedValue(false);
   ipc.sessionHistoryDelete.mockResolvedValue(undefined);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-  await act(async () => root.render(<SessionExport visible />)); await flush();
+  await act(async () => root.render(<><SessionExport visible /><SettingsToastRegion /></>)); await flush();
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); });
 
@@ -62,14 +63,18 @@ describe("history operation state", () => {
     if (outcome === "failure") ipc.sessionExport.mockRejectedValueOnce(new Error("synthetic failure"));
     else ipc.sessionExport.mockResolvedValueOnce(outcome);
     const reads = ipc.sessionHistoryPage.mock.calls.length;
-    await click(button(I18N.settings.exportTranscript)); await flush(5000);
+    await click(button(I18N.settings.exportTranscript));
     expect(host.textContent).toContain("Synthetic A");
     expect(host.querySelector("input")!.value).toBe("Synthetic");
     expect(host.textContent).toContain(I18N.settings.transcriptPage(2, 3));
     expect(ipc.sessionHistoryPage).toHaveBeenLastCalledWith("A", "Synthetic", 1);
     expect(ipc.sessionHistoryPage).toHaveBeenCalledTimes(reads);
     expect(ipc.sessionExport).toHaveBeenCalledWith("transcript", "A");
-    if (outcome === true) expect(host.textContent).toContain(I18N.settings.sessionExportSaved);
+    if (outcome === true) {
+      expect(host.querySelector(".settings-toast")?.textContent).toContain(I18N.settings.sessionExportSaved);
+      await flush(3000);
+      expect(host.querySelector(".settings-toast")).toBeNull();
+    }
     if (outcome === "failure") expect(host.textContent).toContain(I18N.settings.sessionExportFailed);
   });
   it("retains current transcript and repeated selection", async () => {
@@ -118,9 +123,9 @@ describe("history operation state", () => {
   it("does not reset selection after closing and reopening during deletion", async () => {
     const pending = deferred(); await select(1); await confirm(); ipc.sessionHistoryDelete.mockReturnValueOnce(pending.promise);
     await click(button(I18N.settings.historyDelete));
-    await act(async () => root.render(<SessionExport visible={false} />));
+    await act(async () => root.render(<><SessionExport visible={false} /><SettingsToastRegion /></>));
     expect(document.querySelector(".settings-confirmation")).toBeNull();
-    await act(async () => root.render(<SessionExport visible />)); await flush();
+    await act(async () => root.render(<><SessionExport visible /><SettingsToastRegion /></>)); await flush();
     await act(async () => pending.resolve()); await flush();
     expect(host.querySelector(".is-selected")).not.toBeNull();
     expect(host.textContent).toContain("Synthetic A");
@@ -162,8 +167,8 @@ describe("history operation state", () => {
   it("ignores pending export completion after closing and reopening", async () => {
     const pending = deferred(); ipc.sessionExport.mockReturnValueOnce(pending.promise);
     await click(button(I18N.settings.exportTranscript));
-    await act(async () => root.render(<SessionExport visible={false} />));
-    await act(async () => root.render(<SessionExport visible />)); await flush();
+    await act(async () => root.render(<><SessionExport visible={false} /><SettingsToastRegion /></>));
+    await act(async () => root.render(<><SessionExport visible /><SettingsToastRegion /></>)); await flush();
     await act(async () => pending.resolve(true)); await flush();
     expect(host.textContent).not.toContain(I18N.settings.sessionExportSaved);
     expect(host.textContent).toContain("Synthetic current");
@@ -181,8 +186,8 @@ it("selects a separate recording for playback and export, and discards stale pla
   vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: objectUrl, revokeObjectURL: vi.fn() }));
   Element.prototype.scrollIntoView = vi.fn();
   ipc.sessionHistoryList.mockResolvedValue([{ id: "dual", count: 1, hasAudio: true, audioSources: ["system", "microphone"], startedAtMs: 1_700_000_000_000 }]);
-  await act(async () => root.render(<SessionExport visible={false} />));
-  await act(async () => root.render(<SessionExport visible />)); await flush();
+  await act(async () => root.render(<><SessionExport visible={false} /><SettingsToastRegion /></>));
+  await act(async () => root.render(<><SessionExport visible /><SettingsToastRegion /></>)); await flush();
   await select(1);
   const pending = deferred();
   ipc.sessionHistoryAudio.mockReturnValueOnce(pending.promise);
@@ -203,8 +208,8 @@ it("selects a separate recording for playback and export, and discards stale pla
 
 it("automatically uses the actual single microphone recording instead of assuming system audio", async () => {
   ipc.sessionHistoryList.mockResolvedValue([{ id: "mic", count: 1, hasAudio: true, audioSources: ["microphone"], startedAtMs: 1_700_000_000_000 }]);
-  await act(async () => root.render(<SessionExport visible={false} />));
-  await act(async () => root.render(<SessionExport visible />)); await flush();
+  await act(async () => root.render(<><SessionExport visible={false} /><SettingsToastRegion /></>));
+  await act(async () => root.render(<><SessionExport visible /><SettingsToastRegion /></>)); await flush();
   await select(1);
   expect(host.querySelector('[role="combobox"]')).toBeNull();
   await click(button(I18N.settings.exportAudio));

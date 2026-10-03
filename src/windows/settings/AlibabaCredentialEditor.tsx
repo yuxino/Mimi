@@ -118,6 +118,7 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
     { value: "chatMock", label: "ChatMock", icon: <ProviderIcon provider="chatMock" size={32} /> },
     { value: "openAICompatible", label: I18N.settings.textTranslationOpenAICompatible, icon: <ProviderIcon provider="openAICompatible" size={32} /> },
   ];
+  const selectedTranslation = translationOptions.find(option => option.value === translation)!;
 
   const stages = <>
     {!textOnly && <section className="service-stage" aria-labelledby={`${inputId}-recognition-title`}>
@@ -145,9 +146,11 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
       </header>
       <div className="settings-field service-stage__selector">
         <span>{I18N.settings.serviceProvider}</span>
-        <SettingsSelect label={I18N.settings.textTranslationLabel} disabled={disabled || readOnly} value={translation} options={translationOptions}
-          onChange={(value) => { setTranslationDraft(value as TextTranslation); setEndpointInvalid(false); }} />
+        {readOnly ? <span className="service-stage__provider">{selectedTranslation.icon}{selectedTranslation.label}</span>
+          : <SettingsSelect label={I18N.settings.textTranslationLabel} disabled={disabled} value={translation} options={translationOptions}
+            onChange={(value) => { setTranslationDraft(value as TextTranslation); setEndpointInvalid(false); }} />}
       </div>
+      {readOnly && <div className="service-stage__restriction"><InlineFeedback tone="info" icon="lock">{diagnosticCopy().localDevTranslationLocked}</InlineFeedback><SettingsHelp text={diagnosticCopy().localDevTranslationHelp} label={I18N.settings.helpLabel} /></div>}
       {!readOnly && translation !== "followService" && <div className="credential-form__fields">
         {(translation === "deepLX" || compatible) && <label className="settings-field" htmlFor={endpointId}>
           <span>{compatible ? I18N.settings.openAICompatibleEndpoint : I18N.settings.deepLXEndpoint}</span>

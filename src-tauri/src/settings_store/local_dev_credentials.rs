@@ -1,7 +1,10 @@
-//! Explicit, read-only credentials for the opt-in macOS development bundle.
+//! A read-only Alibaba preset beside ordinary development OS credentials.
 //! Never source this file or inspect process environment variables for keys.
 
-use super::{SecretStore, SecretStoreError, DEVELOPMENT_APPLICATION_IDENTIFIER};
+use super::{
+    KeyringSecretStore, SecretStore, SecretStoreError, DEVELOPMENT_APPLICATION_IDENTIFIER,
+    DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, LOCAL_DEV_ALIBABA_PROFILE_ID,
+};
 #[cfg(unix)]
 use std::io::{ErrorKind, Read};
 use std::path::Path;
@@ -45,6 +48,7 @@ fn select_with_reader(
         Ok(None) => None, // Only a genuinely absent file retains OS storage.
         result => Some(Box::new(FileSecretStore {
             key: result.and_then(|text| parse(text.as_deref().unwrap_or_default())),
+            os: Box::new(KeyringSecretStore),
         })),
     }
 }
@@ -52,30 +56,63 @@ fn select_with_reader(
 struct FileSecretStore {
     // No Debug/Serialize implementation: the value stays inside native storage.
     key: Result<Option<String>, SecretStoreError>,
+    os: Box<dyn SecretStore>,
+}
+
+fn preset_account(account: &str) -> bool {
+    account.starts_with(&format!("provider-profile:{LOCAL_DEV_ALIBABA_PROFILE_ID}:"))
 }
 
 impl SecretStore for FileSecretStore {
-    fn load(&self, _service: &str, account: &str) -> Result<Option<String>, SecretStoreError> {
-        // Unsupported providers and MT destination slots are missing, never
-        // read from Keychain. The same test key serves native Alibaba profiles.
-        if account.starts_with("provider-profile:") && account.ends_with(":alibabaCloud:api-key") {
-            self.key.clone()
-        } else {
-            Ok(None)
+    fn load(&self, service: &str, account: &str) -> Result<Option<String>, SecretStoreError> {
+        if service != DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE
+            || !account.starts_with("provider-profile:")
+        {
+            return Ok(None);
         }
+        if preset_account(account) {
+            return if account
+                == format!("provider-profile:{LOCAL_DEV_ALIBABA_PROFILE_ID}:alibabaCloud:api-key")
+            {
+                self.key.clone()
+            } else {
+                Ok(None)
+            };
+        }
+        self.os.load(service, account)
     }
 
-    fn save(&self, _: &str, _: &str, _: &str) -> Result<(), SecretStoreError> {
-        Err(SecretStoreError::ReadOnly)
+    fn save(&self, service: &str, account: &str, value: &str) -> Result<(), SecretStoreError> {
+        if preset_account(account)
+            || service != DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE
+            || !account.starts_with("provider-profile:")
+        {
+            return Err(SecretStoreError::ReadOnly);
+        }
+        self.os.save(service, account, value)
     }
 
-    fn delete(&self, _: &str, _: &str) -> Result<(), SecretStoreError> {
-        Err(SecretStoreError::ReadOnly)
+    fn delete(&self, service: &str, account: &str) -> Result<(), SecretStoreError> {
+        if preset_account(account)
+            || service != DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE
+            || !account.starts_with("provider-profile:")
+        {
+            return Err(SecretStoreError::ReadOnly);
+        }
+        self.os.delete(service, account)
     }
 
-    fn is_read_only(&self) -> bool {
-        true
+    fn local_dev_profile_id(&self) -> Option<&'static str> {
+        Some(LOCAL_DEV_ALIBABA_PROFILE_ID)
     }
+}
+
+#[cfg(test)]
+pub(super) fn test_store(
+    key: Result<Option<String>, SecretStoreError>,
+    os: Box<dyn SecretStore>,
+) -> Box<dyn SecretStore> {
+    Box::new(FileSecretStore { key, os })
 }
 
 fn parse(text: &str) -> Result<Option<String>, SecretStoreError> {
@@ -173,6 +210,38 @@ fn read_file(_: &Path) -> Result<Option<String>, SecretStoreError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone, Default)]
+    struct TestOsStore(Arc<Mutex<HashMap<(String, String), String>>>);
+
+    impl SecretStore for TestOsStore {
+        fn load(&self, service: &str, account: &str) -> Result<Option<String>, SecretStoreError> {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&(service.into(), account.into()))
+                .cloned())
+        }
+        fn save(&self, service: &str, account: &str, value: &str) -> Result<(), SecretStoreError> {
+            self.0
+                .lock()
+                .unwrap()
+                .insert((service.into(), account.into()), value.into());
+            Ok(())
+        }
+        fn delete(&self, service: &str, account: &str) -> Result<(), SecretStoreError> {
+            self.0
+                .lock()
+                .unwrap()
+                .remove(&(service.into(), account.into()));
+            Ok(())
+        }
+    }
+
+    const PRESET_ACCOUNT: &str = "provider-profile:alibaba-local-dev:alibabaCloud:api-key";
 
     #[test]
     fn local_dev_credentials_all_gates_precede_any_file_access() {
@@ -196,7 +265,7 @@ mod tests {
         {
             let store = select(Path::new(""), false, DEVELOPMENT_APPLICATION_IDENTIFIER).unwrap();
             assert_eq!(
-                store.load("unused", "provider-profile:a:alibabaCloud:api-key"),
+                store.load(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, PRESET_ACCOUNT),
                 Err(SecretStoreError::LocalDevFileUnavailable)
             );
         }
@@ -215,9 +284,12 @@ mod tests {
             let store =
                 select_with_reader(true, false, DEVELOPMENT_APPLICATION_IDENTIFIER, || result)
                     .unwrap();
-            assert!(store.is_read_only());
             assert_eq!(
-                store.load("unused", "provider-profile:default:alibabaCloud:api-key"),
+                store.local_dev_profile_id(),
+                Some(LOCAL_DEV_ALIBABA_PROFILE_ID)
+            );
+            assert_eq!(
+                store.load(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, PRESET_ACCOUNT),
                 Err(SecretStoreError::LocalDevFileUnavailable)
             );
         }
@@ -252,15 +324,28 @@ mod tests {
     }
 
     #[test]
-    fn local_dev_credentials_store_has_no_os_fallback_or_writes() {
+    fn local_dev_credentials_preset_has_no_os_fallback_or_secret_writes() {
         let store = FileSecretStore {
             key: Ok(Some("synthetic-test-only".into())),
+            os: Box::new(TestOsStore::default()),
         };
         assert_eq!(
             store
-                .load("unused", "provider-profile:a:alibabaCloud:api-key")
+                .load(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, PRESET_ACCOUNT)
                 .unwrap(),
             Some("synthetic-test-only".into())
+        );
+        assert_eq!(
+            store.save(
+                DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                PRESET_ACCOUNT,
+                "synthetic-replacement"
+            ),
+            Err(SecretStoreError::ReadOnly)
+        );
+        assert_eq!(
+            store.delete(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, PRESET_ACCOUNT),
+            Err(SecretStoreError::ReadOnly)
         );
         for account in [
             "provider-profile:a:openAIRealtime:api-key",
@@ -292,8 +377,14 @@ mod tests {
         use crate::core::provider::{ProviderKind, TextTranslation};
         let secret = Box::new(FileSecretStore {
             key: Ok(Some("synthetic-test-only".into())),
+            os: Box::new(TestOsStore::default()),
         });
-        let store = SettingsStore::in_memory_with_scope(secret, false, "test-dev", false);
+        let store = SettingsStore::in_memory_with_scope(
+            secret,
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
         let profile = store.active_profile().unwrap();
         assert_eq!(
             store.credential_state(&profile),
@@ -344,8 +435,14 @@ mod tests {
         use super::super::SettingsStore;
         let secret = Box::new(FileSecretStore {
             key: Err(SecretStoreError::LocalDevFileUnavailable),
+            os: Box::new(TestOsStore::default()),
         });
-        let store = SettingsStore::in_memory_with_scope(secret, false, "test-dev", false);
+        let store = SettingsStore::in_memory_with_scope(
+            secret,
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
         let profile = store.active_profile().unwrap();
         assert_eq!(store.credential_storage(), "localDevFile");
         assert_eq!(

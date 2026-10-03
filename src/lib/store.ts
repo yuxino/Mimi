@@ -497,7 +497,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       return get().settings;
     }
     const current = get().settings;
-    if (current.profiles.length >= 20) throw new Error("profile-limit");
+    if (current.profiles.filter(profile => profile.credentialStorage !== "localDevFile").length >= 20) throw new Error("profile-limit");
     const id = `mock-${provider}-${Date.now()}`;
     const snapshot: SettingsSnapshot = {
       ...current,

@@ -125,8 +125,7 @@ it("places independent proxy controls inside a service profile and blocks change
   const selector = host.querySelector<HTMLButtonElement>('.service-proxies [role="combobox"]')!;
   expect(selector.disabled).toBe(false);
   await act(() => selector.click());
-  await act(() => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === I18N.settings.networkProxyDirect)!.click());
-  await act(async () => host.querySelector(".service-proxies form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === I18N.settings.networkProxyDirect)!.click());
   expect(saveSettings).not.toHaveBeenCalled();
   expect(useStore.getState().settings.profiles[0]!.speechNetworkProxy).toEqual({ mode: "direct", url: null });
   expect(useStore.getState().settings.profiles[0]!.textNetworkProxy).toBeUndefined();

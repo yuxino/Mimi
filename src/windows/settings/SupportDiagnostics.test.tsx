@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SettingsToastRegion } from "./SettingsToast";
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -30,7 +31,7 @@ afterEach(async () => {
   vi.resetAllMocks();
   vi.unstubAllGlobals();
 });
-async function mount() { await act(async () => root.render(<SupportDiagnostics />)); }
+async function mount() { await act(async () => root.render(<><SupportDiagnostics /><SettingsToastRegion /></>)); }
 async function copy() { await act(async () => host.querySelector<HTMLButtonElement>('[data-action="copy"]')!.click()); }
 async function openDetails() {
   const details = host.querySelector<HTMLDetailsElement>("details")!;
@@ -114,7 +115,7 @@ it("keeps diagnostic preparation guarded while its compact copy action is pendin
   expect(mocks.clipboard).toHaveBeenCalledOnce();
 });
 
-it("loads a safe snapshot on entry, shows concise measurements with events inside collapsed details, and refreshes only on request", async () => {
+it("loads a safe snapshot on entry, keeps recent events visible independently of raw data, and refreshes only on request", async () => {
   const snapshot = (status: string) => JSON.stringify({
     schema: "mimi.support.v2", session_status: status,
     service: { api_round_trip_ms: 0, translation_duration_ms: 125, translation_duration_kind: "follow" },
@@ -122,38 +123,40 @@ it("loads a safe snapshot on entry, shows concise measurements with events insid
     journal: { recent_events: Array.from({ length: 9 }, (_, index) => ({ sequence: index, elapsed_since_app_start_ms: index * 1000, kind: "status", status: "listening" })) },
   });
   mocks.invoke.mockResolvedValue(snapshot("listening"));
-  await act(async () => root.render(<SupportDiagnostics visible={false} />));
+  await act(async () => root.render(<><SupportDiagnostics visible={false} /><SettingsToastRegion /></>));
   expect(mocks.invoke).not.toHaveBeenCalled();
-  await act(async () => root.render(<SupportDiagnostics visible />));
+  await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
   expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith("support_diagnostics");
   expect(host.querySelectorAll(".settings-diagnostic-summary > div")).toHaveLength(3);
   expect(host.querySelector(".settings-diagnostic-summary")?.textContent).toContain("0 ms");
   expect(host.querySelector(".settings-diagnostic-summary")?.textContent).toContain("125 ms");
-  expect(host.querySelectorAll(".settings-diagnostic-events li")).toHaveLength(0);
+  expect(host.querySelectorAll(".settings-diagnostic-events li")).toHaveLength(6);
+  expect(host.querySelectorAll(".settings-diagnostic-preview .settings-diagnostic-events li")).toHaveLength(0);
   expect(host.querySelector("pre")).toBeNull();
   expect(host.querySelector<HTMLDetailsElement>(".settings-diagnostic-preview")?.open).toBe(false);
   const details = host.querySelector<HTMLDetailsElement>(".settings-diagnostic-preview")!;
   await act(() => { details.open = true; details.dispatchEvent(new Event("toggle")); });
-  expect(host.querySelectorAll(".settings-diagnostic-preview .settings-diagnostic-events li")).toHaveLength(6);
+  expect(host.querySelectorAll(".settings-diagnostic-events li")).toHaveLength(6);
+  expect(host.querySelector("pre")?.textContent).toBe(snapshot("listening"));
   expect(host.querySelector(".settings-diagnostic-events__heading .settings-help-control__description")?.textContent).toBe("Since app start");
   expect(host.querySelector(".settings-diagnostic-events__heading > span:not(.settings-help-control)")).toBeNull();
   expect(mocks.invoke).toHaveBeenCalledOnce();
   await act(() => { details.open = false; details.dispatchEvent(new Event("toggle")); });
-  expect(host.querySelector(".settings-diagnostic-events")).toBeNull();
+  expect(host.querySelectorAll(".settings-diagnostic-events li")).toHaveLength(6);
   expect(host.querySelector("pre")).toBeNull();
-  await act(async () => root.render(<SupportDiagnostics visible />));
+  await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
   expect(mocks.invoke).toHaveBeenCalledOnce();
   mocks.invoke.mockResolvedValue(snapshot("paused"));
   await act(async () => host.querySelector<HTMLButtonElement>('[data-action="refresh"]')!.click());
   expect(mocks.invoke).toHaveBeenCalledTimes(2);
   expect(host.querySelector(".settings-diagnostic-summary")?.textContent).toContain(I18N.settings.sessionPaused);
   expect(mocks.clipboard).not.toHaveBeenCalled();
-  await act(async () => root.render(<SupportDiagnostics visible={false} />));
+  await act(async () => root.render(<><SupportDiagnostics visible={false} /><SettingsToastRegion /></>));
   expect(mocks.invoke).toHaveBeenCalledTimes(2);
 });
 
 it("loads a fresh snapshot under StrictMode without duplicating the disposed entry effect", async () => {
-  await act(async () => root.render(<StrictMode><SupportDiagnostics visible /></StrictMode>));
+  await act(async () => root.render(<><StrictMode><SupportDiagnostics visible /></StrictMode><SettingsToastRegion /></>));
   expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith("support_diagnostics");
   expect(host.querySelector("pre")).toBeNull();
   await openDetails();
