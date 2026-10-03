@@ -51,6 +51,9 @@ class SharedLivePairContractTest {
                     step.getJSONArray("expected").similar(events))
                 repeat(events.length()) { eventIndex ->
                     val event = JSONObject(events.getJSONObject(eventIndex).toString())
+                    // Listener metadata is outside the strict subtitle-event schema.
+                    event.remove("language")
+                    event.remove("follow_latency_ms")
                     when (event.getString("type")) {
                         "item_created", "session_finished", "passthrough" -> Unit
                         else -> {
