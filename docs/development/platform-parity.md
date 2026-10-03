@@ -28,7 +28,7 @@ update both implementations and their platform-specific tests in the same change
   the default; each platform's explicit local transport boundary remains enforced.
 - Only complete translation text is displayed. Leading ChatMock reasoning blocks are
   removed; unfinished responses and malformed/empty data fail without echoing their text.
-- Complete subtitle text is preserved within the same UTF-8 byte limit; punctuation
+- Shared subtitle fields preserve complete text within the same 65,536-byte UTF-8 limit; punctuation
   and long sentences do not cause suffix-only display or cropped confirmed history.
   One complete current pair is retained independently of optional history. Raw drafts
   cannot clear it; older confirmed identities cannot overwrite newer complete owners.
@@ -54,6 +54,7 @@ update both implementations and their platform-specific tests in the same change
 | Recognition selection | Eight built-in services plus custom DashScope/OpenAI ASR | Eight built-in adapters; independent text currently pairs with Alibaba ASR |
 | Built-in Alibaba pipeline | Desktop Audio 3.0/Qwen-MT scheduling | Existing integrated realtime translation adapter |
 | Translation scheduling | Speculative drafts plus serial prioritized finals and provider recovery | Final-only serial HTTP; same shared final bounds/retry decisions, native execution and cancellation |
+| Independent text HTTP bounds | HQ source fields up to 65,536 UTF-8 bytes; response bodies up to 1 MiB; decoded text uses native adapter bounds | Source/result text up to 4,096 UTF-16 code units; response bodies up to 64 KiB |
 | Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Existing native overlay background settings and history styling |
 | Audio capture | System audio only in the current release; microphone selection temporarily unavailable (implementation retained). OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
 | Proxy preferences | Per-profile independent recognition/text routes; integrated realtime uses one route | Platform network defaults; no per-stage proxy controls |
@@ -66,6 +67,10 @@ These differences are current scope, not proof of live-account acceptance. When 
 feature, update this table and the affected cross-platform fixtures instead of assuming the
 other implementation already matches. Keep transport behavior shared while respecting each
 platform's native UI, permissions and resource limits.
+
+The shared UTF-8 limit governs reducer subtitle fields. Native independent text
+adapters can reject content earlier; their request, result and HTTP body limits
+are not unified by the shared-core extraction.
 
 ## Verification and change review
 
