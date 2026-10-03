@@ -27,3 +27,8 @@ export function normalizeSubtitleHex(value: string): `#${string}` | null {
 export function subtitleColorHex(color: SubtitleColor): string {
   return SUBTITLE_COLORS[color as SubtitlePresetColor] ?? normalizeSubtitleHex(color) ?? SUBTITLE_COLORS.white;
 }
+
+/** Background alpha never reduces subtitle text contrast. Older snapshots use 80%. */
+export function subtitleBackgroundColor(opacity = 80): string {
+  return `rgba(0,0,0,${Math.min(100, Math.max(0, opacity)) / 100})`;
+}

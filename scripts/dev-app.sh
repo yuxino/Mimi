@@ -10,7 +10,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-BUILD_APP="$PROJECT_DIR/src-tauri/target/release/mimi-dev.app"
+TARGET_DIR="${CARGO_TARGET_DIR:-$PROJECT_DIR/src-tauri/target}"
+if [[ "$TARGET_DIR" != /* ]]; then
+  TARGET_DIR="$PROJECT_DIR/$TARGET_DIR"
+fi
+BUILD_DIR="$TARGET_DIR/local-dev"
+BUILD_APP="$BUILD_DIR/mimi-dev.app"
 DEV_TAURI_CONFIG="$PROJECT_DIR/src-tauri/tauri.dev.conf.json"
 RELEASE_TAURI_CONFIG="$PROJECT_DIR/src-tauri/tauri.conf.json"
 CANONICAL_APP="${MIMI_DEV_APP_PATH:-/Applications/mimi-dev.app}"
@@ -294,15 +299,15 @@ export CARGO_HOME="${CARGO_HOME:-$PROJECT_DIR/.cargo-home}"
 export npm_config_cache="${npm_config_cache:-$PROJECT_DIR/.npm-cache}"
 export MACOSX_DEPLOYMENT_TARGET="13.0"
 
-npm run build
-TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --release \
+npm run build:dev
+TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --profile local-dev \
   --locked \
   --features tauri/custom-protocol,devtools,local-dev-credentials \
   --manifest-path src-tauri/Cargo.toml
 
 rm -rf "$BUILD_APP"
 mkdir -p "$BUILD_APP/Contents/MacOS" "$BUILD_APP/Contents/Resources"
-cp "$PROJECT_DIR/src-tauri/target/release/mimi" "$BUILD_APP/Contents/MacOS/mimi"
+cp "$BUILD_DIR/mimi" "$BUILD_APP/Contents/MacOS/mimi"
 cp "$PROJECT_DIR/src-tauri/icons/icon.icns" "$BUILD_APP/Contents/Resources/icon.icns"
 cp "$PROJECT_DIR/THIRD_PARTY_NOTICES.md" "$BUILD_APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 chmod 755 "$BUILD_APP/Contents/MacOS/mimi"

@@ -29,6 +29,7 @@ extracted="$(mktemp -d -t mimi-appimage-permissions.XXXXXX)"
 trap 'rm -rf "$extracted"' EXIT
 (cd "$extracted" && "$appimage" --appimage-extract >/dev/null)
 python3 scripts/check-appimage-permissions.py "$extracted/squashfs-root"
+python3 scripts/check-appimage-gles.py "$extracted/squashfs-root"
 
 if [[ "${2:-}" == --signed ]]; then
   [[ -s "$appimage.sig" ]]

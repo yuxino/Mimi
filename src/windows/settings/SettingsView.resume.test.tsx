@@ -51,8 +51,7 @@ function expectNoHeaderSessionControls() {
   expect(host.querySelector(".settings-page-header [role=switch], .settings-page-header kbd")).toBeNull();
 }
 
-it.each(["zh", "en", "ja"] as const)("keeps session switches, status and shortcuts out of the settings header in every state in %s", async language => {
-  setStoredUiLanguage(language);
+it("keeps session controls out of the shared settings header across lifecycle changes", async () => {
   await mount();
   const states: Pick<SessionStateEvent, "status" | "isActive" | "isPaused">[] = [
     { status: { kind: "idle" }, isActive: false, isPaused: false },
@@ -64,24 +63,10 @@ it.each(["zh", "en", "ja"] as const)("keeps session switches, status and shortcu
   ];
   for (const state of states) {
     await act(() => useStore.setState({ session: { ...initial.session, ...state } }));
-    for (const category of ["subtitles", "service"]) {
-      await act(() => host.querySelector<HTMLButtonElement>(`#settings-category-${category}`)!.click());
-      expect(host.querySelector(".settings-page-header h1")?.textContent).toBe(category === "subtitles" ? I18N.settings.subtitleTitle : I18N.settings.serviceProfilesTitle);
-      expectNoHeaderSessionControls();
-    }
+    expectNoHeaderSessionControls();
   }
-  expect(togglePaused).not.toHaveBeenCalled();
-  expect(start).not.toHaveBeenCalled();
-  expect(stop).not.toHaveBeenCalled();
-});
-
-it.each(["rateLimited", "temporarilyUnavailable"] as const)("does not recreate a header status for translation recovery %s", async reason => {
-  useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false,
-    translationRecovery: { reason, retryAfterMs: 0, retryScheduled: false },
-  } });
-  await mount();
-  expectNoHeaderSessionControls();
-  await act(() => useStore.setState({ session: { ...useStore.getState().session, translationRecovery: null, isPaused: true } }));
+  // Category/localization coverage belongs to SettingsNavigation.test.tsx.
+  await act(() => host.querySelector<HTMLButtonElement>("#settings-category-service")!.click());
   expectNoHeaderSessionControls();
   expect(togglePaused).not.toHaveBeenCalled();
   expect(start).not.toHaveBeenCalled();

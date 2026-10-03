@@ -4,11 +4,12 @@
 
 Settings → Speech & Translation offers separate System audio and Microphone
 switches. Either or both can be enabled; at least one stays selected. Existing
-and fresh preferences default to system audio only. Choosing an input never
-opens a device from settings: capture and any necessary microphone permission
-start when subtitles start or the user explicitly enables an input in the
-running overlay control panel. Source selection is global and independent
-of service profiles. Both lanes use the selected profile and language settings.
+and fresh preferences default to system audio only. Choosing an input while idle
+or paused never opens a device. Capture and any necessary microphone permission
+start when subtitles start or the user explicitly enables an input while
+subtitles are running, from either the overlay control panel or settings. Source
+selection is global and independent of service profiles. Both lanes use the
+selected profile and language settings.
 Two enabled sources open two service connections and incur the corresponding
 provider usage. Android capture is unchanged.
 
@@ -39,8 +40,8 @@ translation rather than the first lane's detected language.
 ## Lifecycle and permissions
 
 Snapshot the enabled inputs at manual start. Pause, resume, language/mode
-changes and recovery retain that selection. Settings-page source changes require
-stopping. The control panel can reconfigure a listening session, preserving
+changes and recovery retain that selection. Settings and the control panel use
+the same source-switch command and can reconfigure a listening session, preserving
 confirmed subtitles and their source labels while reconnecting the selected
 inputs. Reconfiguration first retires the old generation before resetting any
 subtitle reducer. A paused session only updates its selection and remains
@@ -93,5 +94,6 @@ and run native-platform PR CI including simultaneous Linux PulseAudio capture.
 UI fixtures prove rendering and IPC behavior, not physical microphone permission
 or cloud recognition. Report live hardware/provider verification separately.
 
-Update PR #108 for review; do not merge main, tag, package a public release or
-publish a release as part of this change.
+Settings and overlay switching share the same lifecycle command. Cover idle,
+listening and paused changes, transition locks, duplicate clicks, safe failures
+and retry in the settings regression tests.

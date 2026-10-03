@@ -2,7 +2,7 @@
  * UI copy grouped by window. Tray strings, language/mode display names, and
  * the overlay copy follow the effective UI language (Chinese, English, or
  * Japanese). The overlay activity-phase labels live in `types.ts` so they
- * stay adjacent to their color and amplitude parameters.
+ * stay adjacent to their visual parameters.
  */
 
 import type { ServiceProvider, UiLanguage } from "./types";
@@ -346,8 +346,6 @@ const SETTINGS_ZH = {
   audioInputHelp: "默认采集系统声音。可以同时开启麦克风，两路分别识别并标注来源，不混合音频；会建立两条服务连接，分别产生用量。更换来源会关闭录音，需在保存与导出页重新开启。",
   audioInputMicrophoneHelp: "使用系统默认麦克风，实际开始采音时才按需申请权限。两路同时开启时自动降低外放回声；仍有重复收音时可佩戴耳机。",
   audioInputAtLeastOne: "至少保留一种音频来源。",
-  audioInputRequiresStop: "更换音频输入前，请先停止字幕。",
-  audioInputSaveFailed: "无法保存音频输入，请重试。",
   quickStartTitle: "新手指引",
   quickStartNav: "新手指引",
   quickStartDescription: "从配置服务到显示字幕，按这三步开始。",
@@ -547,10 +545,9 @@ const SETTINGS_ZH = {
   translateTo: "翻译成",
   translationMode: "翻译模式",
   fontSize: "字幕字号",
+  backgroundTransparency: "背景透明度",
   subtitleColor: "字幕颜色",
   customSubtitleColor: "自定义颜色",
-  subtitleColorHex: "HEX 色值",
-  subtitleColorInvalid: "请输入 # 开头的六位色值，例如 #A1B2C3。",
   colorWhite: "白色",
   colorTeal: "青色",
   colorYellow: "黄色",
@@ -733,8 +730,6 @@ const SETTINGS_EN = {
   audioInputHelp: "System audio is the default. Enable the microphone as well to recognize both sources independently, with source labels and no audio mixing. This opens two service connections with separate usage. Changing inputs turns recording off; enable it again in Save & export if needed.",
   audioInputMicrophoneHelp: "Uses the system’s default microphone and requests permission when capture starts. Echo cancellation runs automatically when both inputs are on. Use headphones if speaker audio is still picked up.",
   audioInputAtLeastOne: "Keep at least one audio source enabled.",
-  audioInputRequiresStop: "Stop subtitles before changing the audio input.",
-  audioInputSaveFailed: "Could not save the audio input. Try again.",
   quickStartTitle: "Getting started",
   quickStartNav: "Guide",
   quickStartDescription: "Set up a service and show subtitles in three steps.",
@@ -939,10 +934,9 @@ const SETTINGS_EN = {
   translateTo: "Translate To",
   translationMode: "Translation Mode",
   fontSize: "Subtitle Size",
+  backgroundTransparency: "Background transparency",
   subtitleColor: "Subtitle color",
   customSubtitleColor: "Custom color",
-  subtitleColorHex: "HEX color",
-  subtitleColorInvalid: "Enter six hex digits after #, for example #A1B2C3.",
   colorWhite: "White",
   colorTeal: "Teal",
   colorYellow: "Yellow",
@@ -1118,8 +1112,6 @@ const SETTINGS_JA = {
   audioInputHelp: "初期設定ではシステム音声を取得します。マイクもオンにすると、音声を混合せず、取得元を表示して個別に認識します。サービスへの接続は二つになり、利用量も個別に発生します。取得元を変更すると録音はオフになります。必要なら「保存と書き出し」で再度オンにしてください。",
   audioInputMicrophoneHelp: "システムの既定のマイクを使用し、音声の取得開始時に必要な権限を求めます。両方の入力がオンのときは自動でエコーを低減します。スピーカーの音が残る場合は、ヘッドホンを使用してください。",
   audioInputAtLeastOne: "音声の取得元を少なくとも一つオンにしてください。",
-  audioInputRequiresStop: "音声入力を変更する前に、字幕を停止してください。",
-  audioInputSaveFailed: "音声入力を保存できませんでした。再試行してください。",
   quickStartTitle: "はじめに",
   quickStartNav: "はじめに",
   quickStartDescription: "サービスの設定から字幕の表示まで、3つの手順で始められます。",
@@ -1328,10 +1320,9 @@ const SETTINGS_JA = {
   translateTo: "翻訳先",
   translationMode: "翻訳モード",
   fontSize: "字幕サイズ",
+  backgroundTransparency: "背景の透明度",
   subtitleColor: "字幕の色",
   customSubtitleColor: "カスタムカラー",
-  subtitleColorHex: "HEX カラー値",
-  subtitleColorInvalid: "# に続けて6桁の16進数を入力してください（例：#A1B2C3）。",
   colorWhite: "白",
   colorTeal: "青緑",
   colorYellow: "黄",

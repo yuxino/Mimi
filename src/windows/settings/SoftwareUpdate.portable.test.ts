@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createUpdaterForEnvironment } from "./SoftwareUpdate";
+import { createUpdaterForEnvironment } from "./softwareUpdateEnvironment";
 
 const mocks = vi.hoisted(() => ({
   appIsUiTest: vi.fn(),

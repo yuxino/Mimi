@@ -105,6 +105,8 @@ export interface SettingsSnapshot {
   translationMode: TranslationMode;
   /** 14..20 */
   fontSize: number;
+  /** 0..100, background only. */
+  subtitleBackgroundOpacity: number;
   subtitleColor: SubtitleColor;
   subtitleAlignment: SubtitleAlignment;
   subtitleDisplayMode: SubtitleDisplayMode;
@@ -147,6 +149,7 @@ export interface SettingsDraft {
   targetLanguage?: TargetLanguage;
   translationMode?: TranslationMode;
   fontSize?: number;
+  subtitleBackgroundOpacity?: number;
   subtitleColor?: SubtitleColor;
   subtitleAlignment?: SubtitleAlignment;
   subtitleDisplayMode?: SubtitleDisplayMode;
@@ -348,26 +351,6 @@ export const TARGET_LANGUAGE_DISPLAY_NAMES: Record<TargetLanguage, string> = loc
   };
 });
 
-/** Localized translation-mode labels for the active UI language. */
-export const TRANSLATION_MODE_DISPLAY_NAMES: Record<TranslationMode, string> = localizedRecord(() =>
-  effectiveUiLanguage() === "ja"
-    ? {
-        lowLatency: "低遅延",
-        highQuality: "高品質",
-        turbo: "最速",
-      }
-    : isChineseSystem()
-      ? {
-          lowLatency: "低延迟",
-          highQuality: "高质量",
-          turbo: "极速",
-        }
-      : {
-          lowLatency: "Low latency",
-          highQuality: "High quality",
-          turbo: "Turbo",
-        });
-
 /** Display labels for normalized recognition-service language codes. */
 const DETECTED_LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
   zh: "中文",
@@ -463,15 +446,11 @@ interface OverlayActivityPhaseInfo {
   accessibilityLabel: string;
   /** Base RGB as `#RRGGBB`. */
   color: string;
-  /** Opacity applied to the base phase color. */
-  baseOpacity: number;
   animationSpeed: number;
-  amplitude: number;
 }
 
 /**
- * Visual parameters for the overlay activity indicator. Listening and
- * connecting use a quieter opacity than active processing phases.
+ * Labels, colors and working states for the overlay activity indicator.
  */
 export const OVERLAY_ACTIVITY_PHASES: Record<
   OverlayActivityPhaseKind,
@@ -480,51 +459,37 @@ export const OVERLAY_ACTIVITY_PHASES: Record<
   idle: {
     get accessibilityLabel() { return I18N.overlay.phaseIdle; },
     color: "#FFFFFF",
-    baseOpacity: 0.5,
     animationSpeed: 0,
-    amplitude: 0,
   },
   error: {
     get accessibilityLabel() { return I18N.overlay.phaseError; },
     color: "#FF8A80",
-    baseOpacity: 1,
     animationSpeed: 0,
-    amplitude: 0,
   },
   connecting: {
     get accessibilityLabel() { return I18N.overlay.phaseConnecting; },
     color: "#FFFFFF",
-    baseOpacity: 0.5,
     animationSpeed: 2.6,
-    amplitude: 3,
   },
   listening: {
     get accessibilityLabel() { return I18N.overlay.phaseListening; },
     color: "#7AA8FF",
-    baseOpacity: 0.62,
     animationSpeed: 2.6,
-    amplitude: 2,
   },
   recognizing: {
     get accessibilityLabel() { return I18N.overlay.phaseRecognizing; },
     color: "#7AA8FF",
-    baseOpacity: 1,
     animationSpeed: 2.6,
-    amplitude: 6,
   },
   translating: {
     get accessibilityLabel() { return I18N.overlay.phaseTranslating; },
     color: "#B894FF",
-    baseOpacity: 1,
     animationSpeed: 2.6,
-    amplitude: 4,
   },
   paused: {
     get accessibilityLabel() { return I18N.overlay.phasePaused; },
     color: "#FFB852",
-    baseOpacity: 1,
     animationSpeed: 0,
-    amplitude: 0,
   },
 };
 
@@ -538,15 +503,6 @@ export function hexToRgba(hex: string, alpha: number): string {
   const g = Number.parseInt(hex.slice(3, 5), 16);
   const b = Number.parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-/** Resolves a phase color with an *additional* opacity multiplier applied. */
-export function overlayPhaseColor(
-  phase: OverlayActivityPhaseKind,
-  opacity: number,
-): string {
-  const info = OVERLAY_ACTIVITY_PHASES[phase];
-  return hexToRgba(info.color, info.baseOpacity * opacity);
 }
 
 /** Content-free metadata for the opt-in in-memory session archive. */

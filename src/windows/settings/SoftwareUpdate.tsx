@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { I18N } from "../../lib/i18n";
-import { appIsLinuxPackage, appIsPortable, appIsUiTest, appOpenReleases, isTauri } from "../../lib/ipc";
+import { appOpenReleases } from "../../lib/ipc";
 import { InlineFeedback, SettingsRow } from "./SettingsPrimitives";
 import {
   applyDownloadEvent,
@@ -12,13 +12,8 @@ import {
   type AvailableUpdate,
   type UpdateCheckState,
 } from "./softwareUpdateModel";
-import {
-  createFixtureSoftwareUpdater,
-  createTauriSoftwareUpdater,
-  isWindowsUserAgent,
-  type SoftwareUpdater,
-  type UpdateCandidate,
-} from "./softwareUpdater";
+import type { SoftwareUpdater, UpdateCandidate } from "./softwareUpdater";
+import { createUpdaterForEnvironment } from "./softwareUpdateEnvironment";
 
 /** User-initiated signed updater. It never polls, downloads, or installs in the
  * background. */
@@ -226,52 +221,6 @@ export function SoftwareUpdate() {
       <UpdateDetails state={state} onRecovery={handleRecovery} />
     </div>
   );
-}
-
-type UpdateEnvironment =
-  | { kind: "portable" | "linuxPackage"; currentVersion: string }
-  | { kind: "installed"; updater: SoftwareUpdater };
-
-export async function createUpdaterForEnvironment(): Promise<UpdateEnvironment> {
-  if (!isTauri) {
-    return {
-      kind: "installed",
-      updater: createFixtureSoftwareUpdater({
-        currentVersion: "preview",
-        updateVersion: null,
-      }),
-    };
-  }
-
-  if (isWindowsUserAgent()) {
-    let portable = true;
-    try {
-      portable = await appIsPortable();
-    } catch {
-      // A failed mode check must not offer an installer to a portable copy.
-    }
-    if (portable) {
-      const { getVersion } = await import("@tauri-apps/api/app");
-      return { kind: "portable", currentVersion: await getVersion() };
-    }
-  }
-
-  // Native distribution detection avoids guessing from the WebView user agent.
-  // If detection fails, initialization fails closed before creating an updater.
-  if (await appIsLinuxPackage()) {
-    const { getVersion } = await import("@tauri-apps/api/app");
-    return { kind: "linuxPackage", currentVersion: await getVersion() };
-  }
-
-  if (await appIsUiTest()) {
-    const { getVersion } = await import("@tauri-apps/api/app");
-    return {
-      kind: "installed",
-      updater: createFixtureSoftwareUpdater({ currentVersion: await getVersion() }),
-    };
-  }
-
-  return { kind: "installed", updater: await createTauriSoftwareUpdater() };
 }
 
 function candidateMetadata(candidate: UpdateCandidate): AvailableUpdate {

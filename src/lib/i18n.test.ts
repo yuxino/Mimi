@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { effectiveUiLanguage, I18N, setStoredUiLanguage, subscribeUiLanguage } from "./i18n";
 import { SUBTITLE_DISPLAY_OPTIONS } from "./subtitleDisplay";
-import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, TRANSLATION_MODE_DISPLAY_NAMES } from "./types";
+import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "./types";
 
 afterEach(() => { setStoredUiLanguage("en"); vi.unstubAllGlobals(); });
 
@@ -19,7 +19,6 @@ describe("in-place language changes", () => {
     expect(SOURCE_LANGUAGE_DISPLAY_NAMES.en).toBe("英语");
     expect(SUBTITLE_DISPLAY_OPTIONS[0].label).toBe(I18N.settings.displayTranslation);
     expect(TARGET_LANGUAGE_DISPLAY_NAMES.zh).toBe("简体中文");
-    expect(TRANSLATION_MODE_DISPLAY_NAMES.turbo).toBe("极速");
     expect(listener).toHaveBeenCalledTimes(1);
     setStoredUiLanguage("zh");
     expect(listener).toHaveBeenCalledTimes(1);

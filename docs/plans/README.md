@@ -54,6 +54,8 @@ Git history, not on the active documentation path.
 - `2026-09-24-settings-layout-design.md` — sidebar navigation, compact session
   controls, dedicated export page, and appearance previews.
 
+- `2026-10-03-subtitle-background-opacity.md` — adjustable desktop background
+  transparency, a stronger default card, and full-contrast history.
 - `2026-09-24-settings-appearance-design.md` — system, light, and dark
   settings appearances and the local preference boundary.
 - `2026-08-23-simplified-settings-and-tray-design.md` — current settings and

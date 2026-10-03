@@ -39,6 +39,7 @@ update both implementations and their platform-specific tests in the same change
 | Recognition selection | Eight built-in services plus custom DashScope/OpenAI ASR | Eight built-in adapters; independent text currently pairs with Alibaba ASR |
 | Built-in Alibaba pipeline | Desktop Audio 3.0/Qwen-MT scheduling | Existing integrated realtime translation adapter |
 | Translation scheduling | Speculative drafts plus prioritized finals and provider recovery | Final-only serial HTTP, one active and four waiting; explicit stop on failure |
+| Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Existing native overlay background settings and history styling |
 | Audio capture | OS-specific desktop capture | Android playback-capture consent and foreground service |
 | Secret storage | OS keychain | Android Keystore-backed encrypted preferences |
 | Local HTTP | Existing loopback endpoint validation | Explicit per-config opt-in and Android network allowlist; includes emulator host |

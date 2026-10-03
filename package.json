@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "vite",
+    "build:dev": "vite build --mode development --minify false --sourcemap",
     "build": "npm run icons:verify && tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "icons:generate": "node scripts/app-icons.mjs generate",

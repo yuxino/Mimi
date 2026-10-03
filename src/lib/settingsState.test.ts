@@ -24,6 +24,7 @@ const SETTINGS: SettingsSnapshot = {
   targetLanguage: "zh",
   translationMode: "lowLatency",
   fontSize: 18,
+  subtitleBackgroundOpacity: 80,
   subtitleColor: "white",
   subtitleAlignment: "center",
   subtitleDisplayMode: "translation",
@@ -483,4 +484,11 @@ describe("SnapshotResponseGate", () => {
     expect(gate.applyIfCurrent(oldResponse)).toBe(false);
     expect(gate.applyIfCurrent(gate.capture())).toBe(true);
   });
+});
+
+it("updates background opacity immediately, preserves zero and keeps it through unrelated saves", () => {
+  const transparent = mergeSettingsSnapshot(SETTINGS, { subtitleBackgroundOpacity: 0 });
+  expect(transparent.subtitleBackgroundOpacity).toBe(0);
+  expect(mergeSettingsSnapshot(transparent, { fontSize: 20 }).subtitleBackgroundOpacity).toBe(0);
+  expect(mergeSettingsSnapshot(SETTINGS, { subtitleBackgroundOpacity: 35 }).subtitleBackgroundOpacity).toBe(35);
 });

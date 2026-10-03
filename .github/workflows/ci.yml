@@ -100,6 +100,10 @@ jobs:
         if: runner.os == 'Linux'
         run: ./scripts/linux-keyring-recovery-smoke.sh
 
+      - name: Test first credential save with a new Linux keyring
+        if: runner.os == 'Linux'
+        run: ./scripts/linux-keyring-first-save-smoke.sh
+
       - name: Check Intel macOS target
         if: runner.os == 'macOS'
         run: |
@@ -197,6 +201,9 @@ jobs:
 
       - name: Test AppImage permission regression
         run: python3 scripts/check-appimage-permissions-test.py
+
+      - name: Test AppImage GLES dependency regression
+        run: python3 scripts/check-appimage-gles-test.py
 
       - name: Verify updater platform mapping
         run: node --test scripts/updater-manifest.node.mjs

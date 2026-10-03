@@ -190,6 +190,7 @@ export function mergeSettingsSnapshot(
     targetLanguage: draft.targetLanguage ?? current.targetLanguage,
     translationMode: draft.translationMode ?? current.translationMode,
     fontSize: draft.fontSize ?? current.fontSize,
+    subtitleBackgroundOpacity: draft.subtitleBackgroundOpacity ?? current.subtitleBackgroundOpacity ?? 80,
     subtitleColor: draft.subtitleColor ?? current.subtitleColor,
     subtitleAlignment: draft.subtitleAlignment ?? current.subtitleAlignment,
     subtitleDisplayMode: draft.subtitleDisplayMode ?? current.subtitleDisplayMode,

@@ -21,7 +21,14 @@ not version labels. Keychain continuity is a separate concern below.
 Rules:
 
 - Use `./scripts/dev-app.sh` for normal local testing. Do not run `tauri dev`, a
-  bare `target/*/mimi` executable, or a copy at a disposable path.
+  bare `target/*/mimi` executable, or a copy at a disposable path. The launcher
+  uses the incremental `local-dev` Cargo profile and `npm run build:dev` (embedded
+  frontend with source maps, without minification or a repeated type/icon check).
+  `./scripts/check.sh` still runs all checks and the production frontend build.
+  The first `local-dev` build creates a separate cache; later builds reuse it.
+  `CARGO_TARGET_DIR` selects both the binary and temporary bundle location.
+  A fresh cache builds the existing SpeexDSP echo-cancellation dependency and
+  needs CMake on `PATH`, or an explicit `CMAKE=/absolute/path/to/cmake`.
 - `./scripts/package-app.sh` creates a local QA package without updater
   artifacts. `./scripts/prepare-macos-release.sh` creates public artifacts on
   the signing Mac with the pinned certificate. CI adds the existing updater

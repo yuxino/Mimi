@@ -14,6 +14,12 @@ Download the `.deb` or `.AppImage` from [Releases](https://github.com/yuxino/mim
   installer, or `sudo apt install ./mimi_<version>_amd64.deb`.
 - AppImage: make the downloaded file executable and open it. Older FUSE-based
   AppImage launchers need FUSE 2 support (`libfuse2` on Ubuntu 22.04).
+  The desktop must provide its normal EGL/GLVND graphics stack and GPU drivers.
+  New packages built with the GLES packaging fix include the vendor-neutral
+  entry library that WebKit loads dynamically. Existing v1.5.6/v1.5.7 packages
+  do not include this fix. If they report `Couldn't open libGLESv2.so.2`,
+  install your distribution's `libgles2` package
+  (`sudo apt install libgles2` on Ubuntu/Debian).
 - AppImage supports signed updates in Settings. Quit before updating `.deb`
   with a newer package; its Settings button opens Releases.
 
@@ -92,7 +98,12 @@ wallet executable alone does not provide this service.
 
 Use **Check connection** after recovery. It retries failed credential reads
 without restarting Mimi. Failed saves and connection checks retain unsaved
-editor values; retry **Save** once the service is accessible. Mimi does not
+editor values; retry **Save** once the service is accessible. Save retries its
+own failed credential reads too. If the service has no default collection,
+the first Save can open the desktop keyring's normal collection-creation
+dialog. Complete that system dialog; cancelling leaves the credentials unsaved
+and allows another explicit Save. Reading settings never creates a collection.
+Mimi does not
 install or configure a keyring, change its password or permissions, or use file
 or environment-variable credential fallbacks.
 
@@ -142,5 +153,16 @@ linuxdeploy preserves that mode as `AppRun.wrapped`, blocking execution by
 users outside the build owner's UID/group (reported in #66).
 `verify-linux-bundles.sh` extracts the final AppImage and checks read/execute
 bits for owner, group, and other on both launchers and `usr/bin/mimi` before
-running the existing tray-free X11 smoke tests. FUSE availability, runtime
-library dependencies, and glibc compatibility remain separate checks.
+running the existing tray-free X11 smoke tests. It also checks the bundled
+`libGLESv2.so.2` and its copyright notice, independently of libraries installed
+on the build host. Only the GLVND entry library is included; EGL, GLdispatch,
+and Mesa/NVIDIA GPU drivers remain supplied by the host.
+FUSE availability, other runtime dependencies, and glibc compatibility remain
+separate checks.
+
+The isolated first-save test (`scripts/linux-keyring-first-save-smoke.sh`)
+starts with no default collection, cancels then accepts the real GNOME Keyring
+creation prompt using a synthetic password, and verifies the saved test value
+in a fresh process. It does not access the desktop user's keyring or test PAM
+login integration. Existing round-trip and late-service recovery tests remain
+separate checks.

@@ -3,7 +3,6 @@
 html[data-platform="linux"] {
   --mimi-ui-font: "Noto Sans", "Noto Sans CJK SC", "Noto Sans CJK JP",
     "Noto Sans CJK KR", "Ubuntu", "Cantarell", system-ui, sans-serif;
-  --overlay-card-background: rgba(16, 16, 16, 0.88);
   --overlay-empty-text: rgba(255, 255, 255, 0.78);
   font-family: var(--mimi-ui-font);
 }

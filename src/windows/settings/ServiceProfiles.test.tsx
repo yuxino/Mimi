@@ -21,7 +21,7 @@ vi.mock("../../lib/ipc", () => ({ isTauri: false, testProfileConnection: vi.fn()
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "unavailable" };
 const settings: SettingsSnapshot = {
   profiles: [profile], activeProfileId: profile.id, sourceLanguage: "auto", targetLanguage: "zh",
-  translationMode: "turbo", fontSize: 18, subtitleColor: "white", subtitleAlignment: "center",
+  translationMode: "turbo", fontSize: 18, subtitleBackgroundOpacity: 80, subtitleColor: "white", subtitleAlignment: "center",
   subtitleDisplayMode: "translation", pulseAnimation: null, pulseStyle: "ribbon", subtitleAnimation: null,
   showSubtitleDividers: false,
   subtitleBlendsWithBackground: false, isOverlayLocked: false, uiLanguage: "en",

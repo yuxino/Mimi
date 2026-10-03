@@ -28,15 +28,12 @@ checks that helper before MT requests, so a known unsupported detected language
 is rejected locally. The subsequent [language-control implementation](2026-10-02-provider-language-controls.md)
 extends the typed enums and actual route-aware settings choices.
 
-The provider metadata catalog in `providerLanguageMetadata.ts` records Audio 3.0's
-30 inputs, Lite's 31 targets, and their 24-language source intersection separately
-from `appSelectable`. The separate route-aware selector and wire implementation now use those
-verified boundaries; metadata alone never widens a route. A parity
-fixture checks the Rust realtime default and Lite table. DeepL's available text
-languages remain unknown until its translate-text resource metadata is queried;
-custom endpoints and unverified model catalogs do not inherit the Lite list.
-Automatic detection is described separately from manual source choices and never
-promises translation of a language outside the selected text model's range.
+The route-aware selector in `providerCapabilities.ts` uses Audio 3.0's 30 inputs,
+Lite's 31 targets and their 24-language translated-source intersection. A parity
+fixture in `providerCapabilities.test.ts` checks the Rust realtime default and
+the Lite language table. DeepL and custom-service routes retain conservative
+choices until their endpoint's available languages are known. Automatic detection
+never promises translation outside the selected text model's range.
 
 The larger catalog update must preserve existing serialized `zh`, `en`, `ja`,
 `ko` and `auto` values, update actual wire mappings, and validate capabilities by

@@ -17,8 +17,7 @@ tauri-build = { version = "2", features = [] }
 
 [features]
 default = []
-# The stable development bundle is compiled in release mode, so expose the
-# WebView inspector only when the launcher opts into this local-only feature.
+# Expose the WebView inspector when the signed development launcher opts in.
 devtools = ["tauri/devtools"]
 # Read-only local .env keys; runtime also requires the exact macOS dev identifier.
 local-dev-credentials = []
@@ -81,6 +80,7 @@ tauri-plugin-single-instance = "2.4.3"
 gtk = "0.18.2"
 libpulse-binding = "2.30.1"
 zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+secret-service = { version = "5.1", features = ["crypto-rust"] }
 x11-dl = "2.21.0"
 
 # Keep the shipped desktop binary compact without changing the debug/test
@@ -92,6 +92,13 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# Signed local bundles embed the frontend like a release, but favor rebuild speed
+# and useful backtraces. Keep these artifacts separate from production output.
+[profile.local-dev]
+inherits = "dev"
+debug = 1
+incremental = true
 
 # CPAL 0.18.1 discards WASAPI's AUDCLNT_BUFFERFLAGS_SILENT marker and can
 # expose undefined packet bytes to input callbacks. Keep an exact local copy

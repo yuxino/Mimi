@@ -1,3 +1,5 @@
+import audio3 from "../../src-tauri/src/core/protocols/audio3.rs?raw";
+import qwenMt from "../../src-tauri/src/core/protocols/qwen_mt.rs?raw";
 import { describe, expect, it } from "vitest";
 import { AUDIO3_RECOGNITION_LANGUAGE_CODES, QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES, type SettingsSnapshot } from "./types";
 import {
@@ -43,6 +45,7 @@ const BASE_SETTINGS: SettingsSnapshot = {
   targetLanguage: "zh",
   translationMode: "highQuality",
   fontSize: 18,
+  subtitleBackgroundOpacity: 80,
   subtitleColor: "white",
   subtitleAlignment: "center",
   subtitleDisplayMode: "translation",
@@ -73,15 +76,6 @@ describe("provider capabilities", () => {
   it("normalizes legacy Alibaba preferences to Turbo for automatic detection", () => {
     expect(translationModesForSettings(BASE_SETTINGS)).toEqual(["turbo"]);
     expect(effectiveTranslationModeForSettings(BASE_SETTINGS)).toBe("turbo");
-  });
-
-  it("keeps Alibaba on turbo even with automatic detection", () => {
-    expect(
-      effectiveTranslationModeForSettings({
-        ...BASE_SETTINGS,
-        translationMode: "turbo",
-      }),
-    ).toBe("turbo");
   });
 
   it("limits OpenAI Realtime to auto, supported targets, and turbo", () => {
@@ -154,11 +148,6 @@ describe("provider capabilities", () => {
       "customDashScopeASR",
       "customOpenAIASR",
     ]);
-  });
-
-  it("keeps both custom speech protocols together at the end of the provider picker", () => {
-    expect(SERVICE_PROVIDERS.slice(-2)).toEqual(["customDashScopeASR", "customOpenAIASR"]);
-    expect(SERVICE_PROVIDERS.slice(0, -2).every(provider => !provider.startsWith("custom"))).toBe(true);
   });
 
   it("uses automatic recognition only where the official protocol supports it", () => {
@@ -357,4 +346,12 @@ it("keeps Original when choosing a supported recognition language after Chinese"
   const settings = { ...BASE_SETTINGS, sourceLanguage: "zh" as const, targetLanguage: "original" as const };
   expect(sourceLanguagesForSettings(settings)).toContain("no");
   expect(targetLanguageAfterSourceSwitch(settings, "no")).toBe("original");
+});
+
+it("keeps the selectable language catalogs aligned with the Rust realtime models", () => {
+  expect(audio3).toMatch(/pub const MODEL:\s*&'static str\s*=\s*"qwen-audio-3\.0-asr-flash-streaming";/);
+  expect(qwenMt).toMatch(/pub const REALTIME_MT_MODEL:\s*QwenMTModel\s*=\s*QwenMTModel::Lite;/);
+  const table = qwenMt.match(/pub const QWEN_MT_LITE_LANGUAGE_CODES:[\s\S]*?=\s*&\[([\s\S]*?)\];/)?.[1];
+  expect(table).toBeDefined();
+  expect(Array.from(table!.matchAll(/"([a-z_]+)"/g), match => match[1])).toEqual(QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES);
 });

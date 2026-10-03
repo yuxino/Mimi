@@ -129,6 +129,7 @@ pub struct SettingsSnapshotPayload {
     pub target_language: TargetLanguage,
     pub translation_mode: TranslationMode,
     pub font_size: f64,
+    pub subtitle_background_opacity: u8,
     pub subtitle_color: SubtitleColor,
     pub subtitle_alignment: SubtitleAlignment,
     pub subtitle_display_mode: SubtitleDisplayMode,
@@ -471,6 +472,7 @@ mod tests {
             target_language: TargetLanguage::SimplifiedChinese,
             translation_mode: TranslationMode::HighQuality,
             font_size: 18.0,
+            subtitle_background_opacity: 80,
             subtitle_color: SubtitleColor::White,
             subtitle_alignment: SubtitleAlignment::Center,
             subtitle_display_mode: SubtitleDisplayMode::Translation,
@@ -502,6 +504,7 @@ mod tests {
             assert!(json["profiles"][0].get(secret_field).is_none());
         }
         assert_eq!(json["subtitleAlignment"], "center");
+        assert_eq!(json["subtitleBackgroundOpacity"], 80);
         assert_eq!(json["subtitleColor"], "white");
         assert_eq!(json["subtitleDisplayMode"], "translation");
         assert_eq!(json["showSubtitleDividers"], false);
@@ -609,6 +612,7 @@ mod tests {
 
         let visual = SettingsDraft {
             font_size: Some(19.0),
+            subtitle_background_opacity: Some(65),
             subtitle_color: Some(SubtitleColor::Custom([0x12, 0x34, 0x56])),
             subtitle_alignment: Some(SubtitleAlignment::Right),
             subtitle_display_mode: Some(SubtitleDisplayMode::Bilingual),
@@ -731,6 +735,7 @@ impl SettingsSnapshotPayload {
                     target_language: prefs.target_language,
                     translation_mode: prefs.translation_mode,
                     font_size: prefs.font_size,
+                    subtitle_background_opacity: prefs.subtitle_background_opacity,
                     subtitle_color: prefs.subtitle_color,
                     subtitle_alignment: prefs.subtitle_alignment,
                     subtitle_display_mode: prefs.subtitle_display_mode,
@@ -774,6 +779,7 @@ impl SettingsSnapshotPayload {
             target_language: prefs.target_language,
             translation_mode: prefs.translation_mode,
             font_size: prefs.font_size,
+            subtitle_background_opacity: prefs.subtitle_background_opacity,
             subtitle_color: prefs.subtitle_color,
             subtitle_alignment: prefs.subtitle_alignment,
             subtitle_display_mode: prefs.subtitle_display_mode,
@@ -803,6 +809,7 @@ pub struct SettingsDraft {
     pub target_language: Option<TargetLanguage>,
     pub translation_mode: Option<TranslationMode>,
     pub font_size: Option<f64>,
+    pub subtitle_background_opacity: Option<u8>,
     pub subtitle_color: Option<SubtitleColor>,
     pub subtitle_alignment: Option<SubtitleAlignment>,
     pub subtitle_display_mode: Option<SubtitleDisplayMode>,
@@ -982,6 +989,7 @@ fn apply_settings_draft_guarded(
         || draft.target_language.is_some()
         || draft.translation_mode.is_some()
         || draft.font_size.is_some()
+        || draft.subtitle_background_opacity.is_some()
         || draft.subtitle_color.is_some()
         || draft.subtitle_alignment.is_some()
         || draft.subtitle_display_mode.is_some()
@@ -1023,6 +1031,9 @@ fn apply_settings_draft_guarded(
                 prefs.windows_audio_source = source;
             }
             prefs.apply_audio_preferences(draft.audio_input, draft.record_session_audio);
+            if let Some(opacity) = draft.subtitle_background_opacity {
+                prefs.subtitle_background_opacity = opacity;
+            }
             if let Some(font_size) = draft.font_size {
                 prefs.font_size = font_size;
             }

@@ -22,6 +22,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 
 python3 "$SCRIPT_DIR/check-appimage-permissions-test.py"
+python3 "$SCRIPT_DIR/check-appimage-gles-test.py"
 
 echo "==> cargo fmt --check"
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check

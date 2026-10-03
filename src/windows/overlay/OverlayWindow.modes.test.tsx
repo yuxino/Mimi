@@ -432,3 +432,15 @@ it.each(["system", "microphone"] as const)("keeps both history labels but only t
   expect(rows[2].getAttribute("data-utterance-id")).toMatch(new RegExp(`^${enabled}:`));
   expect(visibleLanes()).not.toContain(enabled === "system" ? "麦克风合成译文。" : "系统声音合成译文。");
 });
+
+it("applies background opacity to expanded and collapsed cards and restores it after immersive mode", async () => {
+  await mount(empty, "translation", { subtitleBackgroundOpacity: 35 });
+  const backgrounds = () => [...host.querySelectorAll<HTMLElement>("[style]")].map(node => node.style.background);
+  expect(backgrounds()).toContain("rgba(0, 0, 0, 0.35)");
+  await act(() => useStore.setState(state => ({ session: { ...state.session, isOverlayCollapsed: true } })));
+  expect(backgrounds()).toContain("rgba(0, 0, 0, 0.35)");
+  await act(() => useStore.setState(state => ({ session: { ...state.session, isOverlayCollapsed: false }, settings: { ...state.settings, subtitleBlendsWithBackground: true } })));
+  expect(backgrounds()).not.toContain("rgba(0, 0, 0, 0.35)");
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
+  expect(backgrounds()).toContain("rgba(0, 0, 0, 0.35)");
+});

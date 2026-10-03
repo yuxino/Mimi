@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { subtitleBackgroundColor } from "../../lib/subtitleColor";
 import { I18N } from "../../lib/i18n";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { audioInputLabel } from "../../lib/audioInput";
@@ -298,23 +299,12 @@ export function OverlayWindow() {
         className="relative h-full w-full overflow-hidden"
         style={{
           borderRadius: 16,
-          background: "var(--overlay-card-background, rgba(0,0,0,0.62))",
+          background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
           border: `${borderWidth}px solid ${borderColor}`,
         }}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
       >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            borderRadius: 16,
-            background:
-              "linear-gradient(to bottom, rgba(255,255,255,0.035), rgba(255,255,255,0))",
-            pointerEvents: "none",
-          }}
-        />
-
         <div className="relative flex h-full flex-col" style={{ padding: 5 }}>
           {renderStatusLine()}
           {/* Top band: the drag handle is absolutely positioned — centered
@@ -489,7 +479,7 @@ export function OverlayWindow() {
         aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput)}`}
         style={{
           borderRadius: 14,
-          background: "var(--overlay-card-background, rgba(0,0,0,0.68))",
+          background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
           border: `0.75px solid ${hexToRgba(ACCENT, isHovering ? 0.3 : 0.16)}`,
         }}
         onMouseEnter={() => setIsHovering(true)}
@@ -501,16 +491,6 @@ export function OverlayWindow() {
           }
         }}
       >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            borderRadius: 14,
-            background:
-              "linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0))",
-            pointerEvents: "none",
-          }}
-        />
         <div
           className="relative flex h-full items-center"
           style={{ gap: 8, padding: "0 10px" }}

@@ -210,7 +210,6 @@ export const Timeline = memo(function Timeline({
     >
       {blocks.map((block, index) => {
         const isLast = index === blocks.length - 1;
-        const distance = blocks.length - 1 - index;
         // Following keeps completed long utterances in the same bounded tail
         // as the live sentence. Deliberate reading opens either kind of row;
         // it does not confirm or retain a replaceable live draft.
@@ -267,9 +266,6 @@ export const Timeline = memo(function Timeline({
               ),
               paddingTop,
               paddingBottom: tight ? 1 : isLast ? LAST_BLOCK_PADDING_Y : BLOCK_PADDING_Y,
-              // One age fade for the whole utterance: a long sentence that
-              // wraps over several lines keeps a single visual level.
-              opacity: blockOpacity(distance),
               // New blocks settle in with a brief rise-and-fade; the class runs
               // the animation once on mount (the key is stable per block, so
               // streaming text updates do not re-trigger it) and is skipped
@@ -289,7 +285,7 @@ export const Timeline = memo(function Timeline({
                   fontWeight: 500,
                   fontFamily: MONO_FONT,
                   fontVariantNumeric: "tabular-nums",
-                  color: hexToRgba(ACCENT, distance <= 1 ? 0.46 : 0.28),
+                  color: hexToRgba(ACCENT, 0.46),
                 }}
               >
                 {formatTimestamp(block.createdAt)}
@@ -580,17 +576,6 @@ function useRollupGlide(
     inner.style.transition = "transform 180ms ease-out";
     inner.style.transform = "translateY(0)";
   }, [innerRef, innerHeight, enabled]);
-}
-
-function blockOpacity(distance: number): number {
-  switch (distance) {
-    case 0:
-      return 1;
-    case 1:
-      return 0.82;
-    default:
-      return 0.44;
-  }
 }
 
 /** HH:mm in local time using a 24-hour clock. */

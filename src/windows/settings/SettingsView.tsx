@@ -6,7 +6,7 @@ import { announceSettingsNavigationReady, isTauri, listenSettingsNavigation } fr
 import { selectSessionStatusKind, useStore } from "../../lib/store";
 import type { SubtitleAlignment } from "../../lib/types";
 import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
-import { subtitleColorHex } from "../../lib/subtitleColor";
+import { subtitleBackgroundColor, subtitleColorHex } from "../../lib/subtitleColor";
 import type { SubtitleDisplayMode } from "../../lib/types";
 import { SubtitleColorControl } from "./SubtitleColorControl";
 import { ServiceProfiles } from "./ServiceProfiles";
@@ -256,7 +256,8 @@ export function SettingsView() {
                       </div>
                       <div
                         className="subtitle-preview__text"
-                        style={{ fontSize: settings.fontSize, color: subtitleColorHex(settings.subtitleColor) }}
+                        style={{ fontSize: settings.fontSize, color: subtitleColorHex(settings.subtitleColor),
+                          background: settings.subtitleBlendsWithBackground ? "transparent" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity) }}
                       >
                         {settings.subtitleDisplayMode !== "translation" && (
                           <span style={{ color: settings.subtitleDisplayMode === "original" ? "inherit" : "rgba(255,255,255,0.72)" }}>{I18N.settings.previewOriginal}</span>
@@ -342,6 +343,24 @@ export function SettingsView() {
                             }
                           />
                           <output aria-live="polite">{Math.round(settings.fontSize)}</output>
+                        </div>
+                      </SettingsRow>
+
+                      <SettingsRow label={I18N.settings.backgroundTransparency}>
+                        <div className="font-size-control background-transparency-control">
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={100 - (settings.subtitleBackgroundOpacity ?? 80)}
+                            aria-label={I18N.settings.backgroundTransparency}
+                            disabled={settings.subtitleBlendsWithBackground}
+                            onChange={(event) => void saveSettings({
+                              subtitleBackgroundOpacity: 100 - Number(event.target.value),
+                            })}
+                          />
+                          <output aria-live="polite">{100 - (settings.subtitleBackgroundOpacity ?? 80)}%</output>
                         </div>
                       </SettingsRow>
 

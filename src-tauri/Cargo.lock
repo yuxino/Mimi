@@ -2690,6 +2690,7 @@ dependencies = [
  "rubato",
  "rustls",
  "screen-capture-kit",
+ "secret-service",
  "serde",
  "serde_json",
  "tauri",

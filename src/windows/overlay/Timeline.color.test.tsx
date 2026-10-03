@@ -36,10 +36,11 @@ describe("subtitle colors", () => {
     }
   });
 
-  it("keeps bilingual sources neutral and fades whole blocks by age", () => {
+  it("keeps bilingual sources neutral and history at full opacity", () => {
     const html = renderToStaticMarkup(
       <Timeline
         blocks={[
+          block({ id: "older", presentation: "history", translation: "Older translation" }),
           block({ id: "old", presentation: "history", source: "Old source", translation: "旧译文" }),
           block({ id: "live", presentation: "live", source: "Source", translation: "Translation" }),
         ]}
@@ -53,9 +54,8 @@ describe("subtitle colors", () => {
     // reads in the user's subtitle color.
     expect(html).toContain("color:rgba(255,255,255,0.86)");
     expect(html).toContain("color:rgba(18,52,86,1)");
-    // The age fade belongs to the block, so both lanes of the older utterance
-    // step back together.
-    expect(html).toContain("opacity:0.82");
+    // Neither the previous sentence nor older history loses contrast.
+    expect(html).not.toContain("opacity:");
   });
 
   it("keeps the recognized lane primary when it is the only language shown", () => {

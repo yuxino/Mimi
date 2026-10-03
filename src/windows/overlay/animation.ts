@@ -46,37 +46,6 @@ export function resolveMotion(
   return explicit ?? !reduced;
 }
 
-/**
- * Splits text into the units that fade in as a stream arrives: whitespace words
- * where the script has them, whole words for CJK, punctuation on its own. The
- * units always rejoin into the original string, so wrapping never changes the
- * text.
- */
-export function textUnits(text: string): string[] {
-  const segmenter =
-    typeof Intl !== "undefined" && "Segmenter" in Intl
-      ? new Intl.Segmenter(undefined, { granularity: "word" })
-      : null;
-  if (segmenter === null) return text.split(/(\s+)/).filter((part) => part !== "");
-  return [...segmenter.segment(text)].map((part) => part.segment);
-}
-
-/**
- * Units with the offset each one starts at. The offset is what React keys on,
- * so a unit that is already on screen keeps its element as more text arrives:
- * only the units that just appeared run the fade, and a rewritten word updates
- * in place instead of blinking.
- */
-export function unitSpans(text: string): Array<{ start: number; text: string }> {
-  const spans: Array<{ start: number; text: string }> = [];
-  let start = 0;
-  for (const unit of textUnits(text)) {
-    spans.push({ start, text: unit });
-    start += unit.length;
-  }
-  return spans;
-}
-
 /** Resolved switch value, reacting to both the stored choice and the system. */
 export function useResolvedMotion(explicit: boolean | null): boolean {
   return resolveMotion(explicit, useReducedMotion());

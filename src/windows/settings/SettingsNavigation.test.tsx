@@ -224,3 +224,24 @@ it("keeps an explicit subtitle save alive while the user navigates to another ca
   await select("subtitles");
   expect(host.querySelector<HTMLInputElement>('input[type="range"]')?.value).toBe("20");
 });
+
+it("saves background transparency, previews it and preserves it in immersive mode", async () => {
+  saveSettings.mockImplementation(async (draft: SettingsDraft) => {
+    useStore.setState({ settings: { ...useStore.getState().settings, ...draft } });
+  });
+  await mount();
+  const slider = host.querySelector<HTMLInputElement>(`input[aria-label="${I18N.settings.backgroundTransparency}"]`)!;
+  expect(slider.value).toBe("20");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider, "65");
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ subtitleBackgroundOpacity: 35 });
+  expect(host.querySelector<HTMLElement>(".subtitle-preview__text")!.style.background).toBe("rgba(0, 0, 0, 0.35)");
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: true } })));
+  expect(slider.disabled).toBe(true);
+  expect(host.querySelector<HTMLElement>(".subtitle-preview__text")!.style.background).toBe("transparent");
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
+  expect(slider.disabled).toBe(false);
+  expect(slider.value).toBe("65");
+});

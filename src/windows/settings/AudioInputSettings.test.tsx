@@ -4,20 +4,23 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
+import { audioInputErrorMessage } from "../../lib/audioInput";
+import { captureSwitchCopy } from "../../lib/captureStatus";
 import type { SessionStateEvent } from "../../lib/types";
 import { AudioInputSettings } from "./AudioInputSettings";
 
 vi.mock("./WindowsAudioSource", () => ({ WindowsAudioSource: () => <span data-output-selector /> }));
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;
-let save: ReturnType<typeof vi.fn>;
+let switchInput: ReturnType<typeof vi.fn>;
+const save = vi.fn();
 const start = vi.fn();
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
   setStoredUiLanguage("en");
-  save = vi.fn(initial.saveSettings); start.mockReset();
-  useStore.setState({ ...initial, initializationStatus: "ready", saveSettings: save, start,
+  switchInput = vi.fn(initial.switchAudioInput); save.mockReset(); start.mockReset();
+  useStore.setState({ ...initial, initializationStatus: "ready", saveSettings: save, switchAudioInput: switchInput, start,
     settings: { ...initial.settings, audioInput: "system", recordSessionAudio: true },
     session: { ...initial.session, status: { kind: "idle" }, isActive: false, isPaused: false },
   }, true);
@@ -36,7 +39,8 @@ it.each(["en", "zh", "ja"] as const)("saves the microphone explicitly in %s with
   expect(toggle("system").getAttribute("aria-checked")).toBe("true");
   expect(host.querySelector('[data-output-selector]')).not.toBeNull();
   await selectMicrophone();
-  expect(save).toHaveBeenCalledExactlyOnceWith({ audioInput: "both" });
+  expect(switchInput).toHaveBeenCalledExactlyOnceWith("both");
+  expect(save).not.toHaveBeenCalled();
   expect(toggle("microphone").getAttribute("aria-checked")).toBe("true");
   expect(toggle("system").getAttribute("aria-checked")).toBe("true");
   expect(host.querySelector('[data-output-selector]')).not.toBeNull();
@@ -47,43 +51,43 @@ it.each(["en", "zh", "ja"] as const)("saves the microphone explicitly in %s with
 });
 
 it.each([
-  { status: { kind: "listening" }, isActive: true, isPaused: false },
-  { status: { kind: "listening" }, isActive: false, isPaused: true },
   { status: { kind: "connecting" }, isActive: false, isPaused: false },
   { status: { kind: "stopping" }, isActive: false, isPaused: false },
 ] satisfies Pick<SessionStateEvent, "status" | "isActive" | "isPaused">[])("locks the source in session state %j", async state => {
   useStore.setState({ session: { ...initial.session, ...state } });
   await render();
   expect(toggle("microphone").disabled).toBe(true);
-  expect(host.textContent).toContain(I18N.settings.audioInputRequiresStop);
-  expect(save).not.toHaveBeenCalled();
+  expect(toggle("system").disabled).toBe(true);
+  await selectMicrophone();
+  expect(switchInput).not.toHaveBeenCalled();
 });
 
-it("prevents duplicate saves and exposes a safe, normal-sized actionable error", async () => {
+it("prevents duplicate switches and exposes a safe, normal-sized actionable error", async () => {
   let fail!: (reason: Error) => void;
-  save.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
-  await render(); await selectMicrophone();
+  switchInput.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await render();
+  await act(() => { toggle("microphone").click(); toggle("microphone").click(); });
   expect(toggle("microphone").disabled).toBe(true);
   await act(() => toggle("microphone").click());
-  expect(save).toHaveBeenCalledOnce();
+  expect(switchInput).toHaveBeenCalledOnce();
   await act(async () => fail(new Error("synthetic-private-device-details")));
   expect(toggle("microphone").disabled).toBe(false);
   expect(toggle("system").getAttribute("aria-checked")).toBe("true");
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.audioInputSaveFailed);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(captureSwitchCopy().switchFailed);
   expect(host.textContent).not.toContain("synthetic-private-device-details");
 });
 
 it("does not offer input changes until settings have loaded", async () => {
   useStore.setState({ initializationStatus: "loading" }); await render();
   expect(toggle("microphone").disabled).toBe(true);
-  expect(save).not.toHaveBeenCalled();
+  expect(switchInput).not.toHaveBeenCalled();
 });
 
 it("allows either source alone or both, but never no source", async () => {
   await render();
   expect(toggle("system").disabled).toBe(true);
   await act(async () => toggle("system").click());
-  expect(save).not.toHaveBeenCalled();
+  expect(switchInput).not.toHaveBeenCalled();
   await selectMicrophone();
   expect(useStore.getState().settings.audioInput).toBe("both");
   expect(toggle("system").disabled).toBe(false);
@@ -96,4 +100,32 @@ it("allows either source alone or both, but never no source", async () => {
   await selectMicrophone();
   expect(useStore.getState().settings.audioInput).toBe("system");
   expect(start).not.toHaveBeenCalled();
+});
+
+it.each([false, true])("reconfigures while paused=%s and preserves the session and confirmed subtitles", async isPaused => {
+  const session = { ...initial.session, status: { kind: "listening" } as const, isActive: !isPaused, isPaused,
+    subtitles: { ...initial.session.subtitles, history: [{ source: "Synthetic original", translation: "Synthetic translation", createdAt: 1 }] },
+  };
+  useStore.setState({ session });
+  await render();
+  expect(toggle("microphone").disabled).toBe(false);
+  await selectMicrophone();
+  expect(switchInput).toHaveBeenCalledExactlyOnceWith("both");
+  expect(save).not.toHaveBeenCalled();
+  expect(useStore.getState().session).toBe(session);
+  expect(useStore.getState().settings.recordSessionAudio).toBe(false);
+  expect(start).not.toHaveBeenCalled();
+  expect(host.textContent).toContain(captureSwitchCopy().switchHelp);
+});
+
+it.each([new Error("audio_input_switch_save_failed"), "Microphone capture permission was denied."])("explains a known switching error safely and allows retry: %s", async error => {
+  switchInput.mockRejectedValueOnce(error);
+  await render(); await selectMicrophone();
+  const message = error instanceof Error ? error.message : error;
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(audioInputErrorMessage(message));
+  expect(toggle("microphone").getAttribute("aria-checked")).toBe("false");
+  expect(toggle("microphone").disabled).toBe(false);
+  await selectMicrophone();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(toggle("microphone").getAttribute("aria-checked")).toBe("true");
 });

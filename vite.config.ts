@@ -22,7 +22,7 @@ const buildTarget =
       : "es2021";
 
 // https://vitejs.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig({
   plugins: [react()],
   build: {
     target: buildTarget,
@@ -49,4 +49,4 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-}));
+});
