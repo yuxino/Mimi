@@ -199,6 +199,7 @@ export function mergeSettingsSnapshot(
     pulseStyle: draft.pulseStyle ?? current.pulseStyle,
     subtitleAnimation: draft.subtitleAnimation ?? current.subtitleAnimation,
     audioInput: draft.audioInput ?? current.audioInput ?? "system",
+    systemAudioTarget: draft.systemAudioTarget ?? current.systemAudioTarget ?? { kind: "system" },
     windowsAudioSource: draft.windowsAudioSource ?? current.windowsAudioSource,
     showInDock: draft.showInDock ?? current.showInDock,
     // Do not put an invalid or credential-bearing URL into the global UI
@@ -212,7 +213,7 @@ export function mergeSettingsSnapshot(
     retainSessionHistory:
       draft.retainSessionHistory ?? current.retainSessionHistory,
     // A prior recording opt-in must never silently cover a different input.
-    recordSessionAudio: draft.audioInput !== undefined && draft.audioInput !== (current.audioInput ?? "system")
+    recordSessionAudio: (draft.systemAudioTarget !== undefined && JSON.stringify(draft.systemAudioTarget) !== JSON.stringify(current.systemAudioTarget ?? { kind: "system" })) || (draft.audioInput !== undefined && draft.audioInput !== (current.audioInput ?? "system"))
       ? false : draft.recordSessionAudio ?? current.recordSessionAudio,
   };
 }

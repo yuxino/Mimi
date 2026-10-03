@@ -6,11 +6,13 @@ import { Switch } from "../../components/Switch";
 import { audioInputErrorMessage } from "../../lib/audioInput";
 import { captureSwitchCopy } from "../../lib/captureStatus";
 import type { AudioInput, AudioSource } from "../../lib/types";
+import { ApplicationAudio } from "./ApplicationAudio";
 import { WindowsAudioSource } from "./WindowsAudioSource";
 
 /** Uses the same idle, live and paused reconfiguration path as the overlay. */
 export function AudioInputSettings() {
   const selected = useStore(state => state.settings.audioInput) ?? "system";
+  const target = useStore(state => state.settings.systemAudioTarget);
   const status = useStore(state => state.session.status.kind);
   const initialization = useStore(state => state.initializationStatus);
   const switchAudioInput = useStore(state => state.switchAudioInput);
@@ -51,7 +53,8 @@ export function AudioInputSettings() {
       <Switch aria-label={I18N.settings.audioInputMicrophone} checked={selected !== "system"}
         disabled={disabled || selected === "microphone"} onChange={checked => void toggle("microphone", checked)} />
     </SettingsRow>
-    {selected !== "microphone" && <WindowsAudioSource />}
+    {selected !== "microphone" && <ApplicationAudio />}
+    {selected !== "microphone" && target?.kind !== "application" && <WindowsAudioSource />}
     {error && <InlineFeedback tone="error">{error}</InlineFeedback>}
   </SettingsSection>;
 }

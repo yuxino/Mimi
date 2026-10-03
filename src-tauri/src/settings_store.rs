@@ -201,6 +201,7 @@ pub struct Preferences {
     pub audio_input: AudioInput,
     /// Empty means follow the Windows default output, including live changes.
     pub windows_audio_source: String,
+    pub system_audio_target: crate::core::system_audio_target::SystemAudioTarget,
     /// macOS Dock/Cmd-Tab presence. Missing preferences show Mimi in the Dock.
     pub show_in_dock: bool,
     pub network_proxy: ProxyConfig,
@@ -230,6 +231,7 @@ impl Default for Preferences {
             record_session_audio: false,
             audio_input: AudioInput::System,
             windows_audio_source: String::new(),
+            system_audio_target: Default::default(),
             show_in_dock: true,
             network_proxy: ProxyConfig::default(),
         }
@@ -237,6 +239,16 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    pub fn apply_system_audio_target(
+        &mut self,
+        target: crate::core::system_audio_target::SystemAudioTarget,
+    ) {
+        if self.system_audio_target != target {
+            self.record_session_audio = false;
+        }
+        self.system_audio_target = target;
+    }
+
     /// A recording opt-in belongs to the selected sources. Changing selection
     /// always requires a fresh opt-in, even in a combined settings draft.
     pub fn apply_audio_preferences(&mut self, input: Option<AudioInput>, recording: Option<bool>) {
@@ -2942,6 +2954,28 @@ mod tests {
         let final_store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
         assert!(final_store.preferences().show_in_dock);
         assert!(fake.state.lock().unwrap().loads.is_empty());
+    }
+
+    #[test]
+    fn application_target_defaults_and_requires_fresh_recording_opt_in() {
+        use crate::core::system_audio_target::SystemAudioTarget;
+        let mut preferences: Preferences = serde_json::from_str("{}").unwrap();
+        assert_eq!(preferences.system_audio_target, SystemAudioTarget::System);
+        preferences.record_session_audio = true;
+        let target = SystemAudioTarget::Application {
+            id: "com.example.player".into(),
+            name: "Player".into(),
+        };
+        preferences.apply_system_audio_target(target.clone());
+        assert!(!preferences.record_session_audio);
+        preferences.record_session_audio = true;
+        preferences.apply_system_audio_target(target.clone());
+        assert!(preferences.record_session_audio);
+        let restored: Preferences =
+            serde_json::from_value(serde_json::to_value(&preferences).unwrap()).unwrap();
+        assert_eq!(restored.system_audio_target, target);
+        preferences.apply_system_audio_target(SystemAudioTarget::System);
+        assert!(!preferences.record_session_audio);
     }
 
     #[test]

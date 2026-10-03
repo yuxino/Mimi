@@ -89,7 +89,10 @@ mod streaming_resampler;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod microphone;
 
+pub mod applications;
 pub mod census;
+#[cfg(target_os = "windows")]
+mod windows_application;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -128,6 +131,14 @@ use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SystemAudioCaptureError {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[error("application_audio_unavailable")]
+    ApplicationUnavailable,
+    #[error("application_audio_unsupported")]
+    ApplicationUnsupported,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[error("application_audio_list_failed")]
+    ApplicationListFailed,
     #[error("Audio capture is already running.")]
     AlreadyRunning,
     #[cfg(target_os = "macos")]
@@ -141,7 +152,7 @@ pub enum SystemAudioCaptureError {
     #[cfg(target_os = "macos")]
     #[error("System audio capture permission was denied.")]
     PermissionDenied,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     #[error("Audio capture setup timed out.")]
     StartTimedOut,
     #[error("Audio capture start was cancelled.")]
@@ -177,6 +188,8 @@ pub enum SystemAudioCaptureError {
 /// same value is safe to use for both recovery decisions and diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum SystemAudioCaptureFailure {
+    #[error("application_audio_unavailable")]
+    ApplicationUnavailable,
     #[error("Audio capture stopped unexpectedly.")]
     NativeStopped,
     #[error("Audio capture could not process the device audio format.")]
@@ -189,6 +202,7 @@ impl SystemAudioCaptureFailure {
     pub fn diagnostic_label(self) -> &'static str {
         match self {
             Self::NativeStopped => "capture.native_stopped",
+            Self::ApplicationUnavailable => "capture.application_unavailable",
             Self::AudioProcessingFailed => "capture.audio_processing_failed",
             Self::Backpressure => "capture.backpressure",
         }
@@ -310,6 +324,8 @@ pub struct AudioCapture {
     system: SystemAudioCapture,
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     microphone: microphone::MicrophoneCapture,
+    #[cfg(target_os = "windows")]
+    application: windows_application::WindowsApplicationCapture,
     state: Arc<std::sync::Mutex<SelectionState>>,
 }
 
@@ -345,6 +361,8 @@ impl AudioCapture {
             system: SystemAudioCapture::for_app(app),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             microphone: microphone::MicrophoneCapture::default(),
+            #[cfg(target_os = "windows")]
+            application: Default::default(),
             state: Arc::new(std::sync::Mutex::new(SelectionState::default())),
         }
     }
@@ -355,6 +373,7 @@ impl AudioCapture {
         failure: CaptureFailureSender,
         format: AudioCaptureFormat,
         input: crate::core::audio_input::AudioSource,
+        target: crate::core::system_audio_target::SystemAudioTarget,
     ) -> Result<(), SystemAudioCaptureError> {
         let token = {
             let mut state = self.state.lock().unwrap();
@@ -385,7 +404,22 @@ impl AudioCapture {
         }
         match input {
             crate::core::audio_input::AudioSource::System => {
-                self.system.start(ingress, failure, format).await?
+                #[cfg(target_os = "macos")]
+                self.system.start(ingress, failure, format, target).await?;
+                #[cfg(target_os = "windows")]
+                if let Some(id) = target.application_id() {
+                    self.application
+                        .start(id.to_string(), ingress, failure, format)
+                        .await?;
+                } else {
+                    self.system.start(ingress, failure, format).await?;
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                if target.application_id().is_some() {
+                    return Err(SystemAudioCaptureError::ApplicationUnsupported);
+                } else {
+                    self.system.start(ingress, failure, format).await?;
+                }
             }
             crate::core::audio_input::AudioSource::Microphone => {
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -411,6 +445,8 @@ impl AudioCapture {
 
     async fn stop_backends(&self) {
         self.system.stop().await;
+        #[cfg(target_os = "windows")]
+        self.application.stop().await;
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         self.microphone.stop().await;
     }
@@ -446,6 +482,28 @@ impl AudioCapture {
         #[cfg(target_os = "macos")]
         self.system.wait_until_idle().await?;
         Ok(())
+    }
+
+    pub async fn audio_applications(
+        &self,
+    ) -> Result<applications::ApplicationSnapshot, SystemAudioCaptureError> {
+        #[cfg(target_os = "macos")]
+        {
+            self.system.audio_applications().await
+        }
+        #[cfg(target_os = "windows")]
+        {
+            tokio::task::spawn_blocking(applications::windows_applications)
+                .await
+                .map_err(|_| SystemAudioCaptureError::ApplicationListFailed)?
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            Ok(applications::ApplicationSnapshot {
+                supported: false,
+                applications: Vec::new(),
+            })
+        }
     }
 
     pub fn microphone_device_name(&self) -> Option<String> {

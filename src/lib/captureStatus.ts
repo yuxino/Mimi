@@ -1,9 +1,10 @@
+import { applicationAudioCopy } from "./applicationAudio";
 import { effectiveUiLanguage } from "./i18n";
 import type { AudioInput, AudioSource, SessionStateEvent } from "./types";
 
 interface CaptureStatusFields {
-  kind: "windows_output" | "macos_system_mix" | "linux_output_monitor" | "microphone" | "both" | "unknown";
-  strategy: "follow_system" | "manual_output" | "platform_capture" | "default_input" | "independent_inputs";
+  kind: "windows_output" | "macos_system_mix" | "linux_output_monitor" | "microphone" | "both" | "unknown" | "application";
+  strategy: "follow_system" | "manual_output" | "platform_capture" | "default_input" | "independent_inputs" | "selected_application";
   actualDeviceName: string | null;
   /** Output context is independent of a macOS mixed-audio capture route. */
   systemOutputDeviceName?: string | null;
@@ -79,14 +80,14 @@ export function capturePresentation(value: CaptureStatusFields | null, lifecycle
     : value.observation.soundRecent && value.observation.pcmDataRecent ? text.sound
     : value.observation.pcmDataRecent ? text.silent : text.noData;
   const device = !enabled ? null : microphone ? value?.actualDeviceName : value?.systemOutputDeviceName ?? value?.actualDeviceName;
-  const route = microphone ? text.microphoneHelp : value?.kind === "windows_output"
+  const route = value?.kind === "application" ? applicationAudioCopy(language).help : microphone ? text.microphoneHelp : value?.kind === "windows_output"
     ? value.strategy === "follow_system" ? text.autoOutput : text.manualOutput
     : value?.kind === "linux_output_monitor" ? text.linuxOutput : text.systemHelp;
   const detail = !enabled ? null : kind === "error" ? text.errorHelp : kind === "listening" && lifecycle.isActive && !lifecycle.isPaused
     ? observation === text.noData ? microphone ? text.microphoneNoData : text.systemNoData
       : observation === text.silent ? text.silentHelp : null
     : null;
-  const devicePrefix = microphone || !value?.systemOutputDeviceName ? text.device : text.output;
+  const devicePrefix = value?.kind === "application" ? applicationAudioCopy(language).application : microphone || !value?.systemOutputDeviceName ? text.device : text.output;
   const deviceCharacters = Array.from(device ?? "");
   const shortDevice = deviceCharacters.length > 40 ? `${deviceCharacters.slice(0, 39).join("")}…` : device;
   const deviceDescription = device ? `${devicePrefix}: ${device}` : undefined;

@@ -59,6 +59,7 @@ const BASE_SETTINGS: SettingsSnapshot = {
   retainSessionHistory: false,
   recordSessionAudio: false, audioInput: "system",
   windowsAudioSource: "",
+  systemAudioTarget: { kind: "system" },
   showInDock: false,
   networkProxy: { mode: "system", url: null },
 };

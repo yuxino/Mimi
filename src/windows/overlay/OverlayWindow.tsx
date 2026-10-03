@@ -476,7 +476,7 @@ export function OverlayWindow() {
       <div
         className="relative h-full w-full"
         role="group"
-        aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput)}`}
+        aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput, settings.systemAudioTarget)}`}
         style={{
           borderRadius: 14,
           background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
@@ -497,7 +497,7 @@ export function OverlayWindow() {
         >
           <DragHandle onToggleCollapsed={toggleCollapsed} compact />
           <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
-          <AudioInputIndicator input={settings.audioInput} />
+          <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
           <span
             className="truncate"
             role={sessionAction.failed || controlAction.failed ? "alert" : undefined}

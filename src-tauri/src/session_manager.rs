@@ -1155,6 +1155,16 @@ impl SessionManager {
             })
     }
 
+    pub async fn audio_applications(
+        &self,
+    ) -> Result<
+        crate::audio::applications::ApplicationSnapshot,
+        crate::audio::SystemAudioCaptureError,
+    > {
+        let capture = self.lane(AudioSource::System).audio.lock().unwrap().clone();
+        capture.audio_applications().await
+    }
+
     pub fn capture_status(&self) -> crate::audio::CaptureStatus {
         let preferences = self.settings.preferences();
         let generation = self.active_generation.load(Ordering::SeqCst);
@@ -1165,6 +1175,17 @@ impl SessionManager {
                 &lane.audio_pipeline_generation,
                 generation,
             );
+            if source == AudioSource::System {
+                if let Some(name) = preferences.system_audio_target.application_name() {
+                    return crate::audio::CaptureDetails {
+                        kind: "application",
+                        strategy: "selected_application",
+                        actual_device_name: Some(name.to_string()),
+                        system_output_device_name: None,
+                        observation,
+                    };
+                }
+            }
             self.capture_details(source, observation, &preferences.windows_audio_source)
         })
     }
@@ -1340,6 +1361,8 @@ impl SessionManager {
             (OutputSelection::DefaultMicrophone, Availability::Unknown)
         } else if prefs.audio_input == AudioInput::Both {
             (OutputSelection::SystemAndMicrophone, Availability::Unknown)
+        } else if prefs.system_audio_target.application_id().is_some() {
+            (OutputSelection::SelectedApplication, Availability::Unknown)
         } else {
             (output_selection, output_availability)
         };
@@ -1913,7 +1936,13 @@ impl SessionManager {
             match self
                 .run_while_generation_current(
                     generation,
-                    capture.start(audio_ingress, audio_failure_tx, audio_format, source),
+                    capture.start(
+                        audio_ingress,
+                        audio_failure_tx,
+                        audio_format,
+                        source,
+                        self.settings.preferences().system_audio_target,
+                    ),
                 )
                 .await
             {
@@ -3025,6 +3054,39 @@ impl SessionManager {
         attempt: u64,
         failure: SystemAudioCaptureFailure,
     ) {
+        if failure == SystemAudioCaptureFailure::ApplicationUnavailable {
+            let _teardown = self.begin_teardown_operation();
+            let _operation = self.begin_lifecycle_operation();
+            let epoch = {
+                let _transition = self.generation_transition.lock().unwrap();
+                let Some(epoch) = invalidate_audio_attempt_atoms(
+                    &self.active_generation,
+                    &self.lifecycle_sequence,
+                    &mut self.audio_attempt.lock().unwrap(),
+                    generation,
+                    attempt,
+                ) else {
+                    return;
+                };
+                self.lifecycle_notify.notify_waiters();
+                epoch
+            };
+            self.cancel_recovery().await;
+            let _lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
+            self.stop_health_checks().await;
+            self.cleanup_generation(generation).await;
+            if self.lifecycle_sequence.load(Ordering::SeqCst) != epoch {
+                return;
+            }
+            self.clear_active_settings_for_generation(generation);
+            self.record_diagnostic_failure(failure.diagnostic_label());
+            self.controller
+                .lock()
+                .unwrap()
+                .did_fail(failure.to_string());
+            self.publish_state();
+            return;
+        }
         self.handle_recoverable_runtime_failure(
             generation,
             attempt,

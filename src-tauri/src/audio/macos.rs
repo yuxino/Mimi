@@ -6,11 +6,13 @@
 //! closures dispatched to the main thread; completions that fire on arbitrary
 //! queues re-dispatch there before touching those objects.
 
+use crate::audio::applications::{sort_applications, ApplicationSnapshot, AudioApplication};
 use crate::audio::send_pipeline::{AudioIngress, AudioIngressError};
 use crate::audio::{
     AudioCaptureFormat, CaptureFailureSender, SystemAudioCaptureError, SystemAudioCaptureFailure,
 };
 use crate::core::pcm16::PCM16Encoder;
+use crate::core::system_audio_target::SystemAudioTarget;
 use crate::pipeline_log;
 use core_media::block_buffer::{CMBlockBufferGetDataLength, CMBlockBufferGetDataPointer};
 use core_media::format_description::CMAudioFormatDescriptionGetStreamBasicDescription;
@@ -28,7 +30,7 @@ use objc2_core_audio_types::{
 use objc2_foundation::{NSArray, NSObjectProtocol};
 use rubato::audioadapter_buffers::direct::SequentialSlice;
 use rubato::Resampler;
-use screen_capture_kit::shareable_content::{SCDisplay, SCRunningApplication, SCShareableContent};
+use screen_capture_kit::shareable_content::{SCDisplay, SCShareableContent};
 use screen_capture_kit::stream::{
     SCContentFilter, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamOutput,
     SCStreamOutputType,
@@ -187,6 +189,7 @@ thread_local! {
         const { RefCell::new(None) };
     static MAIN_STATE: RefCell<Option<Box<AudioHandlerState>>> = const { RefCell::new(None) };
     static MAIN_GENERATION: Cell<Option<u64>> = const { Cell::new(None) };
+    static MAIN_TARGET_APPS: RefCell<Vec<Retained<objc2_app_kit::NSRunningApplication>>> = const { RefCell::new(Vec::new()) };
 }
 
 const CAPTURE_START_TIMEOUT: Duration = Duration::from_secs(10);
@@ -381,13 +384,89 @@ impl MacSystemAudioCapture {
         }
     }
 
-    /// Starts capture and resolves only after ScreenCaptureKit's asynchronous
-    /// start completion confirms that the native stream is running.
+    /// Enumeration is explicitly requested by the picker. ScreenCaptureKit may
+    /// request the existing Screen & System Audio Recording permission.
+    pub async fn audio_applications(&self) -> Result<ApplicationSnapshot, SystemAudioCaptureError> {
+        let (tx, rx) = oneshot::channel();
+        let callback_dispatcher = Arc::clone(&self.dispatcher);
+        (self.dispatcher)(Box::new(move || {
+            let tx = Arc::new(Mutex::new(Some(tx)));
+            let callback_tx = Arc::clone(&tx);
+            let request = objc2::exception::catch(AssertUnwindSafe(|| {
+                SCShareableContent::get_shareable_content_excluding_desktop_windows(
+                    false,
+                    false,
+                    move |content, error| {
+                        let Some(content) = content else {
+                            let result = Err(error
+                                .as_ref()
+                                .map_or(SystemAudioCaptureError::ApplicationListFailed, |error| {
+                                    classify_native_start_error(error)
+                                }));
+                            if let Some(tx) = callback_tx.lock().unwrap().take() {
+                                let _ = tx.send(result);
+                            }
+                            return;
+                        };
+                        // Keep content traversal/destruction on the main thread,
+                        // just like stream startup. Only the pointer crosses queues.
+                        let ptr = MainThreadPtr(Box::into_raw(Box::new(content)) as *mut ());
+                        let tx = Arc::clone(&callback_tx);
+                        callback_dispatcher(Box::new(move || {
+                            let content = unsafe {
+                                *Box::from_raw(ptr.into_inner() as *mut Retained<SCShareableContent>)
+                            };
+                            let result = objc2::exception::catch(AssertUnwindSafe(|| {
+                                let own = own_bundle_identifier();
+                                let mut apps: Vec<_> = content
+                                    .applications()
+                                    .iter()
+                                    .filter_map(|app| {
+                                        let id = app.bundle_identifier().to_string();
+                                        let name = app.application_name().to_string();
+                                        let target = SystemAudioTarget::Application {
+                                            id: id.clone(),
+                                            name: name.clone(),
+                                        };
+                                        if !target.validate() || own.as_ref() == Some(&id) {
+                                            None
+                                        } else {
+                                            Some(AudioApplication { id, name })
+                                        }
+                                    })
+                                    .collect();
+                                sort_applications(&mut apps);
+                                ApplicationSnapshot {
+                                    supported: true,
+                                    applications: apps,
+                                }
+                            }))
+                            .map_err(|_| SystemAudioCaptureError::ApplicationListFailed);
+                            if let Some(tx) = tx.lock().unwrap().take() {
+                                let _ = tx.send(result);
+                            }
+                        }));
+                    },
+                );
+            }));
+            if request.is_err() {
+                if let Some(tx) = tx.lock().unwrap().take() {
+                    let _ = tx.send(Err(SystemAudioCaptureError::ApplicationListFailed));
+                }
+            }
+        }));
+        tokio::time::timeout(CAPTURE_START_TIMEOUT, rx)
+            .await
+            .map_err(|_| SystemAudioCaptureError::StartTimedOut)?
+            .map_err(|_| SystemAudioCaptureError::ApplicationListFailed)?
+    }
+
     pub async fn start(
         &self,
         audio_ingress: AudioIngress,
         failure_tx: CaptureFailureSender,
         format: AudioCaptureFormat,
+        target: SystemAudioTarget,
     ) -> Result<(), SystemAudioCaptureError> {
         if self.started.swap(true, Ordering::SeqCst) {
             return Err(SystemAudioCaptureError::AlreadyRunning);
@@ -408,6 +487,8 @@ impl MacSystemAudioCapture {
             return Err(SystemAudioCaptureError::StartCancelled);
         }
 
+        let application_target = target.application_id().is_some();
+        let monitor_failure = failure_tx.clone();
         // Phase 1 (main thread): ask ScreenCaptureKit for shareable content.
         let dispatcher = Arc::clone(&self.dispatcher);
         let phase2_dispatcher = Arc::clone(&self.dispatcher);
@@ -450,6 +531,7 @@ impl MacSystemAudioCapture {
                         };
                         let ptr = MainThreadPtr(Box::into_raw(Box::new(content)) as *mut ());
                         let audio_ingress = audio_ingress.clone();
+                        let target = target.clone();
                         let failure_tx = failure_tx.clone();
                         let dispatcher = Arc::clone(&phase2_dispatcher);
                         let barrier = barrier_for_callback.clone();
@@ -474,6 +556,7 @@ impl MacSystemAudioCapture {
                                         generation_token,
                                         pending_teardown,
                                         start_barrier: barrier.clone(),
+                                        target,
                                     },
                                 )
                             }));
@@ -503,6 +586,37 @@ impl MacSystemAudioCapture {
         };
         if result.is_err() {
             self.finish_failed_start(generation_token).await;
+        }
+        if result.is_ok() && application_target {
+            let generation = self.generation.clone();
+            let dispatcher = Arc::clone(&self.dispatcher);
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    if !generation.is_current(generation_token) || monitor_failure.has_reported() {
+                        break;
+                    }
+                    let generation = generation.clone();
+                    let failure = monitor_failure.clone();
+                    let (checked_tx, checked_rx) = oneshot::channel();
+                    dispatcher(Box::new(move || {
+                        if MAIN_GENERATION.get() == Some(generation_token)
+                            && generation.is_current(generation_token)
+                            && MAIN_TARGET_APPS
+                                .with(|apps| apps.borrow().iter().all(|app| app.isTerminated()))
+                        {
+                            failure.report(SystemAudioCaptureFailure::ApplicationUnavailable);
+                        }
+                        let _ = checked_tx.send(());
+                    }));
+                    if tokio::time::timeout(Duration::from_secs(2), checked_rx)
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
         }
         result
     }
@@ -539,6 +653,7 @@ impl MacSystemAudioCapture {
                 return;
             }
             MAIN_GENERATION.set(None);
+            MAIN_TARGET_APPS.with(|apps| apps.borrow_mut().clear());
             let stream = MAIN_STREAM.take();
             let state = MAIN_STATE.take();
             let handler = MAIN_HANDLER.take();
@@ -609,6 +724,7 @@ struct CaptureStartRequest {
     generation_token: u64,
     pending_teardown: PendingTeardown,
     start_barrier: CaptureStartBarrier,
+    target: SystemAudioTarget,
 }
 
 fn start_capture_on_main(
@@ -623,6 +739,7 @@ fn start_capture_on_main(
         generation_token,
         pending_teardown,
         start_barrier,
+        target,
     } = request;
     if !generation.is_current(generation_token) {
         return Err(SystemAudioCaptureError::StartCancelled);
@@ -649,27 +766,60 @@ fn start_capture_on_main(
         return Err(SystemAudioCaptureError::NoDisplay);
     };
 
-    // Exclude this app from the captured audio.
     let own_bundle_id = own_bundle_identifier();
     let applications = content.applications();
-    let mut excluded: Vec<Retained<SCRunningApplication>> = Vec::new();
-    for index in 0..applications.len() {
-        let app = applications.objectAtIndex(index);
-        if own_bundle_id
-            .as_ref()
-            .is_some_and(|own| app.bundle_identifier().to_string() == *own)
-        {
-            excluded.push(app);
+    let mut selected = Vec::new();
+    for app in applications.iter() {
+        let bundle = app.bundle_identifier().to_string();
+        let own = own_bundle_id.as_ref().is_some_and(|own| bundle == *own);
+        if match target.application_id() {
+            Some(id) => !own && bundle == id,
+            None => own,
+        } {
+            selected.push(app);
         }
     }
-    let excluded = NSArray::from_retained_slice(&excluded);
+    if target.application_id().is_some() && selected.is_empty() {
+        return Err(SystemAudioCaptureError::ApplicationUnavailable);
+    }
+    let target_apps: Vec<_> = if target.application_id().is_some() {
+        selected
+            .iter()
+            .filter_map(|app| {
+                objc2_app_kit::NSRunningApplication::runningApplicationWithProcessIdentifier(
+                    app.process_id(),
+                )
+            })
+            .filter(|app| {
+                !app.isTerminated()
+                    && app.bundleIdentifier().is_some_and(|bundle| {
+                        Some(bundle.to_string().as_str()) == target.application_id()
+                    })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if target.application_id().is_some() && target_apps.is_empty() {
+        return Err(SystemAudioCaptureError::ApplicationUnavailable);
+    }
+    let selected = NSArray::from_retained_slice(&selected);
     let no_windows = NSArray::new();
-    let filter = SCContentFilter::init_with_display_exclude_applications(
-        SCContentFilter::alloc(),
-        &display,
-        &excluded,
-        &no_windows,
-    );
+    let filter = if target.application_id().is_some() {
+        SCContentFilter::init_with_display_include_applications(
+            SCContentFilter::alloc(),
+            &display,
+            &selected,
+            &no_windows,
+        )
+    } else {
+        SCContentFilter::init_with_display_exclude_applications(
+            SCContentFilter::alloc(),
+            &display,
+            &selected,
+            &no_windows,
+        )
+    };
     pipeline_log!("system audio capture filter built");
 
     // Audio-only stream configuration at the provider rate, own audio excluded.
@@ -746,11 +896,13 @@ fn start_capture_on_main(
         return Err(SystemAudioCaptureError::StartCancelled);
     }
     MAIN_GENERATION.set(Some(generation_token));
+    MAIN_TARGET_APPS.with(|apps| *apps.borrow_mut() = target_apps);
     MAIN_STREAM.set(Some(stream));
     MAIN_HANDLER.set(Some(handler));
     MAIN_STATE.set(Some(state));
     if !generation.is_current(generation_token) {
         MAIN_GENERATION.set(None);
+        MAIN_TARGET_APPS.with(|apps| apps.borrow_mut().clear());
         let stream = MAIN_STREAM
             .take()
             .expect("capture stream was just installed");

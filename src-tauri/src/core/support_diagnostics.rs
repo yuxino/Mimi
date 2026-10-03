@@ -332,6 +332,7 @@ pub enum OutputSelection {
     #[cfg(any(target_os = "windows", test))]
     ManualOutput,
     PlatformSystemAudio,
+    SelectedApplication,
     DefaultMicrophone,
     SystemAndMicrophone,
 }

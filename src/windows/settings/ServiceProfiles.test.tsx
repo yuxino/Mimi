@@ -25,7 +25,7 @@ const settings: SettingsSnapshot = {
   subtitleDisplayMode: "translation", pulseAnimation: null, pulseStyle: "ribbon", subtitleAnimation: null,
   showSubtitleDividers: false,
   subtitleBlendsWithBackground: false, isOverlayLocked: false, uiLanguage: "en",
-  retainSessionHistory: false, recordSessionAudio: false, audioInput: "system", windowsAudioSource: "", showInDock: false,
+  retainSessionHistory: false, recordSessionAudio: false, audioInput: "system", windowsAudioSource: "", systemAudioTarget: { kind: "system" }, showInDock: false,
   networkProxy: { mode: "system", url: null },
 };
 let host: HTMLDivElement, root: Root;

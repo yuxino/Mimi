@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from "vitest";
-import { audioInputErrorMessage } from "./audioInput";
-import { setStoredUiLanguage } from "./i18n";
+import { audioInputErrorMessage, audioInputLabel } from "./audioInput";
+import { setStoredUiLanguage, I18N } from "./i18n";
 
 afterEach(() => setStoredUiLanguage("en"));
 it.each(["en", "zh", "ja"] as const)("localizes microphone failures with recovery actions in %s", language => {
@@ -16,4 +16,11 @@ it.each(["en", "zh", "ja"] as const)("localizes microphone failures with recover
 it("matches only complete safe labels and does not reinterpret provider text", () => {
   expect(audioInputErrorMessage("No default microphone is available. synthetic-private-detail")).toBeNull();
   expect(audioInputErrorMessage("unrelated-provider-failure")).toBeNull();
+});
+
+it("identifies the selected app and keeps the microphone independent", () => {
+  const target = { kind: "application" as const, id: "test.player", name: "Player" };
+  expect(audioInputLabel("system", target)).toBe("Player");
+  expect(audioInputLabel("both", target)).toBe(`Player + ${I18N.settings.audioInputMicrophone}`);
+  expect(audioInputLabel("microphone", target)).toBe(I18N.settings.audioInputMicrophone);
 });

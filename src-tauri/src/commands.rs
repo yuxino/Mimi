@@ -147,6 +147,7 @@ pub struct SettingsSnapshotPayload {
     pub record_session_audio: bool,
     pub audio_input: AudioInput,
     pub windows_audio_source: String,
+    pub system_audio_target: crate::core::system_audio_target::SystemAudioTarget,
     pub show_in_dock: bool,
     pub network_proxy: ProxyConfig,
 }
@@ -487,6 +488,7 @@ mod tests {
             record_session_audio: false,
             audio_input: AudioInput::System,
             windows_audio_source: String::new(),
+            system_audio_target: Default::default(),
             show_in_dock: false,
             network_proxy: ProxyConfig::default(),
         };
@@ -549,6 +551,29 @@ mod tests {
             assert!(ensure_settings_draft_allowed(&draft, true).is_err());
             assert!(ensure_settings_draft_allowed(&draft, false).is_ok());
         }
+    }
+
+    #[test]
+    fn application_selection_and_enumeration_are_settings_only() {
+        use crate::core::system_audio_target::SystemAudioTarget;
+        let draft = SettingsDraft {
+            system_audio_target: Some(SystemAudioTarget::Application {
+                id: "test.player".into(),
+                name: "Player".into(),
+            }),
+            ..Default::default()
+        };
+        assert!(ensure_settings_draft_window_allowed("settings", &draft).is_ok());
+        for label in ["overlay", "overlay-control", "tray-panel"] {
+            assert!(ensure_settings_draft_window_allowed(label, &draft).is_err());
+        }
+        let permissions = include_str!("../permissions/app.toml");
+        let entry = permissions
+            .split("[[permission]]")
+            .find(|entry| entry.contains("\"audio_applications\""))
+            .unwrap();
+        assert!(entry.contains("identifier = \"app-settings\""));
+        assert_eq!(permissions.matches("\"audio_applications\"").count(), 1);
     }
 
     #[test]
@@ -752,6 +777,7 @@ impl SettingsSnapshotPayload {
                     record_session_audio: prefs.record_session_audio,
                     audio_input: prefs.audio_input,
                     windows_audio_source: prefs.windows_audio_source,
+                    system_audio_target: prefs.system_audio_target,
                     show_in_dock: prefs.show_in_dock,
                     network_proxy: prefs.network_proxy,
                 }
@@ -796,6 +822,7 @@ impl SettingsSnapshotPayload {
             record_session_audio: prefs.record_session_audio,
             audio_input: prefs.audio_input,
             windows_audio_source: prefs.windows_audio_source,
+            system_audio_target: prefs.system_audio_target,
             show_in_dock: prefs.show_in_dock,
             network_proxy: prefs.network_proxy,
         })
@@ -824,6 +851,7 @@ pub struct SettingsDraft {
     pub record_session_audio: Option<bool>,
     pub audio_input: Option<AudioInput>,
     pub windows_audio_source: Option<String>,
+    pub system_audio_target: Option<crate::core::system_audio_target::SystemAudioTarget>,
     pub show_in_dock: Option<bool>,
     pub network_proxy: Option<ProxyConfig>,
 }
@@ -911,6 +939,7 @@ fn ensure_settings_draft_window_allowed(label: &str, draft: &SettingsDraft) -> R
         || draft.record_session_audio.is_some()
         || draft.audio_input.is_some()
         || draft.windows_audio_source.is_some()
+        || draft.system_audio_target.is_some()
         || draft.network_proxy.is_some())
         && label != "settings"
     {
@@ -949,6 +978,7 @@ async fn apply_settings_draft(
         || draft.record_session_audio.is_some()
         || draft.audio_input.is_some()
         || draft.windows_audio_source.is_some()
+        || draft.system_audio_target.is_some()
         || draft.network_proxy.is_some();
     let _lifecycle = state
         .session
@@ -1004,12 +1034,32 @@ fn apply_settings_draft_guarded(
         || draft.record_session_audio.is_some()
         || draft.audio_input.is_some()
         || draft.windows_audio_source.is_some()
+        || draft.system_audio_target.is_some()
         || draft.show_in_dock.is_some()
         || draft.network_proxy.is_some();
     if !needs_save {
         return SettingsSnapshotPayload::try_from_store(&state.settings);
     }
 
+    if draft
+        .system_audio_target
+        .as_ref()
+        .is_some_and(|target| !target.validate())
+    {
+        return Err("application_audio_invalid_target".into());
+    }
+    if draft
+        .system_audio_target
+        .as_ref()
+        .is_some_and(|target| target.application_id().is_some())
+        && !crate::audio::applications::supported()
+    {
+        return Err(crate::audio::SystemAudioCaptureError::ApplicationUnsupported.to_string());
+    }
+    let target_changed = draft
+        .system_audio_target
+        .as_ref()
+        .is_some_and(|target| *target != state.settings.preferences().system_audio_target);
     let save_preferences = || {
         state.settings.save_preferences_for_active_profile(|prefs| {
             if let Some(proxy) = &network_proxy {
@@ -1033,6 +1083,9 @@ fn apply_settings_draft_guarded(
             prefs.apply_audio_preferences(draft.audio_input, draft.record_session_audio);
             if let Some(opacity) = draft.subtitle_background_opacity {
                 prefs.subtitle_background_opacity = opacity;
+            }
+            if let Some(target) = draft.system_audio_target {
+                prefs.apply_system_audio_target(target);
             }
             if let Some(font_size) = draft.font_size {
                 prefs.font_size = font_size;
@@ -1083,8 +1136,9 @@ fn apply_settings_draft_guarded(
     save_preferences()?;
     // Source changes can clear recording even when the draft omits it. Use
     // the saved value so a combined draft cannot retain old-source audio.
-    let recording = (draft.audio_input.is_some() || draft.record_session_audio.is_some())
-        .then(|| state.settings.preferences().record_session_audio);
+    let recording =
+        (target_changed || draft.audio_input.is_some() || draft.record_session_audio.is_some())
+            .then(|| state.settings.preferences().record_session_audio);
     state
         .session
         .apply_archive_opt_out(draft.retain_session_history, recording);
@@ -1198,7 +1252,8 @@ fn ensure_settings_draft_allowed(draft: &SettingsDraft, is_active: bool) -> Resu
             || draft.retain_session_history.is_some()
             || draft.record_session_audio.is_some()
             || draft.audio_input.is_some()
-            || draft.windows_audio_source.is_some())
+            || draft.windows_audio_source.is_some()
+            || draft.system_audio_target.is_some())
     {
         Err(
             "Listening settings cannot be changed through settings while a session is active."
@@ -1794,4 +1849,26 @@ pub async fn capture_status(
     state: State<'_, AppState>,
 ) -> Result<crate::audio::CaptureStatus, String> {
     Ok(state.session.capture_status())
+}
+
+/// Listing does not start capture or read provider credentials. UI-test mode
+/// returns synthetic choices and never invokes OS capture APIs.
+#[tauri::command]
+pub async fn audio_applications(
+    state: State<'_, AppState>,
+) -> Result<crate::audio::applications::ApplicationSnapshot, String> {
+    if app_is_ui_test() {
+        return Ok(crate::audio::applications::ApplicationSnapshot {
+            supported: true,
+            applications: vec![crate::audio::applications::AudioApplication {
+                id: "test.player".into(),
+                name: "Test Player".into(),
+            }],
+        });
+    }
+    state
+        .session
+        .audio_applications()
+        .await
+        .map_err(|error| error.to_string())
 }

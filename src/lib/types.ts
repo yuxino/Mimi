@@ -123,6 +123,7 @@ export interface SettingsSnapshot {
   recordSessionAudio: boolean;
   audioInput: AudioInput;
   windowsAudioSource: string;
+  systemAudioTarget: SystemAudioTarget;
   /** macOS only; false retains menu-bar utility behavior. */
   showInDock: boolean;
   networkProxy: NetworkProxyConfig;
@@ -138,6 +139,7 @@ export interface NetworkProxyConfig {
 export type UiLanguage = "system" | "zh" | "en" | "ja";
 export type AudioSource = "system" | "microphone";
 export type AudioInput = AudioSource | "both";
+export type SystemAudioTarget = { kind: "system" } | { kind: "application"; id: string; name: string };
 export type PulseStyle = "syllable" | "ribbon";
 export type SubtitleDisplayMode = "translation" | "bilingual" | "original";
 export type SubtitlePresetColor = "white" | "teal" | "yellow" | "green" | "pink";
@@ -164,6 +166,7 @@ export interface SettingsDraft {
   recordSessionAudio?: boolean;
   audioInput?: AudioInput;
   windowsAudioSource?: string;
+  systemAudioTarget?: SystemAudioTarget;
   showInDock?: boolean;
   networkProxy?: NetworkProxyConfig;
 }

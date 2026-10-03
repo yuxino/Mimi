@@ -38,6 +38,7 @@ const SETTINGS: SettingsSnapshot = {
   retainSessionHistory: false,
   recordSessionAudio: false, audioInput: "system",
   windowsAudioSource: "",
+  systemAudioTarget: { kind: "system" },
   showInDock: false,
   networkProxy: { mode: "system", url: null },
 };
@@ -491,4 +492,14 @@ it("updates background opacity immediately, preserves zero and keeps it through 
   expect(transparent.subtitleBackgroundOpacity).toBe(0);
   expect(mergeSettingsSnapshot(transparent, { fontSize: 20 }).subtitleBackgroundOpacity).toBe(0);
   expect(mergeSettingsSnapshot(SETTINGS, { subtitleBackgroundOpacity: 35 }).subtitleBackgroundOpacity).toBe(35);
+});
+
+it("application target changes require a new recording opt-in, including combined drafts", () => {
+  const recording = { ...SETTINGS, recordSessionAudio: true };
+  const target = { kind: "application" as const, id: "com.example.player", name: "Player" };
+  const changed = mergeSettingsSnapshot(recording, { systemAudioTarget: target, recordSessionAudio: true });
+  expect(changed.recordSessionAudio).toBe(false);
+  const optedIn = mergeSettingsSnapshot(changed, { recordSessionAudio: true });
+  expect(mergeSettingsSnapshot(optedIn, { systemAudioTarget: target }).recordSessionAudio).toBe(true);
+  expect(mergeSettingsSnapshot(optedIn, { systemAudioTarget: { kind: "system" } }).recordSessionAudio).toBe(false);
 });

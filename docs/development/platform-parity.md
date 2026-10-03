@@ -40,7 +40,7 @@ update both implementations and their platform-specific tests in the same change
 | Built-in Alibaba pipeline | Desktop Audio 3.0/Qwen-MT scheduling | Existing integrated realtime translation adapter |
 | Translation scheduling | Speculative drafts plus prioritized finals and provider recovery | Final-only serial HTTP, one active and four waiting; explicit stop on failure |
 | Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Existing native overlay background settings and history styling |
-| Audio capture | OS-specific desktop capture | Android playback-capture consent and foreground service |
+| Audio capture | OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
 | Secret storage | OS keychain | Android Keystore-backed encrypted preferences |
 | Local HTTP | Existing loopback endpoint validation | Explicit per-config opt-in and Android network allowlist; includes emulator host |
 | History/recording | Optional bounded local session files and selected-input recordings | Existing optional bounded subtitle history; no desktop recording/export parity claimed |

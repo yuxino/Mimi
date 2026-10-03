@@ -1,10 +1,11 @@
 import { effectiveUiLanguage, I18N } from "./i18n";
-import type { AudioInput } from "./types";
+import type { AudioInput, SystemAudioTarget } from "./types";
 
-export function audioInputLabel(input: AudioInput = "system"): string {
+export function audioInputLabel(input: AudioInput = "system", target?: SystemAudioTarget): string {
+  const systemLabel = target?.kind === "application" ? target.name : I18N.settings.audioInputSystem;
   return input === "both"
-    ? `${I18N.settings.audioInputSystem} + ${I18N.settings.audioInputMicrophone}`
-    : input === "microphone" ? I18N.settings.audioInputMicrophone : I18N.settings.audioInputSystem;
+    ? `${systemLabel} + ${I18N.settings.audioInputMicrophone}`
+    : input === "microphone" ? I18N.settings.audioInputMicrophone : systemLabel;
 }
 
 const copy = {

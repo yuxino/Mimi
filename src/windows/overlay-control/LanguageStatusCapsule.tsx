@@ -46,7 +46,7 @@ export function LanguageStatusCapsule({
     ? I18N.overlay.closeControls
     : I18N.overlay.openControls;
   const compact = capsuleLabels(settings, transientPhase);
-  const sources = audioInputLabel(settings.audioInput);
+  const sources = audioInputLabel(settings.audioInput, settings.systemAudioTarget);
   const phaseLabel = isStopping ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   const fullLabel = `${sources} · ${phaseLabel} · ${status.source} ${status.separator} ${status.target}`;
 
@@ -81,7 +81,7 @@ export function LanguageStatusCapsule({
       aria-controls={expanded ? undefined : "overlay-control-panel"}
     >
       <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
-      <AudioInputIndicator input={settings.audioInput} />
+      <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
       {transientPhase && (
         <span className="overlay-control-island__phase">{compact.phase}</span>
       )}

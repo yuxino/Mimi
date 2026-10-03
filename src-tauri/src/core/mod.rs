@@ -28,3 +28,5 @@ pub mod subtitle_reducer;
 pub mod audio_source;
 
 pub mod support_diagnostics;
+
+pub mod system_audio_target;

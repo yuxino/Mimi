@@ -1,5 +1,6 @@
 import { audio3ErrorMessage } from "./audio3Errors";
 import { audioSourceErrorMessage } from "./windowsAudioSource";
+import { applicationAudioError } from "./applicationAudio";
 import { audioInputErrorMessage } from "./audioInput";
 import { credentialErrorMessage } from "./connectionDiagnostics";
 import { shareUnchangedSubtitleHistory } from "./sessionSnapshot";
@@ -120,6 +121,7 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   recordSessionAudio: false,
   audioInput: "system",
   windowsAudioSource: "",
+  systemAudioTarget: { kind: "system" },
   showInDock: true,
   networkProxy: DEFAULT_NETWORK_PROXY,
 };
@@ -177,7 +179,7 @@ export function selectSessionStatusKind(state: SessionStoreSlice) {
 
 export function selectSessionErrorMessage(state: SessionStoreSlice) {
   return state.session.status.kind === "error"
-    ? credentialErrorMessage(state.session.status.message) ?? audioInputErrorMessage(state.session.status.message) ?? audioSourceErrorMessage(state.session.status.message) ?? audio3ErrorMessage(state.session.status.message) ?? state.session.status.message
+    ? credentialErrorMessage(state.session.status.message) ?? applicationAudioError(state.session.status.message) ?? audioInputErrorMessage(state.session.status.message) ?? audioSourceErrorMessage(state.session.status.message) ?? audio3ErrorMessage(state.session.status.message) ?? state.session.status.message
     : null;
 }
 
@@ -416,7 +418,7 @@ export const useStore = create<StoreState>()((set, get) => ({
 
   saveSettings: async (draft) => {
     const previous = get().settings;
-    if (draft.audioInput !== undefined && draft.audioInput !== (previous.audioInput ?? "system") &&
+    if ((draft.systemAudioTarget !== undefined || (draft.audioInput !== undefined && draft.audioInput !== (previous.audioInput ?? "system"))) &&
       (get().session.isActive || get().session.isPaused || sessionSettingsAreChanging(get().session))) {
       throw new Error("audio_input_change_requires_stop");
     }

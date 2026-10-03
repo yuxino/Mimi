@@ -2561,3 +2561,12 @@
 .settings-diagnostic-events__heading {
   align-items: center;
 }
+
+.application-audio-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.application-audio-controls .mimi-select { min-width: 0; }
