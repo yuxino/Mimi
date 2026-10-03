@@ -1,0 +1,85 @@
+# UI consistency and feedback / 界面一致性与操作反馈
+
+修改设置、托盘面板或字幕浮窗前，先阅读此规范。修复重复的界面问题时，
+必须排查其他页面的同类控件，同时检查成功、失败、弹窗和异步结果迟到的路径。
+
+Read this before changing settings, the tray panel or the subtitle overlay.
+These project rules apply to implementation and review.
+
+## Layout
+
+- Start with the existing design tokens, components, icons and nearby screens.
+  Keep the established black, white and neutral-gray visual language. Use
+  status colors only for a concrete state; preserve existing provider branding.
+- Make the title, current state, main action and detail areas easy to distinguish.
+  Group related controls, use consistent button sizes and align actions right.
+  Do not scatter buttons across large blank areas or add cards to every row.
+- Keep essential labels, choices and actionable errors readable at normal text
+  size. Put non-essential explanations behind hover/focus help icons. Long raw
+  diagnostics and advanced details start collapsed; bound long lists and text.
+- Verify wrapping, narrow windows, long labels, empty content and light/dark
+  themes. Interactive controls, including help and toast dismissal, keep pointer
+  cursors; preserve disabled, text-input, slider and resize cursors.
+
+## Choose feedback by purpose
+
+| Situation | Required behavior |
+| --- | --- |
+| Copy, refresh, explicit save, export, delete or quit outcome | Shared transient toast; no full-width banner or paragraph that moves page content. |
+| Instant preference change, including switches, sliders and color choices | Save quietly on success; show a sanitized failure toast. Do not swallow the rejection or show a success toast for every slider event. |
+| Invalid input or failed save with an unsaved field to correct | Keep the draft, error and retry beside that field. Toasts do not replace field validation. |
+| Connection check | Keep progress, result and actual request duration beside its triggering action; recognition and translation remain independent. |
+| Ongoing session, device or local-storage problem | Keep the relevant state/error and recovery control visible until resolved. |
+| Update download/install/restart state | Keep progress and the next action visible. An up-to-date acknowledgement or failed Releases link uses a toast. |
+
+Use known error labels and localized messages. Never display raw provider/OS
+errors, credentials, audio or subtitle content in a notification. Name the
+actual failed operation: deleting history is not a history-read failure.
+
+## Reuse the shared implementation
+
+Settings uses [SettingsPrimitives](../../src/windows/settings/SettingsPrimitives.tsx)
+for rows, sections and actionable inline feedback, and mounts one
+[SettingsToastRegion](../../src/windows/settings/SettingsToast.tsx) per window.
+Use [useSettingsToast](../../src/windows/settings/useSettingsToast.ts):
+
+- `beginToast()` reserves the notification slot before an asynchronous action.
+  The returned notifier reports its result; pass `true` for a failure.
+- `runWithToast(action, failureMessage)` handles quiet preference saves.
+- New operations replace older notifications. Success expires after three
+  seconds, failure after eight; either can be dismissed manually.
+- Navigation, native/DOM blur, close, hide and unmount clear notifications.
+  Late callbacks must not revive them after those boundaries or a newer action.
+- A modal makes the background inert. Keep the same toast inside the active
+  dialog so it is visible, announced and dismissible. Preserve the focus trap,
+  Tab/Escape handling and the destructive-action confirmation.
+
+Use each product surface's existing shared feedback mechanism. Do not import
+settings UI into the overlay or replace an actionable capture state with a
+disappearing notification.
+
+## Cross-page review
+
+Before calling a UI consistency fix complete:
+
+1. Find sibling instances across settings categories, tray panel and overlay.
+   Search shared components, callers, inline feedback, alert/status elements,
+   save handlers and catches. Include platform-specific controls and hidden
+   editors; a single screenshot is not the scope of the audit.
+2. Classify each instance using the table above. Reuse the shared component or
+   helper instead of copying a page-specific workaround. Check both success
+   and failure, including ignored/rejected save promises.
+3. Verify rollback/draft retention and retry, busy/disabled controls, duplicate
+   clicks, repeated actions, navigation/unmount and late results. Check toast
+   expiry/dismissal and behavior inside an active modal when applicable.
+4. Run relevant existing regressions and add focused coverage for new behavior.
+   Run `./scripts/check.sh`. For UI changes, inspect the affected instances in
+   the signed development app using the [native-test rules](common-regressions.md).
+   Keep UI-only fixtures separate from real capture/provider evidence.
+5. Review the final diff and report the pages/paths checked plus any intentional
+   differences or unverified platform behavior. Update this guide when the
+   shared rule changes; record new concrete pitfalls in `common-regressions.md`.
+
+The [settings feedback audit](../plans/2026-10-04-settings-feedback-audit.md)
+records the specific cases that led to these rules. Keep prevention rules here
+so future work does not depend on finding a dated design note.

@@ -28,6 +28,8 @@ Preserve these product constraints:
 - `docs/development/common-regressions.md`: required macOS signing, permission,
   Keychain, overlay, and local-testing pitfalls. Read it before packaging or
   diagnosing a repeated system prompt.
+- `docs/development/ui-guidelines.md`: shared layout, action-feedback rules and
+  the cross-page review checklist. Read it before changing a product interface.
 - `scripts/check.sh`: canonical automated test and strict-build entry point.
 - `scripts/package-app.sh`: release-shaped local build via `tauri build`, signed with the stable local identity; compare its identity before replacing a release, especially older ad-hoc installations.
 - `scripts/codesign-identity.sh`: honors an explicit `MIMI_CODESIGN_IDENTITY`; otherwise it selects the exact fingerprint of the unique `mimi Local Development` identity or reports unavailable. macOS packaging and development launch fail closed rather than use ad-hoc signing.
@@ -37,6 +39,7 @@ Preserve these product constraints:
 
 ## Working agreements
 
+- Follow [UI consistency and feedback](docs/development/ui-guidelines.md). When fixing a repeated UI pattern, find and review its sibling controls across settings, tray panel and overlay; cover success and failure paths, including silent save rejections. Reuse shared components and design tokens. Do not call the sweep complete after checking only the reported page.
 - Interactive controls with hover feedback must keep a pointer cursor across the overlay, control panel, tray panel and settings, including help controls. Preserve disabled/busy, text-input, slider and resize cursors. On macOS, verify the nonactivating overlay's native cursor path as well as CSS; a successful native cursor update does not guarantee WebKit will retain it on later movement.
 - Keep explanatory copy out of persistent small-print paragraphs. Use compact help icons with hover/focus tooltips for non-essential descriptions, protocol requirements, and storage details. Keep field labels, essential choices, and actionable errors visible at the normal interface text size. Do not add small text merely to fill space or explain an otherwise clear control.
 - Keep related action buttons compact, consistent, and right-aligned. Use existing icons. Configuration deletion uses a red destructive action and a standard confirmation dialog, never an expanding inline strip. Choosing a service type must not create a profile until the user confirms adding it. Display connection-check progress and results with the triggering action, including actual request duration; recognition and text translation have independent checks.
