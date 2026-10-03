@@ -37,7 +37,11 @@ run's verified scope and open checks in [the run ledger](integration-runs.md).
    `finalBoundary` distinguishes an upstream `server-final` from the bounded
    local `session-finish` fallback. The latter can translate an unfinished
    ASR draft when stopping. It must not be described as a service-confirmed
-   recognition final. The offline analyzer separates identity links, complete
+   recognition final. When checking final-lane aliases, compare content revision
+   and source utterance ID as well as text. With no source ID, distinct local
+   confirmations remain distinct; `None` is not an identity wildcard. A known
+   source revision can join its server final and finish fallback.
+   The offline analyzer separates identity links, complete
    content chains, exact draft-origin chains, mismatches and missing evidence.
    Saved local cases can be reopened in the dev inspector after restarting.
    Captured routes record the launcher build revision and whether its checkout
@@ -137,7 +141,10 @@ to the source before attributing unexpected text to the model.
 
 Play native Mimi scenes sequentially. Parallel system playback would produce
 one contaminated capture rather than independent cases. Pause/resume and clear
-tests record their intentional excluded intervals and expected revision changes;
+tests must locate the actual native controls before timed playback begins. If a
+control cannot be reached by its deadline, record the missed action and actual
+captured intervals; do not score the intended plan as executed. These tests
+record their intentional excluded intervals and expected revision changes;
 they must not count intentionally discarded or uncaptured speech as omissions.
 Repeat identical source sentences with distinct identities when exercising
 late replies and overwrite behavior. Persist completed input/evidence/report

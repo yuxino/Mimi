@@ -39,6 +39,10 @@ update both implementations and their platform-specific tests in the same change
   classification, attempt bounds and backoff come from shared Rust policy. Explicit stop
   uses bounded provider/final grace windows; aborts cancel immediately. Late retired-
   generation results cannot enter a new session. Previews never confirm history.
+  Desktop finish deduplication additionally joins a known source revision, or
+  the same local confirmation when the ASR has no ID. Equal text from separate
+  confirmations stays independent. Android's final-only adapter has no matching
+  draft-finish text alias; this desktop admission repair does not change its flow.
 - DashScope realtime pairs source and translation using conversation-item links;
   a known response without a source link cannot guess a source by arrival order.
   OpenAI append-only streams share timing/punctuation alignment and safe tail flush.

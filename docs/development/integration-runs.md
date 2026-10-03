@@ -4,6 +4,79 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-04：首轮质量基线与重复尾句接纳修复
+
+- 基线 revision：`c7e406760a915a35e0c2c7c5c963b4488c30012b`，两批
+  服务测试和签名 dev 构建均为干净工作区。开发凭据沿用既有私有 loader，
+  未复制密钥，未引入服务。系统声音串行播放、麦克风未使用；未发布版本。
+- 冻结输入：私有 catalog `2026-10-04-semantic-8814`，12 例，五条
+  FLEURS 官方 reference、Sintel 八条对白 cue；官方文本已核对，未独立
+  听审。共六条不同原始真人片段、四条人工派生语音条件、两个负对照，
+  不能当作十二个自然独立样本。变速 1.25 倍、混音全窗口 RMS 比 20 dB、
+  重复父样本与哈希均保留；电影原声实际 SNR 和词级时钟未知。
+- 执行：现有 batch runner，`qwen-audio-3.0-asr-flash-streaming`、`auto`、
+  bypass；先三例，再九例，各批最多三个 worker。12 completed、0 failed。
+  编译测试程序 SHA256 为
+  `c2e67cd553128a24526891874e821a74cceeaec582bf68e9eaa1e252fa2c9527`。
+- 直接 ASR：十个语音条件均未观察到 reference 删除。日语短句、三次
+  重复、变速、混音、中文短句和电影对白在既有归一化后完全对应；日语
+  长句四处替换为汉字／假名书写差异，中文长句一处为近义表达。英语和
+  重复英语有专名替换及数字书写差异，错误先出现在 ASR。等值数字写法
+  不算语义错误；未做总分排名，也未据此证明普遍无漏句或翻译改善。
+- 负对照：音乐／音效与全零 PCM 均没有 lexical final。音乐例出现两次
+  短 lexical draft，数字静音未出现；音乐源仍待独立听审。这是未解决
+  观察，零 final 不等于没有瞬时识别文本，也不能据此确认模型幻觉。
+- 真实 macOS 链路：固定日语 11.1 秒片段构造三次、间隔 12 秒，输入
+  59.3 秒，实际播放约 60.212 秒。日语→中文、Alibaba 开发预设、系统
+  全应用捕获、原文＋译文。既有字幕保存开启、音频保存关闭，开发取证
+  独立显式开启并正常停止／封存。临时 UI 设置随后恢复。
+- 私有原生 case `8d974297-9027-4968-8529-7d9cf10c4e6f`：1,700 条完整
+  元数据、84 个快照，trace/content 丢失、失败、限额及 frontend drop
+  均为零；9,291 成功发送 chunk，无失败／取消／丢弃，约 7.83 MB 音频
+  证据。发送成功不等于证明服务接收。三个 source ID 2/3/4 对应 pair
+  1/2/3、翻译 request 7/10/13，三条精确链均为 `server-final`。
+  接纳事件 813/1133/1465；最后 history 变更 1466 后有交付快照，终态
+  Idle 快照 84 的发布事件 1690，封存 1700。原文／接纳／历史均为
+  138/138 字符、D/I/S 为零，三次身份独立。
+- 语义：这一个父句的五个事实／条件单元在三次译文中均保留，AI review
+  未见重大增漏义，有轻微直译和未译术语；没有双语人工 gold，不泛化为
+  其他十例 MT 合格。原生正文窗口未独立确认；store applied／DOM commit
+  及滚动溢出观察不是逐字可见性证明。
+- 实际执行边界：原计划暂停／恢复未能按时操作，因此三个 occurrence
+  均计入采集，没有排除区间；清空未执行。停止发生在 finals 已完成后，
+  不能作为待译尾句竞争、in-flight clear、暂停恢复或重连的验收。
+- 确认修复：桌面 HQ `FinalRequestKey` 的 finish 通配条件忽略原句身份，
+  在同文旧句 active／queued 时跳过另一句停止尾部，最早失效为 final
+  接纳。通过真实 `flush_pending_draft` 的回归复现旧版失败；补入原句 ID
+  与 content revision 后通过。无 ID 的合法 ASR 路径以不同本地确认编号
+  保留独立任务，同一已知原句版本的 server/finish alias 仍去重。没有改
+  提示词、模型、队列上限、重试、预算或 grace。见
+  [设计记录](../plans/2026-10-04-final-request-identity.md)。
+- 相邻回归：59 项 HQ 测试通过，覆盖 active／queued 的已知和无 ID 尾句、
+  同源 alias、内容版本、preview 抢占、HTTP 顺序／取消／预算和重试。
+- 自动检查：`./scripts/check.sh` 全部通过，桌面 Rust 1010 passed／
+  2 ignored；前端 95 个文件、1113 项测试通过。共享 Rust 65 单元测试、
+  3 契约测试，JNI crate 格式／Clippy／编译测试边界均通过；这不等于
+  Android JVM 实际 JNI 或设备实测，Android CI 另行核对。
+- 持久保存：私有结果 catalog `2026-10-04-quality-cycle-1`，约 21.8 MB、
+  135 条文件 SHA256，12 个 relocated result 路径和 PCM hash 已复核。
+  原始 job 文件和失败日志保留，固定矩阵指向持久输入库；新录制 case
+  仍在 app 私有 workspace `quality-cycle-1`。没有把音频、字幕或个人
+  路径放入 Git。
+
+### 下一轮的固定优先级
+
+1. 同一输入／配置下专测 Stop 紧接未完成 final，保留新的 clean revision
+   case；提前确认实际原生控件，分别测试暂停恢复、in-flight clear 和
+   重连。不能用这次成功的 server finals 替代 finish-race 复测。
+2. 独立听审音乐负对照，并检查瞬时草稿到 stop fallback 的条件；不添加
+   基于几个词的过滤规则。
+3. 以既有语义单元逐例补日／英→中文、中文→英语的准确 MT 请求／返回。
+   优先英语专名与日语长句指代，区分 ASR 继承错误、reference 歧义和 MT
+   新增错误。自然多分钟语音、重叠及 code switching 仍缺样本。
+4. 保留旧失败证据，不把一次成功或 provider 波动当成修复改善。Windows、
+   Linux、Android 真实设备与实际 provider 账户仍需各自验收。
+
 ## 2026-10-04：最新 main 的 macOS dev 集成检查
 
 - Revision：`092a31008e54c4cc2f5033f43eee700b97a51e59`；fetch 后

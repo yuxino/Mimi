@@ -81,6 +81,8 @@ impl TranslationRequest {
             text: self.text.clone(),
             boundary: self.boundary,
             utterance_revision: self.utterance_revision,
+            source_utterance_id: self.source_utterance_id,
+            content_revision: self.content_revision,
         }
     }
 }
@@ -90,14 +92,21 @@ struct FinalRequestKey {
     text: String,
     boundary: FinalBoundary,
     utterance_revision: u64,
+    source_utterance_id: Option<u64>,
+    content_revision: u64,
 }
 
 impl FinalRequestKey {
     fn matches(&self, request: &TranslationRequest) -> bool {
+        // A finish fallback may alias a server final only for an identified
+        // source. Missing IDs never make equal text a causal identity.
         self.text == request.text
+            && self.content_revision == request.content_revision
+            && self.source_utterance_id == request.source_utterance_id
             && (self.utterance_revision == request.utterance_revision
-                || self.boundary == FinalBoundary::SessionFinish
-                || request.boundary == FinalBoundary::SessionFinish)
+                || (self.source_utterance_id.is_some()
+                    && (self.boundary == FinalBoundary::SessionFinish
+                        || request.boundary == FinalBoundary::SessionFinish)))
     }
 }
 
@@ -5980,6 +5989,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn same_text_finish_tail_keeps_its_own_source_identity_in_active_and_queued_lanes() {
+        for (earlier_id, tail_id) in [(Some(7), Some(8)), (None, None)] {
+            for active in [false, true] {
+                let (client, _events) = test_client(TargetLanguage::SimplifiedChinese, 20);
+                let earlier = TranslationRequest {
+                    text: "Synthetic repeated sentence".into(),
+                    language: Some("en".into()),
+                    boundary: FinalBoundary::ServerFinal,
+                    utterance_revision: 1,
+                    source_utterance_id: earlier_id,
+                    content_revision: 0,
+                    enqueued_at: tokio::time::Instant::now(),
+                };
+                {
+                    let mut inner = client.inner.lock().await;
+                    inner.final_worker = Some(TaskSlot {
+                        id: 999,
+                        handle: tokio::spawn(std::future::pending()),
+                    });
+                    if active {
+                        inner.active_final = Some(earlier.key());
+                    } else {
+                        inner.final_queue.push_back(earlier);
+                    }
+                    inner.committer.update_draft("Synthetic repeated sentence");
+                    inner.current_source_utterance_id = tail_id;
+                    inner.latest_draft_language = Some("en".into());
+                    inner.next_confirmation_id = 1;
+                }
+                client.flush_pending_draft().await;
+                let inner = client.inner.lock().await;
+                let identities: Vec<_> = inner
+                    .final_queue
+                    .iter()
+                    .map(|request| {
+                        (
+                            request.source_utterance_id,
+                            request.utterance_revision,
+                            request.boundary,
+                        )
+                    })
+                    .collect();
+                let expected = if active {
+                    vec![(tail_id, 2, FinalBoundary::SessionFinish)]
+                } else {
+                    vec![
+                        (earlier_id, 1, FinalBoundary::ServerFinal),
+                        (tail_id, 2, FinalBoundary::SessionFinish),
+                    ]
+                };
+                assert_eq!(identities, expected);
+                drop(inner);
+                client.disconnect().await;
+            }
+        }
+    }
+
+    #[test]
+    fn final_request_alias_requires_matching_source_identity_and_content_revision() {
+        let request = |boundary, confirmation, source, revision| TranslationRequest {
+            text: "Synthetic repeated sentence".into(),
+            language: Some("en".into()),
+            boundary,
+            utterance_revision: confirmation,
+            source_utterance_id: source,
+            content_revision: revision,
+            enqueued_at: tokio::time::Instant::now(),
+        };
+        let server = request(FinalBoundary::ServerFinal, 1, Some(7), 0);
+        assert!(server
+            .key()
+            .matches(&request(FinalBoundary::SessionFinish, 2, Some(7), 0)));
+        assert!(!server
+            .key()
+            .matches(&request(FinalBoundary::SessionFinish, 2, Some(8), 0)));
+        assert!(!server
+            .key()
+            .matches(&request(FinalBoundary::SessionFinish, 2, None, 0)));
+        assert!(!server
+            .key()
+            .matches(&request(FinalBoundary::SessionFinish, 2, Some(7), 1)));
+        assert!(!server
+            .key()
+            .matches(&request(FinalBoundary::ServerFinal, 2, Some(8), 0)));
+        let unknown = request(FinalBoundary::ServerFinal, 1, None, 0);
+        assert!(!unknown
+            .key()
+            .matches(&request(FinalBoundary::SessionFinish, 2, None, 0)));
+        assert!(unknown
+            .key()
+            .matches(&request(FinalBoundary::ServerFinal, 1, None, 0)));
+    }
+
+    #[tokio::test]
     async fn active_final_defers_preview_until_the_final_lane_is_idle() {
         let (client, mut events) = test_client(TargetLanguage::SimplifiedChinese, 20);
         {
@@ -5992,6 +6095,8 @@ mod tests {
                 text: "earlier final".into(),
                 boundary: FinalBoundary::ServerFinal,
                 utterance_revision: 1,
+                source_utterance_id: None,
+                content_revision: 0,
             });
         }
 
