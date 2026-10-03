@@ -213,9 +213,13 @@ impl CustomSpeechClient {
         self.inner.failed.store(false, Ordering::SeqCst);
         let (setup, mut acknowledged) = watch::channel(SetupState::Awaiting);
         let client = self.clone();
-        let task = tokio::spawn(async move {
-            client.receive(stream, events, setup, generation).await;
-        });
+        let evidence_context = crate::development_audio::context();
+        let task = tokio::spawn(crate::development_audio::scope_context(
+            evidence_context,
+            async move {
+                client.receive(stream, events, setup, generation).await;
+            },
+        ));
         *self.inner.receive_task.lock().await = Some(task);
         let update = custom_speech::session_update(
             &self.model,
@@ -430,9 +434,15 @@ impl CustomSpeechClient {
     async fn send_message(&self, message: Message) -> Result<(), CustomSpeechClientError> {
         let operation = async {
             let mut sink = self.inner.sink.lock().await;
-            sink.as_mut()
-                .ok_or(CustomSpeechClientError::NotConnected)?
-                .send(message)
+            let sink = sink.as_mut().ok_or(CustomSpeechClientError::NotConnected)?;
+            let evidence = match &message {
+                Message::Text(text) => {
+                    crate::development_audio::begin_json(text, custom_speech::PCM_SAMPLE_RATE)
+                }
+                _ => crate::development_audio::begin_pcm(&[], custom_speech::PCM_SAMPLE_RATE),
+            };
+            evidence
+                .observe(sink.send(message))
                 .await
                 .map_err(|_| CustomSpeechClientError::Unreachable)
         };

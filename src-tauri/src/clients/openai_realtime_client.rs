@@ -391,10 +391,15 @@ impl OpenAIRealtimeClient {
         let Some(sink) = sink.as_mut() else {
             return Err(OpenAIRealtimeClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(text.into())))
-            .await
-            .map_err(|_| OpenAIRealtimeClientError::TransportFailure)?
-            .map_err(|_| OpenAIRealtimeClientError::TransportFailure)
+        let evidence =
+            crate::development_audio::begin_json(&text, OpenAIRealtimeEndpoint::SAMPLE_RATE_HZ);
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Text(text.into()))),
+        )
+        .await
+        .map_err(|_| OpenAIRealtimeClientError::TransportFailure)?
+        .map_err(|_| OpenAIRealtimeClientError::TransportFailure)
     }
 
     fn emit(&self, event: LiveTranslateServerEvent, generation: u64) {

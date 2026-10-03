@@ -63,6 +63,7 @@ export interface SubtitleSnapshot {
 }
 
 export interface SessionStateEvent {
+  debugSnapshotId?: number | null;
   /** Latest content-free timing samples. Absent values are not measurements. */
   apiLatencyMs?: number | null;
   translationLatencyMs?: number | null;

@@ -5,11 +5,12 @@
 /// `MIMI_PIPELINE_DIAGNOSTICS` environment variable is exactly `"0"`.
 #[macro_export]
 macro_rules! pipeline_log {
-    ($($arg:tt)*) => {
+    ($($arg:tt)*) => {{
+        $crate::core::development_debug::record_pipeline(format_args!($($arg)*));
         if $crate::core::diagnostics::is_enabled() {
             tracing::info!($($arg)*);
         }
-    };
+    }};
 }
 
 pub fn is_enabled() -> bool {

@@ -631,10 +631,15 @@ impl VolcanoEngineClient {
         let Some(sink) = sink.as_mut() else {
             return Err(VolcanoEngineClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Binary(frame.into())))
-            .await
-            .map_err(|_| VolcanoEngineClientError::TransportFailure)?
-            .map_err(|_| VolcanoEngineClientError::TransportFailure)
+        let evidence =
+            crate::development_audio::begin_volcano(&frame, VolcanoEngineEndpoint::SAMPLE_RATE_HZ);
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Binary(frame.into()))),
+        )
+        .await
+        .map_err(|_| VolcanoEngineClientError::TransportFailure)?
+        .map_err(|_| VolcanoEngineClientError::TransportFailure)
     }
 
     async fn current_session_id(&self) -> Result<String, VolcanoEngineClientError> {

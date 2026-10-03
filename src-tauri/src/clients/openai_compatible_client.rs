@@ -74,6 +74,10 @@ impl OpenAICompatibleClient {
             &self.model,
         )?;
         tokio::time::timeout(self.timeout, async {
+            crate::development_content::request(
+                crate::development_content::RequestProtocol::OpenaiCompatible,
+                &body,
+            );
             let mut request = self.client.post(self.endpoint.clone()).json(&body);
             if !self.api_key.is_empty() {
                 request = request.bearer_auth(&self.api_key);

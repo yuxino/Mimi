@@ -6,6 +6,8 @@ commands.allow = [
   "session_get_state",
   "app_desktop_shortcut_commands",
   "app_ui_test_frontend_ready",
+  "development_debug_observe",
+  "development_debug_flush_ack",
 ]
 
 [[permission]]
@@ -18,6 +20,15 @@ commands.allow = [
   "audio_applications",
   "audio_census",
   "support_diagnostics",
+  "development_debug_snapshot",
+  "development_debug_start",
+  "development_debug_stop",
+  "development_debug_export",
+  "development_debug_audio",
+  "development_debug_replay",
+  "development_debug_cases",
+  "development_debug_open_case",
+  "development_debug_private_events",
   "app_open_support_issue",
   "capture_status",
   "app_is_ui_test",

@@ -340,7 +340,9 @@ impl LiveTranslateClient {
             let Some(sink) = sink.as_mut() else {
                 return Err(LiveTranslateClientError::NotConnected);
             };
-            sink.send(Message::Text(text.into()))
+            let evidence = crate::development_audio::begin_json(&text, 16_000);
+            evidence
+                .observe(sink.send(Message::Text(text.into())))
                 .await
                 .map_err(|_| LiveTranslateClientError::TransportFailure)
         };

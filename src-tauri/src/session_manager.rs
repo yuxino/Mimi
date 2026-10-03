@@ -68,6 +68,8 @@ pub enum StatusPayload {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionStateEvent {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debug_snapshot_id: Option<u64>,
     pub status: StatusPayload,
     #[serde(rename = "isActive")]
     pub is_active: bool,
@@ -767,6 +769,7 @@ impl From<&TranslationSessionState> for SessionStateEvent {
             },
         };
         Self {
+            debug_snapshot_id: None,
             is_active: state.status.is_active(),
             status,
             is_paused: false,
@@ -1830,6 +1833,7 @@ impl SessionManager {
         Box::pin(async move {
             // Create the client and consume its events through this manager.
             let (event_tx, mut event_rx) = provider_event_channel();
+            event_tx.set_debug_context(source, generation);
             let new_client = TranslationClient::new(&configuration, event_tx).map_err(|error| {
                 pipeline_log!(
                     "provider client creation failed label={}",
@@ -1874,7 +1878,10 @@ impl SessionManager {
                 .client_for_generation(source, generation)
                 .ok_or_else(|| SESSION_START_CANCELLED.to_string())?;
             let connect_result = self
-                .run_while_generation_current(generation, client.connect())
+                .run_while_generation_current(
+                    generation,
+                    crate::development_audio::scope(source, generation, client.connect()),
+                )
                 .await;
             let connect_result = match connect_result {
                 Ok(result) => result,
@@ -1915,7 +1922,13 @@ impl SessionManager {
                         );
                         let client = manager.client_for_generation(source, generation);
                         match client {
-                            Some(client) => client.send_audio(&data).await.map_err(|_| ()),
+                            Some(client) => crate::development_audio::scope(
+                                source,
+                                generation,
+                                client.send_audio(&data),
+                            )
+                            .await
+                            .map_err(|_| ()),
                             None => Err(()),
                         }
                     })
@@ -2088,9 +2101,12 @@ impl SessionManager {
                 self.take_client_for_generation(source, stopping_generation)
             };
             if let Some(client) = taken {
-                if tokio::time::timeout(Duration::from_secs(6), client.finish())
-                    .await
-                    .is_err()
+                if tokio::time::timeout(
+                    Duration::from_secs(6),
+                    crate::development_audio::scope(source, stopping_generation, client.finish()),
+                )
+                .await
+                .is_err()
                 {
                     pipeline_log!("provider finish timed out");
                     let _ = tokio::time::timeout(Duration::from_secs(1), client.disconnect()).await;
@@ -2962,15 +2978,42 @@ impl SessionManager {
         envelope: ProviderEvent,
     ) {
         let content = self.subtitle_content_lock.lock().await;
+        let debug_event = |event: &LiveTranslateServerEvent, admission| {
+            if crate::core::development_debug::is_enabled() {
+                crate::core::development_debug::record(
+                    crate::core::development_debug::DebugEvent::Provider {
+                        observation: crate::core::development_debug::ProviderObservation::new(
+                            source,
+                            generation,
+                            envelope.content_revision,
+                            event,
+                            admission,
+                        ),
+                    },
+                );
+            }
+        };
         if !subtitle_content_is_current(
             generation,
             &envelope,
             *self.lane(source).subtitle_content_revision.lock().unwrap(),
         ) {
+            debug_event(
+                &envelope.event,
+                crate::core::development_debug::Admission::StaleContent,
+            );
             return;
         }
         let mut event = envelope.event;
         if !self.accepts_event(generation, &event) || self.is_paused() {
+            debug_event(
+                &event,
+                if self.is_paused() {
+                    crate::core::development_debug::Admission::Paused
+                } else {
+                    crate::core::development_debug::Admission::StaleGeneration
+                },
+            );
             return;
         }
 
@@ -2981,6 +3024,10 @@ impl SessionManager {
             event,
             LiveTranslateServerEvent::SessionCreated | LiveTranslateServerEvent::SessionUpdated
         ) {
+            debug_event(
+                &event,
+                crate::core::development_debug::Admission::SetupAcknowledgement,
+            );
             return;
         }
 
@@ -2999,6 +3046,10 @@ impl SessionManager {
                 source_text,
                 translation,
             ) {
+                debug_event(
+                    &event,
+                    crate::core::development_debug::Admission::DuplicateFinal,
+                );
                 return;
             }
         }
@@ -3016,8 +3067,13 @@ impl SessionManager {
         }
 
         if !self.record_accepted_provider_event(generation, &event) {
+            debug_event(
+                &event,
+                crate::core::development_debug::Admission::StaleGeneration,
+            );
             return;
         }
+        debug_event(&event, crate::core::development_debug::Admission::Accepted);
 
         if let LiveTranslateServerEvent::Error { code, message } = &event {
             if provider_error_is_retryable(code) {
@@ -3094,9 +3150,22 @@ impl SessionManager {
         }
         let newly_confirmed = {
             let mut controller = self.controller.lock().unwrap();
+            let debug_before = crate::core::development_debug::is_enabled()
+                .then(|| controller.state.subtitles.clone());
             let previous = controller.state.subtitles.history.last().cloned();
             controller.handle_from(source, event.clone());
             apply_terminal_event_to_all_sources(&mut controller, &event);
+            if let Some(before) = debug_before {
+                crate::core::development_debug::record(
+                    crate::core::development_debug::DebugEvent::Reduced {
+                        source,
+                        generation,
+                        changed: before != controller.state.subtitles,
+                        before: (&before).into(),
+                        after: (&controller.state.subtitles).into(),
+                    },
+                );
+            }
             let current = controller.state.subtitles.history.last();
             confirmed_history_tail_changed(previous.as_ref(), current)
                 .then(|| current.cloned())
@@ -4111,6 +4180,8 @@ impl SessionManager {
             event.translation_latency_ms = translation_latency_ms;
             event.translation_latency_kind = translation_latency_kind;
         }
+        event.debug_snapshot_id =
+            crate::core::development_debug::record_snapshot(generation, &event.subtitles);
         event
     }
 
@@ -4171,6 +4242,7 @@ impl SessionManager {
         // captured before Clear cannot be emitted after the cleared one.
         let _content = self.subtitle_content_lock.lock().await;
         let event = self.current_state_event();
+        crate::development_debugger::record_snapshot(&event, &self.settings);
         self.write_ui_test_session_state(&event);
         let should_show_overlay =
             event.is_active || matches!(&event.status, StatusPayload::Error { .. });
@@ -4178,7 +4250,18 @@ impl SessionManager {
         let preferences = self.settings.preferences();
         let click_through =
             preferences.overlay_locked || preferences.subtitle_blends_with_background;
-        let _ = self.app.emit("session-state", event);
+        let debug_snapshot_id = event.debug_snapshot_id;
+        let delivered = self.app.emit("session-state", &event).is_ok();
+        if let Some(snapshot_id) = debug_snapshot_id {
+            crate::core::development_debug::record(
+                crate::core::development_debug::DebugEvent::Published {
+                    snapshot_id,
+                    delivered,
+                    overlay_requested: should_show_overlay,
+                    collapsed: is_collapsed,
+                },
+            );
+        }
         OverlayWindowManager::sync_presentation(
             &self.app,
             should_show_overlay,

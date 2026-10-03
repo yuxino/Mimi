@@ -407,10 +407,15 @@ impl BaiduTranslateClient {
         let Some(sink) = sink.as_mut() else {
             return Err(BaiduTranslateClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Binary(frame.into())))
-            .await
-            .map_err(|_| BaiduTranslateClientError::TransportFailure)?
-            .map_err(|_| BaiduTranslateClientError::TransportFailure)
+        let evidence =
+            crate::development_audio::begin_pcm(&frame, BaiduTranslateEndpoint::SAMPLE_RATE_HZ);
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Binary(frame.into()))),
+        )
+        .await
+        .map_err(|_| BaiduTranslateClientError::TransportFailure)?
+        .map_err(|_| BaiduTranslateClientError::TransportFailure)
     }
 
     async fn send_text(&self, text: String) -> Result<(), BaiduTranslateClientError> {

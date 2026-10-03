@@ -8,6 +8,9 @@ mod clients;
 mod commands;
 mod core;
 mod desktop_shortcuts;
+mod development_audio;
+mod development_content;
+mod development_debugger;
 #[cfg(target_os = "linux")]
 mod linux_startup;
 #[cfg(any(target_os = "macos", test))]
@@ -107,6 +110,7 @@ pub fn run() {
                 return Err("development builds require the isolated Tauri identifier".into());
             }
             let is_ui_test = std::env::var("MIMI_UI_TEST").as_deref() == Ok("1");
+            development_debugger::initialize(&app_handle);
             if is_ui_test {
                 if let Some(window) = app.get_webview_window("settings") {
                     let _ = window.set_title("mimi UI test settings");
@@ -262,10 +266,7 @@ pub fn run() {
                             let session = Arc::clone(&state.session);
                             let app = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                session.stop().await;
-                                if session.persist_current_history().is_ok() {
-                                    app.exit(0);
-                                }
+                                let _ = commands::quit_application(app, session).await;
                             });
                         }
                         api.prevent_close();
@@ -335,6 +336,17 @@ pub fn run() {
             commands::windows_audio_status,
             commands::audio_census,
             commands::support_diagnostics,
+            development_debugger::development_debug_snapshot,
+            development_debugger::development_debug_start,
+            development_debugger::development_debug_stop,
+            development_debugger::development_debug_observe,
+            development_debugger::development_debug_flush_ack,
+            development_debugger::development_debug_export,
+            development_debugger::development_debug_audio,
+            development_debugger::development_debug_replay,
+            development_debugger::development_debug_cases,
+            development_debugger::development_debug_open_case,
+            development_debugger::development_debug_private_events,
             commands::app_open_support_issue,
             commands::capture_status,
             commands::audio_applications,

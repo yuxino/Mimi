@@ -460,10 +460,17 @@ impl AzureOpenAIRealtimeClient {
         let Some(sink) = sink.as_mut() else {
             return Err(AzureOpenAIRealtimeClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(text.into())))
-            .await
-            .map_err(|_| AzureOpenAIRealtimeClientError::TransportFailure)?
-            .map_err(|_| AzureOpenAIRealtimeClientError::TransportFailure)
+        let evidence = crate::development_audio::begin_json(
+            &text,
+            AzureOpenAIRealtimeEndpoint::SAMPLE_RATE_HZ,
+        );
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Text(text.into()))),
+        )
+        .await
+        .map_err(|_| AzureOpenAIRealtimeClientError::TransportFailure)?
+        .map_err(|_| AzureOpenAIRealtimeClientError::TransportFailure)
     }
 
     fn emit(&self, event: LiveTranslateServerEvent, generation: u64) {

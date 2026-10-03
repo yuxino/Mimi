@@ -509,10 +509,15 @@ impl GeminiLiveClient {
         let Some(sink) = sink.as_mut() else {
             return Err(GeminiLiveClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(text.into())))
-            .await
-            .map_err(|_| GeminiLiveClientError::TransportFailure)?
-            .map_err(|_| GeminiLiveClientError::TransportFailure)
+        let evidence =
+            crate::development_audio::begin_json(&text, GeminiLiveEndpoint::SAMPLE_RATE_HZ);
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Text(text.into()))),
+        )
+        .await
+        .map_err(|_| GeminiLiveClientError::TransportFailure)?
+        .map_err(|_| GeminiLiveClientError::TransportFailure)
     }
 
     fn emit(&self, event: LiveTranslateServerEvent, generation: u64) {

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { subtitleBackgroundColor } from "../../lib/subtitleColor";
 import { I18N } from "../../lib/i18n";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { audioInputLabel } from "../../lib/audioInput";
 import { isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
+import { committedOverlayMeasurements, observeOverlayCommitted, subtitleCharacterCount } from "../../lib/developmentTrace";
 import { OVERLAY_ACTIVITY_PHASES, hexToRgba } from "../../lib/types";
 import { ControlButton } from "./ControlButton";
 import { DragHandle } from "./DragHandle";
@@ -26,6 +27,7 @@ import {
   emptyStateIsError,
   emptyStateText,
   hasSubtitleContent,
+  visibleLiveSubtitles,
 } from "./overlayModel";
 
 const ACCENT = "#7AA8FF";
@@ -39,6 +41,10 @@ type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings";
 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
+  const subtitleRootRef = useRef<HTMLDivElement>(null);
+  const debugReportRef = useRef<(() => void) | null>(null);
+  const debugBlocksRef = useRef<ReturnType<typeof buildSubtitleBlocks> | null>(null);
+  const debugProjectionRevision = useRef(0);
   const session = useStore((state) => state.session);
   const settings = useStore((state) => state.settings);
   const togglePaused = useStore((state) => state.togglePaused);
@@ -148,6 +154,79 @@ export function OverlayWindow() {
       .map(block => ({ ...block, audioSource: undefined })),
   [dual, session.subtitles.history, settings.subtitleDisplayMode, primarySubtitles.history, primaryTail, microphoneSubtitles.history, microphoneTail]);
   const hasContent = hasSubtitleContent(session.subtitles);
+  const debugEnabled = session.debugSnapshotId != null;
+
+  // Observe the committed projection without making raw draft snapshots a
+  // Timeline prop: its existing memo/stabilization behavior stays unchanged.
+  useLayoutEffect(() => {
+    if (!debugEnabled) {
+      debugReportRef.current = null;
+      debugBlocksRef.current = null;
+      debugProjectionRevision.current = 0;
+      return;
+    }
+    if (debugBlocksRef.current !== blocks) {
+      debugBlocksRef.current = blocks;
+      debugProjectionRevision.current += 1;
+    }
+    const inputs = dual
+      ? [primarySubtitles, microphoneSubtitles]
+      : [primarySubtitles];
+    let selectedSourceCharacters = 0;
+    let selectedTranslationCharacters = 0;
+    for (const input of inputs) {
+      const signals = dual ? input as SourceSubtitleSnapshot : session;
+      const selected = visibleLiveSubtitles(input, settings, signals.detectedLanguage,
+        signals.isTranslationPending, signals.isTranslationTimedOut,
+        atomicProvider && input.previewPair !== undefined);
+      for (const preview of selected) {
+        if (preview.kind === "source") selectedSourceCharacters += subtitleCharacterCount(preview.text);
+        else selectedTranslationCharacters += subtitleCharacterCount(preview.text);
+      }
+    }
+    const details = {
+      projection: presentationCollapsed ? "collapsed" as const : blocks.length === 0 ? "empty" as const
+        : settings.subtitleDisplayMode === "bilingual" ? "dual" as const : settings.subtitleDisplayMode,
+      selectedSourceCharacters, selectedTranslationCharacters,
+      stableSourceCharacters: subtitleCharacterCount(primaryTail.source) +
+        (dual ? subtitleCharacterCount(microphoneTail.source) : 0),
+      stableTranslationCharacters: subtitleCharacterCount(primaryTail.translation) +
+        (dual ? subtitleCharacterCount(microphoneTail.translation) : 0),
+      projectionRevision: debugProjectionRevision.current,
+    };
+    const report = () => {
+      const root = subtitleRootRef.current;
+      if (root) observeOverlayCommitted(session, { ...details, ...committedOverlayMeasurements(root) });
+    };
+    debugReportRef.current = report;
+    report();
+  });
+
+  useLayoutEffect(() => {
+    const root = subtitleRootRef.current;
+    if (!debugEnabled || root === null) return;
+    let frame: number | null = null;
+    const reportLayout = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        debugReportRef.current?.();
+      });
+    };
+    // Scroll/layout can change visibility without a new backend snapshot.
+    root.addEventListener("scroll", reportLayout, true);
+    const resize = new ResizeObserver(reportLayout);
+    resize.observe(root);
+    const mutation = new MutationObserver(reportLayout);
+    mutation.observe(root, { subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ["style"] });
+    return () => {
+      root.removeEventListener("scroll", reportLayout, true);
+      resize.disconnect();
+      mutation.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [debugEnabled]);
 
   const phaseLabel = session.status.kind === "stopping" ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   const pauseLabel = session.isPaused
@@ -187,7 +266,7 @@ export function OverlayWindow() {
 
   const content = (
     <>
-      <div className="h-full w-full" style={{ padding: OVERLAY_INSET }}>
+      <div ref={subtitleRootRef} className="h-full w-full" style={{ padding: OVERLAY_INSET }}>
         <div
           key={presentationCollapsed ? "collapsed" : "expanded"}
           className={

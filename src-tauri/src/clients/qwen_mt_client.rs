@@ -229,6 +229,10 @@ impl QwenMTClient {
             translation_memory,
         )
         .map_err(|_| QwenMTClientError::InvalidHTTPResponse)?;
+        crate::development_content::request(
+            crate::development_content::RequestProtocol::QwenMt,
+            &request,
+        );
         Ok(request.to_string())
     }
 }

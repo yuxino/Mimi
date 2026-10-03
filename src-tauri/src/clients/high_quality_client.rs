@@ -608,6 +608,9 @@ impl HighQualityTranslationClient {
 
         let task_id = Uuid::new_v4().simple().to_string();
         let (asr_tx, asr_rx) = provider_event_channel();
+        if let Some((source, generation)) = self.events.debug_context() {
+            asr_tx.set_recognition_debug_context(source, generation);
+        }
         self.asr_client.set_event_sender(asr_tx).await;
         self.asr_client
             .connect(&task_id)
@@ -2032,19 +2035,39 @@ impl HighQualityTranslationClient {
                 attempt,
                 text.chars().count()
             );
-            let result = tokio::time::timeout(remaining, async {
-                if self.streams_finals {
-                    self.mt
-                        .translate_streaming(text, source_override, move |partial| {
-                            (handler)(partial)
-                        })
-                        .await
-                } else {
-                    self.mt.translate(text, source_override).await
+            let context = self.events.debug_context().map(|(source, generation)| {
+                crate::development_content::RequestContext {
+                    source,
+                    generation,
+                    revision: self.content_revision(),
+                    owner: match owner {
+                        TranslationWorkOwner::Preview(id) | TranslationWorkOwner::Final(id) => id,
+                    },
+                    preview: matches!(owner, TranslationWorkOwner::Preview(_)),
+                    attempt,
+                    request_id: 0,
                 }
-            })
+            });
+            let evidence = crate::development_content::begin_attempt(context);
+            let result = tokio::time::timeout(
+                remaining,
+                crate::development_content::scope_attempt(&evidence, async {
+                    if self.streams_finals {
+                        self.mt
+                            .translate_streaming(text, source_override, move |partial| {
+                                (handler)(partial)
+                            })
+                            .await
+                    } else {
+                        self.mt.translate(text, source_override).await
+                    }
+                }),
+            )
             .await
             .unwrap_or(Err(QwenMTClientError::RequestTimedOut));
+            // Persist the decoded attempt outcome before owner filtering. A
+            // successful reply discarded by Clear/replacement is still evidence.
+            evidence.complete(&result);
 
             match result {
                 Ok(translation) => {

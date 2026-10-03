@@ -63,6 +63,10 @@ impl DeepLClient {
     ) -> Result<String, DeepLError> {
         let body = deepl::request(text, source.unwrap_or(self.source), self.target)?;
         tokio::time::timeout(self.timeout, async {
+            crate::development_content::request(
+                crate::development_content::RequestProtocol::DeepL,
+                &body,
+            );
             let response = self
                 .client
                 .post(self.endpoint.clone())

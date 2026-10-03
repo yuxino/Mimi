@@ -6,6 +6,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { observeSessionWireReceived } from "./developmentTrace";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ProfileNetworkProxyDraft,
@@ -202,7 +203,10 @@ export function overlayControlSetIslandWidth(width: number): Promise<void> {
 /** Fetches the current session state snapshot (for windows that boot after
  * the last session-state broadcast). */
 export function sessionGetState(): Promise<SessionStateEvent> {
-  return invoke<SessionStateEvent>("session_get_state");
+  return invoke<SessionStateEvent>("session_get_state").then(state => {
+    observeSessionWireReceived(state);
+    return state;
+  });
 }
 
 export function trayPanelHide(): Promise<void> {
@@ -228,9 +232,10 @@ export function appShowSettings(
 export function listenSessionState(
   handler: (state: SessionStateEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<SessionStateEvent>("session-state", (event) =>
-    handler(event.payload),
-  );
+  return listen<SessionStateEvent>("session-state", (event) => {
+    observeSessionWireReceived(event.payload);
+    handler(event.payload);
+  });
 }
 
 export function listenSettingsChanged(

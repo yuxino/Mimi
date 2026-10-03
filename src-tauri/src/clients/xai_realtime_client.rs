@@ -685,10 +685,15 @@ impl XAIRealtimeClient {
         let Some(sink) = sink.as_mut() else {
             return Err(XAIRealtimeClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Text(text.into())))
-            .await
-            .map_err(|_| XAIRealtimeClientError::TransportFailure)?
-            .map_err(|_| XAIRealtimeClientError::TransportFailure)
+        let evidence =
+            crate::development_audio::begin_json(&text, XAIRealtimeEndpoint::SAMPLE_RATE_HZ);
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Text(text.into()))),
+        )
+        .await
+        .map_err(|_| XAIRealtimeClientError::TransportFailure)?
+        .map_err(|_| XAIRealtimeClientError::TransportFailure)
     }
 
     fn emit(&self, event: LiveTranslateServerEvent, generation: u64) {

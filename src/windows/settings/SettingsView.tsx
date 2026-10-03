@@ -12,6 +12,7 @@ import type { SubtitleDisplayMode } from "../../lib/types";
 import { SubtitleColorControl } from "./SubtitleColorControl";
 import { ServiceProfiles } from "./ServiceProfiles";
 import { SupportDiagnostics } from "./SupportDiagnostics";
+import { DevelopmentDebugger } from "./DevelopmentDebugger";
 import { SessionExport } from "./SessionExport";
 import { SoftwareUpdate } from "./SoftwareUpdate";
 import { useSettingsTheme } from "./useSettingsTheme";
@@ -410,6 +411,7 @@ export function SettingsView() {
 
             <div id="diagnostics-panel" className={`settings-category-panel${activeCategory !== "diagnostics" ? " is-inactive" : ""}`}>
               <SupportDiagnostics visible={activeCategory === "diagnostics"} />
+              {activeCategory === "diagnostics" && <DevelopmentDebugger visible />}
             </div>
 
             <div

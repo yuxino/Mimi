@@ -64,6 +64,13 @@ provider-key Keychain reads; signing-private-key and audio permissions still
 apply. Production credentials remain OS-backed. Do not weaken Keychain ACLs to
 avoid development prompts.
 
+Before a normal dev acceptance run, check whether the documented private `.env`
+exists and has mode `0600`, without printing its contents. A missing file selects
+Keychain; rebuilding the dev bundle does not recreate it. If file mode was already
+configured, investigate the existing local setup before asking for another system
+authorization. Never copy a key from an unrelated project or put it in a command,
+test report, or repository file.
+
 These prompts have different causes and fixes:
 
 - **Screen & System Audio Recording:** TCC compares the bundle identifier and

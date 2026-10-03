@@ -437,10 +437,15 @@ impl TencentCloudClient {
         let Some(sink) = sink.as_mut() else {
             return Err(TencentCloudClientError::NotConnected);
         };
-        tokio::time::timeout(SEND_TIMEOUT, sink.send(Message::Binary(frame.into())))
-            .await
-            .map_err(|_| TencentCloudClientError::TransportFailure)?
-            .map_err(|_| TencentCloudClientError::TransportFailure)
+        let evidence =
+            crate::development_audio::begin_pcm(&frame, TencentCloudEndpoint::SAMPLE_RATE_HZ);
+        tokio::time::timeout(
+            SEND_TIMEOUT,
+            evidence.observe(sink.send(Message::Binary(frame.into()))),
+        )
+        .await
+        .map_err(|_| TencentCloudClientError::TransportFailure)?
+        .map_err(|_| TencentCloudClientError::TransportFailure)
     }
 
     async fn send_text(&self, text: String) -> Result<(), TencentCloudClientError> {

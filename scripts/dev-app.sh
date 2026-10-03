@@ -298,6 +298,7 @@ cd "$PROJECT_DIR"
 export CARGO_HOME="${CARGO_HOME:-$PROJECT_DIR/.cargo-home}"
 export npm_config_cache="${npm_config_cache:-$PROJECT_DIR/.npm-cache}"
 export MACOSX_DEPLOYMENT_TARGET="13.0"
+export MIMI_DEBUG_REVISION="$(git rev-parse HEAD)"
 
 npm run build:dev
 TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --profile local-dev \

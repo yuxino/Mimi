@@ -1,0 +1,25 @@
+.development-debugger { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--settings-border-strong); }
+.development-debugger__header { display: flex; align-items: center; gap: 8px; }
+.development-debugger h2, .development-debugger h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.development-debugger__header > span:last-child { margin-left: auto; color: var(--settings-text-muted); }
+.development-debugger__actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.development-debugger__metrics { display: flex; gap: 28px; margin: 16px 0; }
+.development-debugger__metrics div { display: flex; gap: 8px; }
+.development-debugger dd { margin: 0; }
+.development-debugger dt { color: var(--settings-text-muted); }
+.development-debugger__section { margin-top: 24px; }
+.development-debugger__section h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.development-debugger__audio { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+.development-debugger__audio > span { margin-right: auto; }
+.development-debugger__audio audio { width: 100%; height: 36px; }
+.development-debugger__text { margin: 12px 0; }
+.development-debugger__text dl { display: grid; grid-template-columns: 48px 1fr; gap: 8px 12px; }
+.development-debugger__text dd { overflow-wrap: anywhere; white-space: pre-wrap; max-height: 160px; overflow-y: auto; }
+.development-debugger__events { margin-top: 12px; max-height: 380px; overflow-y: auto; border-block: 1px solid var(--settings-border); }
+.development-debugger__events details { border-bottom: 1px solid var(--settings-border); }
+.development-debugger__events summary { display: grid; grid-template-columns: 45px 70px 1fr; align-items: baseline; gap: 8px; padding: 8px 0; cursor: pointer; }
+.development-debugger__events summary > span:last-child { overflow-wrap: anywhere; }
+.development-debugger pre { font-size: 12px; padding: 12px; background: var(--settings-panel); max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.development-debugger summary, .development-debugger select { cursor: pointer; }
+.development-debugger select { padding: 6px 10px; color: var(--settings-text); background: var(--settings-control); border: 1px solid var(--settings-border-strong); border-radius: 6px; }
+.development-debugger__replay { height: 180px; position: relative; background: #161616; overflow: hidden; border-radius: 6px; }

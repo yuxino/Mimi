@@ -416,6 +416,7 @@ function Lane({
   if (lines === null) {
     return (
       <span
+        data-debug-lane={kind}
         className={entering ? "block min-w-0 subtitle-lane" : "block min-w-0"}
         hidden={hidden}
         style={{ textAlign: alignment, ...textStyle, display: hidden ? "none" : undefined }}
@@ -428,6 +429,7 @@ function Lane({
   return (
     <CompactLane
       text={text}
+      kind={kind}
       lines={lines}
       lineHeightPx={lineHeightPx}
       alignment={alignment}
@@ -442,6 +444,7 @@ function Lane({
 
 interface CompactLaneProps {
   text: string;
+  kind: "source" | "translation";
   lines: number;
   lineHeightPx: number;
   motionEnabled: boolean;
@@ -468,6 +471,7 @@ interface CompactLaneProps {
  */
 function CompactLane({
   text,
+  kind,
   lines,
   lineHeightPx,
   motionEnabled,
@@ -489,6 +493,7 @@ function CompactLane({
   return (
     <div
       ref={viewportRef}
+      data-debug-lane={kind}
       aria-label={text}
       aria-hidden={hidden || undefined}
       hidden={hidden}

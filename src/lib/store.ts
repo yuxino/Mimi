@@ -4,6 +4,7 @@ import { applicationAudioError } from "./applicationAudio";
 import { audioInputErrorMessage } from "./audioInput";
 import { credentialErrorMessage } from "./connectionDiagnostics";
 import { shareUnchangedSubtitleHistory } from "./sessionSnapshot";
+import { observeSessionStoreApplied } from "./developmentTrace";
 import { DEFAULT_NETWORK_PROXY, validateNetworkProxy } from "./networkProxy";
 /**
  * Global zustand store. In Tauri it forwards every action to the Rust backend
@@ -261,6 +262,7 @@ export const useStore = create<StoreState>()((set, get) => ({
           applySession: (session) => {
             if (generation !== initializationGeneration) return;
             set((state) => ({ session: shareUnchangedSubtitleHistory(state.session, session) }));
+            observeSessionStoreApplied(get().session);
           },
           onReady: () => {
             if (generation !== initializationGeneration) return;

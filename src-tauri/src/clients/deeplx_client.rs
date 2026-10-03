@@ -54,6 +54,10 @@ impl DeepLXClient {
     ) -> Result<String, DeepLXError> {
         let body = deeplx::request(text, source.unwrap_or(self.source), self.target)?;
         tokio::time::timeout(self.timeout, async {
+            crate::development_content::request(
+                crate::development_content::RequestProtocol::DeepLX,
+                &body,
+            );
             let mut request = self.client.post(self.endpoint.clone()).json(&body);
             if !self.token.is_empty() {
                 request = request.bearer_auth(&self.token);

@@ -1779,6 +1779,7 @@ pub async fn quit_application(app: AppHandle, session: Arc<SessionManager>) -> R
         return Ok(());
     };
     session.stop().await;
+    crate::development_debugger::finish_on_quit(app.clone()).await?;
     finish_quit(session.persist_current_history(), || app.exit(0))?;
     request.exit_requested();
     Ok(())

@@ -5,6 +5,7 @@ pub mod audio_input;
 pub mod committer;
 pub mod configuration;
 pub mod credentials;
+pub mod development_debug;
 pub mod diagnostics;
 #[cfg(any(target_os = "macos", test))]
 pub mod dock_presentation;
