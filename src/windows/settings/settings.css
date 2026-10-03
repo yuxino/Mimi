@@ -49,22 +49,52 @@
   font-weight: 500;
   color: var(--settings-text-muted);
 }
-.service-proxies .network-proxy-actions {
-  justify-content: flex-end;
-}
-
 .network-proxy-form {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
-.network-proxy-address {
-  max-width: 420px;
+.settings-field.network-proxy-address {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+  align-items: center;
+  gap: 18px;
+}
+
+.settings-field.network-proxy-address > label {
+  color: var(--settings-text-muted);
+  font-size: 12.5px;
+}
+
+.network-proxy-address input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+.network-proxy-address .config-input__paste {
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: 34px;
+  justify-content: center;
+  border-left: 1px solid var(--settings-border);
+  border-radius: 0 8px 8px 0;
+}
+
+.network-proxy-address .config-input__paste:hover:not(:disabled) {
+  color: var(--settings-text);
+  background: var(--settings-selection-soft);
+}
+
+.network-proxy-saving {
+  display: inline-flex;
+  margin-right: 8px;
 }
 
 .network-proxy-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px 12px;
 }
@@ -73,8 +103,11 @@
   margin: 0;
 }
 
-.network-proxy-actions button:disabled {
-  cursor: default;
+@media (max-width: 680px) {
+  .settings-field.network-proxy-address {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
 }
 
 .settings-console ::-webkit-scrollbar-thumb {

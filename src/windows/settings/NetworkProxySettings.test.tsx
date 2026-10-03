@@ -23,7 +23,7 @@ async function render(value = system, disabled = false) { await act(() => root.r
 async function choose(value: string) {
   await act(() => host.querySelector<HTMLButtonElement>('[role="combobox"]')!.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === value)!;
-  expect(option).toBeTruthy(); await act(() => option.click());
+  expect(option).toBeTruthy(); await act(async () => option.click());
 }
 async function address(value: string) {
   const input = host.querySelector<HTMLInputElement>("input")!;
@@ -33,8 +33,11 @@ async function address(value: string) {
   });
 }
 async function submit() { await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))); }
+async function blur(relatedTarget: Element | null = null) {
+  await act(async () => host.querySelector("input")!.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget })));
+}
 
-it.each(["zh", "en", "ja"] as const)("uses the unified selector and accurate system limitations in %s without auto saving or probing", async language => {
+it.each(["zh", "en", "ja"] as const)("keeps help compact and saves selected routes quietly in %s", async language => {
   setStoredUiLanguage(language); await render();
   expect(host.textContent).toContain(I18N.settings.networkProxyTitle);
   expect(host.querySelector('[role="combobox"]')?.textContent).toContain(I18N.settings.networkProxySystem);
@@ -46,21 +49,30 @@ it.each(["zh", "en", "ja"] as const)("uses the unified selector and accurate sys
   expect(host.querySelector("input")?.getAttribute("autocomplete")).toBe("off");
   expect(host.querySelector(".settings-help-control__description")?.textContent).toBe(`${I18N.settings.networkProxyScope}\n${I18N.settings.networkProxyCustomHelp}`);
   expect(host.querySelector(".settings-row__description")).toBeNull();
+  expect(save).not.toHaveBeenCalled();
   await choose(I18N.settings.networkProxyDirect);
   expect(host.querySelector(".settings-help-control__description")?.textContent).toBe(`${I18N.settings.networkProxyScope}\n${I18N.settings.networkProxyDirectHelp}`);
-  expect(save).not.toHaveBeenCalled();
+  expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "direct", url: null });
+  expect(host.querySelector('[role="status"], .network-proxy-actions')).toBeNull();
+  await choose(I18N.settings.networkProxySystem);
+  expect(save).toHaveBeenLastCalledWith(system);
+  expect(host.querySelector('[role="status"], .network-proxy-actions')).toBeNull();
 });
 
-it("saves the normalized custom route only on explicit submit and shows success", async () => {
-  await render(); await choose(I18N.settings.networkProxyCustom); await address(" socks5h://127.0.0.1 "); await submit();
+it("keeps typing local, saves a normalized custom route on blur and deduplicates Enter/blur without success feedback", async () => {
+  await render(); await choose(I18N.settings.networkProxyCustom); await address(" socks5h://127.0.0.1 ");
+  expect(save).not.toHaveBeenCalled();
+  await blur();
   expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "custom", url: "socks5h://127.0.0.1:1080" });
   expect(host.querySelector<HTMLInputElement>("input")!.value).toBe("socks5h://127.0.0.1:1080");
-  expect(host.querySelector('[role="status"]')?.textContent).toContain(I18N.settings.networkProxySaved);
+  await submit(); await blur();
+  expect(save).toHaveBeenCalledOnce();
+  expect(host.querySelector('[role="status"], .network-proxy-actions')).toBeNull();
 });
 
 it("discards an old custom address when saving system/direct", async () => {
   await render({ mode: "custom", url: "http://127.0.0.1:7890/" });
-  await choose(I18N.settings.networkProxyDirect); await submit();
+  await choose(I18N.settings.networkProxyDirect);
   expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "direct", url: null });
   expect(host.querySelector("input")).toBeNull();
 });
@@ -87,7 +99,7 @@ it("guards overlapping submissions, preserves a failed draft across optimistic r
   await submit(); await submit();
   expect(save).toHaveBeenCalledOnce();
   expect(host.querySelector<HTMLButtonElement>('[role="combobox"]')!.disabled).toBe(true);
-  expect(host.querySelector('button[aria-busy="true"]')?.textContent).toContain(I18N.settings.networkProxySaving);
+  expect(host.querySelector('[role="status"]')?.textContent).toContain(I18N.settings.networkProxySaving);
   expect(host.querySelector(".settings-spinner")).not.toBeNull();
   await render({ mode: "custom", url: "http://127.0.0.1:7890/" });
   await render(system);
@@ -107,6 +119,40 @@ it.each([
   ["network_proxy_authentication_unsupported", "networkProxyAuthenticationUnsupported"],
 ] as const)("maps the safe native error %s", async (label, key) => {
   save.mockRejectedValueOnce(new Error(label));
-  await render(); await choose(I18N.settings.networkProxyDirect); await submit();
+  await render(); await choose(I18N.settings.networkProxyDirect);
   expect(host.querySelector('[role="alert"]')?.textContent).toContain(I18N.settings[key]);
+});
+
+it("commits custom addresses on Enter and on the explicit paste action", async () => {
+  await render(); await choose(I18N.settings.networkProxyCustom); await address("http://127.0.0.1:7890"); await submit();
+  expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "custom", url: "http://127.0.0.1:7890/" });
+  const read = vi.fn().mockResolvedValue("socks5://127.0.0.1:1081");
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: read } });
+  try {
+    await address("invalid draft");
+    await blur(host.querySelector(".config-input__paste"));
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    await act(async () => host.querySelector<HTMLButtonElement>(".config-input__paste")!.click());
+    expect(read).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenLastCalledWith({ mode: "custom", url: "socks5://127.0.0.1:1081" });
+    expect(host.querySelector('[role="status"], .network-proxy-actions')).toBeNull();
+  } finally { Reflect.deleteProperty(navigator, "clipboard"); }
+});
+
+it("switches modes without committing an unfinished custom address", async () => {
+  await render({ mode: "custom", url: "http://127.0.0.1:7890/" });
+  await address("unfinished"); await blur(host.querySelector('[role="combobox"]'));
+  expect(save).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await choose(I18N.settings.networkProxySystem);
+  expect(save).toHaveBeenCalledExactlyOnceWith(system);
+});
+
+it("commits when keyboard focus leaves the address group after passing through paste", async () => {
+  await render(); await choose(I18N.settings.networkProxyCustom); await address("http://127.0.0.1:7890");
+  const paste = host.querySelector<HTMLButtonElement>(".config-input__paste")!;
+  await blur(paste);
+  expect(save).not.toHaveBeenCalled();
+  await act(async () => paste.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null })));
+  expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "custom", url: "http://127.0.0.1:7890/" });
 });

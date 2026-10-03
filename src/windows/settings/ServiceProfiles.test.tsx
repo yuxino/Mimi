@@ -639,7 +639,7 @@ it("keeps an independent check for another profile when the active session fails
 async function chooseStageProxy(index: number, label: string) {
   await act(() => host.querySelectorAll<HTMLButtonElement>('.service-proxies [role="combobox"]')[index]!.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === label)!;
-  await act(() => option.click());
+  await act(async () => option.click());
 }
 
 it("saves only the chosen stage with its profile and restores saved choices when switching editors", async () => {
@@ -654,8 +654,6 @@ it("saves only the chosen stage with its profile and restores saved choices when
   expect(selectors[1]!.getAttribute("aria-label")).toBe(I18N.settings.textTranslationLabel);
   await change(".service-detail__name input", "Unsaved name");
   await chooseStageProxy(1, I18N.settings.networkProxyDirect);
-  expect(actions.updateProfile).not.toHaveBeenCalled();
-  await act(async () => host.querySelectorAll('.service-proxies form')[1]!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, profile.name, { textNetworkProxy: { mode: "direct", url: null } });
   expect(host.querySelector<HTMLInputElement>(".service-detail__name input")!.value).toBe("Unsaved name");
   await chooseStageProxy(0, I18N.settings.networkProxyCustom);
