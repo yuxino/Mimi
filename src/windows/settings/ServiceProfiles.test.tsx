@@ -58,7 +58,7 @@ it("shows a custom speech profile as ready for Original even when its independen
 });
 it.each(["en", "zh", "ja"] as const)("keeps local dev file credentials out of editors and reveal in %s", async (language) => {
   setStoredUiLanguage(language);
-  const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", profiles: [{ ...profile, credentialState: "present" }] };
+  const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", profiles: [{ ...profile, credentialStorage: "localDevFile", credentialState: "present" }] };
   await render(snapshot);
   expect(host.querySelector(".services-hint .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
   expect(host.querySelector("p.services-hint")).toBeNull();
@@ -67,16 +67,53 @@ it.each(["en", "zh", "ja"] as const)("keeps local dev file credentials out of ed
   expect(host.querySelector('input[type="password"]')).toBeNull();
   expect(host.querySelector(".credential-form")).toBeNull();
   expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
-  expect(host.querySelector<HTMLButtonElement>('.service-stage--translation [role="combobox"]')?.disabled).toBe(true);
+  expect(host.querySelector('.service-stage--translation [role="combobox"]')).toBeNull();
+  expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
+  expect(host.querySelector('.service-stage__restriction .settings-help-control__description')?.textContent).toBe(diagnosticCopy().localDevTranslationHelp);
   expect(host.querySelector(".stored-credential-reveal, .credential-panel__saved-actions, .credential-form__actions")).toBeNull();
   expect(host.querySelector('button[type="submit"]:not(.service-detail__save-name)')).toBeNull();
   expect(host.querySelector<HTMLInputElement>(`#profile-name-${profile.id}`)?.disabled).toBe(false);
+  expect(host.querySelector<HTMLInputElement>(`#profile-name-${profile.id}`)?.readOnly).toBe(true);
   expect(vi.mocked(profileRevealCredential)).not.toHaveBeenCalled();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
   expect(actions.deleteProfileAPIKey).not.toHaveBeenCalled();
-  await render({ ...snapshot, profiles: [profile] });
+  await render({ ...snapshot, profiles: [{ ...profile, credentialStorage: "localDevFile" }] });
   expect(host.textContent).toContain(diagnosticCopy().localDevUnavailable);
   expect(host.textContent).not.toContain(I18N.settings.credentialUnavailableHelp);
+});
+it("places a full back button beside the profile title and keeps global input controls in the overview", async () => {
+  await act(() => root.render(<ServiceProfiles settings={settings} sessionIsActive={false} overview={<div data-testid="audio-overview">Audio input</div>} />));
+  expect(host.querySelector('[data-testid="audio-overview"]')).not.toBeNull();
+  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.querySelector('[data-testid="audio-overview"]')).toBeNull();
+  const back = host.querySelector<HTMLButtonElement>(".service-detail__header .service-back")!;
+  expect(back.classList.contains("settings-button")).toBe(true);
+  expect(back.textContent).toBe(I18N.settings.backToServices);
+  await act(() => back.click());
+  expect(host.querySelector(".service-detail")).toBeNull();
+  expect(host.querySelector('[data-testid="audio-overview"]')).not.toBeNull();
+});
+it("keeps ordinary translation configuration editable even when the default dev file is unavailable", async () => {
+  const preset: ServiceProfile = { ...profile, id: "alibaba-local-dev", name: "Alibaba Cloud · dev", credentialStorage: "localDevFile" };
+  const regular: ServiceProfile = { ...profile, id: "regular", credentialStorage: "keychain", credentialState: "present" };
+  const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", activeProfileId: preset.id, profiles: [preset, regular] };
+  const saved = { ...snapshot, activeProfileId: regular.id, profiles: [preset, { ...regular, textTranslation: "chatMock" as const }] };
+  actions.saveProfileCredentials.mockResolvedValue(saved);
+  actions.selectProfile.mockResolvedValue(saved);
+  await render(snapshot);
+  await act(() => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1]!.click());
+  const picker = host.querySelector<HTMLButtonElement>('.service-stage--translation [role="combobox"]')!;
+  expect(picker.disabled).toBe(false);
+  expect(host.querySelector('.service-stage__restriction')).toBeNull();
+  expect(host.querySelector<HTMLInputElement>(`#profile-name-${regular.id}`)?.readOnly).toBe(false);
+  await act(() => picker.click());
+  await act(() => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "ChatMock")!.click());
+  await change('.service-stage--translation input[id$="-model"]', "synthetic-chat-model");
+  const save = host.querySelector<HTMLButtonElement>('.service-stages button[type="submit"]')!;
+  expect(save.disabled).toBe(false);
+  await act(async () => save.click());
+  expect(actions.saveProfileCredentials).toHaveBeenCalledExactlyOnceWith(regular.id, { kind: "alibabaTranslation", apiKey: "", textTranslation: "chatMock", endpoint: "http://127.0.0.1:8000/v1", token: "", model: "synthetic-chat-model" });
+  expect(actions.selectProfile).toHaveBeenCalledExactlyOnceWith(regular.id);
 });
 async function click(label: string) {
   const surface = document.querySelector('[role="alertdialog"], [role="dialog"]') ?? host;

@@ -987,7 +987,8 @@ async fn manual_same_pcm_asr_comparison() {
         let profile = profiles
             .iter()
             .find(|profile| {
-                profile.provider == ProviderKind::AlibabaCloud
+                settings.profile_uses_local_dev_credentials(&profile.id)
+                    && profile.provider == ProviderKind::AlibabaCloud
                     && profile.text_translation() == TextTranslation::FollowService
             })
             .ok_or(Failure::CredentialsUnavailable)?;

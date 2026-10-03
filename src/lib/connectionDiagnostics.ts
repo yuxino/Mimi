@@ -4,7 +4,9 @@ import type { ConnectionDiagnostic } from "./ipc";
 export type DiagnosticPlatform = "macos" | "windows" | "linux";
 const copy = {
   en: {
-    localDevReadOnly: "This dev app reads credentials from its local .env. Edit that file and restart mimi dev.",
+    localDevReadOnly: "The default dev configuration reads its Alibaba key from the local .env. Edit that file and restart mimi dev to change its key. Other configurations use the system credential store and remain editable.",
+    localDevTranslationLocked: "The default dev configuration uses Alibaba recognition and translation.",
+    localDevTranslationHelp: "Add a regular configuration to choose another service or independent text translation. Its credentials use the development app's system credential store; the default dev key stays in the read-only .env.",
     localDevUnavailable: "Cannot read the local dev .env. Check its format, ownership and 0600 permissions, then restart mimi dev.",
     storage: "Cannot read service credentials. Handle the system unlock prompt, then check again.",
     linuxStorage: "Cannot access your desktop password store. Confirm a Secret Service provider, such as GNOME Keyring, is installed and enabled in this desktop session. Unlock it or allow the system prompt, then check again.",
@@ -44,7 +46,9 @@ const copy = {
     },
   },
   zh: {
-    localDevReadOnly: "开发版正在读取本机 .env 凭据。请修改该文件后重新打开 mimi dev。",
+    localDevReadOnly: "默认开发配置从本机 .env 读取阿里云密钥。修改该密钥后需重新打开 mimi dev；其他配置使用系统钥匙串，可正常编辑。",
+    localDevTranslationLocked: "默认开发配置使用阿里云识别与翻译。",
+    localDevTranslationHelp: "添加普通配置即可选择其他服务或独立文字翻译。普通配置的凭据保存在开发版自己的系统钥匙串中，默认开发密钥仍由只读 .env 提供。",
     localDevUnavailable: "无法读取本机开发 .env。请检查格式、文件归属及 0600 权限，然后重新打开 mimi dev。",
     storage: "无法读取服务凭据。先处理系统解锁提示，再重新检查。",
     linuxStorage: "无法访问桌面密码存储。请确认当前桌面会话已安装并启用 Secret Service 服务（例如 GNOME Keyring）。解锁密码存储或允许系统授权提示后，重新检查。",
@@ -84,7 +88,9 @@ const copy = {
     },
   },
   ja: {
-    localDevReadOnly: "開発版はローカルの .env から認証情報を読み込みます。ファイルを編集して mimi dev を再起動してください。",
+    localDevReadOnly: "既定の開発設定はローカルの .env から Alibaba キーを読み込みます。キーを変更したら mimi dev を再起動してください。他の設定はシステムの認証情報ストアを使用し、通常どおり編集できます。",
+    localDevTranslationLocked: "既定の開発設定は Alibaba の認識と翻訳を使用します。",
+    localDevTranslationHelp: "通常の設定を追加すると、別のサービスや独立したテキスト翻訳を選べます。認証情報は開発アプリ専用のシステムストアに保存され、既定の開発キーは読み取り専用の .env に残ります。",
     localDevUnavailable: "開発用 .env を読めません。形式、所有者、0600 権限を確認し、mimi dev を再起動してください。",
     storage: "サービスの認証情報を読めません。システムの解除案内を確認し、もう一度お試しください。",
     linuxStorage: "デスクトップのパスワードストアにアクセスできません。現在のデスクトップセッションで GNOME Keyring などの Secret Service がインストールされ、有効になっていることを確認してください。ストアのロックを解除するかシステムのアクセス許可を承認して、再確認してください。",

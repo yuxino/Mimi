@@ -478,7 +478,7 @@ const SETTINGS_ZH = {
   themeDark: "深色",
 
   windowTitle: "设置",
-  backToServices: "所有服务",
+  backToServices: "返回所有服务",
   editProfile: "编辑配置",
   saveAndUse: "保存并选用",
   servicesHint: "点选已配置的服务即可切换。凭据仅保存在系统安全存储中。",
@@ -873,7 +873,7 @@ const SETTINGS_EN = {
   themeDark: "Dark",
 
   windowTitle: "Settings",
-  backToServices: "All services",
+  backToServices: "Back to all services",
   editProfile: "Edit profile",
   saveAndUse: "Save and use",
   servicesHint: "Select a configured service to switch. Credentials stay in your system’s secure storage.",
@@ -1266,7 +1266,7 @@ const SETTINGS_JA = {
   themeDark: "ダーク",
 
   windowTitle: "設定",
-  backToServices: "すべてのサービス",
+  backToServices: "すべてのサービスに戻る",
   editProfile: "設定を編集",
   saveAndUse: "保存して使用",
   servicesHint: "設定済みのサービスを選ぶと切り替わります。認証情報はシステムの安全な領域にのみ保存されます。",

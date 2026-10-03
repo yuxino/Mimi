@@ -8,16 +8,25 @@
 Setup 提供空模板的创建步骤；已有文件不需要重新填写。
 
 之后每次运行 `./scripts/dev-app.sh`，或从 Finder / Dock 重新打开
-`/Applications/mimi-dev.app`，应用都会自动读取该文件。设置中选择阿里云和
-默认文字翻译服务即可，无需再保存 Key。修改 Key 后，正常退出并重新打开应用。
+`/Applications/mimi-dev.app`，应用都会自动读取该文件。设置中会有独立的
+**Alibaba Cloud · dev** 默认开发配置，直接使用阿里云识别与翻译，无需再保存 Key。
+修改 Key 后，正常退出并重新打开应用。
+
+其他配置和正式版一样，可以添加、编辑和切换，也可以选择 DeepL、DeepLX、
+ChatMock 或兼容接口作为独立文字翻译。它们使用开发版自己的系统钥匙串条目，
+不会借用 `.env` 中的密钥，也不会改动正式版凭据。
 
 把 `.env` 移走或删除，再重新打开，就切回系统钥匙串。文件存在但格式或权限错误时，
-应用明确报错，不会偷偷改用钥匙串。正式版和 `--ui-only` 模式都不会读取这个文件。
+默认开发配置明确报错，不会偷偷改用钥匙串；其他配置仍可正常使用。
+正式版和 `--ui-only` 模式都不会读取这个文件。
 不要把真实 Key 放进仓库、截图或日志，也不要在 shell 中 `source` 这个文件。
 
 The normal application stores provider credentials in the OS credential store.
 For local macOS development, `./scripts/dev-app.sh` enables a separate, read-only
-file mode so repeated self-signed rebuilds do not require API-key Keychain access.
+file-backed Alibaba preset so testing that preset does not require API-key Keychain access.
+All other configurations use the development app's profile-scoped OS credential
+store and remain editable. Their Keychain authorization follows the normal app
+path; the preset's file key is never copied or used as their fallback.
 This does not change the signing-private-key or system-audio permission prompts.
 
 ## Setup
@@ -42,10 +51,12 @@ This does not change the signing-private-key or system-audio permission prompts.
    substitutions, quoted values, duplicate assignments, and other variables
    are rejected. It is not a general dotenv parser.
 
-3. Run `./scripts/dev-app.sh` and select an Alibaba Cloud profile with its
-   default text-translation service. The key is also available to the native
-   Original mode. Other providers and independent DeepL/custom MT credentials
-   are not supplied by this file and never fall back to Keychain while it exists.
+3. Run `./scripts/dev-app.sh` and use **Alibaba Cloud · dev**. The preset uses
+   Alibaba recognition and default translation, including Original mode. It is
+   selected initially when the existing selection is the default Alibaba profile;
+   later explicit selections are retained across restarts. Add or edit ordinary
+   configurations for other recognition or independent translation services.
+   Those credentials always use the development OS store, never this file.
 
 The file must be a regular, non-symlink file owned by the current user, with
 exactly `0600` permissions and at most 16 KiB. A key is capped at 4096 bytes.
@@ -58,17 +69,20 @@ and reopen `/Applications/mimi-dev.app`; reopening from Finder or the Dock also
 reads it, because the path comes from the app config directory rather than the
 launching shell. No polling or automatic Keychain retry occurs.
 
-File mode is read-only. Settings cannot update, remove, or reveal the file key.
-Preferences and profile names remain editable; deleting a profile removes its
-metadata without changing the shared file. To remove or replace the key, edit
-the private file and reopen the app. To return to OS credential storage, move
-the file outside that fixed path or delete it, then reopen the app. Previously
-stored Keychain entries are preserved and become available again.
+The built-in development preset is read-only: Settings cannot update, remove or
+reveal its key, change its recognition/translation service, or delete the preset.
+Its language and proxy preferences remain editable. Ordinary profiles keep their
+normal add/edit/delete, independent translation, credential reveal and switching
+behavior, with at most 20 user configurations in addition to the preset.
+
+To remove or replace the preset key, edit the private file and reopen the app.
+Moving that file out of the fixed path or deleting it removes the preset on the
+next startup. Ordinary profile metadata and Keychain entries are preserved.
 
 If the file exists but cannot be read or fails validation, Mimi reports a local
-development file error. It does **not** silently use Keychain. Check its format,
-ownership and permissions, then reopen the app. A genuinely absent file keeps
-normal OS credential storage.
+development file error for the preset. It does **not** silently use Keychain.
+Check its format, ownership and permissions, then reopen the app. Other profiles
+continue using their own OS credentials even when the preset file is invalid.
 
 ## Scope and verification
 

@@ -1744,12 +1744,19 @@
   max-width: 40em;
 }
 .service-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-bottom: 14px;
+  min-height: 36px;
+  padding: 0 12px;
+  color: var(--settings-text);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.service-back svg {
+  font-size: 16px;
 }
 .service-detail__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   min-width: 0;
 }
 .service-detail__identity {
@@ -1758,6 +1765,7 @@
   gap: 12px;
   align-items: start;
   min-width: 0;
+  flex: 1;
 }
 .service-detail__copy {
   min-width: 0;
@@ -2448,6 +2456,14 @@
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+.service-stage__restriction {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.service-stage__restriction .settings-feedback {
+  font-size: 13px;
 }
 .service-stage__provider {
   min-height: 36px;

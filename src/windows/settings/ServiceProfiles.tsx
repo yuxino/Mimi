@@ -58,12 +58,14 @@ export function ServiceProfiles({
   sessionIsPaused = false,
   sessionStatusKind = "idle",
   visible = true,
+  overview,
 }: {
   settings: SettingsSnapshot;
   sessionIsActive: boolean;
   sessionIsPaused?: boolean;
   sessionStatusKind?: SessionStateEvent["status"]["kind"];
   visible?: boolean;
+  overview?: ReactNode;
 }) {
   const createProfile = useStore((state) => state.createProfile);
   const updateProfile = useStore((state) => state.updateProfile);
@@ -118,6 +120,7 @@ export function ServiceProfiles({
     () => settings.profiles.find((profile) => profile.id === selectedProfileId) ?? activeProfile,
     [activeProfile, selectedProfileId, settings.profiles],
   );
+  const selectedProfileReadOnly = selectedProfile?.credentialStorage === "localDevFile";
 
   const invalidateProfileCheck = useCallback((profileId: string, stage?: ConnectionCheckStage) => {
     const epochs = profileCheckEpochs.current;
@@ -173,7 +176,7 @@ export function ServiceProfiles({
 
   const requiresStop = sessionIsActive || sessionIsPaused || sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
   const mutationsDisabled = requiresStop || pendingAction !== null;
-  const atProfileLimit = settings.profiles.length >= 20;
+  const atProfileLimit = settings.profiles.filter(profile => profile.credentialStorage !== "localDevFile").length >= 20;
 
   const perform = async (
     action: Exclude<PendingAction, null>,
@@ -392,6 +395,8 @@ export function ServiceProfiles({
   }
 
   return (
+    <>
+    {!showsEditor && !showsProviderPicker && overview}
     <SettingsSection id="service-profiles" title={I18N.settings.serviceProfilesTitle} hideHeading>
       {(sessionIsActive || sessionIsPaused) && (
         <InlineFeedback tone="info" icon="lock">
@@ -407,20 +412,20 @@ export function ServiceProfiles({
         />
       ) : showsEditor && selectedProfile ? (
         <div className="service-detail">
-          <button
-            type="button"
-            className="settings-link service-back"
-            disabled={pendingAction !== null}
-            onClick={() => {
-              setShowsEditor(false);
-              setPendingConfirmation(null);
-              setFeedback(null);
-            }}
-          >
-            <Icon name="chevron-left" />
-            {I18N.settings.backToServices}
-          </button>
           <div className="service-detail__header">
+            <button
+              type="button"
+              className="settings-button settings-button--quiet service-back"
+              disabled={pendingAction !== null}
+              onClick={() => {
+                setShowsEditor(false);
+                setPendingConfirmation(null);
+                setFeedback(null);
+              }}
+            >
+              <Icon name="chevron-left" />
+              {I18N.settings.backToServices}
+            </button>
             <div className="service-detail__identity">
               <ProviderIcon provider={selectedProfile.provider === "deepLX" ? "alibabaCloud" : selectedProfile.provider} />
               <div className="service-detail__copy">
@@ -448,7 +453,7 @@ export function ServiceProfiles({
             <div className="settings-field">
               <label htmlFor={`profile-name-${selectedProfile.id}`}>{I18N.settings.profileName}</label>
               <span className="settings-field__inline">
-                <input id={`profile-name-${selectedProfile.id}`} value={nameDraft} maxLength={64} disabled={mutationsDisabled} placeholder={I18N.settings.profileNamePlaceholder} onChange={(event) => { setNameDraft(event.target.value); setFeedback(null); }} />
+                <input id={`profile-name-${selectedProfile.id}`} value={nameDraft} maxLength={64} disabled={mutationsDisabled} readOnly={selectedProfileReadOnly} placeholder={I18N.settings.profileNamePlaceholder} onChange={(event) => { setNameDraft(event.target.value); setFeedback(null); }} />
                 {nameDraft.trim() !== selectedProfile.name && <button type="submit" className="settings-link service-detail__save-name" disabled={mutationsDisabled || !nameDraft.trim()}>{I18N.settings.saveName}</button>}
               </span>
             </div>
@@ -457,7 +462,7 @@ export function ServiceProfiles({
             <SelectedCredentialEditor
               connectionCheck={renderConnectionCheck(selectedProfile, isCustomSpeechProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined)}
               textConnectionCheck={(requiresSave) => renderConnectionCheck(selectedProfile, "text", requiresSave)}
-              readOnly={settings.credentialStorage === "localDevFile"}
+              readOnly={selectedProfileReadOnly}
               key={selectedProfile.id}
               profile={selectedProfile}
               inputId={`profile-api-key-${selectedProfile.id}`}
@@ -504,7 +509,7 @@ export function ServiceProfiles({
                   {I18N.settings.useProfile}
                 </button>
               )}
-            <button
+            {selectedProfileReadOnly ? <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={mutationsDisabled || atProfileLimit} onClick={() => setShowsProviderPicker(true)}><Icon name="plus" />{I18N.settings.addProfile}</button> : <button
               type="button"
               className="settings-button settings-button--danger settings-button--compact"
               disabled={mutationsDisabled || settings.profiles.length <= 1}
@@ -512,7 +517,7 @@ export function ServiceProfiles({
             >
               <Icon name="trash" />
               {I18N.settings.deleteProfile}
-            </button>
+            </button>}
           </div>
           {pendingConfirmation?.kind === "profile" &&
             pendingConfirmation.profileId === selectedProfile.id && (
@@ -587,7 +592,7 @@ export function ServiceProfiles({
               </div>
             ))}
           </div>
-          <div className="services-hint"><SettingsHelp icon="shield-check" label={I18N.settings.helpLabel} text={settings.credentialStorage === "localDevFile" ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint} /></div>
+          <div className="services-hint"><SettingsHelp icon="shield-check" label={I18N.settings.helpLabel} text={settings.profiles.some(profile => profile.credentialStorage === "localDevFile") ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint} /></div>
           {atProfileLimit && (
             <InlineFeedback tone="info">{I18N.settings.profileLimitReached}</InlineFeedback>
           )}
@@ -595,6 +600,7 @@ export function ServiceProfiles({
       )}
       {feedback && !showsProviderPicker && !(showsEditor && selectedProfile) && <InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback>}
     </SettingsSection>
+    </>
   );
 }
 
