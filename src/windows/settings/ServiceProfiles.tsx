@@ -535,7 +535,6 @@ export function ServiceProfiles({
                     <CredentialBadge state={credentialStateForTarget(profile, settings.targetLanguage)} />
                     {profile.id === settings.activeProfileId && (
                       <span className="profile-active-badge">
-                        <Icon name="checkmark" />
                         {I18N.settings.activeProfile}
                       </span>
                     )}

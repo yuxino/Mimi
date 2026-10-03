@@ -1655,10 +1655,14 @@
 }
 .service-row__state {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px 10px;
+  gap: 6px;
+}
+.service-row__state .profile-active-badge {
+  color: var(--settings-text-muted);
+  font-weight: 500;
 }
 .service-row__edit {
   width: 32px;
@@ -1906,14 +1910,7 @@
 }
 @media (max-width: 900px) {
   .service-row__main {
-    grid-template-columns: 32px minmax(0, 1fr);
-  }
-  .service-row__state {
-    grid-column: 2;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    justify-items: start;
+    gap: 10px;
   }
 }
 .provider-picker {
