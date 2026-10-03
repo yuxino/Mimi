@@ -68,6 +68,17 @@
   零证据缺失。正常退出，原配置及沉浸设置恢复；无凭据 UI 和离线回放
   不等于修复后的真实 provider 验收。
 - 独立只读审阅未发现此次身份匹配引入的错误去重或重复接纳路径。
+- PR 首次 CI：macOS、Windows x64／ARM64、前端及 Android 检查通过，
+  Linux 普通 Rust／HQ／共享检查通过，但既有双输入 PulseAudio smoke 在
+  `system_pipeline.finish(1s)` 失败。源码显示测试模拟发送器使用 32 槽
+  sink，却先等待 finish 再消费 sink；满队列时无法完成发送。日志未记
+  当时队列占用，不能把这次具体超时直接定性为队列满或负载波动。
+  测试 harness 改为先匹配两路时持续读取双方，停止一条时继续读活跃
+  另一条，finish 时并发消费 stopped sink。新增满 32 槽加一个 pending
+  帧的确定性单元回归，要求全部 33 帧收尾、零遗留、旧 ingress 关闭。
+  保留原 1 秒 finish、6 秒双频率界限、两种采样率和分离／重启断言；
+  生产音频行为、队列容量与 deadline 未改。该 Linux 模块的实际测试
+  由 Linux CI 验证，macOS 完整检查不冒充 Linux 原生证明。
 - 持久保存：私有结果 catalog `2026-10-04-quality-cycle-1`，约 22.3 MB、
   142 条文件 SHA256，12 个 relocated result 路径和 PCM hash 已复核。
   原始 job 文件和失败日志保留，固定矩阵指向持久输入库；新录制 case

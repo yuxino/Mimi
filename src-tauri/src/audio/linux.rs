@@ -707,6 +707,60 @@ mod tests {
         (pipeline, rx)
     }
 
+    // The bounded recording sink is the test transport. It must stay consumed
+    // while the sender drains, just like a responsive real transport.
+    async fn finish_recording_pipeline(
+        pipeline: &AudioSendPipeline,
+        rx: &mut mpsc::Receiver<Vec<u8>>,
+    ) -> usize {
+        let (drained, frames) = tokio::join!(pipeline.finish(Duration::from_secs(1)), async {
+            let mut frames = 0;
+            while rx.recv().await.is_some() {
+                frames += 1;
+            }
+            frames
+        });
+        assert!(
+            drained,
+            "recording pipeline must finish while its sink is consumed"
+        );
+        assert!(rx.is_closed());
+        assert_eq!(rx.try_recv(), Err(mpsc::error::TryRecvError::Disconnected));
+        frames
+    }
+
+    #[tokio::test]
+    async fn recording_pipeline_finish_consumes_a_full_test_sink() {
+        let (pipeline, mut rx) = recording_pipeline();
+        let ingress = pipeline.ingress().unwrap();
+        // Let each frame reach the sink before adding another. Sending all 32
+        // without yielding would fill the separate 20-slot ingress queue.
+        tokio::time::timeout(Duration::from_secs(1), async {
+            for index in 0..32 {
+                ingress.try_send(vec![index as u8, 0]).unwrap();
+                while rx.len() != index + 1 {
+                    tokio::task::yield_now().await;
+                }
+            }
+        })
+        .await
+        .expect("the recording sink must be full before finish");
+        assert_eq!(rx.len(), 32);
+        // One more accepted frame cannot complete its send into the full sink.
+        ingress.try_send(vec![32, 0]).unwrap();
+        tokio::task::yield_now().await;
+        assert_eq!(rx.len(), 32);
+        assert!(pipeline.pending_pcm_gate().has_pending());
+
+        assert_eq!(finish_recording_pipeline(&pipeline, &mut rx).await, 33);
+        assert!(!pipeline.pending_pcm_gate().has_pending());
+        assert_eq!(rx.recv().await, None);
+        assert_eq!(
+            ingress.try_send(vec![33, 0]),
+            Err(AudioIngressError::Closed)
+        );
+    }
+
     #[tokio::test]
     async fn tiny_fragments_use_audio_duration_instead_of_native_fragment_count() {
         for rate in [16_000, 24_000] {
@@ -1360,6 +1414,50 @@ mod tests {
             .await
             .expect("each source must retain its own dominant tone");
         }
+        async fn expect_both_frequencies(
+            system_rx: &mut mpsc::Receiver<Vec<u8>>,
+            mic_rx: &mut mpsc::Receiver<Vec<u8>>,
+            rate: u32,
+        ) {
+            fn observe(
+                pcm: Option<Vec<u8>>,
+                window: &mut Vec<u8>,
+                matched: &mut bool,
+                rate: u32,
+                frequency: f64,
+            ) {
+                let pcm = pcm.expect("independent capture ended before both tones arrived");
+                assert_eq!(pcm.len(), rate as usize * 2 * FRAGMENT_MS / 1000);
+                if *matched {
+                    return;
+                }
+                window.extend(pcm);
+                if window.len() >= rate as usize / 2 {
+                    *matched = matches_frequency(window, rate, frequency);
+                    window.clear();
+                }
+            }
+            tokio::time::timeout(Duration::from_secs(6), async {
+                let mut system_window = Vec::new();
+                let mut mic_window = Vec::new();
+                let mut system_matched = false;
+                let mut mic_matched = false;
+                // Continue consuming the first matched source until the other
+                // matches too, so its bounded test sink cannot stall capture.
+                while !system_matched || !mic_matched {
+                    tokio::select! {
+                        pcm = system_rx.recv() => observe(
+                            pcm, &mut system_window, &mut system_matched, rate, 997.0
+                        ),
+                        pcm = mic_rx.recv() => observe(
+                            pcm, &mut mic_window, &mut mic_matched, rate, 613.0
+                        ),
+                    }
+                }
+            })
+            .await
+            .expect("each source must retain its own dominant tone");
+        }
         let system = LinuxSystemAudioCapture::new();
         let microphone = LinuxSystemAudioCapture::new();
         for rate in [16_000, 24_000] {
@@ -1388,19 +1486,24 @@ mod tests {
                 .unwrap();
             let (_output_audio, output_playback) = play_test_frequency_on("mimi-output", 997.0);
             let (_input_audio, input_playback) = play_test_frequency_on("mimi-microphone", 613.0);
-            tokio::join!(
-                expect_frequency(&mut system_rx, rate, 997.0),
-                expect_frequency(&mut mic_rx, rate, 613.0)
-            );
+            expect_both_frequencies(&mut system_rx, &mut mic_rx, rate).await;
             // Releasing one native worker must not terminate the other lane.
-            system.stop().await;
-            assert!(system_pipeline.finish(Duration::from_secs(1)).await);
-            while system_rx.try_recv().is_ok() {}
+            // Keep that live lane's test sink consumed during native teardown
+            // and the stopped lane's bounded drain.
+            tokio::select! {
+                _ = async {
+                    system.stop().await;
+                    finish_recording_pipeline(&system_pipeline, &mut system_rx).await;
+                } => {},
+                _ = async { while mic_rx.recv().await.is_some() {} } => {
+                    panic!("microphone transport ended while stopping the system lane");
+                },
+            }
             while mic_rx.try_recv().is_ok() {}
             expect_frequency(&mut mic_rx, rate, 613.0).await;
             assert!(system_rx.try_recv().is_err());
             microphone.stop().await;
-            assert!(mic_pipeline.finish(Duration::from_secs(1)).await);
+            finish_recording_pipeline(&mic_pipeline, &mut mic_rx).await;
             assert!(system_failures.try_recv().is_err());
             assert!(mic_failures.try_recv().is_err());
             drop(output_playback);
