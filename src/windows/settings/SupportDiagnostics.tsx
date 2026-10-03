@@ -1,7 +1,7 @@
 import { SettingsHelp } from "./SettingsHelp";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, X, AlertCircle, ChevronRight, Copy, ExternalLink, RotateCw } from "lucide-react";
-import { TransientToast } from "../../lib/transientToast";
+import { AlertCircle, ChevronRight, Copy, ExternalLink, RotateCw } from "lucide-react";
+import { useSettingsToast } from "./useSettingsToast";
 import { invoke } from "@tauri-apps/api/core";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import { isTauri } from "../../lib/ipc";
@@ -10,7 +10,7 @@ import { supportDiagnosticSummary, type DiagnosticStatus, type DiagnosticSummary
 
 const copy = {
   en: {
-    close: "Dismiss notification", title: "Diagnostics", copy: "Copy diagnostics", issue: "GitHub feedback",
+    title: "Diagnostics", copy: "Copy diagnostics", issue: "GitHub feedback",
     refresh: "Refresh diagnostics", refreshing: "Preparing diagnostics…", refreshed: "Diagnostics refreshed.",
     status: "Session status", lastError: "Latest error", recent: "Recent events", sinceStart: "Since app start", noEvents: "No events yet",
     failures: { unknown: "Unclassified error", authentication: "Authentication failed", credential_storage: "Credential storage unavailable", device_unavailable: "Sound output unavailable", timeout: "Service timed out", request_rejected: "Request rejected", service_error: "Service unavailable", rate_limit: "Service rate limited", backlog: "Processing fell behind", transport: "Connection interrupted", stopped: "Audio capture stopped", processing: "Audio processing failed", size_limit: "Subtitle response too large" },
@@ -23,7 +23,7 @@ const copy = {
     openFailed: "Could not open GitHub. Copy diagnostics and visit the Mimi repository.", preview: "Raw diagnostic data",
   },
   zh: {
-    close: "关闭提示", title: "诊断", copy: "复制诊断信息", issue: "GitHub 反馈",
+    title: "诊断", copy: "复制诊断信息", issue: "GitHub 反馈",
     refresh: "刷新诊断", refreshing: "正在准备诊断信息…", refreshed: "诊断信息已刷新。",
     status: "字幕状态", lastError: "最近错误", recent: "最近事件", sinceStart: "距应用启动", noEvents: "还没有事件",
     failures: { unknown: "未分类错误", authentication: "身份验证失败", credential_storage: "凭据存储不可用", device_unavailable: "声音输出不可用", timeout: "服务超时", request_rejected: "请求被拒绝", service_error: "服务不可用", rate_limit: "服务限流", backlog: "处理速度落后", transport: "连接中断", stopped: "音频捕获停止", processing: "音频处理失败", size_limit: "字幕响应过长" },
@@ -36,7 +36,7 @@ const copy = {
     openFailed: "暂时无法打开 GitHub，请复制诊断信息并前往 Mimi 仓库。", preview: "原始诊断数据",
   },
   ja: {
-    close: "通知を閉じる", title: "診断", copy: "診断情報をコピー", issue: "GitHub で報告",
+    title: "診断", copy: "診断情報をコピー", issue: "GitHub で報告",
     refresh: "診断を更新", refreshing: "診断情報を準備中…", refreshed: "診断情報を更新しました。",
     status: "字幕の状態", lastError: "直近のエラー", recent: "最近のイベント", sinceStart: "アプリ起動から", noEvents: "イベントはまだありません",
     failures: { unknown: "未分類のエラー", authentication: "認証に失敗", credential_storage: "認証情報ストアを利用不可", device_unavailable: "音声出力を利用不可", timeout: "サービスがタイムアウト", request_rejected: "リクエストが拒否されました", service_error: "サービスを利用不可", rate_limit: "サービスの利用制限", backlog: "処理が遅れています", transport: "接続が中断", stopped: "音声の取得が停止", processing: "音声処理に失敗", size_limit: "字幕の応答が長すぎます" },
@@ -82,16 +82,14 @@ function eventLabel(event: DiagnosticSummaryEvent, text: typeof copy.en | typeof
 export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
   const [report, setReport] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<DiagnosticAction | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>(null);
+  const { beginToast, clearToast } = useSettingsToast();
   const [manualCopy, setManualCopy] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const operation = useRef(false);
   const request = useRef(0);
   const lifetime = useRef(0);
-  const toast = useRef<TransientToast<Feedback> | null>(null);
-  if (toast.current === null) { toast.current = new TransientToast<Feedback>(setFeedback); }
   useEffect(() => {
-    const clear = () => { lifetime.current += 1; toast.current?.clear(); };
+    const clear = () => { lifetime.current += 1; clearToast(); };
     const hidden = () => { if (document.hidden) clear(); };
     window.addEventListener("hashchange", clear);
     window.addEventListener("blur", clear);
@@ -100,22 +98,22 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
       lifetime.current += 1;
       request.current += 1;
       operation.current = false;
-      toast.current?.dispose();
+      clearToast();
       window.removeEventListener("hashchange", clear);
       window.removeEventListener("blur", clear);
       document.removeEventListener("visibilitychange", hidden);
     };
-  }, []);
+  }, [clearToast]);
   const perform = useCallback(async (action: DiagnosticAction, showSuccess = true) => {
     if (operation.current) return;
     operation.current = true;
     const currentRequest = ++request.current;
     setPendingAction(action);
     setManualCopy(false);
-    toast.current?.clear();
+    const showToast = beginToast();
     const currentLifetime = lifetime.current;
     const notify = (value: Feedback) => {
-      if (currentRequest === request.current && currentLifetime === lifetime.current) toast.current?.show(value, isFailure(value));
+      if (value && currentRequest === request.current && currentLifetime === lifetime.current) showToast(copy[effectiveUiLanguage()][value], isFailure(value));
     };
     try {
       if (action === "issue") {
@@ -149,23 +147,22 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
     finally {
       if (currentRequest === request.current) { operation.current = false; setPendingAction(null); }
     }
-  }, []);
+  }, [beginToast]);
   useEffect(() => {
     if (!visible) {
       lifetime.current += 1;
-      toast.current?.clear();
+      clearToast();
       return;
     }
     if (!isTauri) return;
     let disposed = false;
     queueMicrotask(() => { if (!disposed) void perform("refresh", false); });
     return () => { disposed = true; };
-  }, [visible, perform]);
+  }, [visible, perform, clearToast]);
   const text = copy[effectiveUiLanguage()];
   const summary = useMemo(() => supportDiagnosticSummary(report), [report]);
   const busy = pendingAction !== null;
   if (!isTauri) return null;
-  const failed = isFailure(feedback);
   return <section className="settings-support-diagnostics settings-diagnostics-page" aria-label={text.title} aria-busy={busy}>
     {summary && <div className="settings-diagnostic-overview">
       <dl className="settings-diagnostic-summary">
@@ -186,11 +183,6 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
       </div>
       <div className="settings-diagnostic-privacy"><SettingsHelp text={I18N.settings.diagnosticsHelp} label={I18N.settings.helpLabel} icon="shield-check" /></div>
     </div>
-    {feedback && <div className="settings-diagnostic-toast" data-error={failed} role={failed ? "alert" : "status"} aria-live={failed ? "assertive" : "polite"} aria-atomic="true">
-      {failed ? <AlertCircle size={18} aria-hidden="true" /> : <Check size={18} aria-hidden="true" />}
-      <span>{text[feedback]}</span>
-      <button type="button" aria-label={text.close} onClick={() => toast.current?.clear()}><X size={16} aria-hidden="true" /></button>
-    </div>}
     {summary && <section className="settings-diagnostic-events" aria-label={text.recent}>
       <div className="settings-diagnostic-events__heading"><h2>{text.recent}</h2><SettingsHelp text={text.sinceStart} label={I18N.settings.helpLabel} /></div>
       {summary.recentEvents.length > 0 ? <ol>{summary.recentEvents.map((event, index) => <li key={`${event.sequence}-${index}`} className={event.kind === "failure" ? "is-error" : undefined}><span className="settings-diagnostic-events__time">{(event.elapsedMs / 1000).toFixed(1)} s</span><span className="settings-diagnostic-events__rail" aria-hidden="true" /><span>{eventLabel(event, text)}</span></li>)}</ol> : <p className="settings-diagnostic-events__empty">{text.noEvents}</p>}

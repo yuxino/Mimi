@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FocusEventHandler, type InputHTMLAttr
 import { readClipboardText } from "../../lib/clipboard";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
+import { useSettingsToast } from "./useSettingsToast";
 
 /** Clipboard access happens only on the user's paste action; the owning field decides when to commit. */
 export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
@@ -11,7 +12,7 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...
   ref?: Ref<HTMLInputElement>;
 }) {
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const { beginToast, clearToast } = useSettingsToast();
   const pending = useRef(false);
   const mounted = useRef(false);
   const disabled = useRef(!!props.disabled);
@@ -20,7 +21,8 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...
   const paste = async () => {
     if (props.disabled || pending.current) return;
     pending.current = true;
-    setBusy(true); setFailed(false);
+    setBusy(true);
+    const notify = beginToast();
     try {
       const value = await readClipboardText();
       if (mounted.current && !disabled.current) {
@@ -29,7 +31,7 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...
         onPasteValue?.(value);
       }
     } catch {
-      if (mounted.current) setFailed(true);
+      if (mounted.current) notify(I18N.settings.pasteFailed, true);
     } finally {
       pending.current = false;
       if (mounted.current) setBusy(false);
@@ -37,10 +39,9 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...
   };
   return <span className="config-input-group" onBlur={onGroupBlur}>
     <span className="config-input">
-      <input {...props} ref={ref} onChange={event => { setFailed(false); onValueChange(event.target.value); }} />
+      <input {...props} ref={ref} onChange={event => { clearToast(); onValueChange(event.target.value); }} />
       <button type="button" className="config-input__paste" aria-label={I18N.settings.pasteFromClipboard} title={I18N.settings.pasteFromClipboard}
         disabled={props.disabled || busy} aria-busy={busy || undefined} onClick={() => { void paste(); }}><Icon name="clipboard" /><span className="settings-sr-only">{I18N.settings.pasteFromClipboard}</span></button>
     </span>
-    {failed && <span className="credential-unavailable" role="status">{I18N.settings.pasteFailed}</span>}
   </span>;
 }

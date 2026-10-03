@@ -28,6 +28,7 @@ import { SettingsHelp } from "./SettingsHelp";
 import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
 import { AudioInputSettings } from "./AudioInputSettings";
+import { SettingsToastRegion } from "./SettingsToast";
 import "./settings.css";
 
 const DevelopmentDebugger = __MIMI_DEVELOPMENT_BUILD__
@@ -489,6 +490,7 @@ export function SettingsView() {
           </div>
         </div>
       </div>
+      <SettingsToastRegion scopeKey={activeCategory} />
     </main>
   );
 }

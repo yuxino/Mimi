@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SettingsToastRegion } from "./SettingsToast";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
@@ -20,7 +21,7 @@ beforeEach(() => {
 afterEach(async () => { await act(() => root.unmount()); host.remove(); Reflect.deleteProperty(navigator, "clipboard"); vi.unstubAllGlobals(); });
 it("reads only on a paste click, updates the draft, and retains normal password input", async () => {
   read.mockResolvedValue("synthetic-pasted-key");
-  await act(() => root.render(<Draft />));
+  await act(() => root.render(<><Draft /><SettingsToastRegion /></>));
   expect(read).not.toHaveBeenCalled();
   await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
   expect(read).toHaveBeenCalledOnce();
@@ -29,18 +30,18 @@ it("reads only on a paste click, updates the draft, and retains normal password 
   expect(host.querySelector("input")!.type).toBe("password");
 });
 it("does not read when disabled, rejects a late read after switching fields, and does not echo clipboard errors", async () => {
-  await act(() => root.render(<Draft disabled />));
+  await act(() => root.render(<><Draft disabled /><SettingsToastRegion /></>));
   await act(() => host.querySelector<HTMLButtonElement>("button")!.click());
   expect(read).not.toHaveBeenCalled();
   let finish!: (value: string) => void;
   read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
-  await act(() => root.render(<Draft key="first" />));
+  await act(() => root.render(<><Draft key="first" /><SettingsToastRegion /></>));
   await act(() => host.querySelector<HTMLButtonElement>("button")!.click());
-  await act(() => root.render(<Draft key="second" />));
+  await act(() => root.render(<><Draft key="second" /><SettingsToastRegion /></>));
   await act(async () => finish("synthetic-stale-key"));
   expect(changed).not.toHaveBeenCalled();
   read.mockRejectedValueOnce(new Error("synthetic-private-clipboard-error"));
   await act(async () => host.querySelector<HTMLButtonElement>("button")!.click());
-  expect(host.querySelector('[role="status"]')?.textContent).toBe(I18N.settings.pasteFailed);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.pasteFailed);
   expect(host.textContent).not.toContain("synthetic-private");
 });

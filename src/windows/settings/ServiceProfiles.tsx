@@ -27,6 +27,7 @@ import type {
   SettingsSnapshot,
 } from "../../lib/types";
 import { InlineFeedback, SettingsSection } from "./SettingsPrimitives";
+import { useSettingsToast } from "./useSettingsToast";
 
 import { DestructiveConfirmation, SettingsConfirmation } from "./DestructiveConfirmation";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
@@ -88,6 +89,7 @@ export function ServiceProfiles({
   const [nameDraft, setNameDraft] = useState(activeProfile?.name ?? "");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const { beginToast } = useSettingsToast();
   const [diagnostics, setDiagnostics] = useState<Partial<Record<CheckStage, CheckOutcome>>>({});
   const [pendingCheckStage, setPendingCheckStage] = useState<CheckStage | null>(null);
   const creationInFlight = useRef(false);
@@ -188,13 +190,14 @@ export function ServiceProfiles({
     if (action === "delete-key") invalidateProfileCheck(selectedProfileId);
     setPendingAction(action);
     setFeedback(null);
+    const notify = beginToast();
     try {
       const snapshot = await operation();
-      setFeedback(
-        typeof successFeedback === "string"
+      const result: Feedback = typeof successFeedback === "string"
           ? { tone: "success", message: successFeedback }
-          : successFeedback(snapshot),
-      );
+          : successFeedback(snapshot);
+      if (result.tone !== "error") notify(result.message);
+      else setFeedback(result);
       return snapshot;
     } catch (error) {
       setFeedback({

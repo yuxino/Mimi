@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -26,7 +27,7 @@ afterEach(async () => {
   useStore.setState(initial, true); setStoredUiLanguage("system"); vi.unstubAllGlobals();
 });
 async function render(disabled = false, requiresStop = false) {
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={disabled} requiresStop={requiresStop} />));
+  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} disabled={disabled} requiresStop={requiresStop} /><SettingsToastRegion /></>));
 }
 async function choose(label: string, code: string) {
   const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;

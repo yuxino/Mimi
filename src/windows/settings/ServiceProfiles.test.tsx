@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -46,7 +47,7 @@ afterEach(async () => {
   setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals();
   vi.useRealTimers();
 });
-async function render(snapshot = settings, sessionStatusKind: "idle" | "error" = "idle") { await act(() => root.render(<ServiceProfiles settings={snapshot} sessionIsActive={false} sessionStatusKind={sessionStatusKind} />)); }
+async function render(snapshot = settings, sessionStatusKind: "idle" | "error" = "idle") { await act(() => root.render(<><ServiceProfiles settings={snapshot} sessionIsActive={false} sessionStatusKind={sessionStatusKind} /><SettingsToastRegion /></>)); }
 it("shows a custom speech profile as ready for Original even when its independent translation key is missing", async () => {
   const custom: ServiceProfile = { ...profile, provider: "customDashScopeASR", credentialState: "missing", speechCredentialState: "present", textCredentialState: "missing", textTranslation: "deepL" };
   await render({ ...settings, targetLanguage: "original", profiles: [custom] });
@@ -725,7 +726,7 @@ it("shows only one effective proxy for an integrated realtime service and locks 
   await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.querySelectorAll('.service-proxies [role="combobox"]').length).toBe(1);
   expect(host.querySelector('.service-proxies .settings-help-control__description')?.textContent).toContain(I18N.settings.networkProxyIntegratedScope);
-  await act(() => root.render(<ServiceProfiles settings={settings} sessionIsActive={false} sessionIsPaused />));
+  await act(() => root.render(<><ServiceProfiles settings={settings} sessionIsActive={false} sessionIsPaused /><SettingsToastRegion /></>));
   for (const selector of host.querySelectorAll<HTMLButtonElement>('.service-proxies [role="combobox"]')) expect(selector.disabled).toBe(true);
   expect(actions.updateProfile).not.toHaveBeenCalled();
 });
