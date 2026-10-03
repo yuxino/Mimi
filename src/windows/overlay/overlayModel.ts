@@ -433,6 +433,17 @@ export function visibleLiveSubtitles(
   isTranslationTimedOut: boolean,
   preferAtomicPreview = false,
 ): LiveSubtitlePreview[] {
+  const displayPair = subtitles.displayPair;
+  if (displayPair && settings.subtitleDisplayMode !== "original" && !isSameLanguageMode(settings, detectedLanguage)) {
+    // A confirmed current pair is already readable in the bounded history lane.
+    const last = subtitles.history.at(-1);
+    if (last?.source === displayPair.source && last.translation === displayPair.translation && subtitles.previewPair == null) return [];
+    const owner = displayPair.utteranceId == null ? {} : { utteranceId: displayPair.utteranceId };
+    const source: LiveSubtitlePreview = { kind: "source", text: displayPair.source, isFinal: false, isStable: true, ...owner };
+    const translation: LiveSubtitlePreview = { kind: "translation", text: displayPair.translation, isFinal: false, isStable: true, ...owner };
+    if (settings.subtitleDisplayMode !== "bilingual") return [translation];
+    return displayPair.source.trim() === displayPair.translation.trim() ? [source] : [source, translation];
+  }
   // HQ's next request can start before its next raw draft is published. Its
   // unstamped final is already owned by history, not a newly recognized tail.
   // Pending/timeout flags cannot reopen it. Preserve real same-text drafts,
@@ -536,6 +547,8 @@ export function hasSubtitleContent(subtitles: SubtitleSnapshot): boolean {
     (subtitles.tracks?.some(track => hasSubtitleContent(track)) ?? false) ||
     subtitles.source.text !== "" ||
     subtitles.translation.text !== "" ||
+    (subtitles.displayPair != null &&
+      (subtitles.displayPair.source.trim() !== "" || subtitles.displayPair.translation.trim() !== "")) ||
     (subtitles.previewPair !== undefined && subtitles.previewPair !== null &&
       (subtitles.previewPair.source.trim() !== "" || subtitles.previewPair.translation.trim() !== "")) ||
     subtitles.history.length > 0

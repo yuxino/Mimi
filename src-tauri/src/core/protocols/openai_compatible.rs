@@ -31,10 +31,13 @@ pub enum OpenAICompatibleError {
 
 impl OpenAICompatibleError {
     pub fn retryable(&self) -> bool {
-        matches!(
-            self,
-            Self::Timeout | Self::Connection | Self::Rejected(408 | 429 | 500..=599)
-        )
+        use mimi_core::translation_policy::{classify_http, RetryClass};
+        let class = match self {
+            Self::Timeout | Self::Connection => RetryClass::Temporary,
+            Self::Rejected(code) if *code <= 599 => classify_http(*code),
+            _ => RetryClass::Permanent,
+        };
+        class != RetryClass::Permanent
     }
 
     pub fn authentication_failure(&self) -> bool {

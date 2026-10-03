@@ -35,6 +35,7 @@ interface SubtitleHistoryItem {
 }
 
 export interface SourceSubtitleSnapshot {
+  displayPair?: SubtitleSnapshot["previewPair"];
   audioSource: AudioSource;
   source: SubtitleLineSnapshot;
   translation: SubtitleLineSnapshot;
@@ -48,6 +49,8 @@ export interface SourceSubtitleSnapshot {
 }
 
 export interface SubtitleSnapshot {
+  /** One bounded complete current pair, independent from saved history. */
+  displayPair?: SubtitleSnapshot["previewPair"];
   /** Independent source streams; top-level history remains chronological. */
   tracks?: SourceSubtitleSnapshot[];
   /** One replaceable completed preview; never confirmed history. */

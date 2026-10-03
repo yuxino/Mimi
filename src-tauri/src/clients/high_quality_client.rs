@@ -22,6 +22,9 @@ use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTModel};
 use crate::core::subtitle_reducer::trim;
 use crate::pipeline_log;
+#[cfg(test)]
+use mimi_core::translation_policy::MAX_TRANSLATION_ATTEMPTS;
+use mimi_core::translation_policy::{self, FINAL_DEADLINE_MS, MAX_FINAL_QUEUE_DEPTH};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -30,11 +33,10 @@ use tokio::sync::{oneshot, Mutex};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
-const MAX_FINAL_QUEUE_DEPTH: usize = 3;
-const MAX_FINAL_REQUEST_AGE: Duration = Duration::from_secs(45);
+const MAX_FINAL_REQUEST_AGE: Duration = Duration::from_millis(FINAL_DEADLINE_MS);
 const MAX_PREVIEW_REQUEST_AGE: Duration = Duration::from_secs(12);
-const MAX_TRANSLATION_ATTEMPTS: usize = 3;
-const ASR_BRIDGE_FINISH_TIMEOUT: Duration = Duration::from_secs(1);
+const ASR_BRIDGE_FINISH_TIMEOUT: Duration =
+    Duration::from_millis(translation_policy::RECOGNITION_FINISH_TIMEOUT_MS);
 const OVERLOAD_ERROR_CODE: &str = "translation_backlog_overflow";
 const OVERLOAD_ERROR_MESSAGE: &str = "Translation fell behind live audio. mimi is reconnecting.";
 
@@ -692,7 +694,7 @@ impl HighQualityTranslationClient {
             self.cancel_replaceable_work().await;
             self.cancel_final_translations().await;
         }
-        self.asr_client.finish(Duration::from_secs(1)).await;
+        self.asr_client.finish(ASR_BRIDGE_FINISH_TIMEOUT).await;
         if !self
             .wait_for_asr_bridge_finish(ASR_BRIDGE_FINISH_TIMEOUT)
             .await
@@ -701,8 +703,10 @@ impl HighQualityTranslationClient {
         }
         if self.mt_work_allowed.load(Ordering::SeqCst) {
             self.flush_pending_draft().await;
-            self.wait_for_final_translations(Duration::from_secs(3))
-                .await;
+            self.wait_for_final_translations(Duration::from_millis(
+                translation_policy::FINISH_DRAIN_TIMEOUT_MS,
+            ))
+            .await;
         }
         self.reset_draft_state().await;
         self.cancel_final_translations().await;
@@ -1522,7 +1526,7 @@ impl HighQualityTranslationClient {
                 return;
             }
 
-            if inner.final_queue.len() >= MAX_FINAL_QUEUE_DEPTH {
+            if !translation_policy::can_enqueue(inner.final_queue.len(), true) {
                 if inner.final_completion_in_progress {
                     inner.deferred_overload = true;
                     EnqueueOutcome::DeferredOverload
@@ -1607,7 +1611,8 @@ impl HighQualityTranslationClient {
 
             let started_at = tokio::time::Instant::now();
             let queue_age = started_at.saturating_duration_since(request.enqueued_at);
-            if queue_age >= MAX_FINAL_REQUEST_AGE {
+            if !translation_policy::can_start(queue_age.as_millis().try_into().unwrap_or(u64::MAX))
+            {
                 self.fail_final_worker_overload(worker_id, queue_age).await;
                 return;
             }
@@ -2120,7 +2125,8 @@ impl HighQualityTranslationClient {
                     let Some(reason) = error.recovery_reason() else {
                         return Err(error);
                     };
-                    let delay = {
+                    let class = error.retry_class();
+                    let (delay, failure_streak) = {
                         let mut inner = self.inner.lock().await;
                         if !self.translation_work_is_current(&inner, owner) {
                             return Err(error);
@@ -2129,9 +2135,10 @@ impl HighQualityTranslationClient {
                             self.finish_preview_http(&mut inner, id);
                         }
                         inner.mt_failure_streak = inner.mt_failure_streak.saturating_add(1);
+                        let failure_streak = inner.mt_failure_streak.max(attempt);
                         let delay = crate::core::protocols::qwen_mt::QwenMTRetryPolicy::delay(
                             &error,
-                            inner.mt_failure_streak.max(attempt),
+                            failure_streak,
                         )
                         .expect("classified transient error has a retry delay");
                         let until = tokio::time::Instant::now() + delay;
@@ -2161,7 +2168,7 @@ impl HighQualityTranslationClient {
                                 retry_scheduled: !pauses_preview,
                             },
                         ));
-                        delay
+                        (delay, failure_streak)
                     };
                     if matches!(owner, TranslationWorkOwner::Preview(_))
                         && reason == TranslationRecoveryReason::RateLimited
@@ -2170,10 +2177,24 @@ impl HighQualityTranslationClient {
                         // repeated copies of a replaceable long draft.
                         return Err(error);
                     }
-                    if attempt >= MAX_TRANSLATION_ATTEMPTS {
+                    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                    // The policy uses milliseconds; round up here and retain the
+                    // native-clock check so sub-millisecond budget edges are exact.
+                    let remaining_ms = remaining
+                        .as_millis()
+                        .saturating_add(1)
+                        .try_into()
+                        .unwrap_or(u64::MAX);
+                    let decision = translation_policy::retry_with_remaining(
+                        class,
+                        attempt,
+                        failure_streak,
+                        remaining_ms,
+                    );
+                    if decision.exhausted {
                         return Err(error);
                     }
-                    if tokio::time::Instant::now() + delay >= deadline {
+                    if !decision.retry || tokio::time::Instant::now() + delay >= deadline {
                         return Err(QwenMTClientError::RequestTimedOut);
                     }
                     pipeline_log!(

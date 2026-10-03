@@ -1,4 +1,12 @@
-# Android icon attribution
+# Android third-party notices
+
+The Rust shared subtitle core and JNI adapter use `jni` 0.21.1 and
+`serde`/`serde_json`, with their transitive dependencies. The locked version
+inventory and complete upstream license texts are in
+[native-licenses/shared-core.txt](native-licenses/shared-core.txt). This file
+is also packaged in every Android APK as `assets/shared-core.txt`.
+
+## Icon attribution
 
 The service cloud, language, caption and wave icons are adapted from Lucide 1.31.0 into Android vector drawables.
 

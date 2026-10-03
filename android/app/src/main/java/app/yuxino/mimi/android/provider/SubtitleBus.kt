@@ -1,220 +1,130 @@
 package app.yuxino.mimi.android.provider
 
-/**
- * Shared subtitle state plus a simple listener registry. The capture service
- * pushes provider events here; the overlay renders the state on the main thread.
- */
+import org.json.JSONObject
+
+/** Native UI facade over the exact Rust reducer used by desktop. */
 object SubtitleBus {
     data class Pair(val source: String, val translation: String)
-
-    private val listeners = mutableListOf<Listener>()
     private val lock = Any()
-
-    @Volatile var sourceDraft: String = ""
-    @Volatile var sourceFinal: String = ""
-    @Volatile var translationDraft: String = ""
-    @Volatile var translationFinal: String = ""
-    @Volatile var statusLine: String = ""
-
-    /** True while the live lines should stay hidden (speech paused). */
-    @Volatile var liveHidden: Boolean = false
-
-    /** Provider-detected source language of the current line, e.g. "en". */
-    @Volatile var detectedSourceLanguage: String? = null
-
-    /** Confirmed history, newest last, bounded. */
-    private val history = ArrayDeque<Pair>()
+    private val listeners = mutableListOf<Listener>()
+    private var state: String? = null
+    @Volatile private var snapshot = JSONObject()
     private var historyLimit = 0
-    /** Queue of source finals awaiting their translation for pairing. */
-    private val pendingSources = ArrayDeque<String>()
+    private var sourceId = 0L
+    private var confirmationId = 0L
+    private var draftId: Long? = null
+    private var originalOnly = false
 
+    val sourceDraft: String get() = line("source", false)
+    val sourceFinal: String get() = line("source", true)
+    val translationDraft: String get() = if (originalOnly) "" else line("translation", false)
+    val translationFinal: String get() = if (originalOnly) "" else line("translation", true)
+    /** A complete display pair survives raw recognition of the next sentence. */
+    val displaySource: String get() = if (originalOnly) sourceDraft.ifEmpty { sourceFinal }
+        else snapshot.optJSONObject("displayPair")?.optString("source") ?: sourceDraft.ifEmpty { sourceFinal }
+    val displayTranslation: String get() = if (originalOnly) "" else
+        snapshot.optJSONObject("displayPair")?.optString("translation") ?: translationDraft.ifEmpty { translationFinal }
+    @Volatile var statusLine = ""
+    @Volatile var liveHidden = false
+    @Volatile var detectedSourceLanguage: String? = null
     const val MAX_HISTORY = 6
-    const val MAX_PENDING = 8
 
-    interface Listener {
-        fun onSubtitleChanged()
-    }
-
-    fun addListener(listener: Listener) {
-        synchronized(lock) { listeners.add(listener) }
-    }
-
-    fun removeListener(listener: Listener) {
-        synchronized(lock) { listeners.remove(listener) }
-    }
-
+    interface Listener { fun onSubtitleChanged() }
+    fun addListener(listener: Listener) = synchronized(lock) { listeners.add(listener); Unit }
+    fun removeListener(listener: Listener) = synchronized(lock) { listeners.remove(listener); Unit }
     private fun notifyListeners() {
-        val snapshot = synchronized(lock) { listeners.toList() }
-        for (listener in snapshot) {
-            try {
-                listener.onSubtitleChanged()
-            } catch (_: Exception) {
-            }
-        }
+        val copy = synchronized(lock) { listeners.toList() }
+        copy.forEach { try { it.onSubtitleChanged() } catch (_: Exception) { } }
     }
-
-    fun onSourceDraft(text: String, language: String? = null) {
-        val trimmed = lastSentence(text)
-        if (trimmed.isBlank()) return
-        sourceDraft = trimmed
-        detectedSourceLanguage = normalizeLang(language) ?: detectedSourceLanguage
-        liveHidden = false
-        notifyListeners()
+    private fun line(role: String, final: Boolean): String {
+        val value = snapshot.optJSONObject(role) ?: return ""
+        return if (value.optBoolean("isFinal") == final) value.optString("text") else ""
     }
-
-    fun onSourceFinal(text: String, language: String? = null) {
-        val trimmed = lastSentence(text)
-        if (trimmed.isBlank()) return
-        sourceFinal = trimmed
-        sourceDraft = ""
-        detectedSourceLanguage = normalizeLang(language) ?: detectedSourceLanguage
-        liveHidden = false
-        synchronized(this) {
-            if (historyLimit > 0) {
-                if (pendingSources.size >= MAX_PENDING) pendingSources.removeFirst()
-                pendingSources.addLast(trimmed)
-            }
+    private fun exchange(operation: JSONObject) {
+        val response = SharedSubtitleCore.exchange(JSONObject().put("state", state).put("operation", operation))
+        state = response.getString("state")
+        snapshot = response.getJSONObject("snapshot")
+    }
+    private fun ensureCreated() {
+        if (state == null) exchange(JSONObject().put("type", "create").put("history_limit", historyLimit))
+    }
+    fun onCoreEvent(event: JSONObject, language: String? = null) {
+        synchronized(lock) {
+            ensureCreated()
+            exchange(JSONObject().put("type", "apply").put("event", event))
+            val identified = event.optString("type") == "identified_final_pair" || event.optString("type") == "utterance_text"
+            val ownsSource = !identified || snapshot.optJSONObject("source")?.optString("utteranceId") == event.optString("utterance_id")
+            if (ownsSource) detectedSourceLanguage = language?.trim()?.lowercase()?.takeIf { it.length in 2..64 } ?: detectedSourceLanguage
+            liveHidden = false
         }
         notifyListeners()
     }
+    private fun textEvent(type: String, text: String) = JSONObject().put("type", type).put("text", text)
+    fun onSourceDraft(text: String, language: String? = null) = onCoreEvent(textEvent("source_draft", text), language)
+    fun onSourceFinal(text: String, language: String? = null) = onCoreEvent(textEvent("source_final", text), language)
+    fun onTranslationDraft(text: String) = onCoreEvent(textEvent("translation_draft", text))
+    fun onTranslationFinal(text: String) = onCoreEvent(textEvent("translation_final", text))
+    fun onFinalPair(source: String, translation: String, language: String? = null) = onCoreEvent(
+        JSONObject().put("type", "final_pair").put("source", source).put("translation", translation), language)
+    fun onIdentifiedFinalPair(id: String, source: String, translation: String, language: String? = null) = onCoreEvent(
+        JSONObject().put("type", "identified_final_pair").put("utterance_id", id).put("source", source).put("translation", translation), language)
 
-    fun onTranslationDraft(text: String) {
-        val trimmed = lastSentence(text)
-        if (trimmed.isBlank() && translationFinal.isNotEmpty()) return
-        translationDraft = trimmed
-        liveHidden = false
-        notifyListeners()
-    }
-
-    fun onTranslationFinal(text: String) {
-        val trimmed = lastSentence(text)
-        if (trimmed.isBlank()) return
-        translationFinal = trimmed
-        translationDraft = ""
-        liveHidden = false
-        synchronized(this) {
-            if (historyLimit > 0) {
-                val source = pendingSources.removeFirstOrNull() ?: sourceFinal
-                if (history.size >= historyLimit) history.removeFirst()
-                history.addLast(Pair(source, trimmed))
-            }
+    /** The returned identity travels with the HTTP request, including repeated text. */
+    fun onUntranslatedSource(text: String, language: String?, final: Boolean): Long {
+        val id = synchronized(lock) {
+            originalOnly = false
+            val current = draftId ?: (++sourceId).also { draftId = it }
+            if (final) draftId = null
+            current
         }
-        notifyListeners()
+        onCoreEvent(JSONObject().put("type", "source_utterance_draft").put("utterance_id", id).put("text", text), language)
+        return id
     }
-
-    /** Independent translation never pairs a newer recognition draft with an older translation. */
-    fun onUntranslatedSource(text: String, language: String?, final: Boolean) {
-        val trimmed = lastSentence(text)
-        if (trimmed.isBlank()) return
-        sourceDraft = if (final) "" else trimmed
-        if (final) sourceFinal = trimmed
-        translationDraft = ""
-        translationFinal = ""
-        detectedSourceLanguage = normalizeLang(language) ?: detectedSourceLanguage
-        liveHidden = false
-        notifyListeners()
+    fun onTranslatedSource(source: String, language: String?, translation: String, sourceUtteranceId: Long? = null) {
+        val id = synchronized(lock) { originalOnly = false; ++confirmationId }
+        val ownedLanguage = synchronized(lock) { if (sourceUtteranceId == null || sourceUtteranceId >= sourceId) language else null }
+        onCoreEvent(JSONObject().put("type", "confirmed_pair").put("utterance_id", id)
+            .put("source_utterance_id", sourceUtteranceId ?: JSONObject.NULL)
+            .put("source", source).put("translation", translation), ownedLanguage)
     }
-
-    /** Original-only finals retain history only under the existing explicit history opt-in. */
+    /** Original-only uses the same atomic confirmation as desktop; rendering hides the second lane. */
     fun onOriginalSource(source: String, language: String?) {
-        val text = lastSentence(source)
-        if (text.isBlank()) return
-        synchronized(this) {
-            sourceFinal = text; sourceDraft = ""
-            translationFinal = ""; translationDraft = ""
-            detectedSourceLanguage = normalizeLang(language) ?: detectedSourceLanguage
-            liveHidden = false
-            if (historyLimit > 0) {
-                if (history.size >= historyLimit) history.removeFirst()
-                history.addLast(Pair(text, ""))
-            }
-        }
-        notifyListeners()
+        synchronized(lock) { originalOnly = true; draftId = null }
+        onFinalPair(source, source, language)
     }
-
-    /** The request owns its source; no FIFO inference across asynchronous provider events. */
-    fun onTranslatedSource(source: String, language: String?, translation: String) {
-        val sourceText = lastSentence(source)
-        val translatedText = lastSentence(translation)
-        if (sourceText.isBlank() || translatedText.isBlank()) return
-        synchronized(this) {
-            sourceFinal = sourceText; sourceDraft = ""
-            translationFinal = translatedText; translationDraft = ""
-            detectedSourceLanguage = normalizeLang(language) ?: detectedSourceLanguage
-            liveHidden = false
-            if (historyLimit > 0) {
-                if (history.size >= historyLimit) history.removeFirst()
-                history.addLast(Pair(sourceText, translatedText))
-            }
-        }
-        notifyListeners()
-    }
-
     fun setHistoryLimit(limit: Int) {
-        synchronized(this) {
+        synchronized(lock) {
             historyLimit = limit.coerceIn(0, MAX_HISTORY)
-            while (history.size > historyLimit) history.removeFirst()
-            if (historyLimit == 0) pendingSources.clear()
+            ensureCreated()
+            exchange(JSONObject().put("type", "history_limit").put("limit", historyLimit))
         }
         notifyListeners()
     }
-
-    fun historySnapshot(): List<Pair> = synchronized(this) { history.toList() }
-
-    fun onStatus(line: String) {
-        statusLine = line
-        notifyListeners()
+    fun historySnapshot(): List<Pair> = synchronized(lock) {
+        val rows = snapshot.optJSONArray("history") ?: return@synchronized emptyList()
+        List(rows.length()) { index ->
+            val row = rows.getJSONObject(index)
+            val source = row.getString("source")
+            val translation = row.getString("translation")
+            Pair(source, if (originalOnly && source == translation) "" else translation)
+        }
     }
-
-    /** Hides the live lines until the next subtitle event. */
+    fun onStatus(line: String) { statusLine = line; notifyListeners() }
     fun hideLive() {
-        liveHidden = true
+        synchronized(lock) {
+            // The shared current complete pair stays readable until replaced
+            // or the session ends, even when saved history is disabled.
+            if (snapshot.optJSONObject("displayPair") != null) return
+            liveHidden = true
+        }
         notifyListeners()
     }
-
-    private fun normalizeLang(language: String?): String? {
-        val value = language?.trim()?.lowercase()?.takeWhile { it.isLetterOrNull() }
-        return value?.takeIf { it.length in 2..8 }
-    }
-
-    private fun Char.isLetterOrNull(): Boolean = isLetter()
-
-    private val SENTENCE_DELIMITERS = charArrayOf('.', '!', '?', '。', '！', '？', '，', ',')
-
-    /**
-     * Streams and finals both accumulate full utterances on the wire; only the
-     * last sentence is ever displayed. Handles the paused case (text ends with
-     * a delimiter: return the last complete sentence) so a finished sentence
-     * never lets the whole buffer through.
-     */
-    private fun lastSentence(input: String): String {
-        val text = input.trim()
-        var effectiveEnd = text.length
-        while (effectiveEnd > 0 && text[effectiveEnd - 1] in SENTENCE_DELIMITERS) {
-            effectiveEnd--
-        }
-        if (effectiveEnd == 0) return ""
-        var last = -1
-        for (delimiter in SENTENCE_DELIMITERS) {
-            val index = text.lastIndexOf(delimiter, effectiveEnd - 1)
-            if (index > last) last = index
-        }
-        val tail = if (last >= 0) {
-            text.substring(last + 1, effectiveEnd)
-        } else {
-            text.substring(0, effectiveEnd)
-        }
-        return tail.trim().takeLast(200)
-    }
-
     fun clear() {
-        synchronized(this) {
-            sourceDraft = ""; sourceFinal = ""; translationDraft = ""; translationFinal = ""
-            statusLine = ""
-            detectedSourceLanguage = null
-            liveHidden = false
-            history.clear()
-            pendingSources.clear()
+        synchronized(lock) {
+            state = null
+            snapshot = JSONObject()
+            sourceId = 0; confirmationId = 0; draftId = null; originalOnly = false
+            statusLine = ""; detectedSourceLanguage = null; liveHidden = false
         }
         notifyListeners()
     }

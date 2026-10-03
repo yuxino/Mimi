@@ -63,11 +63,18 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
 
 ```sh
 export ANDROID_HOME=/path/to/android-sdk
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Requires JDK 17, Android SDK platform 35 and build-tools 35.0.0. The wrapper pins
+Requires Rust 1.88+, Python 3, JDK 17, Android SDK platform 35, build-tools
+35.0.0 and NDK 27.2.12479018. Gradle builds the actual shared Rust core for JVM
+tests and all four packaged Android ABIs; a missing native dependency fails
+the build. APK verification checks 16 KB ELF/ZIP alignment and license notices.
+See [shared JNI build](../shared/mimi-android-jni/README.md) for the state boundary,
+toolchain pins and cache paths. The wrapper pins
 Gradle 8.10.2 and verifies its distribution checksum. minSdk 29, targetSdk 35,
 Kotlin 2.0, AGP 8.7. CI tests/lints both variants and produces a debug APK and an
 unsigned release APK. The unsigned artifact is for signing, not installation;
@@ -179,9 +186,11 @@ commits both stages; back discards changes. Translation keys have independent en
 storage and are not reused when the destination changes. Help icons open the requirements
 without persistent explanatory paragraphs in the editor.
 
-The final-only translation queue is bounded and serial, with a 45-second deadline from
-enqueue through completion, including time spent waiting. Failure, deadline expiry, backlog overflow or session
-stop cancels pending work; late results cannot enter a newer session. These checks do not
+The final-only translation queue uses the shared Rust policy: one active request, three
+waiting requests, up to three attempts and a 45-second total deadline including waiting
+and retries. Explicit stop drains accepted work within finite shared grace windows;
+errors and permission revocation abort. Overflow rejects new work and drains accepted
+work. Late results cannot enter a newer session. These checks do not
 prove a live DeepL, DeepLX or ChatMock account or physical Android device until those are tested separately.
 
 ## Architecture
@@ -204,7 +213,10 @@ app/src/main/java/app/yuxino/mimi/android/
   provider/ProviderEngine.kt   engine interface + WS URL normalization
   provider/DashScopeEngine.kt  qwen3.5-livetranslate realtime WS client
   provider/OpenAIRealtimeEngine.kt  gpt-realtime-translate WS client
-  provider/SubtitleBus.kt      shared subtitle state, sentence clipping, pairing
+  provider/SharedSubtitleCore.kt stateless JNI bridge to shared/mimi-core
+  provider/SubtitleBus.kt      native snapshot facade over the shared Rust reducer
+  provider/SharedLivePairStream.kt DashScope identity/transport adapter
+  provider/SharedTranscriptStream.kt OpenAI transcript/transport adapter
 ```
 
 ## Verification status
@@ -221,11 +233,11 @@ reported device test applies to the original port, not every subsequent change.
 - MediaProjection requires user consent on every start (platform rule).
 - DRM-protected output and apps that disallow playback capture cannot be captured.
 - Provider VAD can hold sentences open when background music is continuous;
-  the overlay uses a streaming-gap watchdog so subtitles still hide.
-- OpenAI uses punctuation-based source/translation pairing; it does not yet reproduce
-  the desktop timestamp alignment and may pair differently segmented sentences.
+  complete current subtitles remain readable until replaced or the session ends.
+- OpenAI and DashScope now use the desktop shared alignment implementations.
+  Their provider models and other adapters still require separate live-session validation.
 - DashScope sentence finals depend on server-side VAD; continuous speech with
-  music may deliver whole-utterance finals — handled by sentence clipping.
+  music may delay whole-utterance finals. Complete text within the shared byte limit is retained.
 
-MIT, same as upstream. Port authored independently; upstream code was used as
-a wire-protocol reference only.
+MIT, same as upstream. Native capture and UI remain Kotlin; subtitle rules,
+DashScope/OpenAI alignment and final translation policy are shared with desktop Rust.

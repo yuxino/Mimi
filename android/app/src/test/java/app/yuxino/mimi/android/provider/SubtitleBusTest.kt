@@ -5,43 +5,32 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
+/** Exercises the real JNI reducer, rather than a duplicate Kotlin implementation. */
 class SubtitleBusTest {
-    @Before fun reset() {
-        SubtitleBus.clear()
-        SubtitleBus.setHistoryLimit(0)
-    }
-
+    @Before fun reset() { SubtitleBus.clear(); SubtitleBus.setHistoryLimit(0) }
     @After fun cleanup() = reset()
 
     @Test fun disabledHistoryDoesNotRetainPastSources() {
-        SubtitleBus.onSourceFinal("Earlier private sentence.")
-        SubtitleBus.onTranslationFinal("Earlier private translation.")
+        SubtitleBus.onFinalPair("Earlier sentence.", "Earlier translation.")
         assertTrue(SubtitleBus.historySnapshot().isEmpty())
         SubtitleBus.setHistoryLimit(6)
-        SubtitleBus.onSourceFinal("Current sentence.")
-        SubtitleBus.onTranslationFinal("Current translation.")
-        assertEquals(listOf(SubtitleBus.Pair("Current sentence", "Current translation")), SubtitleBus.historySnapshot())
+        SubtitleBus.onFinalPair("Current sentence.", "Current translation.")
+        assertEquals(listOf(SubtitleBus.Pair("Current sentence.", "Current translation.")), SubtitleBus.historySnapshot())
     }
-
-    @Test fun disablingHistoryClearsPendingSourcesAndSnapshot() {
+    @Test fun disablingHistoryClearsRowsButRetainsOnlyCurrentCaption() {
         SubtitleBus.setHistoryLimit(6)
-        SubtitleBus.onSourceFinal("Old source.")
-        SubtitleBus.onTranslationFinal("Old translation.")
-        SubtitleBus.onSourceFinal("Old pending.")
+        SubtitleBus.onFinalPair("First.", "第一句。")
+        SubtitleBus.onFinalPair("Second.", "第二句。")
         SubtitleBus.setHistoryLimit(0)
         assertTrue(SubtitleBus.historySnapshot().isEmpty())
+        assertEquals("Second.", SubtitleBus.displaySource)
+        assertEquals("第二句。", SubtitleBus.displayTranslation)
         SubtitleBus.setHistoryLimit(6)
-        SubtitleBus.onSourceFinal("New source.")
-        SubtitleBus.onTranslationFinal("New translation.")
-        assertEquals("New source", SubtitleBus.historySnapshot().single().source)
+        assertTrue(SubtitleBus.historySnapshot().isEmpty())
     }
-
     @Test fun historyLimitMatchesSettingAndSnapshotsStayStable() {
         SubtitleBus.setHistoryLimit(6)
-        repeat(7) {
-            SubtitleBus.onSourceFinal("source $it")
-            SubtitleBus.onTranslationFinal("translation $it")
-        }
+        repeat(7) { SubtitleBus.onFinalPair("source $it", "translation $it") }
         val snapshot = SubtitleBus.historySnapshot()
         assertEquals(6, snapshot.size)
         assertEquals("source 1", snapshot.first().source)
@@ -49,7 +38,6 @@ class SubtitleBusTest {
         assertEquals(2, SubtitleBus.historySnapshot().size)
         assertEquals(6, snapshot.size)
     }
-
     @Test fun newSessionResetsLanguageAndVisibility() {
         SubtitleBus.onSourceDraft("Hello", "en-US")
         SubtitleBus.hideLive()
@@ -57,64 +45,83 @@ class SubtitleBusTest {
         assertNull(SubtitleBus.detectedSourceLanguage)
         assertFalse(SubtitleBus.liveHidden)
         assertEquals("", SubtitleBus.sourceDraft)
+        assertEquals("", SubtitleBus.displayTranslation)
     }
-
-    @Test fun finalWithTrailingWhitespaceStillDisplaysLastSentence() {
-        SubtitleBus.onTranslationFinal("First sentence. Last sentence.  \n")
-        assertEquals("Last sentence", SubtitleBus.translationFinal)
+    @Test fun completeFinalPreservesPunctuationAndEverySentence() {
+        val source = "今天下雨了，我们明天再出发。还有后续。"
+        val translation = "First sentence. Last sentence."
+        SubtitleBus.setHistoryLimit(1)
+        SubtitleBus.onFinalPair(source, "  $translation  \n")
+        assertEquals(source, SubtitleBus.sourceFinal)
+        assertEquals(translation, SubtitleBus.translationFinal)
+        assertEquals(listOf(SubtitleBus.Pair(source, translation)), SubtitleBus.historySnapshot())
     }
-
-    @Test fun unpunctuatedDraftKeepsMostRecentText() {
-        SubtitleBus.onTranslationDraft("a".repeat(220) + "RECENT")
-        assertEquals(200, SubtitleBus.translationDraft.length)
-        assertTrue(SubtitleBus.translationDraft.endsWith("RECENT"))
+    @Test fun ordinaryLongDraftIsNeverCroppedToItsLastTwoHundredCharacters() {
+        val text = "a".repeat(220) + "RECENT"
+        SubtitleBus.onTranslationDraft(text)
+        assertEquals(text, SubtitleBus.translationDraft)
+        SubtitleBus.onTranslationDraft("🙂".repeat(16_384) + "x")
+        assertEquals(text, SubtitleBus.translationDraft)
     }
-    @Test fun independentTranslationPairsItsOwnSourceAndClearsOldTranslationForNewRecognition() {
-        SubtitleBus.clear()
+    @Test fun newRawRecognitionRetainsCompletePairAndLateFinalDoesNotEraseRawDraft() {
         SubtitleBus.setHistoryLimit(2)
-        SubtitleBus.onUntranslatedSource("First sentence.", "en", true)
-        SubtitleBus.onUntranslatedSource("Second sentence.", "en", true)
-        assertTrue(SubtitleBus.historySnapshot().isEmpty())
-        SubtitleBus.onTranslatedSource("First sentence.", "en", "最初の文。")
-        assertEquals("First sentence", SubtitleBus.sourceFinal)
-        assertEquals("最初の文", SubtitleBus.translationFinal)
-        assertEquals(SubtitleBus.Pair("First sentence", "最初の文"), SubtitleBus.historySnapshot().single())
+        val first = SubtitleBus.onUntranslatedSource("First sentence.", "en", true)
+        SubtitleBus.onTranslatedSource("First sentence.", "en", "最初の文。", first)
+        val second = SubtitleBus.onUntranslatedSource("Second sentence.", "en", true)
         SubtitleBus.onUntranslatedSource("Next draft", "en", false)
-        assertEquals("", SubtitleBus.translationFinal)
-        SubtitleBus.onTranslatedSource("Second sentence.", "en", "二番目の文。")
-        assertEquals("", SubtitleBus.sourceDraft)
-        assertEquals("Second sentence", SubtitleBus.historySnapshot().last().source)
-        SubtitleBus.clear()
-        SubtitleBus.setHistoryLimit(0)
+        assertEquals("最初の文。", SubtitleBus.displayTranslation)
+        SubtitleBus.onTranslatedSource("Second sentence.", "en", "二番目の文。", second)
+        assertEquals("Next draft", SubtitleBus.sourceDraft)
+        assertEquals("二番目の文。", SubtitleBus.displayTranslation)
+        assertEquals(2, SubtitleBus.historySnapshot().size)
     }
-
-    @Test fun independentTranslationKeepsNoHistoryWhenDisabled() {
-        SubtitleBus.clear()
-        SubtitleBus.setHistoryLimit(0)
-        SubtitleBus.onTranslatedSource("Example", "en", "例")
-        assertTrue(SubtitleBus.historySnapshot().isEmpty())
-        SubtitleBus.clear()
+    @Test fun anOlderCompletionCannotOverwriteANewerCompletePair() {
+        SubtitleBus.setHistoryLimit(3)
+        val first = SubtitleBus.onUntranslatedSource("First.", "en", true)
+        val second = SubtitleBus.onUntranslatedSource("Second.", "en", true)
+        SubtitleBus.onTranslatedSource("Second.", "en", "第二句。", second)
+        SubtitleBus.onTranslatedSource("First.", "en", "第一句。", first)
+        assertEquals("Second.", SubtitleBus.displaySource)
+        assertEquals("第二句。", SubtitleBus.displayTranslation)
+        assertEquals(2, SubtitleBus.historySnapshot().size)
     }
-    @Test fun originalOnlyClearsTranslationAndRequiresExplicitHistoryOptIn() {
-        SubtitleBus.onTranslatedSource("Old source", "en", "旧译文")
-        SubtitleBus.onOriginalSource("新しい字幕。", "ja")
-        assertEquals("新しい字幕", SubtitleBus.sourceFinal)
-        assertEquals("", SubtitleBus.translationFinal)
+    @Test fun repeatedIdenticalUtterancesKeepDistinctSourceIdentities() {
+        SubtitleBus.setHistoryLimit(2)
+        val first = SubtitleBus.onUntranslatedSource("Again.", "en", true)
+        SubtitleBus.onTranslatedSource("Again.", "en", "再一次。", first)
+        val second = SubtitleBus.onUntranslatedSource("Again.", "en", true)
+        SubtitleBus.onTranslatedSource("Again.", "en", "再一次。", second)
+        assertNotEquals(first, second)
+        assertEquals(2, SubtitleBus.historySnapshot().size)
+    }
+    @Test fun originalOnlyUsesCompleteConfirmationWithoutDuplicatingItsDisplay() {
+        val text = "新しい字幕。まだ続いています。"
+        SubtitleBus.onOriginalSource(text, "ja")
+        assertEquals(text, SubtitleBus.sourceFinal)
+        assertEquals("", SubtitleBus.displayTranslation)
         assertEquals("ja", SubtitleBus.detectedSourceLanguage)
         assertTrue(SubtitleBus.historySnapshot().isEmpty())
         SubtitleBus.setHistoryLimit(2)
         repeat(3) { SubtitleBus.onOriginalSource("source $it", "en") }
         assertEquals(listOf(SubtitleBus.Pair("source 1", ""), SubtitleBus.Pair("source 2", "")), SubtitleBus.historySnapshot())
+    }
+    @Test fun oversizedOriginalDoesNotEraseCompletePreviousCaption() {
+        SubtitleBus.onOriginalSource("Complete previous.", "en")
+        SubtitleBus.onOriginalSource("x".repeat(65_537), "en")
+        assertEquals("Complete previous.", SubtitleBus.displaySource)
+    }
+    @Test fun idleHideCannotEraseACompleteCurrentCaptionWithHistoryDisabled() {
         SubtitleBus.setHistoryLimit(0)
+        SubtitleBus.onFinalPair("Complete sentence.", "完整的一句话。")
+        SubtitleBus.hideLive()
+        assertFalse(SubtitleBus.liveHidden)
+        assertEquals("完整的一句话。", SubtitleBus.displayTranslation)
+        SubtitleBus.onSourceDraft("Next unfinished sentence.")
+        SubtitleBus.hideLive()
+        assertFalse(SubtitleBus.liveHidden)
+        assertEquals("Complete sentence.", SubtitleBus.displaySource)
         assertTrue(SubtitleBus.historySnapshot().isEmpty())
+        SubtitleBus.clear()
+        assertEquals("", SubtitleBus.displayTranslation)
     }
-
-    @Test fun originalOnlyDisplayAndHistoryStayBounded() {
-        SubtitleBus.setHistoryLimit(1)
-        SubtitleBus.onOriginalSource("a".repeat(220) + "RECENT", "en")
-        assertEquals(200, SubtitleBus.sourceFinal.length)
-        assertEquals(SubtitleBus.Pair(SubtitleBus.sourceFinal, ""), SubtitleBus.historySnapshot().single())
-        assertTrue(SubtitleBus.sourceFinal.endsWith("RECENT"))
-    }
-
 }

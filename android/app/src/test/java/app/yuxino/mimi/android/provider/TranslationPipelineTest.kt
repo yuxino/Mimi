@@ -82,26 +82,30 @@ class TranslationPipelineTest {
         assertTrue(errors.isEmpty())
     }
 
-    @Test fun failureStopsTheQueueInsteadOfPairingTheNextTranslationWithTheFailedSource() {
+    @Test fun authenticationFailureStopsWithoutRetryOrMispairing() {
         pipeline.submit("first")
         pipeline.submit("second")
-        client.calls[0].callback(TranslationResult.Failure("translation_timeout", 20))
+        client.calls[0].callback(TranslationResult.Failure("translation_http_401", 20))
         client.calls[0].callback(TranslationResult.Success("late", 20))
-        assertEquals(listOf("translation_timeout"), errors)
+        assertEquals(listOf("translation_http_401"), errors)
         assertEquals(1, client.calls.size)
         assertTrue(results.isEmpty())
         assertEquals(0, deadlines.pendingCount)
     }
 
-    @Test fun overflowIsExplicitAndCancelsExistingWork() {
+    @Test fun overflowRejectsOnlyTheNewSourceAndPreservesAcceptedFinals() {
+        assertEquals(3, TranslationPipeline.MAX_PENDING_TRANSLATIONS)
         pipeline.submit("active")
         repeat(TranslationPipeline.MAX_PENDING_TRANSLATIONS) { pipeline.submit("pending $it") }
         pipeline.submit("overflow")
         assertEquals(listOf("translation_queue_full"), errors)
-        assertTrue(client.calls[0].cancelled)
-        client.calls[0].callback(TranslationResult.Success("late", 20))
-        assertEquals(1, client.calls.size)
-        assertTrue(results.isEmpty())
+        assertFalse(client.calls[0].cancelled)
+        var drained = 0
+        pipeline.finish { drained++ }
+        repeat(4) { index -> client.calls[index].callback(TranslationResult.Success("result $index", 20)) }
+        assertEquals(listOf("active", "pending 0", "pending 1", "pending 2"), results.map { it.first })
+        assertEquals(4, client.calls.size)
+        assertEquals(1, drained)
         assertEquals(0, deadlines.pendingCount)
     }
 
@@ -321,6 +325,216 @@ class TranslationPipelineTest {
             assertTrue(deadlineCancelled)
             assertEquals(listOf("translation_endpoint"), errors)
         } finally {
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test fun recoverableRetriesKeepSourceAndRejectOldAttemptCallbacks() {
+        pipeline.submit("first", "ja", 42L)
+        pipeline.submit("second", "en", 43L)
+        client.calls[0].callback(TranslationResult.Failure("translation_network", 20))
+        assertTrue(errors.isEmpty())
+        deadlines.advanceTo(599)
+        assertEquals(1, client.calls.size)
+        deadlines.advanceTo(600)
+        assertEquals(2, client.calls.size)
+        assertEquals("first", client.calls[1].source)
+        assertEquals("ja", client.calls[1].language)
+        client.calls[0].callback(TranslationResult.Success("stale attempt", 20))
+        assertTrue(results.isEmpty())
+        client.calls[1].callback(TranslationResult.Failure("translation_http_503", 20))
+        deadlines.advanceTo(1_799)
+        assertEquals(2, client.calls.size)
+        deadlines.advanceTo(1_800)
+        assertEquals(3, client.calls.size)
+        client.calls[2].callback(TranslationResult.Success("一", 20))
+        assertEquals(listOf("first" to "一"), results)
+        assertEquals("second", client.calls[3].source)
+        client.calls[3].callback(TranslationResult.Success("二", 20))
+        assertEquals(listOf("first" to "一", "second" to "二"), results)
+        assertEquals(2, deadlines.tasks.count { it.dueNanos == TimeUnit.SECONDS.toNanos(45) })
+        assertEquals(0, deadlines.pendingCount)
+    }
+
+    @Test fun threeAttemptsExhaustRecoveryAndDoNotStartTheQueuedSource() {
+        pipeline.submit("first")
+        pipeline.submit("second")
+        client.calls[0].callback(TranslationResult.Failure("translation_timeout", 20))
+        deadlines.advanceTo(600)
+        client.calls[1].callback(TranslationResult.Failure("translation_network", 20))
+        deadlines.advanceTo(1_800)
+        client.calls[2].callback(TranslationResult.Failure("translation_http_503", 20))
+        assertEquals(listOf("translation_http_503"), errors)
+        assertEquals(3, client.calls.size)
+        assertTrue(results.isEmpty())
+        assertEquals(0, deadlines.pendingCount)
+        deadlines.tasks.forEach { it.action() }
+        assertEquals(3, client.calls.size)
+    }
+
+    @Test fun rateLimitsUseSharedFourThenEightSecondBackoff() {
+        pipeline.submit("source")
+        client.calls[0].callback(TranslationResult.Failure("translation_http_429", 20))
+        deadlines.advanceTo(3_999)
+        assertEquals(1, client.calls.size)
+        deadlines.advanceTo(4_000)
+        client.calls[1].callback(TranslationResult.Failure("translation_rejected_429", 20))
+        deadlines.advanceTo(11_999)
+        assertEquals(2, client.calls.size)
+        deadlines.advanceTo(12_000)
+        client.calls[2].callback(TranslationResult.Success("complete", 20))
+        assertEquals(listOf("source" to "complete"), results)
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test fun queueTimeAndPreviousAttemptsConsumeTheOriginalRetryBudget() {
+        pipeline.submit("first")
+        deadlines.advanceTo(1_000)
+        pipeline.submit("second")
+        deadlines.advanceTo(30_000)
+        client.calls[0].callback(TranslationResult.Success("一", 20))
+        deadlines.advanceTo(45_500, fireTimers = false)
+        client.calls[1].callback(TranslationResult.Failure("translation_network", 20))
+        assertEquals(listOf("translation_timeout"), errors)
+        assertEquals(2, client.calls.size)
+        assertEquals(listOf("first" to "一"), results)
+        assertEquals(0, deadlines.pendingCount)
+    }
+
+    @Test fun abortDuringBackoffCancelsTimersAndRejectsStaleRetry() {
+        pipeline.submit("source")
+        client.calls[0].callback(TranslationResult.Failure("translation_network", 20))
+        val retry = deadlines.tasks.last()
+        pipeline.stop()
+        assertEquals(0, deadlines.pendingCount)
+        retry.action()
+        client.calls[0].callback(TranslationResult.Success("late", 20))
+        deadlines.advanceTo(100_000)
+        assertEquals(1, client.calls.size)
+        assertTrue(results.isEmpty())
+        assertTrue(errors.isEmpty())
+    }
+
+    @Test fun finishDrainsAcceptedWorkRejectsNewSubmissionsAndCallsEachCompletionOnce() {
+        pipeline.submit("first")
+        pipeline.submit("second")
+        var drainedA = 0
+        var drainedB = 0
+        pipeline.finish { drainedA++ }
+        deadlines.advanceTo(1_000)
+        pipeline.finish { drainedB++ }
+        pipeline.submit("not accepted")
+        client.calls[0].callback(TranslationResult.Success("一", 20))
+        assertEquals(0, drainedA)
+        client.calls[1].callback(TranslationResult.Success("二", 20))
+        assertEquals(listOf("first" to "一", "second" to "二"), results)
+        assertEquals(1, drainedA)
+        assertEquals(1, drainedB)
+        assertEquals(2, client.calls.size)
+        assertEquals(0, deadlines.pendingCount)
+        deadlines.tasks.forEach { it.action() }
+        assertEquals(1, drainedA)
+        assertEquals(1, drainedB)
+    }
+
+    @Test fun finishGraceAbortsStalledAcceptedWorkWithoutResettingItsAgeBudget() {
+        pipeline.submit("first")
+        pipeline.submit("second")
+        var drained = 0
+        pipeline.finish { drained++ }
+        deadlines.advanceTo(2_999)
+        assertFalse(client.calls[0].cancelled)
+        assertEquals(0, drained)
+        deadlines.advanceTo(3_000)
+        assertTrue(client.calls[0].cancelled)
+        assertEquals(1, drained)
+        assertEquals(0, deadlines.pendingCount)
+        client.calls[0].callback(TranslationResult.Success("late", 20))
+        assertEquals(1, client.calls.size)
+        assertTrue(results.isEmpty())
+    }
+
+    @Test fun finishCanDrainARecoverableRetryWithinTheSameGraceAndOriginalBudget() {
+        pipeline.submit("source")
+        client.calls[0].callback(TranslationResult.Failure("translation_network", 20))
+        var drained = 0
+        pipeline.finish { drained++ }
+        deadlines.advanceTo(600)
+        client.calls[1].callback(TranslationResult.Success("complete", 20))
+        assertEquals(listOf("source" to "complete"), results)
+        assertEquals(1, drained)
+        assertEquals(0, deadlines.pendingCount)
+    }
+
+    @Test fun identicalTextRetainsDistinctSourceUtteranceIdentities() {
+        val identities = mutableListOf<Long?>()
+        val queue = TranslationPipeline(client, "en", "zh", object : TranslationPipeline.Listener {
+            override fun onTranslation(source: String, language: String?, translation: String, elapsedMs: Long) { fail() }
+            override fun onTranslationForUtterance(sourceUtteranceId: Long?, source: String, language: String?, translation: String, elapsedMs: Long) {
+                identities.add(sourceUtteranceId)
+                results.add(source to translation)
+            }
+            override fun onError(code: String) { errors.add(code) }
+        }, { deadlines.nowNanos }, deadlines::schedule)
+        queue.submit("same words", "en", 11L)
+        queue.submit("same words", "en", 12L)
+        client.calls[0].callback(TranslationResult.Success("first", 20))
+        client.calls[1].callback(TranslationResult.Success("second", 20))
+        assertEquals(listOf(11L, 12L), identities)
+        assertEquals(listOf("same words" to "first", "same words" to "second"), results)
+    }
+
+    @Test fun successCleanupCancelsWatchdogOutsideTheStateLock() {
+        val executor = Executors.newSingleThreadExecutor()
+        lateinit var queue: TranslationPipeline
+        queue = TranslationPipeline(client, "en", "zh", object : TranslationPipeline.Listener {
+            override fun onTranslation(source: String, language: String?, translation: String, elapsedMs: Long) { results.add(source to translation) }
+            override fun onError(code: String) { errors.add(code) }
+        }, { 0L }, { _, _ -> TranslationCall {
+            // Abort while completing: if cancellation retains the state lock,
+            // this independent stopper deadlocks rather than rejecting delivery.
+            executor.submit { queue.stop() }.get(3, TimeUnit.SECONDS)
+        } })
+        try {
+            queue.submit("source")
+            client.calls[0].callback(TranslationResult.Success("complete", 20))
+            assertTrue(results.isEmpty())
+        } finally {
+            queue.stop()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test fun stopWaitsForAnAdmittedDeliveryWithoutHoldingTheStateLock() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        val queue = TranslationPipeline(client, "en", "zh", object : TranslationPipeline.Listener {
+            override fun onTranslation(source: String, language: String?, translation: String, elapsedMs: Long) {
+                entered.countDown()
+                check(release.await(3, TimeUnit.SECONDS))
+                results.add(source to translation)
+            }
+            override fun onError(code: String) { errors.add(code) }
+        }, { deadlines.nowNanos }, deadlines::schedule)
+        try {
+            queue.submit("source")
+            queue.submit("queued")
+            val complete = executor.submit { client.calls[0].callback(TranslationResult.Success("complete", 20)) }
+            assertTrue(entered.await(3, TimeUnit.SECONDS))
+            val stopped = CountDownLatch(1)
+            val stop = executor.submit { queue.stop(); stopped.countDown() }
+            assertFalse(stopped.await(100, TimeUnit.MILLISECONDS))
+            release.countDown()
+            complete.get(3, TimeUnit.SECONDS)
+            stop.get(3, TimeUnit.SECONDS)
+            assertEquals(listOf("source" to "complete"), results)
+            assertEquals(1, client.calls.size)
+        } finally {
+            release.countDown()
+            queue.stop()
             executor.shutdownNow()
             assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
         }

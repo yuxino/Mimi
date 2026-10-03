@@ -5,14 +5,7 @@ use serde::{Deserialize, Serialize};
 /// implementation for a later return; this is the single native availability gate.
 pub const MICROPHONE_INPUT_AVAILABLE: bool = false;
 
-/// One independent capture/recognition lane. A lane can never mix inputs.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum AudioSource {
-    #[default]
-    System,
-    Microphone,
-}
+pub use mimi_core::models::AudioSource;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

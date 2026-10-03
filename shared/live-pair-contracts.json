@@ -1,0 +1,1807 @@
+{
+  "schemaVersion": 1,
+  "description": "Synthetic identity pairing events; providerFrame is the corresponding public wire shape, never a captured response.",
+  "cases": [
+    {
+      "id": "translation_first_waits_for_its_own_multilingual_source_final",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-ja",
+            "previous_item_id": "source-ja"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-ja",
+            "previous_item_id": "source-ja"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "スーパー",
+            "language": "ja"
+          },
+          "identity": {
+            "item_id": "source-ja",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "スーパー",
+            "language": "ja",
+            "item_id": "source-ja"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-ja",
+              "role": "source",
+              "text": "スーパー",
+              "is_final": false,
+              "language": "ja"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "超级大回转"
+          },
+          "identity": {
+            "item_id": "response-ja",
+            "previous_item_id": null
+          },
+          "atNs": 1200000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "超级大回转",
+            "item_id": "response-ja"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "スーパーG",
+            "language": "ja"
+          },
+          "identity": {
+            "item_id": "source-ja",
+            "previous_item_id": null
+          },
+          "atNs": 2500000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "スーパーG",
+            "language": "ja",
+            "item_id": "source-ja"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-ja",
+              "role": "source",
+              "text": "スーパーG",
+              "is_final": true,
+              "language": "ja"
+            },
+            {
+              "type": "final_pair",
+              "source": "スーパーG",
+              "translation": "超级大回转",
+              "language": "ja",
+              "follow_latency_ms": 0,
+              "utterance_id": "source-ja"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "late_response_uses_exact_source_identity_and_orphan_final_never_guesses",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "First complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "First complete sentence.",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "First complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "다음 문장입니다.",
+            "language": "ko"
+          },
+          "identity": {
+            "item_id": "source-b",
+            "previous_item_id": null
+          },
+          "atNs": 10000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "다음 문장입니다.",
+            "language": "ko",
+            "item_id": "source-b"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-b",
+              "role": "source",
+              "text": "다음 문장입니다.",
+              "is_final": true,
+              "language": "ko"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "没有来源关联"
+          },
+          "identity": {
+            "item_id": "unknown-response",
+            "previous_item_id": null
+          },
+          "atNs": 11000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "没有来源关联",
+            "item_id": "unknown-response"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_draft",
+            "text": "第一句"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": null
+          },
+          "atNs": 12500000,
+          "providerFrame": {
+            "type": "response.text.text",
+            "text": "第一句",
+            "item_id": "response-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "translation",
+              "text": "第一句",
+              "is_final": false,
+              "language": null
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第一句完整字幕。"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": null
+          },
+          "atNs": 15100000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第一句完整字幕。",
+            "item_id": "response-a"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "source": "First complete sentence.",
+              "translation": "第一句完整字幕。",
+              "language": "en",
+              "follow_latency_ms": 14,
+              "utterance_id": "source-a"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "graceful_finish_uses_only_its_own_pending_draft",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "tail-response",
+            "previous_item_id": "tail-source"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "tail-response",
+            "previous_item_id": "tail-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "最後の文です。",
+            "language": "ja"
+          },
+          "identity": {
+            "item_id": "tail-source",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "最後の文です。",
+            "language": "ja",
+            "item_id": "tail-source"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "tail-source",
+              "role": "source",
+              "text": "最後の文です。",
+              "is_final": false,
+              "language": "ja"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "这是最后一句。"
+          },
+          "identity": {
+            "item_id": "tail-response",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "这是最后一句。",
+            "item_id": "tail-response"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "session_finished"
+          },
+          "identity": {
+            "item_id": null,
+            "previous_item_id": null
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "session.finished"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "source": "最後の文です。",
+              "translation": "这是最后一句。",
+              "language": "ja",
+              "follow_latency_ms": null,
+              "utterance_id": "tail-source"
+            },
+            {
+              "type": "session_finished"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "clear_rejects_known_old_content_but_preserves_lifecycle_and_new_tail",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "old-response",
+            "previous_item_id": "old-source"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "old-response",
+            "previous_item_id": "old-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "Old preview",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "old-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "Old preview",
+            "language": "en",
+            "item_id": "old-source"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "old-source",
+              "role": "source",
+              "text": "Old preview",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "clearContent": true,
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "旧翻译"
+          },
+          "identity": {
+            "item_id": "old-response",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "旧翻译",
+            "item_id": "old-response"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Old final",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "old-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Old final",
+            "language": "en",
+            "item_id": "old-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "passthrough",
+            "is_content": false
+          },
+          "identity": {
+            "item_id": "old-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "session.updated",
+            "item_id": "old-source"
+          },
+          "expected": [
+            {
+              "type": "passthrough",
+              "is_content": false
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "new-response",
+            "previous_item_id": "new-source"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "new-response",
+            "previous_item_id": "new-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "새로운 문장",
+            "language": "ko"
+          },
+          "identity": {
+            "item_id": "new-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "새로운 문장",
+            "language": "ko",
+            "item_id": "new-source"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "new-source",
+              "role": "source",
+              "text": "새로운 문장",
+              "is_final": false,
+              "language": "ko"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "新的一句"
+          },
+          "identity": {
+            "item_id": "new-response",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "新的一句",
+            "item_id": "new-response"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "session_finished"
+          },
+          "identity": {
+            "item_id": "old-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "session.finished",
+            "item_id": "old-source"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "source": "새로운 문장",
+              "translation": "新的一句",
+              "language": "ko",
+              "follow_latency_ms": null,
+              "utterance_id": "new-source"
+            },
+            {
+              "type": "session_finished"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "empty_result_does_not_consume_next_repeated_source_with_distinct_identity",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-0",
+            "previous_item_id": "source-0"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-0",
+            "previous_item_id": "source-0"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Repeat sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-0",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Repeat sentence.",
+            "language": "en",
+            "item_id": "source-0"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-0",
+              "role": "source",
+              "text": "Repeat sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": ""
+          },
+          "identity": {
+            "item_id": "response-0",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "",
+            "item_id": "response-0"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-1",
+            "previous_item_id": "source-1"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-1",
+            "previous_item_id": "source-1"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Repeat sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-1",
+            "previous_item_id": null
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Repeat sentence.",
+            "language": "en",
+            "item_id": "source-1"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-1",
+              "role": "source",
+              "text": "Repeat sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "重复句子。"
+          },
+          "identity": {
+            "item_id": "response-1",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "重复句子。",
+            "item_id": "response-1"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "source": "Repeat sentence.",
+              "translation": "重复句子。",
+              "language": "en",
+              "follow_latency_ms": 2,
+              "utterance_id": "source-1"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "重复句子。"
+          },
+          "identity": {
+            "item_id": "response-1",
+            "previous_item_id": null
+          },
+          "atNs": 6000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "重复句子。",
+            "item_id": "response-1"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-2",
+            "previous_item_id": "source-2"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-2",
+            "previous_item_id": "source-2"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Repeat sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-2",
+            "previous_item_id": null
+          },
+          "atNs": 7000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Repeat sentence.",
+            "language": "en",
+            "item_id": "source-2"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-2",
+              "role": "source",
+              "text": "Repeat sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "重复句子。"
+          },
+          "identity": {
+            "item_id": "response-2",
+            "previous_item_id": null
+          },
+          "atNs": 8000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "重复句子。",
+            "item_id": "response-2"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "source": "Repeat sentence.",
+              "translation": "重复句子。",
+              "language": "en",
+              "follow_latency_ms": 1,
+              "utterance_id": "source-2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "end_to_end_late_older_final_retains_new_raw_and_display_owner",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "ra",
+            "previous_item_id": "A"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "ra",
+            "previous_item_id": "A"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "First complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "A",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "First complete sentence.",
+            "language": "en",
+            "item_id": "A"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "A",
+              "role": "source",
+              "text": "First complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "rb",
+            "previous_item_id": "B"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "rb",
+            "previous_item_id": "B"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Second complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "B",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Second complete sentence.",
+            "language": "en",
+            "item_id": "B"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Second complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第二句完整译文。"
+          },
+          "identity": {
+            "item_id": "rb",
+            "previous_item_id": null
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第二句完整译文。",
+            "item_id": "rb"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "B",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "displayPair": {
+              "utteranceId": "B",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第一句完整译文。"
+          },
+          "identity": {
+            "item_id": "ra",
+            "previous_item_id": null
+          },
+          "atNs": 4000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第一句完整译文。",
+            "item_id": "ra"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "A",
+              "source": "First complete sentence.",
+              "translation": "第一句完整译文。",
+              "language": "en",
+              "follow_latency_ms": 3
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "displayPair": {
+              "utteranceId": "B",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              },
+              {
+                "source": "First complete sentence.",
+                "translation": "第一句完整译文。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "First complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "A",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "First complete sentence.",
+            "language": "en",
+            "item_id": "A"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "A",
+              "role": "source",
+              "text": "First complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "displayPair": {
+              "utteranceId": "B",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              },
+              {
+                "source": "First complete sentence.",
+                "translation": "第一句完整译文。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "ra-again",
+            "previous_item_id": "A"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "ra-again",
+            "previous_item_id": "A"
+          },
+          "expected": [],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "displayPair": {
+              "utteranceId": "B",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              },
+              {
+                "source": "First complete sentence.",
+                "translation": "第一句完整译文。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第一句完整译文。"
+          },
+          "identity": {
+            "item_id": "ra-again",
+            "previous_item_id": null
+          },
+          "atNs": 6000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第一句完整译文。",
+            "item_id": "ra-again"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "A",
+              "source": "First complete sentence.",
+              "translation": "第一句完整译文。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "B"
+            },
+            "displayPair": {
+              "utteranceId": "B",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              },
+              {
+                "source": "First complete sentence.",
+                "translation": "第一句完整译文。"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "end_to_end_identical_text_distinct_ids_without_drafts_retained_once_each",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-0",
+            "previous_item_id": "repeat-0"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-0",
+            "previous_item_id": "repeat-0"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Repeat complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "repeat-0",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Repeat complete sentence.",
+            "language": "en",
+            "item_id": "repeat-0"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "repeat-0",
+              "role": "source",
+              "text": "Repeat complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "重复完整句子。"
+          },
+          "identity": {
+            "item_id": "response-0",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "重复完整句子。",
+            "item_id": "response-0"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "repeat-0",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Repeat complete sentence.",
+              "isFinal": true,
+              "utteranceId": "repeat-0"
+            },
+            "translation": {
+              "text": "重复完整句子。",
+              "isFinal": true,
+              "utteranceId": "repeat-0"
+            },
+            "displayPair": {
+              "utteranceId": "repeat-0",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。"
+            },
+            "history": [
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-1",
+            "previous_item_id": "repeat-1"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-1",
+            "previous_item_id": "repeat-1"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Repeat complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "repeat-1",
+            "previous_item_id": null
+          },
+          "atNs": 4000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Repeat complete sentence.",
+            "language": "en",
+            "item_id": "repeat-1"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "repeat-1",
+              "role": "source",
+              "text": "Repeat complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "重复完整句子。"
+          },
+          "identity": {
+            "item_id": "response-1",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "重复完整句子。",
+            "item_id": "response-1"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "repeat-1",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Repeat complete sentence.",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "translation": {
+              "text": "重复完整句子。",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "displayPair": {
+              "utteranceId": "repeat-1",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。"
+            },
+            "history": [
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              },
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-again",
+            "previous_item_id": "repeat-1"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-again",
+            "previous_item_id": "repeat-1"
+          },
+          "expected": [],
+          "expectedReducer": {
+            "source": {
+              "text": "Repeat complete sentence.",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "translation": {
+              "text": "重复完整句子。",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "displayPair": {
+              "utteranceId": "repeat-1",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。"
+            },
+            "history": [
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              },
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Repeat complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "repeat-1",
+            "previous_item_id": null
+          },
+          "atNs": 8000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Repeat complete sentence.",
+            "language": "en",
+            "item_id": "repeat-1"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "repeat-1",
+              "role": "source",
+              "text": "Repeat complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Repeat complete sentence.",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "translation": {
+              "text": "重复完整句子。",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "displayPair": {
+              "utteranceId": "repeat-1",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。"
+            },
+            "history": [
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              },
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "重复完整句子。"
+          },
+          "identity": {
+            "item_id": "response-again",
+            "previous_item_id": null
+          },
+          "atNs": 9000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "重复完整句子。",
+            "item_id": "response-again"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "repeat-1",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Repeat complete sentence.",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "translation": {
+              "text": "重复完整句子。",
+              "isFinal": true,
+              "utteranceId": "repeat-1"
+            },
+            "displayPair": {
+              "utteranceId": "repeat-1",
+              "source": "Repeat complete sentence.",
+              "translation": "重复完整句子。"
+            },
+            "history": [
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              },
+              {
+                "source": "Repeat complete sentence.",
+                "translation": "重复完整句子。"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "end_to_end_clear_rejects_old_ids_reset_retains_final_and_accepts_reused_generation_ids",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "old-response",
+            "previous_item_id": "old-source"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "old-response",
+            "previous_item_id": "old-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "First complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "old-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "First complete sentence.",
+            "language": "en",
+            "item_id": "old-source"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "old-source",
+              "role": "source",
+              "text": "First complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "clearContent": true,
+          "expected": [],
+          "expectedReducer": {
+            "source": {
+              "text": "",
+              "isFinal": false,
+              "utteranceId": null
+            },
+            "translation": {
+              "text": "",
+              "isFinal": false,
+              "utteranceId": null
+            },
+            "displayPair": null,
+            "history": []
+          }
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第一句完整译文。"
+          },
+          "identity": {
+            "item_id": "old-response",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第一句完整译文。",
+            "item_id": "old-response"
+          },
+          "expected": [],
+          "expectedReducer": {
+            "source": {
+              "text": "",
+              "isFinal": false,
+              "utteranceId": null
+            },
+            "translation": {
+              "text": "",
+              "isFinal": false,
+              "utteranceId": null
+            },
+            "displayPair": null,
+            "history": []
+          }
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "First complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "old-source",
+            "previous_item_id": null
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "First complete sentence.",
+            "language": "en",
+            "item_id": "old-source"
+          },
+          "expected": [],
+          "expectedReducer": {
+            "source": {
+              "text": "",
+              "isFinal": false,
+              "utteranceId": null
+            },
+            "translation": {
+              "text": "",
+              "isFinal": false,
+              "utteranceId": null
+            },
+            "displayPair": null,
+            "history": []
+          }
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "new-response",
+            "previous_item_id": "new-source"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "new-response",
+            "previous_item_id": "new-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Second complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "new-source",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Second complete sentence.",
+            "language": "en",
+            "item_id": "new-source"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "new-source",
+              "role": "source",
+              "text": "Second complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第二句完整译文。"
+          },
+          "identity": {
+            "item_id": "new-response",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第二句完整译文。",
+            "item_id": "new-response"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "new-source",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "new-source"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "new-source"
+            },
+            "displayPair": {
+              "utteranceId": "new-source",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              }
+            ]
+          }
+        },
+        {
+          "resetStream": true,
+          "expected": [],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "new-source"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "new-source"
+            },
+            "displayPair": {
+              "utteranceId": "new-source",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "new-response",
+            "previous_item_id": "new-source"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "new-response",
+            "previous_item_id": "new-source"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Second complete sentence.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "new-source",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Second complete sentence.",
+            "language": "en",
+            "item_id": "new-source"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "new-source",
+              "role": "source",
+              "text": "Second complete sentence.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "第二句完整译文。"
+          },
+          "identity": {
+            "item_id": "new-response",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "第二句完整译文。",
+            "item_id": "new-response"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "new-source",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。",
+              "language": "en",
+              "follow_latency_ms": 1
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Second complete sentence.",
+              "isFinal": true,
+              "utteranceId": "new-source"
+            },
+            "translation": {
+              "text": "第二句完整译文。",
+              "isFinal": true,
+              "utteranceId": "new-source"
+            },
+            "displayPair": {
+              "utteranceId": "new-source",
+              "source": "Second complete sentence.",
+              "translation": "第二句完整译文。"
+            },
+            "history": [
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              },
+              {
+                "source": "Second complete sentence.",
+                "translation": "第二句完整译文。"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -86,6 +86,7 @@ class MimiService : Service() {
         }
     }
     private var generation = 0
+    private var finishingSession = false
     private var projectionCallback: MediaProjection.Callback? = null
     private var engine: ProviderEngine? = null
     private var textTranslation: app.yuxino.mimi.android.provider.TranslationPipeline? = null
@@ -156,7 +157,7 @@ class MimiService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopEverything()
+            finishSession()
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_APPLY_APPEARANCE) {
@@ -303,9 +304,13 @@ class MimiService : Service() {
                             SubtitleBus.onTranslatedSource(source, language, translation)
                             scheduleAutoHide()
                         }
+                        override fun onTranslationForUtterance(sourceUtteranceId: Long?, source: String, language: String?, translation: String, elapsedMs: Long) = dispatch {
+                            SubtitleBus.onTranslatedSource(source, language, translation, sourceUtteranceId)
+                            scheduleAutoHide()
+                        }
                         override fun onError(code: String) = dispatch {
                             Toast.makeText(this@MimiService, R.string.translation_session_failed, Toast.LENGTH_LONG).show()
-                            stopEverything()
+                            if (code == "translation_queue_full") finishSession() else stopEverything()
                         }
                     },
                 )
@@ -324,13 +329,28 @@ class MimiService : Service() {
                             SubtitleBus.onOriginalSource(text, language)
                             scheduleAutoHide()
                         } else {
-                            SubtitleBus.onUntranslatedSource(text, language, true)
-                            textTranslation?.submit(text, language)
+                            val sourceId = SubtitleBus.onUntranslatedSource(text, language, true)
+                            textTranslation?.submit(text, language, sourceId)
                         }
                     } else SubtitleBus.onSourceFinal(text, language)
                 }
                 override fun onTranslationDraft(text: String) = dispatch {
                     if (!independentTranslation) { cancelAutoHide(); SubtitleBus.onTranslationDraft(text) }
+                }
+                override fun onUtteranceText(id: String, source: Boolean, text: String, final: Boolean, language: String?) = dispatch {
+                    if (!independentTranslation) {
+                        cancelAutoHide()
+                        SubtitleBus.onCoreEvent(org.json.JSONObject().put("type", "utterance_text")
+                            .put("utterance_id", id).put("role", if (source) "source" else "translation")
+                            .put("text", text).put("is_final", final), language)
+                        if (final && !source) scheduleAutoHide()
+                    }
+                }
+                override fun onFinalPair(source: String, translation: String, language: String?) = dispatch {
+                    if (!independentTranslation) { SubtitleBus.onFinalPair(source, translation, language); scheduleAutoHide() }
+                }
+                override fun onIdentifiedFinalPair(id: String, source: String, translation: String, language: String?) = dispatch {
+                    if (!independentTranslation) { SubtitleBus.onIdentifiedFinalPair(id, source, translation, language); scheduleAutoHide() }
                 }
                 override fun onTranslationFinal(text: String) = dispatch {
                     if (!independentTranslation) { SubtitleBus.onTranslationFinal(text); scheduleAutoHide() }
@@ -340,7 +360,7 @@ class MimiService : Service() {
                     Toast.makeText(this@MimiService, R.string.capture_failed, Toast.LENGTH_LONG).show()
                     stopEverything()
                 }
-                override fun onClosed() = dispatch { stopEverything() }
+                override fun onClosed() = dispatch { if (!finishingSession) stopEverything() }
                 override fun onLog(message: String) = Unit
             }
             engine = when (provider) {
@@ -427,6 +447,7 @@ class MimiService : Service() {
     private fun releaseSession() {
         immersiveHelp.dismiss()
         ++generation
+        finishingSession = false
         health = null
         captureObservation = null
         mainHandler.removeCallbacksAndMessages(null)
@@ -454,6 +475,38 @@ class MimiService : Service() {
         hideOverlay()
         previewMode = false
         setRunning(false)
+    }
+
+    /** User stop drains accepted work; revocation/errors/destruction still abort. */
+    private fun finishSession() {
+        if (finishingSession) return
+        if (engine == null || previewMode) { stopEverything(); return }
+        finishingSession = true
+        val owner = generation
+        capturing?.set(false)
+        try { audioRecord?.stop() } catch (_: Exception) { }
+        mainHandler.removeCallbacks(healthTick)
+        cancelAutoHide()
+        val policy = app.yuxino.mimi.android.provider.SharedSubtitleCore.policy
+        // Bound the whole finish even if a broken adapter never acknowledges.
+        mainHandler.postDelayed({ if (generation == owner && finishingSession) stopEverything() }, policy.getLong("provider_finish_timeout_ms"))
+        engine?.finish {
+            mainHandler.post {
+                if (generation != owner || !finishingSession) return@post
+                val pipeline = textTranslation
+                val publishAndClose = {
+                    mainHandler.post {
+                        if (generation == owner && finishingSession) {
+                            renderBus()
+                            // Let the native snapshot publication run before its overlay is retired.
+                            mainHandler.post { if (generation == owner && finishingSession) stopEverything() }
+                        }
+                    }
+                    Unit
+                }
+                if (pipeline == null) publishAndClose() else pipeline.finish(publishAndClose)
+            }
+        }
     }
 
     private fun stopEverything() {
@@ -940,26 +993,20 @@ class MimiService : Service() {
                 SubtitleBus.detectedSourceLanguage?.startsWith("en") == true
         sourceView?.apply {
             visibility = if (liveVisible && (sourceIsEnglish || sessionOriginalOnly)) View.VISIBLE else View.GONE
-            text = when {
-                SubtitleBus.sourceDraft.isNotEmpty() -> SubtitleBus.sourceDraft
-                else -> SubtitleBus.sourceFinal
-            }
+            text = SubtitleBus.displaySource
         }
         translationView?.apply {
             visibility = if (liveVisible && !sessionOriginalOnly) View.VISIBLE else View.GONE
-            text = when {
-                SubtitleBus.translationDraft.isNotEmpty() -> SubtitleBus.translationDraft
-                else -> SubtitleBus.translationFinal
-            }
+            text = SubtitleBus.displayTranslation
         }
         expandedSourceView?.apply {
             visibility = if (liveVisible && (SubtitleBus.sourceDraft.isNotEmpty() || SubtitleBus.sourceFinal.isNotEmpty()))
                 View.VISIBLE else View.GONE
-            text = SubtitleBus.sourceDraft.ifEmpty { SubtitleBus.sourceFinal }
+            text = SubtitleBus.displaySource
         }
         expandedTranslationView?.apply {
             visibility = if (liveVisible && !sessionOriginalOnly) View.VISIBLE else View.GONE
-            text = SubtitleBus.translationDraft.ifEmpty { SubtitleBus.translationFinal }
+            text = SubtitleBus.displayTranslation
         }
         if (expanded) resizeExpandedOverlay(history.size)
         overlayView?.visibility = if (expanded || liveVisible || statusLine.isNotEmpty())

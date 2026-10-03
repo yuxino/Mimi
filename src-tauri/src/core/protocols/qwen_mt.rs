@@ -136,25 +136,36 @@ impl std::fmt::Display for QwenMTClientError {
 impl std::error::Error for QwenMTClientError {}
 
 impl QwenMTClientError {
+    pub fn retry_class(&self) -> mimi_core::translation_policy::RetryClass {
+        use mimi_core::translation_policy::{classify_http, RetryClass};
+        match self {
+            Self::RequestTimedOut | Self::InvalidHTTPResponse => RetryClass::Temporary,
+            Self::RequestFailed { status_code, .. } => classify_http(*status_code),
+            Self::DeepL(error) if error.retryable() => match error {
+                super::deepl::DeepLError::Rejected(code) => classify_http(*code),
+                _ => RetryClass::Temporary,
+            },
+            Self::DeepLX(error) if error.retryable() => match error {
+                super::deeplx::DeepLXError::Rejected(code) => classify_http(*code),
+                _ => RetryClass::Temporary,
+            },
+            Self::OpenAICompatible(error) if error.retryable() => match error {
+                super::openai_compatible::OpenAICompatibleError::Rejected(code) => {
+                    classify_http(*code)
+                }
+                _ => RetryClass::Temporary,
+            },
+            _ => RetryClass::Permanent,
+        }
+    }
+
     pub fn recovery_reason(&self) -> Option<crate::core::diagnostics::TranslationRecoveryReason> {
         use crate::core::diagnostics::TranslationRecoveryReason;
-        let rate_limited = matches!(
-            self,
-            Self::RequestFailed {
-                status_code: 429,
-                ..
-            } | Self::DeepL(super::deepl::DeepLError::Rejected(429))
-                | Self::DeepLX(super::deeplx::DeepLXError::Rejected(429))
-                | Self::OpenAICompatible(
-                    super::openai_compatible::OpenAICompatibleError::Rejected(429)
-                )
-        );
-        if rate_limited {
-            Some(TranslationRecoveryReason::RateLimited)
-        } else if QwenMTRetryPolicy::delay(self, 1).is_some() {
-            Some(TranslationRecoveryReason::TemporarilyUnavailable)
-        } else {
-            None
+        use mimi_core::translation_policy::RetryClass;
+        match self.retry_class() {
+            RetryClass::Permanent => None,
+            RetryClass::Temporary => Some(TranslationRecoveryReason::TemporarilyUnavailable),
+            RetryClass::RateLimited => Some(TranslationRecoveryReason::RateLimited),
         }
     }
 
@@ -197,44 +208,10 @@ impl QwenMTClientError {
 pub enum QwenMTRetryPolicy {}
 
 impl QwenMTRetryPolicy {
-    /// Bounded backoff for transient failures. HTTP 429 waits 4 then 8 seconds;
-    /// other retryable failures use 600 ms exponential backoff capped at 8 s.
+    /// Shared bounded backoff; preserve this typed protocol adapter API.
     pub fn delay(error: &QwenMTClientError, attempt: usize) -> Option<Duration> {
-        let is_transient = match error {
-            QwenMTClientError::DeepLX(error) => error.retryable(),
-            QwenMTClientError::DeepL(error) => error.retryable(),
-            QwenMTClientError::OpenAICompatible(error) => error.retryable(),
-            QwenMTClientError::RequestTimedOut | QwenMTClientError::InvalidHTTPResponse => true,
-            QwenMTClientError::RequestFailed { status_code, .. } => {
-                *status_code == 408 || *status_code == 429 || *status_code >= 500
-            }
-            QwenMTClientError::MissingTextTranslation
-            | QwenMTClientError::UnsupportedSource
-            | QwenMTClientError::MissingAPIKey
-            | QwenMTClientError::ResponseTooLarge => false,
-        };
-        if !is_transient {
-            return None;
-        }
-        let rate_limited = matches!(
-            error,
-            QwenMTClientError::RequestFailed {
-                status_code: 429,
-                ..
-            } | QwenMTClientError::DeepL(super::deepl::DeepLError::Rejected(429))
-                | QwenMTClientError::DeepLX(super::deeplx::DeepLXError::Rejected(429))
-                | QwenMTClientError::OpenAICompatible(
-                    super::openai_compatible::OpenAICompatibleError::Rejected(429)
-                )
-        );
-        if rate_limited {
-            return Some(Duration::from_millis(
-                8_000u64.min(4_000u64 << attempt.saturating_sub(1).min(1)),
-            ));
-        }
-        let exponent = attempt.saturating_sub(1).min(4);
-        let milliseconds = 8_000u64.min(600u64 << exponent);
-        Some(Duration::from_millis(milliseconds))
+        mimi_core::translation_policy::retry_delay_ms(error.retry_class(), attempt)
+            .map(Duration::from_millis)
     }
 }
 

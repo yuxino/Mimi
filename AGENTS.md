@@ -13,6 +13,11 @@ Preserve these product constraints:
 
 ## Repository map
 
+- `shared/mimi-core/`: the single Rust implementation of subtitle state,
+  transcript alignment and final translation policy. Desktop imports it directly;
+  Android calls it through `shared/mimi-android-jni/`. Keep capture, transport,
+  platform credentials and rendering in native adapters.
+
 - `src-tauri/src/core/`: UI-independent models, configuration, wire protocols, subtitle assembly, text segmentation, and pipeline diagnostics. Pure Rust, fully unit-tested.
 - `src-tauri/src/clients/`: tokio network clients (Alibaba live translate/Audio 3.0/Qwen-MT pipelines and OpenAI Realtime translation).
 - `src-tauri/src/audio/`: system-audio capture (macOS ScreenCaptureKit via `screen-capture-kit`, Windows WASAPI loopback via `cpal` + `rubato`), Linux PulseAudio / PipeWire-Pulse output monitors, optional default microphone capture, and the bounded PCM send pipeline.
@@ -53,6 +58,12 @@ Preserve these product constraints:
 - Never delete and recreate a Keychain credential to refresh its ACL, widen an item or keychain to allow-all, or fabricate a Team ID for a self-signed build. Preserve the same service/account and update its secret in place. Password-free Keychain continuity across rebuilt binaries requires an Apple-issued signing identity with a stable Team ID; the current self-signed identities guarantee a stable designated requirement for TCC, not that stronger Keychain property.
 
 ## PC and Android parity
+
+- Change common subtitle/translation rules in `shared/mimi-core`, never by adding
+  another Kotlin or desktop implementation. Update shared behavioral fixtures and
+  run both direct Rust and actual JNI tests. Shared source changes must trigger
+  both desktop and Android CI. A packaging or JNI failure must fail the build;
+  never silently fall back to an independent reducer.
 
 - Maintain shared provider behavior through `shared/translation-contracts.json`, consumed by Rust and Kotlin tests. A provider/API fix must update the common fixtures and both implementations together; do not treat a passing test on one platform as proof for the other.
 - Keep text translation separate from recognition on both platforms. Protocols, optional authentication, response filtering, source/result pairing, cancellation, and final deadlines must follow the same contract where the feature exists.

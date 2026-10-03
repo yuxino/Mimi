@@ -1,7 +1,11 @@
 # PC and Android maintenance
 
-Provider behavior is a shared product contract, even though desktop uses Rust/Tauri and
-Android uses native Kotlin. Fixes do not transfer automatically between those codebases.
+Subtitle state, complete current pairs, DashScope item-identity pairing, append-only
+OpenAI transcript alignment and final translation policy now have one implementation
+in `shared/mimi-core`. Desktop
+imports the Rust crate; Android's Kotlin adapters call that same crate through JNI.
+Provider transports and OS integration remain native. Their wire behavior is a shared
+product contract and changes must still be verified on both platforms.
 `shared/translation-contracts.json` holds synthetic request/response fixtures used directly
 by both platforms' tests. Add an affected case there when changing an external text API;
 update both implementations and their platform-specific tests in the same change.
@@ -24,9 +28,20 @@ update both implementations and their platform-specific tests in the same change
   the default; each platform's explicit local transport boundary remains enforced.
 - Only complete translation text is displayed. Leading ChatMock reasoning blocks are
   removed; unfinished responses and malformed/empty data fail without echoing their text.
-- Final work keeps its own immutable source, has bounded queues and a 45-second total
-  deadline including waiting, and is cancelled on stop. Late results cannot enter a new
-  session. Recognition previews cannot become durable translation history.
+- Complete subtitle text is preserved within the same UTF-8 byte limit; punctuation
+  and long sentences do not cause suffix-only display or cropped confirmed history.
+  One complete current pair is retained independently of optional history. Raw drafts
+  cannot clear it; older confirmed identities cannot overwrite newer complete owners.
+  An Android idle-hide timer cannot hide this complete current pair while the
+  session runs; replacing it or ending the session retires its display.
+- Final work keeps its own immutable source identity, one active request, at most three
+  waiting requests and a 45-second total budget including waiting and retries. Retry
+  classification, attempt bounds and backoff come from shared Rust policy. Explicit stop
+  uses bounded provider/final grace windows; aborts cancel immediately. Late retired-
+  generation results cannot enter a new session. Previews never confirm history.
+- DashScope realtime pairs source and translation using conversation-item links;
+  a known response without a source link cannot guess a source by arrival order.
+  OpenAI append-only streams share timing/punctuation alignment and safe tail flush.
 - Configuration changes are drafts until the explicit save action. Field labels and
   errors stay legible; protocol explanations use help controls. Provider artwork comes
   from the same existing desktop asset source.
@@ -38,7 +53,7 @@ update both implementations and their platform-specific tests in the same change
 | Independent text services | DeepL, DeepLX, ChatMock, OpenAI compatible; original-only with custom ASR | Same text choices after Alibaba realtime ASR; original-only supported |
 | Recognition selection | Eight built-in services plus custom DashScope/OpenAI ASR | Eight built-in adapters; independent text currently pairs with Alibaba ASR |
 | Built-in Alibaba pipeline | Desktop Audio 3.0/Qwen-MT scheduling | Existing integrated realtime translation adapter |
-| Translation scheduling | Speculative drafts plus prioritized finals and provider recovery | Final-only serial HTTP, one active and four waiting; explicit stop on failure |
+| Translation scheduling | Speculative drafts plus serial prioritized finals and provider recovery | Final-only serial HTTP; same shared final bounds/retry decisions, native execution and cancellation |
 | Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Existing native overlay background settings and history styling |
 | Audio capture | System audio only in the current release; microphone selection temporarily unavailable (implementation retained). OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
 | Proxy preferences | Per-profile independent recognition/text routes; integrated realtime uses one route | Platform network defaults; no per-stage proxy controls |
@@ -54,7 +69,11 @@ platform's native UI, permissions and resource limits.
 
 ## Verification and change review
 
-- Run `./scripts/check.sh` for desktop, including the shared Rust fixture tests.
+- Run `./scripts/check.sh` for desktop, including shared core and fixture tests.
+- Android JVM tests load the actual host JNI library and replay
+  `shared/subtitle-contracts.json` and `shared/live-pair-contracts.json`;
+  there is no test-only Kotlin fallback. APK checks require every native ABI and 16 KiB
+  page alignment. See `shared/mimi-android-jni` and the native build script.
 - Run Android debug/release unit tests, lint and APK builds; Kotlin reads the same JSON from
   its test resources. Native instrumentation covers draft/save/key isolation and local HTTP.
 - Shared contracts or provider changes trigger both CI paths. UI-only platform edits keep

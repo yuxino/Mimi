@@ -595,6 +595,7 @@ fn generation_accepts_event(
                 && matches!(
                     event,
                     LiveTranslateServerEvent::SubtitleFinalPair { .. }
+                        | LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. }
                         | LiveTranslateServerEvent::SubtitleConfirmedPair { .. }
                 )))
 }
@@ -1132,6 +1133,7 @@ impl SessionManager {
             LiveTranslateServerEvent::TranslationDraft(_) => Some(TextEventKind::TranslationDraft),
             LiveTranslateServerEvent::TranslationFinal(_) => Some(TextEventKind::TranslationFinal),
             LiveTranslateServerEvent::SubtitleFinalPair { .. }
+            | LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. }
             | LiveTranslateServerEvent::SubtitleConfirmedPair { .. } => {
                 Some(TextEventKind::ConfirmedPair)
             }
@@ -2112,7 +2114,9 @@ impl SessionManager {
             };
             if let Some(client) = taken {
                 if tokio::time::timeout(
-                    Duration::from_secs(6),
+                    Duration::from_millis(
+                        mimi_core::translation_policy::PROVIDER_FINISH_TIMEOUT_MS,
+                    ),
                     crate::development_audio::scope(source, stopping_generation, client.finish()),
                 )
                 .await
@@ -3069,6 +3073,27 @@ impl SessionManager {
             }
         }
 
+        if let LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+            utterance_id,
+            source: source_text,
+            translation,
+            ..
+        } = &event
+        {
+            if !self
+                .controller
+                .lock()
+                .unwrap()
+                .accepts_identified_final_pair_from(source, utterance_id, source_text, translation)
+            {
+                debug_event(
+                    &event,
+                    crate::core::development_debug::Admission::DuplicateFinal,
+                );
+                return;
+            }
+        }
+
         if let LiveTranslateServerEvent::Error { code, message } = &mut event {
             if matches!(
                 code.as_str(),
@@ -3132,19 +3157,27 @@ impl SessionManager {
 
         // A final translation resolves any pending timeout; a fresh
         // TranslationStarted arms a new one.
-        if matches!(
-            event,
-            LiveTranslateServerEvent::TranslationFinal(_)
-                | LiveTranslateServerEvent::SubtitleFinalPair { .. }
-                | LiveTranslateServerEvent::SubtitleConfirmedPair { .. }
-                | LiveTranslateServerEvent::UtteranceText {
-                    role: UtteranceRole::Translation,
-                    is_final: true,
-                    ..
-                }
-                | LiveTranslateServerEvent::Error { .. }
-                | LiveTranslateServerEvent::TranslationDeferred(_)
-        ) {
+        let resolves_translation_timeout = match &event {
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { utterance_id, .. } => self
+                .controller
+                .lock()
+                .unwrap()
+                .identified_source_is_current_from(source, utterance_id),
+            _ => matches!(
+                event,
+                LiveTranslateServerEvent::TranslationFinal(_)
+                    | LiveTranslateServerEvent::SubtitleFinalPair { .. }
+                    | LiveTranslateServerEvent::SubtitleConfirmedPair { .. }
+                    | LiveTranslateServerEvent::UtteranceText {
+                        role: UtteranceRole::Translation,
+                        is_final: true,
+                        ..
+                    }
+                    | LiveTranslateServerEvent::Error { .. }
+                    | LiveTranslateServerEvent::TranslationDeferred(_)
+            ),
+        };
+        if resolves_translation_timeout {
             self.cancel_source_translation_timeout(source);
         }
         if matches!(event, LiveTranslateServerEvent::TranslationStarted) {
@@ -6038,6 +6071,24 @@ mod lifecycle_tests {
             NO_GENERATION,
             generation,
             &identified_pair
+        ));
+        let dashscope_pair = LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+            utterance_id: "provider-source".into(),
+            source: "Synthetic identified tail".into(),
+            language: Some("en".into()),
+            translation: "合成有身份尾句".into(),
+        };
+        assert!(generation_accepts_event(
+            NO_GENERATION,
+            generation,
+            generation,
+            &dashscope_pair
+        ));
+        assert!(!generation_accepts_event(
+            generation + 1,
+            NO_GENERATION,
+            generation,
+            &dashscope_pair
         ));
     }
 

@@ -23,6 +23,9 @@ class ScopeTests(unittest.TestCase):
     def test_shared_native_contract_tests_every_platform_without_packages(self):
         for path in ["src-tauri/src/settings_store.rs", "src-tauri/Cargo.lock", ".github/workflows/ci.yml", "scripts/ci-scope.py",
                      "shared/translation-contracts.json",
+                     "shared/mimi-core/src/subtitle_reducer.rs",
+                     "shared/mimi-android-jni/src/lib.rs",
+                     "scripts/build-shared-core.py",
                      "android/app/src/main/java/app/yuxino/mimi/android/provider/DeepLTranslationClient.kt"]:
             result = module.plan([path])
             self.assertEqual(result["rust_os"], module.ALL_OS)

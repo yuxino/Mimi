@@ -1,0 +1,11 @@
+[package]
+name = "mimi-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Shared subtitle state and translation policy for Mimi desktop and Android"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -406,16 +406,20 @@ impl TranslationClient {
     }
 
     pub async fn finish(&self) {
+        let recognition =
+            Duration::from_millis(mimi_core::translation_policy::RECOGNITION_FINISH_TIMEOUT_MS);
+        let realtime =
+            Duration::from_millis(mimi_core::translation_policy::REALTIME_FINISH_TIMEOUT_MS);
         match self {
-            Self::LowLatency(client) => client.finish(Duration::from_secs(1)).await,
+            Self::LowLatency(client) => client.finish(recognition).await,
             Self::HighQuality(client) => client.finish().await,
-            Self::OpenAIRealtime(client) => client.finish(Duration::from_secs(2)).await,
-            Self::GeminiLive(client) => client.finish(Duration::from_secs(2)).await,
-            Self::AzureOpenAIRealtime(client) => client.finish(Duration::from_secs(2)).await,
-            Self::TencentCloud(client) => client.finish(Duration::from_secs(2)).await,
-            Self::BaiduTranslate(client) => client.finish(Duration::from_secs(2)).await,
-            Self::VolcanoEngine(client) => client.finish(Duration::from_secs(2)).await,
-            Self::XaiRealtime(client) => client.finish(Duration::from_secs(2)).await,
+            Self::OpenAIRealtime(client) => client.finish(realtime).await,
+            Self::GeminiLive(client) => client.finish(realtime).await,
+            Self::AzureOpenAIRealtime(client) => client.finish(realtime).await,
+            Self::TencentCloud(client) => client.finish(realtime).await,
+            Self::BaiduTranslate(client) => client.finish(realtime).await,
+            Self::VolcanoEngine(client) => client.finish(realtime).await,
+            Self::XaiRealtime(client) => client.finish(realtime).await,
         }
     }
 

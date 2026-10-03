@@ -53,6 +53,11 @@ impl SourceSessionController {
             && self.subtitle_reducer.is_new_confirmation_id(utterance_id)
     }
 
+    fn accepts_identified_final_pair(&self, id: &str, source: &str, translation: &str) -> bool {
+        self.subtitle_reducer
+            .accepts_identified_final_pair(id, source, translation)
+    }
+
     fn clear_preview_pending(&mut self) {
         self.preview_pending_id = None;
         self.state.is_translation_preview_pending = false;
@@ -135,6 +140,7 @@ impl SourceSessionController {
             && !matches!(
                 event,
                 LiveTranslateServerEvent::SubtitleFinalPair { .. }
+                    | LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. }
                     | LiveTranslateServerEvent::SubtitleConfirmedPair { .. }
             )
         {
@@ -221,16 +227,24 @@ impl SourceSessionController {
                 is_final,
                 language,
             } => {
-                if role == UtteranceRole::Source {
-                    self.update_detected_language(language.as_deref());
-                }
                 self.subtitle_reducer
                     .apply(crate::core::models::SubtitleEvent::UtteranceText {
-                        utterance_id,
+                        utterance_id: utterance_id.clone(),
                         role,
                         text,
                         is_final,
                     });
+                if role == UtteranceRole::Source
+                    && self
+                        .subtitle_reducer
+                        .snapshot
+                        .source
+                        .utterance_id
+                        .as_deref()
+                        == Some(&utterance_id)
+                {
+                    self.update_detected_language(language.as_deref());
+                }
             }
             LiveTranslateServerEvent::TranslationFinal(text) => {
                 self.clear_preview_pending();
@@ -278,6 +292,42 @@ impl SourceSessionController {
                         source,
                         translation,
                     });
+            }
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id,
+                source,
+                language,
+                translation,
+            } => {
+                if !self.accepts_identified_final_pair(&utterance_id, &source, &translation) {
+                    return;
+                }
+                if self
+                    .subtitle_reducer
+                    .identified_source_is_current(&utterance_id)
+                {
+                    self.clear_preview_pending();
+                    self.state.translation_recovery = None;
+                    self.state.is_translation_pending = false;
+                    self.state.is_translation_timed_out = false;
+                }
+                self.subtitle_reducer.apply(
+                    crate::core::models::SubtitleEvent::IdentifiedFinalPair {
+                        utterance_id: utterance_id.clone(),
+                        source,
+                        translation,
+                    },
+                );
+                if self
+                    .subtitle_reducer
+                    .snapshot
+                    .source
+                    .utterance_id
+                    .as_deref()
+                    == Some(&utterance_id)
+                {
+                    self.update_detected_language(language.as_deref());
+                }
             }
             LiveTranslateServerEvent::SessionFinished => self.did_stop(),
             LiveTranslateServerEvent::Error { message, .. } => self.did_fail(message),
@@ -369,6 +419,28 @@ impl TranslationSessionController {
                 source,
                 translation,
             )
+    }
+
+    pub fn accepts_identified_final_pair_from(
+        &self,
+        source: AudioSource,
+        id: &str,
+        text: &str,
+        translation: &str,
+    ) -> bool {
+        self.audio_input.sources().contains(&source)
+            && self.sources[source_index(source)].accepts_identified_final_pair(
+                id,
+                text,
+                translation,
+            )
+    }
+
+    pub fn identified_source_is_current_from(&self, source: AudioSource, id: &str) -> bool {
+        self.audio_input.sources().contains(&source)
+            && self.sources[source_index(source)]
+                .subtitle_reducer
+                .identified_source_is_current(id)
     }
 
     fn apply_to_sources(&mut self, action: impl Fn(&mut SourceSessionController)) {
@@ -476,6 +548,7 @@ impl TranslationSessionController {
                 translation: state.subtitles.translation.clone(),
                 history: state.subtitles.history.clone(),
                 preview_pair: state.subtitles.preview_pair.clone(),
+                display_pair: state.subtitles.display_pair.clone(),
                 detected_language: state
                     .detected_language
                     .as_ref()
@@ -514,6 +587,88 @@ impl TranslationSessionController {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identified_late_final_keeps_newer_text_language_and_pending_owner() {
+        let mut controller = SourceSessionController::default();
+        let source =
+            |id: &str, text: &str, language: &str| LiveTranslateServerEvent::UtteranceText {
+                utterance_id: id.into(),
+                role: UtteranceRole::Source,
+                text: text.into(),
+                is_final: true,
+                language: Some(language.into()),
+            };
+        let pair = |id: &str, text: &str, language: &str| {
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: id.into(),
+                source: text.into(),
+                translation: format!("译文 {text}"),
+                language: Some(language.into()),
+            }
+        };
+        controller.handle(source("A", "Older sentence", "en"));
+        controller.handle(source("B", "새로운 문장", "ko"));
+        controller.handle(LiveTranslateServerEvent::TranslationStarted);
+        controller.handle(pair("A", "Older sentence", "en"));
+        assert!(controller.state.is_translation_pending);
+        assert_eq!(
+            controller.state.subtitles.source.utterance_id.as_deref(),
+            Some("B")
+        );
+        assert_eq!(
+            controller.state.detected_language.as_ref().unwrap().code,
+            "ko"
+        );
+        controller.handle(pair("B", "새로운 문장", "ko"));
+        let expected = controller.state.clone();
+        controller.handle(source("A", "Older sentence", "en"));
+        controller.handle(pair("A", "Older sentence", "en"));
+        assert_eq!(controller.state, expected);
+        assert_eq!(
+            controller
+                .state
+                .subtitles
+                .display_pair
+                .as_ref()
+                .unwrap()
+                .utterance_id
+                .as_deref(),
+            Some("B")
+        );
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        controller.handle(LiveTranslateServerEvent::TranslationStarted);
+        let pending = controller.state.clone();
+        controller.handle(pair("A", "Older sentence", "en"));
+        assert_eq!(controller.state, pending);
+    }
+
+    #[test]
+    fn identified_pair_is_atomic_while_stopping_and_repeated_ids_remain_distinct() {
+        let mut controller = TranslationSessionController::default();
+        for id in ["first", "second"] {
+            controller.handle(LiveTranslateServerEvent::UtteranceText {
+                utterance_id: id.into(),
+                role: UtteranceRole::Source,
+                text: "Repeat sentence".into(),
+                is_final: true,
+                language: Some("en".into()),
+            });
+            controller.begin_stopping();
+            controller.handle(LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: id.into(),
+                source: "Repeat sentence".into(),
+                translation: "重复句子".into(),
+                language: Some("en".into()),
+            });
+            controller.did_connect();
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        assert!(
+            controller.state.subtitles.history[0].created_at_ms
+                < controller.state.subtitles.history[1].created_at_ms
+        );
+    }
 
     #[test]
     fn replayed_confirmation_cannot_clear_pending_work_or_rewind_a_live_pair() {

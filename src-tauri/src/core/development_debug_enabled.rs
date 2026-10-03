@@ -201,6 +201,11 @@ impl ProviderObservation {
                 source,
                 translation,
                 ..
+            }
+            | E::SubtitleIdentifiedFinalPair {
+                source,
+                translation,
+                ..
             } => (
                 K::FinalPair,
                 None,

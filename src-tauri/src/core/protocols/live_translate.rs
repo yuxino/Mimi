@@ -186,6 +186,13 @@ pub enum LiveTranslateServerEvent {
         language: Option<String>,
         translation: String,
     },
+    /// DashScope's complete pair retains its actual source item identity.
+    SubtitleIdentifiedFinalPair {
+        utterance_id: String,
+        source: String,
+        language: Option<String>,
+        translation: String,
+    },
     /// Locally accepted HQ utterance identity, scoped to one connection.
     /// Reliable final delivery preserves repeated text even without drafts.
     SubtitleConfirmedPair {
@@ -245,6 +252,16 @@ impl LiveTranslateServerEvent {
                 translation,
                 ..
             } => subtitle_text_within_limit(source) && subtitle_text_within_limit(translation),
+            Self::SubtitleIdentifiedFinalPair {
+                utterance_id,
+                source,
+                translation,
+                ..
+            } => {
+                subtitle_text_within_limit(utterance_id)
+                    && subtitle_text_within_limit(source)
+                    && subtitle_text_within_limit(translation)
+            }
             _ => true,
         }
     }
@@ -276,7 +293,19 @@ impl LiveTranslateServerEvent {
                 .map(String::from),
         };
         let event = Self::decode_normalized(json)?;
-        if !event.text_within_limit() {
+        let field_valid =
+            |text: Option<&str>| text.is_none_or(crate::core::models::subtitle_text_within_limit);
+        let language_valid = match &event {
+            Self::SourceDraft { language, .. } | Self::SourceFinal { language, .. } => {
+                field_valid(language.as_deref())
+            }
+            _ => true,
+        };
+        if !event.text_within_limit()
+            || !field_valid(identity.item_id.as_deref())
+            || !field_valid(identity.previous_item_id.as_deref())
+            || !language_valid
+        {
             return Err(LiveTranslateProtocolError::InvalidJSON);
         }
         Ok((event, identity))
@@ -381,6 +410,21 @@ fn item_id_of(json: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_pairing_identity_and_language_are_bounded_before_retention() {
+        let oversized = "x".repeat(crate::core::models::MAX_SUBTITLE_TEXT_BYTES + 1);
+        for json in [
+            json!({"type":"conversation.item.created","item_id":oversized,"previous_item_id":"valid"}),
+            json!({"type":"conversation.item.created","item_id":"valid","previous_item_id":oversized}),
+            json!({"type":"conversation.item.input_audio_transcription.completed","item_id":"valid","transcript":"Valid source","language":oversized}),
+        ] {
+            assert_eq!(
+                LiveTranslateServerEvent::decode_value_with_identity(&json),
+                Err(LiveTranslateProtocolError::InvalidJSON)
+            );
+        }
+    }
 
     #[test]
     fn expanded_app_languages_do_not_expand_the_legacy_realtime_wire_contract() {

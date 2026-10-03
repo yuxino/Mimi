@@ -139,3 +139,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Shared Rust subtitle core and Android JNI
+
+The shared core uses Serde for its explicit JSON state boundary. Android uses
+the `jni` 0.21.1 adapter and its transitive dependencies to execute that same
+Rust core. The locked native dependency inventory and upstream license texts
+are in [Android native notices](android/native-licenses/shared-core.txt),
+which are included in Android APK assets. See also
+[Android third-party notices](android/THIRD_PARTY_NOTICES.md).

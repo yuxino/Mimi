@@ -24,9 +24,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *        session.input_transcript.delta, session.output_transcript.delta,
  *        session.output_audio.delta (ignored), error
  *
- * mimi aligns the two append-only delta streams with per-boundary timing; this
- * implementation commits on sentence delimiters, which keeps the visible
- * behaviour (draft grows, final lands at a sentence end).
+ * The shared Rust core aligns append-only streams using the same timing and
+ * boundary rules as desktop; this adapter only maps protocol events.
  */
 class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngine {
     override val sampleRateHz: Int = 24_000
@@ -42,14 +41,15 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
     private var webSocket: WebSocket? = null
     private val sessionReady = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
+    private val finishing = AtomicBoolean(false)
+    private val finishGate = ProviderFinishGate()
     private val audioBuffer = java.io.ByteArrayOutputStream()
 
     private var sourceLang: String = "auto"
     private var targetLang: String = "zh"
     private var model: String = MODEL
 
-    private val sourceText = TranscriptBuffer()
-    private val translationText = TranscriptBuffer()
+    private val transcript = SharedTranscriptStream(listener)
 
     override fun start(
         apiKey: String,
@@ -77,6 +77,7 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 if (stopped.get()) return
+                if (finishGate.complete()) return
                 Log.w(TAG, "WebSocket transport failure (HTTP ${response?.code ?: 0})")
                 listener.onError(
                     "transport_error",
@@ -86,17 +87,23 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                listener.onLog("连接已关闭 ($code)")
                 sessionReady.set(false)
-                listener.onClosed()
+                if (!stopped.get() && !finishGate.complete()) listener.onClosed()
             }
         })
     }
 
     override fun sendAudio(pcm16Mono: ByteArray) {
-        if (stopped.get() || !sessionReady.get()) return
+        if (stopped.get() || finishing.get()) return
         synchronized(audioBuffer) {
+            if (stopped.get() || finishing.get()) return
+            val limit = sampleRateHz.toLong() * 2 * SharedSubtitleCore.policy.getLong("startup_audio_limit_ms") / 1000
+            if (audioBuffer.size().toLong() + pcm16Mono.size > limit) {
+                listener.onError("audio_buffer_limit", "连接尚未就绪，音频缓冲已满。")
+                return
+            }
             audioBuffer.write(pcm16Mono)
+            if (!sessionReady.get()) return
             val data = audioBuffer.toByteArray()
             val frameBytes = 9_600 // 200 ms of 24 kHz mono PCM16
             var offset = 0
@@ -117,11 +124,25 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
         }
     }
 
+    override fun finish(onFinished: () -> Unit) {
+        if (stopped.get() || !sessionReady.get()) { stop(); onFinished(); return }
+        if (!finishing.compareAndSet(false, true)) return
+        finishGate.begin { stop(); onFinished() }
+        synchronized(audioBuffer) {
+            val tail = audioBuffer.toByteArray()
+            audioBuffer.reset()
+            if (tail.isNotEmpty() && webSocket?.send(encodeAudioAppend(tail).toString()) != true) {
+                finishGate.complete(); return
+            }
+        }
+        if (webSocket?.send(JSONObject().put("type", "session.close").toString()) != true) finishGate.complete()
+    }
+
     override fun stop() {
         stopped.set(true)
+        finishGate.cancel()
         synchronized(audioBuffer) { audioBuffer.reset() }
-        sourceText.clear()
-        translationText.clear()
+        transcript.reset()
         try {
             webSocket?.send(JSONObject().put("type", "session.close").toString())
             webSocket?.close(1000, "bye")
@@ -165,6 +186,9 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
         } catch (_: JSONException) {
             sessionReady.set(false)
             listener.onError("invalid_server_event", "服务返回了无效数据，请重新连接。")
+        } catch (_: IllegalArgumentException) {
+            sessionReady.set(false)
+            listener.onError("invalid_server_event", "服务返回了无效数据，请重新连接。")
         }
     }
 
@@ -173,21 +197,19 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
             "session.created" -> Unit
             "session.updated" -> {
                 sessionReady.set(true)
+                sendAudio(ByteArray(0))
                 listener.onSessionReady()
             }
             "session.closed" -> {
+                transcript.finish()
                 sessionReady.set(false)
-                listener.onClosed()
+                if (!finishGate.complete()) listener.onClosed()
             }
             "session.input_transcript.delta" -> {
-                val update = sourceText.append(json.optString("delta"))
-                update.final?.let { listener.onSourceFinal(it) }
-                if (update.draft.isNotEmpty()) listener.onSourceDraft(update.draft)
+                transcript.append(true, json.optString("delta"), elapsedMillis(json))
             }
             "session.output_transcript.delta" -> {
-                val update = translationText.append(json.optString("delta"))
-                update.final?.let { listener.onTranslationFinal(it) }
-                if (update.draft.isNotEmpty()) listener.onTranslationDraft(update.draft)
+                transcript.append(false, json.optString("delta"), elapsedMillis(json))
             }
             "session.output_audio.delta" -> Unit
             "error" -> {
@@ -199,6 +221,13 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
             }
         }
     }
+
+    /** Match Rust's unsigned integer metadata; null/strings/floats are absent. */
+    private fun elapsedMillis(json: JSONObject): Long? = when (val value = json.opt("elapsed_ms")) {
+        is Int -> value.toLong()
+        is Long -> value
+        else -> null
+    }?.takeIf { it >= 0 }
 
     companion object {
         private const val TAG = "OpenAIRealtimeEngine"

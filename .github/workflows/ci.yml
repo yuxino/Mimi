@@ -71,7 +71,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
 
       - name: macOS release safety tests
         if: runner.os == 'macOS'
@@ -87,6 +90,10 @@ jobs:
 
       - name: Test
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Shared subtitle core and JNI adapter
+        shell: bash
+        run: bash scripts/check-shared-core.sh
 
       - name: Test Linux system and microphone capture with real PulseAudio
         if: runner.os == 'Linux'
@@ -132,7 +139,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
           shared-key: windows-arm64
 
       - run: npm ci
@@ -150,6 +160,10 @@ jobs:
 
       - name: Test
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Shared subtitle core and JNI adapter
+        shell: bash
+        run: bash scripts/check-shared-core.sh
 
       - name: Compile ARM64 app without an installer
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
@@ -175,7 +189,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
           shared-key: msrv
 
       - name: Check minimum supported Rust version
@@ -198,6 +215,9 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Shared native packaging invariants
+        run: python3 -B scripts/shared-core-native-test.py
 
       - name: Test AppImage permission regression
         run: python3 scripts/check-appimage-permissions-test.py
@@ -236,7 +256,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
 
       - run: npm ci
 
@@ -391,7 +414,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
 
       - run: npm ci
       - run: npm run build
@@ -496,7 +522,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
 
       - run: npm ci
 
@@ -606,7 +635,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
 
       - name: Install Linux build and smoke-test dependencies
         run: ./scripts/linux-ci-deps.sh

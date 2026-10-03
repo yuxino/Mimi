@@ -7,6 +7,7 @@ import {
   buildSubtitleBlocks,
   subtitleLaneBudget,
   computeActivityPhaseFromSignals,
+  hasSubtitleContent,
   pendingSourceTranslation,
   usesAtomicSubtitlePreview,
   visibleLiveSubtitle,
@@ -31,6 +32,7 @@ describe("atomic subtitle preview capability", () => {
     }
   });
 });
+
 
 describe("same-text committed subtitles", () => {
   const pair = { source: "Mimi", translation: "Mimi", createdAt: 1 };
@@ -660,4 +662,116 @@ it("reports translation in one input while the other input already matches the t
   expect(sourceTranslationPending).toBe(true);
   expect(computeActivityPhaseFromSignals({ statusKind: "listening", isPaused: false, detectedLanguage: "zh",
     isTranslationPending: true, sourceTranslationPending, hasRecognizingSourceDraft: false }, settings)).toBe("translating");
+});
+
+
+describe("current complete display pair", () => {
+  const pair = {
+    source: "Complete synthetic source A.",
+    translation: "完整的合成译文 A。",
+    utteranceId: "synthetic-display-A",
+  };
+  const bilingual = { ...settings, subtitleDisplayMode: "bilingual" } as const;
+  const pairRows = [
+    { text: pair.source, isFinal: false, kind: "source", isStable: true, utteranceId: pair.utteranceId },
+    { text: pair.translation, isFinal: false, kind: "translation", isStable: true, utteranceId: pair.utteranceId },
+  ];
+
+  it.each([false, true])("keeps the complete pair without retained history on atomic=%s routes", atomic => {
+    const snapshot = { ...subtitles({ text: "", isFinal: false }), displayPair: pair };
+    expect(visibleLiveSubtitles(snapshot, bilingual, "en", false, false, atomic)).toEqual(pairRows);
+    expect(snapshot.history).toEqual([]);
+    expect(hasSubtitleContent(snapshot)).toBe(true);
+  });
+
+  it.each([
+    { pending: true, timedOut: false },
+    { pending: false, timedOut: true },
+    { pending: false, timedOut: false },
+  ])("preserves the complete owner's lanes while the next recognition advances (pending=$pending timeout=$timedOut)", ({ pending, timedOut }) => {
+    const snapshot = {
+      ...subtitles(
+        { text: "New synthetic source B.", isFinal: false, utteranceId: "synthetic-raw-B" },
+        { text: "未完成", isFinal: false, utteranceId: "synthetic-raw-B" },
+      ),
+      displayPair: pair,
+      previewPair: null,
+    };
+    expect(visibleLiveSubtitles(snapshot, bilingual, "en", pending, timedOut, true)).toEqual(pairRows);
+    expect(visibleLiveSubtitles(snapshot, { ...settings, subtitleDisplayMode: "translation" }, "en", pending, timedOut, true))
+      .toEqual([pairRows[1]]);
+    // Original mode follows the current recognition owner independently.
+    expect(visibleLiveSubtitles(snapshot, { ...settings, subtitleDisplayMode: "original" }, "en", pending, timedOut, true))
+      .toEqual([{ text: "New synthetic source B.", isFinal: false, kind: "source", utteranceId: "synthetic-raw-B" }]);
+  });
+
+  it.each(["bilingual", "translation"] as const)("does not append the current pair twice when it is the latest %s history entry", subtitleDisplayMode => {
+    const snapshot = {
+      ...subtitles({ text: "", isFinal: false }, { text: "", isFinal: false }, [{ ...pair, createdAt: 1 }]),
+      displayPair: pair,
+      previewPair: null,
+    };
+    expect(visibleLiveSubtitles(snapshot, { ...settings, subtitleDisplayMode }, "en", false, false, true)).toEqual([]);
+    expect(buildSubtitleBlocks(snapshot.history, subtitleDisplayMode)).toHaveLength(1);
+  });
+
+  it("keeps a new complete preview even when an earlier utterance has identical text", () => {
+    const repeatedPair = { ...pair, utteranceId: "synthetic-display-B" };
+    const snapshot = {
+      ...subtitles({ text: pair.source, isFinal: false, utteranceId: repeatedPair.utteranceId },
+        { text: pair.translation, isFinal: false, utteranceId: repeatedPair.utteranceId }, [{ ...pair, createdAt: 1 }]),
+      displayPair: repeatedPair,
+      previewPair: repeatedPair,
+    };
+    expect(visibleLiveSubtitles(snapshot, bilingual, "en", true, false, true)).toEqual(
+      pairRows.map(row => ({ ...row, utteranceId: repeatedPair.utteranceId })),
+    );
+    expect(snapshot.history).toHaveLength(1);
+  });
+
+  it.each([
+    { targetLanguage: "original" as const, detectedLanguage: "en", source: "Current original." },
+    { targetLanguage: "zh" as const, detectedLanguage: "zh", source: "当前原文。" },
+  ])("shows current recognition when target=$targetLanguage already uses its language", ({ targetLanguage, detectedLanguage, source }) => {
+    const snapshot = { ...subtitles({ text: source, isFinal: false, utteranceId: "synthetic-current" }), displayPair: pair };
+    expect(visibleLiveSubtitles(snapshot, { ...bilingual, targetLanguage }, detectedLanguage, false, false, true))
+      .toEqual([{ text: source, isFinal: false, kind: "source", utteranceId: "synthetic-current" }]);
+  });
+
+  it("uses one bilingual lane for equal pair text and preserves the translation-only lane", () => {
+    const equalPair = { ...pair, translation: `  ${pair.source}\n` };
+    const snapshot = { ...subtitles({ text: "", isFinal: false }), displayPair: equalPair };
+    expect(visibleLiveSubtitles(snapshot, bilingual, "en", false, false)).toEqual([pairRows[0]]);
+    expect(visibleLiveSubtitles(snapshot, { ...settings, subtitleDisplayMode: "translation" }, "en", false, false))
+      .toEqual([{ ...pairRows[1], text: equalPair.translation }]);
+  });
+
+  it("only suppresses the live display pair when the latest history entry already contains it", () => {
+    const snapshot = {
+      ...subtitles({ text: "", isFinal: false }, { text: "", isFinal: false }, [
+        { ...pair, createdAt: 1 },
+        { source: "Another complete source.", translation: "另一条完整译文。", createdAt: 2 },
+      ]),
+      displayPair: pair,
+    };
+    expect(visibleLiveSubtitles(snapshot, bilingual, "en", false, false)).toEqual(pairRows);
+  });
+
+  it.each([
+    [undefined, false],
+    [null, false],
+    [{ source: "  \n", translation: "\t " }, false],
+    [{ source: "Visible original.", translation: "" }, true],
+    [{ source: "", translation: "可见译文。" }, true],
+  ] as const)("detects display-only content for %j", (displayPair, expected) => {
+    expect(hasSubtitleContent({ ...subtitles({ text: "", isFinal: false }), displayPair })).toBe(expected);
+  });
+
+  it("detects a display-only pair in an independent source track", () => {
+    const empty = subtitles({ text: "", isFinal: false });
+    expect(hasSubtitleContent({ ...empty, tracks: [{
+      ...empty, audioSource: "system", detectedLanguage: "en", isTranslationPending: false,
+      isTranslationTimedOut: false, displayPair: pair,
+    }] })).toBe(true);
+  });
 });

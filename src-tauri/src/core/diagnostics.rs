@@ -40,23 +40,7 @@ pub struct TranslationLatency {
     pub kind: TranslationLatencyKind,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TranslationRecoveryReason {
-    RateLimited,
-    TemporarilyUnavailable,
-}
-
-/// Local, nonterminal MT recovery. Contains no service response or content.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TranslationRecovery {
-    pub reason: TranslationRecoveryReason,
-    pub retry_after_ms: u64,
-    /// False when a replaceable preview exhausted its bounded attempts. No
-    /// retry runs until new speech schedules work; capture continues.
-    pub retry_scheduled: bool,
-}
+pub use mimi_core::models::{TranslationRecovery, TranslationRecoveryReason};
 
 #[cfg(test)]
 mod tests {

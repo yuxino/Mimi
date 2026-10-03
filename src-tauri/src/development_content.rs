@@ -81,6 +81,14 @@ fn provider_content(event: &LiveTranslateServerEvent) -> Value {
             language,
             translation,
         } => json!({"source":source,"translation":translation,"language":language}),
+        E::SubtitleIdentifiedFinalPair {
+            utterance_id,
+            source,
+            language,
+            translation,
+        } => {
+            json!({"utteranceId":utterance_id,"source":source,"translation":translation,"language":language})
+        }
         E::SubtitleConfirmedPair {
             utterance_id,
             source_utterance_id,

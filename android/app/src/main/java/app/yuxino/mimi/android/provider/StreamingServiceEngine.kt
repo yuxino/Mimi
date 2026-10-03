@@ -31,6 +31,8 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
     override val sampleRateHz = config.provider.sampleRate
     private val lock = Any()
     private var stopped = false
+    private var finishing = false
+    private val finishGate = ProviderFinishGate()
     private var ready = false
     private var socket: WebSocket? = null
     private var protocol: ServiceProtocol? = null
@@ -61,14 +63,14 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
                         adapter.binary(bytes.toByteArray())
                     }
                     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = synchronized(lock) {
-                        fail("transport_error")
+                        if (!finishGate.complete()) fail("transport_error")
                     }
                     override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                         webSocket.close(code, null)
-                        synchronized(lock) { if (!stopped) { shutdown(); listener.onClosed() } }
+                        synchronized(lock) { if (!stopped && !finishGate.complete()) { shutdown(); listener.onClosed() } }
                     }
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = synchronized(lock) {
-                        if (!stopped) { shutdown(); listener.onClosed() }
+                        if (!stopped && !finishGate.complete()) { shutdown(); listener.onClosed() }
                     }
                 })
                 timer.schedule({ synchronized(lock) { if (!stopped && !ready) fail("setup_timeout") } }, 20, TimeUnit.SECONDS)
@@ -81,8 +83,8 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
             for (event in decode()) {
                 if (stopped) break
                 when (event) {
-                    ServiceEvent.Ready -> if (!ready) { ready = true; listener.onSessionReady() }
-                    ServiceEvent.Closed -> { shutdown(); listener.onClosed() }
+                    ServiceEvent.Ready -> if (!ready) { ready = true; sendAudio(ByteArray(0)); listener.onSessionReady() }
+                    ServiceEvent.Closed -> { if (!finishGate.complete()) { shutdown(); listener.onClosed() } }
                     is ServiceEvent.Source -> if (ready) {
                         if (event.final) listener.onSourceFinal(event.text, event.language)
                         else listener.onSourceDraft(event.text, event.language)
@@ -97,9 +99,12 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
     }
     override fun sendAudio(pcm16Mono: ByteArray) = synchronized(lock) {
         val adapter = protocol ?: return@synchronized
-        if (!ready || stopped) return@synchronized
+        if (stopped || finishing) return@synchronized
+        val limit = sampleRateHz.toLong() * 2 * SharedSubtitleCore.policy.getLong("startup_audio_limit_ms") / 1000
+        if (pending.size().toLong() + pcm16Mono.size > limit) { fail("audio_buffer_limit"); return@synchronized }
         if (pcm16Mono.size > sampleRateHz * 2) { fail("audio_buffer_limit"); return@synchronized }
         pending.write(pcm16Mono)
+        if (!ready) return@synchronized
         val bytes = pending.toByteArray()
         pending.reset()
         var offset = 0
@@ -119,6 +124,18 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
             is WireFrame.Binary -> ws.send(frame.value.toByteString())
         }
     }
+    override fun finish(onFinished: () -> Unit) = synchronized(lock) {
+        if (stopped || !ready) { stop(); onFinished(); return@synchronized }
+        if (finishing) return@synchronized
+        finishing = true
+        finishGate.begin { stop(); onFinished() }
+        val adapter = protocol ?: run { finishGate.complete(); return@synchronized }
+        val tail = pending.toByteArray()
+        pending.reset()
+        if (tail.isNotEmpty() && !send(adapter.audio(tail))) { finishGate.complete(); return@synchronized }
+        adapter.finish()?.let { if (!send(it)) finishGate.complete() }
+        Unit
+    }
     override fun stop() = synchronized(lock) {
         if (stopped) return@synchronized
         // Stop is immediate: no retained audio, and callbacks cannot resurrect the overlay.
@@ -127,11 +144,13 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
     }
     private fun fail(code: String) {
         if (stopped) return
+        if (finishGate.complete()) return
         shutdown()
         listener.onError(code, "服务连接失败，请检查网络和配置。")
     }
     private fun shutdown() {
         stopped = true; ready = false; pending.reset()
+        finishGate.cancel()
         socket?.cancel(); socket = null; protocol = null
         timer.shutdownNow()
     }

@@ -33,7 +33,9 @@ expected="$(printf '%s' "$ANDROID_SIGNING_CERT_SHA256" | tr -d ':[:space:]' | tr
 mkdir -p release
 work="$(mktemp -d release/.sign-XXXXXX)"
 trap 'rm -rf "$work"' EXIT
-"$sdk_tools/zipalign" -f -p 4 "$input" "$work/aligned.apk"
+python_command="${MIMI_PYTHON:-python3}"
+"$python_command" ../scripts/verify-shared-core.py --apk "$input"
+"$sdk_tools/zipalign" -f -P 16 4 "$input" "$work/aligned.apk"
 "$sdk_tools/apksigner" sign \
   --ks "$ANDROID_KEYSTORE_PATH" --ks-key-alias "$ANDROID_KEY_ALIAS" \
   --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
@@ -44,7 +46,8 @@ if [[ "$actual" != "$expected" ]] || grep -qi 'CN=Android Debug' <<< "$verificat
   echo 'Release certificate does not match the pinned non-debug identity.' >&2
   exit 1
 fi
-"$sdk_tools/zipalign" -c -p 4 "$work/signed.apk"
+"$sdk_tools/zipalign" -c -P 16 4 "$work/signed.apk"
+"$python_command" ../scripts/verify-shared-core.py --apk "$work/signed.apk"
 output="mimi_${version}_android.apk"
 mv "$work/signed.apk" "release/$output"
 (cd release && sha256sum "$output" > SHA256SUMS.txt)

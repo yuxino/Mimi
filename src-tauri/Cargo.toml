@@ -25,6 +25,7 @@ development-debugger = []
 local-dev-credentials = []
 
 [dependencies]
+mimi-core = { path = "../shared/mimi-core" }
 tauri = { version = "2", default-features = false, features = ["wry", "compression", "common-controls-v6", "tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"

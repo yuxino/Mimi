@@ -9,7 +9,7 @@ use crate::core::protocols::live_translate::{
 };
 use crate::pipeline_log;
 use futures_util::{SinkExt, StreamExt};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -28,7 +28,8 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const CLOSE_TIMEOUT: Duration = Duration::from_millis(250);
 const GENERIC_TRANSPORT_ERROR: &str = "The live translation connection closed.";
 const GENERIC_PROTOCOL_ERROR: &str = "The live translation service returned invalid data.";
-const MAX_TRACKED_ITEMS: usize = 64;
+#[cfg(test)]
+const MAX_TRACKED_ITEMS: usize = mimi_core::live_pair_aligner::MAX_TRACKED_ITEMS;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum LiveTranslateClientError {
@@ -372,72 +373,25 @@ async fn wait_for_setup(
     }
 }
 
-/// One utterance being paired: its recognized text, whether that text is the
-/// authoritative final, and the translation final of the response answering it.
-#[derive(Default)]
-struct TrackedUtterance {
-    source_text: String,
-    source_language: Option<String>,
-    source_final: bool,
-    translation_final: Option<String>,
-    source_final_at: Option<Instant>,
-    translation_final_at: Option<Instant>,
-}
-
-/// Pairs live-translate recognition and translation finals by the provider's own
-/// conversation-item identity.
-///
-/// The protocol streams both sides independently and the two finals of one
-/// utterance arrive tens of milliseconds apart in either order, so arrival order
-/// cannot identify an utterance. Drafts never pass through this type: they keep
-/// streaming to the session exactly as the provider emits them, and only the
-/// durable pair waits for both authoritative finals. Tracking follows the
-/// recognition stream. Pending items have a fixed capacity so delayed finals
-/// can still pair after the next source begins without unbounded retention.
+/// Desktop timing/transport adapter for the single shared identity algorithm.
 #[derive(Default)]
 struct LiveTranslatePairAligner {
-    // Fixed-size identity tombstones only; never retain cleared subtitle text.
-    discarded_items: VecDeque<String>,
-    /// The utterance the recognition stream is currently filling.
-    current_source_id: Option<String>,
-    utterances: HashMap<String, TrackedUtterance>,
-    utterance_order: VecDeque<String>,
-    /// Response item id -> the input item it answers.
-    responses: HashMap<String, String>,
-    response_order: VecDeque<String>,
+    core: mimi_core::live_pair_aligner::LivePairAligner,
     translation_latency: Arc<std::sync::Mutex<StreamTranslationLatency>>,
     latency_generation: u64,
+    clock_epoch: Option<Instant>,
 }
 
 impl LiveTranslatePairAligner {
-    fn discard_item(&mut self, item: String) {
-        if !self.discarded_items.contains(&item) {
-            self.discarded_items.push_back(item);
-            while self.discarded_items.len() > MAX_TRACKED_ITEMS {
-                self.discarded_items.pop_front();
-            }
-        }
-    }
-
     fn clear_content(&mut self) {
-        let old_ids: Vec<_> = self
-            .utterance_order
-            .iter()
-            .chain(self.response_order.iter())
-            .chain(self.current_source_id.iter())
-            .cloned()
-            .collect();
-        for item in old_ids {
-            self.discard_item(item);
-        }
-        self.current_source_id = None;
-        self.utterances.clear();
-        self.utterance_order.clear();
-        self.responses.clear();
-        self.response_order.clear();
+        self.core.clear_content();
     }
 
-    /// Observes one decoded frame and returns the events to forward downstream.
+    #[cfg(test)]
+    fn discard_item(&mut self, item: String) {
+        self.core.discard_item(item);
+    }
+
     fn observe(
         &mut self,
         event: &LiveTranslateServerEvent,
@@ -452,205 +406,80 @@ impl LiveTranslatePairAligner {
         identity: &LiveTranslateEventIdentity,
         received_at: Instant,
     ) -> Vec<LiveTranslateServerEvent> {
-        if crate::clients::provider_events::is_content_event(event)
-            && identity
-                .item_id
-                .as_ref()
-                .is_some_and(|item| self.discarded_items.contains(item))
-        {
-            return Vec::new();
-        }
-        // A created item links a response item to the input item it answers.
-        if let (true, Some(item_id), Some(previous_item_id)) = (
-            matches!(event, LiveTranslateServerEvent::Ignored { kind } if kind == "conversation.item.created"),
-            identity.item_id.as_deref(),
-            identity.previous_item_id.as_deref(),
-        ) {
-            if !self.responses.contains_key(item_id) {
-                self.response_order.push_back(item_id.to_string());
-            }
-            self.responses
-                .insert(item_id.to_string(), previous_item_id.to_string());
-            while self.responses.len() > MAX_TRACKED_ITEMS {
-                if let Some(oldest) = self.response_order.pop_front() {
-                    self.responses.remove(&oldest);
-                }
-            }
-            return Vec::new();
-        }
-
-        match event {
-            LiveTranslateServerEvent::SourceDraft { text, language }
-            | LiveTranslateServerEvent::SourceFinal { text, language } => {
-                let Some(item_id) = identity.item_id.as_deref() else {
-                    return vec![event.clone()];
-                };
-                // A new source can legitimately follow an old conversation item.
-                // Only an actual translation may use the response -> source link.
-                self.responses.remove(item_id);
-                self.response_order
-                    .retain(|item| self.responses.contains_key(item));
-                let is_final = matches!(event, LiveTranslateServerEvent::SourceFinal { .. });
-                let mut events = self.start_utterance(item_id);
-                let utterance = self.track(item_id);
-                utterance.source_text = text.clone();
-                utterance.source_language = language.clone();
-                utterance.source_final |= is_final;
-                if is_final && utterance.source_final_at.is_none() {
-                    utterance.source_final_at = Some(received_at);
-                }
-                events.push(LiveTranslateServerEvent::UtteranceText {
-                    utterance_id: item_id.to_string(),
-                    role: UtteranceRole::Source,
-                    text: text.clone(),
-                    is_final,
-                    language: language.clone(),
-                });
-                if is_final {
-                    events.extend(self.take_pair(item_id, false));
-                }
-                events
-            }
+        use mimi_core::live_pair_aligner::{LivePairEvent as E, LivePairIdentity};
+        let input = match event {
+            LiveTranslateServerEvent::SourceDraft { text, language } => E::SourceDraft {
+                text: text.clone(),
+                language: language.clone(),
+            },
+            LiveTranslateServerEvent::SourceFinal { text, language } => E::SourceFinal {
+                text: text.clone(),
+                language: language.clone(),
+            },
             LiveTranslateServerEvent::TranslationDraft(text) => {
-                let Some(response_id) = identity.item_id.as_deref() else {
-                    return vec![event.clone()];
-                };
-                let Some(source_id) = self.responses.get(response_id).cloned() else {
-                    return vec![event.clone()];
-                };
-                if self.discarded_items.contains(&source_id) {
-                    return Vec::new();
-                }
-                vec![LiveTranslateServerEvent::UtteranceText {
-                    utterance_id: source_id,
-                    role: UtteranceRole::Translation,
-                    text: text.clone(),
-                    is_final: false,
-                    language: None,
-                }]
+                E::TranslationDraft { text: text.clone() }
             }
             LiveTranslateServerEvent::TranslationFinal(text) => {
-                let Some(response_id) = identity.item_id.as_deref() else {
-                    // Without identity the legacy best-effort path still applies.
-                    return vec![event.clone()];
-                };
-                let Some(source_id) = self.responses.get(response_id).cloned() else {
-                    // A known response with no source link must not fall back
-                    // to arrival-order pairing with another utterance.
-                    return Vec::new();
-                };
-                if self.discarded_items.contains(&source_id) {
-                    return Vec::new();
+                E::TranslationFinal { text: text.clone() }
+            }
+            LiveTranslateServerEvent::Ignored { kind } if kind == "conversation.item.created" => {
+                E::ItemCreated
+            }
+            LiveTranslateServerEvent::SessionFinished => E::SessionFinished,
+            _ => E::Passthrough {
+                is_content: crate::clients::provider_events::is_content_event(event),
+            },
+        };
+        let identity = LivePairIdentity {
+            item_id: identity.item_id.clone(),
+            previous_item_id: identity.previous_item_id.clone(),
+        };
+        let epoch = self.clock_epoch.get_or_insert(received_at);
+        let received_at_ns = received_at
+            .saturating_duration_since(*epoch)
+            .as_nanos()
+            .min(u64::MAX as u128) as u64;
+        self.core
+            .observe_at(&input, &identity, received_at_ns)
+            .into_iter()
+            .map(|aligned| match aligned {
+                E::UtteranceText {
+                    utterance_id,
+                    role,
+                    text,
+                    is_final,
+                    language,
+                } => LiveTranslateServerEvent::UtteranceText {
+                    utterance_id,
+                    role,
+                    text,
+                    is_final,
+                    language,
+                },
+                E::FinalPair {
+                    utterance_id,
+                    source,
+                    translation,
+                    language,
+                    follow_latency_ms,
+                } => {
+                    let mut latency = self.translation_latency.lock().unwrap();
+                    if latency.generation == self.latency_generation {
+                        latency.value = follow_latency_ms.map(|milliseconds| TranslationLatency {
+                            milliseconds,
+                            kind: TranslationLatencyKind::Follow,
+                        });
+                    }
+                    LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                        utterance_id,
+                        source,
+                        language,
+                        translation,
+                    }
                 }
-                // An utterance the recognition stream has already left can no
-                // longer receive its final, so its own text is the best source.
-                let allow_draft_source =
-                    matches!(&self.current_source_id, Some(current) if current != &source_id);
-                let utterance = self.track(&source_id);
-                utterance.translation_final = Some(text.clone());
-                utterance.translation_final_at = Some(received_at);
-                self.take_pair(&source_id, allow_draft_source)
-            }
-            // A graceful close is the last point where an unmatched translation
-            // can be paired with the text its own utterance produced.
-            LiveTranslateServerEvent::SessionFinished => {
-                let mut events = self
-                    .current_source_id
-                    .clone()
-                    .map(|source_id| self.flush(&source_id))
-                    .unwrap_or_default();
-                events.push(event.clone());
-                events
-            }
-            _ => vec![event.clone()],
-        }
-    }
-
-    /// Moves the recognition stream to `source_id`. Keep a previous source
-    /// without a translation so a late response can still find its own text.
-    fn start_utterance(&mut self, source_id: &str) -> Vec<LiveTranslateServerEvent> {
-        if self.current_source_id.as_deref() == Some(source_id) {
-            return Vec::new();
-        }
-        let previous = self.current_source_id.replace(source_id.to_string());
-        previous
-            .filter(|source_id| {
-                self.utterances
-                    .get(source_id)
-                    .is_some_and(|utterance| utterance.translation_final.is_some())
+                _ => event.clone(),
             })
-            .map(|source_id| self.flush(&source_id))
-            .unwrap_or_default()
-    }
-
-    fn flush(&mut self, source_id: &str) -> Vec<LiveTranslateServerEvent> {
-        let pair = self.take_pair(source_id, true);
-        self.retire(source_id);
-        pair
-    }
-
-    /// Emits the pair for one utterance once both sides are authoritative. An
-    /// empty translation or an empty recognized result retires the utterance
-    /// without a pair and never consumes another utterance's text.
-    fn take_pair(
-        &mut self,
-        source_id: &str,
-        allow_draft_source: bool,
-    ) -> Vec<LiveTranslateServerEvent> {
-        let Some(utterance) = self.utterances.get(source_id) else {
-            return Vec::new();
-        };
-        let Some(translation) = utterance.translation_final.clone() else {
-            return Vec::new();
-        };
-        if !utterance.source_final && !allow_draft_source {
-            return Vec::new();
-        }
-        let source = utterance.source_text.trim().to_string();
-        let language = utterance.source_language.clone();
-        let measured_latency = utterance
-            .source_final_at
-            .zip(utterance.translation_final_at)
-            .map(|(source_at, translation_at)| TranslationLatency {
-                milliseconds: milliseconds(source_at, translation_at),
-                kind: TranslationLatencyKind::Follow,
-            });
-        self.retire(source_id);
-        if source.is_empty() || translation.trim().is_empty() {
-            return Vec::new();
-        }
-        {
-            let mut latency = self.translation_latency.lock().unwrap();
-            if latency.generation == self.latency_generation {
-                latency.value = measured_latency;
-            }
-        }
-        vec![LiveTranslateServerEvent::SubtitleFinalPair {
-            source,
-            language,
-            translation: translation.trim().to_string(),
-        }]
-    }
-
-    fn track(&mut self, source_id: &str) -> &mut TrackedUtterance {
-        if !self.utterances.contains_key(source_id) {
-            self.utterance_order.push_back(source_id.to_string());
-            while self.utterance_order.len() > MAX_TRACKED_ITEMS {
-                if let Some(oldest) = self.utterance_order.pop_front() {
-                    self.retire(&oldest);
-                }
-            }
-        }
-        self.utterances.entry(source_id.to_string()).or_default()
-    }
-
-    fn retire(&mut self, source_id: &str) {
-        self.utterances.remove(source_id);
-        self.utterance_order.retain(|item| item != source_id);
-        self.responses.remove(source_id);
-        self.responses.retain(|_, source| source != source_id);
-        self.response_order
-            .retain(|item| self.responses.contains_key(item));
+            .collect()
     }
 }
 
@@ -861,7 +690,7 @@ mod tests {
             &identity("old-source", Some("old-source")),
         );
         assert!(
-            matches!(events.as_slice(), [LiveTranslateServerEvent::SubtitleFinalPair {source,translation,..}, LiveTranslateServerEvent::SessionFinished]
+            matches!(events.as_slice(), [LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {source,translation,..}, LiveTranslateServerEvent::SessionFinished]
             if source == "Synthetic new source" && translation == "Synthetic new translation")
         );
     }
@@ -897,7 +726,7 @@ mod tests {
         assert_eq!(client.clear_content().await, 1);
         assert_eq!(client.content_revision(), 1);
         let mut aligner = client.inner.aligner.lock().await;
-        assert!(aligner.utterances.is_empty() && aligner.responses.is_empty());
+        assert!(aligner.core.tracked_utterance_count() == 0 && aligner.core.response_count() == 0);
         assert!(aligner
             .observe(
                 &LiveTranslateServerEvent::SourceFinal {
@@ -947,11 +776,11 @@ mod tests {
             &identity("new-source", None),
         );
         assert!(aligner.observe(&LiveTranslateServerEvent::TranslationFinal("new translation".into()), &identity("new-response", None)).iter().any(|event| matches!(event,
-            LiveTranslateServerEvent::SubtitleFinalPair {source,translation,..} if source == "new source" && translation == "new translation")));
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {source,translation,..} if source == "new source" && translation == "new translation")));
         for i in 0..MAX_TRACKED_ITEMS * 3 {
             aligner.discard_item(format!("old-{i}"));
         }
-        assert!(aligner.discarded_items.len() <= MAX_TRACKED_ITEMS);
+        assert!(aligner.core.discarded_item_count() <= MAX_TRACKED_ITEMS);
         drop(aligner);
         assert_eq!(
             receiver.recv().await,
@@ -1250,7 +1079,8 @@ mod tests {
                     is_final: true,
                     language: Some("en".into()),
                 },
-                LiveTranslateServerEvent::SubtitleFinalPair {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                    utterance_id: "item_source".into(),
                     source: "Hello.".into(),
                     language: Some("en".into()),
                     translation: "你好。".into(),
@@ -1291,7 +1121,8 @@ mod tests {
         );
         assert_eq!(
             events,
-            vec![LiveTranslateServerEvent::SubtitleFinalPair {
+            vec![LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: "item_source".into(),
                 source: "Hello.".into(),
                 language: None,
                 translation: "你好。".into(),
@@ -1378,7 +1209,8 @@ mod tests {
                     is_final: true,
                     language: Some("en".into()),
                 },
-                LiveTranslateServerEvent::SubtitleFinalPair {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                    utterance_id: "item_source".into(),
                     source: "Hello world.".into(),
                     language: Some("en".into()),
                     translation: "你好。".into(),
@@ -1424,7 +1256,8 @@ mod tests {
                 &LiveTranslateServerEvent::TranslationFinal("我在寻找某人。".into()),
                 &identity("item_response_2", None),
             ),
-            vec![LiveTranslateServerEvent::SubtitleFinalPair {
+            vec![LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: "item_source_2".into(),
                 source: "I'm searching for someone.".into(),
                 language: None,
                 translation: "我在寻找某人。".into(),
@@ -1465,7 +1298,8 @@ mod tests {
                 &identity("item_source_2", None),
             ),
             vec![
-                LiveTranslateServerEvent::SubtitleFinalPair {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                    utterance_id: "item_source_1".into(),
                     source: "Hello wor".into(),
                     language: None,
                     translation: "你好。".into(),
@@ -1506,7 +1340,8 @@ mod tests {
                 &LiveTranslateServerEvent::TranslationFinal("第一句。".into()),
                 &identity("response_a", None),
             ),
-            vec![LiveTranslateServerEvent::SubtitleFinalPair {
+            vec![LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: "source_a".into(),
                 source: "First sentence.".into(),
                 language: Some("en".into()),
                 translation: "第一句。".into(),
@@ -1567,8 +1402,8 @@ mod tests {
 
         // The provider may omit recognition events for some response items.
         // A long-running session must retain only a bounded number of them.
-        assert!(aligner.responses.len() <= 64);
-        assert!(aligner.utterances.len() <= 64);
+        assert!(aligner.core.response_count() <= 64);
+        assert!(aligner.core.tracked_utterance_count() <= 64);
     }
 
     #[test]
@@ -1598,7 +1433,8 @@ mod tests {
                 &LiveTranslateEventIdentity::default(),
             ),
             vec![
-                LiveTranslateServerEvent::SubtitleFinalPair {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                    utterance_id: "item_source".into(),
                     source: "Hello".into(),
                     language: None,
                     translation: "你好。".into(),
@@ -1645,8 +1481,8 @@ mod tests {
             );
         }
 
-        assert!(aligner.utterances.len() <= 1);
-        assert!(aligner.responses.len() <= 2);
+        assert!(aligner.core.tracked_utterance_count() <= 1);
+        assert!(aligner.core.response_count() <= 2);
     }
 
     /// Replays the captured Alibaba live-translate session the documentation
@@ -1700,7 +1536,7 @@ mod tests {
                     | LiveTranslateServerEvent::TranslationFinal(_) => {
                         panic!("identity-carrying text must be stamped: {forwarded:?}")
                     }
-                    LiveTranslateServerEvent::SubtitleFinalPair {
+                    LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
                         source,
                         translation,
                         ..

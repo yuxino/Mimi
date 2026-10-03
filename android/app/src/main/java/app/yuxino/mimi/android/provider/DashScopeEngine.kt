@@ -42,7 +42,10 @@ class DashScopeEngine(
     private var webSocket: WebSocket? = null
     private val sessionReady = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
+    private val finishing = AtomicBoolean(false)
+    private val finishGate = ProviderFinishGate(SharedSubtitleCore.policy.getLong("recognition_finish_timeout_ms"))
     private val audioBuffer = java.io.ByteArrayOutputStream()
+    private val pairedStream = SharedLivePairStream(listener)
     private var sourceLang: String = "auto"
     private var targetLang: String = "zh"
     private var model: String = if (transcriptionOnly) ASR_MODEL else MODEL
@@ -79,6 +82,7 @@ class DashScopeEngine(
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 if (stopped.get()) return
+                if (finishGate.complete()) return
                 Log.w(TAG, "WebSocket transport failure (HTTP ${response?.code ?: 0})")
                 listener.onError(
                     "transport_error",
@@ -88,17 +92,23 @@ class DashScopeEngine(
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                listener.onLog("连接已关闭 ($code)")
                 sessionReady.set(false)
-                listener.onClosed()
+                if (!stopped.get() && !finishGate.complete()) listener.onClosed()
             }
         })
     }
 
     override fun sendAudio(pcm16Mono: ByteArray) {
-        if (stopped.get() || !sessionReady.get()) return
+        if (stopped.get() || finishing.get()) return
         synchronized(audioBuffer) {
+            if (stopped.get() || finishing.get()) return
+            val limit = sampleRateHz.toLong() * 2 * SharedSubtitleCore.policy.getLong("startup_audio_limit_ms") / 1000
+            if (audioBuffer.size().toLong() + pcm16Mono.size > limit) {
+                listener.onError("audio_buffer_limit", "连接尚未就绪，音频缓冲已满。")
+                return
+            }
             audioBuffer.write(pcm16Mono)
+            if (!sessionReady.get()) return
             val data = audioBuffer.toByteArray()
             val frameBytes = 3200 // 100 ms of 16 kHz mono PCM16
             var offset = 0
@@ -119,8 +129,23 @@ class DashScopeEngine(
         }
     }
 
+    override fun finish(onFinished: () -> Unit) {
+        if (stopped.get() || !sessionReady.get()) { stop(); onFinished(); return }
+        if (!finishing.compareAndSet(false, true)) return
+        finishGate.begin { stop(); onFinished() }
+        synchronized(audioBuffer) {
+            val tail = audioBuffer.toByteArray()
+            audioBuffer.reset()
+            if (tail.isNotEmpty() && webSocket?.send(encodeAudioAppend(tail).toString()) != true) {
+                finishGate.complete(); return
+            }
+        }
+        if (webSocket?.send(buildFinish().toString()) != true) finishGate.complete()
+    }
+
     override fun stop() {
         stopped.set(true)
+        finishGate.cancel()
         synchronized(audioBuffer) { audioBuffer.reset() }
         try {
             webSocket?.send(buildFinish().toString())
@@ -128,6 +153,7 @@ class DashScopeEngine(
         } catch (_: Exception) {
         }
         sessionReady.set(false)
+        pairedStream.reset()
     }
 
     internal fun resolveEndpoint(customBaseUrl: String): String {
@@ -200,6 +226,9 @@ class DashScopeEngine(
         } catch (_: JSONException) {
             sessionReady.set(false)
             listener.onError("invalid_server_event", "服务返回了无效数据，请重新连接。")
+        } catch (_: IllegalArgumentException) {
+            sessionReady.set(false)
+            listener.onError("invalid_server_event", "服务返回了无效数据，请重新连接。")
         }
     }
 
@@ -208,30 +237,37 @@ class DashScopeEngine(
             "session.created" -> Unit
             "session.updated" -> {
                 sessionReady.set(true)
+                sendAudio(ByteArray(0))
                 listener.onSessionReady()
             }
             "session.finished" -> {
+                if (!transcriptionOnly) pairedStream.observe(JSONObject().put("type", "session_finished"), json)
                 sessionReady.set(false)
-                listener.onClosed()
+                if (!finishGate.complete()) listener.onClosed()
             }
             "conversation.item.input_audio_transcription.text" -> {
-                listener.onSourceDraft(combinedText(json), json.optString("language").takeIf { it.isNotBlank() })
+                if (transcriptionOnly) listener.onSourceDraft(combinedText(json), json.optString("language").takeIf { it.isNotBlank() })
+                else pairedStream.observe(JSONObject().put("type", "source_draft").put("text", combinedText(json))
+                    .put("language", json.optString("language").takeIf { it.isNotBlank() } ?: JSONObject.NULL), json)
             }
             "conversation.item.input_audio_transcription.completed" -> {
-                listener.onSourceFinal(
+                if (transcriptionOnly) listener.onSourceFinal(
                     json.optString("transcript").trim(),
                     json.optString("language").takeIf { it.isNotBlank() },
                 )
+                else pairedStream.observe(JSONObject().put("type", "source_final").put("text", json.optString("transcript").trim())
+                    .put("language", json.optString("language").takeIf { it.isNotBlank() } ?: JSONObject.NULL), json)
             }
             "response.text.text", "response.audio_transcript.text" -> {
-                if (!transcriptionOnly) listener.onTranslationDraft(combinedText(json))
+                if (!transcriptionOnly) pairedStream.observe(JSONObject().put("type", "translation_draft").put("text", combinedText(json)), json)
             }
             "response.text.done" -> {
-                if (!transcriptionOnly) listener.onTranslationFinal(json.optString("text").trim())
+                if (!transcriptionOnly) pairedStream.observe(JSONObject().put("type", "translation_final").put("text", json.optString("text").trim()), json)
             }
             "response.audio_transcript.done" -> {
-                if (!transcriptionOnly) listener.onTranslationFinal(json.optString("transcript").trim())
+                if (!transcriptionOnly) pairedStream.observe(JSONObject().put("type", "translation_final").put("text", json.optString("transcript").trim()), json)
             }
+            "conversation.item.created" -> if (!transcriptionOnly) pairedStream.observe(JSONObject().put("type", "item_created"), json)
             "error" -> {
                 val error = json.optJSONObject("error")
                 listener.onError(

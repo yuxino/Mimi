@@ -34,6 +34,9 @@ interface ProviderEngine {
 
     /** Closes the session gracefully. */
     fun stop()
+
+    /** Seal audio, admit provider tail events, then acknowledge bounded graceful finish. */
+    fun finish(onFinished: () -> Unit) { stop(); onFinished() }
 }
 
 /** Events every engine maps its wire protocol onto. */
@@ -45,6 +48,17 @@ interface EngineListener {
     fun onSourceFinal(text: String, language: String? = null)
     fun onTranslationDraft(text: String)
     fun onTranslationFinal(text: String)
+    fun onUtteranceText(id: String, source: Boolean, text: String, final: Boolean, language: String? = null) {
+        if (source) { if (final) onSourceFinal(text, language) else onSourceDraft(text, language) }
+        else { if (final) onTranslationFinal(text) else onTranslationDraft(text) }
+    }
+    fun onFinalPair(source: String, translation: String, language: String? = null) {
+        onSourceFinal(source, language)
+        onTranslationFinal(translation)
+    }
+    fun onIdentifiedFinalPair(id: String, source: String, translation: String, language: String? = null) {
+        onFinalPair(source, translation, language)
+    }
     fun onError(code: String, message: String)
     fun onClosed()
 

@@ -2768,6 +2768,7 @@ dependencies = [
  "keyring",
  "keyring-core",
  "libpulse-binding",
+ "mimi-core",
  "minisign-verify",
  "objc2",
  "objc2-app-kit",
@@ -2805,6 +2806,14 @@ dependencies = [
  "windows-sys 0.61.2",
  "x11-dl",
  "zbus-secret-service-keyring-store",
+]
+
+[[package]]
+name = "mimi-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

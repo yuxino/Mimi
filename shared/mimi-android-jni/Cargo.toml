@@ -1,0 +1,24 @@
+[package]
+name = "mimi-android-jni"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Stateless Android JNI adapter for Mimi's shared subtitle core"
+license = "MIT"
+
+[lib]
+name = "mimi_android_jni"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Reuse the version already present in the desktop dependency lock.
+jni = "=0.21.1"
+mimi-core = { path = "../mimi-core" }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+# Keep unwinding inside the adapter's catch boundary, never across JNI.
+panic = "unwind"
+strip = "symbols"
