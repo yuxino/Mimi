@@ -6,6 +6,15 @@ import { setStoredUiLanguage } from "../../lib/i18n";
 import { SettingsToastRegion } from "./SettingsToast";
 import { useSettingsToast } from "./useSettingsToast";
 
+const native = vi.hoisted(() => ({ handlers: new Map<string, () => void>(), unlisten: vi.fn() }));
+vi.mock("../../lib/ipc", () => ({ isTauri: true }));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ listen: (event: string, handler: () => void) => {
+    native.handlers.set(event, handler);
+    return Promise.resolve(() => { native.handlers.delete(event); native.unlisten(); });
+  } }),
+}));
+
 type Notify = (message: string, failure?: boolean) => void;
 let first: Notify, second: Notify;
 let host: HTMLDivElement, root: Root | null;
@@ -24,6 +33,7 @@ async function render(scopeKey = "diagnostics") {
 }
 async function click(index: number) { await act(() => host.querySelectorAll("button")[index].click()); }
 beforeEach(() => {
+  native.handlers.clear(); native.unlisten.mockClear();
   vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   setStoredUiLanguage("en");
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -72,4 +82,16 @@ it("cleans timers on unmount and discards pending feedback from an unmounted act
   await act(() => first("Late copy"));
   expect(host.querySelector(".settings-toast")).toBeNull();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it.each(["tauri://blur", "tauri://close-requested"])("clears on native %s and rejects its late completion", async event => {
+  await render(); await click(0); await act(() => first("Copied"));
+  expect(native.handlers.has(event)).toBe(true);
+  await act(() => native.handlers.get(event)!());
+  await act(() => first("Late copy"));
+  expect(host.querySelector(".settings-toast")).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+  await act(() => root!.unmount()); root = null;
+  expect(native.handlers.size).toBe(0);
+  expect(native.unlisten).toHaveBeenCalledTimes(2);
 });

@@ -190,6 +190,10 @@ translated output. Record only timing/counts/status, never speech or subtitles.
   Mount only the active panel and remount the compact category navigation when
   the category changes. Verify that the highlighted category and visible
   heading agree after the initial settings snapshot arrives.
+- Transient settings feedback must also listen to native Tauri window blur and
+  close events. WKWebView may retain DOM focus when the macOS window loses
+  focus; DOM blur/visibility alone is insufficient. Verify app switching and
+  closing/reopening the settings window in the signed bundle.
 - Use `./scripts/dev-app.sh --ui-only` for visual states that do not require a
   provider. UI-only mode must never read Keychain items, open provider sockets,
   or start system-audio capture.

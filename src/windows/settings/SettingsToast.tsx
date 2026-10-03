@@ -13,21 +13,24 @@ export function SettingsToastRegion({ scopeKey }: { scopeKey?: string }) {
   useEffect(() => { dismissSettingsToast(); return dismissSettingsToast; }, [scopeKey]);
   useEffect(() => {
     let disposed = false;
-    let unlistenClose: (() => void) | undefined;
+    const nativeUnlisteners: (() => void)[] = [];
     const hidden = () => { if (document.hidden) dismissSettingsToast(); };
     window.addEventListener("hashchange", dismissSettingsToast);
     window.addEventListener("blur", dismissSettingsToast);
     document.addEventListener("visibilitychange", hidden);
     if (isTauri) {
       try {
-        void getCurrentWindow().listen(TauriEvent.WINDOW_CLOSE_REQUESTED, dismissSettingsToast).then(unlisten => {
-          if (disposed) unlisten(); else unlistenClose = unlisten;
-        }).catch(() => { /* Blur/visibility still clear the notification. */ });
+        const nativeWindow = getCurrentWindow();
+        for (const event of [TauriEvent.WINDOW_BLUR, TauriEvent.WINDOW_CLOSE_REQUESTED]) {
+          void nativeWindow.listen(event, dismissSettingsToast).then(unlisten => {
+            if (disposed) unlisten(); else nativeUnlisteners.push(unlisten);
+          }).catch(() => { /* DOM lifecycle events remain a browser fallback. */ });
+        }
       } catch { /* A browser fixture has no native window. */ }
     }
     return () => {
       disposed = true;
-      unlistenClose?.();
+      nativeUnlisteners.forEach(unlisten => unlisten());
       window.removeEventListener("hashchange", dismissSettingsToast);
       window.removeEventListener("blur", dismissSettingsToast);
       document.removeEventListener("visibilitychange", hidden);
