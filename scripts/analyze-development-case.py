@@ -298,8 +298,10 @@ def provider_stages(rows, entries):
         pairs.append({"source": source, "text": source_text if isinstance(source_text, str) else "",
                       "textEvidenceAvailable": isinstance(source_text, str),
                       "translation": content.get("translation", ""), "acceptance": status,
+                      "translationEvidenceAvailable": isinstance(content.get("translation"), str),
                       "sourceUtteranceId": numeric(content.get("sourceUtteranceId")),
                       "pairId": numeric(content.get("pairId")),
+                      "observationPairId": numeric(observation.get("utteranceId")),
                       "privateEventLine": index + 1, "elapsedMs": numeric(row.get("elapsedMs")),
                       "generation": observation.get("generation"),
                       "contentRevision": observation.get("contentRevision"),
@@ -311,14 +313,27 @@ def provider_stages(rows, entries):
 
 def translation_chains(rows, recognition, pairs):
     """Identity joins only; equal text or worker owner is never a foreign key."""
-    requests, receipts = {}, {}
+    def valid_identity(identity):
+        # Generation/revision and upstream sentence IDs can start at zero.
+        return identity[0] in ("system", "microphone") and all(
+            isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in identity[1:])
+
+    requests, receipts, drafts = {}, {}, []
     for index, row in enumerate(rows):
         event = row.get("event", {})
+        observation = event.get("observation", {})
+        if (event.get("kind") == "provider" and observation.get("producer") == "recognition" and
+                observation.get("eventKind") == "sourceDraft" and observation.get("admission") == "queueDraftAttempt"):
+            text = (event.get("content") or {}).get("source")
+            drafts.append({"source": observation.get("source"), "generation": observation.get("generation"),
+                           "contentRevision": observation.get("contentRevision"), "utteranceId": observation.get("utteranceId"),
+                           "text": text if isinstance(text, str) else "", "textEvidenceAvailable": isinstance(text, str),
+                           "privateEventLine": index + 1})
         if event.get("lane") != "final":
             continue
         identity = tuple(event.get(key) for key in (
             "source", "generation", "contentRevision", "sourceUtteranceId", "pairId"))
-        if any(value is None for value in identity):
+        if not valid_identity(identity) or not isinstance(event.get("requestId"), int) or isinstance(event["requestId"], bool) or event["requestId"] < 1:
             continue
         if event.get("kind") == "translationRequest":
             requests.setdefault(identity, []).append({**event, "privateEventLine": index + 1})
@@ -328,10 +343,21 @@ def translation_chains(rows, recognition, pairs):
     for pair in pairs:
         identity = tuple(pair.get(key) for key in (
             "source", "generation", "contentRevision", "sourceUtteranceId", "pairId"))
-        source_matches = [item for item in recognition if
+        source_matches = [item for item in recognition if valid_identity((
+            item["source"], item["generation"], item["contentRevision"], item["utteranceId"], 0)) and
                           (item["source"], item["generation"], item["contentRevision"], item["utteranceId"]) == identity[:4]]
+        origin = "serverFinal" if source_matches else "unavailable"
+        matching_requests = requests.get(identity, [])
+        if not source_matches and matching_requests:
+            before_request = min(request["privateEventLine"] for request in matching_requests)
+            source_drafts = [item for item in drafts if item["privateEventLine"] < before_request and valid_identity((
+                item["source"], item["generation"], item["contentRevision"], item["utteranceId"], 0)) and
+                (item["source"], item["generation"], item["contentRevision"], item["utteranceId"]) == identity[:4]]
+            if source_drafts:
+                source_matches = [max(source_drafts, key=lambda item: item["privateEventLine"])]
+                origin = "latestObservedDraft"
         attempts = []
-        for request in requests.get(identity, []):
+        for request in matching_requests:
             results = receipts.get((identity, request.get("requestId")), [])
             body = request.get("body", {})
             text = body.get("text")
@@ -342,19 +368,40 @@ def translation_chains(rows, recognition, pairs):
                 text = users[0] if len(users) == 1 else None
             decoded = [result for result in results if result.get("outcome") == "decoded" and not result.get("outputLimited")]
             attempts.append({"requestId": request.get("requestId"), "requestPrivateEventLine": request["privateEventLine"],
+                             "finalBoundary": request.get("finalBoundary"),
                              "requestSourceMatchesRecognition": (text == source_matches[0]["text"]
                                  if len(source_matches) == 1 and source_matches[0]["textEvidenceAvailable"] and isinstance(text, str) else None),
                              "resultPrivateEventLines": [result["privateEventLine"] for result in results],
+                             "uniqueResultReceipt": len(results) == 1,
                              "outcomes": [safe_label(result.get("outcome")) for result in results],
-                             "decodedOutputMatchesPair": decoded[0].get("output") == pair["translation"] if len(decoded) == 1 else None})
+                             "decodedOutputMatchesPair": decoded[0].get("output") == pair["translation"]
+                                 if len(decoded) == 1 and isinstance(decoded[0].get("output"), str) and pair["translationEvidenceAvailable"] else None})
+        pair_source_match = (pair["text"] == source_matches[0]["text"] if len(source_matches) == 1 and
+                             pair["textEvidenceAvailable"] and source_matches[0]["textEvidenceAvailable"] else None)
+        observation_match = (pair["pairId"] == pair["observationPairId"] if valid_identity(identity) and
+                             isinstance(pair["observationPairId"], int) else None)
+        ambiguous = (len(source_matches) > 1 or len({attempt["requestId"] for attempt in attempts}) != len(attempts) or
+                     any(len(attempt["resultPrivateEventLines"]) > 1 for attempt in attempts))
+        mismatch = (pair_source_match is False or observation_match is False or
+                    any(attempt["requestSourceMatchesRecognition"] is False or attempt["decodedOutputMatchesPair"] is False
+                        for attempt in attempts))
+        complete = (valid_identity(identity) and pair_source_match is True and observation_match is True and
+                    bool(attempts) and all(attempt["uniqueResultReceipt"] and attempt["requestSourceMatchesRecognition"] is True
+                                          for attempt in attempts) and
+                    any(attempt["decodedOutputMatchesPair"] is True for attempt in attempts))
         chains.append({"source": pair["source"], "generation": pair["generation"], "contentRevision": pair["contentRevision"],
                        "sourceUtteranceId": pair["sourceUtteranceId"], "pairId": pair["pairId"],
                        "pairPrivateEventLine": pair["privateEventLine"], "transportSequence": pair["transportSequence"],
                        "acceptance": pair["acceptance"], "matchedTraceEvents": pair["matchedTraceEvents"],
-                       "status": "identity_unavailable" if any(value is None for value in identity) else
+                       "status": "identity_unavailable" if not valid_identity(identity) else
                                  "exact_identity_join" if len(source_matches) == 1 and attempts else "identity_join_incomplete",
+                       "fullChainStatus": "ambiguous" if ambiguous else "mismatch" if mismatch else
+                                          ("complete_exact_draft_evidence" if origin == "latestObservedDraft" else "complete_exact_evidence")
+                                          if complete else "evidence_incomplete",
+                       "recognitionOrigin": origin, "observedServerFinal": origin == "serverFinal",
+                       "pairIdMatchesObservation": observation_match,
                        "recognitionPrivateEventLines": [item["privateEventLine"] for item in source_matches],
-                       "pairSourceMatchesRecognition": pair["text"] == source_matches[0]["text"] if len(source_matches) == 1 else None,
+                       "pairSourceMatchesRecognition": pair_source_match,
                        "attempts": attempts,
                        "limitation": "Missing HTTP attempts may include same-language local completion. No source/pair identity is inferred for legacy producers."})
     return chains
@@ -673,6 +720,8 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
     baseline_rows = read_jsonl(asr_directory / "events.jsonl")
     request = read_json(asr_directory / "request.json", required=False)
     metrics = read_json(asr_directory / "metrics.json", required=False)
+    baseline_complete = (any(row.get("kind") == "taskFinished" for row in baseline_rows)
+                         and metrics.get("failure") is None)
     finals, baseline_identity = asr_finals(baseline_rows)
     raw, pairs, raw_missing_identity = provider_stages(rows, entries)
     history, history_meta = history_rows(snapshots)
@@ -681,9 +730,8 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
     private_provider_observed = any(row.get("event", {}).get("kind") == "provider" for row in rows)
     stages = {"directAsrFinal": {"utterances": finals,
                                "comparison": compare(cues, text_of(finals), unit,
-                                   all(item["textEvidenceAvailable"] for item in finals) and
-                                   (expected_speech or (any(row.get("kind") == "taskFinished" for row in baseline_rows)
-                                                       and metrics.get("failure") is None)), expected_speech)}}
+                                   baseline_complete and all(item["textEvidenceAvailable"] for item in finals),
+                                   expected_speech)}}
     sources = sorted({item["source"] for item in raw + pairs + history})
     if not sources:
         sources = [route.get("audioInput") if route.get("audioInput") in ("system", "microphone") else "unknown"]
@@ -712,6 +760,8 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
                 "frontend_observations_have_no_text_wer", "direct_pcm_differs_from_playback_capture_path"]
     if trace.get("enabled") is not False:
         warnings.append("case_may_be_unfinished")
+    if not baseline_complete:
+        warnings.append("baseline_unfinished_or_failed")
     if any(item["acceptance"] == "unknown" for item in pairs):
         warnings.append("pair_acceptance_unknown_without_exact_trace_join")
     if frontend["unflushedWindows"]:
@@ -726,7 +776,9 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
         warnings.append("trace_coverage_incomplete_or_unknown")
     if any(losses.get(key) for key in ("frontendDropped", "contentDropped", "contentLimited", "contentFailed")) or trace_coverage["onDiskLossOrIncomplete"]:
         warnings.append("evidence_loss_or_limit_present")
-    return {"schemaVersion": 1, "normalizationVersion": "nfkc-word-internal-hyphen-v1", "containsPrivateTranscripts": True,
+    return {"schemaVersion": 1, "normalizationVersion": "nfkc-word-internal-hyphen-v1",
+            "analyzerSourceSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "containsPrivateTranscripts": True,
             "clipLabel": clip_label, "caseId": safe_label(report.get("caseId", manifest.get("id"))),
             "buildRevision": safe_label(route.get("buildRevision")),
             "reference": {"language": language_code(clip.get("language")), "unit": unit,
@@ -737,6 +789,7 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
             "configuration": configuration(route, request, metrics, clip, rows, raw + pairs),
             "baselineCompletion": {"taskFinishedObserved": any(row.get("kind") == "taskFinished" for row in baseline_rows),
                                    "failurePresent": metrics.get("failure") is not None,
+                                   "complete": baseline_complete,
                                    **baseline_identity},
             "stages": stages, "providerPairs": pairs,
             "translationChains": translation_chains(rows, raw, pairs),
@@ -767,6 +820,18 @@ def markdown(report):
                           "```text", cue["reference"].replace("```", "'''"), "```", ""])
             if cue["tokenDifferences"]:
                 lines.extend(["```json", json.dumps(cue["tokenDifferences"], ensure_ascii=False, indent=2), "```", ""])
+    lines.extend(["## Exact translation chains", "",
+                  "An identity link alone does not prove a complete content chain. Draft-origin completion is separate from an upstream recognition final.", "",
+                  "| Source / generation / revision | ASR ID | Pair ID | Recognition origin | Final boundary | Request IDs | Full chain | Admission | Trace IDs |",
+                  "|---|---:|---:|---|---|---|---|---|---|"])
+    for chain in report.get("translationChains", []):
+        attempts = chain["attempts"]
+        boundaries = ", ".join(sorted({safe_label(attempt.get("finalBoundary")) for attempt in attempts})) or "unknown"
+        request_ids = ", ".join(str(attempt["requestId"]) for attempt in attempts) or "unknown"
+        trace_ids = ", ".join(str(item["traceEventId"]) for item in chain["matchedTraceEvents"]) or "unknown"
+        lines.append(f'| {chain["source"]} / {chain["generation"]} / {chain["contentRevision"]} | '
+                     f'{chain["sourceUtteranceId"]} | {chain["pairId"]} | {chain["recognitionOrigin"]} | {boundaries} | '
+                     f'{request_ids} | {chain["fullChainStatus"]} | {chain["acceptance"]} | {trace_ids} |')
     lines.extend(["## Evidence and limits", "", report["interpretation"], "",
                   report["configuration"]["limitation"], "", report["audio"]["limitation"], "",
                   report["frontend"]["limitation"], "", "```json", json.dumps({

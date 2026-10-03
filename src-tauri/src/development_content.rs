@@ -181,6 +181,7 @@ pub struct RequestContext {
     pub request_id: u64,
     pub source_utterance_id: Option<u64>,
     pub pair_id: Option<u64>,
+    pub final_boundary: Option<&'static str>,
 }
 tokio::task_local! {
     static REQUEST_BINDING: RequestBinding;
@@ -291,7 +292,7 @@ impl TranslationAttempt {
         let limited =
             output.is_some_and(|text| !crate::core::models::subtitle_text_within_limit(text));
         (self.target)(
-            json!({"kind":"translationAttemptResult","requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"sourceUtteranceId":context.source_utterance_id,"pairId":context.pair_id,"boundary":boundary,"outcome":outcome,"durationMs":self.started.elapsed().as_millis() as u64,"serverReceiptProven":false,"outputBytes":output.map(str::len),"outputLimited":limited,"output":if limited {None} else {output},"errorLabel":error,"httpStatus":status}),
+            json!({"kind":"translationAttemptResult","requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"sourceUtteranceId":context.source_utterance_id,"pairId":context.pair_id,"finalBoundary":context.final_boundary,"boundary":boundary,"outcome":outcome,"durationMs":self.started.elapsed().as_millis() as u64,"serverReceiptProven":false,"outputBytes":output.map(str::len),"outputLimited":limited,"output":if limited {None} else {output},"errorLabel":error,"httpStatus":status}),
         );
     }
 }
@@ -379,7 +380,7 @@ fn request_value(protocol: RequestProtocol, body: &Value, context: RequestContex
                 .map(|value| ((*key).to_string(), value.clone()))
         })
         .collect();
-    json!({"kind":"translationRequest","protocol":name,"requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"sourceUtteranceId":context.source_utterance_id,"pairId":context.pair_id,"boundary":"httpRequestPrepared","serverReceiptProven":false,"body":body})
+    json!({"kind":"translationRequest","protocol":name,"requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"sourceUtteranceId":context.source_utterance_id,"pairId":context.pair_id,"finalBoundary":context.final_boundary,"boundary":"httpRequestPrepared","serverReceiptProven":false,"body":body})
 }
 
 #[cfg(test)]
@@ -397,6 +398,7 @@ mod tests {
             request_id: 0,
             source_utterance_id: Some(21),
             pair_id: None,
+            final_boundary: None,
         }
     }
     fn collector() -> (Sink, Arc<Mutex<Vec<Value>>>) {
@@ -433,6 +435,7 @@ mod tests {
         let ticket_a = begin_attempt(Some(RequestContext {
             preview: false,
             pair_id: Some(7),
+            final_boundary: Some("session-finish"),
             ..context()
         }));
         configure(Some(case_b));
@@ -456,9 +459,12 @@ mod tests {
             assert_eq!(value["attempt"], 2);
             assert_eq!(value["sourceUtteranceId"], 21);
             assert_eq!(value["pairId"], 7);
+            assert_eq!(value["finalBoundary"], "session-finish");
             assert_eq!(value["serverReceiptProven"], false);
         }
         assert_eq!(values_a[1]["outcome"], "decoded");
+        assert_eq!(values_a[0]["boundary"], "httpRequestPrepared");
+        assert_eq!(values_a[1]["boundary"], "localTranslationDecoded");
         assert_eq!(values_a[1]["output"], "synthetic decoded output");
         assert!(b.lock().unwrap().is_empty());
         drop(values_a);
@@ -472,6 +478,7 @@ mod tests {
         assert_eq!(values_b[0]["boundary"], "localTranslationFutureDropped");
         assert_eq!(values_b[0]["sourceUtteranceId"], 21);
         assert!(values_b[0]["pairId"].is_null());
+        assert!(values_b[0]["finalBoundary"].is_null());
         assert!(values_b[0]["output"].is_null());
         assert_eq!(a.lock().unwrap().len(), 2);
     }
@@ -555,12 +562,15 @@ mod tests {
         let text = "Synthetic repeated source";
         let output = "Synthetic repeated translation";
         let mut request_ids = Vec::new();
-        for (source_id, pair_id) in [(21, 1), (22, 2)] {
+        for (source_id, pair_id, final_boundary) in
+            [(21, 1, "server-final"), (22, 2, "session-finish")]
+        {
             let ticket = begin_attempt_with(
                 Some(RequestContext {
                     preview: false,
                     source_utterance_id: Some(source_id),
                     pair_id: Some(pair_id),
+                    final_boundary: Some(final_boundary),
                     ..context()
                 }),
                 Some(target.clone()),
@@ -589,6 +599,7 @@ mod tests {
             for record in [request, receipt] {
                 assert_eq!(record["sourceUtteranceId"], pair["sourceUtteranceId"]);
                 assert_eq!(record["pairId"], pair["pairId"]);
+                assert_eq!(record["finalBoundary"], final_boundary);
                 // Both attempts may use one serial worker: its owner is not a pair ID.
                 assert_eq!(record["owner"], 13);
             }
@@ -615,6 +626,7 @@ mod tests {
             request_id: 0,
             source_utterance_id: None,
             pair_id: None,
+            final_boundary: None,
         };
         let body = json!({"model":"synthetic","messages":[{"role":"user","content":"synthetic text"}],"Authorization":"secret","api_key":"secret","endpoint":"secret"});
         let output = request_value(RequestProtocol::OpenaiCompatible, &body, context);

@@ -299,6 +299,53 @@ class CaseAnalysisTests(unittest.TestCase):
             self.assertNotIn("PRIVATE-REFERENCE", stdout.getvalue() + stderr.getvalue())
             self.assertNotIn(temporary, stdout.getvalue() + stderr.getvalue())
 
+    def test_unfinished_positive_baseline_does_not_score_partial_or_empty_finals(self):
+        for text in ("A small", "A small example.", None):
+            with self.subTest(final_text=text), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                case, baseline, _, _ = self.fixture(root)
+                rows = ([{"kind": "transcription", "isFinal": True, "sentenceId": 1, "text": text}]
+                        if text is not None else [])
+                (baseline / "events.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+                report = ANALYZE.analyze(case, root / "media.json", "synthetic", baseline)
+                score = report["stages"]["directAsrFinal"]["comparison"]
+                self.assertEqual(score["status"], "evidence_unavailable")
+                self.assertIsNone(score["errorRate"])
+                self.assertNotIn("deletions", score)
+                self.assertFalse(report["baselineCompletion"]["complete"])
+                self.assertIn("baseline_unfinished_or_failed", report["warnings"])
+                self.assertEqual(ANALYZE.text_of(report["stages"]["directAsrFinal"]["utterances"]), text or "")
+
+    def test_failed_completed_baseline_is_unavailable_for_positive_and_negative(self):
+        for expected_speech in (True, False):
+            with self.subTest(expected_speech=expected_speech), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                case, baseline, _, _ = self.fixture(root)
+                if not expected_speech:
+                    (root / "media.json").write_text(json.dumps({"clips": [{"label": "synthetic",
+                        "language": "auto", "unit": "word", "reference_path": None, "expected_speech": False}]}))
+                (baseline / "metrics.json").write_text(json.dumps({"failure": "provider_rejected"}))
+                report = ANALYZE.analyze(case, root / "media.json", "synthetic", baseline)
+                score = report["stages"]["directAsrFinal"]["comparison"]
+                self.assertEqual(score["status"], "evidence_unavailable")
+                self.assertIsNone(score["errorRate"])
+                self.assertTrue(report["baselineCompletion"]["taskFinishedObserved"])
+                self.assertTrue(report["baselineCompletion"]["failurePresent"])
+                self.assertFalse(report["baselineCompletion"]["complete"])
+                if not expected_speech:
+                    self.assertIsNone(score["unexpectedTranscription"])
+
+    def test_completed_positive_without_finals_can_score_observed_omission(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case, baseline, _, _ = self.fixture(root)
+            (baseline / "events.jsonl").write_text(json.dumps({"kind": "taskFinished"}) + "\n")
+            report = ANALYZE.analyze(case, root / "media.json", "synthetic", baseline)
+            score = report["stages"]["directAsrFinal"]["comparison"]
+            self.assertEqual(score["status"], "compared")
+            self.assertEqual((score["hypothesisUnits"], score["deletions"], score["errorRate"]), (0, 3, 1))
+            self.assertTrue(report["baselineCompletion"]["complete"])
+
     def test_negative_controls_report_observed_text_without_a_fake_error_rate(self):
         for text, status, unexpected in (("", "no_transcription_observed", False),
                                          ("Unexpected words", "unexpected_transcription", True)):
@@ -321,6 +368,7 @@ class CaseAnalysisTests(unittest.TestCase):
                 {"role": "user", "content": "A small example."}]}}},
                 {"event": {**identity, "kind": "translationAttemptResult", "outcome": "decoded", "output": "Synthetic translation"}}])
             pair = provider(sequence=sequence)
+            pair["event"]["observation"]["utteranceId"] = owner - 20
             pair["event"]["content"].update({"sourceUtteranceId": owner, "pairId": owner - 20})
             rows.append(pair); decisions.append(decision(sequence=sequence))
         raw, pairs, _ = ANALYZE.provider_stages(rows, decisions)
@@ -328,6 +376,24 @@ class CaseAnalysisTests(unittest.TestCase):
         self.assertEqual([chain["sourceUtteranceId"] for chain in chains], [21, 22])
         self.assertTrue(all(chain["status"] == "exact_identity_join" for chain in chains))
         self.assertTrue(all(chain["attempts"][0]["decodedOutputMatchesPair"] for chain in chains))
+        self.assertTrue(all(chain["fullChainStatus"] == "complete_exact_evidence" for chain in chains))
+        receipts = [row for row in rows if row["event"].get("kind") == "translationAttemptResult"]
+        saved_id = receipts[0]["event"]["requestId"]
+        receipts[0]["event"]["requestId"] = 999
+        self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[0]["fullChainStatus"], "evidence_incomplete")
+        receipts[0]["event"]["requestId"] = saved_id
+        receipts[0]["event"]["output"] = "Incorrect decoded output"
+        self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[0]["fullChainStatus"], "mismatch")
+        receipts[0]["event"]["output"] = "Synthetic translation"
+        self.assertEqual(ANALYZE.translation_chains(rows + [receipts[0]], raw, pairs)[0]["fullChainStatus"], "ambiguous")
+        requests = [row for row in rows if row["event"].get("kind") == "translationRequest"]
+        requests[0]["event"]["body"]["messages"][0]["content"] = "Wrong actual request source"
+        self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[0]["fullChainStatus"], "mismatch")
+        requests[0]["event"]["body"]["messages"][0]["content"] = "A small example."
+        for invalid in (True, 21.0, -1):
+            requests[0]["event"]["sourceUtteranceId"] = invalid
+            self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[0]["fullChainStatus"], "evidence_incomplete")
+        requests[0]["event"]["sourceUtteranceId"] = 21
         pairs[1]["sourceUtteranceId"] = None
         self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[1]["status"], "identity_unavailable")
         pairs[0]["source"] = "microphone"
@@ -346,6 +412,24 @@ class CaseAnalysisTests(unittest.TestCase):
             self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, {**report, field: 1}, coverage, rows))
         self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, report, coverage, []))
         self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, {**report, "trace": {"enabled": True}}, coverage, rows))
+
+    def test_session_finish_draft_evidence_is_exact_but_never_called_a_server_final(self):
+        draft = provider(kind="sourceDraft", producer="recognition", admission="queueDraftAttempt")
+        pair = provider()
+        pair["event"]["content"].update({"sourceUtteranceId": 8, "pairId": 8})
+        identity = {"source": "system", "generation": 2, "contentRevision": 0,
+                    "sourceUtteranceId": 8, "pairId": 8, "requestId": 99, "lane": "final", "finalBoundary": "session-finish"}
+        rows = [draft, {"event": {**identity, "kind": "translationRequest", "body": {"text": ["A small example."]}}},
+                {"event": {**identity, "kind": "translationAttemptResult", "outcome": "decoded", "output": "Synthetic translation"}}, pair,
+                provider(kind="sourceDraft", producer="recognition", admission="queueDraftAttempt", text="Later draft")]
+        raw, pairs, _ = ANALYZE.provider_stages(rows, [decision()])
+        self.assertEqual(raw, [])
+        chain = ANALYZE.translation_chains(rows, raw, pairs)[0]
+        self.assertEqual(chain["recognitionOrigin"], "latestObservedDraft")
+        self.assertFalse(chain["observedServerFinal"])
+        self.assertEqual(chain["fullChainStatus"], "complete_exact_draft_evidence")
+        self.assertEqual(chain["recognitionPrivateEventLines"], [1])
+        self.assertEqual(chain["attempts"][0]["finalBoundary"], "session-finish")
 
     def test_negative_cli_accepts_null_reference_and_incomplete_evidence_stays_unknown(self):
         with tempfile.TemporaryDirectory() as temporary:

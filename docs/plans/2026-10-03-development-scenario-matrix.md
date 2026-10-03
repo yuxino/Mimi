@@ -1,7 +1,5 @@
 # Development Scenario Matrix Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Run repeatable, independent ASR baselines across a tagged public-media scenario matrix and compare each with private Mimi dev evidence.
 
 **Architecture:** Prepare licensed media in parallel, then compile the manual Rust test executable once and run each scene in its own process with bounded concurrency. Copy validated PCM, audition WAV and reference into a private case control directory so child manifests remain self-contained. System-audio playback into signed Mimi dev remains sequential; simultaneous playback would corrupt source attribution.
@@ -45,3 +43,20 @@ Parallel owners prepare different animation/movie dialogue and no-dialogue contr
 Run baseline jobs after validation. For each scene, create a new dev evidence case, wait for actual successful audio sends, play one verified WAV, wait for final tail, stop and seal the case. Score raw ASR, exactly admitted pairs and confirmed history with the same normalization. Review timestamps, actual sent PCM and same-snapshot frontend projection for any suspected loss. Translation semantics and readable glyphs require separate review; text counts are insufficient.
 
 Agents cross-check findings and prioritize a reproducible failure. Make a product repair only when the owning stage and invariant are established, then rerun the same scene and preserve both cases. Silence, music, speech overlap, pause/resume, collapse/expand and reconnect have explicit expected behaviors; incomplete traces remain unknown. Persist each completed corpus and report privately so a reboot does not erase the baseline.
+
+### Task 4: Keep expanded evidence batches bounded and independently reopenable
+
+The first expanded native run reached the default store's 128 MiB reservation
+limit after 11 new cases, with about 89 MiB of actual files. Preserve them.
+An explicit dev workspace selector chooses a named private sibling catalog;
+the original catalog stays the default. Each catalog retains its existing
+128 MiB and 64-case bounds, with at most eight extra catalogs. Production
+ignores the selector. Validate names and reject symlink/non-directory roots
+before writes. Record the workspace in route metadata and display it in the
+debugger. No credentials, preferences or opt-in state are copied or changed.
+
+Add focused pure validation and filesystem-boundary tests, then run the full
+check and canonical signed dev launcher. Native automation must confirm a new
+active case ID before starting capture, and require the previous case's trace
+and audio recorders to be sealed before playback. A refused recording remains
+a failed preparation; it must never be scored against an old case ID.

@@ -30,7 +30,14 @@
    utterance and confirmation-pair IDs. Join those with source, generation,
    content revision and request ID; a serial worker owner or equal sentence
    text is not a causal identity. Old cases without the IDs remain unknown.
+   `finalBoundary` distinguishes an upstream `server-final` from the bounded
+   local `session-finish` fallback. The latter can translate an unfinished
+   ASR draft when stopping. It must not be described as a service-confirmed
+   recognition final. The offline analyzer separates identity links, complete
+   content chains, exact draft-origin chains, mismatches and missing evidence.
    Saved local cases can be reopened in the dev inspector after restarting.
+   Captured routes record the launcher build revision and whether its checkout
+   was clean, dirty or unknown; a dirty build is not identical to that commit.
    Keep them local
    unless deliberately choosing to share them.
 6. An AI analysis must cite trace event IDs and snapshot IDs, check all loss
@@ -125,3 +132,28 @@ they must not count intentionally discarded or uncaptured speech as omissions.
 Repeat identical source sentences with distinct identities when exercising
 late replies and overwrite behavior. Persist completed input/evidence/report
 folders privately before relying on them as a reusable baseline.
+
+## Evidence workspaces for larger matrices
+
+The default store remains `development-evidence` in the private app config
+directory. A large, explicitly recorded matrix can exhaust its 128 MiB
+reservation limit even while files occupy less space: each new case reserves
+its maximum content/audio/report budget before starting. A failed recording
+must not be treated as a new case. Confirm tracing is active and the case ID
+is new before capture/playback; confirm the previous trace and audio recorders
+are sealed before playing the next scene.
+
+Launch a separate dev batch with:
+
+```bash
+./scripts/dev-app.sh --evidence-workspace scene-matrix-2
+```
+
+This non-secret workspace selector is honored only by the exact development
+app. It does not change credential selection, preferences or recording opt-in.
+The workspace name is shown in the debugger and retained in captured routes.
+Each store keeps the same 128 MiB / 64-case limits. At most eight additional
+workspaces may exist, bounding the nine stores to 1,152 MiB of reservation
+capacity. Files remain private; older workspaces are preserved in place and
+never silently removed. Reuse a named workspace to reopen its saved cases.
+Launch without the option to reopen the original default catalog.

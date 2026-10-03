@@ -6,6 +6,7 @@ pub mod committer;
 pub mod configuration;
 pub mod credentials;
 pub mod development_debug;
+pub mod development_evidence_workspace;
 pub mod diagnostics;
 #[cfg(any(target_os = "macos", test))]
 pub mod dock_presentation;

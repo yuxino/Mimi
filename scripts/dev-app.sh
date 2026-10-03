@@ -23,13 +23,15 @@ BUNDLE_IDENTIFIER="app.yuxino.mimi.dev"
 RELEASE_BUNDLE_IDENTIFIER="app.yuxino.mimi"
 MODE="live"
 SHOULD_LAUNCH=1
+EVIDENCE_WORKSPACE=""
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/dev-app.sh [--ui-only] [--no-launch]
+Usage: ./scripts/dev-app.sh [--ui-only] [--no-launch] [--evidence-workspace NAME]
 
   --ui-only   Open local UI fixtures without credentials, network, or audio capture.
   --no-launch Build and install the canonical development app without opening it.
+  --evidence-workspace NAME  Select a private dev evidence batch; recordings remain off until explicitly enabled.
 
 Live development always uses a stable signing identity and a fixed app path.
 The default is /Applications/mimi-dev.app. Override it only with another path
@@ -46,6 +48,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-launch)
       SHOULD_LAUNCH=0
+      ;;
+    --evidence-workspace)
+      if [[ $# -lt 2 || ! "$2" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$ ]]; then
+        echo "error: evidence workspace must be 1–48 ASCII letters, digits, underscores or hyphens, starting with a letter or digit." >&2
+        exit 2
+      fi
+      EVIDENCE_WORKSPACE="$2"
+      shift
       ;;
     -h | --help)
       usage
@@ -299,6 +309,11 @@ export CARGO_HOME="${CARGO_HOME:-$PROJECT_DIR/.cargo-home}"
 export npm_config_cache="${npm_config_cache:-$PROJECT_DIR/.npm-cache}"
 export MACOSX_DEPLOYMENT_TARGET="13.0"
 export MIMI_DEBUG_REVISION="$(git rev-parse HEAD)"
+if [[ -n "$(git status --porcelain)" ]]; then
+  export MIMI_DEBUG_TREE_STATE="dirty"
+else
+  export MIMI_DEBUG_TREE_STATE="clean"
+fi
 
 npm run build:dev
 TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --profile local-dev \
@@ -454,9 +469,9 @@ if [[ "$SHOULD_LAUNCH" == "1" ]]; then
   fi
 
   if [[ "$MODE" == "ui-only" ]]; then
-    open -n --env MIMI_UI_TEST=1 "$CANONICAL_APP"
+    open -n --env MIMI_UI_TEST=1 --env "MIMI_DEVELOPMENT_EVIDENCE_WORKSPACE=$EVIDENCE_WORKSPACE" "$CANONICAL_APP"
   else
-    open -n "$CANONICAL_APP"
+    open -n --env "MIMI_DEVELOPMENT_EVIDENCE_WORKSPACE=$EVIDENCE_WORKSPACE" "$CANONICAL_APP"
   fi
 
   RUNNING_CANONICAL_PIDS=()
@@ -474,6 +489,7 @@ if [[ "$SHOULD_LAUNCH" == "1" ]]; then
     exit 1
   fi
   echo "Opened exact development app: $CANONICAL_APP (pid ${RUNNING_CANONICAL_PIDS[0]})"
+  echo "Development evidence workspace: ${EVIDENCE_WORKSPACE:-default}"
   if [[ "$MODE" == "ui-only" ]]; then
     echo "UI-only mode does not access credentials, network services, or system audio."
   fi

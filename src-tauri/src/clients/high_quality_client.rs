@@ -172,6 +172,7 @@ struct MeasuredTranslation {
 struct TranslationEvidenceIdentity {
     source_utterance_id: Option<u64>,
     pair_id: Option<u64>,
+    final_boundary: Option<&'static str>,
 }
 
 struct Inner {
@@ -1267,6 +1268,7 @@ impl HighQualityTranslationClient {
                 TranslationEvidenceIdentity {
                     source_utterance_id,
                     pair_id: None,
+                    final_boundary: None,
                 },
             )
             .await;
@@ -1671,6 +1673,7 @@ impl HighQualityTranslationClient {
                     TranslationEvidenceIdentity {
                         source_utterance_id: request.source_utterance_id,
                         pair_id: Some(request.utterance_revision),
+                        final_boundary: Some(request.boundary.label()),
                     },
                 )
                 .await
@@ -2063,6 +2066,7 @@ impl HighQualityTranslationClient {
                     request_id: 0,
                     source_utterance_id: identity.source_utterance_id,
                     pair_id: identity.pair_id,
+                    final_boundary: identity.final_boundary,
                 }
             });
             let evidence = crate::development_content::begin_attempt(context);

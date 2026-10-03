@@ -45,6 +45,7 @@ update both implementations and their platform-specific tests in the same change
 | Secret storage | OS keychain | Android Keystore-backed encrypted preferences |
 | Local HTTP | Existing loopback endpoint validation | Explicit per-config opt-in and Android network allowlist; includes emulator host |
 | History/recording | Optional bounded local session files and selected-input recordings | Existing optional bounded subtitle history; no desktop recording/export parity claimed |
+| Development evidence | Exact dev app only; opt-in sent audio, subtitle snapshots, causal traces, saved-case playback and bounded evidence workspaces | No matching debugger or sent-audio recording claimed |
 
 These differences are current scope, not proof of live-account acceptance. When expanding a
 feature, update this table and the affected cross-platform fixtures instead of assuming the

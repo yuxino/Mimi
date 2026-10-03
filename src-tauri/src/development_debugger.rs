@@ -3,6 +3,9 @@
 use crate::commands::AppState;
 use crate::core::audio_input::AudioSource;
 use crate::core::development_debug::{self as trace, FrontendObservation};
+use crate::core::development_evidence_workspace::{
+    valid_workspace_name, EvidenceWorkspace, EXTRA_WORKSPACE_LIMIT,
+};
 use crate::session_manager::SessionStateEvent;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
@@ -76,7 +79,10 @@ struct EvidenceCase {
 }
 #[derive(Default)]
 struct DebuggerState {
+    app_directory: Option<PathBuf>,
     root: Option<PathBuf>,
+    workspace: EvidenceWorkspace,
+    storage_error: Option<&'static str>,
     case: Option<Arc<EvidenceCase>>,
     route: serde_json::Value,
     loaded_report: Option<DebuggerSnapshot>,
@@ -102,13 +108,189 @@ pub fn initialize(app: &AppHandle) {
     let available = crate::windows::is_dev_build()
         && app.config().identifier == crate::settings_store::DEVELOPMENT_APPLICATION_IDENTIFIER;
     trace::initialize(available);
-    if available {
-        state().lock().unwrap().root = app
-            .path()
-            .app_data_dir()
-            .ok()
-            .map(|p| p.join("development-evidence"));
+    let selection = initialize_evidence_storage(
+        available,
+        || app.path().app_data_dir().ok(),
+        || std::env::var_os("MIMI_DEVELOPMENT_EVIDENCE_WORKSPACE"),
+    );
+    let mut debugger = state().lock().unwrap();
+    match selection {
+        Ok(Some((app_directory, root, workspace))) => {
+            debugger.route = serde_json::json!({"evidenceWorkspace":workspace.label()});
+            debugger.app_directory = Some(app_directory);
+            debugger.root = Some(root);
+            debugger.workspace = workspace;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            debugger.storage_error = Some(error);
+            debugger.route = serde_json::json!({"evidenceWorkspaceError":error});
+        }
     }
+}
+
+// Both closures are deliberately evaluated only after the exact dev gate.
+// Production must neither read this selector nor create an evidence directory.
+fn initialize_evidence_storage(
+    available: bool,
+    app_directory: impl FnOnce() -> Option<PathBuf>,
+    selector: impl FnOnce() -> Option<std::ffi::OsString>,
+) -> Result<Option<(PathBuf, PathBuf, EvidenceWorkspace)>, &'static str> {
+    if !available {
+        return Ok(None);
+    }
+    let value = selector();
+    let workspace = EvidenceWorkspace::parse(
+        value
+            .as_ref()
+            .map(|value| {
+                value
+                    .to_str()
+                    .ok_or("development_evidence_workspace_invalid")
+            })
+            .transpose()?,
+    )?;
+    let app_directory = app_directory().ok_or("development_evidence_storage_failed")?;
+    let root = select_evidence_root(&app_directory, &workspace)?;
+    Ok(Some((app_directory, root, workspace)))
+}
+
+fn require_directory(path: &Path) -> Result<(), &'static str> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| "development_evidence_storage_failed")?;
+    if !metadata.is_dir() {
+        return Err("development_evidence_workspace_invalid");
+    }
+    Ok(())
+}
+
+fn workspace_count(container: &Path) -> Result<usize, &'static str> {
+    let mut count = 0;
+    for entry in fs::read_dir(container).map_err(|_| "development_evidence_storage_failed")? {
+        let entry = entry.map_err(|_| "development_evidence_storage_failed")?;
+        if !entry
+            .file_type()
+            .map_err(|_| "development_evidence_storage_failed")?
+            .is_dir()
+            || !entry.file_name().to_str().is_some_and(valid_workspace_name)
+        {
+            return Err("development_evidence_workspace_invalid");
+        }
+        count += 1;
+        if count > EXTRA_WORKSPACE_LIMIT {
+            return Err("development_evidence_workspace_limit");
+        }
+    }
+    Ok(count)
+}
+
+fn existing_workspace_count(container: &Path) -> Result<usize, &'static str> {
+    match fs::symlink_metadata(container) {
+        Ok(_) => {
+            require_directory(container)?;
+            workspace_count(container)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(_) => Err("development_evidence_storage_failed"),
+    }
+}
+
+fn workspace_directory(app_directory: &Path, workspace: &EvidenceWorkspace) -> PathBuf {
+    match workspace {
+        EvidenceWorkspace::Default => app_directory.join("development-evidence"),
+        EvidenceWorkspace::Named(name) => app_directory
+            .join("development-evidence-workspaces")
+            .join(name),
+    }
+}
+
+fn select_evidence_root(
+    app_directory: &Path,
+    workspace: &EvidenceWorkspace,
+) -> Result<PathBuf, &'static str> {
+    private_directory(app_directory).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::InvalidInput {
+            "development_evidence_workspace_invalid"
+        } else {
+            "development_evidence_storage_failed"
+        }
+    })?;
+    let root = workspace_directory(app_directory, workspace);
+    let container = app_directory.join("development-evidence-workspaces");
+    existing_workspace_count(&container)?;
+    if let EvidenceWorkspace::Named(name) = workspace {
+        if !valid_workspace_name(name) || name == "default" {
+            return Err("development_evidence_workspace_invalid");
+        }
+        private_directory(&container).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::InvalidInput {
+                "development_evidence_workspace_invalid"
+            } else {
+                "development_evidence_storage_failed"
+            }
+        })?;
+        let count = workspace_count(&container)?;
+        match fs::symlink_metadata(&root) {
+            Ok(_) => require_directory(&root)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                if count >= EXTRA_WORKSPACE_LIMIT {
+                    return Err("development_evidence_workspace_limit");
+                }
+                let mut builder = fs::DirBuilder::new();
+                builder.recursive(false);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::DirBuilderExt;
+                    builder.mode(0o700);
+                }
+                let created = match builder.create(&root) {
+                    Ok(()) => true,
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+                    Err(_) => return Err("development_evidence_storage_failed"),
+                };
+                // Recheck after creation: competing initializations cannot retain
+                // a ninth extra catalog. Only our newly created empty directory
+                // is eligible for rollback; existing evidence is never removed.
+                if let Err(error) = workspace_count(&container) {
+                    if created {
+                        let _ = fs::remove_dir(&root);
+                    }
+                    return Err(error);
+                }
+                require_directory(&root)?;
+            }
+            Err(_) => return Err("development_evidence_storage_failed"),
+        }
+    }
+    private_directory(&root).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::InvalidInput {
+            "development_evidence_workspace_invalid"
+        } else {
+            "development_evidence_storage_failed"
+        }
+    })?;
+    Ok(root)
+}
+
+fn evidence_root(debugger: &DebuggerState) -> Result<PathBuf, &'static str> {
+    if let Some(error) = debugger.storage_error {
+        return Err(error);
+    }
+    let app_directory = debugger
+        .app_directory
+        .as_deref()
+        .ok_or("development_evidence_storage_failed")?;
+    require_directory(app_directory)?;
+    let container = app_directory.join("development-evidence-workspaces");
+    if matches!(debugger.workspace, EvidenceWorkspace::Named(_)) {
+        require_directory(&container)?;
+    }
+    existing_workspace_count(&container)?;
+    let root = debugger
+        .root
+        .as_ref()
+        .ok_or("development_evidence_storage_failed")?;
+    require_directory(root)?;
+    Ok(root.clone())
 }
 fn available() -> Result<(), &'static str> {
     if trace::snapshot(0).available {
@@ -118,7 +300,24 @@ fn available() -> Result<(), &'static str> {
     }
 }
 fn private_directory(path: &Path) -> std::io::Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "private evidence directory must be a regular directory",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
     fs::create_dir_all(path)?;
+    if !fs::symlink_metadata(path)?.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "private evidence directory must be a regular directory",
+        ));
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -609,7 +808,7 @@ fn read_saved_report(directory: &Path) -> Result<DebuggerSnapshot, &'static str>
     {
         return Err("development_case_invalid");
     }
-    let report: DebuggerSnapshot = serde_json::from_reader(file.take(4 * 1024 * 1024 + 1))
+    let mut report: DebuggerSnapshot = serde_json::from_reader(file.take(4 * 1024 * 1024 + 1))
         .map_err(|_| "development_case_invalid")?;
     if report.trace.schema_version != 1
         || report.trace.enabled
@@ -618,6 +817,11 @@ fn read_saved_report(directory: &Path) -> Result<DebuggerSnapshot, &'static str>
         || report.trace_bytes > report.content_bytes
     {
         return Err("development_case_invalid");
+    }
+    if let Some(route) = report.route.as_object_mut() {
+        route
+            .entry("evidenceWorkspace")
+            .or_insert_with(|| serde_json::json!("default"));
     }
     Ok(report)
 }
@@ -638,12 +842,7 @@ fn saved_case_directory(root: &Path, case_id: &str) -> Result<PathBuf, &'static 
 #[tauri::command]
 pub async fn development_debug_cases() -> Result<Vec<SavedCase>, String> {
     available()?;
-    let root = state()
-        .lock()
-        .unwrap()
-        .root
-        .clone()
-        .ok_or("development_evidence_storage_failed")?;
+    let root = evidence_root(&state().lock().unwrap())?;
     tauri::async_runtime::spawn_blocking(move || {
         let mut cases = Vec::new();
         if !root.exists() {
@@ -688,12 +887,7 @@ pub async fn development_debug_open_case(case_id: String) -> Result<(), String> 
     if let Some(case) = state().lock().unwrap().case.as_ref() {
         require_finalized(case)?;
     }
-    let root = state()
-        .lock()
-        .unwrap()
-        .root
-        .clone()
-        .ok_or("development_evidence_storage_failed")?;
+    let root = evidence_root(&state().lock().unwrap())?;
     tauri::async_runtime::spawn_blocking(move || {
         let _operation = operation;
         let directory = saved_case_directory(&root, &case_id)?;
@@ -832,28 +1026,23 @@ pub fn development_debug_start(
     let preferences = app_state.settings.preferences();
     let epoch = Instant::now();
     let profile = app_state.settings.active_profile().ok();
+    let mut debugger = state().lock().unwrap();
+    let root = evidence_root(&debugger)?;
     let route = serde_json::json!({
-        "appVersion":app.package_info().version.to_string(), "buildRevision":option_env!("MIMI_DEBUG_REVISION").unwrap_or("unknown"), "uiTest":app_state.settings.is_ui_test(),
+        "appVersion":app.package_info().version.to_string(), "buildRevision":option_env!("MIMI_DEBUG_REVISION").unwrap_or("unknown"), "buildTreeState":option_env!("MIMI_DEBUG_TREE_STATE").unwrap_or("unknown"), "uiTest":app_state.settings.is_ui_test(),
         "createdAtUnixMs":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"clock":"sharedMonotonicEpoch",
         "provider":profile.as_ref().map(|p|p.provider),"textTranslation":profile.as_ref().map(|p|p.text_translation()),
         "sourceLanguage":preferences.source_language,"targetLanguage":preferences.target_language,"translationMode":preferences.translation_mode,
         "audioInput":preferences.audio_input,"subtitleDisplayMode":preferences.subtitle_display_mode,"fontSize":preferences.font_size,
         "blendsWithBackground":preferences.subtitle_blends_with_background,"recordedContent":with_audio,
+        "evidenceWorkspace":debugger.workspace.label(),
     });
-    let mut debugger = state().lock().unwrap();
     if let Some(case) = debugger.case.as_ref() {
         require_finalized(case)?;
         case.tx.lock().unwrap().take();
     }
     if with_audio {
-        let case = start_case(
-            debugger
-                .root
-                .clone()
-                .ok_or("development_evidence_storage_failed")?,
-            &route,
-            epoch,
-        )?;
+        let case = start_case(root, &route, epoch)?;
         if let Err(error) =
             crate::development_audio::configure_at(case.directory.clone(), true, epoch)
         {
@@ -1126,6 +1315,209 @@ pub async fn development_debug_export(app: AppHandle) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn evidence_workspace_is_ignored_before_the_exact_dev_gate() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(initialize_evidence_storage(
+            false,
+            || panic!("production must not resolve the evidence root"),
+            || panic!("production must not read the workspace environment"),
+        )
+        .unwrap()
+        .is_none());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn invalid_evidence_workspace_fails_before_creating_directories() {
+        let root = tempfile::tempdir().unwrap();
+        for selector in ["../outside", "bad/name", "-batch", "白"] {
+            assert_eq!(
+                initialize_evidence_storage(
+                    true,
+                    || Some(root.path().join("app")),
+                    || Some(selector.into()),
+                ),
+                Err("development_evidence_workspace_invalid")
+            );
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            assert_eq!(
+                initialize_evidence_storage(
+                    true,
+                    || Some(root.path().join("app")),
+                    || Some(std::ffi::OsString::from_vec(vec![0xff])),
+                ),
+                Err("development_evidence_workspace_invalid")
+            );
+        }
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn evidence_workspaces_preserve_the_default_and_limit_extra_catalogs() {
+        let app = tempfile::tempdir().unwrap();
+        let legacy = app.path().join("development-evidence");
+        private_directory(&legacy).unwrap();
+        fs::write(legacy.join("unchanged.json"), b"synthetic saved evidence").unwrap();
+        for selector in [None, Some(""), Some("default")] {
+            let (_, root, workspace) = initialize_evidence_storage(
+                true,
+                || Some(app.path().to_owned()),
+                || selector.map(Into::into),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(root, legacy);
+            assert_eq!(workspace.label(), "default");
+        }
+        let mut roots = Vec::new();
+        for index in 0..EXTRA_WORKSPACE_LIMIT {
+            let workspace = EvidenceWorkspace::parse(Some(&format!("batch-{index}"))).unwrap();
+            roots.push(select_evidence_root(app.path(), &workspace).unwrap());
+        }
+        let ninth = EvidenceWorkspace::parse(Some("batch-9")).unwrap();
+        assert_eq!(
+            select_evidence_root(app.path(), &ninth),
+            Err("development_evidence_workspace_limit")
+        );
+        assert!(!workspace_directory(app.path(), &ninth).exists());
+        for (index, root) in roots.iter().enumerate() {
+            let workspace = EvidenceWorkspace::parse(Some(&format!("batch-{index}"))).unwrap();
+            assert_eq!(select_evidence_root(app.path(), &workspace).unwrap(), *root);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(root).unwrap().permissions().mode() & 0o777,
+                    0o700
+                );
+            }
+        }
+        assert_eq!(
+            select_evidence_root(app.path(), &EvidenceWorkspace::Default).unwrap(),
+            legacy
+        );
+        assert_eq!(
+            fs::read(legacy.join("unchanged.json")).unwrap(),
+            b"synthetic saved evidence"
+        );
+        assert_eq!(
+            workspace_count(&app.path().join("development-evidence-workspaces")).unwrap(),
+            EXTRA_WORKSPACE_LIMIT
+        );
+        assert_eq!(
+            ALL_CASES_BYTE_LIMIT * (EXTRA_WORKSPACE_LIMIT as u64 + 1),
+            1152 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn evidence_workspace_retains_the_same_per_catalog_case_reservation() {
+        let app = tempfile::tempdir().unwrap();
+        let legacy = select_evidence_root(app.path(), &EvidenceWorkspace::Default).unwrap();
+        private_file(&legacy.join("existing.bin"))
+            .unwrap()
+            .set_len(ALL_CASES_BYTE_LIMIT - CASE_RESERVED_BYTES + 1)
+            .unwrap();
+        assert!(matches!(
+            start_case(legacy.clone(), &serde_json::json!({}), Instant::now()),
+            Err("development_evidence_storage_limit")
+        ));
+        let workspace = EvidenceWorkspace::parse(Some("second-batch")).unwrap();
+        let root = select_evidence_root(app.path(), &workspace).unwrap();
+        let case = start_case(root.clone(), &serde_json::json!({}), Instant::now()).unwrap();
+        case.tx.lock().unwrap().take();
+        case.writer.lock().unwrap().take().unwrap().join().unwrap();
+        assert!(case.directory.starts_with(&root));
+        assert_eq!(
+            stored_bytes(&legacy).unwrap(),
+            ALL_CASES_BYTE_LIMIT - CASE_RESERVED_BYTES + 1
+        );
+        for index in 1..CASE_COUNT_LIMIT {
+            fs::create_dir(root.join(format!("occupied-{index}"))).unwrap();
+        }
+        assert!(matches!(
+            start_case(root.clone(), &serde_json::json!({}), Instant::now()),
+            Err("development_evidence_storage_limit")
+        ));
+        assert_eq!(fs::read_dir(root).unwrap().count(), CASE_COUNT_LIMIT);
+    }
+
+    #[test]
+    fn evidence_workspace_rejects_non_directories_and_changed_roots() {
+        let app = tempfile::tempdir().unwrap();
+        let workspace = EvidenceWorkspace::parse(Some("batch")).unwrap();
+        let root = select_evidence_root(app.path(), &workspace).unwrap();
+        let debugger = DebuggerState {
+            app_directory: Some(app.path().to_owned()),
+            root: Some(root.clone()),
+            workspace,
+            ..Default::default()
+        };
+        assert_eq!(evidence_root(&debugger).unwrap(), root);
+        fs::remove_dir(&root).unwrap();
+        fs::write(&root, b"not a directory").unwrap();
+        assert_eq!(
+            evidence_root(&debugger),
+            Err("development_evidence_workspace_invalid")
+        );
+        assert_eq!(
+            select_evidence_root(app.path(), &debugger.workspace),
+            Err("development_evidence_workspace_invalid")
+        );
+        assert_eq!(fs::read(root).unwrap(), b"not a directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn evidence_workspace_rejects_symlink_roots_without_touching_targets() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        fs::create_dir(&target).unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o755)).unwrap();
+        fs::write(target.join("unchanged"), b"outside fixture").unwrap();
+        let linked_app = root.path().join("linked-app");
+        symlink(&target, &linked_app).unwrap();
+        assert_eq!(
+            select_evidence_root(&linked_app, &EvidenceWorkspace::Default),
+            Err("development_evidence_workspace_invalid")
+        );
+        for (name, workspace) in [
+            ("development-evidence", EvidenceWorkspace::Default),
+            (
+                "development-evidence-workspaces",
+                EvidenceWorkspace::parse(Some("batch")).unwrap(),
+            ),
+            (
+                "development-evidence-workspaces/batch",
+                EvidenceWorkspace::parse(Some("batch")).unwrap(),
+            ),
+        ] {
+            let app = tempfile::tempdir().unwrap();
+            let link = app.path().join(name);
+            fs::create_dir_all(link.parent().unwrap()).unwrap();
+            symlink(&target, &link).unwrap();
+            assert_eq!(
+                select_evidence_root(app.path(), &workspace),
+                Err("development_evidence_workspace_invalid")
+            );
+        }
+        assert_eq!(
+            fs::read(target.join("unchanged")).unwrap(),
+            b"outside fixture"
+        );
+        assert_eq!(fs::read_dir(&target).unwrap().count(), 1);
+        assert_eq!(
+            fs::metadata(target).unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+    }
+
     fn metadata_entry(id: u64) -> trace::DebugEntry {
         trace::DebugEntry {
             id,
@@ -1400,6 +1792,7 @@ mod tests {
         assert_eq!(reopened.case_id, Some(case.id.clone()));
         assert_eq!(reopened.private_events, 1);
         assert_eq!(reopened.replay_snapshots, 1);
+        assert_eq!(reopened.route["evidenceWorkspace"], "default");
         let mut legacy = serde_json::to_value(&report).unwrap();
         for name in [
             "tracePersistenceEnabled",
