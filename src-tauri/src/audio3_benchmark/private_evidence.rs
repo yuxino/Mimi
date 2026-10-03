@@ -9,7 +9,10 @@ const MAX_LINE_BYTES: usize = 512 * 1024;
 const MAX_EVENTS_BYTES: usize = 8 * 1024 * 1024;
 
 pub(super) fn validate_root(root: &Path) -> Result<(), Failure> {
-    let allowed = Path::new("/private/tmp/mimi-debug-benchmark");
+    validate_root_under(root, Path::new("/private/tmp/mimi-debug-benchmark"))
+}
+
+fn validate_root_under(root: &Path, allowed: &Path) -> Result<(), Failure> {
     if !root.is_absolute()
         || !root.starts_with(allowed)
         || root
@@ -62,6 +65,10 @@ pub(super) struct Evidence {
 impl Evidence {
     pub(super) fn create(root: &Path, label: &str) -> Result<Self, Failure> {
         validate_root(root)?;
+        Self::create_in_validated_root(root, label)
+    }
+
+    fn create_in_validated_root(root: &Path, label: &str) -> Result<Self, Failure> {
         if !super::valid_label(label) {
             return Err(Failure::EvidenceFailed);
         }
@@ -197,9 +204,20 @@ fn evidence_is_private_and_rejects_outside_output_roots() {
         "/private/tmp/mimi-debug-benchmark/../outside-benchmark"
     ))
     .is_err());
-    let root = Path::new("/private/tmp/mimi-debug-benchmark")
-        .join(format!("unit-{}", uuid::Uuid::new_v4()));
-    let evidence = Evidence::create(&root, "fixture").unwrap();
+    // The real harness stays restricted to the explicit macOS evidence root.
+    // Exercise the same filesystem checks/writer in a runner-owned directory:
+    // /private/tmp is neither an absolute Windows path nor writable on Linux CI.
+    let allowed = std::env::temp_dir().canonicalize().unwrap().join(format!(
+        "mimi-private-evidence-unit-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let root = allowed.join("evidence");
+    assert!(validate_root(&root).is_err());
+    assert!(Evidence::create(&root, "fixture").is_err());
+    assert!(validate_root_under(&allowed.with_extension("outside"), &allowed).is_err());
+    assert!(validate_root_under(&root.join("../outside"), &allowed).is_err());
+    validate_root_under(&root, &allowed).unwrap();
+    let evidence = Evidence::create_in_validated_root(&root, "fixture").unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -221,5 +239,5 @@ fn evidence_is_private_and_rejects_outside_output_roots() {
         );
     }
     drop(evidence);
-    std::fs::remove_dir_all(root).unwrap();
+    std::fs::remove_dir_all(allowed).unwrap();
 }
