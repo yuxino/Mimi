@@ -5,6 +5,8 @@ pub mod audio_input;
 pub mod committer;
 pub mod configuration;
 pub mod credentials;
+#[cfg(test)]
+pub mod development_build_permissions;
 pub mod development_debug;
 #[cfg(any(test, feature = "development-debugger"))]
 pub mod development_evidence_workspace;
