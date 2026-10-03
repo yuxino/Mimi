@@ -160,6 +160,7 @@ pub struct SettingsSnapshotPayload {
     pub retain_session_history: bool,
     pub record_session_audio: bool,
     pub audio_input: AudioInput,
+    pub microphone_input_available: bool,
     pub windows_audio_source: String,
     pub system_audio_target: crate::core::system_audio_target::SystemAudioTarget,
     pub show_in_dock: bool,
@@ -525,6 +526,7 @@ mod tests {
             retain_session_history: false,
             record_session_audio: false,
             audio_input: AudioInput::System,
+            microphone_input_available: false,
             windows_audio_source: String::new(),
             system_audio_target: Default::default(),
             show_in_dock: false,
@@ -532,6 +534,7 @@ mod tests {
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["activeProfileId"], "alibaba-default");
+        assert_eq!(json["microphoneInputAvailable"], false);
         assert_eq!(json["credentialStorage"], "keychain");
         assert_eq!(json["pulseStyle"], "ribbon");
         assert_eq!(json["showInDock"], false);
@@ -637,6 +640,17 @@ mod tests {
             serde_json::from_value::<SettingsDraft>(serde_json::json!({"audioInput":"none"}))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn capture_commands_reject_hidden_microphone_selections() {
+        assert!(ensure_audio_input_available(AudioInput::System).is_ok());
+        for input in [AudioInput::Microphone, AudioInput::Both] {
+            assert_eq!(
+                ensure_audio_input_available(input),
+                Err("microphone_input_unavailable".into())
+            );
+        }
     }
 
     #[test]
@@ -821,6 +835,8 @@ impl SettingsSnapshotPayload {
                     retain_session_history: prefs.retain_session_history,
                     record_session_audio: prefs.record_session_audio,
                     audio_input: prefs.audio_input,
+                    microphone_input_available:
+                        crate::core::audio_input::MICROPHONE_INPUT_AVAILABLE,
                     windows_audio_source: prefs.windows_audio_source,
                     system_audio_target: prefs.system_audio_target,
                     show_in_dock: prefs.show_in_dock,
@@ -868,6 +884,7 @@ impl SettingsSnapshotPayload {
             retain_session_history: prefs.retain_session_history,
             record_session_audio: prefs.record_session_audio,
             audio_input: prefs.audio_input,
+            microphone_input_available: crate::core::audio_input::MICROPHONE_INPUT_AVAILABLE,
             windows_audio_source: prefs.windows_audio_source,
             system_audio_target: prefs.system_audio_target,
             show_in_dock: prefs.show_in_dock,
@@ -1051,6 +1068,9 @@ fn apply_settings_draft_guarded(
     state: &AppState,
     draft: SettingsDraft,
 ) -> Result<SettingsSnapshotPayload, String> {
+    if let Some(input) = draft.audio_input {
+        ensure_audio_input_available(input)?;
+    }
     #[cfg(not(target_os = "macos"))]
     if draft.show_in_dock.is_some() {
         return Err("dock-preference-unsupported".into());
@@ -1451,6 +1471,7 @@ pub async fn profile_reveal_credential(
 
 #[tauri::command]
 pub async fn session_start(state: State<'_, AppState>) -> Result<(), String> {
+    ensure_audio_input_available(state.settings.preferences().audio_input)?;
     state.session.start(true).await
 }
 
@@ -1484,7 +1505,16 @@ pub async fn session_switch_audio_input(
     state: State<'_, AppState>,
     input: AudioInput,
 ) -> Result<(), String> {
+    ensure_audio_input_available(input)?;
     state.session.switch_audio_input(input).await
+}
+
+fn ensure_audio_input_available(input: AudioInput) -> Result<(), String> {
+    if input.is_available() {
+        Ok(())
+    } else {
+        Err("microphone_input_unavailable".into())
+    }
 }
 
 #[tauri::command]
@@ -1788,6 +1818,7 @@ pub async fn quit_application(app: AppHandle, session: Arc<SessionManager>) -> R
         return Ok(());
     };
     session.stop().await;
+    #[cfg(any(test, feature = "development-debugger"))]
     crate::development_debugger::finish_on_quit(app.clone()).await?;
     finish_quit(session.persist_current_history(), || app.exit(0))?;
     request.exit_requested();

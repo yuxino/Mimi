@@ -416,7 +416,7 @@ function Lane({
   if (lines === null) {
     return (
       <span
-        data-debug-lane={kind}
+        {...(__MIMI_DEVELOPMENT_BUILD__ ? { "data-debug-lane": kind } : {})}
         className={entering ? "block min-w-0 subtitle-lane" : "block min-w-0"}
         hidden={hidden}
         style={{ textAlign: alignment, ...textStyle, display: hidden ? "none" : undefined }}
@@ -493,7 +493,7 @@ function CompactLane({
   return (
     <div
       ref={viewportRef}
-      data-debug-lane={kind}
+      {...(__MIMI_DEVELOPMENT_BUILD__ ? { "data-debug-lane": kind } : {})}
       aria-label={text}
       aria-hidden={hidden || undefined}
       hidden={hidden}

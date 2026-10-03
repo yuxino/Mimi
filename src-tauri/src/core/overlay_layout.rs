@@ -7,7 +7,7 @@ pub const BASE_MINIMUM_HEIGHT: f64 = 136.0;
 pub const MAXIMUM_CHROME_HEIGHT: f64 = 85.0;
 const MIN_FONT_SIZE: f64 = 14.0;
 const MAX_FONT_SIZE: f64 = 20.0;
-const DEFAULT_FONT_SIZE: f64 = 18.0;
+pub const DEFAULT_FONT_SIZE: f64 = 16.0;
 const LINE_HEIGHT: f64 = 1.32;
 const COMPACT_SOURCE_SCALE: f64 = 0.82;
 
@@ -127,7 +127,7 @@ mod tests {
         assert_eq!(minimum(-1.0), minimum(14.0));
         assert_eq!(minimum(100.0), minimum(20.0));
         for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert_eq!(minimum(invalid), minimum(18.0));
+            assert_eq!(minimum(invalid), minimum(DEFAULT_FONT_SIZE));
         }
     }
 }

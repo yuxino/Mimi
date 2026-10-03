@@ -112,7 +112,7 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   sourceLanguage: "auto",
   targetLanguage: "zh",
   translationMode: "turbo",
-  fontSize: 18,
+  fontSize: 16,
   subtitleBackgroundOpacity: 80,
   subtitleColor: "white",
   microphoneSubtitleColor: "yellow",
@@ -129,6 +129,7 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   retainSessionHistory: false,
   recordSessionAudio: false,
   audioInput: "system",
+  microphoneInputAvailable: false,
   windowsAudioSource: "",
   systemAudioTarget: { kind: "system" },
   showInDock: true,
@@ -262,7 +263,7 @@ export const useStore = create<StoreState>()((set, get) => ({
           applySession: (session) => {
             if (generation !== initializationGeneration) return;
             set((state) => ({ session: shareUnchangedSubtitleHistory(state.session, session) }));
-            observeSessionStoreApplied(get().session);
+            if (__MIMI_DEVELOPMENT_BUILD__) observeSessionStoreApplied(get().session);
           },
           onReady: () => {
             if (generation !== initializationGeneration) return;

@@ -8,7 +8,7 @@ export const OVERLAY_MAXIMUM_CHROME_HEIGHT = 85;
 export function minimumOverlayHeight(settings: Pick<SettingsSnapshot,
   "audioInput" | "subtitleDisplayMode" | "targetLanguage" | "fontSize">): number {
   if (settings.audioInput !== "both") return OVERLAY_BASE_MINIMUM_HEIGHT;
-  const font = Number.isFinite(settings.fontSize) ? Math.min(20, Math.max(14, settings.fontSize)) : 18;
+  const font = Number.isFinite(settings.fontSize) ? Math.min(20, Math.max(14, settings.fontSize)) : 16;
   const translationLine = Math.ceil(font * 1.32);
   const rowHeight = settings.subtitleDisplayMode === "bilingual" && settings.targetLanguage !== "original"
     ? Math.ceil(Math.max(12, font * 0.82) * 1.32) + translationLine + 2 + 5

@@ -67,7 +67,7 @@ it.each(["zh", "en", "ja"] as const)("keeps %s language, display and application
   expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(3);
   expect(host.querySelectorAll('.application-audio-picker')).toHaveLength(1);
   expect(host.querySelector('fieldset, .overlay-control-options, .overlay-control-group')).toBeNull();
-  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(6);
+  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(4);
   expect(host.querySelector('.overlay-control-setting small')).toBeNull();
   expect(picker(I18N.overlay.sourceLanguage)).toBe(document.activeElement);
   expect(props.onSwitchSourceLanguage).not.toHaveBeenCalled();
@@ -82,10 +82,12 @@ it("supports keyboard source selection and dismisses only after the command succ
   expect(props.onDismiss).toHaveBeenCalledOnce();
 });
 
-it("shows direct audio switches and keeps More settings at the default destination", async () => {
+it("keeps system audio application selection and More settings without hidden input switches", async () => {
   await mount();
   const audioControls = host.querySelector(".overlay-control-capture")!;
-  expect(audioControls.querySelectorAll('[role="switch"]')).toHaveLength(2);
+  expect(audioControls.querySelectorAll('[role="switch"]')).toHaveLength(0);
+  expect(audioControls.querySelector('[data-audio-source="microphone"]')).toBeNull();
+  expect(audioControls.querySelector('.application-audio-picker')).not.toBeNull();
   expect(audioControls.querySelector(`button[aria-label="${I18N.settings.audioInputTitle}"]`)).toBeNull();
   await act(async () => host.querySelector<HTMLButtonElement>(".overlay-control-settings-link")!.click());
   expect(props.onShowSettings).toHaveBeenCalledExactlyOnceWith();

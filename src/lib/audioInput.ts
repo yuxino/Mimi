@@ -10,6 +10,7 @@ export function audioInputLabel(input: AudioInput = "system", target?: SystemAud
 
 const copy = {
   en: {
+    unavailable: "Microphone input is temporarily unavailable. Use system audio.",
     missing: "No microphone is available. Connect one and select it as the system’s default input.",
     permission: "Microphone access was denied. Allow Mimi to use the microphone in system privacy settings, then try again.",
     start: "Could not start the microphone. Check the system’s default input and its permissions, then try again.",
@@ -25,6 +26,7 @@ const copy = {
     switchStop: "Could not stop the previous audio input. Stop subtitles before trying again.",
   },
   zh: {
+    unavailable: "麦克风输入暂时不可用，请使用系统声音。",
     missing: "没有可用的麦克风。请连接麦克风，并将其设为系统默认输入。",
     permission: "麦克风权限被拒绝。请在系统隐私设置中允许 Mimi 使用麦克风，然后重试。",
     start: "无法启动麦克风。请检查系统默认输入和麦克风权限，然后重试。",
@@ -40,6 +42,7 @@ const copy = {
     switchStop: "之前的音频输入未能停止，请先停止字幕再重试。",
   },
   ja: {
+    unavailable: "マイク入力は一時的に利用できません。システム音声を使用してください。",
     missing: "利用できるマイクがありません。接続して、システムの既定の入力に設定してください。",
     permission: "マイクへのアクセスが拒否されました。システムのプライバシー設定で Mimi のマイク利用を許可し、再試行してください。",
     start: "マイクを開始できませんでした。システムの既定の入力とマイクの権限を確認し、再試行してください。",
@@ -57,6 +60,7 @@ const copy = {
 };
 
 const errors: Record<string, keyof typeof copy.en> = {
+  microphone_input_unavailable: "unavailable",
   audio_input_switch_busy: "switchBusy",
   audio_input_switch_superseded: "switchSuperseded",
   audio_input_switch_save_failed: "switchSave",

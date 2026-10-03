@@ -1,6 +1,6 @@
 [package]
 name = "mimi"
-version = "1.5.7"
+version = "1.5.8"
 description = "Live translated subtitles for anything playing on your Mac or PC."
 authors = ["yuxino <nbsawz@gmail.com>"]
 edition = "2021"
@@ -19,6 +19,8 @@ tauri-build = { version = "2", features = [] }
 default = []
 # Expose the WebView inspector when the signed development launcher opts in.
 devtools = ["tauri/devtools"]
+# Private evidence tooling is excluded from production builds.
+development-debugger = []
 # Read-only local .env keys; runtime also requires the exact macOS dev identifier.
 local-dev-credentials = []
 

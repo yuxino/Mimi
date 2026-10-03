@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { SubtitleSessionControls } from "./SubtitleSessionControls";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
@@ -12,7 +12,6 @@ import type { SubtitleDisplayMode } from "../../lib/types";
 import { SubtitleColorControl } from "./SubtitleColorControl";
 import { ServiceProfiles } from "./ServiceProfiles";
 import { SupportDiagnostics } from "./SupportDiagnostics";
-import { DevelopmentDebugger } from "./DevelopmentDebugger";
 import { SessionExport } from "./SessionExport";
 import { SoftwareUpdate } from "./SoftwareUpdate";
 import { useSettingsTheme } from "./useSettingsTheme";
@@ -30,6 +29,10 @@ import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
 import { AudioInputSettings } from "./AudioInputSettings";
 import "./settings.css";
+
+const DevelopmentDebugger = __MIMI_DEVELOPMENT_BUILD__
+  ? lazy(() => import("./DevelopmentDebugger").then(module => ({ default: module.DevelopmentDebugger })))
+  : null;
 
 type SettingsCategory = "subtitles" | "service" | "general" | "export" | "diagnostics" | "guide";
 
@@ -325,12 +328,12 @@ export function SettingsView() {
                           onChange={(subtitleColor) => void saveSettings({ subtitleColor })}
                         />
                       </SettingsRow>
-                      <SettingsRow label={I18N.settings.microphoneSubtitleColor}>
+                      {settings.microphoneInputAvailable && <SettingsRow label={I18N.settings.microphoneSubtitleColor}>
                         <SubtitleColorControl label={I18N.settings.microphoneSubtitleColor}
                           value={settings.microphoneSubtitleColor ?? "yellow"}
                           onChange={(microphoneSubtitleColor) => void saveSettings({ microphoneSubtitleColor })}
                         />
-                      </SettingsRow>
+                      </SettingsRow>}
                       <SettingsRow label={I18N.settings.fontSize}>
                         <div className="font-size-control">
                           <span className="font-size-control__sample" aria-hidden="true">
@@ -411,7 +414,9 @@ export function SettingsView() {
 
             <div id="diagnostics-panel" className={`settings-category-panel${activeCategory !== "diagnostics" ? " is-inactive" : ""}`}>
               <SupportDiagnostics visible={activeCategory === "diagnostics"} />
-              {activeCategory === "diagnostics" && <DevelopmentDebugger visible />}
+              {activeCategory === "diagnostics" && DevelopmentDebugger !== null && (
+                <Suspense fallback={null}><DevelopmentDebugger visible /></Suspense>
+              )}
             </div>
 
             <div

@@ -1,6 +1,10 @@
 //! Explicit capture selection. Missing preferences remain system-only.
 use serde::{Deserialize, Serialize};
 
+/// Temporarily expose system audio only. Keep the independent microphone lane
+/// implementation for a later return; this is the single native availability gate.
+pub const MICROPHONE_INPUT_AVAILABLE: bool = false;
+
 /// One independent capture/recognition lane. A lane can never mix inputs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +24,10 @@ pub enum AudioInput {
 }
 
 impl AudioInput {
+    pub fn is_available(self) -> bool {
+        MICROPHONE_INPUT_AVAILABLE || self == Self::System
+    }
+
     pub fn sources(self) -> &'static [AudioSource] {
         match self {
             Self::System => &[AudioSource::System],
@@ -61,5 +69,12 @@ mod tests {
             &[AudioSource::System, AudioSource::Microphone]
         );
         assert!(serde_json::from_str::<AudioSource>("\"both\"").is_err());
+    }
+
+    #[test]
+    fn hidden_microphone_cannot_be_selected() {
+        assert!(AudioInput::System.is_available());
+        assert!(!AudioInput::Microphone.is_available());
+        assert!(!AudioInput::Both.is_available());
     }
 }

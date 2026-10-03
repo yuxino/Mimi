@@ -6,6 +6,7 @@
 #[macro_export]
 macro_rules! pipeline_log {
     ($($arg:tt)*) => {{
+        #[cfg(any(test, feature = "development-debugger"))]
         $crate::core::development_debug::record_pipeline(format_args!($($arg)*));
         if $crate::core::diagnostics::is_enabled() {
             tracing::info!($($arg)*);

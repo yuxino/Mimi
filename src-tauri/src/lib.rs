@@ -8,8 +8,17 @@ mod clients;
 mod commands;
 mod core;
 mod desktop_shortcuts;
+#[cfg(any(test, feature = "development-debugger"))]
 mod development_audio;
+#[cfg(not(any(test, feature = "development-debugger")))]
+#[path = "development_audio_disabled.rs"]
+mod development_audio;
+#[cfg(any(test, feature = "development-debugger"))]
 mod development_content;
+#[cfg(not(any(test, feature = "development-debugger")))]
+#[path = "development_content_disabled.rs"]
+mod development_content;
+#[cfg(any(test, feature = "development-debugger"))]
 mod development_debugger;
 #[cfg(target_os = "linux")]
 mod linux_startup;
@@ -110,6 +119,7 @@ pub fn run() {
                 return Err("development builds require the isolated Tauri identifier".into());
             }
             let is_ui_test = std::env::var("MIMI_UI_TEST").as_deref() == Ok("1");
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::initialize(&app_handle);
             if is_ui_test {
                 if let Some(window) = app.get_webview_window("settings") {
@@ -336,17 +346,29 @@ pub fn run() {
             commands::windows_audio_status,
             commands::audio_census,
             commands::support_diagnostics,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_snapshot,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_start,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_stop,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_observe,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_flush_ack,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_export,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_audio,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_replay,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_cases,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_open_case,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_private_events,
+            #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_trace_events,
             commands::app_open_support_issue,
             commands::capture_status,

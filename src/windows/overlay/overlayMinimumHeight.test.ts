@@ -14,6 +14,6 @@ describe("browser and native minimum-height contract", () => {
   it("bounds malformed or unsupported browser font inputs", () => {
     const minimum = (fontSize: number) => minimumOverlayHeight({ audioInput: "both", subtitleDisplayMode: "bilingual", targetLanguage: "zh", fontSize });
     expect(minimum(-1)).toBe(minimum(14)); expect(minimum(100)).toBe(minimum(20));
-    for (const font of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) expect(minimum(font)).toBe(minimum(18));
+    for (const font of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) expect(minimum(font)).toBe(minimum(16));
   });
 });

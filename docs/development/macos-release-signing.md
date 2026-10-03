@@ -1,7 +1,7 @@
 # macOS releases with a fixed identity
 
 New macOS releases use the certificate pinned in
-`scripts/macos-release-identity.txt`. The existing private key stays in the
+   `scripts/macos-release-identity.txt`. The existing private key stays in the
 maintainer Mac's Keychain. Do not export it to GitHub or replace it to unblock a
 build. The updater signing key is separate and must continue matching the
 public key in `src-tauri/tauri.conf.json`.
@@ -28,12 +28,16 @@ public key in `src-tauri/tauri.conf.json`.
    - `src-tauri/target/x86_64-apple-darwin/release/bundle/macos/mimi_x64.app.tar.gz`
 
    The app contains the signed `MimiSourceRevision` for that exact commit.
-   Both archives contain `mimi.app`; separate filenames keep architecture
+   The default build excludes development debugger commands, private evidence storage and audio observation. Release verification also rejects debugger command/storage markers in the executable. Both archives contain `mimi.app`; separate filenames keep architecture
    updates distinct. CI applies the existing updater signature only after
    verifying the expected architecture, pinned
    app identity, signed source/version and matching DMG. The updater private
    key/password remain in the existing Actions secrets; no local secret export
    or key rotation is needed. A QA build lacks the signed source marker.
+
+The preparation script honors `CARGO_TARGET_DIR` for both build outputs and
+verification paths, so managed worktrees can reuse an existing compilation cache.
+When this is set, use that target directory for the four upload paths below.
 
 ## Stage and publish
 

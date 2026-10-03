@@ -125,6 +125,8 @@ export interface SettingsSnapshot {
   retainSessionHistory: boolean;
   recordSessionAudio: boolean;
   audioInput: AudioInput;
+  /** Native release availability; missing snapshots keep the microphone hidden. */
+  microphoneInputAvailable?: boolean;
   windowsAudioSource: string;
   systemAudioTarget: SystemAudioTarget;
   /** macOS only; false retains menu-bar utility behavior. */

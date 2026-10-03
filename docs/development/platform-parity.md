@@ -40,7 +40,7 @@ update both implementations and their platform-specific tests in the same change
 | Built-in Alibaba pipeline | Desktop Audio 3.0/Qwen-MT scheduling | Existing integrated realtime translation adapter |
 | Translation scheduling | Speculative drafts plus prioritized finals and provider recovery | Final-only serial HTTP, one active and four waiting; explicit stop on failure |
 | Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Existing native overlay background settings and history styling |
-| Audio capture | OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
+| Audio capture | System audio only in the current release; microphone selection temporarily unavailable (implementation retained). OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
 | Proxy preferences | Per-profile independent recognition/text routes; integrated realtime uses one route | Platform network defaults; no per-stage proxy controls |
 | Secret storage | OS keychain | Android Keystore-backed encrypted preferences |
 | Local HTTP | Existing loopback endpoint validation | Explicit per-config opt-in and Android network allowlist; includes emulator host |
@@ -63,4 +63,4 @@ platform's native UI, permissions and resource limits.
   on both sides when changing scheduling. Desktop-only draft/reconnect machinery must not
   be copied into a final-only Android flow without a product need.
 
-Desktop subtitle controls additionally support keeping text opaque while backgrounds remain transparent and independent system/microphone subtitle colors. These are desktop presentation preferences; Android does not currently expose matching controls.
+Desktop subtitle controls additionally support keeping text opaque while backgrounds remain transparent and system subtitle color. The microphone color control is temporarily hidden with microphone input. These are desktop presentation preferences; Android does not currently expose matching controls.

@@ -27,7 +27,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   setStoredUiLanguage("en");
-  useStore.setState({ ...initial, initializationStatus: "ready", switchAudioInput: mocks.switchAudioInput, switchSystemAudioTarget: mocks.switchSystemAudioTarget, session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false } }, true);
+  useStore.setState({ ...initial, settings: { ...initial.settings, microphoneInputAvailable: true }, initializationStatus: "ready", switchAudioInput: mocks.switchAudioInput, switchSystemAudioTarget: mocks.switchSystemAudioTarget, session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false } }, true);
   mocks.invoke.mockResolvedValue(system);
   mocks.switchAudioInput.mockImplementation(async (audioInput: AudioInput) => {
     useStore.setState(state => ({ settings: { ...state.settings, audioInput, recordSessionAudio: false } }));
@@ -104,7 +104,7 @@ it("locks both switches while a change is pending and ignores repeated clicks", 
 });
 
 it.each(["connecting", "stopping"] as const)("disables switching while %s", async kind => {
-  useStore.setState({ settings: { ...initial.settings, audioInput: "both" } });
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "both" } });
   await session({ status: { kind } });
   await mount();
   expect(toggle("system").disabled).toBe(true);
@@ -205,7 +205,7 @@ it.each([
   ["zh", "收到声音", "未收到音频"], ["en", "Receiving sound", "No audio data"], ["ja", "音声を受信中", "データなし"],
 ] as const)("keeps truthful independent observations in each source tooltip in %s", async (language, sound, noData) => {
   setStoredUiLanguage(language);
-  useStore.setState({ settings: { ...initial.settings, audioInput: "both" } });
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "both" } });
   mocks.invoke.mockResolvedValue(dual);
   await mount();
   expect(status("system")).toBe(sound);
@@ -226,7 +226,7 @@ it("keeps switching available when capture status is unavailable", async () => {
 });
 
 it("does not invent per-source sound for a legacy aggregate both response", async () => {
-  useStore.setState({ settings: { ...initial.settings, audioInput: "both" } });
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "both" } });
   mocks.invoke.mockResolvedValue({ ...dual, sources: undefined });
   await mount();
   expect(status("system")).toBe("Waiting for audio");
@@ -240,7 +240,7 @@ it.each([
   [{ status: { kind: "error", message: "synthetic-error" }, isActive: false }, "Error"],
   [{ status: { kind: "idle" }, isActive: false }, "Not capturing"],
 ] satisfies [Partial<SessionStateEvent>, string][])("gives lifecycle %j priority over old sound", async (patch, label) => {
-  useStore.setState({ settings: { ...initial.settings, audioInput: "both" } });
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "both" } });
   mocks.invoke.mockResolvedValue(dual);
   await mount();
   mocks.invoke.mockImplementationOnce(() => new Promise(() => {}));
@@ -255,7 +255,7 @@ it("ignores pending reads from old source and lifecycle stamps, including return
   mocks.invoke.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
   await mount();
   mocks.invoke.mockResolvedValueOnce(microphone);
-  await act(async () => useStore.setState({ settings: { ...initial.settings, audioInput: "microphone" } }));
+  await act(async () => useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "microphone" } }));
   await act(async () => finishOld(system));
   expect(status("microphone")).toBe("No audio data");
   expect(status("system")).toBe("Off");
@@ -286,8 +286,19 @@ it("keeps restrictions in the relevant source help without repeating dual-input 
   expect(description("system")).not.toContain("separate recognition and usage");
   expect(description("microphone")).toContain("separate recognition and usage");
   expect(description("microphone")).not.toContain("Keep at least one input on");
-  await act(async () => useStore.setState({ settings: { ...initial.settings, audioInput: "microphone" } }));
+  await act(async () => useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "microphone" } }));
   expect(description("microphone")).toContain("Keep at least one input on");
   expect(description("microphone")).not.toContain("separate recognition and usage");
   expect(description("system")).not.toContain("Keep at least one input on");
+});
+
+
+it.each([false, undefined])("keeps only the system row and application picker when microphone availability is %s", async microphoneInputAvailable => {
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable } });
+  await mount();
+  expect(host.querySelector('[data-audio-source="microphone"]')).toBeNull();
+  expect(host.querySelector('[role="switch"]')).toBeNull();
+  expect(row("system").querySelector('button[role="combobox"]')).not.toBeNull();
+  expect(description("system")).not.toContain(captureSwitchCopy().minimum);
+  expect(mocks.switchAudioInput).not.toHaveBeenCalled();
 });

@@ -28,6 +28,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
   const paused = useStore(state => state.session.isPaused);
   const kind = useStore(state => state.session.status.kind);
   const input = useStore(state => state.settings.audioInput) ?? "system";
+  const microphoneAvailable = useStore(state => state.settings.microphoneInputAvailable === true);
   const target = useStore(state => state.settings.systemAudioTarget);
   const switchAudioInput = useStore(state => state.switchAudioInput);
   const stamp = useMemo(() => ({ input, target, kind, active, paused }), [input, target, kind, active, paused]);
@@ -73,19 +74,19 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
     }
   };
   return <div className="overlay-control-capture" aria-label={I18N.settings.audioInputTitle} aria-busy={pending || targetPending}>
-    {SOURCES.map(source => {
+    {SOURCES.filter(source => microphoneAvailable || source === "system").map(source => {
       const enabled = input === "both" || input === source;
       const text = capturePresentation(captureStatusForSource(current, input, source), lifecycle, language, source, enabled);
       const helpId = `${id}-${source}-help`;
       const switchId = `${id}-${source}-switch`;
-      const help = [text.observation, text.help, input === source ? copy.minimum : null, copy.switchHelp, source === "microphone" && input !== "microphone" ? copy.dualHelp : null].filter(Boolean).join("\n");
-      return <div className="overlay-control-capture__row" key={source} data-audio-source={source}>
-        <label className="overlay-control-capture__source" htmlFor={switchId} title={text.deviceDescription}>
+      const help = [text.observation, text.help, microphoneAvailable && input === source ? copy.minimum : null, microphoneAvailable ? copy.switchHelp : null, source === "microphone" && input !== "microphone" ? copy.dualHelp : null].filter(Boolean).join("\n");
+      return <div className={`overlay-control-capture__row${microphoneAvailable ? "" : " overlay-control-capture__row--system-only"}`} key={source} data-audio-source={source}>
+        <label className="overlay-control-capture__source" htmlFor={microphoneAvailable ? switchId : undefined} title={text.deviceDescription}>
           <span className="overlay-control-setting__icon" aria-hidden="true"><Icon name={source === "system" ? "speaker" : "microphone"} /></span>
           <strong>{text.source}</strong>
         </label>
         <SettingsHelp id={helpId} text={help} label={`${text.source} · ${I18N.settings.helpLabel}`} />
-        <button
+        {microphoneAvailable && <button
           id={switchId}
           type="button"
           role="switch"
@@ -95,7 +96,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
           disabled={locked || input === source}
           className={`overlay-control-setting overlay-control-capture__toggle${enabled ? " is-on" : ""}`}
           onClick={() => void toggle(source)}
-        ><span className="overlay-control-switch" aria-hidden="true"><span /></span></button>
+        ><span className="overlay-control-switch" aria-hidden="true"><span /></span></button>}
         {source === "system" && enabled && <span className="overlay-control-capture__application">
           <ApplicationAudioPicker disabled={locked} onBusyChange={setTargetPending} />
         </span>}

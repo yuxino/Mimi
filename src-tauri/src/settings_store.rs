@@ -143,7 +143,7 @@ impl TextTranslationDestination {
 
 pub const MAXIMUM_PROFILE_COUNT: usize = 20;
 pub const FONT_SIZE_RANGE: std::ops::RangeInclusive<f64> = 14.0..=20.0;
-pub const DEFAULT_FONT_SIZE: f64 = 18.0;
+pub const DEFAULT_FONT_SIZE: f64 = crate::core::overlay_layout::DEFAULT_FONT_SIZE;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -724,11 +724,17 @@ impl SettingsStore {
         if should_create_catalog && !is_ui_test && store.persist_catalog().is_err() {
             tracing::warn!("service profile catalog unavailable label=create_failed");
         }
-        if !store.catalog_write_blocked {
-            let profile = store.active_profile().unwrap_or_default();
+        let active_profile =
+            (!store.catalog_write_blocked).then(|| store.active_profile().unwrap_or_default());
+        {
             let mut prefs = store.prefs.lock().unwrap();
             let original = prefs.clone();
-            normalize_preferences_value(&mut prefs, &profile);
+            if !prefs.audio_input.is_available() {
+                prefs.apply_audio_preferences(Some(AudioInput::System), None);
+            }
+            if let Some(profile) = active_profile {
+                normalize_preferences_value(&mut prefs, &profile);
+            }
             if *prefs != original && store.persist_preferences_value(&prefs).is_err() {
                 tracing::warn!("preferences unavailable label=normalization_write_failed");
             }
@@ -3147,6 +3153,51 @@ mod tests {
                     preferences.apply_audio_preferences(Some(next), None);
                     assert!(preferences.record_session_audio);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn loading_hidden_inputs_disables_microphone_and_its_recording_opt_in() {
+        for blocked_catalog in [false, true] {
+            for input in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
+                let directory = tempfile::tempdir().unwrap();
+                let previous = Preferences {
+                    audio_input: input,
+                    record_session_audio: true,
+                    font_size: 19.0,
+                    overlay_frame: Some(OverlayFrame {
+                        x: 20.0,
+                        y: 30.0,
+                        width: 700.0,
+                        height: 350.0,
+                    }),
+                    ..Preferences::default()
+                };
+                std::fs::write(
+                    directory.path().join("preferences.json"),
+                    serde_json::to_vec(&previous).unwrap(),
+                )
+                .unwrap();
+                if blocked_catalog {
+                    std::fs::write(directory.path().join(PROFILE_CATALOG_FILE), b"invalid")
+                        .unwrap();
+                }
+                let store = SettingsStore::at_path(
+                    directory.path().into(),
+                    Box::new(FakeSecretStore::default()),
+                );
+                let loaded = store.preferences();
+                assert_eq!(loaded.audio_input, AudioInput::System);
+                assert_eq!(loaded.record_session_audio, input == AudioInput::System);
+                assert_eq!(loaded.font_size, previous.font_size);
+                assert_eq!(loaded.overlay_frame, previous.overlay_frame);
+                let persisted: Preferences = serde_json::from_slice(
+                    &std::fs::read(directory.path().join("preferences.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(persisted.audio_input, AudioInput::System);
+                assert_eq!(persisted.record_session_audio, input == AudioInput::System);
             }
         }
     }

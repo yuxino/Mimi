@@ -263,6 +263,7 @@ it("restores subtitle opening and immersion controls and configures microphone c
   await act(async () => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: true } }));
   await act(async () => switches()[1].click());
   expect(saveSettings).toHaveBeenCalledWith({ subtitleBlendsWithBackground: !initial.settings.subtitleBlendsWithBackground });
+  await act(async () => useStore.setState({ settings: { ...useStore.getState().settings, microphoneInputAvailable: true } }));
   const microphone = host.querySelector(`[role="group"][aria-label="${I18N.settings.microphoneSubtitleColor}"]`)!;
   await act(async () => microphone.querySelectorAll<HTMLButtonElement>("button")[2]!.click());
   expect(saveSettings).toHaveBeenLastCalledWith({ microphoneSubtitleColor: "yellow" });
@@ -284,4 +285,11 @@ it("keeps an in-flight subtitle start owned when switching settings categories",
   expect(start).toHaveBeenCalledOnce();
   await act(async () => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: true } }));
   expect(toggle().disabled).toBe(false);
+});
+
+
+it("hides microphone color while retaining the system color control", async () => {
+  await mount();
+  expect(host.querySelector(`[role="group"][aria-label="${I18N.settings.microphoneSubtitleColor}"]`)).toBeNull();
+  expect(host.querySelector(`[role="group"][aria-label="${I18N.settings.systemSubtitleColor}"]`)).not.toBeNull();
 });

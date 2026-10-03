@@ -12,10 +12,12 @@ vi.mock("../../lib/developmentTrace", async original => ({
   observeOverlayCommitted: observations.committed,
 }));
 vi.mock("./Timeline", async () => {
-  const { memo } = await import("react");
+  const { memo, useLayoutEffect, useRef } = await import("react");
   return { Timeline: memo((props: { blocks: { source: string | null; translation: string | null }[] }) => {
+    const timeline = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => { timeline.current!.scrollTop = 25; });
     observations.timeline();
-    return <div>{props.blocks.map(block => block.translation ?? block.source).join("\n")}</div>;
+    return <div ref={timeline} className="overlay-timeline">{props.blocks.map(block => block.translation ?? block.source).join("\n")}</div>;
   }) };
 });
 vi.mock("./PulseRing", () => ({ PulseRing: () => null }));
@@ -73,6 +75,11 @@ it("observes raw draft commits without repainting Timeline and identifies a late
   expect(observations.committed.mock.lastCall?.[1]).toMatchObject({
     projectionRevision: 2, selectedTranslationCharacters: 10, stableTranslationCharacters: 10,
   });
+});
+
+it("measures the committed viewport after Timeline has applied its layout scroll", async () => {
+  await act(async () => root.render(<OverlayWindow />));
+  expect(observations.committed.mock.lastCall?.[1]).toMatchObject({ scrollTop: 25 });
 });
 
 it("records a collapsed DOM projection without changing its selected or stable text, then stops observing untagged snapshots", async () => {

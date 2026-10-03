@@ -166,6 +166,10 @@
   gap: 7px;
 }
 
+.overlay-control-capture__row--system-only {
+  grid-template-columns: minmax(0, 1fr) 20px;
+}
+
 .overlay-control-capture__source strong {
   font-size: 12px;
   font-weight: 600;

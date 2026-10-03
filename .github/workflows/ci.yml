@@ -515,6 +515,12 @@ jobs:
 
       - run: npm run tauri -- build -- --locked
 
+      - name: Verify release excludes development debugger
+        shell: pwsh
+        run: |
+          python scripts/check-production-native-debugger.py src-tauri/target/release/mimi.exe
+          if ($LASTEXITCODE -ne 0) { throw "Development debugger was included in the release." }
+
       - name: Smoke launch release x64 UI-test app
         shell: pwsh
         run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64
@@ -615,6 +621,9 @@ jobs:
 
       - name: Build signed Linux packages
         run: ./scripts/build-linux-packages.sh
+
+      - name: Verify release excludes development debugger
+        run: python3 scripts/check-production-native-debugger.py src-tauri/target/release/mimi
 
       - name: Verify, install, and smoke-test signed Linux packages
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')" --signed

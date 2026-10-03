@@ -170,8 +170,11 @@ struct MeasuredTranslation {
 
 #[derive(Clone, Copy, Default)]
 struct TranslationEvidenceIdentity {
+    #[cfg(any(test, feature = "development-debugger"))]
     source_utterance_id: Option<u64>,
+    #[cfg(any(test, feature = "development-debugger"))]
     pair_id: Option<u64>,
+    #[cfg(any(test, feature = "development-debugger"))]
     final_boundary: Option<&'static str>,
 }
 
@@ -1266,8 +1269,11 @@ impl HighQualityTranslationClient {
                 partial_handler,
                 TranslationWorkOwner::Preview(preview_id),
                 TranslationEvidenceIdentity {
+                    #[cfg(any(test, feature = "development-debugger"))]
                     source_utterance_id,
+                    #[cfg(any(test, feature = "development-debugger"))]
                     pair_id: None,
+                    #[cfg(any(test, feature = "development-debugger"))]
                     final_boundary: None,
                 },
             )
@@ -1671,8 +1677,11 @@ impl HighQualityTranslationClient {
                     partial_handler,
                     TranslationWorkOwner::Final(worker_id),
                     TranslationEvidenceIdentity {
+                        #[cfg(any(test, feature = "development-debugger"))]
                         source_utterance_id: request.source_utterance_id,
+                        #[cfg(any(test, feature = "development-debugger"))]
                         pair_id: Some(request.utterance_revision),
+                        #[cfg(any(test, feature = "development-debugger"))]
                         final_boundary: Some(request.boundary.label()),
                     },
                 )
@@ -2009,7 +2018,7 @@ impl HighQualityTranslationClient {
         deadline: tokio::time::Instant,
         on_partial: PartialHandler,
         owner: TranslationWorkOwner,
-        identity: TranslationEvidenceIdentity,
+        _identity: TranslationEvidenceIdentity,
     ) -> Result<MeasuredTranslation, QwenMTClientError> {
         if !self.mt.supports_reported_source(language) {
             return Err(QwenMTClientError::UnsupportedSource);
@@ -2053,6 +2062,7 @@ impl HighQualityTranslationClient {
                 attempt,
                 text.chars().count()
             );
+            #[cfg(any(test, feature = "development-debugger"))]
             let context = self.events.debug_context().map(|(source, generation)| {
                 crate::development_content::RequestContext {
                     source,
@@ -2064,11 +2074,13 @@ impl HighQualityTranslationClient {
                     preview: matches!(owner, TranslationWorkOwner::Preview(_)),
                     attempt,
                     request_id: 0,
-                    source_utterance_id: identity.source_utterance_id,
-                    pair_id: identity.pair_id,
-                    final_boundary: identity.final_boundary,
+                    source_utterance_id: _identity.source_utterance_id,
+                    pair_id: _identity.pair_id,
+                    final_boundary: _identity.final_boundary,
                 }
             });
+            #[cfg(not(any(test, feature = "development-debugger")))]
+            let context = None;
             let evidence = crate::development_content::begin_attempt(context);
             let result = tokio::time::timeout(
                 remaining,

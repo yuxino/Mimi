@@ -14,6 +14,7 @@ import { WindowsAudioSource } from "./WindowsAudioSource";
 /** Uses the same idle, live and paused reconfiguration path as the overlay. */
 export function AudioInputSettings() {
   const selected = useStore(state => state.settings.audioInput) ?? "system";
+  const microphoneAvailable = useStore(state => state.settings.microphoneInputAvailable === true);
   const target = useStore(state => state.settings.systemAudioTarget);
   const status = useStore(state => state.session.status.kind);
   const initialization = useStore(state => state.initializationStatus);
@@ -46,16 +47,16 @@ export function AudioInputSettings() {
     }
   };
   return <SettingsSection id="audio-input" title={I18N.settings.audioInputTitle}>
-    <SettingsRow label={I18N.settings.audioInputSystem} description={`${I18N.settings.audioInputHelp}\n${copy.switchHelp}`}
-      hint={selected === "system" ? I18N.settings.audioInputAtLeastOne : undefined}>
-      <Switch aria-label={I18N.settings.audioInputSystem} checked={selected !== "microphone"}
-        disabled={disabled || selected === "system"} onChange={checked => void toggle("system", checked)} />
+    <SettingsRow label={I18N.settings.audioInputSystem} description={microphoneAvailable ? `${I18N.settings.audioInputHelp}\n${copy.switchHelp}` : I18N.settings.systemAudioHelp}
+      hint={microphoneAvailable && selected === "system" ? I18N.settings.audioInputAtLeastOne : undefined}>
+      {microphoneAvailable && <Switch aria-label={I18N.settings.audioInputSystem} checked={selected !== "microphone"}
+        disabled={disabled || selected === "system"} onChange={checked => void toggle("system", checked)} />}
     </SettingsRow>
-    <SettingsRow label={I18N.settings.audioInputMicrophone} description={`${I18N.settings.audioInputMicrophoneHelp}\n${copy.switchHelp}`}
+    {microphoneAvailable && <SettingsRow label={I18N.settings.audioInputMicrophone} description={`${I18N.settings.audioInputMicrophoneHelp}\n${copy.switchHelp}`}
       hint={selected === "microphone" ? I18N.settings.audioInputAtLeastOne : undefined}>
       <Switch aria-label={I18N.settings.audioInputMicrophone} checked={selected !== "system"}
         disabled={disabled || selected === "microphone"} onChange={checked => void toggle("microphone", checked)} />
-    </SettingsRow>
+    </SettingsRow>}
     {selected !== "microphone" && <ApplicationAudio disabled={disabled} onBusyChange={setTargetBusy} />}
     {selected !== "microphone" && target?.kind !== "application" && <WindowsAudioSource />}
     {error && <InlineFeedback tone="error">{error}</InlineFeedback>}

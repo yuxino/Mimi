@@ -16,6 +16,11 @@ export APPLE_SIGNING_IDENTITY="$(tr -d '[:space:]' < scripts/macos-release-ident
 export MACOSX_DEPLOYMENT_TARGET=13.0
 export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 export npm_config_cache="${npm_config_cache:-$PWD/.npm-cache}"
+TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/src-tauri/target}"
+if [[ "$TARGET_DIR" != /* ]]; then
+  TARGET_DIR="$PWD/$TARGET_DIR"
+fi
+export CARGO_TARGET_DIR="$TARGET_DIR"
 [[ "$(uname -m)" == arm64 ]] || {
   echo "Prepare both macOS release architectures on the Apple silicon signing Mac." >&2
   exit 1
@@ -40,12 +45,12 @@ for arch in arm64 x86_64; do
   if [[ "$arch" == arm64 ]]; then
     # Preserve the established native ARM cache and archive name for updates.
     TARGET_ARGS=()
-    BUNDLE="$PWD/src-tauri/target/release/bundle"
+    BUNDLE="$TARGET_DIR/release/bundle"
     DMG_ARCH=aarch64
     ARCHIVE=mimi.app.tar.gz
   else
     TARGET_ARGS=(--target x86_64-apple-darwin)
-    BUNDLE="$PWD/src-tauri/target/x86_64-apple-darwin/release/bundle"
+    BUNDLE="$TARGET_DIR/x86_64-apple-darwin/release/bundle"
     DMG_ARCH=x64
     ARCHIVE=mimi_x64.app.tar.gz
   fi

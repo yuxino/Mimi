@@ -39,6 +39,14 @@ function snapshot(caseId = caseA): DebuggerSnapshot {
   };
 }
 
+it("renders no debugger when the native production gate is unavailable", async () => {
+  report.trace.available = false;
+  await mount();
+  expect(mocks.invoke).toHaveBeenCalledExactlyOnceWith("development_debug_snapshot");
+  expect(host.querySelector('.development-debugger')).toBeNull();
+  expect(host.querySelector('audio')).toBeNull();
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

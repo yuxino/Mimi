@@ -1,7 +1,7 @@
 {
   "name": "mimi",
   "private": true,
-  "version": "1.5.7",
+  "version": "1.5.8",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build:dev": "vite build --mode development --minify false --sourcemap",
-    "build": "npm run icons:verify && tsc -b && vite build",
+    "build": "npm run icons:verify && tsc -b && vite build && node --test scripts/check-production-debugger.node.mjs && node scripts/check-production-debugger.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run --maxWorkers=2",

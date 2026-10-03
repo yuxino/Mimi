@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 "$SCRIPT_DIR/verify-macos-app.sh" --release "$APP"
+python3 "$SCRIPT_DIR/check-production-native-debugger.py" "$APP/Contents/MacOS/mimi"
 
 MOUNT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mimi-release-dmg.XXXXXX")"
 cleanup_mount() {

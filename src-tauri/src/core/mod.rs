@@ -6,6 +6,7 @@ pub mod committer;
 pub mod configuration;
 pub mod credentials;
 pub mod development_debug;
+#[cfg(any(test, feature = "development-debugger"))]
 pub mod development_evidence_workspace;
 pub mod diagnostics;
 #[cfg(any(target_os = "macos", test))]

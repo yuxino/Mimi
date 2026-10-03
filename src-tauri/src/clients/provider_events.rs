@@ -28,6 +28,7 @@ struct SequencedEvent {
 pub struct ProviderEvent {
     /// Connects queue publication to session admission in development traces.
     /// Locally generated control signals do not have a publication sequence.
+    #[cfg(any(test, feature = "development-debugger"))]
     pub transport_sequence: Option<u64>,
     pub content_revision: u64,
     pub event: LiveTranslateServerEvent,
@@ -51,6 +52,7 @@ pub fn is_content_event(event: &LiveTranslateServerEvent) -> bool {
 }
 
 struct SenderInner {
+    #[cfg(any(test, feature = "development-debugger"))]
     debug_context: Mutex<
         Option<(
             crate::core::audio_input::AudioSource,
@@ -116,6 +118,7 @@ fn provider_event_channel_with_capacity(
     (
         ProviderEventSender {
             inner: Arc::new(SenderInner {
+                #[cfg(any(test, feature = "development-debugger"))]
                 debug_context: Mutex::new(None),
                 reliable: reliable_tx,
                 source_draft: source_tx,
@@ -147,6 +150,7 @@ fn provider_event_channel_with_capacity(
 }
 
 impl ProviderEventSender {
+    #[cfg(any(test, feature = "development-debugger"))]
     pub fn set_debug_context(
         &self,
         source: crate::core::audio_input::AudioSource,
@@ -158,6 +162,7 @@ impl ProviderEventSender {
             crate::core::development_debug::DebugProducer::Provider,
         ));
     }
+    #[cfg(any(test, feature = "development-debugger"))]
     pub fn debug_context(&self) -> Option<(crate::core::audio_input::AudioSource, u64)> {
         self.inner
             .debug_context
@@ -165,6 +170,7 @@ impl ProviderEventSender {
             .unwrap()
             .map(|(source, generation, _)| (source, generation))
     }
+    #[cfg(any(test, feature = "development-debugger"))]
     pub fn set_recognition_debug_context(
         &self,
         source: crate::core::audio_input::AudioSource,
@@ -176,6 +182,7 @@ impl ProviderEventSender {
             crate::core::development_debug::DebugProducer::Recognition,
         ));
     }
+    #[cfg(any(test, feature = "development-debugger"))]
     fn debug_event(
         &self,
         event: &LiveTranslateServerEvent,
@@ -208,6 +215,36 @@ impl ProviderEventSender {
             debug::record(DebugEvent::Provider { observation });
         }
     }
+    #[cfg(not(any(test, feature = "development-debugger")))]
+    pub fn set_debug_context(
+        &self,
+        _source: crate::core::audio_input::AudioSource,
+        _generation: u64,
+    ) {
+    }
+
+    #[cfg(not(any(test, feature = "development-debugger")))]
+    pub fn debug_context(&self) -> Option<(crate::core::audio_input::AudioSource, u64)> {
+        None
+    }
+
+    #[cfg(not(any(test, feature = "development-debugger")))]
+    pub fn set_recognition_debug_context(
+        &self,
+        _source: crate::core::audio_input::AudioSource,
+        _generation: u64,
+    ) {
+    }
+
+    #[cfg(not(any(test, feature = "development-debugger")))]
+    fn debug_event(
+        &self,
+        _event: &LiveTranslateServerEvent,
+        _admission: crate::core::development_debug::Admission,
+        _sequence: Option<u64>,
+    ) {
+    }
+
     pub fn content_revision(&self) -> u64 {
         self.inner.content_revision.load(Ordering::SeqCst)
     }
@@ -454,6 +491,7 @@ impl ProviderEventReceiver {
 
     fn control_event(&self, event: LiveTranslateServerEvent) -> ProviderEvent {
         ProviderEvent {
+            #[cfg(any(test, feature = "development-debugger"))]
             transport_sequence: None,
             content_revision: self.content_revision.load(Ordering::SeqCst),
             event,
@@ -570,6 +608,7 @@ impl ProviderEventReceiver {
             self.last_delivered_sequence = self.last_delivered_sequence.max(event.sequence);
         }
         ProviderEvent {
+            #[cfg(any(test, feature = "development-debugger"))]
             transport_sequence: Some(event.sequence),
             content_revision: event.content_revision,
             event: event.event,
@@ -600,6 +639,7 @@ impl ProviderEventReceiver {
         };
         self.last_delivered_sequence = self.last_delivered_sequence.max(event.sequence);
         Some(ProviderEvent {
+            #[cfg(any(test, feature = "development-debugger"))]
             transport_sequence: Some(event.sequence),
             content_revision: event.content_revision,
             event: event.event,

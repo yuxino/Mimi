@@ -22,7 +22,7 @@ beforeEach(() => {
   setStoredUiLanguage("en");
   switchInput = vi.fn(initial.switchAudioInput); save.mockReset(); start.mockReset();
   useStore.setState({ ...initial, initializationStatus: "ready", saveSettings: save, switchAudioInput: switchInput, start,
-    settings: { ...initial.settings, audioInput: "system", recordSessionAudio: true },
+    settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "system", recordSessionAudio: true },
     session: { ...initial.session, status: { kind: "idle" }, isActive: false, isPaused: false },
   }, true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -136,4 +136,15 @@ it("explains an unavailable selected application when changing inputs", async ()
   await render(); await selectMicrophone();
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
   expect(toggle("microphone").getAttribute("aria-checked")).toBe("false");
+});
+
+
+it.each([false, undefined])("hides the microphone and input switches when availability is %s", async microphoneInputAvailable => {
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable } });
+  await render();
+  expect(host.querySelector('[role="switch"]')).toBeNull();
+  expect(host.textContent).not.toContain(I18N.settings.audioInputMicrophone);
+  expect(host.textContent).toContain(I18N.settings.audioInputSystem);
+  expect(host.querySelector('[data-output-selector]')).not.toBeNull();
+  expect(switchInput).not.toHaveBeenCalled();
 });

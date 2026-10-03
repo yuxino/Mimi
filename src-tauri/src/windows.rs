@@ -187,8 +187,8 @@ fn frame_layout_is_current(version: u64) -> bool {
 pub struct SubtitleOverlayMetrics;
 
 impl SubtitleOverlayMetrics {
-    pub const REFERENCE_WIDTH: f64 = 640.0;
-    pub const REFERENCE_HEIGHT: f64 = 482.0;
+    pub const REFERENCE_WIDTH: f64 = 659.0;
+    pub const REFERENCE_HEIGHT: f64 = 328.0;
     pub const MINIMUM_WIDTH: f64 = 360.0;
     pub const MINIMUM_HEIGHT: f64 = BASE_MINIMUM_HEIGHT;
     pub const MAXIMUM_WIDTH: f64 = 1_200.0;
@@ -2928,6 +2928,7 @@ mod geometry_tests {
         let mut state = state_with_frame(frame(410.0, 300.0, 730.0, 136.0));
         let mut preferences = Preferences {
             subtitle_display_mode: crate::core::models::SubtitleDisplayMode::Bilingual,
+            font_size: 18.0,
             ..Preferences::default()
         };
         assert!(!state.update_minimum_height(minimum_height_for_preferences(&preferences)));

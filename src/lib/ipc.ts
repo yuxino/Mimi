@@ -204,7 +204,7 @@ export function overlayControlSetIslandWidth(width: number): Promise<void> {
  * the last session-state broadcast). */
 export function sessionGetState(): Promise<SessionStateEvent> {
   return invoke<SessionStateEvent>("session_get_state").then(state => {
-    observeSessionWireReceived(state);
+    if (__MIMI_DEVELOPMENT_BUILD__) observeSessionWireReceived(state);
     return state;
   });
 }
@@ -233,7 +233,7 @@ export function listenSessionState(
   handler: (state: SessionStateEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<SessionStateEvent>("session-state", (event) => {
-    observeSessionWireReceived(event.payload);
+    if (__MIMI_DEVELOPMENT_BUILD__) observeSessionWireReceived(event.payload);
     handler(event.payload);
   });
 }

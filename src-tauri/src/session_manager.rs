@@ -2988,6 +2988,7 @@ impl SessionManager {
         envelope: ProviderEvent,
     ) {
         let content = self.subtitle_content_lock.lock().await;
+        #[cfg(any(test, feature = "development-debugger"))]
         let debug_event = |event: &LiveTranslateServerEvent, admission| {
             if crate::core::development_debug::is_enabled() {
                 let mut observation = crate::core::development_debug::ProviderObservation::new(
@@ -3003,6 +3004,10 @@ impl SessionManager {
                 );
             }
         };
+        #[cfg(not(any(test, feature = "development-debugger")))]
+        let debug_event =
+            |_event: &LiveTranslateServerEvent,
+             _admission: crate::core::development_debug::Admission| {};
         if !subtitle_content_is_current(
             generation,
             &envelope,
@@ -3160,11 +3165,13 @@ impl SessionManager {
         }
         let newly_confirmed = {
             let mut controller = self.controller.lock().unwrap();
+            #[cfg(any(test, feature = "development-debugger"))]
             let debug_before = crate::core::development_debug::is_enabled()
                 .then(|| controller.state.subtitles.clone());
             let previous = controller.state.subtitles.history.last().cloned();
             controller.handle_from(source, event.clone());
             apply_terminal_event_to_all_sources(&mut controller, &event);
+            #[cfg(any(test, feature = "development-debugger"))]
             if let Some(before) = debug_before {
                 crate::core::development_debug::record(
                     crate::core::development_debug::DebugEvent::Reduced {
@@ -4252,6 +4259,7 @@ impl SessionManager {
         // captured before Clear cannot be emitted after the cleared one.
         let _content = self.subtitle_content_lock.lock().await;
         let event = self.current_state_event();
+        #[cfg(any(test, feature = "development-debugger"))]
         crate::development_debugger::record_snapshot(&event, &self.settings);
         self.write_ui_test_session_state(&event);
         let should_show_overlay =
@@ -4260,13 +4268,15 @@ impl SessionManager {
         let preferences = self.settings.preferences();
         let click_through =
             preferences.overlay_locked || preferences.subtitle_blends_with_background;
+        #[cfg(any(test, feature = "development-debugger"))]
         let debug_snapshot_id = event.debug_snapshot_id;
-        let delivered = self.app.emit("session-state", &event).is_ok();
+        let _delivered = self.app.emit("session-state", &event).is_ok();
+        #[cfg(any(test, feature = "development-debugger"))]
         if let Some(snapshot_id) = debug_snapshot_id {
             crate::core::development_debug::record(
                 crate::core::development_debug::DebugEvent::Published {
                     snapshot_id,
-                    delivered,
+                    delivered: _delivered,
                     overlay_requested: should_show_overlay,
                     collapsed: is_collapsed,
                 },
