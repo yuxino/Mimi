@@ -191,6 +191,47 @@ class CaseAnalysisTests(unittest.TestCase):
         self.assertEqual(summary["unflushedWindows"], ["overlay"])
         self.assertNotIn("must not copy", json.dumps(summary))
 
+    def test_sealed_terminal_change_without_following_snapshot_is_a_candidate(self):
+        entries = [{"id": 361, "event": {"kind": "snapshot", "snapshotId": 423}},
+                   {"id": 362, "event": {"kind": "published", "snapshotId": 423, "delivered": True}},
+                   {"id": 390, "elapsedMs": 84489, "event": {"kind": "reduced", "changed": True,
+                    "source": "system", "before": {"historyEntries": 0}, "after": {"historyEntries": 1}}},
+                   {"id": 392, "event": {"kind": "stopped"}}]
+        result = ANALYZE.terminal_publication(entries, {"trace": {"enabled": False}}, {"complete": True})
+        self.assertEqual((result["status"], result["candidateReason"]), ("candidate", "no_following_snapshot"))
+        self.assertEqual((result["lastChangedReductionEventId"], result["latestSnapshotEventId"],
+                          result["latestDeliveredPublicationEventId"], result["stopEventId"]), (390, 361, 362, 392))
+        self.assertEqual((result["historyEntriesBefore"], result["historyEntriesAfter"]), (0, 1))
+        self.assertIn("does not prove", result["limitation"])
+
+    def test_late_snapshot_requires_successful_delivery_for_that_exact_snapshot(self):
+        entries = [{"id": 1, "event": {"kind": "reduced", "changed": True}},
+                   {"id": 2, "event": {"kind": "snapshot", "snapshotId": 17}},
+                   {"id": 3, "event": {"kind": "published", "snapshotId": 17, "delivered": False}},
+                   {"id": 4, "event": {"kind": "published", "snapshotId": 16, "delivered": True}},
+                   {"id": 5, "event": {"kind": "stopped"}}]
+        result = ANALYZE.terminal_publication(entries, {"trace": {"enabled": False}}, {"complete": True})
+        self.assertEqual(result["candidateReason"], "no_delivered_following_snapshot")
+        self.assertEqual(result["followingSnapshotEventIds"], [2])
+        self.assertEqual(result["deliveredFollowingSnapshotCount"], 0)
+        entries[2]["event"]["delivered"] = True
+        result = ANALYZE.terminal_publication(entries, {"trace": {"enabled": False}}, {"complete": True})
+        self.assertEqual(result["status"], "publication_observed")
+        self.assertEqual(result["deliveredFollowingPublicationEventIds"], [3])
+
+    def test_terminal_publication_has_no_candidate_for_active_incomplete_or_no_change(self):
+        entries = [{"id": 1, "event": {"kind": "reduced", "changed": True}},
+                   {"id": 2, "event": {"kind": "stopped"}}]
+        for enabled, complete in ((True, True), (False, False)):
+            with self.subTest(enabled=enabled, complete=complete):
+                result = ANALYZE.terminal_publication(entries, {"trace": {"enabled": enabled}}, {"complete": complete})
+                self.assertEqual(result["status"], "evidence_unavailable")
+                self.assertIsNone(result["candidateReason"])
+        entries[0]["event"]["changed"] = False
+        result = ANALYZE.terminal_publication(entries, {"trace": {"enabled": False}}, {"complete": True})
+        self.assertEqual(result["status"], "no_changed_reducer")
+        self.assertIsNone(result["lastChangedReductionEventId"])
+
     def test_durable_trace_restores_ring_eviction_and_sorts_by_id(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -345,6 +386,24 @@ class CaseAnalysisTests(unittest.TestCase):
             self.assertEqual(score["status"], "compared")
             self.assertEqual((score["hypothesisUnits"], score["deletions"], score["errorRate"]), (0, 3, 1))
             self.assertTrue(report["baselineCompletion"]["complete"])
+
+    def test_case_report_surfaces_terminal_publication_candidate_with_exact_ids(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case, baseline, _, _ = self.fixture(root)
+            report = json.loads((case / "trace.json").read_text())
+            report["trace"] = {"enabled": False, "recorded": 4, "entries": [
+                {"id": 1, "event": {"kind": "snapshot", "snapshotId": 17}},
+                {"id": 2, "event": {"kind": "published", "snapshotId": 17, "delivered": True}},
+                {"id": 3, "event": {"kind": "reduced", "changed": True}},
+                {"id": 4, "event": {"kind": "stopped"}},
+            ]}
+            (case / "trace.json").write_text(json.dumps(report))
+            result = ANALYZE.analyze(case, root / "media.json", "synthetic", baseline)
+            self.assertIn("terminal_publication_candidate", result["warnings"])
+            self.assertEqual(result["terminalPublication"]["lastChangedReductionEventId"], 3)
+            self.assertIn("Terminal publication: candidate", ANALYZE.markdown(result))
+            self.assertIn("latest snapshot trace 1", ANALYZE.markdown(result))
 
     def test_negative_controls_report_observed_text_without_a_fake_error_rate(self):
         for text, status, unexpected in (("", "no_transcription_observed", False),

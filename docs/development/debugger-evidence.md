@@ -44,6 +44,12 @@
    counters, identify the earliest divergent stage, and distinguish provider
    omission, backend rejection, preview replacement, frontend projection and
    clipping. Do not infer model reasoning or semantic accuracy from counts.
+   `terminalPublication` flags a sealed, complete trace without an ordered
+   delivered snapshot after the last changed reducer. Inspect its event and
+   snapshot IDs. Concurrent recording can race; this candidate does not prove
+   permanent frontend loss. Session stop awaits its final snapshot publication
+   attempt before returning, but subscriber receipt and native visibility still
+   require their own evidence.
 7. Replay snapshots offline to reproduce frontend projection. For provider
    reproduction, play exactly the saved sent WAV in a separate test session;
    this performs a new provider request and its output may vary. A deterministic
@@ -156,4 +162,7 @@ Each store keeps the same 128 MiB / 64-case limits. At most eight additional
 workspaces may exist, bounding the nine stores to 1,152 MiB of reservation
 capacity. Files remain private; older workspaces are preserved in place and
 never silently removed. Reuse a named workspace to reopen its saved cases.
+The app-owned workspace container accepts only workspace directories and a
+regular Finder `.DS_Store` of at most 64 KiB. That metadata is a separate fixed
+overhead, not recorded speech. Symlinks and other unexpected entries are refused.
 Launch without the option to reopen the original default catalog.

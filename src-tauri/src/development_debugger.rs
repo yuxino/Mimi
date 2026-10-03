@@ -167,12 +167,25 @@ fn workspace_count(container: &Path) -> Result<usize, &'static str> {
     let mut count = 0;
     for entry in fs::read_dir(container).map_err(|_| "development_evidence_storage_failed")? {
         let entry = entry.map_err(|_| "development_evidence_storage_failed")?;
-        if !entry
+        let file_type = entry
             .file_type()
-            .map_err(|_| "development_evidence_storage_failed")?
-            .is_dir()
-            || !entry.file_name().to_str().is_some_and(valid_workspace_name)
-        {
+            .map_err(|_| "development_evidence_storage_failed")?;
+        let name = entry.file_name();
+        if name == ".DS_Store" {
+            // Finder metadata is not an evidence catalog. Keep this exception
+            // narrow and bounded; links and oversized files remain invalid.
+            if !file_type.is_file()
+                || entry
+                    .metadata()
+                    .map_err(|_| "development_evidence_storage_failed")?
+                    .len()
+                    > 64 * 1024
+            {
+                return Err("development_evidence_workspace_invalid");
+            }
+            continue;
+        }
+        if !file_type.is_dir() || !name.to_str().is_some_and(valid_workspace_name) {
             return Err("development_evidence_workspace_invalid");
         }
         count += 1;
@@ -1412,6 +1425,84 @@ mod tests {
         assert_eq!(
             ALL_CASES_BYTE_LIMIT * (EXTRA_WORKSPACE_LIMIT as u64 + 1),
             1152 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn evidence_workspace_ignores_only_bounded_regular_finder_metadata() {
+        let container = tempfile::tempdir().unwrap();
+        let metadata = container.path().join(".DS_Store");
+        let original = vec![0x42; 64 * 1024];
+        fs::write(&metadata, &original).unwrap();
+        for index in 0..EXTRA_WORKSPACE_LIMIT {
+            fs::create_dir(container.path().join(format!("batch-{index}"))).unwrap();
+        }
+        let evidence = container.path().join("batch-0").join("unchanged.json");
+        fs::write(&evidence, b"synthetic immutable case").unwrap();
+        assert_eq!(
+            workspace_count(container.path()).unwrap(),
+            EXTRA_WORKSPACE_LIMIT
+        );
+        assert_eq!(fs::read(&metadata).unwrap(), original);
+        assert_eq!(fs::read(&evidence).unwrap(), b"synthetic immutable case");
+        fs::create_dir(container.path().join("ninth")).unwrap();
+        assert_eq!(
+            workspace_count(container.path()),
+            Err("development_evidence_workspace_limit")
+        );
+    }
+
+    #[test]
+    fn evidence_workspace_rejects_oversized_metadata_and_other_entries() {
+        let container = tempfile::tempdir().unwrap();
+        let metadata = container.path().join(".DS_Store");
+        private_file(&metadata)
+            .unwrap()
+            .set_len(64 * 1024 + 1)
+            .unwrap();
+        assert_eq!(
+            workspace_count(container.path()),
+            Err("development_evidence_workspace_invalid")
+        );
+        assert_eq!(fs::metadata(&metadata).unwrap().len(), 64 * 1024 + 1);
+        fs::remove_file(&metadata).unwrap();
+        fs::create_dir(&metadata).unwrap();
+        assert_eq!(
+            workspace_count(container.path()),
+            Err("development_evidence_workspace_invalid")
+        );
+        fs::remove_dir(&metadata).unwrap();
+        fs::write(
+            container.path().join("other-metadata"),
+            b"bounded but unrecognized",
+        )
+        .unwrap();
+        assert_eq!(
+            workspace_count(container.path()),
+            Err("development_evidence_workspace_invalid")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn evidence_workspace_rejects_finder_metadata_symlinks() {
+        use std::os::unix::fs::symlink;
+        let container = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("metadata");
+        fs::write(&target, b"unchanged outside fixture").unwrap();
+        let link = container.path().join(".DS_Store");
+        symlink(&target, &link).unwrap();
+        assert_eq!(
+            workspace_count(container.path()),
+            Err("development_evidence_workspace_invalid")
+        );
+        assert_eq!(fs::read(&target).unwrap(), b"unchanged outside fixture");
+        fs::remove_file(&link).unwrap();
+        symlink(outside.path(), &link).unwrap();
+        assert_eq!(
+            workspace_count(container.path()),
+            Err("development_evidence_workspace_invalid")
         );
     }
 

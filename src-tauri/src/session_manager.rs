@@ -794,6 +794,16 @@ fn status_should_show_overlay(status: &SessionStatus) -> bool {
     status.is_active() || matches!(status, SessionStatus::Error(_))
 }
 
+/// Stop is a completion boundary: retain normal diagnostic scheduling and
+/// publish the fully drained state before the caller can seal evidence or quit.
+async fn publish_stop_boundary(
+    request_publish: impl FnOnce(),
+    publish_now: impl Future<Output = ()>,
+) {
+    request_publish();
+    publish_now.await;
+}
+
 /// Content lives in the local journal. Only size/limit metadata stays here.
 #[derive(Default)]
 struct LocalCaptureStats {
@@ -2046,7 +2056,7 @@ impl SessionManager {
             if self.persist_current_history().is_err() {
                 pipeline_log!("session history save failed label=write_failed");
             }
-            self.publish_state();
+            publish_stop_boundary(|| self.publish_state(), self.publish_state_now()).await;
             return;
         }
         pipeline_log!("session stop requested");
@@ -2129,7 +2139,7 @@ impl SessionManager {
         if self.persist_current_history().is_err() {
             pipeline_log!("session history save failed label=write_failed");
         }
-        self.publish_state();
+        publish_stop_boundary(|| self.publish_state(), self.publish_state_now()).await;
         pipeline_log!("session stopped");
     }
 
@@ -5907,6 +5917,77 @@ mod lifecycle_tests {
         drop(owner);
         assert!(try_begin_start(&in_progress));
         in_progress.store(false, Ordering::SeqCst);
+    }
+
+    #[tokio::test]
+    async fn stop_publication_waits_until_the_last_accepted_tail_is_published() {
+        let controller = Arc::new(Mutex::new(TranslationSessionController::default()));
+        controller.lock().unwrap().did_connect();
+        controller.lock().unwrap().begin_stopping();
+        let published = Arc::new(Mutex::new(vec![SessionStateEvent::from(
+            &controller.lock().unwrap().state,
+        )]));
+        assert!(published.lock().unwrap()[0].subtitles.history.is_empty());
+        let tail = LiveTranslateServerEvent::SubtitleConfirmedPair {
+            source_utterance_id: Some(7),
+            utterance_id: 1,
+            source: "Synthetic stop tail".into(),
+            translation: "Synthetic final translation".into(),
+            language: Some("en".into()),
+        };
+        assert!(generation_accepts_event(NO_GENERATION, 9, 9, &tail));
+        controller
+            .lock()
+            .unwrap()
+            .handle_from(AudioSource::System, tail);
+        controller.lock().unwrap().did_stop();
+
+        // Hold the same kind of content gate used by publish_state_now. A
+        // coalesced request alone cannot complete stop while delivery is gated.
+        let content = Arc::new(TokioMutex::new(()));
+        let held = Arc::clone(&content).lock_owned().await;
+        let (requested, request_seen) = tokio::sync::oneshot::channel();
+        let publication_controller = Arc::clone(&controller);
+        let publication_output = Arc::clone(&published);
+        let mut stopped = tokio::spawn(async move {
+            publish_stop_boundary(|| requested.send(()).unwrap(), async move {
+                let _content = content.lock().await;
+                publication_output
+                    .lock()
+                    .unwrap()
+                    .push(SessionStateEvent::from(
+                        &publication_controller.lock().unwrap().state,
+                    ));
+            })
+            .await;
+        });
+        request_seen.await.unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut stopped)
+                .await
+                .is_err(),
+            "stop returned while only the old stopping/history=0 snapshot was published"
+        );
+        // No std controller guard is held while waiting for publication.
+        assert!(controller.try_lock().is_ok());
+        drop(held);
+        tokio::time::timeout(Duration::from_millis(200), stopped)
+            .await
+            .unwrap()
+            .unwrap();
+        let output = published.lock().unwrap();
+        assert_eq!(output.len(), 2);
+        let final_state = &output[1];
+        assert!(matches!(final_state.status, StatusPayload::Idle));
+        assert_eq!(final_state.subtitles.history.len(), 1);
+        assert_eq!(
+            final_state.subtitles.history[0].source,
+            "Synthetic stop tail"
+        );
+        assert_eq!(
+            final_state.subtitles.history[0].translation,
+            "Synthetic final translation"
+        );
     }
 
     #[test]

@@ -167,3 +167,29 @@ layout and geometry checks; signed native verification is separate. The rule
 guarantees space for the current block from each selected source, not the whole
 history or arbitrary multi-line text. On work areas smaller than the computed
 minimum, normal work-area fitting still has the physical display limit.
+
+## Second phase: complete publication before stop returns
+
+A signed dev music/effects case exposed a stop completion race. An accepted
+session-finish translation changed confirmed history from zero to one row,
+but the last recorded snapshot still contained zero rows. The coalesced
+publisher's 60ms delay extended beyond the debugger's stop/seal boundary.
+This proves a missing publication completion barrier; the sealed trace alone
+does not prove that the frontend never received a later publication.
+
+Both stop completion paths now retain the normal publication request and await
+the existing immediate publisher after provider/pump draining and `did_stop`.
+The lifecycle lease prevents a new session from starting during this boundary;
+the content gate serializes snapshot capture, private recording and emit.
+No synchronous controller mutex is held across the await. Completion confirms
+the final publication attempt, not a subscriber receipt or native paint.
+Any already scheduled publisher reads current state rather than a saved older
+snapshot. Provider deadlines, final admission and history limits are unchanged.
+
+A regression uses the real subtitle controller, admits an atomic stopping tail,
+holds the publication content gate and verifies stop remains pending until the
+idle snapshot includes that tail. The offline analyzer additionally flags a
+sealed, complete trace with no delivered snapshot after its last changed
+reducer. That ordered-evidence candidate keeps event/snapshot IDs and the
+record-order limitation explicit. Signed native retakes validate the boundary
+separately from the deterministic test.

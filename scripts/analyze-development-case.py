@@ -535,6 +535,50 @@ def frontend_summary(entries):
             "limitation": "Clipping observations are candidate geometry evidence, not missing text or proof of readable native visibility. Batch receipt elapsedMs is not exact browser paint time."}
 
 
+def terminal_publication(entries, report, coverage):
+    """Find an ordered publication gap, without inferring paint or text loss."""
+    reductions = [entry for entry in entries if entry.get("event", {}).get("kind") == "reduced"
+                  and entry["event"].get("changed") is True]
+    snapshots = [entry for entry in entries if entry.get("event", {}).get("kind") == "snapshot"]
+    delivered = [entry for entry in entries if entry.get("event", {}).get("kind") == "published"
+                 and entry["event"].get("delivered") is True]
+    stops = [entry for entry in entries if entry.get("event", {}).get("kind") == "stopped"]
+    latest = lambda values: max(values, key=lambda entry: entry["id"]) if values else None
+    reduction, snapshot, publication, stop = map(latest, (reductions, snapshots, delivered, stops))
+    sealed = report.get("trace", {}).get("enabled") is False and stop is not None
+    complete = coverage.get("complete") is True
+    following = [entry for entry in snapshots if reduction and entry["id"] > reduction["id"]]
+    following_by_id = {entry["event"].get("snapshotId"): entry for entry in following}
+    matching = [entry for entry in delivered
+                if entry["event"].get("snapshotId") in following_by_id
+                and entry["id"] > following_by_id[entry["event"].get("snapshotId")]["id"]]
+    candidate = sealed and complete and reduction is not None and not matching
+    status = ("evidence_unavailable" if not sealed or not complete else
+              "no_changed_reducer" if reduction is None else
+              "candidate" if candidate else "publication_observed")
+    reason = ("no_following_snapshot" if candidate and not following else
+              "no_delivered_following_snapshot" if candidate else None)
+    event = reduction["event"] if reduction else {}
+    return {"status": status, "candidateReason": reason, "sealed": sealed,
+            "traceCoverageComplete": complete,
+            "lastChangedReductionEventId": reduction["id"] if reduction else None,
+            "lastChangedReductionElapsedMs": numeric(reduction.get("elapsedMs")) if reduction else None,
+            "lastChangedReductionSource": safe_label(event.get("source")),
+            "historyEntriesBefore": numeric(event.get("before", {}).get("historyEntries")),
+            "historyEntriesAfter": numeric(event.get("after", {}).get("historyEntries")),
+            "latestSnapshotEventId": snapshot["id"] if snapshot else None,
+            "latestSnapshotId": numeric(snapshot["event"].get("snapshotId")) if snapshot else None,
+            "latestDeliveredPublicationEventId": publication["id"] if publication else None,
+            "latestDeliveredPublicationSnapshotId": numeric(publication["event"].get("snapshotId")) if publication else None,
+            "stopEventId": stop["id"] if stop else None,
+            "followingSnapshotCount": len(following),
+            "followingSnapshotEventIds": sorted(entry["id"] for entry in following)[-16:],
+            "deliveredFollowingSnapshotCount": len(matching),
+            "deliveredFollowingPublicationEventIds": sorted(entry["id"] for entry in matching)[-16:],
+            "eventListsLimited": len(following) > 16 or len(matching) > 16,
+            "limitation": "Trace record order can race asynchronous snapshot recording. A candidate means no ordered delivered snapshot evidence after the last changed reducer; it does not prove absent content, frontend paint loss or that a later unrecorded publication never happened."}
+
+
 def baseline_directory(directory, clip_label):
     if (directory / "events.jsonl").is_file():
         return directory
@@ -756,12 +800,15 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
     losses.update({key: report.get(key) for key in ("privateEvents", "replaySnapshots", "contentBytes",
                                                    "contentDropped", "contentLimited", "contentFailed")})
     frontend = frontend_summary(entries)
+    terminal = terminal_publication(entries, report, trace_coverage)
     warnings = ["source_reference_not_provider_ground_truth", "cue_alignment_is_not_word_timing",
                 "frontend_observations_have_no_text_wer", "direct_pcm_differs_from_playback_capture_path"]
     if trace.get("enabled") is not False:
         warnings.append("case_may_be_unfinished")
     if not baseline_complete:
         warnings.append("baseline_unfinished_or_failed")
+    if terminal["status"] == "candidate":
+        warnings.append("terminal_publication_candidate")
     if any(item["acceptance"] == "unknown" for item in pairs):
         warnings.append("pair_acceptance_unknown_without_exact_trace_join")
     if frontend["unflushedWindows"]:
@@ -795,7 +842,7 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
             "translationChains": translation_chains(rows, raw, pairs),
             "pairAcceptanceCounts": dict(Counter(item["acceptance"] for item in pairs)),
             "recognitionMissingUtteranceIds": raw_missing_identity,
-            "history": history_meta, "frontend": frontend, "evidenceCounters": losses,
+            "history": history_meta, "frontend": frontend, "terminalPublication": terminal, "evidenceCounters": losses,
             "traceCoverage": trace_coverage,
             "audio": audio_summary(case_directory, report, clip), "warnings": warnings,
             "interpretation": "These are observed stage transcripts, not automatic root-cause proof. A missing cue may arise before ASR, during recognition, translation, backend admission, projection or visibility. Text translation accuracy needs a separate bilingual reference and review."}
@@ -810,6 +857,12 @@ def markdown(report):
         rate = f'{score["errorRate"]:.4f}' if score["errorRate"] is not None else "unknown"
         lines.append(f'| {name} | {score["status"]} | {score["referenceUnits"]} | {score["hypothesisUnits"]} | {rate} | '
                      f'{score.get("deletions", "?")} / {score.get("insertions", "?")} / {score.get("substitutions", "?")} |')
+    terminal = report["terminalPublication"]
+    lines.extend(["", f'Terminal publication: {terminal["status"]}; last changed reducer trace '
+                  f'{terminal["lastChangedReductionEventId"]}, latest snapshot trace {terminal["latestSnapshotEventId"]}, '
+                  f'latest delivered publication trace {terminal["latestDeliveredPublicationEventId"]}, '
+                  f'delivered following snapshots {terminal["deliveredFollowingSnapshotCount"]}.',
+                  "", terminal["limitation"]])
     lines.extend(["", NORMALIZATION, "", "## Per-cue differences", ""])
     for name, stage in report["stages"].items():
         lines.extend([f"### {name}", ""])
@@ -838,6 +891,7 @@ def markdown(report):
                       "configuration": report["configuration"], "pairAcceptanceCounts": report["pairAcceptanceCounts"],
                       "history": report["history"], "evidenceCounters": report["evidenceCounters"],
                       "traceCoverage": report["traceCoverage"],
+                      "terminalPublication": report["terminalPublication"],
                       "frontendStages": report["frontend"]["stages"],
                       "overflowObservationCount": report["frontend"]["overflowObservationCount"],
                       "unflushedWindows": report["frontend"]["unflushedWindows"],
