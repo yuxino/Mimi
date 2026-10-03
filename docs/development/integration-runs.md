@@ -58,8 +58,18 @@
   2 ignored；前端 95 个文件、1113 项测试通过。共享 Rust 65 单元测试、
   3 契约测试，JNI crate 格式／Clippy／编译测试边界均通过；这不等于
   Android JVM 实际 JNI 或设备实测，Android CI 另行核对。
-- 持久保存：私有结果 catalog `2026-10-04-quality-cycle-1`，约 21.8 MB、
-  135 条文件 SHA256，12 个 relocated result 路径和 PCM hash 已复核。
+- 修复签名构建：干净 `ca759df` 通过 canonical dev launcher，稳定 dev
+  requirement 与既有身份相同。两次 normal 启动的设置页超时，线程栈
+  确认全配置目录的凭据状态检查等待 `SecKeychainFindGenericPassword`／
+  SecurityServer，其余读取等待 secret cache 锁。活动 dev 预设不能隔离
+  目录中普通配置的 Keychain 检查；未把超时归因于本次尾句代码。
+  工具禁止操作 SecurityAgent，未绕过授权。改用 `--ui-only` 后设置与
+  诊断正常载入，Idle、追踪关闭，重开原 case 得到 1700 元数据／84 快照／
+  零证据缺失。正常退出，原配置及沉浸设置恢复；无凭据 UI 和离线回放
+  不等于修复后的真实 provider 验收。
+- 独立只读审阅未发现此次身份匹配引入的错误去重或重复接纳路径。
+- 持久保存：私有结果 catalog `2026-10-04-quality-cycle-1`，约 22.3 MB、
+  142 条文件 SHA256，12 个 relocated result 路径和 PCM hash 已复核。
   原始 job 文件和失败日志保留，固定矩阵指向持久输入库；新录制 case
   仍在 app 私有 workspace `quality-cycle-1`。没有把音频、字幕或个人
   路径放入 Git。

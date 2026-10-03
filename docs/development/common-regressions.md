@@ -237,6 +237,13 @@ samples and [the run ledger](integration-runs.md) for this check's exact scope.
 - A frontend settings deadline cannot cancel a native Keychain authorization
   wait. Keep real-provider acceptance pending until OS authorization finishes;
   never use credential-free UI fixtures as proof that provider audio works.
+  The initial settings snapshot checks credential status for the whole profile
+  catalog. Selecting the private dev preset does not isolate ordinary profiles'
+  Keychain reads; the dev file store handles only its explicit preset account.
+  A sampled `FileSecretStore -> Keyring -> SecKeychainFindGenericPassword` wait
+  identifies this boundary. Record it separately, quit normally, and keep UI-only
+  or offline replay results distinct from live provider acceptance. Repeated
+  frontend Retry cannot cancel an unfinished native authorization read.
 
 ## Before handing off
 
