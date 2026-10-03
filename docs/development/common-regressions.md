@@ -202,6 +202,20 @@ page must include a review of other instances of the same pattern.
   provider. UI-only mode must never read Keychain items, open provider sockets,
   or start system-audio capture.
 
+## Validate the test audio before blaming capture
+
+In one macOS sandboxed integration run, `say -o` returned success but created
+an AIFF with zero audio frames. `afplay` also failed inside the sandbox with
+`AudioQueueStart failed (-66680)`. Check `afinfo` for nonzero frames and the
+expected duration before playback, then verify playback completes. If the
+environment blocks audio services, use an approved local execution path and
+validate the regenerated file again. An empty fixture or a failed player does
+not establish a Mimi capture or recognition defect. Keep the sample
+non-sensitive; do not change permissions or reset TCC to repair the fixture.
+
+See [the integration learning loop](integration-learning-loop.md) for comparable
+samples and [the run ledger](integration-runs.md) for this check's exact scope.
+
 ## Native exit and acceptance evidence
 
 - macOS's predefined Quit invokes AppKit termination directly; in the locked

@@ -35,6 +35,10 @@ Preserve these product constraints:
   diagnosing a repeated system prompt.
 - `docs/development/ui-guidelines.md`: shared layout, action-feedback rules and
   the cross-page review checklist. Read it before changing a product interface.
+- `docs/development/integration-learning-loop.md`: the ongoing integration,
+  sample comparison and regression-learning workflow. Read it before integration
+  testing or investigating subtitle quality; keep verified runs and remaining
+  gaps in `docs/development/integration-runs.md`.
 - `scripts/check.sh`: canonical automated test and strict-build entry point.
 - `scripts/package-app.sh`: release-shaped local build via `tauri build`, signed with the stable local identity; compare its identity before replacing a release, especially older ad-hoc installations.
 - `scripts/codesign-identity.sh`: honors an explicit `MIMI_CODESIGN_IDENTITY`; otherwise it selects the exact fingerprint of the unique `mimi Local Development` identity or reports unavailable. macOS packaging and development launch fail closed rather than use ad-hoc signing.
@@ -75,6 +79,20 @@ Preserve these product constraints:
 - Shared fixture and provider changes trigger both desktop and Android CI. Verify both suites before publishing their changes.
 
 ## Verification
+
+Follow [the integration learning loop](docs/development/integration-learning-loop.md)
+for native integration and subtitle-quality work. Reuse comparable samples, trace
+the earliest evidenced failure, repair that boundary, and rerun the same case.
+After a meaningful run, update the concise run ledger with the exact revision,
+build mode, evidence, limitations and next unresolved check. Promote verified,
+reusable lessons into the owning guide and focused regression tests; do not turn
+one successful sample or an interrupted check into a general acceptance claim.
+At the end of related development or quality-investigation conversations, carry
+forward new evidence and explicit durable user corrections. Keep unconfirmed
+feedback as pending; add no duplicate lesson when nothing new was established.
+When an error recurs, strengthen its concrete prevention rule or automated check.
+Keep private media, transcripts and credentials outside Git. This maintenance
+rule does not authorize new capture, paid batches, recording or publication.
 
 Run the repository check from the repository root:
 

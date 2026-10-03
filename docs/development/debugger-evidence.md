@@ -1,5 +1,9 @@
 # Reproduce and compare a development case
 
+For the recurring integration and regression workflow, read
+[the integration learning loop](integration-learning-loop.md). Keep each meaningful
+run's verified scope and open checks in [the run ledger](integration-runs.md).
+
 1. In the signed development app, open Settings → Diagnostics → Development
    debugger. Start **audio + subtitle evidence** before starting capture.
    This explicitly saves private speech and subtitles locally. Metadata-only
