@@ -6,7 +6,7 @@ import { isTauri } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
 import type { AudioSource, SessionStateEvent, SettingsSnapshot } from "../../lib/types";
 import { SettingsHelp } from "./SettingsHelp";
-import { buildMultiSourceSubtitleBlocks, buildSubtitleBlocks, visibleLiveSubtitles } from "../overlay/overlayModel";
+import { buildMultiSourceSubtitleBlocks, buildSubtitleBlocks, usesAtomicSubtitlePreview, visibleLiveSubtitles } from "../overlay/overlayModel";
 import { Timeline } from "../overlay/Timeline";
 import "./development-debugger.css";
 
@@ -16,6 +16,8 @@ export interface DebuggerSnapshot {
   route: Record<string, unknown>;
   audio: { enabled?: boolean; limited?: boolean; failedStorage?: boolean; error?: string; sources?: { source: AudioSource; sampleRateHz: number; bytes: number; successfulChunks: number; failedChunks: number; cancelledChunks: number; droppedChunks: number }[] };
   caseId: string | null; replaySnapshots: number; privateEvents?: number; contentBytes: number; contentDropped: number; contentLimited: boolean; contentFailed: boolean;
+  tracePersistenceEnabled?: boolean; persistedTraceEntries?: number; traceBytes?: number;
+  traceDropped?: number; traceLimited?: boolean; traceFailed?: boolean;
 }
 interface SavedCase { id: string; createdAtUnixMs: number; snapshots: number; provider: string | null }
 interface PrivateEvent { elapsedMs: number; event: { kind: string; [field: string]: unknown } }
@@ -24,6 +26,7 @@ function failureMessage(error: unknown, fallback: string): string {
   const reasons: [string[], [string, string, string]][] = [
     [["development_evidence_storage_limit"], ["本地案例存储已达上限。请先导出并清理不再需要的案例。", "Local case storage is full. Export and remove cases you no longer need.", "ケースの保存上限に達しました。不要なケースをエクスポートして削除してください。"]],
     [["development_debug_busy", "development_debug_already_running"], ["另一项调试操作正在进行，请稍后重试。", "Another debugger operation is in progress. Try again shortly.", "別のデバッグ操作が実行中です。少し待って再試行してください。"]],
+    [["development_evidence_trace_busy"], ["事件写入尚未完成，案例仍保留。请稍后再次停止取证。", "Event writes are still pending; the case is preserved. Retry stopping recording shortly.", "イベントの書込みが継続中です。ケースは保持されています。少し待って記録の停止を再試行してください。"]],
     [["development_recording_requires_stop", "development_evidence_requires_stop", "development_export_requires_stop"], ["请先停止字幕并完成取证，再执行此操作。", "Stop subtitles and finish recording before this operation.", "字幕と記録を停止してから実行してください。"]],
     [["development_evidence_case_changed", "development_case_invalid"], ["案例已切换或文件无效，请重新打开案例。", "The case changed or its files are invalid. Open the case again.", "ケースが変更されたか無効です。ケースを開き直してください。"]],
     [["development_evidence_storage_failed", "development_evidence_writer_failed", "development_audio_stop_failed", "development_export_failed"], ["案例文件保存失败，请检查本地磁盘与文件权限后重试。", "Saving case files failed. Check local disk space and file permissions, then retry.", "ケースを保存できませんでした。空き容量とファイル権限を確認してください。"]],
@@ -58,7 +61,7 @@ function ReplayTimeline({ session, settings, route }: { session: SessionStateEve
   const mode = ["original", "translation", "bilingual"].includes(String(route.subtitleDisplayMode)) ? route.subtitleDisplayMode as SettingsSnapshot["subtitleDisplayMode"] : settings.subtitleDisplayMode;
   const replaySettings = { ...settings, subtitleDisplayMode: mode, sourceLanguage: (route.sourceLanguage ?? settings.sourceLanguage) as SettingsSnapshot["sourceLanguage"], targetLanguage: (route.targetLanguage ?? settings.targetLanguage) as SettingsSnapshot["targetLanguage"] };
   const tracks = session.subtitles.tracks?.length ? session.subtitles.tracks : [{ ...session.subtitles, audioSource: "system" as const, detectedLanguage: session.detectedLanguage, isTranslationPending: session.isTranslationPending, isTranslationTimedOut: session.isTranslationTimedOut }];
-  const atomic = route.provider === "alibabaCloud" || route.provider === "deepLX";
+  const atomic = usesAtomicSubtitlePreview(route.provider);
   const tail = (subtitles: typeof session.subtitles, signals: Pick<SessionStateEvent, "detectedLanguage" | "isTranslationPending" | "isTranslationTimedOut">) => {
     const selected = visibleLiveSubtitles(subtitles, replaySettings, signals.detectedLanguage, signals.isTranslationPending, signals.isTranslationTimedOut, atomic && subtitles.previewPair !== undefined);
     return { source: selected.find(p => p.kind === "source")?.text ?? null, translation: selected.find(p => p.kind === "translation")?.text ?? null, utteranceId: selected[0]?.utteranceId, isStreaming: false };
@@ -75,13 +78,17 @@ export function DevelopmentDebugger({ visible }: { visible: boolean }) {
   const [pending, setPending] = useState(false); const [feedback, setFeedback] = useState<string | null>(null);
   const [filter, setFilter] = useState("all"); const [audio, setAudio] = useState<Partial<Record<AudioSource, string>>>({});
   const [replayIndex, setReplayIndex] = useState(0); const [replay, setReplay] = useState<{ elapsedMs: number; snapshot: SessionStateEvent; projectionSettings?: Record<string, unknown> } | null>(null);
+  const [replayTarget, setReplayTarget] = useState(1);
   const [savedCases, setSavedCases] = useState<SavedCase[]>([]); const [selectedCase, setSelectedCase] = useState("");
   const [privateEvents, setPrivateEvents] = useState<PrivateEvent[]>([]); const [privateOffset, setPrivateOffset] = useState(0);
+  const [savedTrace, setSavedTrace] = useState<DebugEntry[]>([]);
+  const [savedTraceOffset, setSavedTraceOffset] = useState(0); const [showSavedTrace, setShowSavedTrace] = useState(false);
   const operation = useRef(false); const lifetime = useRef(0); const audioUrls = useRef<Partial<Record<AudioSource, string>>>({});
   const playbackEpoch = useRef(0); const currentCase = useRef<string | null>(null);
   const resetCaseView = useCallback(() => {
     playbackEpoch.current += 1;
-    Object.values(audioUrls.current).forEach(url => URL.revokeObjectURL(url)); audioUrls.current = {}; setAudio({}); setReplay(null); setReplayIndex(0); setPrivateEvents([]); setPrivateOffset(0);
+    Object.values(audioUrls.current).forEach(url => URL.revokeObjectURL(url)); audioUrls.current = {}; setAudio({}); setReplay(null); setReplayIndex(0); setReplayTarget(1); setPrivateEvents([]); setPrivateOffset(0);
+    setSavedTrace([]); setSavedTraceOffset(0); setShowSavedTrace(false);
   }, []);
   const applyReport = useCallback((result: DebuggerSnapshot) => {
     if (currentCase.current !== result.caseId) { currentCase.current = result.caseId; resetCaseView(); }
@@ -94,7 +101,8 @@ export function DevelopmentDebugger({ visible }: { visible: boolean }) {
     if (!visible || !isTauri) return;
     let disposed = false; let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
-      try { const result = await invoke<DebuggerSnapshot>("development_debug_snapshot"); if (!disposed) applyReport(result); }
+      const epoch = playbackEpoch.current;
+      try { const result = await invoke<DebuggerSnapshot>("development_debug_snapshot"); if (!disposed && epoch === playbackEpoch.current) applyReport(result); }
       catch { /* Unsupported hosts keep this dev-only surface hidden. */ }
       if (!disposed) timer = setTimeout(() => { void refresh(); }, 500);
     };
@@ -133,7 +141,7 @@ export function DevelopmentDebugger({ visible }: { visible: boolean }) {
   }
   async function loadReplay(index: number) {
     const result = await invoke<{ elapsedMs: number; snapshot: SessionStateEvent; projectionSettings?: Record<string, unknown> }>("development_debug_replay", { index, caseId: report?.caseId });
-    setReplay(result); setReplayIndex(index);
+    setReplay(result); setReplayIndex(index); setReplayTarget(index + 1);
   }
   async function listCases() {
     const cases = await invoke<SavedCase[]>("development_debug_cases"); setSavedCases(cases); setSelectedCase(cases[0]?.id ?? "");
@@ -144,11 +152,26 @@ export function DevelopmentDebugger({ visible }: { visible: boolean }) {
   async function loadPrivateEvents(offset: number) {
     const result = await invoke<PrivateEvent[]>("development_debug_private_events", { caseId: report?.caseId, offset }); setPrivateEvents(result); setPrivateOffset(offset);
   }
+  async function loadSavedTrace(offset: number) {
+    const caseId = report?.caseId; const generation = lifetime.current;
+    if (!caseId || report?.trace.enabled) return;
+    const result = await invoke<DebugEntry[]>("development_debug_trace_events", { caseId, offset, limit: 64 });
+    if (generation !== lifetime.current || currentCase.current !== caseId) return;
+    setSavedTrace([...result].sort((a, b) => a.id - b.id)); setSavedTraceOffset(offset); setShowSavedTrace(true);
+  }
   if (!report?.trace.available) return null;
   const audioLoss = (report.audio.sources ?? []).reduce((total, source) => total + source.droppedChunks, 0);
-  const loss = report.trace.evicted + report.trace.frontendDropped + report.contentDropped + audioLoss;
+  const durableTrace = report.tracePersistenceEnabled === true;
+  const loss = (durableTrace ? 0 : report.trace.evicted) + report.trace.frontendDropped + report.contentDropped + audioLoss;
   const liveTracks = session.subtitles.tracks?.length ? session.subtitles.tracks : [{ ...session.subtitles, audioSource: "system" as const }];
-  const entries = report.trace.entries.filter(entry => filter === "all" || entry.event.kind === filter || filter === "snapshot" && entry.event.kind === "published");
+  const entries = (showSavedTrace ? savedTrace : report.trace.entries).filter(entry => filter === "all" || entry.event.kind === filter || filter === "snapshot" && entry.event.kind === "published");
+  const traceLabels = effectiveUiLanguage() === "zh" ? {
+    saved: "落盘事件", load: "查看落盘事件", recent: "最近事件", help: "最近事件只保留内存尾部，移出不代表已保存案例丢失。落盘分页按入库位置读取，每页按事件编号排序；完整复盘按编号归序。落盘缺失、上限和写入失败会单独提示。",
+  } : effectiveUiLanguage() === "ja" ? {
+    saved: "保存済みイベント", load: "保存済みイベントを表示", recent: "最近のイベント", help: "最近のイベントはメモリ末尾のみです。メモリからの削除は保存済みケースの欠落ではありません。保存ページは書込み位置で読み、ページ内はイベント番号順です。完全な分析は番号順に並べます。保存の欠落、上限と失敗は別途表示します。",
+  } : {
+    saved: "Saved events", load: "Load saved events", recent: "Recent events", help: "Recent events retain only the memory tail. Eviction does not mean a saved case lost events. Pages use file positions and sort each page by event ID; full analysis orders all IDs. Saved-event loss, limits and failures are reported separately.",
+  };
   const labels = effectiveUiLanguage() === "zh" ? { saved: "已保存案例", refresh: "查看已保存案例", open: "打开案例", private: "识别结果与翻译请求正文", load: "查看正文", raw: "记录的完整字幕状态" } : effectiveUiLanguage() === "ja" ? { saved:"保存済みケース",refresh:"保存済みケースを表示",open:"ケースを開く",private:"認識結果と翻訳リクエスト本文",load:"本文を表示",raw:"記録済み字幕状態" } : { saved:"Saved cases",refresh:"List saved cases",open:"Open case",private:"Recognition and translation request content",load:"Inspect content",raw:"Recorded subtitle state" };
   return <section className="development-debugger" aria-labelledby="development-debugger-title">
     <header className="development-debugger__header"><h2 id="development-debugger-title">{text.title}</h2><SettingsHelp text={text.help} label={text.title} /><span>{report.trace.enabled ? text.active : text.idle}</span></header>
@@ -162,8 +185,8 @@ export function DevelopmentDebugger({ visible }: { visible: boolean }) {
     {feedback && <p role="status">{feedback}</p>}
     <div className="development-debugger__actions"><button className="settings-button" disabled={pending || report.trace.enabled} onClick={() => { void perform(listCases); }}>{labels.refresh}</button>{savedCases.length > 0 && <><select aria-label={labels.saved} value={selectedCase} disabled={pending || report.trace.enabled} onChange={event => setSelectedCase(event.target.value)}>{savedCases.map(item => <option key={item.id} value={item.id}>{new Date(item.createdAtUnixMs).toLocaleString()} · {item.provider} · {item.snapshots} · {item.id.slice(0, 8)}</option>)}</select><button className="settings-button" disabled={pending || report.trace.enabled || !selectedCase} onClick={() => { void perform(openCase); }}>{labels.open}</button></>}</div>
     {report.caseId && <code>{report.caseId}</code>}
-    <dl className="development-debugger__metrics"><div><dt>Events</dt><dd>{report.trace.recorded}</dd></div><div><dt>Snapshots</dt><dd>{report.replaySnapshots}</dd></div><div><dt>{text.loss}</dt><dd>{loss}</dd></div></dl>
-    {(loss > 0 || report.contentLimited || report.contentFailed || report.audio.limited || report.audio.failedStorage) && <p role="alert">{text.loss}: evicted={report.trace.evicted} frontend={report.trace.frontendDropped} content={report.contentDropped} audio={audioLoss} limited={String(report.contentLimited || report.audio.limited)} failed={String(report.contentFailed || report.audio.failedStorage)}</p>}
+    <dl className="development-debugger__metrics"><div><dt>Events</dt><dd>{report.trace.recorded}</dd></div><div><dt>Snapshots</dt><dd>{report.replaySnapshots}</dd></div>{durableTrace && <div><dt>{traceLabels.saved}</dt><dd>{report.persistedTraceEntries ?? 0}</dd></div>}<div><dt>{text.loss}</dt><dd>{loss}</dd></div></dl>
+    {(loss > 0 || report.contentLimited || report.contentFailed || report.audio.limited || report.audio.failedStorage || report.traceLimited || report.traceFailed) && <p role="alert">{text.loss}: evicted={report.trace.evicted} frontend={report.trace.frontendDropped} content={report.contentDropped} audio={audioLoss}{durableTrace && ` savedTrace=${report.traceDropped ?? 0}`} limited={String(report.contentLimited || report.audio.limited || report.traceLimited || false)} failed={String(report.contentFailed || report.audio.failedStorage || report.traceFailed || false)}</p>}
     <details><summary>{text.route}</summary><pre>{JSON.stringify(report.route, null, 2)}</pre></details>
     {report.caseId && <div className="development-debugger__section"><h3>{text.audio}<SettingsHelp text={text.audioHelp} label={text.audio} /></h3>
       {(["system", "microphone"] as const).filter(source => source === report.route.audioInput || report.route.audioInput === "both" || report.audio.sources?.some(item => item.source === source && item.successfulChunks + item.failedChunks + item.cancelledChunks + item.droppedChunks > 0)).map(source => {
@@ -174,9 +197,16 @@ export function DevelopmentDebugger({ visible }: { visible: boolean }) {
       <details><summary>{text.details}</summary><pre>{JSON.stringify(report.audio, null, 2)}</pre></details>
     </div>}
     <div className="development-debugger__section"><h3>{text.live}</h3>{liveTracks.map(track => <div className="development-debugger__text" key={track.audioSource}><strong>{track.audioSource === "system" ? text.system : text.microphone}</strong><dl><dt>{text.raw}</dt><dd>{track.source.text || "—"}</dd><dt>{text.translated}</dt><dd>{track.translation.text || "—"}</dd></dl></div>)}</div>
-    {report.replaySnapshots > 0 && <div className="development-debugger__section"><h3>{text.replay}<SettingsHelp text={text.replayHelp} label={text.replay} /></h3><div className="development-debugger__actions"><button className="settings-button" disabled={pending || replayIndex === 0 && replay !== null} onClick={() => { void perform(() => loadReplay(Math.max(0, replayIndex - 1))); }}><Icon name="chevron-left" />{text.previous}</button><span>{replayIndex + 1} / {report.replaySnapshots} {replay && `· ${replay.elapsedMs} ms · #${replay.snapshot.debugSnapshotId}`}</span><button className="settings-button" disabled={pending || replay !== null && replayIndex + 1 >= report.replaySnapshots} onClick={() => { void perform(() => loadReplay(replay ? replayIndex + 1 : 0)); }}>{text.next}<Icon name="chevron-right" /></button></div>{replay && <ReplayTimeline session={replay.snapshot} settings={settings} route={{ ...report.route, ...replay.projectionSettings }} />}</div>}
+    {report.replaySnapshots > 0 && <div className="development-debugger__section"><h3>{text.replay}<SettingsHelp text={text.replayHelp} label={text.replay} /></h3><div className="development-debugger__actions"><button className="settings-button" disabled={pending || replayIndex === 0 && replay !== null} onClick={() => { void perform(() => loadReplay(Math.max(0, replayIndex - 1))); }}><Icon name="chevron-left" />{text.previous}</button><span>{replayIndex + 1} / {report.replaySnapshots} {replay && `· ${replay.elapsedMs} ms · #${replay.snapshot.debugSnapshotId}`}</span><input type="number" className="development-debugger__seek" aria-label={effectiveUiLanguage() === "zh" ? "快照序号" : effectiveUiLanguage() === "ja" ? "スナップショット番号" : "Snapshot number"} min={1} max={report.replaySnapshots} value={replayTarget} disabled={pending} onChange={event => setReplayTarget(Number(event.target.value))} /><button className="settings-button" disabled={pending || !Number.isInteger(replayTarget) || replayTarget < 1 || replayTarget > report.replaySnapshots} onClick={() => { void perform(() => loadReplay(replayTarget - 1)); }}>{effectiveUiLanguage() === "zh" ? "跳转" : effectiveUiLanguage() === "ja" ? "移動" : "Go"}</button><button className="settings-button" disabled={pending || replay !== null && replayIndex + 1 >= report.replaySnapshots} onClick={() => { void perform(() => loadReplay(replay ? replayIndex + 1 : 0)); }}>{text.next}<Icon name="chevron-right" /></button></div>{replay && <ReplayTimeline session={replay.snapshot} settings={settings} route={{ ...report.route, ...replay.projectionSettings }} />}</div>}
     {(report.privateEvents ?? 0) > 0 && <div className="development-debugger__section"><h3>{labels.private}</h3><div className="development-debugger__actions"><button className="settings-button" disabled={pending || privateOffset === 0 && privateEvents.length > 0} onClick={() => { void perform(() => loadPrivateEvents(Math.max(0, privateOffset - 32))); }}>{text.previous}</button><span>{privateOffset + 1} / {report.privateEvents}</span><button className="settings-button" disabled={pending || privateEvents.length > 0 && privateOffset + 32 >= (report.privateEvents ?? 0)} onClick={() => { void perform(() => loadPrivateEvents(privateEvents.length > 0 ? privateOffset + 32 : 0)); }}>{privateEvents.length ? text.next : labels.load}</button></div>{privateEvents.map((entry, index) => <details key={`${privateOffset}-${index}`}><summary>#{privateOffset + index + 1} · {entry.elapsedMs} ms · {entry.event.kind}{entry.event.protocol ? ` · ${String(entry.event.protocol)} · ${String(entry.event.lane)} · attempt=${String(entry.event.attempt)}` : ""}</summary><pre>{JSON.stringify(entry.event, null, 2)}</pre></details>)}</div>}
     {replay && <details><summary>{labels.raw} · #{replay.snapshot.debugSnapshotId}</summary><pre>{JSON.stringify(replay.snapshot.subtitles, null, 2)}</pre></details>}
-    <div className="development-debugger__section"><h3>{text.timeline}</h3><select aria-label={text.timeline} value={filter} onChange={event => setFilter(event.target.value)}>{["all", "provider", "reduced", "frontend", "pipeline", "snapshot"].map(value => <option value={value} key={value}>{text[value as keyof typeof text]}</option>)}</select><div className="development-debugger__events">{entries.length ? entries.map(entry => <details key={entry.id}><summary><span>#{entry.id}</span><time>{entry.elapsedMs} ms</time><span>{traceEntryLabel(entry)}</span></summary><pre>{JSON.stringify(entry.event, null, 2)}</pre></details>) : <p>{text.empty}</p>}</div></div>
+    <div className="development-debugger__section development-debugger__trace"><h3>{text.timeline}<SettingsHelp text={traceLabels.help} label={text.timeline} /></h3>
+      {durableTrace && <div className="development-debugger__actions">
+        <button className="settings-button" disabled={pending || !showSavedTrace} onClick={() => setShowSavedTrace(false)}>{traceLabels.recent}</button>
+        <button className="settings-button" disabled={pending || report.trace.enabled || !report.persistedTraceEntries} onClick={() => { void perform(() => loadSavedTrace(showSavedTrace ? savedTraceOffset : 0)); }}>{traceLabels.load}</button>
+        {showSavedTrace && <><button className="settings-button" disabled={pending || savedTraceOffset === 0} onClick={() => { void perform(() => loadSavedTrace(Math.max(0, savedTraceOffset - 64))); }}>{text.previous}</button><span>{savedTraceOffset + 1}–{Math.min(savedTraceOffset + savedTrace.length, report.persistedTraceEntries ?? 0)} / {report.persistedTraceEntries}</span><button className="settings-button" disabled={pending || savedTraceOffset + 64 >= (report.persistedTraceEntries ?? 0)} onClick={() => { void perform(() => loadSavedTrace(savedTraceOffset + 64)); }}>{text.next}</button></>}
+      </div>}
+      <select aria-label={text.timeline} value={filter} onChange={event => setFilter(event.target.value)}>{["all", "provider", "reduced", "frontend", "pipeline", "snapshot"].map(value => <option value={value} key={value}>{text[value as keyof typeof text]}</option>)}</select><div className="development-debugger__events">{entries.length ? entries.map(entry => <details key={entry.id}><summary><span>#{entry.id}</span><time>{entry.elapsedMs} ms</time><span>{traceEntryLabel(entry)}</span></summary><pre>{JSON.stringify(entry.event, null, 2)}</pre></details>) : <p>{text.empty}</p>}</div>
+    </div>
   </section>;
 }

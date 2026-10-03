@@ -18,6 +18,7 @@ const originalRect = HTMLElement.prototype.getBoundingClientRect;
 const originalScrollTo = HTMLElement.prototype.scrollTo;
 const clientHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
 const modes: SubtitleDisplayMode[] = ["original", "translation", "bilingual"];
+const customProviders = ["customDashScopeASR", "customOpenAIASR"] as const;
 const empty: SubtitleSnapshot = {
   source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
   history: [], previewPair: null,
@@ -137,7 +138,7 @@ it("keeps the first raw recognition visible in original and bilingual mode while
   expect(host.querySelector("[data-utterance-id]")?.textContent).not.toContain("unpaired tiny prefix");
 });
 
-it.each(["alibabaCloud", "openAIRealtime"] as const)("keeps all three modes working for legacy %s snapshots without an atomic-preview field", async (provider) => {
+it.each(["alibabaCloud", "openAIRealtime", ...customProviders] as const)("keeps all three modes working for legacy %s snapshots without an atomic-preview field", async (provider) => {
   const subtitles: SubtitleSnapshot = {
     source: { text: "Legacy current original.", isFinal: false, utteranceId: "same-source" },
     translation: { text: "旧协议当前译文。", isFinal: false, utteranceId: "same-source" }, history: [],
@@ -150,17 +151,66 @@ it.each(["alibabaCloud", "openAIRealtime"] as const)("keeps all three modes work
   expect(visibleLanes()).toEqual(["旧协议当前译文。"]);
 });
 
-it("does not use an unrelated atomic-preview field for another provider's identified live streams", async () => {
+it.each(["openAIRealtime", "googleGeminiLive", "azureOpenAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate", "xAIRealtime"] as const)("does not use an unrelated atomic-preview field for %s identified live streams", async (provider) => {
   await mount({ ...empty, source: { text: "Identified provider original.", isFinal: false, utteranceId: "identified" },
     translation: { text: "相同句子身份的译文。", isFinal: false, utteranceId: "identified" },
     previewPair: { source: "Unrelated stale Alibaba original.", translation: "Unrelated stale Alibaba translation." } }, "bilingual", {
-    profiles: [{ id: "identified", name: "OpenAI", provider: "openAIRealtime", credentialState: "present" }], activeProfileId: "identified",
+    profiles: [{ id: "identified", name: "Streaming provider", provider, credentialState: "present" }], activeProfileId: "identified",
   });
   expect(visibleLanes()).toEqual(["Identified provider original.", "相同句子身份的译文。"]);
   await mode("original");
   expect(visibleLanes()).toEqual(["Identified provider original."]);
   await mode("translation");
   expect(visibleLanes()).toEqual(["相同句子身份的译文。"]);
+});
+
+it.each(customProviders)("shows the complete owned %s preview in bilingual mode and preserves it through a shorter raw prefix", async provider => {
+  const subtitles: SubtitleSnapshot = { ...empty,
+    source: { text: "Owned synthetic custom source.", isFinal: false, utteranceId: "custom-owner-B" },
+    translation: { text: "合成自定义完整译文。", isFinal: false },
+    previewPair: { source: "Owned synthetic custom source.", translation: "合成自定义完整译文。", utteranceId: "custom-owner-B" },
+    history: [confirmed],
+  };
+  await mount(subtitles, "bilingual", { profiles: [{ id: "custom", name: "Custom recognition", provider, credentialState: "present" }], activeProfileId: "custom" });
+  expect(visibleLanes()).toEqual([confirmed.source, confirmed.translation, subtitles.previewPair!.source, subtitles.previewPair!.translation]);
+  const liveRow = host.querySelector('[data-utterance-id="live-utterance-custom-owner-B"]');
+  expect(liveRow).not.toBeNull();
+  const nextRaw = { ...subtitles, source: { text: "Revised synthetic custom source.", isFinal: false, utteranceId: "custom-owner-B" },
+    translation: { text: "下", isFinal: false } };
+  await publish(nextRaw);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_800); });
+  expect(visibleLanes()).toEqual([confirmed.source, confirmed.translation, subtitles.previewPair!.source, subtitles.previewPair!.translation]);
+  expect(host.querySelector('[data-utterance-id="live-utterance-custom-owner-B"]')).toBe(liveRow);
+  await mode("translation");
+  expect(visibleLanes()).toEqual([confirmed.translation, subtitles.previewPair!.translation]);
+  await publish({ ...nextRaw, translation: { text: "再", isFinal: false } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_800); });
+  expect(visibleLanes()).toEqual([confirmed.translation, subtitles.previewPair!.translation]);
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed]);
+  await mode("original");
+  expect(visibleLanes()).toEqual([confirmed.source, nextRaw.source.text]);
+});
+
+it.each(customProviders)("keeps %s confirmed history durable when a later draft and incomplete translation arrive", async provider => {
+  const pair = { source: "Second synthetic custom source.", translation: "第二句合成自定义译文。", createdAt: 11 };
+  await mount({ ...empty, source: { text: pair.source, isFinal: false, utteranceId: "custom-owner-B" },
+    translation: { text: pair.translation, isFinal: false },
+    previewPair: { ...pair, utteranceId: "custom-owner-B" }, history: [confirmed] }, "bilingual", {
+    profiles: [{ id: "custom", name: "Custom recognition", provider, credentialState: "present" }], activeProfileId: "custom",
+  });
+  await publish({ ...empty, source: { text: pair.source, isFinal: true },
+    translation: { text: pair.translation, isFinal: true }, history: [confirmed, pair] }, { isTranslationPending: false });
+  expect(visibleLanes()).toEqual([confirmed.source, confirmed.translation, pair.source, pair.translation]);
+  expect(host.querySelector('[data-utterance-id^="live"]')).toBeNull();
+  const historyRow = host.querySelector('[data-utterance-id="history-11"]');
+  await publish({ ...empty, source: { text: "Third synthetic raw source.", isFinal: false, utteranceId: "custom-owner-C" },
+    translation: { text: "短", isFinal: false }, history: [confirmed, pair] });
+  await act(async () => { await vi.advanceTimersByTimeAsync(1_800); });
+  expect(visibleLanes()).toEqual([confirmed.source, confirmed.translation, pair.source, pair.translation, "Third synthetic raw source."]);
+  expect(host.querySelector('[data-utterance-id="history-11"]')).toBe(historyRow);
+  await mode("translation");
+  expect(visibleLanes()).toEqual([confirmed.translation, pair.translation]);
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed, pair]);
 });
 
 it("keeps a completed preview pair together during raw ASR corrections and replaces it atomically", async () => {

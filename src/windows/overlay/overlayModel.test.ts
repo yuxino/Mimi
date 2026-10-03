@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  type ServiceProvider,
   type SubtitleSnapshot,
 } from "../../lib/types";
 import {
@@ -7,9 +8,29 @@ import {
   subtitleLaneBudget,
   computeActivityPhaseFromSignals,
   pendingSourceTranslation,
+  usesAtomicSubtitlePreview,
   visibleLiveSubtitle,
   visibleLiveSubtitles,
 } from "./overlayModel";
+
+describe("atomic subtitle preview capability", () => {
+  // These families match the current Rust TranslationClient factory, including
+  // custom ASR's independent text destination and Alibaba's text alternatives.
+  it.each<[ServiceProvider, boolean]>([
+    ["alibabaCloud", true], ["deepLX", true],
+    ["customDashScopeASR", true], ["customOpenAIASR", true],
+    ["openAIRealtime", false], ["googleGeminiLive", false], ["azureOpenAIRealtime", false],
+    ["volcanoEngine", false], ["tencentCloud", false], ["baiduTranslate", false], ["xAIRealtime", false],
+  ])("uses complete preview pairs for %s only when its route supports them", (provider, expected) => {
+    expect(usesAtomicSubtitlePreview(provider)).toBe(expected);
+  });
+
+  it("keeps missing and unrecognized saved-case routes out of atomic projection", () => {
+    for (const provider of [undefined, null, "unknown", "constructor", { provider: "alibabaCloud" }]) {
+      expect(usesAtomicSubtitlePreview(provider)).toBe(false);
+    }
+  });
+});
 
 describe("same-text committed subtitles", () => {
   const pair = { source: "Mimi", translation: "Mimi", createdAt: 1 };

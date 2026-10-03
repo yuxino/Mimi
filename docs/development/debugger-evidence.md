@@ -16,7 +16,11 @@
    provider event character counts and admission, reducer changes, numbered
    snapshot publication, per-window store receipt/application, selected/stable
    text and DOM commit/clipping. Same-length replacement is still a change.
-5. Export the case folder. `trace.json` is content-free. `snapshots.jsonl`,
+5. Export the case folder. `trace.json` and `trace-events.jsonl` are content-free.
+   The latter contains the complete persisted metadata stream for a private
+   case; its rows have the same `{id, elapsedMs, event}` shape as the live trace.
+   Concurrent callbacks can reach disk out of order, so order the full stream
+   by exact event ID when analyzing it. `snapshots.jsonl`,
    `events.jsonl` and sent WAV files contain explicitly saved private content.
    `events.jsonl` contains allowlisted recognition/provider text and prepared
    independent text-translation HTTP bodies, including the actual model,
@@ -36,13 +40,31 @@
 8. Save a focused regression around the demonstrated boundary. Compare the
    same case before/after, then run the repository check and signed dev UI.
 
-The journal retains 2,048 events and the inspector shows the newest 240. Eviction
-and bounded asynchronous frontend/content queue loss are reported. Content
-snapshots stop at 16 MiB per case; audio has a separate bounded recorder. Old
+The live journal retains 2,048 events and the inspector shows the newest 240.
+Private cases additionally persist metadata continuously and expose it in pages
+of at most 64 rows. `trace.evicted` describes the live ring, not disk loss.
+Check `tracePersistenceEnabled`, `persistedTraceEntries`, `traceDropped`,
+`traceLimited` and `traceFailed` before using the complete metadata file. Old
+cases without this file, and metadata-only traces, still have only their bounded
+live journal; their eviction represents missing evidence. `contentDropped`
+includes `traceDropped`, so do not add that subset twice. Content and metadata
+stop at a shared 16 MiB per case; audio has a separate bounded recorder. Old
 cases are not silently deleted. A DOM commit is not proof of native window
 visibility or that every character was readable.
 
-Snapshots and private events share a 16 MiB cap, audio/index has a 20 MiB cap,
+`visibleCharacters` counts submitted DOM text in lanes intersecting the
+viewport; it is an upper bound, not a count of readable glyphs. A partly
+scrolled history block or a bounded long-text lane can increase
+`overflowedBlocks` without losing provider output or confirmed history.
+Compare raw, selected and stable counts, saved snapshots, scroll position and
+native appearance before attributing a clipping observation to swallowed text.
+
+Snapshots, private events and persisted metadata share a 16 MiB cap and one
+32-item nonblocking writer queue; each line is capped at 512 KiB. Stop records
+the terminal metadata entry, disables collection, waits for already assigned
+case-bound callbacks, then seals and drains the writer. A callback-drain timeout
+leaves the case unsealed and reports an error so Stop can be retried.
+Audio/index has a 20 MiB cap,
 and a complete case reserves a further 4 MiB for its report. The local store
 has a 128 MiB reservation limit and at most 64 cases. The same monotonic epoch
 is used for trace, snapshots, private events and audio send timestamps.

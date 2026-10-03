@@ -280,6 +280,12 @@ impl Audio3ASRClient {
             )
         }
         .map_err(|_| Audio3ASRClientError::NotConnected)?;
+        crate::development_content::asr_request(
+            events
+                .debug_context()
+                .map(|(source, generation)| (source, generation, events.content_revision())),
+            &run_task,
+        );
         *self.task_id.lock().await = Some(task_id.to_string());
 
         let mut request = self

@@ -1,0 +1,17 @@
+[
+  { "audioInput": "system", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 14, "minimumHeight": 136 },
+  { "audioInput": "system", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 18, "minimumHeight": 136 },
+  { "audioInput": "microphone", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 20, "minimumHeight": 136 },
+  { "audioInput": "system", "displayMode": "translation", "targetLanguage": "zh", "fontSize": 20, "minimumHeight": 136 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 14, "minimumHeight": 172 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 15, "minimumHeight": 176 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 16, "minimumHeight": 180 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 17, "minimumHeight": 184 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 18, "minimumHeight": 188 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 19, "minimumHeight": 196 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "zh", "fontSize": 20, "minimumHeight": 200 },
+  { "audioInput": "both", "displayMode": "translation", "targetLanguage": "zh", "fontSize": 14, "minimumHeight": 136 },
+  { "audioInput": "both", "displayMode": "translation", "targetLanguage": "zh", "fontSize": 18, "minimumHeight": 144 },
+  { "audioInput": "both", "displayMode": "original", "targetLanguage": "zh", "fontSize": 20, "minimumHeight": 152 },
+  { "audioInput": "both", "displayMode": "bilingual", "targetLanguage": "original", "fontSize": 20, "minimumHeight": 152 }
+]

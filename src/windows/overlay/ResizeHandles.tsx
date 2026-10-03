@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../../lib/ipc";
+import { OVERLAY_BASE_MINIMUM_HEIGHT } from "./overlayMinimumHeight";
 import type {
   CSSProperties,
   PointerEvent as ReactPointerEvent,
@@ -18,7 +19,6 @@ type Region =
 
 const OVERLAY_MIN_WIDTH = 360;
 const OVERLAY_MAX_WIDTH = 1200;
-const OVERLAY_MIN_HEIGHT = 136;
 const OVERLAY_MAX_HEIGHT = 600;
 
 const CURSORS: Record<Region, string> = {
@@ -48,6 +48,7 @@ const HANDLES: Array<{ region: Region; style: CSSProperties }> = [
 
 interface ResizeHandlesProps {
   disabled: boolean;
+  minimumHeight?: number;
   /** `x`/`y` are the new window origin when the dragged edge/corner moves it. */
   onResize: (
     width: number,
@@ -69,7 +70,7 @@ interface DragState {
 }
 
 /** Self-drawn resize handles for the overlay's eight edge/corner regions. */
-export function ResizeHandles({ disabled, onResize }: ResizeHandlesProps) {
+export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE_MINIMUM_HEIGHT }: ResizeHandlesProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   // Tauri mode: the backend owns the resize math; the webview forwards pointer
@@ -183,7 +184,7 @@ export function ResizeHandles({ disabled, onResize }: ResizeHandlesProps) {
     }
 
     const clampedW = clamp(Math.round(width), OVERLAY_MIN_WIDTH, OVERLAY_MAX_WIDTH);
-    const clampedH = clamp(Math.round(height), OVERLAY_MIN_HEIGHT, OVERLAY_MAX_HEIGHT);
+    const clampedH = clamp(Math.round(height), minimumHeight, OVERLAY_MAX_HEIGHT);
     // Recede the dragged edge when the size got clamped, so dragging past the
     // minimum does not keep drifting the window off-screen.
     if (drag.region.includes("left")) x += width - clampedW;

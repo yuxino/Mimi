@@ -8,6 +8,7 @@ import type {
   AudioSource,
   OverlayActivityPhaseKind,
   SessionStateEvent,
+  ServiceProvider,
   SettingsSnapshot,
   SubtitleSnapshot,
 } from "../../lib/types";
@@ -17,6 +18,18 @@ import {
   SOURCE_LANGUAGE_DISPLAY_NAMES,
   sourceLanguageStatusDisplayName,
 } from "../../lib/types";
+
+const ATOMIC_SUBTITLE_PROVIDERS = [
+  "alibabaCloud", "deepLX", "customDashScopeASR", "customOpenAIASR",
+] as const satisfies readonly ServiceProvider[];
+type AtomicSubtitleProvider = typeof ATOMIC_SUBTITLE_PROVIDERS[number];
+
+/** Mirrors the current TranslationClient factory's ASR + text-translation
+ * routes, which publish complete PreviewPairs. Independent realtime
+ * transports keep their own draft semantics; unknown replay routes are safe. */
+export function usesAtomicSubtitlePreview(provider: unknown): provider is AtomicSubtitleProvider {
+  return ATOMIC_SUBTITLE_PROVIDERS.some(candidate => candidate === provider);
+}
 
 export type SubtitleBlockPresentation = "history" | "latestCommitted" | "live";
 

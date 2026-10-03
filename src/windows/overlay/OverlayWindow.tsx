@@ -17,6 +17,7 @@ import { useResolvedMotion } from "./animation";
 import { useSubtitleTail } from "./useSubtitleTail";
 import type { SourceSubtitleSnapshot } from "../../lib/types";
 import { overlaySessionChromeLayout } from "./overlayChromeLayout";
+import { minimumOverlayHeight } from "./overlayMinimumHeight";
 import { useSessionAction } from "./useSessionAction";
 import { publishOverlayPointerMotion } from "../../lib/overlayPointer";
 import {
@@ -27,6 +28,7 @@ import {
   emptyStateIsError,
   emptyStateText,
   hasSubtitleContent,
+  usesAtomicSubtitlePreview,
   visibleLiveSubtitles,
 } from "./overlayModel";
 
@@ -132,7 +134,7 @@ export function OverlayWindow() {
   const presentationCollapsed = collapsed && !blendsWithBackground;
   const phase = computeActivityPhase(session, settings);
   const activeProvider = settings.profiles.find(profile => profile.id === settings.activeProfileId)?.provider;
-  const atomicProvider = activeProvider === "alibabaCloud" || activeProvider === "deepLX";
+  const atomicProvider = usesAtomicSubtitlePreview(activeProvider);
   // Disabling an input keeps its confirmed captions and source identity.
   const dual = new Set([
     ...(session.subtitles.tracks ?? []).map(track => track.audioSource),
@@ -280,7 +282,7 @@ export function OverlayWindow() {
         </div>
       </div>
       {!settings.isOverlayLocked && !presentationCollapsed && !blendsWithBackground && (
-        <ResizeHandles disabled={false} onResize={handleResize} />
+        <ResizeHandles disabled={false} onResize={handleResize} minimumHeight={minimumOverlayHeight(settings)} />
       )}
     </>
   );

@@ -21,6 +21,7 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 
 mod denoising;
+mod private_evidence;
 mod realtime;
 
 const FRAME_BYTES: usize = 640; // 20 ms, mono signed little-endian PCM16, 16 kHz.
@@ -53,6 +54,7 @@ enum Failure {
     ProtocolInvalid,
     EventLimit,
     EvaluationLimit,
+    EvidenceFailed,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -807,11 +809,23 @@ async fn compare(
     network: &ProviderNetwork,
     endpoint: &str,
 ) -> Report {
+    compare_with_evidence(clip, arm, api_key, network, endpoint, None).await
+}
+
+async fn compare_with_evidence(
+    clip: &PreparedClip,
+    arm: Arm,
+    api_key: &str,
+    network: &ProviderNetwork,
+    endpoint: &str,
+    mut evidence: Option<private_evidence::Evidence>,
+) -> Report {
     let mut observer = Observer::new(clip);
     let mut sent = Metrics::default();
     let operation = async {
         let task_id = uuid::Uuid::new_v4().to_string();
         let run_task = arm.request(clip.language.source(), &task_id)?;
+        if let Some(evidence) = &mut evidence { evidence.request(&run_task)?; }
         let mut request = endpoint.into_client_request().map_err(|_| Failure::NetworkFailed)?;
         let mut authorization = HeaderValue::from_str(&format!("Bearer {api_key}")).map_err(|_| Failure::CredentialsUnavailable)?;
         authorization.set_sensitive(true);
@@ -827,6 +841,7 @@ async fn compare(
                 .ok_or(Failure::NetworkFailed)?.map_err(websocket_failure)?;
             let Some(text) = text_frame(message)? else { continue; };
             let event = Audio3ASRServerEventDecoder::decode(&text).map_err(|_| Failure::ProtocolInvalid)?;
+            if let Some(evidence) = &mut evidence { evidence.event(&text, &event, 0, false)?; }
             if let Some(failure) = task_failure(&event) { return Err(failure); }
             if matches!(event, Audio3ASRServerEvent::TaskStarted) { break; }
             if !matches!(event, Audio3ASRServerEvent::Heartbeat | Audio3ASRServerEvent::Ignored {..}) {
@@ -877,7 +892,10 @@ async fn compare(
                         .map_err(|_| Failure::FinishTimeout)?.ok_or(Failure::NetworkFailed)?.map_err(websocket_failure)?,
                 };
                 let Some(text) = text_frame(message)? else { continue; };
-                let event = observer.record(text.as_str(), started.elapsed().as_millis() as u64, finish_rx.borrow().is_some())?;
+                let at_ms = started.elapsed().as_millis() as u64;
+                let after_finish = finish_rx.borrow().is_some();
+                let event = observer.record(text.as_str(), at_ms, after_finish)?;
+                if let Some(evidence) = &mut evidence { evidence.event(&text, &event, at_ms, after_finish)?; }
                 if let Some(failure) = task_failure(&event) { return Err(failure); }
                 if matches!(event, Audio3ASRServerEvent::TaskFinished) {
                     if finish_rx.borrow().is_none() { return Err(Failure::ProtocolInvalid); }
@@ -895,7 +913,15 @@ async fn compare(
     observer.metrics.tail_frames = sent.tail_frames;
     observer.metrics.sent_bytes = sent.sent_bytes;
     observer.metrics.maximum_send_lateness_ms = sent.maximum_send_lateness_ms;
-    observer.report(clip, arm, operation.err())
+    let mut report = observer.report(clip, arm, operation.err());
+    if evidence
+        .as_mut()
+        .is_some_and(|evidence| evidence.finish(&report).is_err())
+    {
+        report.failure = Some(Failure::EvidenceFailed);
+        report.evaluation = None;
+    }
+    report
 }
 
 /// This entry exists only in the explicitly enabled macOS test executable. It
@@ -932,6 +958,14 @@ async fn manual_same_pcm_asr_comparison() {
             }
             Err(_) => return Err(Failure::ManifestInvalid),
         };
+        let evidence_root =
+            std::env::var_os("MIMI_ASR_BENCH_PRIVATE_OUTPUT_DIR").map(PathBuf::from);
+        if evidence_root.is_some() && arms != [Arm::Baseline] {
+            return Err(Failure::ManifestInvalid);
+        }
+        if let Some(root) = &evidence_root {
+            private_evidence::validate_root(root)?;
+        }
         let directory = match std::env::var_os("MIMI_ASR_BENCH_CONFIG_DIR") {
             Some(path) => PathBuf::from(path),
             None => PathBuf::from(std::env::var_os("HOME").ok_or(Failure::CredentialsUnavailable)?)
@@ -987,6 +1021,17 @@ async fn manual_same_pcm_asr_comparison() {
                 } else {
                     if matches!(arm, Arm::RealtimeAsr) {
                         realtime::compare(clip, key, &network, &realtime::endpoint()).await
+                    } else if let Some(root) = &evidence_root {
+                        let evidence = private_evidence::Evidence::create(root, &clip.label)?;
+                        compare_with_evidence(
+                            clip,
+                            *arm,
+                            key,
+                            &network,
+                            DASHSCOPE_INFERENCE_WS,
+                            Some(evidence),
+                        )
+                        .await
                     } else {
                         compare(clip, *arm, key, &network, DASHSCOPE_INFERENCE_WS).await
                     }

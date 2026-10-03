@@ -26,6 +26,9 @@ struct SequencedEvent {
 /// Lifecycle and service failures remain meaningful across a content clear.
 #[derive(Debug, Clone)]
 pub struct ProviderEvent {
+    /// Connects queue publication to session admission in development traces.
+    /// Locally generated control signals do not have a publication sequence.
+    pub transport_sequence: Option<u64>,
     pub content_revision: u64,
     pub event: LiveTranslateServerEvent,
 }
@@ -451,6 +454,7 @@ impl ProviderEventReceiver {
 
     fn control_event(&self, event: LiveTranslateServerEvent) -> ProviderEvent {
         ProviderEvent {
+            transport_sequence: None,
             content_revision: self.content_revision.load(Ordering::SeqCst),
             event,
         }
@@ -566,6 +570,7 @@ impl ProviderEventReceiver {
             self.last_delivered_sequence = self.last_delivered_sequence.max(event.sequence);
         }
         ProviderEvent {
+            transport_sequence: Some(event.sequence),
             content_revision: event.content_revision,
             event: event.event,
         }
@@ -595,6 +600,7 @@ impl ProviderEventReceiver {
         };
         self.last_delivered_sequence = self.last_delivered_sequence.max(event.sequence);
         Some(ProviderEvent {
+            transport_sequence: Some(event.sequence),
             content_revision: event.content_revision,
             event: event.event,
         })
@@ -642,6 +648,59 @@ fn overflow_event() -> LiveTranslateServerEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn admission_preserves_queue_identity_across_reliable_draft_and_content_boundaries() {
+        let (sender, mut receiver) = provider_event_channel();
+        sender
+            .send(LiveTranslateServerEvent::TranslationStarted)
+            .unwrap();
+        sender
+            .send(LiveTranslateServerEvent::TranslationDraft(
+                "Synthetic draft".into(),
+            ))
+            .unwrap();
+        let reliable = receiver.recv_with_revision().await.unwrap();
+        let draft = receiver.recv_with_revision().await.unwrap();
+        assert_eq!(reliable.transport_sequence, Some(1));
+        assert_eq!(draft.transport_sequence, Some(2));
+        assert_eq!(draft.content_revision, 0);
+        sender.advance_content_revision();
+        sender
+            .send(LiveTranslateServerEvent::TranslationFinal(
+                "Synthetic final".into(),
+            ))
+            .unwrap();
+        let next = receiver.recv_with_revision().await.unwrap();
+        assert_eq!(next.transport_sequence, Some(3));
+        assert_eq!(next.content_revision, 1);
+    }
+
+    #[tokio::test]
+    async fn generated_overflow_has_no_fabricated_queue_identity() {
+        let (sender, mut receiver) = provider_event_channel_with_capacity(1);
+        sender
+            .send(LiveTranslateServerEvent::TranslationStarted)
+            .unwrap();
+        assert_eq!(
+            sender.send(LiveTranslateServerEvent::SessionFinished),
+            Err(ProviderEventSendError::Backpressure)
+        );
+        let overflow = receiver.recv_with_revision().await.unwrap();
+        assert_eq!(overflow.transport_sequence, None);
+        assert!(matches!(
+            overflow.event,
+            LiveTranslateServerEvent::Error { .. }
+        ));
+        assert_eq!(
+            receiver
+                .recv_with_revision()
+                .await
+                .unwrap()
+                .transport_sequence,
+            Some(1)
+        );
+    }
 
     #[tokio::test]
     async fn a_previous_identified_final_keeps_the_newer_sentence_draft_but_not_its_own() {

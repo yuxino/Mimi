@@ -29,6 +29,7 @@ commands.allow = [
   "development_debug_cases",
   "development_debug_open_case",
   "development_debug_private_events",
+  "development_debug_trace_events",
   "app_open_support_issue",
   "capture_status",
   "app_is_ui_test",

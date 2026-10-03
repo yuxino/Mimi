@@ -50,6 +50,7 @@ beforeEach(() => {
     switch (command) {
       case "development_debug_snapshot": return report;
       case "development_debug_audio": return audioResult();
+      case "development_debug_replay": return { elapsedMs: 20, snapshot: original.session };
       case "development_debug_cases": return [caseA, caseB].map((id, index) => ({
         id, createdAtUnixMs: 1_700_000_000_000 + index, snapshots: 2, provider: "alibabaCloud",
       }));
@@ -61,6 +62,10 @@ beforeEach(() => {
         elapsedMs: Number(args?.offset) + index,
         event: { kind: "syntheticRequest", protocol: "synthetic", text: `Synthetic private event ${Number(args?.offset) + index}` },
       }));
+      case "development_debug_trace_events": return Array.from({ length: Math.min(64, 70 - Number(args?.offset)) }, (_, index) => ({
+        id: Number(args?.offset) + index + 1, elapsedMs: index,
+        event: { kind: "pipeline", label: "Synthetic saved event" },
+      })).reverse();
       default: throw new Error(`Unexpected debugger command: ${command}`);
     }
   });
@@ -249,6 +254,87 @@ it("keeps all evidence-loss counts and storage limits in a visible alert alongsi
   expect(alert.hidden).toBe(false); expect(alert.closest("details")).toBeNull();
 });
 
+it("distinguishes memory eviction from complete durable evidence and retains old-case loss semantics", async () => {
+  report = { ...report, trace: { ...report.trace, recorded: 2_720, evicted: 672 },
+    tracePersistenceEnabled: true, persistedTraceEntries: 2_720, traceDropped: 0 };
+  await mount();
+  const metrics = [...host.querySelectorAll(".development-debugger__metrics > div")];
+  expect(metrics.find(node => node.querySelector("dt")?.textContent === "Missing evidence")?.querySelector("dd")?.textContent).toBe("0");
+  expect(metrics.find(node => node.querySelector("dt")?.textContent === "Saved events")?.querySelector("dd")?.textContent).toBe("2720");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  report = { ...report, tracePersistenceEnabled: false };
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("evicted=672");
+});
+
+it("reports durable queue loss without counting its content-loss subset twice", async () => {
+  report = { ...report, trace: { ...report.trace, evicted: 100, frontendDropped: 1 },
+    tracePersistenceEnabled: true, persistedTraceEntries: 70, traceDropped: 2, contentDropped: 3 };
+  await mount();
+  const metric = [...host.querySelectorAll(".development-debugger__metrics > div")]
+    .find(node => node.querySelector("dt")?.textContent === "Missing evidence");
+  expect(metric?.querySelector("dd")?.textContent).toBe("4");
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain("content=3 audio=0 savedTrace=2");
+});
+
+it("loads bounded saved-event pages for the exact case, orders IDs and resets on case change", async () => {
+  report = { ...report, tracePersistenceEnabled: true, persistedTraceEntries: 70 };
+  await mount();
+  expect(mocks.invoke.mock.calls.some(([command]) => command === "development_debug_trace_events")).toBe(false);
+  const trace = host.querySelector<HTMLElement>(".development-debugger__trace")!;
+  await click("Load saved events", trace);
+  expect(mocks.invoke).toHaveBeenCalledWith("development_debug_trace_events", { caseId: caseA, offset: 0, limit: 64 });
+  const summaries = [...trace.querySelectorAll(".development-debugger__events summary")];
+  expect(summaries[0].firstElementChild?.textContent).toBe("#1");
+  expect(summaries.at(-1)?.firstElementChild?.textContent).toBe("#64");
+  await click("Next", trace);
+  expect(mocks.invoke).toHaveBeenCalledWith("development_debug_trace_events", { caseId: caseA, offset: 64, limit: 64 });
+  expect(trace.textContent).toContain("65–70 / 70");
+  expect(button("Next", trace).disabled).toBe(true);
+  await click("Previous", trace);
+  expect(trace.textContent).toContain("1–64 / 70");
+  report = { ...snapshot(caseB), tracePersistenceEnabled: true, persistedTraceEntries: 70 };
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  expect(trace.querySelectorAll(".development-debugger__events summary")).toHaveLength(0);
+  expect(button("Recent events", trace).disabled).toBe(true);
+  await click("Load saved events", trace);
+  expect(mocks.invoke).toHaveBeenCalledWith("development_debug_trace_events", { caseId: caseB, offset: 0, limit: 64 });
+});
+
+it("discards a saved-event page that resolves after the selected case changes", async () => {
+  report = { ...report, tracePersistenceEnabled: true, persistedTraceEntries: 70 };
+  const result = deferred<Array<{ id: number; elapsedMs: number; event: { kind: string; label: string } }>>();
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) => command === "development_debug_trace_events" ? result.promise : originalInvoke(command, args));
+  await mount();
+  await click("Load saved events");
+  report = { ...snapshot(caseB), tracePersistenceEnabled: true, persistedTraceEntries: 70 };
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  await act(async () => result.resolve([{ id: 1, elapsedMs: 1, event: { kind: "pipeline", label: "Obsolete case entry" } }]));
+  expect(host.textContent).not.toContain("Obsolete case entry");
+  expect(host.querySelectorAll(".development-debugger__events summary")).toHaveLength(0);
+});
+
+it("does not restore an older case when an earlier poll completes after opening a new case", async () => {
+  await mount(); await click("List saved cases");
+  const oldPoll = deferred<DebuggerSnapshot>(); const oldReport = report;
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  let delayNextPoll = true;
+  mocks.invoke.mockImplementation((command, args) => {
+    if (command === "development_debug_snapshot" && delayNextPoll) {
+      delayNextPoll = false; return oldPoll.promise;
+    }
+    return originalInvoke(command, args);
+  });
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  const select = host.querySelector<HTMLSelectElement>('select[aria-label="Saved cases"]')!;
+  await act(async () => { select.value = caseB; select.dispatchEvent(new Event("change", { bubbles: true })); });
+  await click("Open case");
+  expect(host.querySelector("code")?.textContent).toBe(caseB);
+  await act(async () => oldPoll.resolve(oldReport));
+  expect(host.querySelector("code")?.textContent).toBe(caseB);
+});
+
 it("explains a full case store without displaying arbitrary error content", async () => {
   const originalInvoke = mocks.invoke.getMockImplementation()!;
   mocks.invoke.mockImplementation(async (command, args) => {
@@ -264,6 +350,21 @@ it("explains a full case store without displaying arbitrary error content", asyn
   await click("Record audio and subtitles");
   expect(host.querySelector('[role="status"]')?.textContent).toBe("Operation failed. Try again.");
   expect(host.textContent).not.toContain("unexpected-private-service-content");
+});
+
+it("jumps directly to a case-bound snapshot and rejects out-of-range positions", async () => {
+  report = { ...report, replaySnapshots: 52 };
+  await mount();
+  const input = host.querySelector<HTMLInputElement>('input[aria-label="Snapshot number"]')!;
+  const change = async (value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await change("42"); await click("Go");
+  expect(mocks.invoke).toHaveBeenCalledWith("development_debug_replay", { index: 41, caseId: caseA });
+  expect(input.value).toBe("42");
+  await change("53"); expect(button("Go").disabled).toBe(true);
+  await change("0"); expect(button("Go").disabled).toBe(true);
 });
 
 it("loads private events only on request in bounded pages tied to the current case", async () => {

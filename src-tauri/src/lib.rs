@@ -347,6 +347,7 @@ pub fn run() {
             development_debugger::development_debug_cases,
             development_debugger::development_debug_open_case,
             development_debugger::development_debug_private_events,
+            development_debugger::development_debug_trace_events,
             commands::app_open_support_issue,
             commands::capture_status,
             commands::audio_applications,

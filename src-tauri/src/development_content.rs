@@ -90,6 +90,81 @@ fn provider_content(event: &LiveTranslateServerEvent) -> Value {
     }
 }
 
+/// The actual production-encoded ASR task body, before network setup. Credentials
+/// live in handshake headers and are never passed to this private allowlist.
+pub fn asr_request(context: Option<(AudioSource, u64, u64)>, body: &Value) {
+    if let Some((source, generation, revision)) = context {
+        record(|| asr_request_value(body, source, generation, revision));
+    }
+}
+
+fn bounded_request_string(value: &Value, budget: &mut usize, limited: &mut bool) -> Option<Value> {
+    let text = value.as_str()?;
+    let mut end = text.len().min(*budget);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    *limited |= end < text.len();
+    *budget -= end;
+    Some(json!(&text[..end]))
+}
+
+fn asr_request_value(body: &Value, source: AudioSource, generation: u64, revision: u64) -> Value {
+    let payload = &body["payload"];
+    let mut limited = false;
+    let mut budget = 16 * 1024;
+    let model = bounded_request_string(&payload["model"], &mut budget, &mut limited);
+    let mut parameters = serde_json::Map::new();
+    if let Some(format) =
+        bounded_request_string(&payload["parameters"]["format"], &mut budget, &mut limited)
+    {
+        parameters.insert("format".into(), format);
+    }
+    if let Some(rate) = payload["parameters"]["sample_rate"].as_u64() {
+        parameters.insert("sample_rate".into(), json!(rate));
+    }
+    for key in ["semantic_punctuation_enabled", "heartbeat"] {
+        if let Some(value) = payload["parameters"][key].as_bool() {
+            parameters.insert(key.into(), json!(value));
+        }
+    }
+    if let Some(hints) = payload["parameters"]["language_hints"].as_array() {
+        limited |= hints.len() > 8;
+        let hints: Vec<Value> = hints
+            .iter()
+            .take(8)
+            .filter_map(|value| bounded_request_string(value, &mut budget, &mut limited))
+            .collect();
+        parameters.insert("language_hints".into(), json!(hints));
+    }
+    let mut input = serde_json::Map::new();
+    if let Some(messages) = payload["input"]["context"].as_array() {
+        limited |= messages.len() > 8;
+        let mut context = Vec::new();
+        for message in messages.iter().take(8) {
+            let role = bounded_request_string(&message["role"], &mut budget, &mut limited);
+            let mut content = Vec::new();
+            if let Some(parts) = message["content"].as_array() {
+                limited |= parts.len() > 8;
+                for part in parts.iter().take(8) {
+                    if part["type"].as_str() == Some("input_text") {
+                        if let Some(text) =
+                            bounded_request_string(&part["text"], &mut budget, &mut limited)
+                        {
+                            content.push(json!({"type":"input_text","text":text}));
+                        }
+                    }
+                }
+            }
+            context.push(json!({"role":role,"content":content}));
+        }
+        input.insert("context".into(), json!(context));
+    }
+    json!({"kind":"asrRequest","protocol":"audio3","source":source,"generation":generation,"contentRevision":revision,
+        "boundary":"websocketTaskRequestPrepared","serverReceiptProven":false,"bodyLimited":limited,
+        "body":{"payload":{"model":model,"parameters":parameters,"input":input}}})
+}
+
 #[derive(Clone, Copy)]
 pub struct RequestContext {
     pub source: AudioSource,
@@ -334,6 +409,11 @@ mod tests {
         }
         let _reset = Reset;
         configure(None);
+        asr_request(
+            Some((AudioSource::System, 3, 1)),
+            &json!({"payload":{"model":"disabled"}}),
+        );
+        assert!(sink().lock().unwrap().is_none());
         let inactive = begin_attempt(Some(context()));
         assert!(inactive.inner.is_none());
         inactive.complete(&Ok("ignored while disabled".to_string()));
@@ -468,5 +548,45 @@ mod tests {
         assert_eq!(output["body"]["messages"], body["messages"]);
         assert_eq!(output["boundary"], "httpRequestPrepared");
         assert_eq!(output["serverReceiptProven"], false);
+    }
+
+    #[test]
+    fn actual_asr_request_records_only_allowlisted_body_and_route() {
+        let body = json!({"header":{"Authorization":"secret","task_id":"secret"},"payload":{
+            "model":"synthetic-asr","api_key":"secret","parameters":{"format":"pcm","sample_rate":16000,
+            "language_hints":["ja"],"semantic_punctuation_enabled":true,"heartbeat":true,"Authorization":"secret"},
+            "input":{"endpoint":"secret","context":[{"role":"user","endpoint":"secret","content":[
+                {"type":"input_text","text":"synthetic context","api_key":"secret"}]}]}}});
+        let value = asr_request_value(&body, AudioSource::Microphone, 9, 4);
+        assert!(!value.to_string().contains("secret"));
+        assert_eq!(value["body"]["payload"]["model"], "synthetic-asr");
+        assert_eq!(
+            value["body"]["payload"]["parameters"]["language_hints"],
+            json!(["ja"])
+        );
+        assert_eq!(
+            value["body"]["payload"]["input"]["context"][0]["content"][0]["text"],
+            "synthetic context"
+        );
+        assert_eq!(value["source"], "microphone");
+        assert_eq!(value["generation"], 9);
+        assert_eq!(value["contentRevision"], 4);
+        assert_eq!(value["boundary"], "websocketTaskRequestPrepared");
+        assert_eq!(value["serverReceiptProven"], false);
+        assert_eq!(value["bodyLimited"], false);
+    }
+
+    #[test]
+    fn asr_context_budget_preserves_utf8_and_reports_truncation() {
+        let text = "あ".repeat(16 * 1024);
+        let body = json!({"payload":{"model":"synthetic","input":{"context":[{"role":"user",
+            "content":[{"type":"input_text","text":text}]}]}}});
+        let value = asr_request_value(&body, AudioSource::System, 1, 0);
+        let saved = value["body"]["payload"]["input"]["context"][0]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        assert!(saved.len() <= 16 * 1024);
+        assert!(text.starts_with(saved));
+        assert_eq!(value["bodyLimited"], true);
     }
 }

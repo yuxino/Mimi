@@ -17,6 +17,11 @@ frontend selection/stabilization, and committed DOM/clipping.
 - Provider events add source identity, connection generation, clear revision,
   controlled event kind, numeric utterance IDs where available, character
   counts, and an explicit admission or rejection reason.
+  Queue publication and session admission retain the same transport sequence;
+  locally generated overflow controls have no fabricated sequence. Join using
+  source, generation, content revision and sequence within the provider lane.
+  A queue attempt alone is not proof of admission, and an intermediate draft
+  absent from admission may have been superseded in its latest-value lane.
 - Backend application records before/after bounded subtitle summaries and
   whether the snapshot changed, including same-length replacements. Numbered
   snapshots join publication to per-window receipt/store application and DOM
@@ -57,6 +62,35 @@ exit, using the same bounded flush and save path as the recording stop button.
 All evidence uses one monotonic origin; frontend receipt timestamps include
 bounded batching delay. Limits and loss counters are visible in the inspector.
 
+## Continuous metadata for private cases
+
+The real 41-second film reproduction exceeded the 2,048-entry live ring.
+Increasing that ring would only postpone evidence loss. An explicitly recorded
+private case now streams each content-free metadata entry into
+`trace-events.jsonl`, sharing the existing 32-item queue and 16 MiB content budget.
+The 20 MiB audio cap, 4 MiB report reservation, 40 MiB case reservation and 128 MiB
+global reservation remain unchanged. Individual JSONL lines are at most 512 KiB.
+Production and collection-off sessions have no sink. Metadata-only collection
+keeps its original memory-only behavior and does not save private display text.
+
+Journal sequence allocation captures the fixed case target and increments an
+in-flight count under its lock; callbacks serialize and try-send after releasing
+the lock. Concurrent enqueue order can differ from sequence order, so persisted
+rows retain exact IDs and offline analysis sorts by ID. Stop records `Stopped`,
+disables and detaches the sink, waits for all assigned callbacks outside the
+journal lock, then seals and joins the writer before persisting the final report.
+A five-second callback timeout fails explicitly without sealing; retry can finish
+the same case. New starts and case switches require the previous case finalized.
+
+The live view still shows the newest 240 of 2,048 retained entries. Saved metadata
+is readable by case-bound pages of at most 64 physical rows and exported in full.
+Reports separately expose persistence availability, written rows/bytes, dropped
+rows, byte-limit and storage failure. Live ring eviction is not durable loss when
+the complete private-case stream exists; old cases deserialize these fields to
+off and retain their original eviction warning. Tests cover default-off behavior,
+capacity, fixed-target tickets, drain-timeout retry, bounded queue/line/disk loss,
+pagination/export and rejection of symlinks or nonregular metadata files.
+
 ## Subtitle acceptance baseline (second phase)
 
 1. Drafts may be replaced only by work belonging to their current owner.
@@ -74,3 +108,62 @@ Validate collection bounds/privacy/gating, rejection reasons, frontend batching
 and real signed dev UI. Run the canonical repository check. Use non-sensitive
 speech and explicit transcript/audio opt-in for real-provider experiments;
 keep native permissions and credentials outside exported diagnostics.
+
+## Second phase: complete previews for custom recognition
+
+The current `TranslationClient` factory routes Alibaba, DeepLX, custom
+DashScope ASR and custom OpenAI ASR through `HighQualityTranslationClient`.
+That pipeline publishes an identified recognition draft, an unowned raw
+translation draft, and a complete preview pair carrying the source owner.
+The overlay previously enabled complete-pair selection only for Alibaba and
+DeepLX. Custom recognition therefore hid a completed bilingual translation
+because the raw owners did not match, and translated mode could replace a
+complete preview with a later short HTTP streaming prefix.
+
+One pure, typed route helper now selects complete previews for all four factory
+families in both the live overlay and debugger replay. Other realtime transports
+retain their own draft rules; legacy snapshots without `previewPair` retain the
+existing fallback. Confirmed history stays independent and bounded.
+
+Regression cases reproduce both custom families before the fix and cover owned
+bilingual pairs, shorter subsequent raw prefixes, original-mode recognition,
+confirmed-history durability, legacy snapshots and the seven unrelated realtime
+transports. These are synthetic frontend checks, not custom-service network
+validation. Native geometry is a separate acceptance case.
+
+## Second phase: native height for independent source rows
+
+The expanded native minimum was 136px regardless of selected sources. In the
+active, narrow layout, the 61px controls, 12px outside inset, 10px inner padding
+and 2px border leave a 51px Timeline body. Two independent bilingual live blocks
+at the default 18px font need at least 92px even with tight spacing. Tail scrolling
+therefore places the first source lane above the viewport. The old 130px Timeline
+fixture did not reproduce this actual native minimum.
+
+The UI-independent core rule now reserves 85px for chrome and one block per
+selected audio source. For two-source bilingual output, each block reserves
+`ceil(max(12, font * .82) * 1.32) + ceil(font * 1.32) + 2 + 5` pixels. Original,
+translated and target-original output reserve one full-font line plus 5px per
+block. The source label sits beside the lanes and adds no vertical line. Fonts
+are bounded to the supported 14–20px range; the result is rounded up to 4px and
+never below 136px. Both-source bilingual minima are 172–200px, including 188px
+at the default font and 200px at the maximum. A single source retains 136px:
+even font 20 fits one tight bilingual block in its 51px body.
+
+This requirement follows source, display, target-language and font preferences
+through startup, native constraints, queued geometry snapshots, resize,
+collapse/expand and display following. A growing requirement raises only height;
+a smaller requirement permits later manual resizing without shrinking the saved
+frame. Position and width remain independent, and the folded bar remains
+280×54px. Including the requirement in geometry snapshots rejects older queued
+reads/writes even when the existing frame is already taller than both minima.
+The browser resize fallback uses the same contract fixtures as Rust.
+
+Focused checks cover the actual 51px body before the fix, full visible source
+lanes at each supported font after the fix, side labels and target-original
+layout, opposite-edge resize anchoring, source changes, stale geometry,
+collapse and saved/presentation frame independence. These are deterministic
+layout and geometry checks; signed native verification is separate. The rule
+guarantees space for the current block from each selected source, not the whole
+history or arbitrary multi-line text. On work areas smaller than the computed
+minimum, normal work-area fitting still has the physical display limit.

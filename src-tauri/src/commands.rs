@@ -39,6 +39,12 @@ pub struct AppState {
     pub overlay: Arc<std::sync::Mutex<crate::windows::OverlayState>>,
 }
 
+pub(crate) fn sync_overlay_minimum(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        OverlayWindowManager::sync_minimum_height(app, &state.overlay, &state.settings);
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceProfilePayload {
@@ -1185,6 +1191,7 @@ fn apply_settings_draft_guarded(
     )?;
     #[cfg(not(target_os = "macos"))]
     save_preferences()?;
+    sync_overlay_minimum(app);
     // Source changes can clear recording even when the draft omits it. Use
     // the saved value so a combined draft cannot retain old-source audio.
     let recording =
@@ -1327,6 +1334,7 @@ fn emit_settings_snapshot(
     app: &AppHandle,
     settings: &SettingsStore,
 ) -> Result<SettingsSnapshotPayload, String> {
+    sync_overlay_minimum(app);
     let payload = SettingsSnapshotPayload::try_from_store(settings)?;
     let _ = app.emit("settings-changed", payload.clone());
     Ok(payload)
@@ -1522,6 +1530,7 @@ pub fn overlay_set_collapsed(
     state: State<'_, AppState>,
     collapsed: bool,
 ) -> Result<(), String> {
+    sync_overlay_minimum(&app);
     let preferences = state.settings.preferences();
     let collapsed =
         normalize_overlay_collapsed(collapsed, preferences.subtitle_blends_with_background);

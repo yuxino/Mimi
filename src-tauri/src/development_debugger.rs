@@ -19,7 +19,13 @@ const ALL_CASES_BYTE_LIMIT: u64 = 128 * 1024 * 1024;
 const AUDIO_FILE_BYTE_LIMIT: u64 = 20 * 1024 * 1024;
 const CASE_RESERVED_BYTES: u64 = CONTENT_BYTE_LIMIT + AUDIO_FILE_BYTE_LIMIT + 4 * 1024 * 1024;
 const CASE_COUNT_LIMIT: usize = 64;
-type ContentSender = mpsc::SyncSender<(bool, Vec<u8>)>;
+#[derive(Clone, Copy)]
+enum ContentKind {
+    Snapshot,
+    Private,
+    Trace,
+}
+type ContentSender = mpsc::SyncSender<(ContentKind, Vec<u8>)>;
 
 #[derive(Default)]
 struct OperationGate {
@@ -54,6 +60,13 @@ struct EvidenceCase {
     write_gate: Mutex<()>,
     snapshots: AtomicU64,
     private_events: AtomicU64,
+    trace_entries: AtomicU64,
+    trace_bytes: AtomicU64,
+    trace_dropped: AtomicU64,
+    trace_limited: AtomicBool,
+    trace_failed: AtomicBool,
+    trace_persistence_enabled: bool,
+    trace_sink: Mutex<Option<trace::TraceSink>>,
     bytes: AtomicU64,
     dropped: AtomicU64,
     limited: AtomicBool,
@@ -123,6 +136,70 @@ fn private_file(path: &Path) -> std::io::Result<File> {
     }
     options.open(path)
 }
+fn open_case_file(directory: &Path, relative: &str, maximum: u64) -> Result<File, &'static str> {
+    let path = directory.join(relative);
+    let before = fs::symlink_metadata(&path).map_err(|_| "development_case_read_failed")?;
+    if !before.is_file() || before.len() > maximum {
+        return Err("development_case_invalid");
+    }
+    let canonical_directory = directory
+        .canonicalize()
+        .map_err(|_| "development_case_invalid")?;
+    if !path
+        .canonicalize()
+        .map_err(|_| "development_case_invalid")?
+        .starts_with(canonical_directory)
+    {
+        return Err("development_case_invalid");
+    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(target_os = "macos")]
+        options.custom_flags(0x0100 | 0x0004); // O_NOFOLLOW | O_NONBLOCK.
+        #[cfg(not(target_os = "macos"))]
+        options.custom_flags(0x20000 | 0x0800);
+    }
+    let file = options
+        .open(path)
+        .map_err(|_| "development_case_read_failed")?;
+    let after = file
+        .metadata()
+        .map_err(|_| "development_case_read_failed")?;
+    if !after.is_file() || after.len() > maximum {
+        return Err("development_case_invalid");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if before.ino() != after.ino() || before.dev() != after.dev() {
+            return Err("development_case_invalid");
+        }
+    }
+    Ok(file)
+}
+fn copy_case_file(
+    directory: &Path,
+    relative: &str,
+    destination: &Path,
+    maximum: u64,
+) -> Result<bool, &'static str> {
+    match fs::symlink_metadata(directory.join(relative)) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err("development_export_failed"),
+        Ok(_) => {}
+    }
+    let file = open_case_file(directory, relative, maximum)?;
+    let mut destination = private_file(destination).map_err(|_| "development_export_failed")?;
+    let bytes = std::io::copy(&mut file.take(maximum + 1), &mut destination)
+        .map_err(|_| "development_export_failed")?;
+    if bytes > maximum {
+        return Err("development_export_failed");
+    }
+    Ok(true)
+}
 fn stored_bytes(root: &Path) -> std::io::Result<u64> {
     if !root.exists() {
         return Ok(0);
@@ -163,7 +240,9 @@ fn start_case(
         .map_err(|_| "development_evidence_storage_failed")?;
     let mut private_events = private_file(&directory.join("events.jsonl"))
         .map_err(|_| "development_evidence_storage_failed")?;
-    let (tx, rx) = mpsc::sync_channel::<(bool, Vec<u8>)>(32);
+    let mut trace_events = private_file(&directory.join("trace-events.jsonl"))
+        .map_err(|_| "development_evidence_storage_failed")?;
+    let (tx, rx) = mpsc::sync_channel::<(ContentKind, Vec<u8>)>(32);
     let case = Arc::new(EvidenceCase {
         id,
         directory,
@@ -172,6 +251,13 @@ fn start_case(
         write_gate: Mutex::new(()),
         snapshots: AtomicU64::new(0),
         private_events: AtomicU64::new(0),
+        trace_entries: AtomicU64::new(0),
+        trace_bytes: AtomicU64::new(0),
+        trace_dropped: AtomicU64::new(0),
+        trace_limited: AtomicBool::new(false),
+        trace_failed: AtomicBool::new(false),
+        trace_persistence_enabled: true,
+        trace_sink: Mutex::new(None),
         bytes: AtomicU64::new(0),
         dropped: AtomicU64::new(0),
         limited: AtomicBool::new(false),
@@ -181,7 +267,7 @@ fn start_case(
     });
     let writer = Arc::clone(&case);
     let handle = std::thread::spawn(move || {
-        while let Ok((snapshot, bytes)) = rx.recv() {
+        while let Ok((kind, bytes)) = rx.recv() {
             if writer
                 .bytes
                 .load(Ordering::Relaxed)
@@ -190,31 +276,61 @@ fn start_case(
             {
                 writer.limited.store(true, Ordering::Relaxed);
                 writer.dropped.fetch_add(1, Ordering::Relaxed);
+                if matches!(kind, ContentKind::Trace) {
+                    writer.trace_limited.store(true, Ordering::Relaxed);
+                    writer.trace_dropped.fetch_add(1, Ordering::Relaxed);
+                }
                 continue;
             }
             let _gate = writer.write_gate.lock().unwrap();
-            if (if snapshot {
-                file.write_all(&bytes)
-            } else {
-                private_events.write_all(&bytes)
+            if (match kind {
+                ContentKind::Snapshot => file.write_all(&bytes),
+                ContentKind::Private => private_events.write_all(&bytes),
+                ContentKind::Trace => trace_events.write_all(&bytes),
             })
             .is_err()
             {
                 writer.failed.store(true, Ordering::Relaxed);
                 writer.dropped.fetch_add(1, Ordering::Relaxed);
+                if matches!(kind, ContentKind::Trace) {
+                    writer.trace_failed.store(true, Ordering::Relaxed);
+                    writer.trace_dropped.fetch_add(1, Ordering::Relaxed);
+                }
                 continue;
             }
             writer
                 .bytes
                 .fetch_add(bytes.len() as u64, Ordering::Relaxed);
-            if snapshot {
-                writer.snapshots.fetch_add(1, Ordering::Relaxed);
-            } else {
-                writer.private_events.fetch_add(1, Ordering::Relaxed);
+            match kind {
+                ContentKind::Snapshot => {
+                    writer.snapshots.fetch_add(1, Ordering::Relaxed);
+                }
+                ContentKind::Private => {
+                    writer.private_events.fetch_add(1, Ordering::Relaxed);
+                }
+                ContentKind::Trace => {
+                    writer.trace_entries.fetch_add(1, Ordering::Relaxed);
+                    writer
+                        .trace_bytes
+                        .fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                }
             }
+        }
+        if file.sync_all().is_err() || private_events.sync_all().is_err() {
+            writer.failed.store(true, Ordering::Relaxed);
+        }
+        if trace_events.sync_all().is_err() {
+            writer.failed.store(true, Ordering::Relaxed);
+            writer.trace_failed.store(true, Ordering::Relaxed);
         }
     });
     *case.writer.lock().unwrap() = Some(handle);
+    let weak = Arc::downgrade(&case);
+    *case.trace_sink.lock().unwrap() = Some(trace::TraceSink::new(move |entry| {
+        if let Some(case) = weak.upgrade() {
+            record_trace_event(&case, entry);
+        }
+    }));
     Ok(case)
 }
 pub fn record_snapshot(
@@ -251,7 +367,7 @@ pub fn record_snapshot(
         return;
     }
     bytes.push(b'\n');
-    if tx.try_send((true, bytes)).is_err() {
+    if tx.try_send((ContentKind::Snapshot, bytes)).is_err() {
         case.dropped.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -274,9 +390,47 @@ fn record_private_event(case: &EvidenceCase, event: serde_json::Value) {
         return;
     }
     bytes.push(b'\n');
-    if tx.try_send((false, bytes)).is_err() {
+    if tx.try_send((ContentKind::Private, bytes)).is_err() {
         case.dropped.fetch_add(1, Ordering::Relaxed);
     }
+}
+fn trace_loss(case: &EvidenceCase) {
+    case.trace_dropped.fetch_add(1, Ordering::Relaxed);
+    case.dropped.fetch_add(1, Ordering::Relaxed);
+}
+fn record_trace_event(case: &EvidenceCase, entry: trace::DebugEntry) {
+    if case.limited.load(Ordering::Relaxed) || case.failed.load(Ordering::Relaxed) {
+        case.trace_limited
+            .store(case.limited.load(Ordering::Relaxed), Ordering::Relaxed);
+        case.trace_failed
+            .store(case.failed.load(Ordering::Relaxed), Ordering::Relaxed);
+        trace_loss(case);
+        return;
+    }
+    let tx = case.tx.lock().unwrap();
+    let Some(tx) = tx.as_ref() else {
+        trace_loss(case);
+        return;
+    };
+    let Ok(mut bytes) = serde_json::to_vec(&entry) else {
+        case.trace_failed.store(true, Ordering::Relaxed);
+        case.failed.store(true, Ordering::Relaxed);
+        trace_loss(case);
+        return;
+    };
+    bytes.push(b'\n');
+    if bytes.len() > 512 * 1024 || tx.try_send((ContentKind::Trace, bytes)).is_err() {
+        trace_loss(case);
+    }
+}
+fn seal_case_trace(case: &EvidenceCase, timeout: std::time::Duration) -> Result<(), &'static str> {
+    let target = case.trace_sink.lock().unwrap().clone();
+    if target.is_some_and(|target| !target.wait_idle(timeout)) {
+        return Err("development_evidence_trace_busy");
+    }
+    case.tx.lock().unwrap().take();
+    case.trace_sink.lock().unwrap().take();
+    Ok(())
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -288,6 +442,18 @@ pub struct DebuggerSnapshot {
     replay_snapshots: u64,
     #[serde(default)]
     private_events: u64,
+    #[serde(default)]
+    trace_persistence_enabled: bool,
+    #[serde(default)]
+    persisted_trace_entries: u64,
+    #[serde(default)]
+    trace_bytes: u64,
+    #[serde(default)]
+    trace_dropped: u64,
+    #[serde(default)]
+    trace_limited: bool,
+    #[serde(default)]
+    trace_failed: bool,
     content_bytes: u64,
     content_dropped: u64,
     content_limited: bool,
@@ -322,6 +488,12 @@ pub fn development_debug_snapshot() -> DebuggerSnapshot {
         case_id: case.map(|c| c.id.clone()),
         replay_snapshots: case.map_or(0, |c| c.snapshots.load(Ordering::Relaxed)),
         private_events: case.map_or(0, |c| c.private_events.load(Ordering::Relaxed)),
+        trace_persistence_enabled: case.is_some_and(|c| c.trace_persistence_enabled),
+        persisted_trace_entries: case.map_or(0, |c| c.trace_entries.load(Ordering::Relaxed)),
+        trace_bytes: case.map_or(0, |c| c.trace_bytes.load(Ordering::Relaxed)),
+        trace_dropped: case.map_or(0, |c| c.trace_dropped.load(Ordering::Relaxed)),
+        trace_limited: case.is_some_and(|c| c.trace_limited.load(Ordering::Relaxed)),
+        trace_failed: case.is_some_and(|c| c.trace_failed.load(Ordering::Relaxed)),
         content_bytes: case.map_or(0, |c| c.bytes.load(Ordering::Relaxed)),
         content_dropped: case.map_or(0, |c| c.dropped.load(Ordering::Relaxed)),
         content_limited: case.is_some_and(|c| c.limited.load(Ordering::Relaxed)),
@@ -411,14 +583,12 @@ fn copy_case_audio(
     if !(44..=AUDIO_FILE_BYTE_LIMIT).contains(&length) {
         return Err("audio_evidence_invalid");
     }
-    fs::copy(source, destination).map_err(|_| "development_export_failed")?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(destination, fs::Permissions::from_mode(0o600))
-            .map_err(|_| "development_export_failed")?;
-    }
-    Ok(true)
+    let relative = match source.file_name().and_then(|name| name.to_str()) {
+        Some("system.wav") => "audio-evidence/system.wav",
+        Some("microphone.wav") => "audio-evidence/microphone.wav",
+        _ => return Err("audio_evidence_invalid"),
+    };
+    copy_case_file(case_directory, relative, destination, AUDIO_FILE_BYTE_LIMIT)
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -445,6 +615,7 @@ fn read_saved_report(directory: &Path) -> Result<DebuggerSnapshot, &'static str>
         || report.trace.enabled
         || report.trace.entries.len() > trace::ENTRY_LIMIT
         || report.content_bytes > CONTENT_BYTE_LIMIT
+        || report.trace_bytes > report.content_bytes
     {
         return Err("development_case_invalid");
     }
@@ -514,6 +685,9 @@ pub async fn development_debug_open_case(case_id: String) -> Result<(), String> 
     if trace::is_enabled() {
         return Err("development_evidence_requires_stop".into());
     }
+    if let Some(case) = state().lock().unwrap().case.as_ref() {
+        require_finalized(case)?;
+    }
     let root = state()
         .lock()
         .unwrap()
@@ -540,6 +714,13 @@ pub async fn development_debug_open_case(case_id: String) -> Result<(), String> 
             write_gate: Mutex::new(()),
             snapshots: AtomicU64::new(report.replay_snapshots),
             private_events: AtomicU64::new(report.private_events),
+            trace_entries: AtomicU64::new(report.persisted_trace_entries),
+            trace_bytes: AtomicU64::new(report.trace_bytes),
+            trace_dropped: AtomicU64::new(report.trace_dropped),
+            trace_limited: AtomicBool::new(report.trace_limited),
+            trace_failed: AtomicBool::new(report.trace_failed),
+            trace_persistence_enabled: report.trace_persistence_enabled,
+            trace_sink: Mutex::new(None),
             bytes: AtomicU64::new(report.content_bytes),
             dropped: AtomicU64::new(report.content_dropped),
             limited: AtomicBool::new(report.content_limited),
@@ -587,6 +768,52 @@ pub async fn development_debug_private_events(
     .map_err(|_| "development_case_read_failed")?
     .map_err(str::to_string)
 }
+fn read_trace_page(
+    directory: &Path,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<trace::DebugEntry>, &'static str> {
+    if limit == 0 || limit > 64 {
+        return Err("development_debug_batch_limit");
+    }
+    let file = open_case_file(directory, "trace-events.jsonl", CONTENT_BYTE_LIMIT)?;
+    BufReader::new(file.take(CONTENT_BYTE_LIMIT))
+        .lines()
+        .skip(offset)
+        .take(limit)
+        .map(|line| {
+            let line = line.map_err(|_| "development_case_read_failed")?;
+            if line.len() > 512 * 1024 {
+                return Err("development_case_invalid");
+            }
+            serde_json::from_str(&line).map_err(|_| "development_case_invalid")
+        })
+        .collect()
+}
+#[tauri::command]
+pub async fn development_debug_trace_events(
+    case_id: String,
+    offset: usize,
+    limit: usize,
+) -> Result<Vec<trace::DebugEntry>, String> {
+    available()?;
+    if limit == 0 || limit > 64 {
+        return Err("development_debug_batch_limit".into());
+    }
+    let operation = operation_gate().try_begin()?;
+    let case = bound_case(&case_id)?;
+    if !case.trace_persistence_enabled {
+        return Err("development_trace_not_persisted".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let _operation = operation;
+        let _gate = case.write_gate.lock().unwrap();
+        read_trace_page(&case.directory, offset, limit)
+    })
+    .await
+    .map_err(|_| "development_case_read_failed")?
+    .map_err(str::to_string)
+}
 
 #[tauri::command]
 pub fn development_debug_start(
@@ -615,6 +842,7 @@ pub fn development_debug_start(
     });
     let mut debugger = state().lock().unwrap();
     if let Some(case) = debugger.case.as_ref() {
+        require_finalized(case)?;
         case.tx.lock().unwrap().take();
     }
     if with_audio {
@@ -638,11 +866,13 @@ pub fn development_debug_start(
                 record_private_event(&case, event);
             }
         })));
+        trace::set_sink(case.trace_sink.lock().unwrap().clone())?;
         debugger.case = Some(case);
     } else {
         crate::development_audio::configure(PathBuf::new(), false)?;
         debugger.case = None;
         crate::development_content::configure(None);
+        trace::set_sink(None)?;
     }
     debugger.route = route;
     debugger.loaded_report = None;
@@ -693,13 +923,13 @@ pub async fn development_debug_stop(app: AppHandle) -> Result<(), String> {
     trace::set_enabled(false)?;
     crate::development_content::configure(None);
     let case = state().lock().unwrap().case.clone();
-    if let Some(case) = &case {
-        case.tx.lock().unwrap().take();
-    }
     tauri::async_runtime::spawn_blocking(move || {
         // Move the lease into the worker: cancellation of the IPC future must
         // not allow a new case while this worker still stops the old recorder.
         let _operation = operation;
+        if let Some(case) = &case {
+            seal_case_trace(case, std::time::Duration::from_secs(5))?;
+        }
         crate::development_audio::configure(PathBuf::new(), false)?;
         if let Some(case) = case {
             if let Some(writer) = case.writer.lock().unwrap().take() {
@@ -842,19 +1072,35 @@ pub async fn development_debug_export(app: AppHandle) -> Result<bool, String> {
         if let Some(case) = case {
             let _gate = case.write_gate.lock().unwrap();
             for name in ["manifest.json", "snapshots.jsonl", "events.jsonl"] {
-                fs::copy(case.directory.join(name), directory.join(name))
-                    .map_err(|_| "development_export_failed")?;
+                if !copy_case_file(
+                    &case.directory,
+                    name,
+                    &directory.join(name),
+                    CONTENT_BYTE_LIMIT,
+                )? {
+                    return Err("development_export_failed");
+                }
+            }
+            let copied_trace = copy_case_file(
+                &case.directory,
+                "trace-events.jsonl",
+                &directory.join("trace-events.jsonl"),
+                CONTENT_BYTE_LIMIT,
+            )?;
+            if case.trace_persistence_enabled && !copied_trace {
+                return Err("development_export_failed");
             }
             if case
                 .directory
                 .join("audio-evidence/audio-index.jsonl")
                 .exists()
             {
-                fs::copy(
-                    case.directory.join("audio-evidence/audio-index.jsonl"),
-                    directory.join("audio-index.jsonl"),
-                )
-                .map_err(|_| "development_export_failed")?;
+                copy_case_file(
+                    &case.directory,
+                    "audio-evidence/audio-index.jsonl",
+                    &directory.join("audio-index.jsonl"),
+                    AUDIO_FILE_BYTE_LIMIT,
+                )?;
             }
             for source in [AudioSource::System, AudioSource::Microphone] {
                 let name = match source {
@@ -880,6 +1126,206 @@ pub async fn development_debug_export(app: AppHandle) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn metadata_entry(id: u64) -> trace::DebugEntry {
+        trace::DebugEntry {
+            id,
+            elapsed_ms: id,
+            event: trace::DebugEvent::Pipeline {
+                label: "capture started".into(),
+            },
+        }
+    }
+    #[test]
+    fn persisted_metadata_exceeds_the_live_ring_and_pages_exports_every_id() {
+        let root = tempfile::tempdir().unwrap();
+        let case = start_case(
+            root.path().to_owned(),
+            &serde_json::json!({}),
+            Instant::now(),
+        )
+        .unwrap();
+        for id in 1..=(trace::ENTRY_LIMIT + 1) as u64 {
+            let mut entry = metadata_entry(id);
+            if id == (trace::ENTRY_LIMIT + 1) as u64 {
+                entry.event = trace::DebugEvent::Stopped {
+                    unflushed_windows: vec![],
+                };
+            }
+            let mut bytes = serde_json::to_vec(&entry).unwrap();
+            bytes.push(b'\n');
+            case.tx
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .send((ContentKind::Trace, bytes))
+                .unwrap();
+        }
+        seal_case_trace(&case, std::time::Duration::ZERO).unwrap();
+        case.writer.lock().unwrap().take().unwrap().join().unwrap();
+        assert_eq!(
+            case.trace_entries.load(Ordering::Relaxed),
+            (trace::ENTRY_LIMIT + 1) as u64
+        );
+        assert_eq!(case.trace_dropped.load(Ordering::Relaxed), 0);
+        let first = read_trace_page(&case.directory, 0, 64).unwrap();
+        assert_eq!(first.len(), 64);
+        assert_eq!(first[0].id, 1);
+        let last = read_trace_page(&case.directory, trace::ENTRY_LIMIT, 64).unwrap();
+        assert_eq!(last.len(), 1);
+        assert!(matches!(last[0].event, trace::DebugEvent::Stopped { .. }));
+        let destination = root.path().join("export.jsonl");
+        assert!(copy_case_file(
+            &case.directory,
+            "trace-events.jsonl",
+            &destination,
+            CONTENT_BYTE_LIMIT
+        )
+        .unwrap());
+        let stored = fs::read(case.directory.join("trace-events.jsonl")).unwrap();
+        assert_eq!(fs::read(destination).unwrap(), stored);
+        assert_eq!(
+            case.trace_bytes.load(Ordering::Relaxed),
+            stored.len() as u64
+        );
+        assert_eq!(case.bytes.load(Ordering::Relaxed), stored.len() as u64);
+        assert!(read_trace_page(&case.directory, 0, 65).is_err());
+        assert!(read_trace_page(&case.directory, 0, 0).is_err());
+        assert!(!copy_case_file(
+            root.path(),
+            "missing-old-case-trace.jsonl",
+            &root.path().join("unused.jsonl"),
+            CONTENT_BYTE_LIMIT
+        )
+        .unwrap());
+    }
+    #[test]
+    fn durable_metadata_reports_queue_line_and_shared_disk_budget_loss() {
+        let root = tempfile::tempdir().unwrap();
+        let case = start_case(
+            root.path().to_owned(),
+            &serde_json::json!({}),
+            Instant::now(),
+        )
+        .unwrap();
+        let gate = case.write_gate.lock().unwrap();
+        for id in 1..=80 {
+            record_trace_event(&case, metadata_entry(id));
+        }
+        assert!(case.trace_dropped.load(Ordering::Relaxed) >= 47);
+        drop(gate);
+        seal_case_trace(&case, std::time::Duration::ZERO).unwrap();
+        case.writer.lock().unwrap().take().unwrap().join().unwrap();
+        assert_eq!(
+            case.trace_entries.load(Ordering::Relaxed) + case.trace_dropped.load(Ordering::Relaxed),
+            80
+        );
+        assert_eq!(
+            case.trace_dropped.load(Ordering::Relaxed),
+            case.dropped.load(Ordering::Relaxed)
+        );
+
+        let limited = start_case(
+            root.path().to_owned(),
+            &serde_json::json!({}),
+            Instant::now(),
+        )
+        .unwrap();
+        let mut huge = metadata_entry(1);
+        huge.event = trace::DebugEvent::Pipeline {
+            label: "x".repeat(512 * 1024),
+        };
+        record_trace_event(&limited, huge);
+        assert_eq!(limited.trace_dropped.load(Ordering::Relaxed), 1);
+        limited.bytes.store(CONTENT_BYTE_LIMIT, Ordering::Relaxed);
+        record_trace_event(&limited, metadata_entry(2));
+        seal_case_trace(&limited, std::time::Duration::ZERO).unwrap();
+        limited
+            .writer
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(limited.trace_limited.load(Ordering::Relaxed));
+        assert!(limited.limited.load(Ordering::Relaxed));
+        assert_eq!(limited.trace_entries.load(Ordering::Relaxed), 0);
+        assert_eq!(limited.trace_dropped.load(Ordering::Relaxed), 2);
+    }
+    #[test]
+    fn timeout_keeps_the_case_unsealed_and_retry_drains_the_stopped_entry() {
+        let root = tempfile::tempdir().unwrap();
+        let case = start_case(
+            root.path().to_owned(),
+            &serde_json::json!({}),
+            Instant::now(),
+        )
+        .unwrap();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let release_rx = Mutex::new(release_rx);
+        let target_case = case.clone();
+        let target = trace::TraceSink::new(move |entry| {
+            ready_tx.send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+            record_trace_event(&target_case, entry);
+        });
+        *case.trace_sink.lock().unwrap() = Some(target.clone());
+        let worker = std::thread::spawn(move || {
+            target.dispatch_for_test(trace::DebugEntry {
+                id: 1,
+                elapsed_ms: 0,
+                event: trace::DebugEvent::Stopped {
+                    unflushed_windows: vec![],
+                },
+            })
+        });
+        ready_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(
+            seal_case_trace(&case, std::time::Duration::from_millis(1)),
+            Err("development_evidence_trace_busy")
+        );
+        assert!(case.tx.lock().unwrap().is_some());
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
+        seal_case_trace(&case, std::time::Duration::from_secs(1)).unwrap();
+        case.writer.lock().unwrap().take().unwrap().join().unwrap();
+        assert_eq!(case.trace_entries.load(Ordering::Relaxed), 1);
+        assert_eq!(case.trace_dropped.load(Ordering::Relaxed), 0);
+        assert!(matches!(
+            read_trace_page(&case.directory, 0, 64).unwrap()[0].event,
+            trace::DebugEvent::Stopped { .. }
+        ));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn trace_reads_and_export_refuse_external_symlinks_and_nonregular_files() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("private.txt"), b"private marker").unwrap();
+        symlink(
+            outside.path().join("private.txt"),
+            root.path().join("trace-events.jsonl"),
+        )
+        .unwrap();
+        assert!(read_trace_page(root.path(), 0, 64).is_err());
+        let destination = root.path().join("export.jsonl");
+        assert!(copy_case_file(
+            root.path(),
+            "trace-events.jsonl",
+            &destination,
+            CONTENT_BYTE_LIMIT
+        )
+        .is_err());
+        assert!(!destination.exists());
+        fs::remove_file(root.path().join("trace-events.jsonl")).unwrap();
+        fs::create_dir(root.path().join("trace-events.jsonl")).unwrap();
+        assert!(read_trace_page(root.path(), 0, 64).is_err());
+    }
 
     #[tokio::test]
     async fn operation_lease_excludes_other_operations_across_await_and_recovers_on_drop() {
@@ -907,7 +1353,10 @@ mod tests {
             .unwrap()
             .as_ref()
             .unwrap()
-            .send((true, b"{\"snapshot\":{\"synthetic\":true}}\n".to_vec()))
+            .send((
+                ContentKind::Snapshot,
+                b"{\"snapshot\":{\"synthetic\":true}}\n".to_vec(),
+            ))
             .unwrap();
         case.tx.lock().unwrap().take();
         case.writer.lock().unwrap().take().unwrap().join().unwrap();
@@ -934,6 +1383,12 @@ mod tests {
             case_id: Some(case.id.clone()),
             replay_snapshots: 1,
             private_events: 1,
+            trace_persistence_enabled: true,
+            persisted_trace_entries: 0,
+            trace_bytes: 0,
+            trace_dropped: 0,
+            trace_limited: false,
+            trace_failed: false,
             content_bytes: case.bytes.load(Ordering::Relaxed),
             content_dropped: 0,
             content_limited: false,
@@ -945,6 +1400,20 @@ mod tests {
         assert_eq!(reopened.case_id, Some(case.id.clone()));
         assert_eq!(reopened.private_events, 1);
         assert_eq!(reopened.replay_snapshots, 1);
+        let mut legacy = serde_json::to_value(&report).unwrap();
+        for name in [
+            "tracePersistenceEnabled",
+            "persistedTraceEntries",
+            "traceBytes",
+            "traceDropped",
+            "traceLimited",
+            "traceFailed",
+        ] {
+            legacy.as_object_mut().unwrap().remove(name);
+        }
+        let legacy: DebuggerSnapshot = serde_json::from_value(legacy).unwrap();
+        assert!(!legacy.trace_persistence_enabled);
+        assert_eq!(legacy.persisted_trace_entries, 0);
         assert!(saved_case_directory(root.path(), "../other").is_err());
         report.trace.enabled = true;
         persist_case_report(&case.directory, &report).unwrap();

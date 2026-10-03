@@ -131,6 +131,30 @@ and excluded from scoring; genuinely repeated words in different IDs remain.
 Case is folded and punctuation/whitespace omitted according to word/character
 units; there is no Unicode normalization or provider-specific correction.
 
+For the explicitly authorized development debugger comparison, the optional
+`MIMI_ASR_BENCH_PRIVATE_OUTPUT_DIR` enables private disk evidence. It is restricted
+to `/private/tmp/mimi-debug-benchmark` and its descendants, and to the `baseline`
+arm with the existing production encoder. Each clip gets a new 0700 directory
+with 0600 `request.json`, `events.jsonl`, and `metrics.json`. Events preserve
+decoded draft/final text, real sentence IDs, sentence/word audio timestamps and
+local receipt time. They omit headers, credentials, endpoints and arbitrary
+provider errors. Output is capped at 512 KiB per event and 8 MiB per clip; an
+exceeded cap or write failure marks the run incomplete. This option is off by
+default and exists only in the test executable. Standard output stays numerical.
+These decoded events are the independent provider baseline; comparison with
+native capture/UI requires the exact same fixture, language and route settings.
+
+With native provider activity stopped, run the private baseline with:
+
+```sh
+./scripts/asr-baseline.sh /absolute/public-fixtures/manifest.json
+```
+
+The script fixes `baseline` and bypass preprocessing, reads credentials through
+the existing validated private development-file mode, and never starts Mimi.
+Use `language: "auto"` in the manifest when comparing with an automatic-language
+app session. Explicit-language runs must remain separately labelled.
+
 Metrics include uploaded frames/bytes, maximum sending lateness, readiness,
 first nonempty/final response, draft changes/retractions, lengths, character-class
 counts separately for draft and final, identity presence/replays, result gaps and

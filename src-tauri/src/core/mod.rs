@@ -13,6 +13,7 @@ pub mod echo_cancellation;
 pub mod models;
 pub mod network_proxy;
 pub mod openai_transcript_committer;
+pub mod overlay_layout;
 #[cfg(any(target_os = "macos", test))]
 pub mod overlay_pointer;
 #[cfg(any(target_os = "macos", target_os = "windows", test))]

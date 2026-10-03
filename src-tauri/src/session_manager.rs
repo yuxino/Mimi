@@ -2980,16 +2980,16 @@ impl SessionManager {
         let content = self.subtitle_content_lock.lock().await;
         let debug_event = |event: &LiveTranslateServerEvent, admission| {
             if crate::core::development_debug::is_enabled() {
+                let mut observation = crate::core::development_debug::ProviderObservation::new(
+                    source,
+                    generation,
+                    envelope.content_revision,
+                    event,
+                    admission,
+                );
+                observation.transport_sequence = envelope.transport_sequence;
                 crate::core::development_debug::record(
-                    crate::core::development_debug::DebugEvent::Provider {
-                        observation: crate::core::development_debug::ProviderObservation::new(
-                            source,
-                            generation,
-                            envelope.content_revision,
-                            event,
-                            admission,
-                        ),
-                    },
+                    crate::core::development_debug::DebugEvent::Provider { observation },
                 );
             }
         };
@@ -4294,6 +4294,7 @@ impl SessionManager {
     /// preference writes so no window keeps a stale selection, and when a
     /// window re-shows in case its webview missed events while hidden).
     pub fn publish_settings(&self) {
+        crate::commands::sync_overlay_minimum(&self.app);
         let _ = self.app.emit(
             "settings-changed",
             crate::commands::SettingsSnapshotPayload::from_store(&self.settings),
@@ -4317,6 +4318,8 @@ impl SessionManager {
         // UI QA. These are explicitly synthetic samples, never captured audio.
         let preferences = self.settings.preferences();
         let dual_fixture = std::env::var("MIMI_UI_TEST_DUAL_SUBTITLES").as_deref() == Ok("1");
+        let dual_live_fixture =
+            std::env::var("MIMI_UI_TEST_DUAL_LIVE_SUBTITLES").as_deref() == Ok("1");
         self.controller
             .lock()
             .unwrap()
@@ -4343,7 +4346,13 @@ impl SessionManager {
                 );
             }
         }
-        if preferences.record_session_audio {
+        if dual_live_fixture {
+            seed_ui_test_live_subtitles(
+                &mut self.controller.lock().unwrap(),
+                preferences.audio_input,
+            );
+        }
+        if preferences.record_session_audio && !dual_live_fixture {
             for &source in preferences.audio_input.sources() {
                 let (slot, frequency) = match source {
                     AudioSource::System => (0, 440.0),
@@ -4362,6 +4371,59 @@ impl SessionManager {
         }
         self.publish_state();
         pipeline_log!("ui-test synthetic session listening");
+    }
+}
+
+/// Only the credential-free UI-test start path calls this synthetic fixture.
+/// Preserve the selected sources and publish both raw and complete paired
+/// previews so native geometry QA works for independent and atomic routes.
+fn seed_ui_test_live_subtitles(
+    controller: &mut TranslationSessionController,
+    audio_input: AudioInput,
+) {
+    for &audio_source in audio_input.sources() {
+        let (source_id, source, translation) = match audio_source {
+            AudioSource::System => (10_001, "System live test", "系统字幕测试"),
+            AudioSource::Microphone => (10_002, "Microphone live test", "麦克风字幕测试"),
+        };
+        controller.handle_from(
+            audio_source,
+            LiveTranslateServerEvent::SourceUtteranceDraft {
+                utterance_id: source_id,
+                text: source.into(),
+                language: Some("en".into()),
+            },
+        );
+        // Use the actual reducer stamp, including its current display epoch.
+        let Some(owner) = controller
+            .state
+            .subtitles
+            .tracks
+            .iter()
+            .find(|track| track.audio_source == audio_source)
+            .and_then(|track| track.source.utterance_id.clone())
+        else {
+            continue;
+        };
+        controller.handle_from(
+            audio_source,
+            LiveTranslateServerEvent::UtteranceText {
+                utterance_id: owner,
+                role: UtteranceRole::Translation,
+                text: translation.into(),
+                is_final: false,
+                language: None,
+            },
+        );
+        controller.handle_from(
+            audio_source,
+            LiveTranslateServerEvent::SubtitlePreviewPair {
+                source_utterance_id: Some(source_id),
+                source: source.into(),
+                language: Some("en".into()),
+                translation: translation.into(),
+            },
+        );
     }
 }
 
@@ -5227,6 +5289,7 @@ mod lifecycle_tests {
             assert!(subtitle_content_is_current(
                 generation,
                 &ProviderEvent {
+                    transport_sequence: None,
                     content_revision: 0,
                     event
                 },
@@ -5568,6 +5631,44 @@ mod lifecycle_tests {
             "translationRecovery",
         ] {
             assert_eq!(payload.get(field), Some(&serde_json::Value::Null));
+        }
+    }
+
+    #[test]
+    fn ui_live_fixture_keeps_selected_sources_paired_without_confirming_history() {
+        for audio_input in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
+            let mut controller = TranslationSessionController::default();
+            controller.set_audio_input(audio_input);
+            controller.archive_mut().begin(true, 1);
+            controller.did_connect();
+            seed_ui_test_live_subtitles(&mut controller, audio_input);
+
+            let subtitles = &controller.state.subtitles;
+            let sources: Vec<_> = subtitles
+                .tracks
+                .iter()
+                .map(|track| track.audio_source)
+                .collect();
+            assert_eq!(sources, audio_input.sources());
+            assert!(subtitles.history.is_empty());
+            assert_eq!(controller.archive().page("", 0).total, 0);
+            for track in &subtitles.tracks {
+                let pair = track.preview_pair.as_ref().unwrap();
+                assert!(!track.source.is_final);
+                assert!(!track.translation.is_final);
+                assert!(track.source.utterance_id.is_some());
+                assert_eq!(track.source.utterance_id, track.translation.utterance_id);
+                assert_eq!(track.source.utterance_id, pair.utterance_id);
+                assert_eq!(track.source.text, pair.source);
+                assert_eq!(track.translation.text, pair.translation);
+                assert!(track.history.is_empty());
+            }
+            if subtitles.tracks.len() == 2 {
+                assert_ne!(
+                    subtitles.tracks[0].source.utterance_id,
+                    subtitles.tracks[1].source.utterance_id
+                );
+            }
         }
     }
 
