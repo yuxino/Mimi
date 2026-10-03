@@ -26,6 +26,10 @@
    independent text-translation HTTP bodies, including the actual model,
    prompt and translation options. It excludes credentials, headers, endpoints
    and arbitrary error bodies. HTTP preparation does not prove server receipt.
+   Independent translation requests/results also retain optional source
+   utterance and confirmation-pair IDs. Join those with source, generation,
+   content revision and request ID; a serial worker owner or equal sentence
+   text is not a causal identity. Old cases without the IDs remain unknown.
    Saved local cases can be reopened in the dev inspector after restarting.
    Keep them local
    unless deliberately choosing to share them.
@@ -73,3 +77,51 @@ after observation), not an exact browser rendering timestamp. WAV playback
 concatenates successful sends; index offsets and timestamps locate pauses,
 failures and missing evidence. Snapshot stepping is projection replay, not a
 simulation of original timers, provider behavior or native window geometry.
+
+## Parallel public-media baselines
+
+Keep a tagged scene matrix outside Git. The schema and fixed selection rules
+are in [the scenario plan](../plans/2026-10-03-development-scenario-matrix.md).
+Each scene has public-source/license provenance, a PCM16 mono 16 kHz file,
+an exactly matching audition WAV, a reference transcript and an explicit speech
+expectation. Record parent hashes and actual speed or measured RMS mix parameters
+for transformations. Original film soundtrack SNR remains unknown without stems.
+
+Prepare a batch without any credentials, compilation or requests:
+
+```bash
+python3 -B scripts/run-development-batch.py \
+  --manifest /absolute/private/scenario-matrix.json \
+  --output-root /private/tmp/mimi-debug-benchmark/batches
+```
+
+Add `--run --jobs 3` to perform paid requests with the existing private dev
+credential loader. The scheduler compiles the Rust test once and runs each
+scene in a separate process. A batch contains at most 32 scenes; three workers
+are the default, four the maximum, and one batch lease prevents accidental
+concurrent invocations from multiplying provider requests. Failed jobs retain
+their evidence and do not cancel unrelated scenes. Cancellation terminates
+running children and marks unstarted scenes cancelled. No key values are read
+or passed by Python. Reuse the configured Cargo caches.
+
+Each new private `batch-*` folder has immutable staged inputs, preparation
+hashes, a content-free `progress.json`, individual bounded job logs and
+`baseline-index.json`. Successful index rows can be passed as `--asr-result`
+to `scripts/analyze-development-case.py`. Provider request preparation is
+recorded separately from provider completion. These files are private: the
+individual provider events and reference contain speech.
+
+For a no-dialogue or digital-silence control, use `expectedSpeech:false` and
+`referencePath:null`. The offline case analyzer accepts `expected_speech:false`
+with a null or empty reference. It reports observed final lexical text and
+leaves WER/CER unset. An empty unfinished or incomplete case is unknown; it
+does not prove absence of hallucination. Inspect drafts separately and listen
+to the source before attributing unexpected text to the model.
+
+Play native Mimi scenes sequentially. Parallel system playback would produce
+one contaminated capture rather than independent cases. Pause/resume and clear
+tests record their intentional excluded intervals and expected revision changes;
+they must not count intentionally discarded or uncaptured speech as omissions.
+Repeat identical source sentences with distinct identities when exercising
+late replies and overwrite behavior. Persist completed input/evidence/report
+folders privately before relying on them as a reusable baseline.

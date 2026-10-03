@@ -299,6 +299,72 @@ class CaseAnalysisTests(unittest.TestCase):
             self.assertNotIn("PRIVATE-REFERENCE", stdout.getvalue() + stderr.getvalue())
             self.assertNotIn(temporary, stdout.getvalue() + stderr.getvalue())
 
+    def test_negative_controls_report_observed_text_without_a_fake_error_rate(self):
+        for text, status, unexpected in (("", "no_transcription_observed", False),
+                                         ("Unexpected words", "unexpected_transcription", True)):
+            result = ANALYZE.compare([], text, "word", expected_speech=False)
+            self.assertEqual(result["status"], status)
+            self.assertEqual(result["unexpectedTranscription"], unexpected)
+            self.assertIsNone(result["errorRate"])
+            self.assertEqual(result["referenceUnits"], 0)
+        self.assertIsNone(ANALYZE.compare([], "", "char", False, False)["unexpectedTranscription"])
+
+    def test_repeated_text_joins_translation_by_source_pair_and_request_identity(self):
+        rows, decisions = [], []
+        for owner, sequence in ((21, 10), (22, 11)):
+            raw = provider(kind="sourceFinal", producer="recognition", sequence=sequence + 10)
+            raw["event"]["observation"]["utteranceId"] = owner
+            rows.append(raw)
+            identity = {"source": "system", "generation": 2, "contentRevision": 0,
+                        "sourceUtteranceId": owner, "pairId": owner - 20, "requestId": owner + 100, "lane": "final"}
+            rows.extend([{"event": {**identity, "kind": "translationRequest", "body": {"messages": [
+                {"role": "user", "content": "A small example."}]}}},
+                {"event": {**identity, "kind": "translationAttemptResult", "outcome": "decoded", "output": "Synthetic translation"}}])
+            pair = provider(sequence=sequence)
+            pair["event"]["content"].update({"sourceUtteranceId": owner, "pairId": owner - 20})
+            rows.append(pair); decisions.append(decision(sequence=sequence))
+        raw, pairs, _ = ANALYZE.provider_stages(rows, decisions)
+        chains = ANALYZE.translation_chains(rows, raw, pairs)
+        self.assertEqual([chain["sourceUtteranceId"] for chain in chains], [21, 22])
+        self.assertTrue(all(chain["status"] == "exact_identity_join" for chain in chains))
+        self.assertTrue(all(chain["attempts"][0]["decodedOutputMatchesPair"] for chain in chains))
+        pairs[1]["sourceUtteranceId"] = None
+        self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[1]["status"], "identity_unavailable")
+        pairs[0]["source"] = "microphone"
+        self.assertEqual(ANALYZE.translation_chains(rows, raw, pairs)[0]["status"], "identity_join_incomplete")
+
+    def test_negative_absence_requires_closed_complete_trace_and_actual_audio_route(self):
+        manifest = {"containsPrivateAudioAndSubtitles": True}
+        report = {"trace": {"enabled": False}, "audio": {"sources": [
+            {"source": "system", "successfulChunks": 1}]}}
+        rows = [{"event": {"kind": "asrRequest", "source": "system"}}]
+        coverage = {"complete": True}
+        self.assertTrue(ANALYZE.negative_absence_evidence("system", manifest, report, coverage, rows))
+        self.assertFalse(ANALYZE.negative_absence_evidence("microphone", manifest, report, coverage, rows))
+        self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, report, {"complete": False}, rows))
+        for field in ("contentDropped", "contentLimited", "contentFailed"):
+            self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, {**report, field: 1}, coverage, rows))
+        self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, report, coverage, []))
+        self.assertFalse(ANALYZE.negative_absence_evidence("system", manifest, {**report, "trace": {"enabled": True}}, coverage, rows))
+
+    def test_negative_cli_accepts_null_reference_and_incomplete_evidence_stays_unknown(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            case, baseline, output, arguments = self.fixture(root)
+            media = root / "media.json"
+            media.write_text(json.dumps({"clips": [{"label": "synthetic", "language": "auto", "unit": "word",
+                                                    "reference_path": None, "expected_speech": False}]}))
+            (case / "events.jsonl").write_text("")
+            (case / "snapshots.jsonl").write_text("")
+            (baseline / "events.jsonl").write_text(json.dumps({"kind": "taskFinished"}) + "\n")
+            report = ANALYZE.analyze(case, media, "synthetic", baseline)
+            self.assertEqual(report["stages"]["directAsrFinal"]["comparison"]["status"], "no_transcription_observed")
+            for stage in ("recognitionFinal/system", "acceptedPairSource/system", "durableHistorySource/system"):
+                self.assertEqual(report["stages"][stage]["comparison"]["status"], "evidence_unavailable")
+            (baseline / "events.jsonl").write_text("")
+            report = ANALYZE.analyze(case, media, "synthetic", baseline)
+            self.assertEqual(report["stages"]["directAsrFinal"]["comparison"]["status"], "evidence_unavailable")
+
 
 def os_name():
     import os

@@ -168,6 +168,12 @@ struct MeasuredTranslation {
     request_ms: Option<u64>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct TranslationEvidenceIdentity {
+    source_utterance_id: Option<u64>,
+    pair_id: Option<u64>,
+}
+
 struct Inner {
     committer: ASRDraftCommitter,
     latest_draft_language: Option<String>,
@@ -1258,6 +1264,10 @@ impl HighQualityTranslationClient {
                 deadline,
                 partial_handler,
                 TranslationWorkOwner::Preview(preview_id),
+                TranslationEvidenceIdentity {
+                    source_utterance_id,
+                    pair_id: None,
+                },
             )
             .await;
 
@@ -1658,6 +1668,10 @@ impl HighQualityTranslationClient {
                     deadline,
                     partial_handler,
                     TranslationWorkOwner::Final(worker_id),
+                    TranslationEvidenceIdentity {
+                        source_utterance_id: request.source_utterance_id,
+                        pair_id: Some(request.utterance_revision),
+                    },
                 )
                 .await
             };
@@ -1992,6 +2006,7 @@ impl HighQualityTranslationClient {
         deadline: tokio::time::Instant,
         on_partial: PartialHandler,
         owner: TranslationWorkOwner,
+        identity: TranslationEvidenceIdentity,
     ) -> Result<MeasuredTranslation, QwenMTClientError> {
         if !self.mt.supports_reported_source(language) {
             return Err(QwenMTClientError::UnsupportedSource);
@@ -2046,6 +2061,8 @@ impl HighQualityTranslationClient {
                     preview: matches!(owner, TranslationWorkOwner::Preview(_)),
                     attempt,
                     request_id: 0,
+                    source_utterance_id: identity.source_utterance_id,
+                    pair_id: identity.pair_id,
                 }
             });
             let evidence = crate::development_content::begin_attempt(context);
@@ -2928,6 +2945,7 @@ mod tests {
                 tokio::time::Instant::now() + Duration::from_secs(1),
                 Arc::new(|_| {}),
                 TranslationWorkOwner::Preview(999),
+                TranslationEvidenceIdentity::default(),
             )
             .await
             .err()
@@ -6098,15 +6116,22 @@ mod tests {
             let mut controller = crate::core::session::TranslationSessionController::default();
             controller.archive_mut().begin(true, 0);
             let mut received_confirmation_ids = Vec::new();
+            let mut confirmed_source_ids = Vec::new();
             while let Ok(event) = confirmed_events.try_recv() {
-                let LiveTranslateServerEvent::SubtitleConfirmedPair { utterance_id, .. } = &event
+                let LiveTranslateServerEvent::SubtitleConfirmedPair {
+                    utterance_id,
+                    source_utterance_id,
+                    ..
+                } = &event
                 else {
                     panic!("expected only completed confirmations: {event:?}");
                 };
                 received_confirmation_ids.push(*utterance_id);
+                confirmed_source_ids.push(*source_utterance_id);
                 controller.handle(event);
             }
             assert_eq!(received_confirmation_ids, [1, 2]);
+            assert_eq!(confirmed_source_ids, [Some(1), Some(2)]);
             assert_eq!(controller.state.subtitles.history.len(), 2);
             assert_eq!(controller.archive().count(), 2);
             client.disconnect().await;

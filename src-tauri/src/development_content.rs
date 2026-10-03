@@ -69,22 +69,27 @@ fn provider_content(event: &LiveTranslateServerEvent) -> Value {
             json!({"utteranceId":utterance_id.chars().take(256).collect::<String>(),"role":match role {crate::core::models::UtteranceRole::Source=>"source",crate::core::models::UtteranceRole::Translation=>"translation"},"text":text,"isFinal":is_final,"language":language})
         }
         E::SubtitlePreviewPair {
+            source_utterance_id,
             source,
             language,
             translation,
-            ..
+        } => {
+            json!({"source":source,"translation":translation,"language":language,"sourceUtteranceId":source_utterance_id})
         }
-        | E::SubtitleFinalPair {
+        E::SubtitleFinalPair {
             source,
             language,
             translation,
-        }
-        | E::SubtitleConfirmedPair {
-            source,
-            language,
-            translation,
-            ..
         } => json!({"source":source,"translation":translation,"language":language}),
+        E::SubtitleConfirmedPair {
+            utterance_id,
+            source_utterance_id,
+            source,
+            language,
+            translation,
+        } => {
+            json!({"source":source,"translation":translation,"language":language,"pairId":utterance_id,"sourceUtteranceId":source_utterance_id})
+        }
         // Error strings can echo keys or complete requests. Never save them.
         _ => Value::Null,
     }
@@ -174,6 +179,8 @@ pub struct RequestContext {
     pub preview: bool,
     pub attempt: usize,
     pub request_id: u64,
+    pub source_utterance_id: Option<u64>,
+    pub pair_id: Option<u64>,
 }
 tokio::task_local! {
     static REQUEST_BINDING: RequestBinding;
@@ -284,7 +291,7 @@ impl TranslationAttempt {
         let limited =
             output.is_some_and(|text| !crate::core::models::subtitle_text_within_limit(text));
         (self.target)(
-            json!({"kind":"translationAttemptResult","requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"boundary":boundary,"outcome":outcome,"durationMs":self.started.elapsed().as_millis() as u64,"serverReceiptProven":false,"outputBytes":output.map(str::len),"outputLimited":limited,"output":if limited {None} else {output},"errorLabel":error,"httpStatus":status}),
+            json!({"kind":"translationAttemptResult","requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"sourceUtteranceId":context.source_utterance_id,"pairId":context.pair_id,"boundary":boundary,"outcome":outcome,"durationMs":self.started.elapsed().as_millis() as u64,"serverReceiptProven":false,"outputBytes":output.map(str::len),"outputLimited":limited,"output":if limited {None} else {output},"errorLabel":error,"httpStatus":status}),
         );
     }
 }
@@ -372,7 +379,7 @@ fn request_value(protocol: RequestProtocol, body: &Value, context: RequestContex
                 .map(|value| ((*key).to_string(), value.clone()))
         })
         .collect();
-    json!({"kind":"translationRequest","protocol":name,"requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"boundary":"httpRequestPrepared","serverReceiptProven":false,"body":body})
+    json!({"kind":"translationRequest","protocol":name,"requestId":context.request_id,"source":context.source,"generation":context.generation,"contentRevision":context.revision,"owner":context.owner,"lane":if context.preview {"preview"} else {"final"},"attempt":context.attempt,"sourceUtteranceId":context.source_utterance_id,"pairId":context.pair_id,"boundary":"httpRequestPrepared","serverReceiptProven":false,"body":body})
 }
 
 #[cfg(test)]
@@ -388,6 +395,8 @@ mod tests {
             preview: true,
             attempt: 2,
             request_id: 0,
+            source_utterance_id: Some(21),
+            pair_id: None,
         }
     }
     fn collector() -> (Sink, Arc<Mutex<Vec<Value>>>) {
@@ -421,7 +430,11 @@ mod tests {
         let (case_a, a) = collector();
         let (case_b, b) = collector();
         configure(Some(case_a));
-        let ticket_a = begin_attempt(Some(context()));
+        let ticket_a = begin_attempt(Some(RequestContext {
+            preview: false,
+            pair_id: Some(7),
+            ..context()
+        }));
         configure(Some(case_b));
         scope_attempt(&ticket_a, async {
             request(RequestProtocol::DeepL, &json!({"text":["synthetic input"]}));
@@ -439,8 +452,10 @@ mod tests {
             assert_eq!(value["generation"], 8);
             assert_eq!(value["contentRevision"], 5);
             assert_eq!(value["owner"], 13);
-            assert_eq!(value["lane"], "preview");
+            assert_eq!(value["lane"], "final");
             assert_eq!(value["attempt"], 2);
+            assert_eq!(value["sourceUtteranceId"], 21);
+            assert_eq!(value["pairId"], 7);
             assert_eq!(value["serverReceiptProven"], false);
         }
         assert_eq!(values_a[1]["outcome"], "decoded");
@@ -455,6 +470,8 @@ mod tests {
         assert_eq!(values_b.len(), 1);
         assert_eq!(values_b[0]["outcome"], "cancelled");
         assert_eq!(values_b[0]["boundary"], "localTranslationFutureDropped");
+        assert_eq!(values_b[0]["sourceUtteranceId"], 21);
+        assert!(values_b[0]["pairId"].is_null());
         assert!(values_b[0]["output"].is_null());
         assert_eq!(a.lock().unwrap().len(), 2);
     }
@@ -531,6 +548,61 @@ mod tests {
         })
         .is_null());
     }
+
+    #[test]
+    fn identical_source_text_keeps_distinct_causal_identities_through_requests_and_pairs() {
+        let (target, values) = collector();
+        let text = "Synthetic repeated source";
+        let output = "Synthetic repeated translation";
+        let mut request_ids = Vec::new();
+        for (source_id, pair_id) in [(21, 1), (22, 2)] {
+            let ticket = begin_attempt_with(
+                Some(RequestContext {
+                    preview: false,
+                    source_utterance_id: Some(source_id),
+                    pair_id: Some(pair_id),
+                    ..context()
+                }),
+                Some(target.clone()),
+            );
+            let captured = ticket.inner.as_ref().unwrap().context;
+            request_ids.push(captured.request_id);
+            target(request_value(
+                RequestProtocol::QwenMt,
+                &json!({"messages":[{"role":"user","content":text}]}),
+                captured,
+            ));
+            ticket.complete(&Ok(output.to_string()));
+            let pair = provider_content(&LiveTranslateServerEvent::SubtitleConfirmedPair {
+                utterance_id: pair_id,
+                source_utterance_id: Some(source_id),
+                source: text.into(),
+                language: None,
+                translation: output.into(),
+            });
+            let records = values.lock().unwrap();
+            let request = &records[records.len() - 2];
+            let receipt = &records[records.len() - 1];
+            assert_eq!(request["requestId"], receipt["requestId"]);
+            assert_eq!(request["body"]["messages"][0]["content"], pair["source"]);
+            assert_eq!(receipt["output"], pair["translation"]);
+            for record in [request, receipt] {
+                assert_eq!(record["sourceUtteranceId"], pair["sourceUtteranceId"]);
+                assert_eq!(record["pairId"], pair["pairId"]);
+                // Both attempts may use one serial worker: its owner is not a pair ID.
+                assert_eq!(record["owner"], 13);
+            }
+        }
+        assert_ne!(request_ids[0], request_ids[1]);
+        let preview = provider_content(&LiveTranslateServerEvent::SubtitlePreviewPair {
+            source_utterance_id: Some(23),
+            source: text.into(),
+            language: None,
+            translation: output.into(),
+        });
+        assert_eq!(preview["sourceUtteranceId"], 23);
+        assert!(preview.get("pairId").is_none());
+    }
     #[test]
     fn private_request_allowlist_excludes_headers_endpoints_and_credentials() {
         let context = RequestContext {
@@ -541,6 +613,8 @@ mod tests {
             preview: false,
             attempt: 1,
             request_id: 0,
+            source_utterance_id: None,
+            pair_id: None,
         };
         let body = json!({"model":"synthetic","messages":[{"role":"user","content":"synthetic text"}],"Authorization":"secret","api_key":"secret","endpoint":"secret"});
         let output = request_value(RequestProtocol::OpenaiCompatible, &body, context);

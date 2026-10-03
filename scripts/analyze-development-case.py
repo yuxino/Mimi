@@ -142,12 +142,20 @@ def alignment(reference, hypothesis):
     return list(reversed(operations))
 
 
-def compare(cues, hypothesis_text, unit, available=True):
+def compare(cues, hypothesis_text, unit, available=True, expected_speech=True):
     cue_tokens = [normalize(cue["text"], unit) for cue in cues]
     reference = [token for tokens in cue_tokens for token in tokens]
     hypothesis = normalize(hypothesis_text, unit)
     result = {"unit": unit, "referenceUnits": len(reference),
               "hypothesisUnits": len(hypothesis), "normalization": NORMALIZATION}
+    if not expected_speech:
+        if reference:
+            raise AnalysisError("negative_reference_not_empty")
+        return {**result, "status": ("evidence_unavailable" if not available else
+                "unexpected_transcription" if hypothesis else "no_transcription_observed"),
+                "unexpectedTranscription": bool(hypothesis) if available else None,
+                "errorRate": None, "cues": [],
+                "limitation": "A negative control has no error-rate denominator. This assesses observed final lexical text, not acoustic ground truth or draft absence."}
     if not available or not reference:
         return {**result, "status": "evidence_unavailable" if not available else "reference_empty",
                 "errorRate": None, "cues": []}
@@ -290,6 +298,8 @@ def provider_stages(rows, entries):
         pairs.append({"source": source, "text": source_text if isinstance(source_text, str) else "",
                       "textEvidenceAvailable": isinstance(source_text, str),
                       "translation": content.get("translation", ""), "acceptance": status,
+                      "sourceUtteranceId": numeric(content.get("sourceUtteranceId")),
+                      "pairId": numeric(content.get("pairId")),
                       "privateEventLine": index + 1, "elapsedMs": numeric(row.get("elapsedMs")),
                       "generation": observation.get("generation"),
                       "contentRevision": observation.get("contentRevision"),
@@ -297,6 +307,57 @@ def provider_stages(rows, entries):
                       "eventKind": observation.get("eventKind"), "matchedTraceEvents": matched})
     raw = sorted(recognition.values(), key=lambda item: item["firstIndex"])
     return raw, pairs, missing_identity
+
+
+def translation_chains(rows, recognition, pairs):
+    """Identity joins only; equal text or worker owner is never a foreign key."""
+    requests, receipts = {}, {}
+    for index, row in enumerate(rows):
+        event = row.get("event", {})
+        if event.get("lane") != "final":
+            continue
+        identity = tuple(event.get(key) for key in (
+            "source", "generation", "contentRevision", "sourceUtteranceId", "pairId"))
+        if any(value is None for value in identity):
+            continue
+        if event.get("kind") == "translationRequest":
+            requests.setdefault(identity, []).append({**event, "privateEventLine": index + 1})
+        elif event.get("kind") == "translationAttemptResult":
+            receipts.setdefault((identity, event.get("requestId")), []).append({**event, "privateEventLine": index + 1})
+    chains = []
+    for pair in pairs:
+        identity = tuple(pair.get(key) for key in (
+            "source", "generation", "contentRevision", "sourceUtteranceId", "pairId"))
+        source_matches = [item for item in recognition if
+                          (item["source"], item["generation"], item["contentRevision"], item["utteranceId"]) == identity[:4]]
+        attempts = []
+        for request in requests.get(identity, []):
+            results = receipts.get((identity, request.get("requestId")), [])
+            body = request.get("body", {})
+            text = body.get("text")
+            if isinstance(text, list):
+                text = text[0] if len(text) == 1 else None
+            if text is None:
+                users = [message.get("content") for message in body.get("messages", []) if message.get("role") == "user"]
+                text = users[0] if len(users) == 1 else None
+            decoded = [result for result in results if result.get("outcome") == "decoded" and not result.get("outputLimited")]
+            attempts.append({"requestId": request.get("requestId"), "requestPrivateEventLine": request["privateEventLine"],
+                             "requestSourceMatchesRecognition": (text == source_matches[0]["text"]
+                                 if len(source_matches) == 1 and source_matches[0]["textEvidenceAvailable"] and isinstance(text, str) else None),
+                             "resultPrivateEventLines": [result["privateEventLine"] for result in results],
+                             "outcomes": [safe_label(result.get("outcome")) for result in results],
+                             "decodedOutputMatchesPair": decoded[0].get("output") == pair["translation"] if len(decoded) == 1 else None})
+        chains.append({"source": pair["source"], "generation": pair["generation"], "contentRevision": pair["contentRevision"],
+                       "sourceUtteranceId": pair["sourceUtteranceId"], "pairId": pair["pairId"],
+                       "pairPrivateEventLine": pair["privateEventLine"], "transportSequence": pair["transportSequence"],
+                       "acceptance": pair["acceptance"], "matchedTraceEvents": pair["matchedTraceEvents"],
+                       "status": "identity_unavailable" if any(value is None for value in identity) else
+                                 "exact_identity_join" if len(source_matches) == 1 and attempts else "identity_join_incomplete",
+                       "recognitionPrivateEventLines": [item["privateEventLine"] for item in source_matches],
+                       "pairSourceMatchesRecognition": pair["text"] == source_matches[0]["text"] if len(source_matches) == 1 else None,
+                       "attempts": attempts,
+                       "limitation": "Missing HTTP attempts may include same-language local completion. No source/pair identity is inferred for legacy producers."})
+    return chains
 
 
 def trace_entries(case_directory, report):
@@ -558,6 +619,21 @@ def text_of(items):
     return "\n".join(item["text"] for item in items if isinstance(item.get("text"), str))
 
 
+def negative_absence_evidence(source, manifest, report, coverage, rows):
+    """Empty collections alone cannot establish a completed negative control."""
+    enabled = (manifest.get("containsPrivateAudioAndSubtitles") is True or
+               report.get("route", {}).get("recordedContent") is True)
+    sent = any(item.get("source") == source and (numeric(item.get("successfulChunks")) or 0) > 0
+               for item in report.get("audio", {}).get("sources", []))
+    prepared = any(row.get("event", {}).get("kind") == "asrRequest" and
+                   row["event"].get("source") == source and not row["event"].get("bodyLimited")
+                   for row in rows)
+    return (enabled and sent and prepared and coverage["complete"] and
+            report.get("trace", {}).get("enabled") is False and
+            not any(report.get(key) for key in ("contentDropped", "contentLimited", "contentFailed")) and
+            not any(report.get("audio", {}).get(key) for key in ("limited", "failedStorage")))
+
+
 def analyze(case_directory, media_manifest, clip_label, asr_directory):
     clips = read_json(media_manifest).get("clips", [])
     matches = [clip for clip in clips if clip.get("label") == clip_label]
@@ -565,13 +641,19 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
         raise AnalysisError("reference_selection_ambiguous_or_missing")
     clip = matches[0]
     unit = clip.get("unit")
+    expected_speech = clip.get("expected_speech", clip.get("expectedSpeech", True))
+    if type(expected_speech) is not bool:
+        raise AnalysisError("speech_expectation_invalid")
     reference_path = clip.get("reference_path")
-    if not isinstance(reference_path, str):
+    if not expected_speech and reference_path is None:
+        reference_text = ""
+    elif not isinstance(reference_path, str):
         raise AnalysisError("reference_missing")
-    path = Path(reference_path)
-    if not path.is_file() or path.stat().st_size > MAX_LINE_BYTES:
-        raise AnalysisError("reference_invalid_or_too_large")
-    reference_text = path.read_text(encoding="utf-8")
+    else:
+        path = Path(reference_path)
+        if not path.is_file() or path.stat().st_size > MAX_LINE_BYTES:
+            raise AnalysisError("reference_invalid_or_too_large")
+        reference_text = path.read_text(encoding="utf-8")
     cues = clip.get("sentences") or [{"sentence_id": index + 1, "text": line,
                                      "timing_basis": "untimed_reference_line"}
                                     for index, line in enumerate(reference_text.splitlines()) if line.strip()]
@@ -579,6 +661,8 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
         raise AnalysisError("reference_schema_invalid")
     if normalize(text_of(cues), unit) != normalize(reference_text, unit):
         raise AnalysisError("reference_cues_disagree_with_transcript")
+    if not expected_speech and normalize(reference_text, unit):
+        raise AnalysisError("negative_reference_not_empty")
     manifest = read_json(case_directory / "manifest.json")
     report = read_json(case_directory / "trace.json")
     trace = report.get("trace", {})
@@ -597,23 +681,26 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
     private_provider_observed = any(row.get("event", {}).get("kind") == "provider" for row in rows)
     stages = {"directAsrFinal": {"utterances": finals,
                                "comparison": compare(cues, text_of(finals), unit,
-                                   all(item["textEvidenceAvailable"] for item in finals))}}
+                                   all(item["textEvidenceAvailable"] for item in finals) and
+                                   (expected_speech or (any(row.get("kind") == "taskFinished" for row in baseline_rows)
+                                                       and metrics.get("failure") is None)), expected_speech)}}
     sources = sorted({item["source"] for item in raw + pairs + history})
     if not sources:
         sources = [route.get("audioInput") if route.get("audioInput") in ("system", "microphone") else "unknown"]
     for source in sources:
+        absence_available = not expected_speech and negative_absence_evidence(source, manifest, report, trace_coverage, rows)
         for name, items, available in (
             ("recognitionFinal", [item for item in raw if item["source"] == source],
-             evidence_enabled and private_provider_observed),
+             evidence_enabled and private_provider_observed or absence_available),
             ("acceptedPairSource", [item for item in pairs if item["source"] == source and item["acceptance"] == "accepted"],
-             any(item["source"] == source and item["acceptance"] != "unknown" for item in pairs)),
+             any(item["source"] == source and item["acceptance"] != "unknown" for item in pairs) or absence_available),
             ("durableHistorySource", [item for item in history if item["source"] == source],
              evidence_enabled and bool(snapshots)),
         ):
             stages[name + "/" + safe_label(source)] = {
                 "utterances": items, "comparison": compare(cues, text_of(items), unit, available and
                     all(item["textEvidenceAvailable"] for item in items) and
-                    not (name == "durableHistorySource" and source in history_meta["ambiguousHistorySources"])),
+                    not (name == "durableHistorySource" and source in history_meta["ambiguousHistorySources"]), expected_speech),
                 "textCoverageComplete": all(item["textEvidenceAvailable"] for item in items),
                 "referenceSourceAssignment": "not_proven; each source compared separately without mixing",
             }
@@ -643,6 +730,7 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
             "clipLabel": clip_label, "caseId": safe_label(report.get("caseId", manifest.get("id"))),
             "buildRevision": safe_label(route.get("buildRevision")),
             "reference": {"language": language_code(clip.get("language")), "unit": unit,
+                          "expectedSpeech": expected_speech,
                           "status": safe_label(clip.get("reference_status")),
                           "license": clip.get("license"), "cueCount": len(cues),
                           "limitations": clip.get("baseline_limitations", [])},
@@ -651,6 +739,7 @@ def analyze(case_directory, media_manifest, clip_label, asr_directory):
                                    "failurePresent": metrics.get("failure") is not None,
                                    **baseline_identity},
             "stages": stages, "providerPairs": pairs,
+            "translationChains": translation_chains(rows, raw, pairs),
             "pairAcceptanceCounts": dict(Counter(item["acceptance"] for item in pairs)),
             "recognitionMissingUtteranceIds": raw_missing_identity,
             "history": history_meta, "frontend": frontend, "evidenceCounters": losses,
