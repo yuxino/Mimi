@@ -123,8 +123,8 @@ fn process(pcm: &[u8], denoise: bool) -> Result<(Vec<u8>, Metrics), Failure> {
         .chain(std::iter::once(&[][..]))
     {
         let mut frame = [0i16; FRAME_SAMPLES];
-        for (sample, pair) in frame.iter_mut().zip(bytes.chunks_exact(2)) {
-            *sample = i16::from_le_bytes([pair[0], pair[1]]);
+        for (sample, pair) in frame.iter_mut().zip(bytes.as_chunks::<2>().0) {
+            *sample = i16::from_le_bytes(*pair);
         }
         let before = Instant::now();
         processor.frame(&mut frame);
@@ -229,8 +229,10 @@ fn stationary_noise_can_be_reduced_without_changing_its_duration() {
     let (output, _) = process(&input, true).unwrap();
     let energy = |pcm: &[u8]| {
         pcm[pcm.len() - SAMPLE_RATE * 2..]
-            .chunks_exact(2)
-            .map(|pair| f64::from(i16::from_le_bytes([pair[0], pair[1]])).powi(2))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| f64::from(i16::from_le_bytes(*pair)).powi(2))
             .sum::<f64>()
     };
     assert_eq!(output.len(), input.len());

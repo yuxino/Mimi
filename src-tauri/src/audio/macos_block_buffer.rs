@@ -225,8 +225,10 @@ mod tests {
             with_bytes(buffer.0, |bytes| {
                 assert_eq!(bytes, source);
                 bytes
-                    .chunks_exact(4)
-                    .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|b| f32::from_le_bytes(*b))
                     .collect::<Vec<_>>()
             })
         }
