@@ -5,8 +5,8 @@
 ## Install and update
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.
-2. Open Translation Service, choose a provider, and save its credentials.
-3. Play something and select Start from the mimi menu bar/system tray icon. macOS asks for Screen & System Audio Recording access to capture system audio.
+2. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save. Choose the recognition and translation languages.
+3. Play something and turn on Live Subtitles under Subtitles. You can also start from the mimi menu bar/system tray icon. macOS asks for Screen & System Audio Recording access to capture system audio.
 
 Bring your own provider API credentials; usage charges may apply. Credentials are stored in the OS credential store.
 

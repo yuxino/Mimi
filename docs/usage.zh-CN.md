@@ -5,8 +5,8 @@
 ## 安装与更新
 
 1. 从 [Latest Release](https://github.com/yuxino/mimi/releases/latest) 下载 macOS Apple Silicon 或 Intel DMG，Windows x64 EXE、MSI、绿色版 ZIP，或 Linux x86_64 .deb / AppImage；也可以从源码构建。
-2. 打开「翻译服务」，选择服务商并保存凭证。
-3. 播放内容，从菜单栏/系统托盘的 mimi 图标点击 开始。macOS 会请求「屏幕与系统音频录制」权限，以采集系统音频。
+2. 打开「设置 → 语音与翻译」，添加配置，按提示填入服务商凭证并保存，再选择识别和翻译语言。
+3. 播放内容，在「字幕」页开启「实时字幕」，也可从菜单栏/系统托盘的 mimi 图标点击「开始」。macOS 会请求「屏幕与系统音频录制」权限，以采集系统音频。
 
 需要自备服务商 API 凭证，调用可能产生费用。凭证保存在系统钥匙串中。
 

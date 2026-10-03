@@ -21,22 +21,23 @@
   </p>
 </div>
 
-Mimi adds live subtitles and translation to films, streams, lessons, and games playing on your computer. Its name means “ear” in Japanese.
+Mimi turns speech playing on your computer into live translated subtitles. Watch films, follow streams, or take lessons with subtitles floating over your screen.
+
+![Mimi's bilingual subtitle window over an original illustrated scene](docs/assets/readme-preview.png)
 
 ## Features
 
-- Show original text, translations, or both in a floating subtitle window.
-- Move and resize the window, adjust its appearance, or use click-through and Immersive Mode.
-- Switch between speech services, including custom recognition and separate text translation where supported.
-- Save subtitles or audio locally when you choose, and export TXT / WAV. Saving and recording are off by default.
+- Show original text, translations, or both.
+- Adjust subtitle position, size, and color, or let mouse clicks pass through the window.
+- Save subtitles or audio locally and export TXT / WAV when needed. Saving and recording are off by default.
 
 ## Get started
 
-1. Open Translation Service, choose a provider, and save your API credentials.
-2. Choose your languages.
-3. Play something and click Start from the Mimi menu bar or system tray icon. On macOS, allow Screen & System Audio Recording when asked.
+1. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save.
+2. Choose the recognition and translation languages.
+3. Play something and turn on Live Subtitles under Subtitles. On macOS, allow Screen & System Audio Recording when asked.
 
-Audio is processed by your chosen cloud service; provider charges may apply.
+Bring your own provider credentials. Audio is sent to your configured speech service; cloud usage charges may apply.
 
 [Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](CONTRIBUTING.md)
 
