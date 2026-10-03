@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   FOLLOW_AUDIBLE,
@@ -12,11 +12,16 @@ import {
 import { isTauri } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
 import { SettingsRow, SettingsSelect } from "./SettingsPrimitives";
+import { I18N } from "../../lib/i18n";
+import { useSettingsToast } from "./useSettingsToast";
 
 
 export function WindowsAudioSource() {
   const [snapshot, setSnapshot] = useState<AudioSourceSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const inFlight = useRef(false);
+  const { runWithToast } = useSettingsToast();
   const selected = useStore((state) => state.settings.windowsAudioSource) ?? "";
   const active = useStore((state) => state.session.isActive);
   const paused = useStore((state) => state.session.isPaused);
@@ -56,8 +61,14 @@ export function WindowsAudioSource() {
   return (
     <SettingsRow label={text.title} description={requiresStop ? text.stop : text.help}>
       <span>
-        <SettingsSelect label={text.title} value={selected} disabled={requiresStop || failed}
-          onChange={(value) => void save({ windowsAudioSource: value })}
+        <SettingsSelect label={text.title} value={selected} disabled={requiresStop || failed || saving}
+          onChange={(value) => {
+            if (inFlight.current) return;
+            inFlight.current = true;
+            setSaving(true);
+            void runWithToast(() => save({ windowsAudioSource: value }), I18N.settings.settingSaveFailed(text.title))
+              .finally(() => { inFlight.current = false; setSaving(false); });
+          }}
           options={[
             { value: FOLLOW_SYSTEM, label: text.system },
             ...(selected === ROLE_COMMUNICATIONS ? [{ value: selected, label: text.communications }] : []),

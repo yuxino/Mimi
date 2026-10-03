@@ -103,12 +103,13 @@ describe("history operation state", () => {
   it("reports delete failure, permits retry and returns to current after confirmed success", async () => {
     await select(1); await confirm(); ipc.sessionHistoryDelete.mockRejectedValueOnce(new Error("fixture"));
     await click(button(I18N.settings.historyDelete));
-    expect(host.textContent).toContain(I18N.settings.historyReadFailed);
+    expect(document.querySelector(".settings-confirmation .settings-toast")?.textContent).toBe(I18N.settings.historyDeleteFailed);
+    expect(host.querySelector(".settings-feedback")).toBeNull();
     expect(button(I18N.settings.historyDelete).disabled).toBe(false);
     await click(button(I18N.settings.historyDelete));
     expect(ipc.sessionHistoryDelete).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain("Synthetic current");
-    expect(host.textContent).not.toContain(I18N.settings.historyReadFailed);
+    expect(host.textContent).not.toContain(I18N.settings.historyDeleteFailed);
   });
   it.each(["delete", "export"])("ignores stale %s feedback after navigating to B", async (kind) => {
     const pending = deferred(); await select(1);
@@ -117,7 +118,7 @@ describe("history operation state", () => {
     if (kind === "delete") await click(button(I18N.settings.cancel));
     await select(2); await act(async () => pending.reject(new Error("fixture"))); await flush();
     expect(host.textContent).toContain("Synthetic B");
-    expect(host.textContent).not.toContain(I18N.settings.historyReadFailed);
+    expect(host.textContent).not.toContain(I18N.settings.historyDeleteFailed);
     expect(host.textContent).not.toContain(I18N.settings.sessionExportFailed);
   });
   it("does not reset selection after closing and reopening during deletion", async () => {

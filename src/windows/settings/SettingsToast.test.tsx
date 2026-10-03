@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setStoredUiLanguage } from "../../lib/i18n";
 import { SettingsToastRegion } from "./SettingsToast";
 import { useSettingsToast } from "./useSettingsToast";
+import { SettingsConfirmation } from "./DestructiveConfirmation";
 
 const native = vi.hoisted(() => ({ handlers: new Map<string, () => void>(), unlisten: vi.fn() }));
 vi.mock("../../lib/ipc", () => ({ isTauri: true }));
@@ -94,4 +95,32 @@ it.each(["tauri://blur", "tauri://close-requested"])("clears on native %s and re
   await act(() => root!.unmount()); root = null;
   expect(native.handlers.size).toBe(0);
   expect(native.unlisten).toHaveBeenCalledTimes(2);
+});
+
+it("keeps one toast accessible inside an inert-background modal, including dismissal and focus trapping", async () => {
+  function ModalAction() {
+    const [open, setOpen] = useState(false);
+    const { beginToast } = useSettingsToast();
+    return <>
+      <button onClick={() => setOpen(true)}>Open</button>
+      {open && <SettingsConfirmation message="Delete fixture" onCancel={() => setOpen(false)} onConfirm={() => beginToast()("Try again", true)} />}
+      <SettingsToastRegion />
+    </>;
+  }
+  await act(async () => root!.render(<ModalAction />));
+  await act(async () => host.querySelector("button")!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>(".settings-confirmation__confirm")!.click());
+  const dialog = document.querySelector<HTMLElement>(".settings-confirmation")!;
+  const dismiss = dialog.querySelector<HTMLButtonElement>('.settings-toast button')!;
+  expect(document.querySelectorAll(".settings-toast")).toHaveLength(1);
+  expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("Try again");
+  expect(host.hasAttribute("inert")).toBe(true);
+  expect(dismiss.closest("[inert], [aria-hidden=true]")).toBeNull();
+  await act(async () => dismiss.focus());
+  expect(document.activeElement).toBe(dismiss);
+  await act(async () => dismiss.click());
+  expect(document.querySelector(".settings-toast")).toBeNull();
+  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector(".settings-confirmation")).toBeNull();
+  expect(host.hasAttribute("inert")).toBe(false);
 });

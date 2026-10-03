@@ -1,6 +1,6 @@
 .settings-toast {
   position: fixed;
-  z-index: 150;
+  z-index: 1600;
   right: 20px;
   bottom: 20px;
   display: flex;

@@ -166,3 +166,18 @@ creation prompt using a synthetic password, and verifies the saved test value
 in a fresh process. It does not access the desktop user's keyring or test PAM
 login integration. Existing round-trip and late-service recovery tests remain
 separate checks.
+
+### Native Wayland input-region regression
+
+`./scripts/linux-wayland-input-smoke.sh` runs an isolated GTK input-region
+fixture under headless Weston. It requires the development dependencies and
+Weston, and refuses an unavailable compositor rather than using an existing
+desktop or X11. It checks empty regions while locked, default input restoration
+while unlocked, and hide/show, unrealize/realize, and recreation through actual
+Wayland protocol commits. No provider, audio capture, keyring, desktop input
+permission, or accessibility authorization is involved.
+
+This is a protocol regression for Mimi's Linux input-shape helper, not a
+GNOME/KDE desktop or packaged-app acceptance result. Global placement,
+always-on-top, workspace behavior, real underlying-window click delivery, and
+compositor-specific shortcuts remain tracked in #92.

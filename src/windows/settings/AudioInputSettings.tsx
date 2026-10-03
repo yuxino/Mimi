@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { I18N } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
-import { InlineFeedback, SettingsRow, SettingsSection } from "./SettingsPrimitives";
+import { SettingsRow, SettingsSection } from "./SettingsPrimitives";
 import { Switch } from "../../components/Switch";
 import { audioInputErrorMessage } from "../../lib/audioInput";
 import { applicationAudioError } from "../../lib/applicationAudio";
@@ -10,6 +10,7 @@ import { captureSwitchCopy } from "../../lib/captureStatus";
 import type { AudioInput, AudioSource } from "../../lib/types";
 import { ApplicationAudio } from "./ApplicationAudio";
 import { WindowsAudioSource } from "./WindowsAudioSource";
+import { useSettingsToast } from "./useSettingsToast";
 
 /** Uses the same idle, live and paused reconfiguration path as the overlay. */
 export function AudioInputSettings() {
@@ -21,7 +22,7 @@ export function AudioInputSettings() {
   const switchAudioInput = useStore(state => state.switchAudioInput);
   const [busy, setBusy] = useState(false);
   const [targetBusy, setTargetBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { beginToast } = useSettingsToast();
   const inFlight = useRef(false);
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -35,11 +36,11 @@ export function AudioInputSettings() {
     if (value === selected) return;
     inFlight.current = true;
     setBusy(true);
-    setError(null);
+    const notify = beginToast();
     try { await switchAudioInput(value); }
     catch (error) {
       const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-      if (mounted.current) setError(applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? copy.switchFailed);
+      if (mounted.current) notify(applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? copy.switchFailed, true);
     }
     finally {
       inFlight.current = false;
@@ -59,6 +60,5 @@ export function AudioInputSettings() {
     </SettingsRow>}
     {selected !== "microphone" && <ApplicationAudio disabled={disabled} onBusyChange={setTargetBusy} />}
     {selected !== "microphone" && target?.kind !== "application" && <WindowsAudioSource />}
-    {error && <InlineFeedback tone="error">{error}</InlineFeedback>}
   </SettingsSection>;
 }

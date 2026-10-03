@@ -1,4 +1,5 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle, Check, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TauriEvent } from "@tauri-apps/api/event";
@@ -10,6 +11,16 @@ import "./settings-toast.css";
 /** Mount once inside the settings theme root, outside the scrolling panels. */
 export function SettingsToastRegion({ scopeKey }: { scopeKey?: string }) {
   const current = useSyncExternalStore(subscribeSettingsToast, settingsToastSnapshot);
+  const [dialog, setDialog] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    // Modal backgrounds are inert. Put the same single toast inside the active
+    // dialog so failed create/delete actions stay visible and dismissible.
+    const syncDialog = () => setDialog(document.querySelector<HTMLElement>(".settings-confirmation"));
+    syncDialog();
+    const observer = new MutationObserver(syncDialog);
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => { dismissSettingsToast(); return dismissSettingsToast; }, [scopeKey]);
   useEffect(() => {
     let disposed = false;
@@ -38,9 +49,10 @@ export function SettingsToastRegion({ scopeKey }: { scopeKey?: string }) {
   }, []);
   if (!current) return null;
   const close = { zh: "关闭提示", en: "Dismiss notification", ja: "通知を閉じる" }[effectiveUiLanguage()];
-  return <div className="settings-toast" data-tone={current.failure ? "error" : "success"} role={current.failure ? "alert" : "status"} aria-live={current.failure ? "assertive" : "polite"} aria-atomic="true">
+  const notification = <div className="settings-toast" data-tone={current.failure ? "error" : "success"} role={current.failure ? "alert" : "status"} aria-live={current.failure ? "assertive" : "polite"} aria-atomic="true">
     {current.failure ? <AlertCircle size={16} aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
     <span>{current.message}</span>
     <button type="button" aria-label={close} onClick={dismissSettingsToast}><X size={16} aria-hidden="true" /></button>
   </div>;
+  return dialog ? createPortal(notification, dialog) : notification;
 }

@@ -152,6 +152,10 @@ translated output. Record only timing/counts/status, never speech or subtitles.
 
 ## Overlay and UI checks
 
+For shared layout, notification choices and the cross-page review checklist,
+read [UI consistency and feedback](ui-guidelines.md). A fix to one reported
+page must include a review of other instances of the same pattern.
+
 - Moving a control between windows also requires updating its Tauri command
   permissions. Settings audio switches once invoked a command authorized only
   for the floating panel, so browser tests passed while native clicks failed.

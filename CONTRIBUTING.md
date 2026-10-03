@@ -50,6 +50,10 @@ For Linux dependencies, building, and isolated audio/keyring/UI checks, see the 
 
 ## 本地验证 / Local verification
 
+界面改动前请阅读[界面一致性与操作反馈规范](docs/development/ui-guidelines.md)。修复某个页面的重复问题时，需要排查其他页面的同类控件，并检查成功、失败、弹窗和异步结果迟到的情况。
+
+Before UI changes, read [UI consistency and feedback](docs/development/ui-guidelines.md). When fixing a repeated pattern, audit its sibling controls on other pages and check success, failure, modal and late-result paths.
+
 ```bash
 ./scripts/check.sh
 ./scripts/package-app.sh

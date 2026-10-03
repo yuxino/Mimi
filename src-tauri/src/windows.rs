@@ -81,6 +81,9 @@ use serde::Serialize;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
+#[cfg(target_os = "linux")]
+mod linux_input_region;
+
 #[cfg(target_os = "macos")]
 mod macos_control_dismiss;
 
@@ -328,10 +331,16 @@ pub struct OverlayControlState(std::sync::Mutex<OverlayControlStateInner>);
 /// Cached native presentation state. Session snapshots can arrive many times
 /// per second while subtitles stream; the cache keeps identical snapshots
 /// from repeatedly crossing into the OS window API.
+#[cfg(not(target_os = "linux"))]
 #[derive(Debug, Default)]
 pub struct OverlayPresentationState(std::sync::Mutex<Option<bool>>);
 
+#[cfg(target_os = "linux")]
+#[derive(Debug, Default)]
+pub struct OverlayPresentationState(std::sync::Mutex<linux_input_region::InputRegionState>);
+
 impl OverlayPresentationState {
+    #[cfg(not(target_os = "linux"))]
     fn apply_click_through_if_changed(&self, window: &tauri::WebviewWindow, enabled: bool) {
         let mut current = self.0.lock().unwrap();
         if *current == Some(enabled) {
@@ -346,8 +355,43 @@ impl OverlayPresentationState {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    fn apply_click_through_if_changed(&self, window: &tauri::WebviewWindow, enabled: bool) {
+        // Record intent before dispatch, without holding the mutex while GTK
+        // waits for the main loop. Older queued requests read the latest intent
+        // instead of re-locking a window after a newer explicit unlock.
+        self.0.lock().unwrap().request(enabled);
+        let app = window.app_handle().clone();
+        let label = window.label().to_string();
+        if window
+            .run_on_main_thread(move || {
+                // Resolve the current instance: a queued request may outlive
+                // the native window it was originally sent through.
+                let Some(window) = app.get_webview_window(&label) else {
+                    return;
+                };
+                let Ok(native) = window.gtk_window() else {
+                    return;
+                };
+                if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
+                    presentation.0.lock().unwrap().reconcile(false, |enabled| {
+                        linux_input_region::apply(&native, enabled);
+                    });
+                }
+            })
+            .is_err()
+        {
+            pipeline_log!("overlay input region failed label=main_thread_unavailable");
+        }
+    }
+
     fn invalidate(&self) {
-        *self.0.lock().unwrap() = None;
+        #[cfg(not(target_os = "linux"))]
+        {
+            *self.0.lock().unwrap() = None;
+        }
+        #[cfg(target_os = "linux")]
+        self.0.lock().unwrap().invalidate();
     }
 }
 
@@ -635,6 +679,11 @@ impl OverlayWindowManager {
                 // Ordinary position locking keeps the independent control
                 // island as an unlock escape hatch. Immersive Mode hides all
                 // overlay chrome and is exited via shortcut, tray, or settings.
+                // GTK can store an input shape before the first native map.
+                // Record lock intent first so realize/map cannot briefly
+                // restore an old unlocked shape when a worker shows a window.
+                #[cfg(target_os = "linux")]
+                Self::update_locked(app, true);
                 Self::sync_overlay_visibility(app, true);
                 OverlayControlWindowManager::sync_presentation(
                     app,
@@ -642,6 +691,7 @@ impl OverlayWindowManager {
                     is_collapsed,
                     is_immersive,
                 );
+                #[cfg(not(target_os = "linux"))]
                 Self::update_locked(app, true);
             } else {
                 // Restore canvas interaction before changing either visible
@@ -784,7 +834,17 @@ impl OverlayWindowManager {
         if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
             presentation.apply_click_through_if_changed(&window, locked);
         } else {
+            #[cfg(not(target_os = "linux"))]
             let _ = window.set_ignore_cursor_events(locked);
+            #[cfg(target_os = "linux")]
+            {
+                let native_window = window.clone();
+                let _ = window.run_on_main_thread(move || {
+                    if let Ok(native) = native_window.gtk_window() {
+                        linux_input_region::apply(&native, locked);
+                    }
+                });
+            }
         }
     }
 
@@ -1575,6 +1635,14 @@ fn follow_linux_overlay_on_map(window: &tauri::WebviewWindow) {
     let app = window.app_handle().clone();
     let _ = window.run_on_main_thread(move || {
         if let Ok(window) = native_window.gtk_window() {
+            let input_app = app.clone();
+            linux_input_region::restore_on_surface_change(&window, move |window| {
+                if let Some(presentation) = input_app.try_state::<OverlayPresentationState>() {
+                    presentation.0.lock().unwrap().reconcile(true, |enabled| {
+                        linux_input_region::apply(window, enabled);
+                    });
+                }
+            });
             window.connect_map_event(move |_, _| {
                 // Wait until GTK has processed the mapping event, without a
                 // timer or a polling loop. Re-read mode so a stop wins races.

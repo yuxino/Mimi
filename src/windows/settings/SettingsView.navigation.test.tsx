@@ -61,7 +61,8 @@ it("routes a failed native quit to export, focuses its nav action and shows the 
   expect(retry.disabled).toBe(false);
   await act(async () => retry.click());
   expect(quit).toHaveBeenCalledOnce();
-  expect(host.querySelector(".settings-quit-error")?.textContent).toBe(I18N.tray.quitFailed);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(I18N.tray.quitFailed);
+  expect(host.querySelector(".settings-sidebar .settings-feedback, .settings-quit-error")).toBeNull();
   expect(host.textContent).not.toContain("synthetic quit failure");
 });
 

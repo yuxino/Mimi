@@ -24,7 +24,6 @@ export function SoftwareUpdate() {
   const [portable, setPortable] = useState(false);
   const [linuxPackage, setLinuxPackage] = useState(false);
   const [openingReleases, setOpeningReleases] = useState(false);
-  const [portableOpenError, setPortableOpenError] = useState(false);
   const [state, setState] = useState<UpdateCheckState>({ kind: "idle" });
   const candidateRef = useRef<UpdateCandidate | undefined>(undefined);
   const operationRef = useRef(false);
@@ -138,12 +137,14 @@ export function SoftwareUpdate() {
 
   const handleRecovery = async () => {
     if (!isErrorState(state) || state.recovery === "opening") return;
+    const notify = beginToast();
     setState((current) => withRecoveryStatus(current, "opening"));
     try {
       await appOpenReleases();
       setState((current) => withRecoveryStatus(current, "idle"));
     } catch {
-      setState((current) => withRecoveryStatus(current, "error"));
+      setState((current) => withRecoveryStatus(current, "idle"));
+      notify(I18N.settings.openUpdateFailed, true);
     }
   };
 
@@ -167,9 +168,9 @@ export function SoftwareUpdate() {
             disabled={openingReleases}
             onClick={() => {
               setOpeningReleases(true);
-              setPortableOpenError(false);
+              const notify = beginToast();
               void appOpenReleases()
-                .catch(() => setPortableOpenError(true))
+                .catch(() => notify(I18N.settings.openUpdateFailed, true))
                 .finally(() => setOpeningReleases(false));
             }}
           >
@@ -181,7 +182,6 @@ export function SoftwareUpdate() {
         <span className="software-update-live-status" role="status">
           {linuxPackage ? I18N.settings.linuxPackageUpdateDescription : I18N.settings.portableUpdateDescription}
         </span>
-        {portableOpenError && <span role="alert">{I18N.settings.openUpdateFailed}</span>}
       </div>
     );
   }
@@ -347,9 +347,6 @@ function UpdateDetails({
               ? I18N.settings.openingUpdateRecovery
               : I18N.settings.openReleaseRecovery}
           </button>
-          {state.recovery === "error" && (
-            <span role="alert">{I18N.settings.openUpdateFailed}</span>
-          )}
         </div>
       )}
     </div>

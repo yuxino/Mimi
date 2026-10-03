@@ -165,7 +165,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
     };
   }, [visible, availableCount, selectedId, query, page]);
 
-  async function perform(action: () => Promise<"saved" | "cleared" | null>) {
+  async function perform(action: () => Promise<"saved" | "cleared" | null>, failureMessage = I18N.settings.sessionExportFailed) {
     if (!isTauri || operation.current || useStore.getState().session.isActive)
       return;
     const currentLifetime = lifetime.current;
@@ -177,7 +177,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
       const result = await action();
       if (result && lifetime.current === currentLifetime && interaction.current === currentInteraction) notify(result === "saved" ? I18N.settings.sessionExportSaved : I18N.settings.sessionArchiveCleared);
     } catch {
-      if (lifetime.current === currentLifetime && interaction.current === currentInteraction) notify(I18N.settings.sessionExportFailed, true);
+      if (lifetime.current === currentLifetime && interaction.current === currentInteraction) notify(failureMessage, true);
     } finally {
       operation.current = false;
       if (lifetime.current === currentLifetime) {
@@ -195,6 +195,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
     operation.current = true;
     setBusy(true);
     setHistoryError(false);
+    const notify = beginToast();
     try {
       await sessionHistoryDelete(id);
       if (lifetime.current !== currentLifetime || visibility.current !== currentVisibility) return;
@@ -202,7 +203,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
       if (interaction.current === currentInteraction) selectHistory(null);
     } catch {
       if (lifetime.current === currentLifetime && interaction.current === currentInteraction) {
-        setHistoryError(true);
+        notify(I18N.settings.historyDeleteFailed, true);
       }
     } finally {
       operation.current = false;
@@ -214,7 +215,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
     void perform(async () => {
       await saveSettings(draft);
       return null;
-    });
+    }, I18N.settings.settingSaveFailed(draft.retainSessionHistory !== undefined ? I18N.settings.retainSessionHistory : I18N.settings.recordSessionAudio));
   }
 
   const disabled = !isTauri || active || busy;

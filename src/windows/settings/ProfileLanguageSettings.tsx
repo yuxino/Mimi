@@ -7,14 +7,13 @@ import { sourceLanguagesForSettings, targetLanguagesForSettings } from "../../li
 import { useStore } from "../../lib/store";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsDraft, type SettingsSnapshot } from "../../lib/types";
 import { SettingsHelp } from "./SettingsHelp";
-import { InlineFeedback, SettingsRow } from "./SettingsPrimitives";
+import { SettingsRow } from "./SettingsPrimitives";
 import { useSettingsToast } from "./useSettingsToast";
 
 /** Explicit language preferences belong to the active service. */
 export function ProfileLanguageSettings({ settings, disabled, requiresStop = false }: { settings: SettingsSnapshot; disabled: boolean; requiresStop?: boolean }) {
   const saveSettings = useStore(state => state.saveSettings);
   const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<"failed" | null>(null);
   const { beginToast } = useSettingsToast();
   const inFlight = useRef(false);
   const mounted = useRef(false);
@@ -28,13 +27,12 @@ export function ProfileLanguageSettings({ settings, disabled, requiresStop = fal
     if (disabled || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
-    setFeedback(null);
     const notify = beginToast();
     try {
       await saveSettings(draft);
       if (mounted.current) notify(I18N.settings.languageSaved);
     } catch {
-      if (mounted.current) setFeedback("failed");
+      if (mounted.current) notify(I18N.settings.languageSaveFailed, true);
     } finally {
       inFlight.current = false;
       if (mounted.current) setBusy(false);
@@ -60,7 +58,6 @@ export function ProfileLanguageSettings({ settings, disabled, requiresStop = fal
         options={targets.map(value => ({ value, label: TARGET_LANGUAGE_DISPLAY_NAMES[value] }))}
         onChange={value => { const targetLanguage = targets.find(language => language === value); if (targetLanguage) void save({ targetLanguage }); }} />
     </SettingsRow>
-    {feedback && <InlineFeedback tone="error">{I18N.settings.languageSaveFailed}</InlineFeedback>}
   </section>;
 }
 

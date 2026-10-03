@@ -959,21 +959,385 @@ mod tests {
         eprintln!("linux native rate={rate} stage={stage} pcm=true sound=false");
     }
 
+    fn isolated_audio_directory() -> std::path::PathBuf {
+        let directory = std::path::PathBuf::from(
+            std::env::var("MIMI_TEST_AUDIO_DIRECTORY").expect("private audio harness is required"),
+        );
+        assert_eq!(
+            std::fs::read_to_string(directory.join("isolated-server")).unwrap(),
+            "mimi isolated synthetic audio smoke\n"
+        );
+        let socket = directory.join("pulse.sock");
+        assert_eq!(
+            std::env::var("PULSE_SERVER").unwrap(),
+            format!("unix:{}", socket.display())
+        );
+        assert!(directory.is_absolute());
+        assert_eq!(directory.canonicalize().unwrap(), directory);
+        assert_eq!(
+            std::env::var("PULSE_RUNTIME_PATH").unwrap(),
+            directory.join("runtime").to_str().unwrap()
+        );
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&directory).unwrap().permissions().mode() & 0o077,
+            0
+        );
+        directory
+    }
+
+    fn pactl(args: &[&str]) -> String {
+        let output = Command::new("timeout")
+            .args(["2s", "pactl"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "pactl {args:?} failed");
+        String::from_utf8(output.stdout).unwrap().trim().to_owned()
+    }
+
+    struct TestSink(String);
+
+    impl TestSink {
+        fn new(name: &str) -> Self {
+            Self(pactl(&[
+                "load-module",
+                "module-null-sink",
+                &format!("sink_name={name}"),
+            ]))
+        }
+    }
+
+    impl Drop for TestSink {
+        fn drop(&mut self) {
+            let _ = Command::new("timeout")
+                .args(["2s", "pactl"])
+                .args(["unload-module", &self.0])
+                .output();
+        }
+    }
+
+    struct RestoreDefaultSink;
+
+    impl Drop for RestoreDefaultSink {
+        fn drop(&mut self) {
+            let _ = Command::new("timeout")
+                .args(["2s", "pactl"])
+                .args(["set-default-sink", "mimi-output"])
+                .output();
+        }
+    }
+
+    async fn expect_monitor_frequency(rx: &mut mpsc::Receiver<Vec<u8>>, rate: u32, frequency: f64) {
+        tokio::time::timeout(Duration::from_secs(6), async {
+            let mut window = Vec::new();
+            while let Some(pcm) = rx.recv().await {
+                assert_eq!(pcm.len(), rate as usize * 2 * FRAGMENT_MS / 1000);
+                window.extend(pcm);
+                if window.len() >= rate as usize / 2 {
+                    if matches_frequency(&window, rate, frequency) {
+                        return;
+                    }
+                    window.clear();
+                }
+            }
+            panic!("monitor ended before its assigned tone arrived");
+        })
+        .await
+        .expect("capture must retain the selected monitor's dominant tone");
+    }
+
+    async fn stop_and_assert_quiet(
+        capture: &LinuxSystemAudioCapture,
+        pipeline: &AudioSendPipeline,
+        rx: &mut mpsc::Receiver<Vec<u8>>,
+    ) {
+        tokio::time::timeout(Duration::from_secs(1), capture.stop())
+            .await
+            .expect("native teardown must remain bounded after a device/server loss");
+        // Drain only work accepted before stop. Keep the pipeline open so a
+        // late native send cannot be hidden by closing its receiver.
+        while rx.try_recv().is_ok() {}
+        tokio::time::sleep(Duration::from_millis(75)).await;
+        while rx.try_recv().is_ok() {}
+        tokio::time::sleep(Duration::from_millis(75)).await;
+        assert!(rx.try_recv().is_err(), "stopped monitor emitted new PCM");
+        tokio::time::sleep(Duration::from_millis(2_100)).await;
+        assert_eq!(pipeline.input_activity(), (false, false));
+        let old_ingress = pipeline.ingress().unwrap();
+        pipeline.stop();
+        assert_eq!(
+            old_ingress.try_send(vec![0, 0]),
+            Err(AudioIngressError::Closed)
+        );
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while pipeline.pending_pcm_gate().has_pending() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("retired generation must release all pending PCM");
+    }
+
+    /// Changing the default output must not move an already-open DONT_MOVE
+    /// stream. Only an explicit stop/start selects the new output monitor.
+    #[tokio::test]
+    #[ignore = "requires an isolated PulseAudio server and paplay"]
+    async fn native_default_output_switch_pins_monitor_until_restart() {
+        isolated_audio_directory();
+        let second_sink = TestSink::new("mimi-switch-output");
+        let _restore = RestoreDefaultSink;
+        let capture = LinuxSystemAudioCapture::new();
+        for rate in [16_000, 24_000] {
+            pactl(&["set-default-sink", "mimi-output"]);
+            let (pipeline, mut rx) = recording_pipeline();
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            capture
+                .start(
+                    pipeline.ingress().unwrap(),
+                    failure,
+                    AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                )
+                .await
+                .unwrap();
+            expect_native_silence(&pipeline, &mut rx, rate, "switch-before-playback").await;
+            let (_first_audio, first_playback) = play_test_frequency_on("mimi-output", 997.0);
+            let (_second_audio, second_playback) =
+                play_test_frequency_on("mimi-switch-output", 613.0);
+            expect_monitor_frequency(&mut rx, rate, 997.0).await;
+            pactl(&["set-default-sink", "mimi-switch-output"]);
+            // Old native/send buffers could still contain 997 Hz. Stop that
+            // tone, observe silence, then require a fresh distinct tone on A
+            // while B is audible. Pre-switch PCM cannot satisfy this check.
+            drop(first_playback);
+            expect_native_silence(&pipeline, &mut rx, rate, "switch-pinned-silent").await;
+            let (_fresh_audio, fresh_playback) = play_test_frequency_on("mimi-output", 811.0);
+            expect_monitor_frequency(&mut rx, rate, 811.0).await;
+            assert!(failures.try_recv().is_err());
+            stop_and_assert_quiet(&capture, &pipeline, &mut rx).await;
+            drop(fresh_playback);
+            drop(second_playback);
+
+            let (restarted, mut restarted_rx) = recording_pipeline();
+            assert_eq!(restarted.input_activity(), (false, false));
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            capture
+                .start(
+                    restarted.ingress().unwrap(),
+                    failure,
+                    AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                )
+                .await
+                .unwrap();
+            expect_native_silence(&restarted, &mut restarted_rx, rate, "switch-restarted").await;
+            let (_audio, playback) = play_test_frequency_on("mimi-switch-output", 613.0);
+            expect_monitor_frequency(&mut restarted_rx, rate, 613.0).await;
+            stop_and_assert_quiet(&capture, &restarted, &mut restarted_rx).await;
+            assert!(failures.try_recv().is_err());
+            drop(playback);
+            eprintln!("linux native route rate={rate} pinned=true restartedOnNewOutput=true");
+        }
+        drop(second_sink);
+    }
+
+    /// Removing the selected sink must fail instead of migrating to another
+    /// audible output. Recreating it allows an explicit fresh generation.
+    #[tokio::test]
+    #[ignore = "requires an isolated PulseAudio server and paplay"]
+    async fn native_removed_monitor_fails_and_recovers_without_fallback() {
+        isolated_audio_directory();
+        let _restore = RestoreDefaultSink;
+        let capture = LinuxSystemAudioCapture::new();
+        for rate in [16_000, 24_000] {
+            let sink = TestSink::new("mimi-removable-output");
+            pactl(&["set-default-sink", "mimi-removable-output"]);
+            let (pipeline, mut rx) = recording_pipeline();
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            capture
+                .start(
+                    pipeline.ingress().unwrap(),
+                    failure,
+                    AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                )
+                .await
+                .unwrap();
+            let (_audio, playback) = play_test_frequency_on("mimi-removable-output", 997.0);
+            expect_monitor_frequency(&mut rx, rate, 997.0).await;
+            drop(playback);
+            let (_other_audio, other_playback) = play_test_frequency_on("mimi-output", 613.0);
+            // Set the fallback first; removal must still report failure.
+            pactl(&["set-default-sink", "mimi-output"]);
+            drop(sink);
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(3), failures.recv())
+                    .await
+                    .expect("removed monitor must report a bounded failure"),
+                Some(SystemAudioCaptureFailure::NativeStopped)
+            );
+            stop_and_assert_quiet(&capture, &pipeline, &mut rx).await;
+            assert!(
+                failures.try_recv().is_err(),
+                "failure must only be reported once"
+            );
+            drop(other_playback);
+
+            let restored_sink = TestSink::new("mimi-removable-output");
+            pactl(&["set-default-sink", "mimi-removable-output"]);
+            let (restarted, mut restarted_rx) = recording_pipeline();
+            assert_eq!(restarted.input_activity(), (false, false));
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            capture
+                .start(
+                    restarted.ingress().unwrap(),
+                    failure,
+                    AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                )
+                .await
+                .unwrap();
+            expect_native_silence(&restarted, &mut restarted_rx, rate, "monitor-restored").await;
+            let (_audio, playback) = play_test_frequency_on("mimi-removable-output", 997.0);
+            expect_monitor_frequency(&mut restarted_rx, rate, 997.0).await;
+            stop_and_assert_quiet(&capture, &restarted, &mut restarted_rx).await;
+            assert!(failures.try_recv().is_err());
+            drop(playback);
+            drop(restored_sink);
+            eprintln!("linux native monitor-loss rate={rate} failedClosed=true recovered=true");
+        }
+    }
+
+    /// The harness runs this test last, in its own test process. It may stop
+    /// only its own child on the marked private socket, never the desktop server.
+    #[tokio::test]
+    #[ignore = "requires the private server lifecycle setup in linux-audio-smoke.sh"]
+    async fn native_server_disconnect_fails_and_recovers() {
+        let directory = isolated_audio_directory();
+        async fn start_private_server(directory: &std::path::Path) -> TestPlayback {
+            let socket = directory.join("pulse.sock");
+            let child = Command::new("pulseaudio")
+                .args([
+                    "--daemonize=no",
+                    "--exit-idle-time=-1",
+                    "--use-pid-file=no",
+                    "-n",
+                ])
+                .arg(format!(
+                    "--load=module-native-protocol-unix socket={} auth-anonymous=1",
+                    socket.display()
+                ))
+                .arg("--load=module-null-sink sink_name=mimi-output")
+                .arg(format!(
+                    "--log-target=file:{}/restarted-pulse.log",
+                    directory.display()
+                ))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let server = TestPlayback(child);
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    if Command::new("timeout")
+                        .args(["2s", "pactl"])
+                        .arg("info")
+                        .output()
+                        .unwrap()
+                        .status
+                        .success()
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            })
+            .await
+            .expect("private replacement server must become ready");
+            pactl(&["set-default-sink", "mimi-output"]);
+            server
+        }
+        let capture = LinuxSystemAudioCapture::new();
+        for rate in [16_000, 24_000] {
+            let server = start_private_server(&directory).await;
+            let (pipeline, mut rx) = recording_pipeline();
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            capture
+                .start(
+                    pipeline.ingress().unwrap(),
+                    failure,
+                    AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                )
+                .await
+                .unwrap();
+            let (_audio, playback) = play_test_tone();
+            expect_monitor_frequency(&mut rx, rate, 997.0).await;
+            drop(playback);
+            drop(server);
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(3), failures.recv())
+                    .await
+                    .expect("server loss must report a bounded failure"),
+                Some(SystemAudioCaptureFailure::NativeStopped)
+            );
+            stop_and_assert_quiet(&capture, &pipeline, &mut rx).await;
+            assert!(failures.try_recv().is_err());
+            let (unavailable, _rx) = recording_pipeline();
+            let (failure, _) = CaptureFailureSender::channel();
+            assert_eq!(
+                tokio::time::timeout(
+                    Duration::from_secs(7),
+                    capture.start(
+                        unavailable.ingress().unwrap(),
+                        failure,
+                        AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                    ),
+                )
+                .await
+                .expect("missing server must fail within the startup bound"),
+                Err(SystemAudioCaptureError::AudioServerUnavailable)
+            );
+            capture.stop().await;
+            unavailable.stop();
+
+            let _server = start_private_server(&directory).await;
+            let (restarted, mut restarted_rx) = recording_pipeline();
+            assert_eq!(restarted.input_activity(), (false, false));
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            capture
+                .start(
+                    restarted.ingress().unwrap(),
+                    failure,
+                    AudioCaptureFormat::pcm16_mono(rate).unwrap(),
+                )
+                .await
+                .unwrap();
+            expect_native_silence(&restarted, &mut restarted_rx, rate, "server-restored").await;
+            let (_audio, playback) = play_test_tone();
+            expect_monitor_frequency(&mut restarted_rx, rate, 997.0).await;
+            stop_and_assert_quiet(&capture, &restarted, &mut restarted_rx).await;
+            assert!(failures.try_recv().is_err());
+            drop(playback);
+            eprintln!("linux native server-loss rate={rate} unavailable=true recovered=true");
+        }
+    }
+
     /// Both native streams run concurrently with different synthetic tones.
     /// Matching the dominant tone rejects swapped streams and mixed PCM.
     #[tokio::test]
     #[ignore = "requires an isolated PulseAudio server with mimi-input and paplay"]
     async fn native_dual_inputs_keep_audio_separate_and_restart() {
+        isolated_audio_directory();
         struct RestoreDefaultSource;
         impl Drop for RestoreDefaultSource {
             fn drop(&mut self) {
-                let _ = Command::new("pactl")
+                let _ = Command::new("timeout")
+                    .args(["2s", "pactl"])
                     .args(["set-default-source", "mimi-microphone.monitor"])
                     .status();
             }
         }
         let _restore = RestoreDefaultSource;
-        assert!(Command::new("pactl")
+        assert!(Command::new("timeout")
+            .args(["2s", "pactl"])
             .args(["set-default-source", "mimi-input"])
             .status()
             .unwrap()
@@ -1051,8 +1415,10 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires an isolated PulseAudio server with mimi-input and paplay"]
     async fn native_microphone_captures_only_explicit_input_and_restarts() {
+        isolated_audio_directory();
         fn set_default_source(source: &str) {
-            assert!(Command::new("pactl")
+            assert!(Command::new("timeout")
+                .args(["2s", "pactl"])
                 .args(["set-default-source", source])
                 .status()
                 .unwrap()
@@ -1159,6 +1525,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires an isolated PulseAudio server and paplay"]
     async fn native_monitor_capture_is_pcm16_and_restarts() {
+        isolated_audio_directory();
         let capture = LinuxSystemAudioCapture::new();
         for rate in [16_000, 24_000] {
             let (pipeline, mut rx) = recording_pipeline();

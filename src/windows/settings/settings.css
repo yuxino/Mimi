@@ -209,13 +209,6 @@
   outline-offset: -2px;
 }
 
-.settings-quit-error {
-  padding: 7px var(--settings-sidebar-item-inset) 0;
-  color: var(--settings-text-muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
 .settings-brand {
   display: flex;
   align-items: baseline;

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
@@ -31,7 +32,7 @@ afterEach(async () => {
   await act(() => root.unmount()); host.remove();
   useStore.setState(initial, true); setStoredUiLanguage("system"); vi.unstubAllGlobals();
 });
-async function render() { await act(async () => root.render(<AudioInputSettings />)); }
+async function render() { await act(async () => root.render(<><AudioInputSettings /><SettingsToastRegion /></>)); }
 function toggle(source: "system" | "microphone") { return host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${source === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}"]`)!; }
 async function selectMicrophone() { await act(async () => toggle("microphone").click()); }
 

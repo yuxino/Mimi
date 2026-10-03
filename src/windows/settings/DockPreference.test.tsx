@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DockPreference } from "./DockPreference";
@@ -16,7 +17,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); useStore.setState(initial, true); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-async function mount() { await act(async () => root.render(<DockPreference />)); }
+async function mount() { await act(async () => root.render(<><DockPreference /><SettingsToastRegion /></>)); }
 
 it("hides the control on Windows and Linux", async () => {
   for (const platform of ["Win32", "Linux x86_64"]) {

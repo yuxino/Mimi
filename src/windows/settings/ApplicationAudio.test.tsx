@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
+import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -34,7 +35,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); useStore.setState(initial, true); setStoredUiLanguage("system"); vi.unstubAllGlobals(); });
-async function render() { await act(async () => root.render(<ApplicationAudio />)); }
+async function render() { await act(async () => root.render(<><ApplicationAudio /><SettingsToastRegion /></>)); }
 function trigger() { return host.querySelector<HTMLButtonElement>(`button[aria-label="${applicationAudioCopy().title}"]`)!; }
 function refresh() { return host.querySelector<HTMLButtonElement>(`button[aria-label="${applicationAudioCopy().refresh}"]`)!; }
 async function open() { if (trigger().getAttribute("aria-expanded") !== "true") await act(async () => trigger().click()); }
