@@ -27,6 +27,7 @@ use crate::core::support_diagnostics::{
     Availability, CaptureObservation, DiagnosticEvent, DiagnosticFacts, DiagnosticJournal,
     DiagnosticStatus, LifecycleAction, OutputSelection, RecoveryAction, SafeFailure, TextEventKind,
 };
+use crate::core::system_audio_target::SystemAudioTarget;
 use crate::pipeline_log;
 use crate::session_history::SessionHistory;
 use crate::settings_store::SettingsStore;
@@ -301,6 +302,26 @@ enum AudioInputSwitchAction {
     Reconnect,
 }
 
+fn validate_system_audio_target(
+    target: &SystemAudioTarget,
+    ui_test: bool,
+    application_capture_supported: impl FnOnce() -> bool,
+) -> Result<(), String> {
+    if !target.validate() {
+        return Err("application_audio_invalid_target".into());
+    }
+    if target.application_id().is_some() && !ui_test && !application_capture_supported() {
+        return Err(crate::audio::SystemAudioCaptureError::ApplicationUnsupported.to_string());
+    }
+    Ok(())
+}
+
+/// Selecting an application while only the microphone is enabled is a future
+/// system-lane preference; it must not interrupt the unrelated microphone.
+fn audio_capture_selection_needs_restart(previous: AudioInput, selected: AudioInput) -> bool {
+    previous != selected || selected.sources().contains(&AudioSource::System)
+}
+
 fn audio_input_switch_action(
     status: &SessionStatus,
     paused: bool,
@@ -341,9 +362,10 @@ fn commit_audio_input_switch_boundary(
 
 /// Switching off a source must confirm native release even when the session
 /// is already paused, idle, or failed. Those states may still be tearing down.
-async fn release_removed_audio_sources<Stop, Stopped>(
+async fn release_reconfigured_audio_sources<Stop, Stopped>(
     previous: AudioInput,
     selected: AudioInput,
+    system_target_changed: bool,
     mut stop: Stop,
 ) -> Result<(), String>
 where
@@ -351,7 +373,9 @@ where
     Stopped: Future<Output = Result<(), String>>,
 {
     for &source in previous.sources() {
-        if !selected.sources().contains(&source) {
+        if !selected.sources().contains(&source)
+            || (system_target_changed && source == AudioSource::System)
+        {
             stop(source).await?;
         }
     }
@@ -2204,6 +2228,26 @@ impl SessionManager {
     /// confirmed subtitles, revoke recording consent, and restart only when
     /// currently listening; a paused session must never briefly open a mic.
     pub async fn switch_audio_input(self: &Arc<Self>, input: AudioInput) -> Result<(), String> {
+        self.switch_audio_capture(Some(input), None).await
+    }
+
+    pub async fn switch_system_audio_target(
+        self: &Arc<Self>,
+        target: SystemAudioTarget,
+    ) -> Result<(), String> {
+        validate_system_audio_target(
+            &target,
+            self.is_ui_test(),
+            crate::audio::applications::supported,
+        )?;
+        self.switch_audio_capture(None, Some(target)).await
+    }
+
+    async fn switch_audio_capture(
+        self: &Arc<Self>,
+        input: Option<AudioInput>,
+        target: Option<SystemAudioTarget>,
+    ) -> Result<(), String> {
         let switch_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
         let lifecycle = self.settings_mutation_guard(false).await?;
         if !self.is_lifecycle_request_current(switch_epoch) {
@@ -2217,7 +2261,30 @@ impl SessionManager {
             self.lifecycle_operations.load(Ordering::SeqCst),
         )
         .map_err(str::to_owned)?;
-        if self.settings.preferences().audio_input == input {
+        let preferences = self.settings.preferences();
+        let input = input.unwrap_or(preferences.audio_input);
+        let target = target.unwrap_or_else(|| preferences.system_audio_target.clone());
+        if preferences.audio_input == input && preferences.system_audio_target == target {
+            return Ok(());
+        }
+        let persist = || {
+            self.settings
+                .save_preferences(|prefs| {
+                    prefs.apply_audio_preferences(Some(input), None);
+                    prefs.apply_system_audio_target(target.clone());
+                })
+                .map_err(|_| "audio_input_switch_save_failed".to_string())
+        };
+        if !audio_capture_selection_needs_restart(preferences.audio_input, input) {
+            {
+                let _transition = self.generation_transition.lock().unwrap();
+                if !self.is_lifecycle_request_current(switch_epoch) {
+                    return Err("audio_input_switch_superseded".into());
+                }
+                persist()?;
+            }
+            self.apply_archive_opt_out(None, Some(false));
+            self.publish_settings();
             return Ok(());
         }
         let previous_input = *self.active_audio_input.lock().unwrap();
@@ -2231,11 +2298,7 @@ impl SessionManager {
                 switch_epoch,
                 &mut self.controller.lock().unwrap(),
                 input,
-                || {
-                    self.settings
-                        .save_preferences(|prefs| prefs.apply_audio_preferences(Some(input), None))
-                        .map_err(|_| "audio_input_switch_save_failed".to_string())
-                },
+                persist,
             )?;
             *self.active_audio_input.lock().unwrap() = input;
             self.lifecycle_notify.notify_waiters();
@@ -2260,17 +2323,24 @@ impl SessionManager {
             return Err("audio_input_switch_superseded".into());
         }
         if !self.is_ui_test() {
-            let released = release_removed_audio_sources(previous_input, input, |source| {
-                let capture = self.lane(source).audio.lock().unwrap().clone();
-                async move {
-                    match tokio::time::timeout(Duration::from_secs(5), capture.stop_and_wait())
-                        .await
-                    {
-                        Ok(Ok(())) => Ok(()),
-                        _ => Err("audio_input_switch_stop_failed".into()),
+            // A target change keeps the system lane selected but retires its
+            // former native application capture just like disabling that lane.
+            let released = release_reconfigured_audio_sources(
+                previous_input,
+                input,
+                preferences.system_audio_target != target,
+                |source| {
+                    let capture = self.lane(source).audio.lock().unwrap().clone();
+                    async move {
+                        match tokio::time::timeout(Duration::from_secs(5), capture.stop_and_wait())
+                            .await
+                        {
+                            Ok(Ok(())) => Ok(()),
+                            _ => Err("audio_input_switch_stop_failed".into()),
+                        }
                     }
-                }
-            })
+                },
+            )
             .await;
             if let Err(error) = released {
                 if self.is_lifecycle_request_current(generation) {
@@ -2400,6 +2470,93 @@ impl SessionManager {
         );
         drop(lifecycle);
         self.reconnect_if_current(switch_epoch).await;
+    }
+
+    /// Switches between recognition-only and a supported translation target.
+    /// Shares the source-switch lifecycle: paused sessions stay paused, live
+    /// sessions reconnect, and newer stop/pause requests supersede reconnect.
+    pub async fn switch_target_language(
+        self: &Arc<Self>,
+        target: crate::core::models::TargetLanguage,
+    ) -> Result<(), String> {
+        use crate::core::models::TargetLanguage;
+        use crate::core::provider::ProviderPreferences;
+        let switch_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
+        let lifecycle = self.settings_mutation_guard(false).await?;
+        let status = self.controller.lock().unwrap().state.status.clone();
+        if !self.is_lifecycle_request_current(switch_epoch)
+            || !pipeline_settings_mutation_is_allowed(
+                &status,
+                self.lifecycle_operations.load(Ordering::SeqCst),
+            )
+        {
+            return Err("target_switch_busy".into());
+        }
+        let profile = self
+            .settings
+            .active_profile()
+            .map_err(|_| "target_switch_profile")?;
+        let prefs = self.settings.preferences();
+        let capabilities = profile.capabilities(target);
+        if !capabilities
+            .target_languages
+            .contains(&TargetLanguage::Original)
+            || !capabilities.target_languages.contains(&target)
+        {
+            return Err("target_switch_unsupported".into());
+        }
+        if prefs.target_language == target {
+            return Ok(());
+        }
+        let selection = profile.normalize_preferences(ProviderPreferences {
+            source_language: prefs.source_language,
+            target_language: target,
+            translation_mode: prefs.translation_mode,
+        });
+        // A session started in Original mode can lack translation credentials.
+        // Validate its resumed route before saving, so a missing text key cannot
+        // leave the preference and running session on different selections.
+        let proposed_configuration = self.active_settings.lock().unwrap().clone();
+        let proposed_configuration = proposed_configuration
+            .map(|mut configuration| {
+                configuration.source_language = selection.source_language;
+                configuration.target_language = selection.target_language;
+                configuration.translation_mode = selection.translation_mode;
+                if configuration.provider.is_custom_speech()
+                    && target.translates_audio()
+                    && configuration.text_credentials.is_none()
+                {
+                    configuration.text_credentials = self
+                        .settings
+                        .configuration_for_profile_probe(&profile)?
+                        .text_credentials;
+                }
+                configuration.validated().map_err(|error| error.to_string())
+            })
+            .transpose()?;
+        self.settings
+            .save_preferences_for_active_profile(|prefs| {
+                prefs.source_language = selection.source_language;
+                prefs.target_language = selection.target_language;
+                prefs.translation_mode = selection.translation_mode;
+            })
+            .map_err(|_| "target_switch_save_failed")?;
+        update_owned_value(
+            &self.active_settings,
+            &self.active_settings_generation,
+            |configuration| {
+                if let Some(proposed) = &proposed_configuration {
+                    *configuration = proposed.clone();
+                }
+            },
+        );
+        self.publish_settings();
+        if self.is_paused() || status != SessionStatus::Listening {
+            return Ok(());
+        }
+        drop(lifecycle);
+        self.reconnect_if_current(switch_epoch).await;
+        Ok(())
     }
 
     /// Quick-switches the translation mode, reconnecting when needed.
@@ -4129,6 +4286,96 @@ impl SessionManager {
 mod lifecycle_tests {
     use super::*;
 
+    #[test]
+    fn application_target_validation_is_bounded_and_ui_fixtures_never_probe_os_support() {
+        let target = SystemAudioTarget::Application {
+            id: "test.player".into(),
+            name: "Test Player".into(),
+        };
+        assert_eq!(
+            validate_system_audio_target(&target, false, || true),
+            Ok(())
+        );
+        assert_eq!(
+            validate_system_audio_target(&target, false, || false),
+            Err("application_audio_unsupported".into())
+        );
+        assert_eq!(
+            validate_system_audio_target(&target, true, || panic!("UI fixture probed OS")),
+            Ok(())
+        );
+        assert_eq!(
+            validate_system_audio_target(&SystemAudioTarget::System, false, || panic!(
+                "System target probed app support"
+            )),
+            Ok(())
+        );
+        for ui_test in [false, true] {
+            assert_eq!(
+                validate_system_audio_target(
+                    &SystemAudioTarget::Application {
+                        id: "".into(),
+                        name: "Test Player".into(),
+                    },
+                    ui_test,
+                    || panic!("Invalid target probed OS")
+                ),
+                Err("application_audio_invalid_target".into())
+            );
+        }
+    }
+
+    #[test]
+    fn target_switch_restarts_selected_system_capture_but_not_microphone_only() {
+        assert!(!audio_capture_selection_needs_restart(
+            AudioInput::Microphone,
+            AudioInput::Microphone
+        ));
+        for previous in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
+            for selected in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
+                if previous != selected || selected != AudioInput::Microphone {
+                    assert!(audio_capture_selection_needs_restart(previous, selected));
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn application_target_change_waits_for_old_system_capture_without_stopping_selected_microphone(
+    ) {
+        let mut released = Vec::new();
+        release_reconfigured_audio_sources(AudioInput::Both, AudioInput::Both, true, |source| {
+            released.push(source);
+            async { Ok(()) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(released, [AudioSource::System]);
+        released.clear();
+        release_reconfigured_audio_sources(
+            AudioInput::Microphone,
+            AudioInput::Microphone,
+            true,
+            |source| {
+                released.push(source);
+                async { Ok(()) }
+            },
+        )
+        .await
+        .unwrap();
+        assert!(released.is_empty());
+        assert_eq!(
+            release_reconfigured_audio_sources(
+                AudioInput::System,
+                AudioInput::System,
+                true,
+                |_| async { Err("audio_input_switch_stop_failed".into()) }
+            )
+            .await,
+            Err("audio_input_switch_stop_failed".into())
+        );
+    }
+
     #[tokio::test]
     async fn audio_attempt_failure_cannot_claim_a_rebuilt_session_with_the_same_generation() {
         let active = Arc::new(AtomicU64::new(7));
@@ -4310,15 +4557,20 @@ mod lifecycle_tests {
             let task = tokio::spawn(async move {
                 let mut started_tx = Some(started_tx);
                 let mut finished_rx = Some(finished_rx);
-                release_removed_audio_sources(AudioInput::Both, AudioInput::System, |source| {
-                    assert_eq!(source, AudioSource::Microphone);
-                    started_tx.take().unwrap().send(()).unwrap();
-                    let finished = finished_rx.take().unwrap();
-                    async move {
-                        finished.await.unwrap();
-                        Ok(())
-                    }
-                })
+                release_reconfigured_audio_sources(
+                    AudioInput::Both,
+                    AudioInput::System,
+                    false,
+                    |source| {
+                        assert_eq!(source, AudioSource::Microphone);
+                        started_tx.take().unwrap().send(()).unwrap();
+                        let finished = finished_rx.take().unwrap();
+                        async move {
+                            finished.await.unwrap();
+                            Ok(())
+                        }
+                    },
+                )
                 .await?;
                 Ok::<_, String>(action)
             });
@@ -4334,9 +4586,12 @@ mod lifecycle_tests {
                 Ok(AudioInputSwitchAction::ReconfigureOnly)
             );
             assert_eq!(
-                release_removed_audio_sources(AudioInput::Both, AudioInput::System, |_| async {
-                    Err("audio_input_switch_stop_failed".into())
-                })
+                release_reconfigured_audio_sources(
+                    AudioInput::Both,
+                    AudioInput::System,
+                    false,
+                    |_| async { Err("audio_input_switch_stop_failed".into()) }
+                )
                 .await,
                 Err("audio_input_switch_stop_failed".into())
             );

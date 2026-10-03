@@ -1,6 +1,7 @@
 import {
   effectiveTranslationModeForSettings,
   sourceLanguagesForSettings,
+  targetLanguagesForSettings,
   translationModesForSettings,
 } from "../../lib/providerCapabilities";
 import {
@@ -16,6 +17,7 @@ export interface OverlayControlPanelModel {
   effectiveTranslationMode: TranslationMode;
   immersiveModeEnabled: boolean;
   overlayLocked: boolean;
+  canSkipTranslation: boolean;
 }
 
 /**
@@ -38,5 +40,6 @@ export function overlayControlPanelModel(
     effectiveTranslationMode: effectiveTranslationModeForSettings(settings),
     immersiveModeEnabled: settings.subtitleBlendsWithBackground,
     overlayLocked: settings.isOverlayLocked,
+    canSkipTranslation: targetLanguagesForSettings(settings).includes("original"),
   };
 }

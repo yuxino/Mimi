@@ -186,7 +186,7 @@ pub struct SubtitleOverlayMetrics;
 
 impl SubtitleOverlayMetrics {
     pub const REFERENCE_WIDTH: f64 = 640.0;
-    pub const REFERENCE_HEIGHT: f64 = 136.0;
+    pub const REFERENCE_HEIGHT: f64 = 482.0;
     pub const MINIMUM_WIDTH: f64 = 360.0;
     pub const MINIMUM_HEIGHT: f64 = 136.0;
     pub const MAXIMUM_WIDTH: f64 = 1_200.0;

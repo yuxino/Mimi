@@ -250,7 +250,9 @@ async fn probe_alibaba(
             .await
             .map_err(|error| audio3_reason(&error))?;
         if include_translation {
-            probe_text_translation(configuration, &network).await
+            let text_network = ProviderNetwork::resolve(&configuration.text_network_proxy)
+                .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
+            probe_text_translation(configuration, &text_network).await
         } else {
             Ok(())
         }
@@ -384,7 +386,9 @@ async fn probe_custom_speech(
             .await
             .map_err(|error| recognition_reason(&error))?;
         if include_translation {
-            probe_text_translation(configuration, &network).await
+            let text_network = ProviderNetwork::resolve(&configuration.text_network_proxy)
+                .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
+            probe_text_translation(configuration, &text_network).await
         } else {
             Ok(())
         }

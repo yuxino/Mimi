@@ -4,6 +4,7 @@
 //! the OS keychain and must never be serialized with a profile.
 
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode};
+use crate::core::network_proxy::{ProxyConfig, ProxyConfigError};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
@@ -356,6 +357,8 @@ pub struct ProviderPreferences {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ServiceProfileError {
+    #[error("{0}")]
+    NetworkProxy(#[from] ProxyConfigError),
     #[error("The selected speech service does not support separate text translation.")]
     UnsupportedTextTranslation,
     #[error("The service profile ID is invalid.")]
@@ -397,6 +400,11 @@ pub struct ServiceProfile {
     /// None preserves historical behavior, including legacy DeepLX profiles.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_translation: Option<TextTranslation>,
+    /// Absent fields inherit the pre-existing global route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech_network_proxy: Option<ProxyConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_network_proxy: Option<ProxyConfig>,
 }
 
 impl ServiceProfile {
@@ -429,6 +437,8 @@ impl ServiceProfile {
             name,
             provider,
             text_translation: None,
+            speech_network_proxy: None,
+            text_network_proxy: None,
         })
     }
 
@@ -438,6 +448,8 @@ impl ServiceProfile {
             name: ProviderKind::AlibabaCloud.display_name().to_string(),
             provider: ProviderKind::AlibabaCloud,
             text_translation: None,
+            speech_network_proxy: None,
+            text_network_proxy: None,
         }
     }
 
@@ -456,6 +468,16 @@ impl ServiceProfile {
             return Err(ServiceProfileError::UnsupportedTextTranslation);
         }
         profile.text_translation = self.text_translation;
+        profile.speech_network_proxy = self
+            .speech_network_proxy
+            .as_ref()
+            .map(ProxyConfig::validate)
+            .transpose()?;
+        profile.text_network_proxy = self
+            .text_network_proxy
+            .as_ref()
+            .map(ProxyConfig::validate)
+            .transpose()?;
         Ok(profile)
     }
 
@@ -511,6 +533,48 @@ impl Default for ServiceProfile {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn profile_proxy_fields_read_legacy_and_normalize_without_losing_preferences() {
+        use crate::core::network_proxy::ProxyMode;
+        let legacy: ServiceProfile =
+            serde_json::from_str(r#"{"id":"legacy","name":"Legacy","provider":"alibabaCloud"}"#)
+                .unwrap();
+        assert_eq!(legacy.speech_network_proxy, None);
+        assert_eq!(legacy.text_network_proxy, None);
+        let mut profile = legacy;
+        profile.speech_network_proxy = Some(ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some(" socks5h://127.0.0.1 ".into()),
+        });
+        profile.text_network_proxy = Some(ProxyConfig {
+            mode: ProxyMode::Direct,
+            url: Some("stale-address".into()),
+        });
+        let validated = profile.validated().unwrap();
+        assert_eq!(
+            validated
+                .speech_network_proxy
+                .as_ref()
+                .unwrap()
+                .url
+                .as_deref(),
+            Some("socks5h://127.0.0.1:1080")
+        );
+        assert_eq!(validated.text_network_proxy.as_ref().unwrap().url, None);
+        let saved: ServiceProfile =
+            serde_json::from_str(&serde_json::to_string(&validated).unwrap()).unwrap();
+        assert_eq!(saved, validated);
+        profile.speech_network_proxy.as_mut().unwrap().url =
+            Some("http://user:private-value@localhost:7890".into());
+        let error = profile.validated().unwrap_err();
+        assert!(!error.to_string().contains("private-value"));
+        assert_eq!(
+            error.to_string(),
+            "network_proxy_authentication_unsupported"
+        );
+        assert!(!format!("{profile:?}").contains("private-value"));
+    }
+
     use super::*;
 
     #[test]

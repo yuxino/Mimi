@@ -20,6 +20,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 
+mod denoising;
 mod realtime;
 
 const FRAME_BYTES: usize = 640; // 20 ms, mono signed little-endian PCM16, 16 kHz.
@@ -98,6 +99,19 @@ struct Clip {
     reference_path: Option<PathBuf>,
     language: Language,
     unit: Unit,
+    #[serde(default)]
+    preparation: FixturePreparation,
+}
+
+/// Fixed labels for independently prepared public PCM; never arbitrary paths
+/// or user-provided descriptions in the diagnostic report.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum FixturePreparation {
+    #[default]
+    Raw,
+    ResampleRoundtrip,
+    Deepfilter12,
 }
 
 struct PreparedClip {
@@ -106,6 +120,7 @@ struct PreparedClip {
     reference: Option<Vec<String>>,
     language: Language,
     unit: Unit,
+    preparation: FixturePreparation,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -261,6 +276,7 @@ fn prepare_manifest(path: &Path) -> Result<Vec<PreparedClip>, Failure> {
             reference,
             language: clip.language,
             unit: clip.unit,
+            preparation: clip.preparation,
         });
     }
     Ok(prepared)
@@ -292,16 +308,34 @@ fn normalize(text: &str, unit: Unit) -> Vec<String> {
 /// stores the public reference and two numeric rows, never a full hypothesis.
 struct EditDistance {
     reference: Vec<String>,
-    previous: Vec<u64>,
-    next: Vec<u64>,
+    previous: Vec<EditCounts>,
+    next: Vec<EditCounts>,
     hypothesis_units: u64,
+}
+
+#[derive(Clone, Copy, Default)]
+struct EditCounts {
+    substitutions: u64,
+    insertions: u64,
+    deletions: u64,
+}
+
+impl EditCounts {
+    fn distance(self) -> u64 {
+        self.substitutions + self.insertions + self.deletions
+    }
 }
 
 impl EditDistance {
     fn new(reference: Vec<String>) -> Self {
         Self {
-            previous: (0..=reference.len() as u64).collect(),
-            next: vec![0; reference.len() + 1],
+            previous: (0..=reference.len() as u64)
+                .map(|deletions| EditCounts {
+                    deletions,
+                    ..EditCounts::default()
+                })
+                .collect(),
+            next: vec![EditCounts::default(); reference.len() + 1],
             reference,
             hypothesis_units: 0,
         }
@@ -313,11 +347,31 @@ impl EditDistance {
         }
         for unit in units {
             self.hypothesis_units += 1;
-            self.next[0] = self.hypothesis_units;
+            self.next[0] = EditCounts {
+                insertions: self.hypothesis_units,
+                ..EditCounts::default()
+            };
             for (index, reference) in self.reference.iter().enumerate() {
-                self.next[index + 1] = (self.previous[index + 1] + 1)
-                    .min(self.next[index] + 1)
-                    .min(self.previous[index] + u64::from(unit != reference));
+                let substitution = EditCounts {
+                    substitutions: self.previous[index].substitutions
+                        + u64::from(unit != reference),
+                    ..self.previous[index]
+                };
+                let deletion = EditCounts {
+                    deletions: self.next[index].deletions + 1,
+                    ..self.next[index]
+                };
+                let insertion = EditCounts {
+                    insertions: self.previous[index + 1].insertions + 1,
+                    ..self.previous[index + 1]
+                };
+                // Multiple minimal alignments may exist. Choose deterministically
+                // by fewer deletions, then insertions; these are reference edits,
+                // not a semantic classification of unheard speech.
+                self.next[index + 1] = [substitution, deletion, insertion]
+                    .into_iter()
+                    .min_by_key(|counts| (counts.distance(), counts.deletions, counts.insertions))
+                    .unwrap();
             }
             std::mem::swap(&mut self.previous, &mut self.next);
         }
@@ -325,9 +379,13 @@ impl EditDistance {
     }
 
     fn result(&self) -> Evaluation {
-        let distance = *self.previous.last().unwrap();
+        let counts = *self.previous.last().unwrap();
+        let distance = counts.distance();
         Evaluation {
             edit_distance: distance,
+            substitutions: counts.substitutions,
+            insertions: counts.insertions,
+            deletions: counts.deletions,
             reference_units: self.reference.len() as u64,
             hypothesis_units: self.hypothesis_units,
             error_rate: distance as f64 / self.reference.len() as f64,
@@ -338,6 +396,9 @@ impl EditDistance {
 #[derive(Serialize)]
 struct Evaluation {
     edit_distance: u64,
+    substitutions: u64,
+    insertions: u64,
+    deletions: u64,
     reference_units: u64,
     hypothesis_units: u64,
     error_rate: f64,
@@ -449,6 +510,8 @@ fn character_classes(text: &str) -> CharacterClasses {
 struct Report {
     label: String,
     arm: Arm,
+    input_processing: denoising::Kind,
+    fixture_preparation: FixturePreparation,
     language: Language,
     unit: Unit,
     metrics: Metrics,
@@ -689,6 +752,8 @@ impl Observer {
         Report {
             label: clip.label.clone(),
             arm,
+            input_processing: denoising::Kind::Bypass,
+            fixture_preparation: clip.preparation,
             language: clip.language,
             unit: clip.unit,
             evaluation: if failure.is_none() {
@@ -847,7 +912,19 @@ async fn manual_same_pcm_asr_comparison() {
         let path = std::env::var_os("MIMI_ASR_BENCH_MANIFEST")
             .map(PathBuf::from)
             .ok_or(Failure::ManifestInvalid)?;
-        let clips = prepare_manifest(&path)?;
+        let mut clips = prepare_manifest(&path)?;
+        let processing = match std::env::var("MIMI_ASR_BENCH_DENOISE") {
+            Ok(value) => denoising::Kind::parse(&value)?,
+            Err(std::env::VarError::NotPresent) => denoising::Kind::Bypass,
+            Err(_) => return Err(Failure::ManifestInvalid),
+        };
+        for clip in &mut clips {
+            if processing != denoising::Kind::Bypass && clip.preparation != FixturePreparation::Raw
+            {
+                return Err(Failure::ManifestInvalid);
+            }
+            clip.pcm = denoising::apply(&clip.pcm, processing)?;
+        }
         let arms = match std::env::var("MIMI_ASR_BENCH_ARM") {
             Ok(value) => vec![Arm::parse(&value)?],
             Err(std::env::VarError::NotPresent) => {
@@ -903,7 +980,7 @@ async fn manual_same_pcm_asr_comparison() {
                         .find(|(blocked_arm, _)| blocked_arm == arm)
                         .map(|(_, failure)| *failure)
                 };
-                let report = if let Some(failure) = blocked {
+                let mut report = if let Some(failure) = blocked {
                     let mut observer = Observer::new(clip);
                     observer.metrics.skipped = 1;
                     observer.report(clip, *arm, Some(failure))
@@ -914,6 +991,7 @@ async fn manual_same_pcm_asr_comparison() {
                         compare(clip, *arm, key, &network, DASHSCOPE_INFERENCE_WS).await
                     }
                 };
+                report.input_processing = processing;
                 if matches!(report.failure, Some(Failure::AuthenticationRejected)) {
                     authentication_failed = true;
                 } else if matches!(report.failure, Some(Failure::TaskRejected))
@@ -979,6 +1057,26 @@ fn character_distance_handles_japanese_chinese_and_punctuation() {
         .is_err());
 }
 
+#[test]
+fn reference_edit_counts_distinguish_deletions_insertions_and_substitutions() {
+    for (reference, hypothesis, expected) in [
+        ("one two three", "one three", (0, 0, 1)),
+        ("one three", "one two three", (0, 1, 0)),
+        ("one two three", "one other three", (1, 0, 0)),
+    ] {
+        let mut distance = EditDistance::new(normalize(reference, Unit::Word));
+        for unit in normalize(hypothesis, Unit::Word) {
+            distance.push(&[unit]).unwrap();
+        }
+        let score = distance.result();
+        assert_eq!(
+            (score.substitutions, score.insertions, score.deletions),
+            expected
+        );
+        assert_eq!(score.edit_distance, 1);
+    }
+}
+
 fn synthetic_clip() -> PreparedClip {
     PreparedClip {
         label: "synthetic".into(),
@@ -986,6 +1084,7 @@ fn synthetic_clip() -> PreparedClip {
         reference: Some(normalize("private synthetic token", Unit::Word)),
         language: Language::English,
         unit: Unit::Word,
+        preparation: FixturePreparation::Raw,
     }
 }
 
@@ -1022,6 +1121,16 @@ fn observer_ignores_same_id_replays_but_keeps_real_repeated_utterances() {
     assert!(!output.contains("synthetic token"));
     assert!(!output.contains("pcm_path"));
     assert!(!output.contains("reference_path"));
+}
+
+#[test]
+fn reports_distinguish_prepared_fixtures_from_benchmark_processing() {
+    let mut clip = synthetic_clip();
+    clip.preparation = FixturePreparation::Deepfilter12;
+    let report = Observer::new(&clip).report(&clip, Arm::Baseline, None);
+    let value = serde_json::to_value(report).unwrap();
+    assert_eq!(value["fixture_preparation"], "deepfilter12");
+    assert_eq!(value["input_processing"], "bypass");
 }
 
 #[test]
@@ -1094,6 +1203,7 @@ fn manifest_rejects_excess_clips_unknown_fields_paths_labels_and_languages() {
     for (field, value) in [
         ("language", "unknown"),
         ("unit", "unknown"),
+        ("preparation", "arbitrary-private-label"),
         ("label", "private words with spaces"),
         ("pcm_path", "relative.pcm"),
         ("reference_path", "/private/tmp/corpus/.env"),

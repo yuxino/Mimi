@@ -181,9 +181,11 @@ pub struct Preferences {
     /// Background opacity in percent; independent of subtitle text.
     pub subtitle_background_opacity: u8,
     pub subtitle_color: SubtitleColor,
+    pub microphone_subtitle_color: SubtitleColor,
     pub subtitle_alignment: SubtitleAlignment,
     pub subtitle_display_mode: SubtitleDisplayMode,
     pub show_subtitle_dividers: bool,
+    pub keep_subtitle_text_opaque: bool,
     /// Animation switches: `None` follows the system reduce-motion setting.
     pub pulse_animation: Option<bool>,
     pub pulse_style: PulseStyle,
@@ -216,9 +218,11 @@ impl Default for Preferences {
             font_size: DEFAULT_FONT_SIZE,
             subtitle_background_opacity: 80,
             subtitle_color: SubtitleColor::White,
+            microphone_subtitle_color: SubtitleColor::Yellow,
             subtitle_alignment: SubtitleAlignment::Center,
             subtitle_display_mode: SubtitleDisplayMode::Translation,
             show_subtitle_dividers: false,
+            keep_subtitle_text_opaque: false,
             pulse_animation: None,
             pulse_style: PulseStyle::Ribbon,
             subtitle_animation: None,
@@ -952,7 +956,18 @@ impl SettingsStore {
         })
     }
 
+    #[cfg(test)]
     pub fn update_profile(&self, profile_id: &str, name: &str) -> Result<ServiceProfile, String> {
+        self.update_profile_options(profile_id, name, None, None)
+    }
+
+    pub fn update_profile_options(
+        &self,
+        profile_id: &str,
+        name: &str,
+        speech_network_proxy: Option<ProxyConfig>,
+        text_network_proxy: Option<ProxyConfig>,
+    ) -> Result<ServiceProfile, String> {
         self.mutate_catalog(|catalog| {
             let current = catalog
                 .profiles
@@ -961,6 +976,12 @@ impl SettingsStore {
                 .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
             let mut updated = current.clone();
             updated.name = name.trim().to_string();
+            if let Some(proxy) = speech_network_proxy {
+                updated.speech_network_proxy = Some(proxy);
+            }
+            if let Some(proxy) = text_network_proxy {
+                updated.text_network_proxy = Some(proxy);
+            }
             let updated = updated.validated().map_err(|error| error.to_string())?;
             *current = updated.clone();
             Ok(updated)
@@ -2116,7 +2137,12 @@ impl SettingsStore {
             TargetLanguage::Original,
             normalized.translation_mode,
         )
-        .with_network_proxy(prefs.network_proxy)
+        .with_network_proxy(
+            profile
+                .speech_network_proxy
+                .clone()
+                .unwrap_or(prefs.network_proxy),
+        )
         .validated()
         .map_err(|error| error.to_string())
     }
@@ -2188,8 +2214,10 @@ impl SettingsStore {
         Ok(TextTranslationProbeConfiguration {
             credentials,
             target_language,
-            network_proxy: prefs
-                .network_proxy
+            network_proxy: profile
+                .text_network_proxy
+                .as_ref()
+                .unwrap_or(&prefs.network_proxy)
                 .validate()
                 .map_err(|error| error.to_string())?,
         })
@@ -2244,7 +2272,16 @@ impl SettingsStore {
             prefs.target_language,
             prefs.translation_mode,
         )
-        .with_network_proxy(prefs.network_proxy);
+        .with_stage_network_proxies(
+            profile
+                .speech_network_proxy
+                .clone()
+                .unwrap_or_else(|| prefs.network_proxy.clone()),
+            profile
+                .text_network_proxy
+                .clone()
+                .unwrap_or(prefs.network_proxy),
+        );
         if provider.is_custom_speech() && prefs.target_language.translates_audio() {
             let text_credentials =
                 self.text_credentials_for_profile(profile)?.ok_or_else(|| {
@@ -2723,6 +2760,102 @@ mod animation_switch_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn profile_stage_proxies_persist_and_legacy_routes_remain_isolated() {
+        use crate::core::network_proxy::ProxyMode;
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let mut store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let profile = store.active_profile().unwrap();
+        store.save_api_key(&profile.id, "synthetic-asr").unwrap();
+        let inherited = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some("http://127.0.0.1:7890/".into()),
+        };
+        store
+            .save_preferences_for_active_profile(|prefs| prefs.network_proxy = inherited.clone())
+            .unwrap();
+        let previous = store.configuration().unwrap();
+        let text = ProxyConfig {
+            mode: ProxyMode::Direct,
+            url: None,
+        };
+        store
+            .update_profile_options(&profile.id, &profile.name, None, Some(text.clone()))
+            .unwrap();
+        let updated = store.active_profile().unwrap();
+        assert_eq!(updated.speech_network_proxy, None);
+        assert_eq!(store.configuration().unwrap().network_proxy, inherited);
+        assert_eq!(store.configuration().unwrap().text_network_proxy, text);
+        assert_eq!(
+            store
+                .configuration_for_text_probe(&updated)
+                .unwrap()
+                .network_proxy,
+            text
+        );
+        assert_eq!(
+            store
+                .configuration_for_speech_probe(&updated)
+                .unwrap()
+                .network_proxy,
+            inherited
+        );
+        assert_eq!(previous.text_network_proxy, inherited);
+        let other = store
+            .create_profile(ProviderKind::AlibabaCloud, "Other")
+            .unwrap();
+        store.save_api_key(&other.id, "synthetic-other").unwrap();
+        store.select_profile(&other.id).unwrap();
+        assert_eq!(store.configuration().unwrap().text_network_proxy, inherited);
+        let speech = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some("socks5h://127.0.0.1:1080".into()),
+        };
+        store
+            .update_profile_options(&profile.id, "Renamed", Some(speech.clone()), None)
+            .unwrap();
+        store.select_profile(&profile.id).unwrap();
+        let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        assert_eq!(reloaded.configuration().unwrap().network_proxy, speech);
+        assert_eq!(reloaded.configuration().unwrap().text_network_proxy, text);
+        assert_eq!(
+            reloaded
+                .configuration_for_profile_probe(&reloaded.active_profile().unwrap())
+                .unwrap()
+                .text_network_proxy,
+            text
+        );
+        assert_eq!(reloaded.preferences().network_proxy, inherited);
+        let before = store.active_profile().unwrap();
+        let bytes = std::fs::read(&store.catalog_path).unwrap();
+        assert!(store
+            .update_profile_options(
+                &profile.id,
+                "Rejected",
+                None,
+                Some(ProxyConfig {
+                    mode: ProxyMode::Custom,
+                    url: Some("http://user:private-value@localhost:7890".into())
+                })
+            )
+            .is_err());
+        assert_eq!(store.active_profile().unwrap(), before);
+        assert_eq!(std::fs::read(&store.catalog_path).unwrap(), bytes);
+        store.catalog_path = directory.path().join("blocked-catalog");
+        std::fs::create_dir(&store.catalog_path).unwrap();
+        assert!(store
+            .update_profile_options(
+                &profile.id,
+                "Unpersisted",
+                Some(ProxyConfig::default()),
+                None
+            )
+            .is_err());
+        assert_eq!(store.active_profile().unwrap(), before);
+        assert_eq!(reloaded.active_profile().unwrap(), before);
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     #[ignore = "requires an isolated desktop Secret Service and synthetic native prompt interaction"]
@@ -6742,13 +6875,26 @@ mod tests {
             .unwrap();
         let original_configuration = store.configuration().unwrap();
         assert!(!store.preferences().show_subtitle_dividers);
+        let legacy: Preferences = serde_json::from_str("{}").unwrap();
+        assert!(!legacy.keep_subtitle_text_opaque);
+        assert_eq!(legacy.microphone_subtitle_color, SubtitleColor::Yellow);
         for enabled in [true, false] {
             store
-                .save_preferences_for_active_profile(|prefs| prefs.show_subtitle_dividers = enabled)
+                .save_preferences_for_active_profile(|prefs| {
+                    prefs.show_subtitle_dividers = enabled;
+                    prefs.keep_subtitle_text_opaque = enabled;
+                    prefs.microphone_subtitle_color = SubtitleColor::Custom([0x12, 0x34, 0x56]);
+                })
                 .unwrap();
             assert_eq!(store.configuration().unwrap(), original_configuration);
             let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
             assert_eq!(reloaded.preferences().show_subtitle_dividers, enabled);
+            assert_eq!(reloaded.preferences().keep_subtitle_text_opaque, enabled);
+            assert_eq!(
+                reloaded.preferences().microphone_subtitle_color,
+                SubtitleColor::Custom([0x12, 0x34, 0x56])
+            );
+            assert_eq!(reloaded.preferences().subtitle_color, SubtitleColor::White);
         }
     }
 

@@ -8,6 +8,22 @@ import {
 } from "./store";
 
 describe("local preview store", () => {
+  it.each([false, true])("switches the preview application without starting or resuming capture, paused=%s", async isPaused => {
+    const original = useStore.getState();
+    const session = { ...original.session, status: { kind: "listening" as const }, isActive: !isPaused, isPaused,
+      subtitles: { ...original.session.subtitles, history: [{ source: "Synthetic source", translation: "Synthetic translation", createdAt: 1 }] },
+    };
+    try {
+      useStore.setState({ session, settings: { ...original.settings, audioInput: "microphone", systemAudioTarget: { kind: "system" }, recordSessionAudio: true } });
+      await useStore.getState().switchSystemAudioTarget({ kind: "application", id: "example.player", name: "Player" });
+      expect(useStore.getState().settings).toMatchObject({ audioInput: "microphone", systemAudioTarget: { kind: "application", id: "example.player" }, recordSessionAudio: false });
+      expect(useStore.getState().session).toBe(session);
+      useStore.setState({ session: { ...session, status: { kind: "connecting" } } });
+      await expect(useStore.getState().switchSystemAudioTarget({ kind: "system" })).rejects.toThrow("audio_input_switch_busy");
+      expect(useStore.getState().settings.systemAudioTarget.kind).toBe("application");
+    } finally { useStore.setState(original, true); }
+  });
+
   it.each([false, true])("switches the preview inputs without losing confirmed text or changing pause=%s", async isPaused => {
     const original = useStore.getState();
     const session = { ...original.session, status: { kind: "listening" as const }, isActive: true, isPaused,
@@ -238,4 +254,29 @@ it.each(["chatMock", "openAICompatible"] as const)("preview accepts keyless %s w
     await useStore.getState().saveProfileCredentials(profile.id, { ...credentials, model: "synthetic-model" });
     expect(useStore.getState().settings.profiles[0]).toMatchObject({ textTranslation, credentialState: "present" });
   } finally { useStore.setState(original); }
+});
+
+it.each([false, true])("quick-switches Original and translation while preserving pause=%s and rejects transitions", async isPaused => {
+  const original = useStore.getState();
+  const session = { ...original.session, status: { kind: "listening" as const }, isActive: !isPaused, isPaused };
+  try {
+    useStore.setState({ session, settings: { ...original.settings, targetLanguage: "ja", sourceLanguage: "en", languageCapabilities: undefined,
+      profiles: [{ id: "ali", name: "Alibaba", provider: "alibabaCloud", credentialState: "present" }], activeProfileId: "ali" } });
+    await useStore.getState().switchTargetLanguage("original");
+    expect(useStore.getState().settings.targetLanguage).toBe("original");
+    expect(useStore.getState().session).toBe(session);
+    useStore.setState({ settings: { ...useStore.getState().settings, sourceLanguage: "no" } });
+    await useStore.getState().switchTargetLanguage("ja");
+    expect(useStore.getState().settings.targetLanguage).toBe("ja");
+    expect(useStore.getState().settings.sourceLanguage).toBe("auto");
+    expect(useStore.getState().session).toBe(session);
+    for (const kind of ["connecting", "stopping"] as const) {
+      useStore.setState({ session: { ...session, status: { kind } } });
+      await expect(useStore.getState().switchTargetLanguage("original")).rejects.toThrow("target_switch_busy");
+      expect(useStore.getState().settings.targetLanguage).toBe("ja");
+    }
+    useStore.setState({ session, settings: { ...useStore.getState().settings,
+      profiles: [{ id: "ali", name: "OpenAI", provider: "openAIRealtime", credentialState: "present" }] } });
+    await expect(useStore.getState().switchTargetLanguage("original")).rejects.toThrow("target_switch_unsupported");
+  } finally { useStore.setState(original, true); }
 });

@@ -5,10 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { captureSwitchCopy, type CaptureStatus } from "../../lib/captureStatus";
+import { applicationAudioCopy } from "../../lib/applicationAudio";
+import { mergeSettingsSnapshot } from "../../lib/settingsState";
 import type { AudioInput, AudioSource, SessionStateEvent } from "../../lib/types";
 import { CaptureStatusRow } from "./CaptureStatusRow";
+import type { SystemAudioTarget } from "../../lib/types";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), switchAudioInput: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), switchAudioInput: vi.fn(), switchSystemAudioTarget: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("../../lib/ipc", () => ({ isTauri: true, setOverlayPointerCursor: vi.fn() }));
 let host: HTMLDivElement;
@@ -24,10 +27,13 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   setStoredUiLanguage("en");
-  useStore.setState({ ...initial, initializationStatus: "ready", switchAudioInput: mocks.switchAudioInput, session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false } }, true);
+  useStore.setState({ ...initial, initializationStatus: "ready", switchAudioInput: mocks.switchAudioInput, switchSystemAudioTarget: mocks.switchSystemAudioTarget, session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false } }, true);
   mocks.invoke.mockResolvedValue(system);
   mocks.switchAudioInput.mockImplementation(async (audioInput: AudioInput) => {
     useStore.setState(state => ({ settings: { ...state.settings, audioInput, recordSessionAudio: false } }));
+  });
+  mocks.switchSystemAudioTarget.mockImplementation(async (target: SystemAudioTarget) => {
+    useStore.setState(state => ({ settings: mergeSettingsSnapshot(state.settings, { systemAudioTarget: target }) }));
   });
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -146,6 +152,53 @@ it("explains a known microphone permission failure without exposing raw errors",
   await mount();
   await act(async () => toggle("microphone").click());
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("system privacy settings");
+});
+
+it.each([false, true])("selects a real application from the floating panel while paused=%s", async isPaused => {
+  vi.stubGlobal("navigator", { userAgent: "Macintosh" });
+  Element.prototype.scrollIntoView = vi.fn();
+  mocks.invoke.mockImplementation(async command => command === "audio_applications"
+    ? { supported: true, applications: [{ id: "example.player", name: "Player" }] } : system);
+  await session({ isPaused, isActive: !isPaused });
+  await mount();
+  expect(mocks.invoke).not.toHaveBeenCalledWith("audio_applications");
+  const target = row("system").querySelector<HTMLButtonElement>('button[role="combobox"]')!;
+  expect(target.disabled).toBe(false);
+  await act(async () => target.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "Player")!;
+  await act(async () => option.click());
+  expect(mocks.switchSystemAudioTarget).toHaveBeenCalledExactlyOnceWith({ kind: "application", id: "example.player", name: "Player" });
+  expect(useStore.getState().session.isPaused).toBe(isPaused);
+  expect(target.textContent).toContain("Player");
+  expect(mocks.switchAudioInput).not.toHaveBeenCalled();
+});
+
+it("locks the input switches while an application change is pending and maps known target failures", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Macintosh" });
+  Element.prototype.scrollIntoView = vi.fn();
+  mocks.invoke.mockImplementation(async command => command === "audio_applications"
+    ? { supported: true, applications: [{ id: "example.player", name: "Player" }] } : system);
+  let reject!: (reason: unknown) => void;
+  mocks.switchSystemAudioTarget.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  await mount();
+  const target = row("system").querySelector<HTMLButtonElement>('button[role="combobox"]')!;
+  await act(async () => target.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "Player")!;
+  await act(async () => option.click());
+  expect(toggle("microphone").disabled).toBe(true);
+  await act(async () => toggle("microphone").click());
+  expect(mocks.switchAudioInput).not.toHaveBeenCalled();
+  await act(async () => reject("application_audio_unavailable"));
+  expect(toggle("microphone").disabled).toBe(false);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
+  expect(target.textContent).toContain(applicationAudioCopy().all);
+});
+
+it("explains unavailable application failures from an input toggle", async () => {
+  mocks.switchAudioInput.mockRejectedValueOnce("application_audio_unavailable");
+  await mount();
+  await act(async () => toggle("microphone").click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
 });
 
 it.each([

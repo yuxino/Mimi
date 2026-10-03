@@ -7,6 +7,7 @@
 //! queues re-dispatch there before touching those objects.
 
 use crate::audio::applications::{sort_applications, ApplicationSnapshot, AudioApplication};
+use crate::audio::macos_block_buffer;
 use crate::audio::send_pipeline::{AudioIngress, AudioIngressError};
 use crate::audio::{
     AudioCaptureFormat, CaptureFailureSender, SystemAudioCaptureError, SystemAudioCaptureFailure,
@@ -14,7 +15,6 @@ use crate::audio::{
 use crate::core::pcm16::PCM16Encoder;
 use crate::core::system_audio_target::SystemAudioTarget;
 use crate::pipeline_log;
-use core_media::block_buffer::{CMBlockBufferGetDataLength, CMBlockBufferGetDataPointer};
 use core_media::format_description::CMAudioFormatDescriptionGetStreamBasicDescription;
 use core_media::sample_buffer::{
     CMSampleBufferGetDataBuffer, CMSampleBufferGetFormatDescription, CMSampleBufferRef,
@@ -25,7 +25,8 @@ use objc2::rc::Retained;
 use objc2::runtime::{NSObject, ProtocolObject};
 use objc2::{define_class, msg_send, AnyThread, DefinedClass};
 use objc2_core_audio_types::{
-    kAudioFormatFlagIsFloat, kAudioFormatFlagIsSignedInteger, AudioStreamBasicDescription,
+    kAudioFormatFlagIsFloat, kAudioFormatFlagIsNonInterleaved, kAudioFormatFlagIsSignedInteger,
+    AudioStreamBasicDescription,
 };
 use objc2_foundation::{NSArray, NSObjectProtocol};
 use rubato::audioadapter_buffers::direct::SequentialSlice;
@@ -38,7 +39,6 @@ use screen_capture_kit::stream::{
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::panic::AssertUnwindSafe;
-use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -422,6 +422,19 @@ impl MacSystemAudioCapture {
                                     .applications()
                                     .iter()
                                     .filter_map(|app| {
+                                        let running = objc2_app_kit::NSRunningApplication::runningApplicationWithProcessIdentifier(
+                                            app.process_id(),
+                                        )?;
+                                        // ScreenCaptureKit also lists input methods and
+                                        // system helpers. Offer normal user applications,
+                                        // including hidden/windowless music players, without
+                                        // changing which processes an existing target captures.
+                                        if running.isTerminated()
+                                            || running.activationPolicy()
+                                                != objc2_app_kit::NSApplicationActivationPolicy::Regular
+                                        {
+                                            return None;
+                                        }
                                         let id = app.bundle_identifier().to_string();
                                         let name = app.application_name().to_string();
                                         let target = SystemAudioTarget::Application {
@@ -969,55 +982,49 @@ fn capture_to_pcm16(
         if block_buffer.is_null() {
             return Ok(None);
         }
-        let mut length_at_offset: usize = 0;
-        let mut total_length: usize = 0;
-        let mut data_ptr: *mut c_void = null_mut();
-        let status = CMBlockBufferGetDataPointer(
-            block_buffer,
-            0,
-            &mut length_at_offset,
-            &mut total_length,
-            (&mut data_ptr) as *mut *mut c_void,
-        );
-        if status != 0 || data_ptr.is_null() || length_at_offset == 0 {
-            let _ = CMBlockBufferGetDataLength(block_buffer);
-            return Ok(None);
-        }
-
-        let format_description = CMSampleBufferGetFormatDescription(sample_buffer);
-        if format_description.is_null() {
-            return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
-        }
-        let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format_description);
-        if asbd.is_null() {
-            return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
-        }
-        let asbd = &*asbd;
-        let bytes = std::slice::from_raw_parts(data_ptr as *const u8, length_at_offset);
-
-        // Log the stream format once per format change.
-        let signature = (
-            asbd.mBitsPerChannel,
-            asbd.mChannelsPerFrame,
-            asbd.mFormatFlags as u32,
-        );
-        let mut last_format = FORMAT_SIGNATURE.lock().unwrap();
-        if *last_format != Some(signature) {
-            *last_format = Some(signature);
-            let nonzero = bytes.iter().filter(|byte| **byte != 0).count();
-            pipeline_log!(
-                "capture format bytes={} asbd={}Hz {}ch {}bit flags={:#x} nonzero={}/{}",
-                bytes.len(),
-                asbd.mSampleRate as u64,
-                asbd.mChannelsPerFrame,
+        // The sample callback keeps this CoreMedia buffer and its format alive.
+        // Decode its complete logical byte range, even across native blocks.
+        // Empty buffers must return before requiring a format description.
+        let Some(decoded) = macos_block_buffer::with_bytes(block_buffer, |bytes| {
+            let format_description = CMSampleBufferGetFormatDescription(sample_buffer);
+            if format_description.is_null() {
+                return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
+            }
+            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format_description);
+            if asbd.is_null() {
+                return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
+            }
+            let asbd = &*asbd;
+            // Log the stream format once per format change.
+            let signature = (
                 asbd.mBitsPerChannel,
-                asbd.mFormatFlags,
-                nonzero,
-                bytes.len()
+                asbd.mChannelsPerFrame,
+                asbd.mFormatFlags as u32,
             );
-        }
+            let mut last_format = FORMAT_SIGNATURE.lock().unwrap();
+            if *last_format != Some(signature) {
+                *last_format = Some(signature);
+                let nonzero = bytes.iter().filter(|byte| **byte != 0).count();
+                pipeline_log!(
+                    "capture format bytes={} asbd={}Hz {}ch {}bit flags={:#x} nonzero={}/{}",
+                    bytes.len(),
+                    asbd.mSampleRate as u64,
+                    asbd.mChannelsPerFrame,
+                    asbd.mBitsPerChannel,
+                    asbd.mFormatFlags,
+                    nonzero,
+                    bytes.len()
+                );
+            }
 
-        (decode_to_f32_mono(bytes, asbd)?, asbd.mSampleRate)
+            decode_to_f32_mono(bytes, asbd).map(|samples| (samples, asbd.mSampleRate))
+        })
+        .map_err(|_| SystemAudioCaptureError::AudioProcessingFailed)?
+        else {
+            return Ok(None);
+        };
+
+        decoded?
     };
 
     if samples.is_empty() {
@@ -1086,7 +1093,7 @@ fn decode_to_f32_mono(
     let channels = asbd.mChannelsPerFrame.max(1) as usize;
     let is_float = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0;
     let is_signed_int = asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0;
-    let is_planar = asbd.mFormatFlags & (1 << 6) != 0; // kAudioFormatFlagIsNonInterleaved
+    let is_planar = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0;
 
     if is_planar {
         // Planar layout: channel data is contiguous per channel.
@@ -1211,7 +1218,7 @@ mod resampler_tests {
         AudioStreamBasicDescription {
             mSampleRate: 48_000.0,
             mFormatID: 0x6c70636d, // kAudioFormatLinearPCM
-            mFormatFlags: 0x29,    // float | packed | native-endian
+            mFormatFlags: 0x29,    // float | packed | non-interleaved
             mBytesPerPacket: 4,
             mFramesPerPacket: 1,
             mBytesPerFrame: 4,
@@ -1241,6 +1248,8 @@ mod resampler_tests {
     fn decode_handles_stereo_by_averaging_channels() {
         let asbd = AudioStreamBasicDescription {
             mChannelsPerFrame: 2,
+            mFormatFlags: kAudioFormatFlagIsFloat
+                | objc2_core_audio_types::kAudioFormatFlagIsPacked,
             ..asbd_48k_1ch_f32()
         };
         // Interleaved: L=0.5 R=0.5 -> mono 0.5; L=-1 R=1 -> mono 0.
@@ -1249,6 +1258,57 @@ mod resampler_tests {
         assert_eq!(mono.len(), 2);
         assert!((mono[0] - 0.5).abs() < 1e-6);
         assert!(mono[1].abs() < 1e-6);
+    }
+
+    #[test]
+    fn planar_stereo_f32_preserves_frame_order() {
+        let asbd = AudioStreamBasicDescription {
+            mChannelsPerFrame: 2,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved,
+            ..asbd_48k_1ch_f32()
+        };
+        // L and R are separate planes; matching frames always average to 0.5.
+        let bytes = f32_bytes(&[0.0, 0.25, 0.5, 0.75, 1.0, 0.75, 0.5, 0.25]);
+        let mono = decode_to_f32_mono(&bytes, &asbd).unwrap();
+        assert_eq!(mono, [0.5; 4]);
+    }
+
+    #[test]
+    fn planar_signed_integer_channels_keep_all_frames_in_order() {
+        for bits in [16, 32] {
+            let bytes = if bits == 16 {
+                [16_384i16, -16_384, 0, 0]
+                    .into_iter()
+                    .flat_map(i16::to_le_bytes)
+                    .collect::<Vec<_>>()
+            } else {
+                [1_073_741_824i32, -1_073_741_824, 0, 0]
+                    .into_iter()
+                    .flat_map(i32::to_le_bytes)
+                    .collect::<Vec<_>>()
+            };
+            let asbd = AudioStreamBasicDescription {
+                mChannelsPerFrame: 2,
+                mBitsPerChannel: bits,
+                mBytesPerFrame: bits / 8,
+                mBytesPerPacket: bits / 8,
+                mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsNonInterleaved,
+                ..asbd_48k_1ch_f32()
+            };
+            assert_eq!(decode_to_f32_mono(&bytes, &asbd).unwrap(), [0.25, -0.25]);
+        }
+    }
+
+    #[test]
+    fn nonmixable_flag_is_not_a_planar_layout_flag() {
+        let asbd = AudioStreamBasicDescription {
+            mChannelsPerFrame: 2,
+            mFormatFlags: kAudioFormatFlagIsFloat
+                | objc2_core_audio_types::kAudioFormatFlagIsNonMixable,
+            ..asbd_48k_1ch_f32()
+        };
+        let bytes = f32_bytes(&[0.0, 0.25, 0.5, 0.75]);
+        assert_eq!(decode_to_f32_mono(&bytes, &asbd).unwrap(), [0.125, 0.625]);
     }
 
     use super::*;

@@ -8,13 +8,13 @@ import {
 } from "../../lib/subtitleColor";
 import type { SubtitleColor } from "../../lib/types";
 
-type Props = { value: SubtitleColor; onChange: (color: SubtitleColor) => void };
+type Props = { label?: string; value: SubtitleColor; onChange: (color: SubtitleColor) => void };
 
-export function SubtitleColorControl({ value, onChange }: Props) {
+export function SubtitleColorControl({ value, onChange, label = I18N.settings.subtitleColor }: Props) {
   const hex = subtitleColorHex(value);
   const isCustom = !SUBTITLE_COLOR_OPTIONS.some((option) => hex === SUBTITLE_COLORS[option.value]);
   return (
-    <div className="subtitle-color-presets" role="group" aria-label={I18N.settings.subtitleColor}>
+    <div className="subtitle-color-presets" role="group" aria-label={label}>
       {SUBTITLE_COLOR_OPTIONS.map((option) => {
         const selected = hex === SUBTITLE_COLORS[option.value];
         return (

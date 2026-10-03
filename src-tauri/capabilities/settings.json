@@ -10,6 +10,7 @@
     "updater:allow-check",
     "updater:allow-download",
     "updater:allow-install",
+    "clipboard-manager:allow-read-text",
     "app-settings"
   ]
 }

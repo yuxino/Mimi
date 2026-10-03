@@ -51,6 +51,8 @@ pub struct ServiceProfilePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_credential_state: Option<CredentialState>,
     pub text_translation: crate::core::provider::TextTranslation,
+    pub speech_network_proxy: Option<ProxyConfig>,
+    pub text_network_proxy: Option<ProxyConfig>,
 }
 
 impl ServiceProfilePayload {
@@ -62,6 +64,8 @@ impl ServiceProfilePayload {
         );
         let text_translation = profile.text_translation();
         Self {
+            speech_network_proxy: profile.speech_network_proxy,
+            text_network_proxy: profile.text_network_proxy,
             id: profile.id,
             name: profile.name,
             provider: profile.provider,
@@ -75,6 +79,8 @@ impl ServiceProfilePayload {
     fn unavailable(profile: ServiceProfile) -> Self {
         let text_translation = profile.text_translation();
         Self {
+            speech_network_proxy: profile.speech_network_proxy,
+            text_network_proxy: profile.text_network_proxy,
             id: profile.id,
             name: profile.name,
             provider: profile.provider,
@@ -131,9 +137,11 @@ pub struct SettingsSnapshotPayload {
     pub font_size: f64,
     pub subtitle_background_opacity: u8,
     pub subtitle_color: SubtitleColor,
+    pub microphone_subtitle_color: SubtitleColor,
     pub subtitle_alignment: SubtitleAlignment,
     pub subtitle_display_mode: SubtitleDisplayMode,
     pub show_subtitle_dividers: bool,
+    pub keep_subtitle_text_opaque: bool,
     /// `None` follows the operating system's reduce-motion setting.
     pub pulse_animation: Option<bool>,
     pub pulse_style: PulseStyle,
@@ -361,15 +369,35 @@ mod tests {
     }
 
     #[test]
-    fn live_audio_input_switch_is_scoped_to_the_control_panel() {
+    fn live_audio_capture_switches_are_scoped_to_settings_and_control_panel() {
+        let permissions = include_str!("../permissions/app.toml");
+        for command in [
+            "session_switch_audio_input",
+            "session_switch_system_audio_target",
+        ] {
+            let permitted: Vec<_> = permissions
+                .split("[[permission]]")
+                .filter(|entry| entry.contains(&format!("\"{command}\"")))
+                .collect();
+            assert_eq!(permitted.len(), 2);
+            assert!(permitted
+                .iter()
+                .all(|entry| entry.contains("identifier = \"app-settings\"")
+                    || entry.contains("identifier = \"app-overlay-control\"")));
+            assert!(include_str!("lib.rs").contains(&format!("commands::{command},")));
+        }
+    }
+
+    #[test]
+    fn target_switch_is_scoped_to_the_control_window() {
         let permissions = include_str!("../permissions/app.toml");
         let permitted: Vec<_> = permissions
             .split("[[permission]]")
-            .filter(|entry| entry.contains("\"session_switch_audio_input\""))
+            .filter(|entry| entry.contains("\"session_switch_target_language\""))
             .collect();
         assert_eq!(permitted.len(), 1);
         assert!(permitted[0].contains("identifier = \"app-overlay-control\""));
-        assert!(include_str!("lib.rs").contains("commands::session_switch_audio_input,"));
+        assert!(include_str!("lib.rs").contains("commands::session_switch_target_language,"));
     }
 
     #[test]
@@ -459,6 +487,8 @@ mod tests {
         let payload = SettingsSnapshotPayload {
             credential_storage: "keychain",
             profiles: vec![ServiceProfilePayload {
+                speech_network_proxy: None,
+                text_network_proxy: None,
                 id: "alibaba-default".into(),
                 name: "Alibaba Cloud".into(),
                 provider: ProviderKind::AlibabaCloud,
@@ -475,9 +505,11 @@ mod tests {
             font_size: 18.0,
             subtitle_background_opacity: 80,
             subtitle_color: SubtitleColor::White,
+            microphone_subtitle_color: SubtitleColor::Yellow,
             subtitle_alignment: SubtitleAlignment::Center,
             subtitle_display_mode: SubtitleDisplayMode::Translation,
             show_subtitle_dividers: false,
+            keep_subtitle_text_opaque: false,
             pulse_animation: None,
             pulse_style: PulseStyle::Ribbon,
             subtitle_animation: None,
@@ -510,6 +542,8 @@ mod tests {
         assert_eq!(json["subtitleColor"], "white");
         assert_eq!(json["subtitleDisplayMode"], "translation");
         assert_eq!(json["showSubtitleDividers"], false);
+        assert_eq!(json["keepSubtitleTextOpaque"], false);
+        assert_eq!(json["microphoneSubtitleColor"], "yellow");
         assert_eq!(json["subtitleBlendsWithBackground"], false);
         assert!(json.get("apiKey").is_none());
         assert!(json.get("hasAPIKey").is_none());
@@ -554,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn application_selection_and_enumeration_are_settings_only() {
+    fn application_settings_draft_is_settings_only_and_enumeration_reaches_live_controls() {
         use crate::core::system_audio_target::SystemAudioTarget;
         let draft = SettingsDraft {
             system_audio_target: Some(SystemAudioTarget::Application {
@@ -568,12 +602,15 @@ mod tests {
             assert!(ensure_settings_draft_window_allowed(label, &draft).is_err());
         }
         let permissions = include_str!("../permissions/app.toml");
-        let entry = permissions
+        let entries: Vec<_> = permissions
             .split("[[permission]]")
-            .find(|entry| entry.contains("\"audio_applications\""))
-            .unwrap();
-        assert!(entry.contains("identifier = \"app-settings\""));
-        assert_eq!(permissions.matches("\"audio_applications\"").count(), 1);
+            .filter(|entry| entry.contains("\"audio_applications\""))
+            .collect();
+        assert_eq!(entries.len(), 2);
+        assert!(entries
+            .iter()
+            .all(|entry| entry.contains("identifier = \"app-settings\"")
+                || entry.contains("identifier = \"app-overlay-control\"")));
     }
 
     #[test]
@@ -762,9 +799,11 @@ impl SettingsSnapshotPayload {
                     font_size: prefs.font_size,
                     subtitle_background_opacity: prefs.subtitle_background_opacity,
                     subtitle_color: prefs.subtitle_color,
+                    microphone_subtitle_color: prefs.microphone_subtitle_color,
                     subtitle_alignment: prefs.subtitle_alignment,
                     subtitle_display_mode: prefs.subtitle_display_mode,
                     show_subtitle_dividers: prefs.show_subtitle_dividers,
+                    keep_subtitle_text_opaque: prefs.keep_subtitle_text_opaque,
 
                     pulse_animation: prefs.pulse_animation,
                     pulse_style: prefs.pulse_style,
@@ -807,9 +846,11 @@ impl SettingsSnapshotPayload {
             font_size: prefs.font_size,
             subtitle_background_opacity: prefs.subtitle_background_opacity,
             subtitle_color: prefs.subtitle_color,
+            microphone_subtitle_color: prefs.microphone_subtitle_color,
             subtitle_alignment: prefs.subtitle_alignment,
             subtitle_display_mode: prefs.subtitle_display_mode,
             show_subtitle_dividers: prefs.show_subtitle_dividers,
+            keep_subtitle_text_opaque: prefs.keep_subtitle_text_opaque,
 
             pulse_animation: prefs.pulse_animation,
             pulse_style: prefs.pulse_style,
@@ -838,9 +879,11 @@ pub struct SettingsDraft {
     pub font_size: Option<f64>,
     pub subtitle_background_opacity: Option<u8>,
     pub subtitle_color: Option<SubtitleColor>,
+    pub microphone_subtitle_color: Option<SubtitleColor>,
     pub subtitle_alignment: Option<SubtitleAlignment>,
     pub subtitle_display_mode: Option<SubtitleDisplayMode>,
     pub show_subtitle_dividers: Option<bool>,
+    pub keep_subtitle_text_opaque: Option<bool>,
     pub pulse_animation: Option<bool>,
     pub pulse_style: Option<PulseStyle>,
     pub subtitle_animation: Option<bool>,
@@ -1021,9 +1064,11 @@ fn apply_settings_draft_guarded(
         || draft.font_size.is_some()
         || draft.subtitle_background_opacity.is_some()
         || draft.subtitle_color.is_some()
+        || draft.microphone_subtitle_color.is_some()
         || draft.subtitle_alignment.is_some()
         || draft.subtitle_display_mode.is_some()
         || draft.show_subtitle_dividers.is_some()
+        || draft.keep_subtitle_text_opaque.is_some()
         || draft.pulse_animation.is_some()
         || draft.pulse_style.is_some()
         || draft.subtitle_animation.is_some()
@@ -1093,6 +1138,9 @@ fn apply_settings_draft_guarded(
             if let Some(mode) = draft.subtitle_display_mode {
                 prefs.subtitle_display_mode = mode;
             }
+            if let Some(enabled) = draft.keep_subtitle_text_opaque {
+                prefs.keep_subtitle_text_opaque = enabled;
+            }
             if let Some(enabled) = draft.show_subtitle_dividers {
                 prefs.show_subtitle_dividers = enabled;
             }
@@ -1104,6 +1152,9 @@ fn apply_settings_draft_guarded(
             }
             if let Some(motion) = draft.subtitle_animation {
                 prefs.subtitle_animation = Some(motion);
+            }
+            if let Some(color) = draft.microphone_subtitle_color {
+                prefs.microphone_subtitle_color = color;
             }
             if let Some(color) = draft.subtitle_color {
                 prefs.subtitle_color = color;
@@ -1300,10 +1351,17 @@ pub async fn profile_update(
     state: State<'_, AppState>,
     profile_id: String,
     name: String,
+    speech_network_proxy: Option<ProxyConfig>,
+    text_network_proxy: Option<ProxyConfig>,
 ) -> Result<SettingsSnapshotPayload, String> {
     let _lifecycle = state.session.settings_mutation_guard(true).await?;
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
-    state.settings.update_profile(&profile_id, &name)?;
+    state.settings.update_profile_options(
+        &profile_id,
+        &name,
+        speech_network_proxy,
+        text_network_proxy,
+    )?;
     emit_settings_snapshot(&app, &state.settings)
 }
 
@@ -1422,6 +1480,14 @@ pub async fn session_switch_audio_input(
 }
 
 #[tauri::command]
+pub async fn session_switch_system_audio_target(
+    state: State<'_, AppState>,
+    target: crate::core::system_audio_target::SystemAudioTarget,
+) -> Result<(), String> {
+    state.session.switch_system_audio_target(target).await
+}
+
+#[tauri::command]
 pub async fn session_switch_source_language(
     state: State<'_, AppState>,
     language: SourceLanguage,
@@ -1431,6 +1497,14 @@ pub async fn session_switch_source_language(
     // reconnect (which this awaits) is still in flight.
     state.session.switch_source_language(language).await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn session_switch_target_language(
+    state: State<'_, AppState>,
+    language: TargetLanguage,
+) -> Result<(), String> {
+    state.session.switch_target_language(language).await
 }
 
 #[tauri::command]

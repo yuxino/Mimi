@@ -84,3 +84,28 @@ describe("subtitle colors", () => {
     expect(html).not.toContain("stream-chunk");
   });
 });
+
+it.each([false, true])("keeps all subtitle text opaque without changing immersive=%s backgrounds", immersive => {
+  const html = renderToStaticMarkup(<Timeline blocks={[
+    block({ id: "older", presentation: "history", audioSource: "system", source: "Old", translation: "Older" }),
+    block({ id: "latest", presentation: "live", audioSource: "microphone", source: "Live", translation: "Latest" }),
+  ]} fontSize={18} alignment="left" color="white" displayMode="bilingual" keepTextOpaque blendsWithBackground={immersive} />).replaceAll(" ", "");
+  expect(html).not.toContain("opacity:0.");
+  expect(html).not.toContain("255,255,255,0.86");
+  expect(html).not.toContain("subtitle-block");
+  expect(html).not.toContain("subtitle-lane");
+  expect(html.includes("text-shadow:")).toBe(immersive);
+});
+
+it("colors each confirmed and live source with its own preference, including both bilingual lanes", () => {
+  const html = renderToStaticMarkup(<Timeline blocks={[
+    block({ id: "system", presentation: "history", audioSource: "system", source: "System", translation: "System translated" }),
+    block({ id: "microphone", presentation: "live", audioSource: "microphone", source: "Microphone", translation: "Microphone translated" }),
+  ]} fontSize={18} alignment="left" color="#123456" microphoneColor="#abcdef" displayMode="bilingual" keepTextOpaque />).replaceAll(" ", "");
+  const system = html.slice(html.indexOf('data-utterance-id="system"'), html.indexOf('data-utterance-id="microphone"'));
+  const microphone = html.slice(html.indexOf('data-utterance-id="microphone"'));
+  expect(system.match(/color:rgba\(18,52,86,1\)/g)).toHaveLength(3);
+  expect(system).not.toContain("171,205,239");
+  expect(microphone.match(/color:rgba\(171,205,239,1\)/g)).toHaveLength(3);
+  expect(microphone).not.toContain("18,52,86");
+});

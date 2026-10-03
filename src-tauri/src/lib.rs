@@ -74,6 +74,7 @@ pub fn run() {
     let builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -365,7 +366,9 @@ pub fn run() {
             commands::session_toggle_paused,
             commands::session_clear_subtitles,
             commands::session_switch_source_language,
+            commands::session_switch_target_language,
             commands::session_switch_audio_input,
+            commands::session_switch_system_audio_target,
             commands::session_switch_translation_mode,
             commands::overlay_set_collapsed,
             commands::overlay_set_locked,

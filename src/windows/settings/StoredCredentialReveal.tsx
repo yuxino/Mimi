@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TauriEvent } from "@tauri-apps/api/event";
+import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { isTauri, profileRevealCredential, type StoredCredentialField } from "../../lib/ipc";
 import { profileErrorMessage } from "../../lib/connectionDiagnostics";
@@ -11,7 +12,7 @@ import type { TextTranslation } from "../../lib/types";
 type Props = {
   profileId: string;
   field: StoredCredentialField;
-  textTranslation?: Extract<TextTranslation, "deepL" | "deepLX">;
+  textTranslation?: Exclude<TextTranslation, "followService">;
   label: string;
   disabled: boolean;
 };
@@ -69,8 +70,8 @@ function SavedCredentialPreview({ profileId, field, textTranslation, label, disa
   };
 
   return <span className="stored-credential-reveal">
-    <button type="button" className="settings-link" disabled={disabled && preview.status === "hidden"} aria-label={`${preview.status === "hidden" ? I18N.settings.revealSavedCredential : I18N.settings.hideSavedCredential}: ${label}`} aria-expanded={preview.status !== "hidden"} aria-busy={preview.status === "loading"} onClick={preview.status === "hidden" ? reveal : hide}>
-      {preview.status === "hidden" ? I18N.settings.revealSavedCredential : preview.status === "loading" ? I18N.settings.readingSavedCredential : I18N.settings.hideSavedCredential}
+    <button type="button" className="settings-link stored-credential-reveal__toggle" title={`${preview.status === "hidden" ? I18N.settings.revealSavedCredential : I18N.settings.hideSavedCredential}: ${label}`} disabled={disabled && preview.status === "hidden"} aria-label={`${preview.status === "hidden" ? I18N.settings.revealSavedCredential : I18N.settings.hideSavedCredential}: ${label}`} aria-expanded={preview.status !== "hidden"} aria-busy={preview.status === "loading"} onClick={preview.status === "hidden" ? reveal : hide}>
+      <Icon name={preview.status === "hidden" ? "eye" : "eye-off"} /><span className="settings-sr-only">{preview.status === "hidden" ? I18N.settings.revealSavedCredential : preview.status === "loading" ? I18N.settings.readingSavedCredential : I18N.settings.hideSavedCredential}</span>
     </button>
     {preview.status === "shown" && <input type="text" readOnly value={preview.value} aria-label={`${label}: ${I18N.settings.savedCredential}`} autoComplete="off" spellCheck={false} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); hide(); } }} />}
     {preview.status === "error" && <span className="credential-unavailable" role="status">{preview.error}</span>}

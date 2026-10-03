@@ -108,9 +108,11 @@ export interface SettingsSnapshot {
   /** 0..100, background only. */
   subtitleBackgroundOpacity: number;
   subtitleColor: SubtitleColor;
+  microphoneSubtitleColor?: SubtitleColor;
   subtitleAlignment: SubtitleAlignment;
   subtitleDisplayMode: SubtitleDisplayMode;
   showSubtitleDividers: boolean;
+  keepSubtitleTextOpaque?: boolean;
   /** `null` follows the system reduce-motion setting. */
   pulseAnimation: boolean | null;
   pulseStyle: PulseStyle;
@@ -130,7 +132,7 @@ export interface SettingsSnapshot {
 }
 
 export type NetworkProxyMode = "system" | "direct" | "custom";
-/** Global credential-free route for provider HTTP and WebSocket connections. */
+/** Credential-free route for a provider HTTP or WebSocket stage. */
 export interface NetworkProxyConfig {
   mode: NetworkProxyMode;
   url: string | null;
@@ -153,9 +155,11 @@ export interface SettingsDraft {
   fontSize?: number;
   subtitleBackgroundOpacity?: number;
   subtitleColor?: SubtitleColor;
+  microphoneSubtitleColor?: SubtitleColor;
   subtitleAlignment?: SubtitleAlignment;
   subtitleDisplayMode?: SubtitleDisplayMode;
   showSubtitleDividers?: boolean;
+  keepSubtitleTextOpaque?: boolean;
   pulseAnimation?: boolean;
   pulseStyle?: PulseStyle;
   subtitleAnimation?: boolean;
@@ -214,6 +218,8 @@ export type ProviderCredentialsInput =
  */
 export type CredentialState = "present" | "missing" | "unavailable";
 
+export type ProfileNetworkProxyDraft = Partial<Pick<ServiceProfile, "speechNetworkProxy" | "textNetworkProxy">>;
+
 export interface ServiceProfile {
   id: string;
   name: string;
@@ -224,6 +230,9 @@ export interface ServiceProfile {
   textCredentialState?: CredentialState;
   /** Optional for historical/native fixture snapshots; inferred from provider when absent. */
   textTranslation?: TextTranslation;
+  /** Missing legacy fields inherit SettingsSnapshot.networkProxy. */
+  speechNetworkProxy?: NetworkProxyConfig | null;
+  textNetworkProxy?: NetworkProxyConfig | null;
 }
 
 export interface ProviderCapabilities {

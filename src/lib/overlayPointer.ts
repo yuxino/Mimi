@@ -3,8 +3,9 @@ import { isTauri, setOverlayPointerCursor, type OverlayPointerMotion } from "./i
 export const OVERLAY_POINTER_TARGET_EVENT = "mimi-overlay-pointer-target";
 let lastTarget: Element | null | undefined;
 
-/** Coalesce cursor intents, with one IPC in flight. A stale point retries only
- * when a newer native sample exists; a stationary failed request never loops. */
+/** Coalesce cursor intents, with one IPC in flight. Each native movement over
+ * a control reasserts the hand: an ACK does not prevent WebKit resetting it.
+ * A stationary successful or failed request never loops. */
 export function createPointerCursorUpdater(send: typeof setOverlayPointerCursor) {
   let latest: { point: NonNullable<OverlayPointerMotion>; pointing: boolean } | null = null;
   let sequence = 0;
@@ -12,7 +13,7 @@ export function createPointerCursorUpdater(send: typeof setOverlayPointerCursor)
   let accepted = false;
   let pending = false;
   const flush = () => {
-    if (pending || !latest || latest.pointing === accepted) return;
+    if (pending || !latest || (!latest.pointing && !accepted)) return;
     const intent = latest;
     const token = sequence;
     const generation = lifetime;
@@ -38,8 +39,8 @@ export function createPointerCursorUpdater(send: typeof setOverlayPointerCursor)
 const updateCursor = createPointerCursorUpdater(setOverlayPointerCursor);
 
 export function isClickablePointerTarget(target: Element | null): boolean {
-  const control = target?.closest('button, a[href], [role="button"], [role="switch"]');
-  return Boolean(control && !control.hasAttribute("disabled") && control.getAttribute("aria-disabled") !== "true"
+  const control = target?.closest('button, a[href], summary, select, [role="button"], [role="switch"], [role="option"], [role="tab"], input:is([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="color"])');
+  return Boolean(control && !control.matches(":disabled") && !control.hasAttribute("disabled") && control.getAttribute("aria-disabled") !== "true"
     && control.getAttribute("aria-busy") !== "true");
 }
 

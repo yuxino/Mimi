@@ -38,6 +38,21 @@
   color-scheme: light;
 }
 
+.service-proxies {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+.service-proxies > h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--settings-text-muted);
+}
+.service-proxies .network-proxy-actions {
+  justify-content: flex-end;
+}
+
 .network-proxy-form {
   display: grid;
   gap: 14px;
@@ -2562,11 +2577,188 @@
   align-items: center;
 }
 
-.application-audio-controls {
+.config-input-group { display: grid; min-width: 0; gap: 6px; }
+.config-input { display: flex; align-items: center; min-width: 0; position: relative; }
+.config-input > input { width: 100%; min-width: 0; padding-right: 42px; }
+.config-input__paste { position: absolute; right: 9px; display: flex; padding: 4px; border: 0; background: transparent; color: var(--settings-text-muted); cursor: pointer; }
+.config-input__paste:disabled { opacity: .4; cursor: default; }
+.config-input__paste:focus-visible { outline: 2px solid var(--settings-text-muted); outline-offset: 2px; border-radius: 4px; }
+.service-stage .settings-field > .config-input-group { grid-column: 2; }
+.stored-credential-reveal > .stored-credential-reveal__toggle { font-size: 14px; display: inline-flex; align-items: center; padding: 4px; }
+@media (max-width: 700px) { .service-stage .settings-field > .config-input-group { grid-column: 1 / -1; } }
+
+/* Restored session controls from the previous settings layout. */
+.settings-session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: var(--settings-panel);
+}
+
+.settings-session-control {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
+  justify-content: space-between;
+  gap: 16px;
 }
-.application-audio-controls .mimi-select { min-width: 0; }
+
+.settings-session-control + .settings-session-control {
+  padding-top: 16px;
+  border-top: 1px solid var(--settings-border);
+}
+
+.settings-session-control__copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settings-session-control__heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.settings-session-control__heading h2,
+.settings-session-control__heading h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 620;
+}
+
+.settings-session-control__heading kbd {
+  color: var(--settings-text-faint);
+  font: 11px/1.5 ui-monospace, monospace;
+  overflow-wrap: anywhere;
+}
+
+.settings-session-control__copy > p {
+  color: var(--settings-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.settings-session-control__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-session-resume {
+  white-space: nowrap;
+}
+
+.settings-session-resume__busy {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: settings-session-resume-busy 800ms linear infinite;
+}
+
+@keyframes settings-session-resume-busy {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-session-resume__busy { animation: none; }
+}
+
+.settings-session-card--compact {
+  gap: 10px;
+  padding: 0 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--settings-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-session-card--compact .settings-session-control__copy {
+  flex: 1;
+  flex-flow: row wrap;
+  align-items: baseline;
+  gap: 5px 14px;
+}
+
+.settings-session-card--compact .settings-session-control__heading h2 {
+  font-size: 12px;
+}
+
+.settings-session-card--compact .settings-session-status {
+  flex: 1 1 160px;
+}
+
+.settings-session-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--settings-text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-session-status > span {
+  width: 5px;
+  height: 5px;
+  margin-top: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--settings-text-faint);
+}
+
+.settings-session-status[data-status="listening"] > span {
+  background: var(--settings-text);
+  box-shadow: 0 0 0 3px var(--settings-selection-soft);
+}
+
+.settings-session-status[data-status="error"] > span,
+.settings-session-status[data-status="setupRequired"] > span,
+.settings-session-status[data-status="credentialUnavailable"] > span {
+  border: 1px solid var(--settings-text-muted);
+  background: transparent;
+}
+
+.settings-session-shortcut kbd {
+  color: var(--settings-text-faint);
+  font:
+    11px/1.5 ui-monospace,
+    monospace;
+}
+
+.settings-session-help {
+  color: var(--settings-text-faint);
+  font-size: 10.5px;
+  line-height: 1.65;
+}
+
+.settings-session-help summary,
+.session-export__explanation summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-console summary::-webkit-details-marker {
+  display: none;
+}
+.settings-session-help p {
+  margin-top: 9px;
+}
+.settings-session-help[open] summary svg,
+.session-export__explanation[open] summary svg {
+  transform: rotate(180deg);
+}

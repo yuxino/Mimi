@@ -44,6 +44,8 @@ commands.allow = [
   "session_stop",
   "session_toggle_paused",
   "session_switch_source_language",
+  "session_switch_audio_input",
+  "session_switch_system_audio_target",
   "overlay_set_locked",
 ]
 
@@ -70,8 +72,11 @@ identifier = "app-overlay-control"
 description = "Allows the overlay control island to change live options and manage its panel."
 commands.allow = [
   "capture_status",
+  "audio_applications",
   "session_switch_audio_input",
+  "session_switch_system_audio_target",
   "session_switch_source_language",
+  "session_switch_target_language",
   "session_switch_translation_mode",
   "settings_save",
   "overlay_set_locked",

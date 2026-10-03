@@ -164,9 +164,44 @@ it("navigates the filtered list and resets its cursor safely as the query change
   await typeQuery("pt");
   const option = document.querySelector('[role="option"]')!;
   expect(document.getElementById(input().getAttribute("aria-activedescendant")!)).toBe(option);
-  expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts.at(-1)).toBe(option);
+  expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   await key("Enter");
   expect(onChange).toHaveBeenCalledExactlyOnceWith("pt");
+});
+
+it("loads choices on open and keeps a saved label without inventing a selectable result", async () => {
+  const onOpen = vi.fn();
+  await act(() => root.render(<Select label="Application" value="saved.app" valueLabel="Saved Player"
+    options={[{ value: "system", label: "All applications" }]} searchLabel="Search applications"
+    onOpen={onOpen} onChange={onChange} />));
+  expect(trigger().textContent).toBe("Saved Player");
+  expect(onOpen).not.toHaveBeenCalled();
+  await act(() => trigger().click());
+  expect(onOpen).toHaveBeenCalledOnce();
+  expect(visibleLabels()).toEqual(["All applications"]);
+  expect(Number.parseFloat(document.querySelector<HTMLElement>(".mimi-select__menu")!.style.maxHeight)).toBe(280);
+});
+
+it("scrolls only the results for keyboard navigation and never moves the list on hover", async () => {
+  await renderSearch();
+  await act(() => trigger().click());
+  const results = document.querySelector<HTMLElement>(".mimi-select__options")!;
+  const popup = document.querySelector<HTMLElement>(".mimi-select__menu")!;
+  const rows = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  results.getBoundingClientRect = () => ({ top: 50, bottom: 150 } as DOMRect);
+  Object.defineProperty(results, "clientHeight", { value: 100 });
+  rows.forEach((row, index) => {
+    row.getBoundingClientRect = () => ({ top: 50 + index * 32 - results.scrollTop, bottom: 82 + index * 32 - results.scrollTop } as DOMRect);
+  });
+  await key("End");
+  expect(results.scrollTop).toBe(92);
+  expect(popup.scrollTop).toBe(0);
+  await act(() => rows[0].dispatchEvent(new MouseEvent("pointermove", { bubbles: true })));
+  expect(results.scrollTop).toBe(92);
+  await key("Home");
+  expect(results.scrollTop).toBe(0);
+  expect(popup.scrollTop).toBe(0);
+  expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
 });
 
 it("shows caller-supplied no-match feedback without selecting or inventing an active option", async () => {

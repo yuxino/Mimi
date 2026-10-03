@@ -28,6 +28,27 @@ body,
   cursor: default;
 }
 
+/* Shared click affordance; component-specific disabled, busy, and resize
+   cursors stay authoritative. Text fields and range inputs keep native cursors. */
+:where(
+  button,
+  a[href],
+  summary,
+  select,
+  [role="button"],
+  [role="switch"],
+  [role="option"],
+  [role="tab"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="color"]
+):where(:not(:disabled):not([disabled]):not([aria-disabled="true"]):not([aria-busy="true"])) {
+  cursor: pointer;
+}
+
 /* Settings window gets an opaque background instead. */
 body.settings-body {
   background: #0b0b0b;

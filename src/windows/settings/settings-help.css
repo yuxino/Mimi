@@ -18,7 +18,7 @@
   color: var(--settings-text-faint);
   font-size: 14px;
   line-height: 1;
-  cursor: help;
+  cursor: pointer;
 }
 
 .settings-help-control__button:hover,

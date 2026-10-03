@@ -18,6 +18,7 @@ import {
 } from "../../lib/providerCredentials";
 import { useStore } from "../../lib/store";
 import type {
+  NetworkProxyConfig,
   CredentialState,
   ProviderCredentialsInput,
   ServiceProfile,
@@ -31,17 +32,19 @@ import { DestructiveConfirmation, SettingsConfirmation } from "./DestructiveConf
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 import { CustomSpeechCredentialEditor } from "./CustomSpeechCredentialEditor";
 
+import { ConfigInput } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
 import { ConnectionCheck } from "./ConnectionCheck";
 import { saveAndSelectProfile } from "./saveAndSelectProfile";
 import { StoredCredentialReveal } from "./StoredCredentialReveal";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
+import { NetworkProxySettings } from "./NetworkProxySettings";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
 
 const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
-type PendingAction = "create" | "rename" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | null;
+type PendingAction = "create" | "rename" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | null;
 type CheckStage = ConnectionCheckStage | "combined";
 type CheckOutcome = { profileId: string; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
@@ -87,9 +90,15 @@ export function ServiceProfiles({
   const [pendingCheckStage, setPendingCheckStage] = useState<CheckStage | null>(null);
   const creationInFlight = useRef(false);
   const mutationInFlight = useRef(false);
-  const proxyKey = networkProxyConfigKey(settings.networkProxy ?? DEFAULT_NETWORK_PROXY);
-  const [renderedProxyKey, setRenderedProxyKey] = useState(proxyKey);
-  const latestProxyKey = useRef(proxyKey);
+  const proxyKeys = useMemo(() => Object.fromEntries(settings.profiles.map(profile => {
+    const speech = networkProxyConfigKey(profile.speechNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY);
+    const text = networkProxyConfigKey(profile.textNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY);
+    return [profile.id, { speech, text, combined: JSON.stringify([speech, text]) }];
+  })), [settings.profiles, settings.networkProxy]);
+  const proxyKey = JSON.stringify(proxyKeys);
+  const [renderedProxies, setRenderedProxies] = useState({ key: proxyKey, keys: proxyKeys });
+  const latestProxyKeys = useRef(proxyKeys);
+  useEffect(() => { latestProxyKeys.current = proxyKeys; }, [proxyKeys]);
   const [renderedSession, setRenderedSession] = useState({
     kind: sessionStatusKind,
     profileId: settings.activeProfileId,
@@ -126,11 +135,10 @@ export function ServiceProfiles({
     };
   }, []);
 
-  useEffect(() => { latestProxyKey.current = proxyKey; }, [proxyKey]);
-
-  if (renderedProxyKey !== proxyKey) {
-    setRenderedProxyKey(proxyKey);
-    setDiagnostics({});
+  if (renderedProxies.key !== proxyKey) {
+    const previous = renderedProxies.keys;
+    setRenderedProxies({ key: proxyKey, keys: proxyKeys });
+    setDiagnostics(current => Object.fromEntries(Object.entries(current).filter(([stage, outcome]) => outcome && previous[outcome.profileId]?.[stage as CheckStage] === proxyKeys[outcome.profileId]?.[stage as CheckStage])));
   }
 
   useEffect(() => {
@@ -158,6 +166,8 @@ export function ServiceProfiles({
     setFeedback(null);
     setPendingConfirmation(null);
   }
+
+  const hasIndependentTextProxy = !!selectedProfile && (isCustomSpeechProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider));
 
   const SelectedCredentialEditor = selectedProfile && isCustomSpeechProvider(selectedProfile.provider) ? CustomSpeechCredentialEditor : selectedProfile && ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? AlibabaCredentialEditor : CredentialEditor;
 
@@ -225,6 +235,19 @@ export function ServiceProfiles({
       () => updateProfile(selectedProfile.id, name),
       I18N.settings.profileNameSaved,
     );
+  };
+
+  const handleSaveProxy = async (profile: ServiceProfile, stage: "speech" | "text", config: NetworkProxyConfig) => {
+    if (mutationInFlight.current || mutationsDisabled) throw new Error("network_proxy_change_requires_stop");
+    mutationInFlight.current = true;
+    setPendingAction("save-proxy");
+    try {
+      await updateProfile(profile.id, profile.name, stage === "speech" ? { speechNetworkProxy: config } : { textNetworkProxy: config });
+      invalidateProfileCheck(profile.id, stage);
+    } finally {
+      mutationInFlight.current = false;
+      setPendingAction(null);
+    }
   };
 
   const handleSelect = async (profileId: string) => {
@@ -322,10 +345,10 @@ export function ServiceProfiles({
     const publish = (result: ConnectionDiagnostic | null, error: string | null) => setDiagnostics(current => ({ ...current, [key]: { profileId, result, error } }));
     const request = ++checkRequest.current;
     const epoch = profileCheckEpochs.current.get(profileId) ?? 0;
-    const checkedProxyKey = proxyKey;
+    const checkedProxyKey = proxyKeys[profileId]?.[key];
     const canPublish = () => mounted.current &&
       request === checkRequest.current &&
-      checkedProxyKey === latestProxyKey.current &&
+      checkedProxyKey === latestProxyKeys.current[profileId]?.[key] &&
       epoch === (profileCheckEpochs.current.get(profileId) ?? 0);
     setPendingAction("test-connection");
     setPendingCheckStage(key);
@@ -452,6 +475,18 @@ export function ServiceProfiles({
               onCancelDelete={() => setPendingConfirmation(null)}
             />
           </div>
+          <section className="service-proxies" aria-label={I18N.settings.networkProxyTitle}>
+            <h3>{I18N.settings.networkProxyTitle}</h3>
+            <NetworkProxySettings key={`${selectedProfile.id}-speech-proxy`} embedded
+              label={hasIndependentTextProxy ? I18N.settings.speechRecognition : I18N.settings.voiceTranslation}
+              scope={hasIndependentTextProxy ? I18N.settings.networkProxySpeechScope : I18N.settings.networkProxyIntegratedScope}
+              value={selectedProfile.speechNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY} disabled={mutationsDisabled}
+              onSave={config => handleSaveProxy(selectedProfile, "speech", config)} />
+            {hasIndependentTextProxy && <NetworkProxySettings key={`${selectedProfile.id}-text-proxy`} embedded
+              label={I18N.settings.textTranslationLabel} scope={I18N.settings.networkProxyTextScope}
+              value={selectedProfile.textNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY} disabled={mutationsDisabled}
+              onSave={config => handleSaveProxy(selectedProfile, "text", config)} />}
+          </section>
           {selectedProfile.id === settings.activeProfileId
             ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} />
             : null}
@@ -728,7 +763,7 @@ function CredentialEditor({
             return (
               <div className="settings-field" key={field}>
                 <label htmlFor={fieldId}>{copy.label}</label>
-                <input
+                <ConfigInput
                   id={fieldId}
                   ref={profile.provider === "deepLX" && field === "endpoint" ? endpointRef : undefined}
                   aria-invalid={field === "endpoint" && endpointInvalid ? true : undefined}
@@ -740,8 +775,7 @@ function CredentialEditor({
                   aria-describedby={field === "endpoint" && endpointInvalid ? `${fieldId}-error ${noteId}` : noteId}
                   disabled={disabled}
                   placeholder={copy.placeholder}
-                  onChange={(event) => {
-                    const value = event.target.value;
+                  onValueChange={(value) => {
                     setEditingSavedCredential(true);
                     setDraft((current) => ({ ...current, [field]: value }));
                     if (field === "endpoint" && endpointInvalid) setEndpointInvalid(!deepLXEndpointIsValid(value));

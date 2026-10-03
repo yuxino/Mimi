@@ -29,6 +29,8 @@ beforeEach(() => {
     status: { source: "Automatic", separator: "→", target: "Chinese" },
     isPaused: false, isWaitingForFinalTranslation: false, isChangingSession: false,
     onDismiss: vi.fn(), onSwitchSourceLanguage: vi.fn().mockResolvedValue(undefined),
+    onSetSkipTranslation: vi.fn().mockResolvedValue(undefined),
+    onSetTextOpaque: vi.fn().mockResolvedValue(undefined),
     onSetSubtitleDisplayMode: vi.fn().mockResolvedValue(undefined), onSetImmersiveMode: vi.fn().mockResolvedValue(undefined),
     onSetOverlayLocked: vi.fn().mockResolvedValue(undefined), onShowSettings: vi.fn().mockResolvedValue(undefined),
   };
@@ -59,12 +61,13 @@ async function searchSource(query: string) {
   return search;
 }
 
-it.each(["zh", "en", "ja"] as const)("keeps %s controls to two short pickers and single-line switches without a mode grid", async (language) => {
+it.each(["zh", "en", "ja"] as const)("keeps %s language, display and application choices compact without a mode grid", async (language) => {
   setStoredUiLanguage(language);
   await mount();
-  expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(2);
+  expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(3);
+  expect(host.querySelectorAll('.application-audio-picker')).toHaveLength(1);
   expect(host.querySelector('fieldset, .overlay-control-options, .overlay-control-group')).toBeNull();
-  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(4);
+  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(6);
   expect(host.querySelector('.overlay-control-setting small')).toBeNull();
   expect(picker(I18N.overlay.sourceLanguage)).toBe(document.activeElement);
   expect(props.onSwitchSourceLanguage).not.toHaveBeenCalled();
@@ -195,5 +198,38 @@ it("reports an empty language search and Escape returns focus without issuing a 
   await key(search, "Escape");
   expect(document.activeElement).toBe(picker(I18N.overlay.sourceLanguage));
   expect(props.onSwitchSourceLanguage).not.toHaveBeenCalled();
+  expect(props.onDismiss).not.toHaveBeenCalled();
+});
+
+it("offers recognition-only without closing the live panel and reflects the saved target", async () => {
+  await mount();
+  const toggle = () => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.skipTranslation}"]`)!;
+  expect(toggle().getAttribute("aria-checked")).toBe("false");
+  await act(async () => toggle().click());
+  expect(props.onSetSkipTranslation).toHaveBeenCalledExactlyOnceWith(true);
+  expect(props.onDismiss).not.toHaveBeenCalled();
+  configure({ targetLanguage: "original" });
+  await mount();
+  expect(toggle().getAttribute("aria-checked")).toBe("true");
+  await act(async () => toggle().click());
+  expect(props.onSetSkipTranslation).toHaveBeenLastCalledWith(false);
+});
+
+it("locks skipping during a reconnect and hides it for integrated providers without Original", async () => {
+  props.isChangingSession = true;
+  await mount();
+  expect(host.querySelector<HTMLButtonElement>(`[aria-label="${I18N.settings.skipTranslation}"]`)!.disabled).toBe(true);
+  configure({ profiles: [{ id: "ali", provider: "openAIRealtime", name: "OpenAI", credentialState: "present" }] });
+  await mount();
+  expect(host.querySelector(`[aria-label="${I18N.settings.skipTranslation}"]`)).toBeNull();
+});
+
+it("keeps text opacity independent of immersion and leaves the floating panel open", async () => {
+  configure({ subtitleBlendsWithBackground: true });
+  await mount();
+  const opaque = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.keepSubtitleTextOpaque}"]`)!;
+  await act(async () => opaque.click());
+  expect(props.onSetTextOpaque).toHaveBeenCalledExactlyOnceWith(true);
+  expect(props.onSetImmersiveMode).not.toHaveBeenCalled();
   expect(props.onDismiss).not.toHaveBeenCalled();
 });

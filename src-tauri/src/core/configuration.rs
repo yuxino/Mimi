@@ -56,7 +56,9 @@ pub struct LiveTranslationConfiguration {
     pub source_language: SourceLanguage,
     pub target_language: TargetLanguage,
     pub translation_mode: TranslationMode,
+    /// Recognition (or the shared integrated realtime connection).
     pub network_proxy: ProxyConfig,
+    pub text_network_proxy: ProxyConfig,
 }
 
 impl fmt::Debug for LiveTranslationConfiguration {
@@ -68,6 +70,7 @@ impl fmt::Debug for LiveTranslationConfiguration {
             .field("text_credentials", &"[REDACTED]")
             .field("source_language", &self.source_language)
             .field("target_language", &self.target_language)
+            .field("text_network_proxy", &self.text_network_proxy)
             .field("translation_mode", &self.translation_mode)
             .field("network_proxy", &self.network_proxy)
             .finish()
@@ -91,6 +94,7 @@ impl LiveTranslationConfiguration {
             target_language,
             translation_mode,
             network_proxy: ProxyConfig::default(),
+            text_network_proxy: ProxyConfig::default(),
         }
     }
 
@@ -109,11 +113,19 @@ impl LiveTranslationConfiguration {
             target_language,
             translation_mode,
             network_proxy: ProxyConfig::default(),
+            text_network_proxy: ProxyConfig::default(),
         }
     }
 
     pub fn with_network_proxy(mut self, network_proxy: ProxyConfig) -> Self {
+        self.text_network_proxy = network_proxy.clone();
         self.network_proxy = network_proxy;
+        self
+    }
+
+    pub fn with_stage_network_proxies(mut self, speech: ProxyConfig, text: ProxyConfig) -> Self {
+        self.network_proxy = speech;
+        self.text_network_proxy = text;
         self
     }
 
@@ -147,6 +159,7 @@ impl LiveTranslationConfiguration {
     /// Returns a trimmed, validated copy of the configuration.
     pub fn validated(&self) -> Result<Self, LiveTranslationConfigurationError> {
         let network_proxy = self.network_proxy.validate()?;
+        let text_network_proxy = self.text_network_proxy.validate()?;
         let credentials = self.credentials.validated_for(self.provider)?;
 
         let text_credentials =
@@ -189,12 +202,39 @@ impl LiveTranslationConfiguration {
             target_language: self.target_language,
             translation_mode,
             network_proxy,
+            text_network_proxy,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn independent_routes_are_validated_immutable_and_redacted() {
+        use crate::core::network_proxy::ProxyMode;
+        let speech = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some("http://private-speech.example:7890".into()),
+        };
+        let text = ProxyConfig {
+            mode: ProxyMode::Direct,
+            url: None,
+        };
+        let mut configuration = config("synthetic-key", SourceLanguage::English)
+            .with_stage_network_proxies(speech.clone(), text.clone());
+        let resolved = configuration.validated().unwrap();
+        assert_eq!(resolved.network_proxy.mode, speech.mode);
+        assert_eq!(resolved.text_network_proxy, text);
+        configuration.text_network_proxy = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some("http://user:private-value@localhost".into()),
+        };
+        assert!(configuration.validated().is_err());
+        assert_eq!(resolved.text_network_proxy.mode, ProxyMode::Direct);
+        assert!(!format!("{configuration:?}").contains("private-value"));
+        assert!(!format!("{resolved:?}").contains("private-speech"));
+    }
+
     use super::*;
 
     #[test]

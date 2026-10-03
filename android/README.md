@@ -137,7 +137,7 @@ it demonstrates the labeled sample, not live translation.
 ## Independent text translation
 
 In Services → Alibaba Cloud, **Text translation** offers the built-in translation,
-**DeepL**, **DeepLX**, **ChatMock**, **OpenAI compatible**, and **No translation (original only)**.
+**DeepL**, **DeepLX**, **ChatMock**, **OpenAI-compatible API**, and **No translation (original only)**.
 Independent modes use Alibaba Cloud's `qwen3-asr-flash-realtime` for recognition; the selected
 text service translates confirmed text. Original-only mode makes no text translation request.
 Enable that ASR model for your Alibaba key. Other speech providers keep their built-in translation. This is not an OpenAI Realtime endpoint override.
@@ -149,10 +149,10 @@ Enable that ASR model for your Alibaba key. Other speech providers keep their bu
   and return integer `code: 200` with translated text in `data`.
 - **ChatMock** starts with `http://127.0.0.1:8000/v1`. Enter a model ID from your running
   server; Mimi does not choose a model or enable local HTTP for you.
-- **OpenAI compatible** takes your service endpoint, model and optional key, with no
+- **OpenAI-compatible API** takes your service endpoint, model and optional key, with no
   ChatMock address prefilled. Each translator retains its own encrypted configuration.
 
-The old combined entry remains **OpenAI compatible**, including its selected state,
+The old combined entry remains **OpenAI-compatible API**, including its selected state,
 endpoint, model and key. Nothing is copied to the new ChatMock entry or inferred from a
 localhost URL. Select ChatMock and configure it separately to use the new entry.
 

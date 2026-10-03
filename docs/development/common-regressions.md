@@ -46,6 +46,14 @@ Rules:
   the prepared macOS assets and publishes only after both platforms pass.
 - Keep only one live mimi copy while testing. Confirm its executable path, not
   just the process name, before diagnosing shortcuts, windows, or permissions.
+- All worktrees install to the same development path. A later launch from
+  another worktree can replace the package, including with an older UI-only
+  build, even when the application name, version and signing identity match.
+  Coordinate canonical installs during acceptance; the install lock does not
+  reserve the app for the rest of a testing session. If controls disappear,
+  inspect the running window's mode, package modification time and build log,
+  then relaunch the intended worktree. Do not reset preferences or permissions
+  to repair a package mismatch.
 
 ## Know which prompt appeared
 
@@ -137,6 +145,13 @@ translated output. Record only timing/counts/status, never speech or subtitles.
 
 ## Overlay and UI checks
 
+- Moving a control between windows also requires updating its Tauri command
+  permissions. Settings audio switches once invoked a command authorized only
+  for the floating panel, so browser tests passed while native clicks failed.
+  Check the actual calling windows and exercise both in the signed app.
+- Searchable popups must scroll their result list directly. `scrollIntoView`
+  can scroll a clipped ancestor in WebKit and hide rows below the search field;
+  pointer hover must not move the list. Check a long list and keyboard search.
 - Language menus in settings, the subtitle controls and the tray use the full
   `sourceLanguagesForSettings` route catalog and the shared `LanguageSelect`.
   Keep the same choices, order and localized names; use search/scrolling for a

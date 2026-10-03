@@ -40,6 +40,8 @@ interface TimelineProps {
   /** Optional metadata; hidden by default so sentence boundaries lead. */
   showTimestamps?: boolean;
   showSubtitleDividers?: boolean;
+  keepTextOpaque?: boolean;
+  microphoneColor?: SubtitleColor;
   blendsWithBackground?: boolean;
   /** Resolved motion setting: gates the roll-up glide. */
   motionEnabled?: boolean;
@@ -62,6 +64,8 @@ export const Timeline = memo(function Timeline({
   motionEnabled = true,
   showTimestamps = false,
   showSubtitleDividers = false,
+  keepTextOpaque = false,
+  microphoneColor = "yellow",
   followTailRequest = 0,
   onReadingHistoryChange,
 }: TimelineProps) {
@@ -217,7 +221,8 @@ export const Timeline = memo(function Timeline({
         // Only a sentence that appears for the first time animates in. A
         // committed utterance replaces the live row it was already visible as,
         // so animating it again would blink the text the user is reading.
-        const entering = block.presentation === "live";
+        const sourceColor = block.audioSource === "microphone" ? microphoneColor : color;
+        const entering = !keepTextOpaque && block.presentation === "live";
         // Two independent live sources share the visible lane budget, so a
         // long microphone preview cannot push system speech out of view.
         const blockViewportHeight = viewportHeight === null ? null
@@ -294,7 +299,7 @@ export const Timeline = memo(function Timeline({
             <div style={{ display: "flex", gap: block.audioSource ? 10 : 0, alignItems: "flex-start" }}>
               {block.audioSource && <span className="subtitle-audio-source" style={{
                 fontSize, lineHeight: SUBTITLE_LINE_HEIGHT, fontWeight: 500, flexShrink: 0,
-                color: "rgba(255,255,255,0.78)", textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
+                color: hexToRgba(subtitleColorHex(sourceColor), keepTextOpaque ? 1 : 0.78), textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
               }}>{block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}</span>}
             <div style={{ display: "flex", flexDirection: "column", gap: laneGap, minWidth: 0, flex: 1 }}>
               {block.source !== null && displayMode !== "translation" ? (
@@ -305,10 +310,12 @@ export const Timeline = memo(function Timeline({
                   fontSize={fontSize}
                   alignment={alignment}
                   displayMode={displayMode}
-                  color={color}
+                  color={sourceColor}
+                  tintReference={block.audioSource != null}
                   blendsWithBackground={blendsWithBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
+                  keepTextOpaque={keepTextOpaque}
                   sourceScale={sourceScale}
                   onMeasure={height => measureLane("source", height)}
                 />
@@ -321,17 +328,19 @@ export const Timeline = memo(function Timeline({
                   fontSize={fontSize}
                   alignment={alignment}
                   displayMode={displayMode}
-                  color={color}
+                  color={sourceColor}
+                  tintReference={block.audioSource != null}
                   blendsWithBackground={blendsWithBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
+                  keepTextOpaque={keepTextOpaque}
                   onMeasure={height => measureLane("translation", height)}
                 />
               ) : null}
             </div>
             </div>
-            {/* The separator belongs to the sentence above: it fades and
-                scrolls away with it, and Immersive Mode keeps space only. */}
+            {/* The separator scrolls with the sentence above;
+                Immersive Mode keeps space only. */}
             {showSubtitleDividers && !isLast && !blendsWithBackground ? (
               <div
                 aria-hidden="true"
@@ -367,6 +376,8 @@ interface LaneProps {
   hidden?: boolean;
   onMeasure?: (height: number) => void;
   sourceScale?: number;
+  tintReference?: boolean;
+  keepTextOpaque?: boolean;
 }
 
 function Lane({
@@ -383,6 +394,8 @@ function Lane({
   hidden = false,
   onMeasure,
   sourceScale = SUBTITLE_SOURCE_SCALE,
+  tintReference = false,
+  keepTextOpaque = false,
 }: LaneProps) {
   const isSource = kind === "source";
   // In bilingual mode the recognized original is the reference lane: neutral
@@ -394,7 +407,7 @@ function Lane({
   const textStyle = {
     fontSize: laneFontSize,
     fontWeight: isReference ? 400 : 500,
-    color: hexToRgba(isReference ? "#FFFFFF" : subtitleColorHex(color), isReference ? 0.86 : 1),
+    color: hexToRgba(isReference && !tintReference ? "#FFFFFF" : subtitleColorHex(color), isReference && !keepTextOpaque ? 0.86 : 1),
     lineHeight: `${lineHeightPx}px`,
     overflowWrap: "break-word" as const,
     textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,

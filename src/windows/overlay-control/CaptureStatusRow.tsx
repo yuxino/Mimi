@@ -2,9 +2,12 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { capturePresentation, captureStatusForSource, captureSwitchCopy, type CaptureStatus } from "../../lib/captureStatus";
 import { audioInputErrorMessage } from "../../lib/audioInput";
+import { applicationAudioError } from "../../lib/applicationAudio";
+import { audioSourceErrorMessage } from "../../lib/windowsAudioSource";
 import { isTauri } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
 import { Icon } from "../../components/Icon";
+import { ApplicationAudioPicker } from "../../components/ApplicationAudioPicker";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import type { AudioInput, AudioSource } from "../../lib/types";
 import { SettingsHelp } from "../settings/SettingsHelp";
@@ -16,6 +19,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
   const id = useId();
   const [snapshot, setSnapshot] = useState<{ stamp: object; value: CaptureStatus } | null>(null);
   const [pending, setPending] = useState(false);
+  const [targetPending, setTargetPending] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const switching = useRef(false);
   const disposed = useRef(false);
@@ -24,8 +28,9 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
   const paused = useStore(state => state.session.isPaused);
   const kind = useStore(state => state.session.status.kind);
   const input = useStore(state => state.settings.audioInput) ?? "system";
+  const target = useStore(state => state.settings.systemAudioTarget);
   const switchAudioInput = useStore(state => state.switchAudioInput);
-  const stamp = useMemo(() => ({ input, kind, active, paused }), [input, kind, active, paused]);
+  const stamp = useMemo(() => ({ input, target, kind, active, paused }), [input, target, kind, active, paused]);
   useEffect(() => {
     disposed.current = false;
     return () => { disposed.current = true; };
@@ -50,7 +55,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
   const language = effectiveUiLanguage();
   const copy = captureSwitchCopy(language);
   const lifecycle = { status: kind === "error" ? { kind, message: "" } : { kind }, isActive: active, isPaused: paused };
-  const locked = !ready || disabled || pending || kind === "connecting" || kind === "stopping";
+  const locked = !ready || disabled || pending || targetPending || kind === "connecting" || kind === "stopping";
   const toggle = async (source: AudioSource) => {
     if (locked || switching.current || input === source) return;
     const next: AudioInput = input === "both" ? source === "system" ? "microphone" : "system" : "both";
@@ -61,13 +66,13 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
       await switchAudioInput(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-      if (!disposed.current) setOperationError(audioInputErrorMessage(message) ?? copy.switchFailed);
+      if (!disposed.current) setOperationError(applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? copy.switchFailed);
     } finally {
       switching.current = false;
       if (!disposed.current) setPending(false);
     }
   };
-  return <div className="overlay-control-capture" aria-label={I18N.settings.audioInputTitle} aria-busy={pending}>
+  return <div className="overlay-control-capture" aria-label={I18N.settings.audioInputTitle} aria-busy={pending || targetPending}>
     {SOURCES.map(source => {
       const enabled = input === "both" || input === source;
       const text = capturePresentation(captureStatusForSource(current, input, source), lifecycle, language, source, enabled);
@@ -91,6 +96,9 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
           className={`overlay-control-setting overlay-control-capture__toggle${enabled ? " is-on" : ""}`}
           onClick={() => void toggle(source)}
         ><span className="overlay-control-switch" aria-hidden="true"><span /></span></button>
+        {source === "system" && enabled && <span className="overlay-control-capture__application">
+          <ApplicationAudioPicker disabled={locked} onBusyChange={setTargetPending} />
+        </span>}
       </div>;
     })}
     {operationError && <div className="overlay-control-alert" role="alert"><Icon name="exclamation-triangle" /><span>{operationError}</span></div>}

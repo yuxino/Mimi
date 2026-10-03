@@ -80,9 +80,22 @@ it("guards duplicate saves and reports a safe failure without pretending the cho
 
 it("explains a session lock separately from a transient connection check", async () => {
   await render(true);
-  expect(host.querySelectorAll('button:disabled')).toHaveLength(2);
+  expect(host.querySelectorAll('button:disabled')).toHaveLength(3);
   expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
   await render(true, true);
   expect(host.textContent).toContain(I18N.settings.languageChangeRequiresStop);
   expect(save).not.toHaveBeenCalled();
+});
+
+it("persists skipping translation as Original, restores the previous target, and keeps source-language help compact", async () => {
+  await render();
+  expect(host.querySelector('.settings-help-control__description')?.textContent).toBe(I18N.settings.recognitionLanguageHelp);
+  const toggle = () => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.skipTranslation}"]`)!;
+  await act(async () => toggle().click());
+  expect(save).toHaveBeenCalledWith({ targetLanguage: "original" });
+  settings = { ...settings, targetLanguage: "original" }; await render();
+  expect(toggle().getAttribute("aria-checked")).toBe("true");
+  expect(host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.settings.translateTo}"]`)!.disabled).toBe(true);
+  await act(async () => toggle().click());
+  expect(save).toHaveBeenLastCalledWith({ targetLanguage: "en" });
 });

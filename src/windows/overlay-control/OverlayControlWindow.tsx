@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import {
   isTauri,
   listenOverlayControlMode,
@@ -41,10 +42,23 @@ export function OverlayControlWindow() {
   );
   const settings = useStore((state) => state.settings);
   const switchSourceLanguage = useStore((state) => state.switchSourceLanguage);
+  const switchTargetLanguage = useStore((state) => state.switchTargetLanguage);
   const saveSettings = useStore((state) => state.saveSettings);
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useState<OverlayControlMode>(initialPreviewMode);
+  const translationTarget = useRef({ profileId: settings.activeProfileId, language: settings.targetLanguage });
+  useEffect(() => {
+    if (translationTarget.current.profileId !== settings.activeProfileId || settings.targetLanguage !== "original") {
+      translationTarget.current = { profileId: settings.activeProfileId, language: settings.targetLanguage };
+    }
+  }, [settings.activeProfileId, settings.targetLanguage]);
+  const setSkipTranslation = async (enabled: boolean) => {
+    const targets = targetLanguagesForSettings(settings);
+    const previous = translationTarget.current.profileId === settings.activeProfileId ? translationTarget.current.language : "original";
+    const target = enabled ? "original" : previous !== "original" && targets.includes(previous) ? previous : targets.find(language => language !== "original");
+    if (target) await switchTargetLanguage(target);
+  };
 
   const toggle = useCallback(() => {
     if (isTauri) {
@@ -140,6 +154,8 @@ export function OverlayControlWindow() {
           isStopping={sessionStatusKind === "stopping"}
           onDismiss={dismiss}
           onSwitchSourceLanguage={switchSourceLanguage}
+          onSetSkipTranslation={setSkipTranslation}
+          onSetTextOpaque={(keepSubtitleTextOpaque) => saveSettings({ keepSubtitleTextOpaque })}
           onSetSubtitleDisplayMode={(subtitleDisplayMode) => saveSettings({ subtitleDisplayMode })}
           onSetImmersiveMode={(subtitleBlendsWithBackground) =>
             saveSettings({ subtitleBlendsWithBackground })

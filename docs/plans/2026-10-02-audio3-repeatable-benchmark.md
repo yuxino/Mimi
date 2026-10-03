@@ -58,8 +58,8 @@ Use a manifest object with a `clips` array, at most ten entries:
   "clips": [
     {
       "label": "speech-en",
-      "pcm_path": "/private/tmp/mimi-real-corpus/speech-en.pcm",
-      "reference_path": "/private/tmp/mimi-real-corpus/speech-en.txt",
+      "pcm_path": "/path/to/public-corpus/speech-en.pcm",
+      "reference_path": "/path/to/public-corpus/speech-en.txt",
       "language": "English",
       "unit": "word"
     }
@@ -203,8 +203,11 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib audio3_benchmark -- --skip
 
 Explicit paid invocation, after stopping native provider activity:
 
+Replace `/path/to/public-corpus` with the absolute directory containing the
+prepared public fixtures and manifest.
+
 ```sh
-MIMI_ASR_BENCH_MANIFEST=/private/tmp/mimi-real-corpus/manifest.json \
+MIMI_ASR_BENCH_MANIFEST=/path/to/public-corpus/manifest.json \
 cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials \
   --lib audio3_benchmark::manual_same_pcm_asr_comparison -- --ignored --exact --nocapture
 ```
@@ -214,7 +217,7 @@ only one arm. The fourth arm requires explicit selection:
 
 ```sh
 MIMI_ASR_BENCH_ARM=realtime-asr \
-MIMI_ASR_BENCH_MANIFEST=/private/tmp/mimi-real-corpus/manifest.json \
+MIMI_ASR_BENCH_MANIFEST=/path/to/public-corpus/manifest.json \
 cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials \
   --lib audio3_benchmark::manual_same_pcm_asr_comparison -- --ignored --exact --nocapture
 ```
@@ -222,4 +225,44 @@ cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials
 Omitting it runs all three in the above order. Keep the same prepared PCM files,
 account/region, proxy and language hint, then repeat the winner/baseline in reverse
 order before attributing a difference to configuration. No provider run has been
-performed by the implementation agent.
+performed by the original implementation agent. Later measured comparisons
+are recorded separately in development notes.
+
+## Recognition-first denoising candidate
+
+`MIMI_ASR_BENCH_DENOISE` accepts only `bypass` (the default) or `speex-mild`.
+Every per-clip ASR report includes `input_processing`. Selecting `speex-mild`
+filters fixed input PCM with the already linked SpeexDSP preprocessor, using
+20 ms frames, mild -12 dB noise suppression and no speech gate. Its one-frame
+overlap is flushed and startup delay compensated before paced upload; the
+exact sample count, reference, language hint, model and protocol stay the same.
+This is test-only and does not enable denoising in the application.
+
+An explicit offline CPU evaluation is available without credentials or network:
+
+```sh
+MIMI_ASR_BENCH_MANIFEST=/path/to/public-corpus/manifest.json \
+cargo test --manifest-path src-tauri/Cargo.toml --lib \
+  audio3_benchmark::denoising::manual_public_corpus_cpu_comparison \
+  -- --ignored --exact --nocapture
+```
+
+`DENOISE_BENCH_JSON` reports public fixture labels, sample counts and numeric
+timings only. Frame CPU time, 20 ms overlap delay and up to 20 ms frame assembly
+are different boundaries. Offline preprocessing is completed before the ASR
+clock starts; its CPU result is not capture-to-visible latency. Recognition
+acceptance still requires an authorized, completed bypass/candidate ASR pair.
+
+An optional clip `preparation` field accepts only `raw` (default),
+`resample-roundtrip`, or `deepfilter12`. Every report includes
+`fixture_preparation`, independently of `input_processing`. Prepared fixtures
+must use in-benchmark `bypass`; combining them with Speex fails before credentials
+are read or a provider connection starts. Preparation labels identify a supplied
+fixture, not proof that its external processor was implemented correctly.
+
+Reference evaluation reports substitutions, insertions and deletions in addition
+to total edit distance. It retains only the bounded public reference and two
+numeric rows, without saving recognized text. Ties between minimum alignments
+prefer fewer deletions, then insertions; reference edits are not semantic proof
+of capture loss. Actual candidate regressions and preparation/timing limits are
+recorded in [the denoising results](../development/2026-10-03-asr-denoising-results.md).

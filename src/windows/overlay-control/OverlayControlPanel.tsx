@@ -1,3 +1,4 @@
+import { SettingsHelp } from "../settings/SettingsHelp";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { Select } from "../../components/Select";
 import { LanguageSelect } from "../../components/LanguageSelect";
@@ -27,6 +28,8 @@ import type { OverlayControlPanelModel } from "./overlayControlModel";
 type PendingAction =
   | "display"
   | "source"
+  | "translation"
+  | "opacity"
   | "immersive"
   | "lock"
   | "settings";
@@ -42,6 +45,8 @@ interface OverlayControlPanelProps {
   isStopping?: boolean;
   onDismiss: () => void;
   onSwitchSourceLanguage: (language: SourceLanguage) => Promise<void>;
+  onSetSkipTranslation: (enabled: boolean) => Promise<void>;
+  onSetTextOpaque: (enabled: boolean) => Promise<void>;
   onSetSubtitleDisplayMode: (mode: SubtitleDisplayMode) => Promise<void>;
   onSetImmersiveMode: (enabled: boolean) => Promise<void>;
   onSetOverlayLocked: (locked: boolean) => Promise<void>;
@@ -59,6 +64,8 @@ export function OverlayControlPanel({
   isStopping = false,
   onDismiss,
   onSwitchSourceLanguage,
+  onSetSkipTranslation,
+  onSetTextOpaque,
   onSetSubtitleDisplayMode,
   onSetImmersiveMode,
   onSetOverlayLocked,
@@ -166,7 +173,7 @@ export function OverlayControlPanel({
 
         {model.sourceOptions.length > 0 && (
           <div ref={sourceControlRef} className="overlay-control-picker">
-            <span>{I18N.overlay.sourceLanguage}</span>
+            <span>{I18N.overlay.sourceLanguage} <SettingsHelp text={I18N.settings.recognitionLanguageHelp} label={I18N.settings.helpLabel} /></span>
             <LanguageSelect
               label={I18N.overlay.sourceLanguage}
               value={settings.sourceLanguage}
@@ -181,6 +188,20 @@ export function OverlayControlPanel({
         )}
 
         <div className="overlay-control-divider" />
+
+        {model.canSkipTranslation && <button
+          type="button"
+          role="switch"
+          aria-checked={settings.targetLanguage === "original"}
+          aria-label={I18N.settings.skipTranslation}
+          className={`overlay-control-setting${settings.targetLanguage === "original" ? " is-on" : ""}`}
+          disabled={!canChangeSessionSettings}
+          onClick={() => performAction("translation", () => onSetSkipTranslation(settings.targetLanguage !== "original"), false)}
+        >
+          <span className="overlay-control-setting__icon" aria-hidden="true"><Icon name="languages" /></span>
+          <span className="overlay-control-setting__copy"><strong>{I18N.settings.skipTranslation}</strong></span>
+          <span className="overlay-control-switch" aria-hidden="true"><span /></span>
+        </button>}
 
         <button
           ref={immersiveRef}
@@ -205,6 +226,18 @@ export function OverlayControlPanel({
           <span className="overlay-control-switch" aria-hidden="true">
             <span />
           </span>
+        </button>
+
+        <button type="button" role="switch"
+          aria-checked={settings.keepSubtitleTextOpaque ?? false}
+          aria-label={I18N.settings.keepSubtitleTextOpaque}
+          className={`overlay-control-setting${settings.keepSubtitleTextOpaque ? " is-on" : ""}`}
+          disabled={pendingAction !== null}
+          onClick={() => performAction("opacity", () => onSetTextOpaque(!settings.keepSubtitleTextOpaque), false)}
+        >
+          <span className="overlay-control-setting__icon" aria-hidden="true"><Icon name="captions-bubble" /></span>
+          <span className="overlay-control-setting__copy"><strong>{I18N.settings.keepSubtitleTextOpaque}</strong></span>
+          <span className="overlay-control-switch" aria-hidden="true"><span /></span>
         </button>
 
         <button

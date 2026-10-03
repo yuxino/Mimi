@@ -187,34 +187,34 @@ it("reveals a saved translation key only on demand and clears it on blur or a hi
   await render({ ...props, profile: { ...profile, textTranslation: "deepL" } });
   expect(profileRevealCredential).not.toHaveBeenCalled();
   expect(host.querySelector(".service-stage--translation .stored-credential-reveal button")).not.toBeNull();
-  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal input")).toBeNull();
   vi.mocked(profileRevealCredential).mockResolvedValue("synthetic-saved-deepl-key");
-  await act(async () => { host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click(); });
+  await act(async () => { host.querySelector<HTMLButtonElement>(".service-stage--translation .stored-credential-reveal button")!.click(); });
   expect(profileRevealCredential).toHaveBeenCalledExactlyOnceWith({ profileId: profile.id, field: "token", textTranslation: "deepL" });
-  expect(host.querySelector<HTMLInputElement>(".stored-credential-reveal input")!.value).toBe("synthetic-saved-deepl-key");
+  expect(host.querySelector<HTMLInputElement>(".service-stage--translation .stored-credential-reveal input")!.value).toBe("synthetic-saved-deepl-key");
   expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("");
   expect(props.onSave).not.toHaveBeenCalled();
   await act(() => window.dispatchEvent(new Event("blur")));
-  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
-  await act(async () => { host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click(); });
-  expect(host.querySelector<HTMLInputElement>(".stored-credential-reveal input")!.value).toBe("synthetic-saved-deepl-key");
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal input")).toBeNull();
+  await act(async () => { host.querySelector<HTMLButtonElement>(".service-stage--translation .stored-credential-reveal button")!.click(); });
+  expect(host.querySelector<HTMLInputElement>(".service-stage--translation .stored-credential-reveal input")!.value).toBe("synthetic-saved-deepl-key");
   await render({ ...props, visible: false });
-  expect(host.querySelector(".stored-credential-reveal")).toBeNull();
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal")).toBeNull();
   await render({ ...props, visible: true });
-  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal input")).toBeNull();
 });
 
 it("discards an in-flight saved DeepL reveal when the draft selects another route", async () => {
   let complete!: (value: string) => void;
   vi.mocked(profileRevealCredential).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
   await render({ ...props, profile: { ...profile, textTranslation: "deepL" } });
-  await act(() => host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click());
+  await act(() => host.querySelector<HTMLButtonElement>(".service-stage--translation .stored-credential-reveal button")!.click());
   await chooseTranslation("deepLX");
   await act(async () => { complete("synthetic-old-route-key"); });
-  expect(host.querySelector(".stored-credential-reveal")).toBeNull();
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal")).toBeNull();
   expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("");
   await chooseTranslation("deepL");
-  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
+  expect(host.querySelector(".service-stage--translation .stored-credential-reveal input")).toBeNull();
   expect(profileRevealCredential).toHaveBeenCalledOnce();
 });
 
@@ -289,9 +289,10 @@ it("adds an OpenAI-compatible destination without repeating the saved recognitio
   expect(profileRevealCredential).not.toHaveBeenCalled();
 });
 
-it("keeps saved OpenAI-compatible fields write-only and permits changing only the model", async () => {
+it("keeps saved OpenAI-compatible values unread until revealed and permits changing only the model", async () => {
   await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" } });
-  expect(host.querySelector(".stored-credential-reveal")).toBeNull();
+  expect(host.querySelectorAll(".stored-credential-reveal button")).toHaveLength(2);
+  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
   expect(profileRevealCredential).not.toHaveBeenCalled();
   expect(host.querySelector<HTMLInputElement>("#test-model")!.placeholder).toBe(I18N.settings.savedTranslationModelPlaceholder);
   await change("#test-model", "new-model"); await submit();
@@ -453,4 +454,17 @@ it("never replaces a saved ChatMock destination with the local preset on reopen"
   await change("#test-model", "new-model"); await submit();
   expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "chatMock", endpoint: "", token: "", model: "new-model" });
   expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it.each(["openAICompatible", "chatMock"] as const)("reveals each saved %s key independently without replacing its draft", async route => {
+  await render({ ...props, profile: { ...profile, textTranslation: route } });
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  vi.mocked(profileRevealCredential).mockResolvedValueOnce("synthetic-recognition-key").mockResolvedValueOnce("synthetic-translation-key");
+  await act(async () => host.querySelector<HTMLButtonElement>('.service-stage:not(.service-stage--translation) .stored-credential-reveal button')!.click());
+  expect(profileRevealCredential).toHaveBeenLastCalledWith({ profileId: profile.id, field: "apiKey" });
+  await act(async () => host.querySelector<HTMLButtonElement>('.service-stage--translation .stored-credential-reveal button')!.click());
+  expect(profileRevealCredential).toHaveBeenLastCalledWith({ profileId: profile.id, field: "token", textTranslation: route });
+  expect(host.querySelector<HTMLInputElement>("#test-token")!.value).toBe("");
+  expect(host.querySelector<HTMLInputElement>(".service-stage--translation .stored-credential-reveal input")!.value).toBe("synthetic-translation-key");
+  expect(props.onSave).not.toHaveBeenCalled();
 });

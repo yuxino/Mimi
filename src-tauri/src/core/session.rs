@@ -336,10 +336,9 @@ impl TranslationSessionController {
 
     /// Reconfigure a live/paused session without erasing confirmed subtitles
     /// or opt-in transcript history. Old transport previews cannot survive.
+    /// The same source selection may now capture a different application;
+    /// every accepted capture restart needs fresh provider ID watermarks.
     pub fn reconfigure_audio_input(&mut self, audio_input: AudioInput) {
-        if self.audio_input == audio_input {
-            return;
-        }
         let status = self.state.status.clone();
         for source in &mut self.sources {
             source.begin_connecting();
@@ -1105,6 +1104,42 @@ mod dual_source_tests {
         assert_eq!(
             controller.state.subtitles.history[2].audio_source,
             AudioSource::Microphone
+        );
+    }
+
+    #[test]
+    fn application_capture_restart_preserves_history_and_reaccepts_fresh_provider_ids() {
+        let mut controller = TranslationSessionController::default();
+        controller.did_connect();
+        controller.archive_mut().begin(true, 0);
+        let pair = |text: &str| LiveTranslateServerEvent::SubtitleConfirmedPair {
+            source_utterance_id: Some(1),
+            utterance_id: 1,
+            source: text.into(),
+            translation: "Synthetic translation".into(),
+            language: Some("en".into()),
+        };
+        controller.handle_from(AudioSource::System, pair("Synthetic first application"));
+        let history = controller.state.subtitles.history.clone();
+        let transcript = controller.archive().export();
+        controller.handle_from(
+            AudioSource::System,
+            LiveTranslateServerEvent::SourceDraft {
+                text: "Synthetic obsolete draft".into(),
+                language: Some("en".into()),
+            },
+        );
+        // App A -> B retains AudioInput::System, but starts a fresh provider.
+        controller.reconfigure_audio_input(AudioInput::System);
+        assert_eq!(controller.state.status, SessionStatus::Listening);
+        assert_eq!(controller.state.subtitles.history, history);
+        assert_eq!(controller.archive().export(), transcript);
+        assert!(!controller.state.subtitles.source.text.contains("obsolete"));
+        controller.handle_from(AudioSource::System, pair("Synthetic second application"));
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        assert_eq!(
+            controller.state.subtitles.history[1].source,
+            "Synthetic second application"
         );
     }
 

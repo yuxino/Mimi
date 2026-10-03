@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { I18N } from "../../lib/i18n";
 import { DEFAULT_NETWORK_PROXY, networkProxyConfigKey, validateNetworkProxy, type NetworkProxyValidationError } from "../../lib/networkProxy";
 import type { NetworkProxyConfig, NetworkProxyMode } from "../../lib/types";
+import { ConfigInput } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
 import { InlineFeedback, SettingsRow, SettingsSection, SettingsSelect } from "./SettingsPrimitives";
 
@@ -19,13 +20,19 @@ function saveErrorMessage(error: unknown): string {
     case "network_proxy_invalid_url": return I18N.settings.networkProxyInvalidUrl;
     case "network_proxy_unsupported_scheme": return I18N.settings.networkProxyUnsupportedScheme;
     case "network_proxy_authentication_unsupported": return I18N.settings.networkProxyAuthenticationUnsupported;
-    case "network_proxy_change_requires_stop": return I18N.settings.networkProxyLocked;
+    case "network_proxy_change_requires_stop":
+    case "session-active":
+    case "Service profiles cannot be changed while a session is active.":
+    case "Listening settings cannot be changed while a session is active.": return I18N.settings.networkProxyLocked;
     case "network_proxy_builder_failed": return I18N.settings.networkProxyBuilderFailed;
     default: return I18N.settings.networkProxySaveFailed;
   }
 }
 
-export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, onSave }: {
+export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, onSave, label = I18N.settings.networkProxyMode, scope = I18N.settings.networkProxyScope, embedded = false }: {
+  label?: string;
+  scope?: string;
+  embedded?: boolean;
   value: NetworkProxyConfig;
   disabled: boolean;
   onSave: (config: NetworkProxyConfig) => Promise<void>;
@@ -73,11 +80,11 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
     }
   };
 
-  return <SettingsSection id="network-proxy" title={I18N.settings.networkProxyTitle}>
+  const control = <>
     <form className="network-proxy-form" aria-busy={busy} onSubmit={(event) => { void save(event); }}>
-      <SettingsRow label={I18N.settings.networkProxyMode} align="start">
-        <SettingsHelp id={`${addressId}-help`} text={[I18N.settings.networkProxyScope, help, ...(disabled ? [I18N.settings.networkProxyLocked] : [])].join("\n")} label={I18N.settings.helpLabel} />
-        <SettingsSelect label={I18N.settings.networkProxyMode} value={mode} disabled={locked}
+      <SettingsRow label={label} align="start">
+        <SettingsHelp id={`${addressId}-help`} text={[scope, help, ...(disabled ? [I18N.settings.networkProxyLocked] : [])].join("\n")} label={I18N.settings.helpLabel} />
+        <SettingsSelect label={label} value={mode} disabled={locked}
           options={[
             { value: "system", label: I18N.settings.networkProxySystem },
             { value: "direct", label: I18N.settings.networkProxyDirect },
@@ -87,8 +94,8 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
       </SettingsRow>
       {mode === "custom" && <div className="settings-field network-proxy-address">
         <label htmlFor={addressId}>{I18N.settings.networkProxyAddress}</label>
-        <input id={addressId} value={address} type="text" inputMode="url" maxLength={2_048} autoComplete="off" spellCheck={false}
-          disabled={locked} aria-describedby={`${addressId}-help`} placeholder="http://127.0.0.1:7890" onChange={(event) => { setAddress(event.target.value); setFeedback(null); }} />
+        <ConfigInput id={addressId} value={address} type="text" inputMode="url" maxLength={2_048} autoComplete="off" spellCheck={false}
+          disabled={locked} aria-describedby={`${addressId}-help`} placeholder="http://127.0.0.1:7890" onValueChange={(value) => { setAddress(value); setFeedback(null); }} />
       </div>}
       {(changed || busy || feedback) && <div className="network-proxy-actions">
         {(changed || busy) && <button type="submit" className="settings-button settings-button--quiet settings-button--compact" disabled={locked} aria-busy={busy || undefined}>
@@ -98,5 +105,6 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
         {feedback && <InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback>}
       </div>}
     </form>
-  </SettingsSection>;
+  </>;
+  return embedded ? control : <SettingsSection id="network-proxy" title={I18N.settings.networkProxyTitle}>{control}</SettingsSection>;
 }

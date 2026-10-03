@@ -37,6 +37,7 @@ Preserve these product constraints:
 
 ## Working agreements
 
+- Interactive controls with hover feedback must keep a pointer cursor across the overlay, control panel, tray panel and settings, including help controls. Preserve disabled/busy, text-input, slider and resize cursors. On macOS, verify the nonactivating overlay's native cursor path as well as CSS; a successful native cursor update does not guarantee WebKit will retain it on later movement.
 - Keep explanatory copy out of persistent small-print paragraphs. Use compact help icons with hover/focus tooltips for non-essential descriptions, protocol requirements, and storage details. Keep field labels, essential choices, and actionable errors visible at the normal interface text size. Do not add small text merely to fill space or explain an otherwise clear control.
 - Keep related action buttons compact, consistent, and right-aligned. Use existing icons. Configuration deletion uses a red destructive action and a standard confirmation dialog, never an expanding inline strip. Choosing a service type must not create a profile until the user confirms adding it. Display connection-check progress and results with the triggering action, including actual request duration; recognition and text translation have independent checks.
 - Read the relevant source and tests before changing behavior. For non-trivial behavior changes, add or update a design note in `docs/plans/`.

@@ -96,8 +96,9 @@
 .mimi-select__menu--searchable {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  overflow: hidden;
+  gap: 6px;
+  padding: 7px;
+  overflow: clip;
 }
 .mimi-select__search {
   flex-shrink: 0;
@@ -106,16 +107,16 @@
   min-width: 0;
   height: 34px;
   padding: 6px 10px;
-  border: 1px solid;
-  border-color: inherit;
+  border: 1px solid transparent;
   border-radius: 5px;
   color: inherit;
-  background: transparent;
+  background: var(--select-hover);
   font: inherit;
 }
 .mimi-select__search::placeholder { color: inherit; opacity: 0.55; }
-.mimi-select__search:focus { outline: 1px solid currentColor; outline-offset: -1px; }
+.mimi-select__search:focus { border-color: inherit; outline: none; }
 .mimi-select__options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.mimi-select__menu--searchable .mimi-select__option { min-height: 32px; padding: 6px 9px; }
 .mimi-select__empty { padding: 10px; opacity: 0.65; }
 @media (forced-colors: active) {
   .mimi-select__menu { background: Canvas !important; color: CanvasText !important; border-color: CanvasText !important; }

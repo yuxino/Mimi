@@ -5,7 +5,7 @@
     <string name="translation_speech_help_title">Speech service help</string>
     <string name="translation_builtin">Alibaba Cloud (built-in)</string>
     <string name="translation_chatmock">ChatMock</string>
-    <string name="translation_openai_compatible">OpenAI compatible</string>
+    <string name="translation_openai_compatible">OpenAI-compatible API</string>
     <string name="translation_endpoint">Translation URL</string>
     <string name="translation_model">Translation model</string>
     <string name="translation_key">Translation API key</string>

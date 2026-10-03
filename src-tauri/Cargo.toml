@@ -53,6 +53,7 @@ aec-rs-sys = "=1.0.0"
 tauri-plugin-dialog = "2"
 time = "0.3"
 tempfile = "3"
+tauri-plugin-clipboard-manager = "2"
 
 [dev-dependencies]
 minisign-verify = "0.2.5"

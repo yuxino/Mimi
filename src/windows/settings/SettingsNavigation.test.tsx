@@ -64,7 +64,7 @@ it.each(["zh", "en", "ja"] as const)("offers five categories in the expected ord
   expect(host.querySelector("#subtitle-settings .source-language-grid")).toBeNull();
   expect(host.querySelector("#subtitle-settings [aria-label=\"" + I18N.settings.translateTo + "\"]")).toBeNull();
   expect(host.querySelector("#translation-languages")).toBeNull();
-  expect(host.querySelector("#service-profiles-panel #network-proxy")).not.toBeNull();
+  expect(host.querySelector("#service-profiles-panel #network-proxy")).toBeNull();
   expect(host.querySelector(".settings-sidebar .settings-support-diagnostics")).toBeNull();
   for (const [category, description] of [
     ["subtitles", I18N.settings.subtitlePageDescription], ["service", I18N.settings.servicePageDescription],
@@ -72,7 +72,7 @@ it.each(["zh", "en", "ja"] as const)("offers five categories in the expected ord
     ["diagnostics", I18N.settings.diagnosticsPageDescription],
   ] as const) {
     await select(category);
-    expect(host.querySelector(".settings-session-card, #settings-session-status")).toBeNull();
+    expect(host.querySelector(".settings-session-card") !== null).toBe(category === "subtitles");
     expect(host.querySelector(".settings-page-header [role=switch], .settings-page-header kbd")).toBeNull();
     expect(host.querySelector(".settings-page-header .settings-help-control__description")?.textContent).toBe(description);
     expect(host.querySelector(".settings-page-header p")).toBeNull();
@@ -115,19 +115,24 @@ it("saves language choices and blocks them for active and paused subtitle sessio
   }
 });
 
-it("places global proxy controls with services and blocks changes while subtitles are paused", async () => {
+it("places independent proxy controls inside a service profile and blocks changes while subtitles are paused", async () => {
   await mount(); await select("service");
   expect(host.querySelector("#application-settings-panel #network-proxy")).toBeNull();
-  expect(host.querySelector("#service-profiles-panel #network-proxy")?.textContent).toContain(I18N.settings.networkProxyScope);
-  const selector = host.querySelector<HTMLButtonElement>('#network-proxy [role="combobox"]')!;
+  expect(host.querySelector(".service-proxies")).toBeNull();
+  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.querySelector("#service-profiles-panel .service-proxies")?.textContent).toContain(I18N.settings.networkProxySpeechScope);
+  expect(host.querySelectorAll('.service-proxies [role="combobox"]')).toHaveLength(2);
+  const selector = host.querySelector<HTMLButtonElement>('.service-proxies [role="combobox"]')!;
   expect(selector.disabled).toBe(false);
   await act(() => selector.click());
   await act(() => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === I18N.settings.networkProxyDirect)!.click());
-  await act(async () => host.querySelector("#network-proxy form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-  expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ networkProxy: { mode: "direct", url: null } });
+  await act(async () => host.querySelector(".service-proxies form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(saveSettings).not.toHaveBeenCalled();
+  expect(useStore.getState().settings.profiles[0]!.speechNetworkProxy).toEqual({ mode: "direct", url: null });
+  expect(useStore.getState().settings.profiles[0]!.textNetworkProxy).toBeUndefined();
   await act(() => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: false, isPaused: true } }));
   expect(selector.disabled).toBe(true);
-  expect(host.querySelector("#network-proxy")?.textContent).toContain(I18N.settings.networkProxyLocked);
+  expect(host.querySelector(".service-proxies")?.textContent).toContain(I18N.settings.networkProxyLocked);
 });
 
 it("clears a saved-value reveal when leaving services while preserving the unsaved replacement draft", async () => {
@@ -183,7 +188,7 @@ it("blocks placeholder session and credential controls while loading settings an
   expect(initialize).toHaveBeenCalledOnce();
   expect(document.activeElement).toBe(retry);
   await act(async () => { useStore.setState({ initializationStatus: "ready", initializationError: null, hasSettingsSnapshot: true }); });
-  expect(host.querySelector(".settings-session-card")).toBeNull();
+  expect(host.querySelector(".settings-session-card")).not.toBeNull();
   expect(host.textContent).not.toContain(I18N.settings.settingsSnapshotTimeout);
   expect(saveProfileCredentials).not.toHaveBeenCalled();
 });
@@ -244,4 +249,39 @@ it("saves background transparency, previews it and preserves it in immersive mod
   await act(() => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
   expect(slider.disabled).toBe(false);
   expect(slider.value).toBe("65");
+});
+
+it("restores subtitle opening and immersion controls and configures microphone color independently", async () => {
+  const start = vi.fn().mockResolvedValue(undefined);
+  useStore.setState({ start, session: { ...initial.session, status: { kind: "idle" }, isActive: false } });
+  await mount();
+  const switches = () => host.querySelectorAll<HTMLButtonElement>('.settings-session-card [role="switch"]');
+  expect(switches()).toHaveLength(2);
+  expect(switches()[1].disabled).toBe(true);
+  await act(async () => switches()[0].click());
+  expect(start).toHaveBeenCalledOnce();
+  await act(async () => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: true } }));
+  await act(async () => switches()[1].click());
+  expect(saveSettings).toHaveBeenCalledWith({ subtitleBlendsWithBackground: !initial.settings.subtitleBlendsWithBackground });
+  const microphone = host.querySelector(`[role="group"][aria-label="${I18N.settings.microphoneSubtitleColor}"]`)!;
+  await act(async () => microphone.querySelectorAll<HTMLButtonElement>("button")[2]!.click());
+  expect(saveSettings).toHaveBeenLastCalledWith({ microphoneSubtitleColor: "yellow" });
+  expect(host.querySelector(`[role="group"][aria-label="${I18N.settings.systemSubtitleColor}"]`)).not.toBeNull();
+});
+
+it("keeps an in-flight subtitle start owned when switching settings categories", async () => {
+  const start = vi.fn().mockResolvedValue(undefined);
+  useStore.setState({ start });
+  await mount();
+  const toggle = () => host.querySelector<HTMLButtonElement>('.settings-session-card [role="switch"]')!;
+  await act(async () => toggle().click());
+  expect(toggle().disabled).toBe(true);
+  await select("service");
+  expect(host.querySelector(".settings-session-card")).toBeNull();
+  await select("subtitles");
+  expect(toggle().disabled).toBe(true);
+  await act(async () => toggle().click());
+  expect(start).toHaveBeenCalledOnce();
+  await act(async () => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: true } }));
+  expect(toggle().disabled).toBe(false);
 });

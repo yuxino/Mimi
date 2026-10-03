@@ -321,11 +321,19 @@ impl HighQualityTranslationClient {
         self.asr_client.set_audio_pending_gate(gate);
     }
 
-    /// One immutable route is shared by ASR and the independent MT endpoint.
-    /// Applied only before the facade connects or installs this client.
+    #[cfg(test)]
     pub fn set_network(&mut self, network: ProviderNetwork) -> Result<(), ProviderNetworkError> {
-        self.asr_client.set_network(network.clone())?;
-        Arc::make_mut(&mut self.mt).set_network(network)
+        self.set_stage_networks(network.clone(), network)
+    }
+
+    /// Install independent immutable routes before connecting.
+    pub fn set_stage_networks(
+        &mut self,
+        speech: ProviderNetwork,
+        text: ProviderNetwork,
+    ) -> Result<(), ProviderNetworkError> {
+        self.asr_client.set_network(speech)?;
+        Arc::make_mut(&mut self.mt).set_network(text)
     }
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -2306,6 +2314,134 @@ fn clear_task_if_id(slot: &mut Option<TaskSlot>, task_id: u64) {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn facade_routes_recognition_and_translation_to_distinct_proxies() {
+        use crate::clients::translation_client::TranslationClient;
+        use crate::core::network_proxy::{ProxyConfig, ProxyMode};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let speech_proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let text_proxy = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let destination = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let destination_address = destination.local_addr().unwrap();
+        let speech_route = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some(format!("http://{}", speech_proxy.local_addr().unwrap())),
+        };
+        let text_route = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some(format!("http://{}", text_proxy.local_addr().unwrap())),
+        };
+        let configuration =
+            custom_configuration(ProviderKind::CustomDashScopeASR, TargetLanguage::Japanese)
+                .with_text_credentials(TextTranslationCredentials::OpenAICompatible {
+                    endpoint: format!("http://{destination_address}/v1"),
+                    model: "synthetic-model".into(),
+                    api_key: String::new(),
+                })
+                .with_stage_network_proxies(speech_route, text_route);
+        let text_server = tokio::spawn(async move {
+            let (mut socket, _) = text_proxy.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            loop {
+                let mut buffer = [0; 2048];
+                let count = socket.read(&mut buffer).await.unwrap();
+                assert!(count > 0);
+                bytes.extend_from_slice(&buffer[..count]);
+                if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let length: usize = String::from_utf8_lossy(&bytes[..end])
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    if bytes.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            assert!(String::from_utf8_lossy(&bytes).starts_with(&format!(
+                "POST http://{destination_address}/v1/chat/completions HTTP/1.1"
+            )));
+            let body = r#"{"choices":[{"message":{"content":"Synthetic translation"}}]}"#;
+            socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        });
+        let speech_server = tokio::spawn(async move {
+            let (mut socket, _) = speech_proxy.accept().await.unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut buffer = [0; 1024];
+                let count = socket.read(&mut buffer).await.unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&buffer[..count]);
+                if request.windows(4).any(|part| part == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            assert!(
+                String::from_utf8_lossy(&request).starts_with("CONNECT example.com:443 HTTP/1.1")
+            );
+            socket
+                .write_all(
+                    b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .unwrap();
+        });
+        let (sender, mut events) = provider_event_channel();
+        let TranslationClient::HighQuality(client) =
+            TranslationClient::new(&configuration, sender).unwrap()
+        else {
+            panic!("expected independent pipeline")
+        };
+        client
+            .handle_asr_event(LiveTranslateServerEvent::SourceUtteranceFinal {
+                utterance_id: 1,
+                text: "Synthetic source".into(),
+                language: None,
+            })
+            .await;
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if matches!(
+                    events.recv().await,
+                    Some(LiveTranslateServerEvent::SubtitleConfirmedPair { .. })
+                ) {
+                    break;
+                }
+            }
+            text_server.await.unwrap();
+        })
+        .await
+        .unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(3), client.connect())
+                .await
+                .unwrap()
+                .is_err()
+        );
+        tokio::time::timeout(Duration::from_secs(3), speech_server)
+            .await
+            .unwrap()
+            .unwrap();
+        client.disconnect().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), destination.accept())
+                .await
+                .is_err()
+        );
+    }
+
     use super::*;
     use crate::clients::provider_events::ProviderEventReceiver;
     use crate::core::models::TranslationMode;

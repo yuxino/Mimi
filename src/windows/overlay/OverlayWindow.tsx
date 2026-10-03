@@ -105,7 +105,7 @@ export function OverlayWindow() {
   const [overlaySize, setOverlaySize] = useState(() => ({
     width: typeof window === "undefined" || !isTauri ? 640 : window.innerWidth,
     height:
-      typeof window === "undefined" || !isTauri ? 136 : window.innerHeight,
+      typeof window === "undefined" || !isTauri ? 482 : window.innerHeight,
   }));
   const topChromeLayout = overlaySessionChromeLayout(
     Math.max(0, overlaySize.width - OVERLAY_INSET * 2),
@@ -278,6 +278,8 @@ export function OverlayWindow() {
                 alignment={settings.subtitleAlignment}
                 displayMode={settings.subtitleDisplayMode}
                 showSubtitleDividers={settings.showSubtitleDividers}
+                keepTextOpaque={settings.keepSubtitleTextOpaque}
+                microphoneColor={settings.microphoneSubtitleColor}
                 motionEnabled={motionOn}
                 blendsWithBackground
                 followTailRequest={followTailRequest}
@@ -460,6 +462,8 @@ export function OverlayWindow() {
               alignment={settings.subtitleAlignment}
               displayMode={settings.subtitleDisplayMode}
               showSubtitleDividers={settings.showSubtitleDividers}
+                keepTextOpaque={settings.keepSubtitleTextOpaque}
+                microphoneColor={settings.microphoneSubtitleColor}
               motionEnabled={motionOn}
               followTailRequest={followTailRequest}
               onReadingHistoryChange={setReadingHistory}

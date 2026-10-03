@@ -98,6 +98,9 @@ mod windows_application;
 pub mod macos;
 
 #[cfg(target_os = "macos")]
+mod macos_block_buffer;
+
+#[cfg(target_os = "macos")]
 pub mod macos_output;
 
 #[cfg(target_os = "windows")]

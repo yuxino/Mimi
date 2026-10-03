@@ -15,6 +15,9 @@ import {
   ChevronUp,
   Cloud,
   CircleHelp,
+  Eye,
+  EyeOff,
+  ClipboardPaste,
   Eraser,
   Download,
   Key,
@@ -72,6 +75,9 @@ export type IconName =
   | "waves"
   | "microphone"
   | "speaker"
+  | "eye"
+  | "eye-off"
+  | "clipboard"
   | "download";
 
 const ICONS: Record<IconName, LucideIcon> = {
@@ -106,6 +112,9 @@ const ICONS: Record<IconName, LucideIcon> = {
   waves: Waves,
   microphone: Mic,
   speaker: Volume2,
+  eye: Eye,
+  "eye-off": EyeOff,
+  clipboard: ClipboardPaste,
   download: Download,
 };
 

@@ -50,14 +50,19 @@ impl TranslationClient {
     ) -> Result<Self, TranslationClientError> {
         let network = ProviderNetwork::resolve(&configuration.network_proxy)?;
         let mut client = Self::new_without_network(configuration, events)?;
-        client.set_network(network)?;
+        if let Self::HighQuality(pipeline) = &mut client {
+            let text = ProviderNetwork::resolve(&configuration.text_network_proxy)?;
+            pipeline.set_stage_networks(network, text)?;
+        } else {
+            client.set_network(network)?;
+        }
         Ok(client)
     }
 
     fn set_network(&mut self, network: ProviderNetwork) -> Result<(), ProviderNetworkError> {
         match self {
             Self::LowLatency(client) => client.set_network(network),
-            Self::HighQuality(client) => client.set_network(network),
+            Self::HighQuality(client) => client.set_stage_networks(network.clone(), network),
             Self::OpenAIRealtime(client) => client.set_network(network),
             Self::GeminiLive(client) => client.set_network(network),
             Self::AzureOpenAIRealtime(client) => client.set_network(network),

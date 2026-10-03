@@ -8,6 +8,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  ProfileNetworkProxyDraft,
   AudioInput,
   AudioSource,
   ProviderCredentialsInput,
@@ -20,6 +21,8 @@ import type {
   SettingsDraft,
   SettingsSnapshot,
   SourceLanguage,
+  SystemAudioTarget,
+  TargetLanguage,
   TextTranslation,
   TranslationMode,
 } from "./types";
@@ -61,6 +64,14 @@ export function sessionSwitchSourceLanguage(
 
 export function sessionSwitchAudioInput(input: AudioInput): Promise<void> {
   return invoke("session_switch_audio_input", { input });
+}
+
+export function sessionSwitchSystemAudioTarget(target: SystemAudioTarget): Promise<void> {
+  return invoke("session_switch_system_audio_target", { target });
+}
+
+export function sessionSwitchTargetLanguage(language: TargetLanguage): Promise<void> {
+  return invoke("session_switch_target_language", { language });
 }
 
 export function sessionSwitchTranslationMode(
@@ -107,8 +118,9 @@ export function profileCreate(
 export function profileUpdate(
   profileId: string,
   name: string,
+  proxies?: ProfileNetworkProxyDraft,
 ): Promise<SettingsSnapshot> {
-  return invoke<SettingsSnapshot>("profile_update", { profileId, name });
+  return invoke<SettingsSnapshot>("profile_update", { profileId, name, ...proxies });
 }
 
 export function profileSelect(profileId: string): Promise<SettingsSnapshot> {
@@ -141,7 +153,7 @@ export type StoredCredentialField = "apiKey" | "asrApiKey" | "token" | "secretId
 export function profileRevealCredential(request: {
   profileId: string;
   field: StoredCredentialField;
-  textTranslation?: Extract<TextTranslation, "deepL" | "deepLX">;
+  textTranslation?: Exclude<TextTranslation, "followService">;
 }): Promise<string | null> {
   return invoke<string | null>("profile_reveal_credential", request);
 }

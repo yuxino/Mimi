@@ -635,3 +635,62 @@ it("keeps an independent check for another profile when the active session fails
   expect(host.querySelector('.connection-check [data-tone="success"]')?.textContent).toBe(diagnosticCopy().available);
   expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith("other-synthetic", "speech");
 });
+
+async function chooseStageProxy(index: number, label: string) {
+  await act(() => host.querySelectorAll<HTMLButtonElement>('.service-proxies [role="combobox"]')[index]!.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === label)!;
+  await act(() => option.click());
+}
+
+it("saves only the chosen stage with its profile and restores saved choices when switching editors", async () => {
+  const other = { ...profile, id: "other", name: "Other", speechNetworkProxy: { mode: "direct" as const, url: null } };
+  const snapshot = { ...settings, profiles: [profile, other] };
+  actions.updateProfile.mockResolvedValue(snapshot);
+  await render(snapshot);
+  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  const selectors = host.querySelectorAll('.service-proxies [role="combobox"]');
+  expect(selectors.length).toBe(2);
+  expect(selectors[0]!.getAttribute("aria-label")).toBe(I18N.settings.speechRecognition);
+  expect(selectors[1]!.getAttribute("aria-label")).toBe(I18N.settings.textTranslationLabel);
+  await change(".service-detail__name input", "Unsaved name");
+  await chooseStageProxy(1, I18N.settings.networkProxyDirect);
+  expect(actions.updateProfile).not.toHaveBeenCalled();
+  await act(async () => host.querySelectorAll('.service-proxies form')[1]!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, profile.name, { textNetworkProxy: { mode: "direct", url: null } });
+  expect(host.querySelector<HTMLInputElement>(".service-detail__name input")!.value).toBe("Unsaved name");
+  await chooseStageProxy(0, I18N.settings.networkProxyCustom);
+  await click(I18N.settings.backToServices);
+  await act(() => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1]!.click());
+  expect(host.querySelector('.service-proxies [role="combobox"]')?.textContent).toContain(I18N.settings.networkProxyDirect);
+  expect(host.querySelector('.service-proxies input')).toBeNull();
+  await click(I18N.settings.backToServices);
+  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.querySelector('.service-proxies [role="combobox"]')?.textContent).toContain(I18N.settings.networkProxySystem);
+  expect(host.querySelector('.service-proxies input')).toBeNull();
+});
+
+it("keeps recognition check results when only the text route changes, and rejects a stale text result", async () => {
+  vi.mocked(testProfileConnection).mockResolvedValueOnce({ credential: "present", service: "available", reason: null });
+  const snapshot = { ...settings, profiles: [{ ...profile, credentialState: "present" as const }] };
+  await render(snapshot); await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.checkSpeechRecognition);
+  let finish!: (result: Awaited<ReturnType<typeof testProfileConnection>>) => void;
+  vi.mocked(testProfileConnection).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await click(I18N.settings.checkTextTranslation);
+  await render({ ...snapshot, profiles: [{ ...snapshot.profiles[0]!, textNetworkProxy: { mode: "direct", url: null } }] });
+  await act(async () => { finish({ credential: "present", service: "available", reason: null }); });
+  const results = host.querySelectorAll('.connection-check .settings-feedback');
+  expect(results.length).toBe(1);
+  expect(results[0]!.textContent).toBe(diagnosticCopy().available);
+  expect(testProfileConnection).toHaveBeenCalledTimes(2);
+});
+
+it("shows only one effective proxy for an integrated realtime service and locks profile proxies during a paused session", async () => {
+  await render({ ...settings, profiles: [{ ...profile, provider: "openAIRealtime" }] });
+  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.querySelectorAll('.service-proxies [role="combobox"]').length).toBe(1);
+  expect(host.querySelector('.service-proxies .settings-help-control__description')?.textContent).toContain(I18N.settings.networkProxyIntegratedScope);
+  await act(() => root.render(<ServiceProfiles settings={settings} sessionIsActive={false} sessionIsPaused />));
+  for (const selector of host.querySelectorAll<HTMLButtonElement>('.service-proxies [role="combobox"]')) expect(selector.disabled).toBe(true);
+  expect(actions.updateProfile).not.toHaveBeenCalled();
+});

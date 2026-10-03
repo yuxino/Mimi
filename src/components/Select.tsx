@@ -25,15 +25,21 @@ interface SelectProps {
   /** Enables an explicit filter input; callers supply localized copy. */
   searchLabel?: string;
   emptyMessage?: string;
+  /** Label for a saved selection that is not in the current results. */
+  valueLabel?: string;
+  /** Load choices only after the user opens the picker. */
+  onOpen?: () => void;
   onChange: (value: string) => void;
 }
 
 /** One app-styled picker for Settings, the subtitle controls, and the tray. */
-export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, onChange }: SelectProps) {
+export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, valueLabel, onOpen, onChange }: SelectProps) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const revealActive = useRef(true);
   const optionNodes = useRef(new Map<string, HTMLDivElement>());
   const typeahead = useRef({ text: "", at: 0 });
   const [popup, setPopup] = useState<MenuStyle | null>(null);
@@ -51,7 +57,8 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     cursor.selection === value && cursor.query === query ? cursor.index : Math.max(0, selectedVisible));
   const open = popup !== null && !disabled;
 
-  function setActive(index: number | ((previous: number) => number)) {
+  function setActive(index: number | ((previous: number) => number), reveal = true) {
+    revealActive.current = reveal;
     setCursor(previous => ({
       selection: value,
       query,
@@ -65,10 +72,12 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     button.focus();
     const rect = button.getBoundingClientRect();
     const theme = getComputedStyle(button);
-    const width = Math.min(Math.max(rect.width, 200), window.innerWidth - 16);
+    const width = Math.min(Math.max(rect.width, searchable ? 280 : 200), window.innerWidth - 16);
     const below = window.innerHeight - rect.bottom - 12;
     const above = rect.top - 12;
-    const desired = Math.min(options.length * 38 + 10 + (searchable ? 44 : 0), 280);
+    // Search results may arrive asynchronously. Reserve enough room for them
+    // when opening; a short list still sizes naturally below this maximum.
+    const desired = searchable ? 280 : Math.min(options.length * 38 + 10, 280);
     const upwards = below < desired && above > below;
     // In short windows, allow the searchable menu to overlap the trigger so
     // the input and at least one result remain usable within the viewport.
@@ -77,7 +86,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       position: "fixed",
       width,
       maxHeight: height,
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      left: Math.max(8, Math.min(searchable ? rect.right - width : rect.left, window.innerWidth - width - 8)),
       ...(searchable
         ? upwards
           ? { bottom: Math.max(8, Math.min(window.innerHeight - rect.top + 5, window.innerHeight - height - 8)) }
@@ -93,8 +102,10 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       "--provider-backing-background": theme.getPropertyValue("--provider-backing-background"),
     });
     setQuery("");
+    revealActive.current = true;
     setCursor({ selection: value, query: "", index: Math.max(0, selected) });
     typeahead.current = { text: "", at: 0 };
+    onOpen?.();
   }
 
   function choose(index: number) {
@@ -130,8 +141,18 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
 
   useEffect(() => {
     const option = visible[active];
-    if (open && option) optionNodes.current.get(option.value)?.scrollIntoView({ block: "nearest" });
-  }, [active, open, visible]);
+    const node = option && optionNodes.current.get(option.value);
+    const scroller = searchable ? list.current : menu.current;
+    if (!open || !node || !scroller || !revealActive.current) return;
+    // scrollIntoView also scrolls overflow:hidden ancestors in WebKit,
+    // moving the search field and clipping the first row. Scroll only results.
+    const row = node.getBoundingClientRect();
+    const bounds = scroller.getBoundingClientRect();
+    const top = bounds.top + scroller.clientTop;
+    const bottom = top + scroller.clientHeight;
+    if (row.top < top) scroller.scrollTop -= top - row.top;
+    else if (row.bottom > bottom) scroller.scrollTop += row.bottom - bottom;
+  }, [active, cursor, open, searchable, visible]);
 
   useEffect(() => {
     if (open && searchable) input.current?.focus({ preventScroll: true });
@@ -179,6 +200,8 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
   }
 
   function updateQuery(text: string) {
+    revealActive.current = true;
+    if (list.current) list.current.scrollTop = 0;
     setQuery(text);
     setCursor({ selection: value, query: text, index: 0 });
   }
@@ -189,7 +212,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       else optionNodes.current.delete(option.value);
     }} className="mimi-select__option" role="option"
       aria-selected={option.value === value} data-active={index === active}
-      onPointerMove={() => setActive(index)} onPointerDown={(event) => event.preventDefault()}
+      onPointerMove={() => setActive(index, false)} onPointerDown={(event) => event.preventDefault()}
       onClick={() => choose(index)}>
       <span className="mimi-select__content">
         {option.icon && <span className="mimi-select__icon" aria-hidden="true">{option.icon}</span>}
@@ -210,7 +233,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
             external value changes, while the focused trigger remains stable. */}
         <span key={value} className="mimi-select__content">
           {options[selected]?.icon && <span className="mimi-select__icon" aria-hidden="true">{options[selected].icon}</span>}
-          <span className="mimi-select__label">{options[selected]?.label ?? value}</span>
+          <span className="mimi-select__label">{options[selected]?.label ?? valueLabel ?? value}</span>
         </span><Icon name="chevron-down" />
       </button>
       {open && createPortal(
@@ -222,7 +245,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
               aria-autocomplete="list" aria-haspopup="listbox" aria-controls={id} aria-activedescendant={activeId}
               autoComplete="off" spellCheck={false} value={query}
               onChange={event => updateQuery(event.currentTarget.value)} onKeyDown={onKeyDown} />
-            <div id={id} className="mimi-select__options" role="listbox" aria-label={label}>
+            <div ref={list} id={id} className="mimi-select__options" role="listbox" aria-label={label}>
               {rows}
               {visible.length === 0 && <div className="mimi-select__empty" role="status">{emptyMessage}</div>}
             </div>

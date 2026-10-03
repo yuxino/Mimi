@@ -20,7 +20,7 @@ it("points at a clickable icon's button, but not disabled, busy or plain content
   expect(isClickablePointerTarget(document.createElement("div"))).toBe(false);
 });
 
-it("keeps one cursor request in flight, coalesces movement and retries only the latest stale sample", async () => {
+it("reasserts the hand on movement after success, coalesces pending samples and never retries while stationary", async () => {
   const resolutions: Array<(accepted: boolean) => void> = [];
   const send = vi.fn(() => new Promise<boolean>(resolve => resolutions.push(resolve)));
   const update = createPointerCursorUpdater(send);
@@ -34,16 +34,38 @@ it("keeps one cursor request in flight, coalesces movement and retries only the 
   resolutions[1](true);
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
   update({ x: 51, y: 1 }, true);
-  expect(send).toHaveBeenCalledTimes(2);
+  // WebKit can replace the accepted hand during a later native move.
+  expect(send).toHaveBeenCalledTimes(3);
+  expect(send).toHaveBeenLastCalledWith({ x: 51, y: 1 }, true);
   update({ x: 52, y: 1 }, false);
   expect(send).toHaveBeenCalledTimes(3);
-  resolutions[2](false);
+  resolutions[2](true);
   await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
-  expect(send).toHaveBeenCalledTimes(3); // No stationary failure loop.
+  expect(send).toHaveBeenCalledTimes(4);
+  expect(send).toHaveBeenLastCalledWith({ x: 52, y: 1 }, false);
+  resolutions[3](false);
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  expect(send).toHaveBeenCalledTimes(4); // No stationary failure loop.
   update(null);
   update({ x: 53, y: 1 }, true);
-  expect(send).toHaveBeenCalledTimes(4);
-  resolutions[3](true);
+  expect(send).toHaveBeenCalledTimes(5);
+  resolutions[4](true);
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  expect(send).toHaveBeenCalledTimes(5); // No stationary success loop either.
+});
+
+it("uses the hand for selectable controls and disclosure, while preserving text and resize targets", () => {
+  const host = document.createElement("div");
+  host.innerHTML = '<details><summary><span>Details</span></summary></details><div role="option"><span>Choice</span></div><input type="color"><input type="search" role="combobox"><input type="range"><textarea></textarea><div style="cursor: ew-resize"></div><fieldset disabled><button>Unavailable</button></fieldset>';
+  for (const selector of ['summary span', '[role="option"] span', 'input[type="color"]']) {
+    expect(isClickablePointerTarget(host.querySelector(selector))).toBe(true);
+  }
+  const option = host.querySelector('[role="option"]')!;
+  option.setAttribute("aria-disabled", "true");
+  expect(isClickablePointerTarget(option.firstElementChild)).toBe(false);
+  for (const selector of ['input[type="search"]', 'input[type="range"]', 'textarea', '[style]', 'fieldset button']) {
+    expect(isClickablePointerTarget(host.querySelector(selector))).toBe(false);
+  }
 });
 
 it("does not let a late hand response override native exit and a fresh entry", async () => {

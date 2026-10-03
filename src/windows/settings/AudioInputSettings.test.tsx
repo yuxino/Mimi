@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { audioInputErrorMessage } from "../../lib/audioInput";
+import { applicationAudioCopy } from "../../lib/applicationAudio";
 import { captureSwitchCopy } from "../../lib/captureStatus";
 import type { SessionStateEvent } from "../../lib/types";
 import { AudioInputSettings } from "./AudioInputSettings";
@@ -128,4 +129,11 @@ it.each([new Error("audio_input_switch_save_failed"), "Microphone capture permis
   await selectMicrophone();
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(toggle("microphone").getAttribute("aria-checked")).toBe("true");
+});
+
+it("explains an unavailable selected application when changing inputs", async () => {
+  switchInput.mockRejectedValueOnce("application_audio_unavailable");
+  await render(); await selectMicrophone();
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
+  expect(toggle("microphone").getAttribute("aria-checked")).toBe("false");
 });

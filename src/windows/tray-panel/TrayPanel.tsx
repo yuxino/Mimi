@@ -1,3 +1,4 @@
+import { SettingsHelp } from "../settings/SettingsHelp";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { Select } from "../../components/Select";
 import { LanguageSelect } from "../../components/LanguageSelect";
@@ -264,7 +265,7 @@ export function TrayPanel() {
             <Icon name="languages" />
           </span>
           <span className="tray-setting-row__copy">
-            <span>{I18N.tray.sourceLanguage}</span>
+            <span>{I18N.tray.sourceLanguage} <SettingsHelp text={I18N.settings.recognitionLanguageHelp} label={I18N.settings.helpLabel} /></span>
             <small>{translationSummary(settings)}</small>
           </span>
           <span className="tray-select-wrap">

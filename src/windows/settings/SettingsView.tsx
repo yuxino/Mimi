@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SubtitleSessionControls } from "./SubtitleSessionControls";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
 import { I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
@@ -26,7 +27,6 @@ import { SettingsQuitFooter } from "./SettingsQuitFooter";
 import { SettingsHelp } from "./SettingsHelp";
 import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
-import { NetworkProxySettings } from "./NetworkProxySettings";
 import { AudioInputSettings } from "./AudioInputSettings";
 import "./settings.css";
 
@@ -92,7 +92,6 @@ export function SettingsView() {
     setActiveCategory(activeProfile?.credentialState === "present" ? "subtitles" : "service");
   }, [activeProfile?.credentialState]);
 
-  const isChangingSession = sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
   const categories: readonly {
     id: SettingsCategory;
     label: string;
@@ -222,6 +221,7 @@ export function SettingsView() {
             <h1>{activeCategory === "guide" ? I18N.settings.quickStartTitle : categories.find((category) => category.id === activeCategory)?.label}</h1>
             <SettingsHelp text={pageDescriptions[activeCategory]} label={I18N.settings.helpLabel} />
           </header>
+          {initializationReady && <SubtitleSessionControls visible={activeCategory === "subtitles"} onConfigure={() => selectCategory("service")} />}
           <div className="settings-layout">
             {!initializationReady ? <SettingsInitializationStatus status={initializationStatus} error={initializationError} onRetry={() => { void initialize(); }} /> : <>
             {activeCategory === "guide" && (
@@ -318,10 +318,16 @@ export function SettingsView() {
                           }
                         />
                       </SettingsRow>
-                      <SettingsRow label={I18N.settings.subtitleColor}>
-                        <SubtitleColorControl
+                      <SettingsRow label={I18N.settings.systemSubtitleColor}>
+                        <SubtitleColorControl label={I18N.settings.systemSubtitleColor}
                           value={settings.subtitleColor}
                           onChange={(subtitleColor) => void saveSettings({ subtitleColor })}
+                        />
+                      </SettingsRow>
+                      <SettingsRow label={I18N.settings.microphoneSubtitleColor}>
+                        <SubtitleColorControl label={I18N.settings.microphoneSubtitleColor}
+                          value={settings.microphoneSubtitleColor ?? "yellow"}
+                          onChange={(microphoneSubtitleColor) => void saveSettings({ microphoneSubtitleColor })}
                         />
                       </SettingsRow>
                       <SettingsRow label={I18N.settings.fontSize}>
@@ -400,8 +406,6 @@ export function SettingsView() {
             <div id="service-profiles-panel" className={`settings-category-panel${activeCategory !== "service" ? " is-inactive" : ""}`}>
                 <AudioInputSettings />
                 <ServiceProfiles settings={settings} sessionIsActive={sessionIsActive} sessionIsPaused={sessionIsPaused} sessionStatusKind={sessionStatusKind} visible={activeCategory === "service"} />
-                <NetworkProxySettings value={settings.networkProxy} disabled={sessionIsActive || sessionIsPaused || isChangingSession}
-                  onSave={(networkProxy) => saveSettings({ networkProxy })} />
               </div>
 
             <div id="diagnostics-panel" className={`settings-category-panel${activeCategory !== "diagnostics" ? " is-inactive" : ""}`}>

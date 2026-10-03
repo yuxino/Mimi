@@ -33,7 +33,9 @@ import {
   sessionStart,
   sessionStop,
   sessionSwitchSourceLanguage,
+  sessionSwitchTargetLanguage,
   sessionSwitchAudioInput,
+  sessionSwitchSystemAudioTarget,
   sessionSwitchTranslationMode,
   sessionTogglePaused,
   settingsGet,
@@ -50,6 +52,7 @@ import {
   effectiveProviderForProfile,
   textTranslationForProfile,
   sourceLanguagesForSettings,
+  targetLanguagesForSettings,
   targetLanguageAfterSourceSwitch,
   translationModesForSettings,
 } from "./providerCapabilities";
@@ -61,6 +64,7 @@ import {
   SnapshotResponseGate,
 } from "./settingsState";
 import type {
+  ProfileNetworkProxyDraft,
   AudioInput,
   ProviderCredentialsInput,
   SessionStateEvent,
@@ -68,6 +72,8 @@ import type {
   SettingsSnapshot,
   ServiceProvider,
   SourceLanguage,
+  SystemAudioTarget,
+  TargetLanguage,
   SubtitleSnapshot,
   TranslationMode,
 } from "./types";
@@ -108,9 +114,11 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   fontSize: 18,
   subtitleBackgroundOpacity: 80,
   subtitleColor: "white",
+  microphoneSubtitleColor: "yellow",
   subtitleAlignment: "center",
   subtitleDisplayMode: "translation",
   showSubtitleDividers: false,
+  keepSubtitleTextOpaque: false,
   pulseAnimation: null,
   pulseStyle: "ribbon",
   subtitleAnimation: null,
@@ -139,7 +147,9 @@ interface StoreState {
   togglePaused: () => Promise<void>;
   clearSubtitles: () => Promise<void>;
   switchSourceLanguage: (language: SourceLanguage) => Promise<void>;
+  switchTargetLanguage: (language: TargetLanguage) => Promise<void>;
   switchAudioInput: (input: AudioInput) => Promise<void>;
+  switchSystemAudioTarget: (target: SystemAudioTarget) => Promise<void>;
   switchTranslationMode: (mode: TranslationMode) => Promise<void>;
   saveSettings: (draft: SettingsDraft) => Promise<void>;
   createProfile: (
@@ -149,6 +159,7 @@ interface StoreState {
   updateProfile: (
     profileId: string,
     name: string,
+    proxies?: ProfileNetworkProxyDraft,
   ) => Promise<SettingsSnapshot>;
   selectProfile: (profileId: string) => Promise<SettingsSnapshot>;
   deleteProfile: (profileId: string) => Promise<SettingsSnapshot>;
@@ -386,6 +397,21 @@ export const useStore = create<StoreState>()((set, get) => ({
     }));
   },
 
+  switchTargetLanguage: async (language) => {
+    const current = get();
+    if (sessionSettingsAreChanging(current.session)) throw new Error("target_switch_busy");
+    const targets = targetLanguagesForSettings(current.settings);
+    if (!targets.includes("original") || !targets.includes(language)) throw new Error("target_switch_unsupported");
+    if (isTauri) {
+      await sessionSwitchTargetLanguage(language);
+      return;
+    }
+    const settings = { ...current.settings, targetLanguage: language, languageCapabilities: undefined };
+    const sources = sourceLanguagesForSettings(settings);
+    if (!sources.includes(settings.sourceLanguage)) settings.sourceLanguage = sources[0]!;
+    set({ settings });
+  },
+
   switchTranslationMode: async (mode) => {
     const current = get();
     if (
@@ -414,6 +440,17 @@ export const useStore = create<StoreState>()((set, get) => ({
     // The browser preview preserves the live/paused state and confirmed text,
     // just as the native reconfiguration path does. It never opens devices.
     set(state => ({ settings: mergeSettingsSnapshot(state.settings, { audioInput: input }) }));
+  },
+
+  switchSystemAudioTarget: async (target) => {
+    const current = get();
+    if (JSON.stringify(target) === JSON.stringify(current.settings.systemAudioTarget ?? { kind: "system" })) return;
+    if (sessionSettingsAreChanging(current.session)) throw new Error("audio_input_switch_busy");
+    if (isTauri) {
+      await sessionSwitchSystemAudioTarget(target);
+      return;
+    }
+    set(state => ({ settings: mergeSettingsSnapshot(state.settings, { systemAudioTarget: target }) }));
   },
 
   saveSettings: async (draft) => {
@@ -470,11 +507,11 @@ export const useStore = create<StoreState>()((set, get) => ({
     return snapshot;
   },
 
-  updateProfile: async (profileId, name) => {
+  updateProfile: async (profileId, name, proxies) => {
     ensureProfileMutationsAllowed(get().session);
     if (isTauri) {
       const revision = settingsResponseGate.capture();
-      const snapshot = await profileUpdate(profileId, name);
+      const snapshot = await profileUpdate(profileId, name, proxies);
       if (settingsResponseGate.applyIfCurrent(revision)) {
         settingsSaveCoordinator.invalidate();
         set({ settings: snapshot });
@@ -486,7 +523,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     const snapshot: SettingsSnapshot = {
       ...current,
       profiles: current.profiles.map((profile) =>
-        profile.id === profileId ? { ...profile, name } : profile,
+        profile.id === profileId ? { ...profile, name, ...proxies } : profile,
       ),
     };
     set({ settings: snapshot });
@@ -657,7 +694,7 @@ export const useStore = create<StoreState>()((set, get) => ({
 }));
 
 function ensureProfileMutationsAllowed(session: SessionStateEvent): void {
-  if (session.isActive) throw new Error("session-active");
+  if (session.isActive || session.isPaused || sessionSettingsAreChanging(session)) throw new Error("session-active");
 }
 
 function sessionSettingsAreChanging(session: SessionStateEvent): boolean {

@@ -4,6 +4,8 @@ import { useStore } from "../../lib/store";
 import { InlineFeedback, SettingsRow, SettingsSection } from "./SettingsPrimitives";
 import { Switch } from "../../components/Switch";
 import { audioInputErrorMessage } from "../../lib/audioInput";
+import { applicationAudioError } from "../../lib/applicationAudio";
+import { audioSourceErrorMessage } from "../../lib/windowsAudioSource";
 import { captureSwitchCopy } from "../../lib/captureStatus";
 import type { AudioInput, AudioSource } from "../../lib/types";
 import { ApplicationAudio } from "./ApplicationAudio";
@@ -17,12 +19,13 @@ export function AudioInputSettings() {
   const initialization = useStore(state => state.initializationStatus);
   const switchAudioInput = useStore(state => state.switchAudioInput);
   const [busy, setBusy] = useState(false);
+  const [targetBusy, setTargetBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const copy = captureSwitchCopy();
-  const disabled = status === "connecting" || status === "stopping" || busy || initialization !== "ready";
+  const disabled = status === "connecting" || status === "stopping" || busy || targetBusy || initialization !== "ready";
   const toggle = async (source: AudioSource, checked: boolean) => {
     // One source must remain selected. Enabling the other source means both,
     // never implicitly replaces the user's existing choice.
@@ -35,7 +38,7 @@ export function AudioInputSettings() {
     try { await switchAudioInput(value); }
     catch (error) {
       const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-      if (mounted.current) setError(audioInputErrorMessage(message) ?? copy.switchFailed);
+      if (mounted.current) setError(applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? copy.switchFailed);
     }
     finally {
       inFlight.current = false;
@@ -53,7 +56,7 @@ export function AudioInputSettings() {
       <Switch aria-label={I18N.settings.audioInputMicrophone} checked={selected !== "system"}
         disabled={disabled || selected === "microphone"} onChange={checked => void toggle("microphone", checked)} />
     </SettingsRow>
-    {selected !== "microphone" && <ApplicationAudio />}
+    {selected !== "microphone" && <ApplicationAudio disabled={disabled} onBusyChange={setTargetBusy} />}
     {selected !== "microphone" && target?.kind !== "application" && <WindowsAudioSource />}
     {error && <InlineFeedback tone="error">{error}</InlineFeedback>}
   </SettingsSection>;
