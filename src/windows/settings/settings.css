@@ -2061,18 +2061,21 @@
 .subtitle-preview__controls .settings-row {
   gap: 16px;
 }
-.subtitle-preview__controls .settings-row:first-child {
-  grid-template-columns: minmax(0, 1fr);
+.subtitle-preview__selectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
   padding-bottom: 22px;
   border-bottom: 1px solid var(--settings-border);
+}
+.subtitle-preview__selectors .settings-row {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
-.subtitle-preview__controls .settings-row:first-child .settings-row__control {
-  justify-content: flex-start;
-}
-.subtitle-preview__controls .settings-row:first-child .settings-select-wrap {
-  width: 220px;
-  max-width: 100%;
+.subtitle-preview__selectors .settings-select-wrap {
+  width: 100%;
 }
 .subtitle-preview__controls .settings-row__label {
   font-size: 11px;

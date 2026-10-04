@@ -279,16 +279,18 @@ export function SettingsView() {
                       </div>
                     </div>
                     <div className="subtitle-preview__controls">
-                      <SettingsRow label={I18N.settings.subtitleDisplay} description={`${I18N.settings.subtitleDisplayHelp}${nativeShortcuts ? ` ${subtitleDisplayShortcut()}` : ""}`}>
-                        <SettingsSelect
-                          label={I18N.settings.subtitleDisplay}
-                          value={settings.subtitleDisplayMode}
-                          options={SUBTITLE_DISPLAY_OPTIONS}
-                          onChange={(value) => void savePreference({ subtitleDisplayMode: value as SubtitleDisplayMode }, I18N.settings.subtitleDisplay)}
-                        />
-                      </SettingsRow>
-                      <SubtitleFontControl value={settings.subtitleFontFamily ?? ""}
-                        onChange={subtitleFontFamily => savePreference({ subtitleFontFamily }, I18N.settings.subtitleFont)} />
+                      <div className="subtitle-preview__selectors">
+                        <SettingsRow label={I18N.settings.subtitleDisplay} description={`${I18N.settings.subtitleDisplayHelp}${nativeShortcuts ? ` ${subtitleDisplayShortcut()}` : ""}`}>
+                          <SettingsSelect
+                            label={I18N.settings.subtitleDisplay}
+                            value={settings.subtitleDisplayMode}
+                            options={SUBTITLE_DISPLAY_OPTIONS}
+                            onChange={(value) => void savePreference({ subtitleDisplayMode: value as SubtitleDisplayMode }, I18N.settings.subtitleDisplay)}
+                          />
+                        </SettingsRow>
+                        <SubtitleFontControl value={settings.subtitleFontFamily ?? ""}
+                          onChange={subtitleFontFamily => savePreference({ subtitleFontFamily }, I18N.settings.subtitleFont)} />
+                      </div>
                       <SettingsRow label={I18N.settings.showIntermediateSubtitles} description={I18N.settings.showIntermediateSubtitlesHelp}>
                         <Switch
                           checked={settings.showIntermediateSubtitles !== false}

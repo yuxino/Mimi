@@ -109,3 +109,29 @@ it("keeps the saved font as the keyboard choice after lazy enumeration completes
   expect(save).not.toHaveBeenCalled();
   expect(trigger().textContent).toBe("Times New Roman");
 });
+
+it("opens with an arrow key, browses loaded fonts in both directions and only saves on Enter", async () => {
+  await mount("Arial");
+  await act(async () => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  const input = document.querySelector<HTMLInputElement>(".mimi-select__search")!;
+  expect(document.activeElement).toBe(input);
+  const active = () => document.getElementById(input.getAttribute("aria-activedescendant")!)?.textContent;
+  expect(active()).toBe("Arial");
+  await act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(active()).toBe("Noto Sans CJK SC");
+  await act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+  expect(active()).toBe("Arial");
+  await act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(save).not.toHaveBeenCalled();
+  await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(save).toHaveBeenCalledExactlyOnceWith("Noto Sans CJK SC");
+  expect(trigger().textContent).toBe("Noto Sans CJK SC");
+  expect(document.activeElement).toBe(trigger());
+  await open();
+  const reopened = document.querySelector<HTMLInputElement>(".mimi-select__search")!;
+  await act(() => reopened.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+  await act(() => reopened.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect(trigger().textContent).toBe("Noto Sans CJK SC");
+  expect(save).toHaveBeenCalledTimes(1);
+});
