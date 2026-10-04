@@ -494,7 +494,7 @@ export function SettingsView() {
 
                 <DockPreference />
 
-                <SoftwareUpdate />
+                <SoftwareUpdate active={activeCategory === "general"} />
               </SettingsSection>
             </div>
             <div

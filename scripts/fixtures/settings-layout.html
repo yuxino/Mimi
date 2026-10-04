@@ -31,6 +31,7 @@ window.__TAURI_INTERNALS__ = {
 };
 const React = (await import("react")).default;
 const { createRoot } = (await import("react-dom/client")).default;
+const { flushSync } = (await import("react-dom")).default;
 const { useStore } = await import("/src/lib/store.ts");
 const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
 const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
@@ -38,6 +39,7 @@ await import("/src/index.css");
 await import("/src/linux.css");
 const initial = useStore.getState();
 const root = createRoot(document.getElementById("root"));
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 let generation = 0;
 window.applyLayoutCase = async next => {
   fixture = next;
@@ -55,24 +57,24 @@ window.applyLayoutCase = async next => {
     },
     session: { ...initial.session, isActive: active || next.state === "paused", isPaused: next.state === "paused", status: { kind: active ? "listening" : next.state === "paused" ? "paused" : "idle" } },
   });
-  root.render(React.createElement(SettingsView, { key: ++generation }));
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  flushSync(() => root.render(React.createElement(SettingsView, { key: ++generation })));
+  await settle();
   if (next.editor) {
     document.querySelector(".service-row__edit").click();
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await settle();
     if (next.reveal) {
       document.querySelector(".credential-panel__saved-actions button")?.click();
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await settle();
       for (const button of document.querySelectorAll(".saved-credential-input__toggle")) button.click();
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await settle();
     }
   }
   if (next.providerPicker || next.providerConfirmation) {
     document.querySelector(".services-toolbar > button").click();
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await settle();
     if (next.providerConfirmation) {
       document.querySelector('.provider-option[data-provider="openAIRealtime"]').click();
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await settle();
     }
   }
 };
