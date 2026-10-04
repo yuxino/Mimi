@@ -156,6 +156,23 @@ For shared layout, notification choices and the cross-page review checklist,
 read [UI consistency and feedback](ui-guidelines.md). A fix to one reported
 page must include a review of other instances of the same pattern.
 
+- The multilingual label repair in `dc2143f` did not cover the Windows-only
+  output selector. Issue #132 put the selector and idle sentence in one inline
+  wrapper: its intrinsic width squeezed Chinese labels into one-character
+  lines and misaligned the picker even in a maximized window. Keep status out
+  of the control column, bound long device names, and test platform-only controls
+  with explicit fixtures on all three interface languages. An idle instruction
+  belongs in help; missing-device and live-capture states stay visible below.
+- The first #132 preview still let adjacent 36 px pickers touch: the shared
+  section body had no gap. Preserve explicit spacing between sibling rows and
+  assert the rendered gap in the same geometry regression. Inspect the actual
+  screenshot before delivery; correct label width does not prove visual quality.
+- Windows CJK glyph fallback cannot be inferred from a macOS screenshot or a
+  successful CSS `font-family` assertion. Keep Chinese sans families ahead of
+  Japanese fallbacks outside Japanese UI, include `Microsoft YaHei` as well as
+  `Microsoft YaHei UI`, and verify the actual installed font on the affected
+  Windows image before claiming its serif-font report resolved.
+
 - Moving a control between windows also requires updating its Tauri command
   permissions. Settings audio switches once invoked a command authorized only
   for the floating panel, so browser tests passed while native clicks failed.

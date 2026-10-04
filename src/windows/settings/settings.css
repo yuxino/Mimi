@@ -480,6 +480,9 @@
   min-width: 0;
   flex-direction: column;
 }
+.settings-card__body > .settings-row + .settings-row {
+  margin-top: 16px;
+}
 .settings-field-group {
   display: flex;
   flex-direction: column;
@@ -511,9 +514,9 @@
 
 .settings-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, auto);
   align-items: center;
-  gap: 18px;
+  gap: 8px 18px;
   min-height: 36px;
 }
 
@@ -535,6 +538,25 @@
   color: var(--settings-text-faint);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.settings-row__feedback {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--settings-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Bound every row picker, including native-platform-only device choices.
+   Feedback must never contribute to the control column's intrinsic width. */
+.settings-row:has(.settings-select-wrap, .application-audio-picker) {
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 276px);
+}
+.settings-row__control > .settings-select-wrap,
+.settings-row__control:has(> .application-audio-picker) {
+  width: 100%;
 }
 
 .settings-row__control {
@@ -1192,11 +1214,11 @@
   .settings-row {
     gap: 12px;
   }
-  .settings-row:has(.settings-select-wrap),
+  .settings-row:has(.settings-select-wrap, .application-audio-picker),
   .settings-row:has(.font-size-control) {
     grid-template-columns: minmax(0, 1fr);
   }
-  .settings-row__control:has(.settings-select-wrap) {
+  .settings-row__control:has(.settings-select-wrap, .application-audio-picker) {
     justify-content: stretch;
   }
   .settings-select-wrap {

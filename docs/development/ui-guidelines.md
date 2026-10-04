@@ -20,6 +20,23 @@ These project rules apply to implementation and review.
 - Verify wrapping, narrow windows, long labels, empty content and light/dark
   themes. Interactive controls, including help and toast dismissal, keep pointer
   cursors; preserve disabled, text-input, slider and resize cursors.
+- Reserve readable label space and bound picker columns. Put ongoing device
+  feedback in `SettingsRow.feedback`, below the label/control grid; never put a
+  long status sentence beside a picker inside the auto-sized control column.
+  Stack application and output pickers at narrow widths together.
+- Keep 16 px between directly adjacent setting rows without a divider; retain
+  existing spacing around separators. A no-overflow result alone is not
+  visual acceptance: inspect the screenshot for touching control borders,
+  vertical rhythm and heading/section separation before presenting it.
+- Check Chinese, English and Japanese at the default and minimum window widths.
+  Include Windows-only output choices and Linux-only recovery states even when
+  developing on macOS. A hidden native capability must have an explicit local
+  fixture; a successful macOS screen alone cannot cover that control. Reuse
+  `scripts/fixtures/settings-layout.html` and `scripts/verify-settings-layout.js`
+  for actual browser geometry, and keep the native-device evidence separate.
+- All interface text, native controls, tooltips and portaled menus use
+  `--mimi-ui-font`. Order CJK fallbacks for the interface language and include
+  Windows non-UI family names; do not add a separate stack to a shared tooltip.
 
 ## Choose feedback by purpose
 

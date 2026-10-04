@@ -34,12 +34,15 @@ export function SettingsRow({
   description,
   hint,
   children,
+  feedback,
   align = "center",
 }: {
   label: string;
   description?: string;
   hint?: string;
   children: ReactNode;
+  /** Ongoing state belongs below the controls, outside their intrinsic width. */
+  feedback?: ReactNode;
   align?: "center" | "start";
 }) {
   return (
@@ -48,6 +51,7 @@ export function SettingsRow({
         <span className="settings-row__label">{label}{(description || hint) && <SettingsHelp text={[description, hint].filter(Boolean).join("\n")} label={I18N.settings.helpLabel} />}</span>
       </span>
       <span className="settings-row__control">{children}</span>
+      {feedback && <div className="settings-row__feedback">{feedback}</div>}
     </div>
   );
 }

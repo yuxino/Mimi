@@ -62,9 +62,42 @@ it("keeps a missing manual output visible and locks source changes during captur
   fixture.settings.windowsAudioSource = "removed-output"; await render();
   expect(trigger().textContent).toBe(audioSourceCopy().unavailable);
   expect(host.querySelector('[role="status"]')?.textContent).toBe(audioSourceCopy().missing);
+  expect(host.querySelector('.settings-row__feedback [role="status"]')).not.toBeNull();
+  expect(host.querySelector('.settings-row__control [role="status"]')).toBeNull();
   fixture.session.isActive = true; await render();
   expect(trigger().disabled).toBe(true);
   expect(fixture.saveSettings).not.toHaveBeenCalled();
+});
+
+it.each(["en", "zh", "ja"] as const)("keeps idle guidance in help and ongoing output state below the picker in %s", async language => {
+  setStoredUiLanguage(language);
+  await render();
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  expect(host.querySelector('.settings-help-control__description')?.textContent).toContain(audioSourceCopy().idle);
+  fixture.session.isActive = true;
+  const name = "Fixture headphones / ".repeat(30);
+  vi.mocked(invoke).mockResolvedValue({ devices: [{ id: "speaker-id", name }], currentDevice: "speaker-id", receivingSound: false, receivingAudioData: true });
+  // Remount so the native snapshot refresh resolves before checking feedback.
+  await act(() => root.render(null));
+  await render();
+  expect(host.querySelector('.settings-row__feedback [role="status"]')?.textContent).toBe(`${name} · ${audioSourceCopy().silent}`);
+  expect(host.querySelector('.settings-row__control [role="status"]')).toBeNull();
+  expect(trigger().disabled).toBe(true);
+});
+
+it("does not render an output picker when the native platform has no output-selection capability", async () => {
+  vi.mocked(invoke).mockResolvedValue(null);
+  await render();
+  expect(host.querySelector('.settings-row')).toBeNull();
+});
+
+it("keeps a failed Windows device census visible below the disabled picker", async () => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows NT 10.0");
+  vi.mocked(invoke).mockRejectedValue(new Error("private native details"));
+  await render();
+  expect(host.querySelector('.settings-row__feedback [role="status"]')?.textContent).toBe(audioSourceCopy().failed);
+  expect(trigger().disabled).toBe(true);
+  expect(host.textContent).not.toContain("private native details");
 });
 
 it("blocks overlapping output changes, reports a safe save failure and permits retry", async () => {

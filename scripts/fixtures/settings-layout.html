@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mimi settings layout fixture</title></head>
+<body><main id="root"></main><script type="module">
+// Local UI fixtures only: no native bridge, credentials, provider or capture.
+let fixture = {};
+window.__TAURI_INTERNALS__ = {
+  metadata: { currentWindow: { label: "settings" }, currentWebview: { label: "settings" } },
+  transformCallback: () => 0,
+  unregisterCallback: () => {},
+  invoke: async command => {
+    if (command === "windows_audio_status") {
+      if (fixture.platform !== "windows") return null;
+      if (fixture.state === "failed") throw new Error("fixture_unavailable");
+      return {
+        devices: fixture.state === "empty" ? [] : [{ id: "fixture-output", name: fixture.deviceName }],
+        currentDevice: "fixture-output",
+        receivingSound: fixture.state === "receiving",
+        receivingAudioData: fixture.state === "silent" || fixture.state === "receiving",
+      };
+    }
+    if (command === "app_desktop_shortcut_commands") return null;
+    if (command === "plugin:event|listen") return 0;
+    if (command === "plugin:event|unlisten") return;
+    throw new Error("fixture_command_unavailable");
+  },
+};
+const React = (await import("/node_modules/.vite/deps/react.js")).default;
+const { createRoot } = (await import("/node_modules/.vite/deps/react-dom_client.js")).default;
+const { useStore } = await import("/src/lib/store.ts");
+const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
+const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
+await import("/src/index.css");
+await import("/src/linux.css");
+const initial = useStore.getState();
+const root = createRoot(document.getElementById("root"));
+let generation = 0;
+window.applyLayoutCase = async next => {
+  fixture = next;
+  Object.defineProperty(navigator, "userAgent", { configurable: true, value: next.platform === "windows" ? "Windows NT 10.0" : next.platform === "macos" ? "Macintosh" : "Linux x86_64" });
+  const active = ["receiving", "silent", "noData"].includes(next.state);
+  document.documentElement.dataset.platform = next.platform;
+  document.documentElement.lang = next.language === "zh" ? "zh-CN" : next.language;
+  location.hash = next.category ?? "service-profiles";
+  localStorage.setItem("mimi.settings-theme", next.theme);
+  setStoredUiLanguage(next.language);
+  useStore.setState({
+    initializationStatus: "ready",
+    settings: { ...initial.settings, uiLanguage: next.language, microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
+      ...(next.editor ? { profiles: [{ id: "layout-custom", name: "自定义识别（阿里云兼容）", provider: "customDashScopeASR", credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: "chatMock" }], activeProfileId: "layout-custom" } : {}),
+    },
+    session: { ...initial.session, isActive: active || next.state === "paused", isPaused: next.state === "paused", status: { kind: active ? "listening" : next.state === "paused" ? "paused" : "idle" } },
+  });
+  root.render(React.createElement(SettingsView, { key: ++generation }));
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  if (next.editor) {
+    document.querySelector(".service-row__edit").click();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }
+};
+await window.applyLayoutCase({ platform: "windows", language: "zh", state: "idle", theme: "light", deviceName: "Fixture headphones" });
+window.layoutReady = true;
+</script></body></html>
