@@ -59,6 +59,55 @@ const PREFERENCES_UNAVAILABLE: &str = "Settings could not be saved.";
 const PROFILE_NOT_FOUND: &str = "The service profile does not exist.";
 const LAST_PROFILE: &str = "At least one service profile is required.";
 
+/// Editor-local configuration and field availability, never a settings snapshot.
+/// Endpoints can include private path segments, so do not log this payload.
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialEditorState {
+    pub saved_fields: Vec<CredentialRevealField>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcription_deployment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+}
+
+impl CredentialEditorState {
+    fn from_text_credentials(credentials: TextTranslationCredentials) -> Self {
+        let mut state = Self::default();
+        let token = match credentials {
+            TextTranslationCredentials::DeepL { api_key } => api_key,
+            TextTranslationCredentials::DeepLX { endpoint, token } => {
+                state.endpoint = Some(endpoint);
+                token
+            }
+            TextTranslationCredentials::OpenAICompatible {
+                endpoint,
+                model,
+                api_key,
+            }
+            | TextTranslationCredentials::ChatMock {
+                endpoint,
+                model,
+                api_key,
+            } => {
+                state.endpoint = Some(endpoint);
+                state.model = Some(model);
+                api_key
+            }
+        };
+        if !token.is_empty() {
+            state.saved_fields.push(CredentialRevealField::Token);
+        }
+        state
+    }
+}
+
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TextTranslationDestination {
@@ -1490,8 +1539,106 @@ impl SettingsStore {
         result
     }
 
+    /// Hydrates only the selected editor's configuration and saved-field flags.
+    /// API keys remain native until a separate explicit reveal request.
+    pub fn credential_editor_state(
+        &self,
+        profile_id: &str,
+        text_translation: Option<TextTranslation>,
+    ) -> Result<CredentialEditorState, String> {
+        self.require_writable_credentials(profile_id)?;
+        let profile = self.profile(profile_id)?;
+        if let Some(route) = text_translation {
+            if !CredentialRevealField::Token.allowed_for(&profile, Some(route)) {
+                return Err("credential_reveal_field_mismatch".into());
+            }
+            if let Some(value) = self.destination_value(&profile)? {
+                let destination: TextTranslationDestination = serde_json::from_str(&value)
+                    .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?;
+                let credentials = destination
+                    .credentials(route)
+                    .ok_or_else(|| CREDENTIAL_STORE_UNAVAILABLE.to_string())?
+                    .validated()
+                    .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?;
+                return Ok(CredentialEditorState::from_text_credentials(credentials));
+            }
+            // Historical DeepLX profiles may keep both slots in one record.
+            // Other providers must never borrow their speech credentials here.
+            if profile.provider != ProviderKind::DeepLX {
+                return Ok(CredentialEditorState::default());
+            }
+        }
+        let Some(value) = self
+            .load_api_key_for_profile(&profile)
+            .map_err(SecretStoreError::public_error)?
+        else {
+            return Ok(CredentialEditorState::default());
+        };
+        let credentials = ProviderCredentials::decode_for_profile(&profile, &value)
+            .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?;
+        if let Some(route) = text_translation {
+            let text = match (route, credentials) {
+                (
+                    TextTranslation::DeepLX,
+                    ProviderCredentials::DeepLX {
+                        endpoint, token, ..
+                    },
+                ) => Some(TextTranslationCredentials::DeepLX { endpoint, token }),
+                (TextTranslation::DeepL, ProviderCredentials::DeepL { api_key, .. }) => {
+                    Some(TextTranslationCredentials::DeepL { api_key })
+                }
+                _ => None,
+            };
+            return Ok(text.map_or_else(
+                CredentialEditorState::default,
+                CredentialEditorState::from_text_credentials,
+            ));
+        }
+        let mut state = CredentialEditorState::default();
+        for field in [
+            CredentialRevealField::ApiKey,
+            CredentialRevealField::AsrApiKey,
+            CredentialRevealField::SecretId,
+            CredentialRevealField::SecretKey,
+            CredentialRevealField::AppKey,
+        ] {
+            if field.allowed_for(&profile, None)
+                && credentials
+                    .revealed_field(&profile, field, None)
+                    .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?
+                    .is_some()
+            {
+                state.saved_fields.push(field);
+            }
+        }
+        match credentials {
+            ProviderCredentials::CustomSpeech {
+                endpoint, model, ..
+            } => {
+                state.endpoint = Some(endpoint);
+                state.model = Some(model);
+            }
+            ProviderCredentials::AzureOpenAI {
+                endpoint,
+                deployment,
+                transcription_deployment,
+                ..
+            } => {
+                state.endpoint = Some(endpoint);
+                state.deployment = Some(deployment);
+                state.transcription_deployment = Some(transcription_deployment);
+            }
+            ProviderCredentials::TencentCloud { app_id, .. }
+            | ProviderCredentials::BaiduTranslate { app_id, .. } => {
+                state.app_id = Some(app_id);
+            }
+            _ => {}
+        }
+        Ok(state)
+    }
+
     /// Explicit settings-window action only. Uses the existing profile-scoped
-    /// OS store/cache path and never changes preferences or emits a snapshot.
+    /// private store/cache path and never changes preferences or emits a snapshot.
     pub fn reveal_credential(
         &self,
         profile_id: &str,
@@ -5438,6 +5585,248 @@ mod tests {
             serde_json::to_string(&(store.profile_catalog().unwrap(), store.preferences()))
                 .unwrap();
         assert!(!snapshot.contains("synthetic-"));
+    }
+
+    #[test]
+    fn credential_editor_state_distinguishes_anonymous_text_from_saved_speech_key() {
+        for route in [TextTranslation::OpenAICompatible, TextTranslation::ChatMock] {
+            let fake = FakeSecretStore::default();
+            let store = settings(&fake);
+            let profile = ServiceProfile::alibaba_default();
+            store
+                .save_api_key(&profile.id, "synthetic-speech-secret")
+                .unwrap();
+            let request = ProviderCredentials::AlibabaTranslation {
+                api_key: String::new(),
+                text_translation: route,
+                endpoint: "http://127.0.0.1:8000/v1".into(),
+                token: String::new(),
+                model: "local-model".into(),
+                clear_token: false,
+            };
+            store.save_credentials(&profile.id, &request).unwrap();
+            let state = store
+                .credential_editor_state(&profile.id, Some(route))
+                .unwrap();
+            assert!(state.saved_fields.is_empty());
+            assert_eq!(
+                state.endpoint.as_deref(),
+                Some("http://127.0.0.1:8000/v1/chat/completions")
+            );
+            assert_eq!(state.model.as_deref(), Some("local-model"));
+            let speech = store.credential_editor_state(&profile.id, None).unwrap();
+            assert_eq!(
+                speech.saved_fields,
+                vec![
+                    CredentialRevealField::ApiKey,
+                    CredentialRevealField::AsrApiKey
+                ]
+            );
+            assert!(speech.endpoint.is_none());
+            assert!(speech.model.is_none());
+            assert!(!serde_json::to_string(&speech)
+                .unwrap()
+                .contains("synthetic-speech-secret"));
+
+            let mut authenticated = request.clone();
+            let ProviderCredentials::AlibabaTranslation { token, .. } = &mut authenticated else {
+                unreachable!()
+            };
+            *token = "synthetic-text-secret".into();
+            store.save_credentials(&profile.id, &authenticated).unwrap();
+            let state = store
+                .credential_editor_state(&profile.id, Some(route))
+                .unwrap();
+            assert_eq!(state.saved_fields, vec![CredentialRevealField::Token]);
+            let json = serde_json::to_string(&state).unwrap();
+            assert!(!json.contains("synthetic-speech-secret"));
+            assert!(!json.contains("synthetic-text-secret"));
+
+            let mut anonymous = request;
+            let ProviderCredentials::AlibabaTranslation { clear_token, .. } = &mut anonymous else {
+                unreachable!()
+            };
+            *clear_token = true;
+            store.save_credentials(&profile.id, &anonymous).unwrap();
+            assert!(store
+                .credential_editor_state(&profile.id, Some(route))
+                .unwrap()
+                .saved_fields
+                .is_empty());
+            let snapshot = serde_json::to_string(
+                &crate::commands::SettingsSnapshotPayload::from_store(&store),
+            )
+            .unwrap();
+            for private in [
+                "synthetic-speech-secret",
+                "synthetic-text-secret",
+                "127.0.0.1:8000",
+                "local-model",
+            ] {
+                assert!(!snapshot.contains(private));
+            }
+        }
+    }
+
+    #[test]
+    fn credential_editor_state_reads_only_requested_slot_and_rejects_stale_route() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = ServiceProfile::alibaba_default();
+        store
+            .save_credentials(
+                &profile.id,
+                &openai_compatible_request(
+                    "synthetic-speech-secret",
+                    "http://127.0.0.1:8000/v1",
+                    "",
+                    "local-model",
+                ),
+            )
+            .unwrap();
+        store.secret_cache.lock().unwrap().clear();
+        fake.state.lock().unwrap().loads.clear();
+        assert_eq!(
+            store
+                .credential_editor_state(&profile.id, Some(TextTranslation::DeepLX))
+                .err()
+                .as_deref(),
+            Some("credential_reveal_field_mismatch")
+        );
+        assert!(fake.state.lock().unwrap().loads.is_empty());
+        let speech_account = credential_account(&profile);
+        let text_account = SettingsStore::destination_account(&profile);
+        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &speech_account);
+        assert!(store
+            .credential_editor_state(&profile.id, Some(TextTranslation::OpenAICompatible))
+            .is_ok());
+        assert_eq!(
+            fake.load_count(PROFILE_KEYCHAIN_SERVICE, &speech_account),
+            0
+        );
+        assert_eq!(fake.load_count(PROFILE_KEYCHAIN_SERVICE, &text_account), 1);
+        assert_eq!(
+            store
+                .credential_editor_state(&profile.id, None)
+                .err()
+                .as_deref(),
+            Some(CREDENTIAL_STORE_UNAVAILABLE)
+        );
+    }
+
+    #[test]
+    fn credential_editor_state_ui_fixtures_never_access_real_credentials() {
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::in_memory(Box::new(fake.clone()), true);
+        let profile = ServiceProfile::alibaba_default();
+        let speech = store.credential_editor_state(&profile.id, None).unwrap();
+        assert!(speech.saved_fields.contains(&CredentialRevealField::ApiKey));
+        assert_eq!(
+            store.reveal_credential(&profile.id, CredentialRevealField::ApiKey, None),
+            Ok(Some("sk-demo-not-a-real-key".into()))
+        );
+        store
+            .save_credentials(
+                &profile.id,
+                &openai_compatible_request("", "http://127.0.0.1:8000/v1", "", "local-model"),
+            )
+            .unwrap();
+        let text = store
+            .credential_editor_state(&profile.id, Some(TextTranslation::OpenAICompatible))
+            .unwrap();
+        assert!(text.saved_fields.is_empty());
+        assert_eq!(
+            text.endpoint.as_deref(),
+            Some("http://127.0.0.1:8000/v1/chat/completions")
+        );
+        assert_eq!(text.model.as_deref(), Some("local-model"));
+        let state = fake.state.lock().unwrap();
+        assert!(state.loads.is_empty());
+        assert!(state.values.is_empty());
+    }
+
+    #[test]
+    fn credential_editor_state_hydrates_provider_fields_without_secret_values() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        for (provider, credentials, expected) in [
+            (
+                ProviderKind::CustomOpenAIASR,
+                custom_speech_request(
+                    "wss://speech.example/realtime",
+                    "speech-model",
+                    "synthetic-speech-secret",
+                ),
+                serde_json::json!({"savedFields": ["apiKey", "asrApiKey"], "endpoint": "wss://speech.example/realtime", "model": "speech-model"}),
+            ),
+            (
+                ProviderKind::AzureOpenAIRealtime,
+                ProviderCredentials::AzureOpenAI {
+                    endpoint: "https://sample.openai.azure.com".into(),
+                    deployment: "realtime".into(),
+                    transcription_deployment: "transcribe".into(),
+                    api_key: "synthetic-azure-secret".into(),
+                },
+                serde_json::json!({"savedFields": ["apiKey"], "endpoint": "https://sample.openai.azure.com", "deployment": "realtime", "transcriptionDeployment": "transcribe"}),
+            ),
+            (
+                ProviderKind::TencentCloud,
+                ProviderCredentials::TencentCloud {
+                    app_id: "12345".into(),
+                    secret_id: "synthetic-tencent-id".into(),
+                    secret_key: "synthetic-tencent-secret".into(),
+                },
+                serde_json::json!({"savedFields": ["secretId", "secretKey"], "appId": "12345"}),
+            ),
+            (
+                ProviderKind::BaiduTranslate,
+                ProviderCredentials::BaiduTranslate {
+                    app_id: "67890".into(),
+                    app_key: "synthetic-baidu-secret".into(),
+                },
+                serde_json::json!({"savedFields": ["appKey"], "appId": "67890"}),
+            ),
+        ] {
+            let profile = store
+                .create_profile(provider, "Saved editor fields")
+                .unwrap();
+            store.save_credentials(&profile.id, &credentials).unwrap();
+            let state = store.credential_editor_state(&profile.id, None).unwrap();
+            assert_eq!(serde_json::to_value(state).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn credential_editor_state_supports_legacy_deeplx_and_keeps_private_paths_out_of_snapshots() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store
+            .create_profile(ProviderKind::DeepLX, "Legacy text destination")
+            .unwrap();
+        store
+            .save_credentials(
+                &profile.id,
+                &ProviderCredentials::DeepLX {
+                    asr_api_key: "synthetic-speech-secret".into(),
+                    endpoint: "https://example.com/private-path/translate".into(),
+                    token: String::new(),
+                },
+            )
+            .unwrap();
+        let state = store
+            .credential_editor_state(&profile.id, Some(TextTranslation::DeepLX))
+            .unwrap();
+        assert!(state.saved_fields.is_empty());
+        assert_eq!(
+            state.endpoint.as_deref(),
+            Some("https://example.com/private-path/translate")
+        );
+        let snapshot = serde_json::to_string(
+            &crate::commands::SettingsSnapshotPayload::from_store(&store),
+        )
+        .unwrap();
+        assert!(!snapshot.contains("private-path"));
+        assert!(!snapshot.contains("synthetic-speech-secret"));
     }
 
     #[test]

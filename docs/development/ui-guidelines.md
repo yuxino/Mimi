@@ -42,11 +42,15 @@ These project rules apply to implementation and review.
   far edge, or use a shield to disguise generic help. Credential storage help
   uses the shared labeled `CredentialStorageHelp`; diagnostic privacy help
   stays with the page heading. Inspect all sibling uses when this recurs.
-- Saved-credential viewing must show its localized action text. Place the action
-  beside its field label or stage heading; a lone eye beneath an input does not
-  explain that it reads the saved value rather than the replacement draft.
-  Check rendered text visibility and hidden/loading/shown states, not just DOM
-  text or a tooltip title. Keep preview clearing and credential boundaries intact.
+- Credentials use one editable input with an inline eye and paste action. Saved
+  secret presence determines whether the eye can read an existing value; a
+  usable service configuration alone does not imply a saved optional key.
+  Keep localized accessible labels and tooltips for the eye. Show stored values
+  in that same input only on explicit request; viewing alone is not an edit.
+  If a replacement draft exists, the eye toggles that draft without reading or
+  overwriting it. Clear loaded values and invalidate pending reads on focus
+  loss, hide, close, route change and unmount. Nonsecret configuration values
+  load into editable fields locally, never into a secret-containing snapshot.
 
 ## Choose feedback by purpose
 

@@ -311,6 +311,7 @@ mod tests {
             "support_diagnostics",
             "app_open_support_issue",
             "profile_reveal_credential",
+            "profile_credential_editor_state",
         ] {
             assert!(include_str!("lib.rs").contains(&format!("commands::{command},")));
             let permissions = include_str!("../permissions/app.toml");
@@ -1540,6 +1541,24 @@ fn ensure_credential_reveal_window(label: &str) -> Result<(), String> {
     } else {
         Err("credential_reveal_not_allowed".into())
     }
+}
+
+/// Returns private configuration only to the requesting settings editor.
+/// Saved API-key flags do not include credential bytes or emit an event.
+#[tauri::command]
+pub async fn profile_credential_editor_state(
+    window: tauri::WebviewWindow,
+    state: State<'_, AppState>,
+    profile_id: String,
+    text_translation: Option<crate::core::provider::TextTranslation>,
+) -> Result<crate::settings_store::CredentialEditorState, String> {
+    ensure_credential_reveal_window(window.label())?;
+    let settings = Arc::clone(&state.settings);
+    tauri::async_runtime::spawn_blocking(move || {
+        settings.credential_editor_state(&profile_id, text_translation)
+    })
+    .await
+    .map_err(|_| "credential_store_unavailable".to_string())?
 }
 
 /// Returns one explicitly requested secret only to this invoke's requester.

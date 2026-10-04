@@ -8,7 +8,7 @@ window.__TAURI_INTERNALS__ = {
   metadata: { currentWindow: { label: "settings" }, currentWebview: { label: "settings" } },
   transformCallback: () => 0,
   unregisterCallback: () => {},
-  invoke: async command => {
+  invoke: async (command, args) => {
     if (command === "windows_audio_status") {
       if (fixture.platform !== "windows") return null;
       if (fixture.state === "failed") throw new Error("fixture_unavailable");
@@ -20,14 +20,17 @@ window.__TAURI_INTERNALS__ = {
       };
     }
     if (command === "app_desktop_shortcut_commands") return null;
+    if (command === "profile_credential_editor_state") return args.textTranslation
+      ? { savedFields: fixture.keyless ? [] : ["token"], endpoint: "http://127.0.0.1:8080/v1", model: "fixture-model" }
+      : { savedFields: ["apiKey"], endpoint: "wss://speech.example/v1/realtime", model: "fixture-speech-model" };
     if (command === "profile_reveal_credential") return "fixture-saved-value";
     if (command === "plugin:event|listen") return 0;
     if (command === "plugin:event|unlisten") return;
     throw new Error("fixture_command_unavailable");
   },
 };
-const React = (await import("/node_modules/.vite/deps/react.js")).default;
-const { createRoot } = (await import("/node_modules/.vite/deps/react-dom_client.js")).default;
+const React = (await import("react")).default;
+const { createRoot } = (await import("react-dom/client")).default;
 const { useStore } = await import("/src/lib/store.ts");
 const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
 const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
@@ -58,9 +61,9 @@ window.applyLayoutCase = async next => {
     document.querySelector(".service-row__edit").click();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (next.reveal) {
-      if (!document.querySelector(".stored-credential-reveal__toggle")) document.querySelector(".credential-panel__saved-actions button").click();
+      document.querySelector(".credential-panel__saved-actions button")?.click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      for (const button of document.querySelectorAll(".stored-credential-reveal__toggle")) button.click();
+      for (const button of document.querySelectorAll(".saved-credential-input__toggle")) button.click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }
   }

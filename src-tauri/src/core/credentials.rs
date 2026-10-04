@@ -39,7 +39,7 @@ pub enum ProviderCredentialsError {
 }
 
 /// Explicit single-field reveal requests, never part of normal snapshots.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CredentialRevealField {
     ApiKey,

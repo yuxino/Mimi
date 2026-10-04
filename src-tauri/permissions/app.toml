@@ -52,6 +52,7 @@ commands.allow = [
   "profile_test_connection",
   "profile_delete_api_key",
   "profile_reveal_credential",
+  "profile_credential_editor_state",
   "session_start",
   "session_stop",
   "session_toggle_paused",

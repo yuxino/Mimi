@@ -7,10 +7,10 @@ import { useStore } from "../../lib/store";
 import type { SettingsDraft } from "../../lib/types";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
 import { sourceLanguagesForSettings, targetLanguagesForSettings } from "../../lib/providerCapabilities";
-import { profileRevealCredential } from "../../lib/ipc";
+import { profileCredentialEditorState, profileRevealCredential } from "../../lib/ipc";
 import { SettingsView } from "./SettingsView";
 
-vi.mock("../../lib/ipc", async (original) => ({ ...await original<typeof import("../../lib/ipc")>(), profileRevealCredential: vi.fn() }));
+vi.mock("../../lib/ipc", async (original) => ({ ...await original<typeof import("../../lib/ipc")>(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn() }));
 
 const initial = useStore.getState();
 let host: HTMLDivElement;
@@ -28,6 +28,7 @@ beforeEach(() => {
   saveProfileCredentials = vi.fn().mockResolvedValue(undefined);
   saveSettings = vi.fn().mockResolvedValue(undefined);
   vi.mocked(profileRevealCredential).mockReset();
+  vi.mocked(profileCredentialEditorState).mockReset().mockResolvedValue({ savedFields: ["apiKey"] });
   useStore.setState({ ...initial, saveProfileCredentials, saveSettings,
     settings: { ...initial.settings, profiles: initial.settings.profiles.map((profile) => ({ ...profile, credentialState: "present" })) },
     session: { ...initial.session, status: { kind: "idle" }, isActive: false, isPaused: false },
@@ -91,7 +92,7 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
   useStore.setState({ settings });
   await mount(); await select("service");
   expect(host.querySelector("#translation-languages")).toBeNull();
-  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   const groups = [...host.querySelectorAll(".service-detail #translation-languages [role=group]")];
   expect(groups.map(group => [...group.querySelectorAll("button span")].map(node => node.textContent))).toEqual([
     sourceLanguagesForSettings(settings).map(language => SOURCE_LANGUAGE_DISPLAY_NAMES[language]),
@@ -103,7 +104,7 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
 it("saves language choices and blocks them for active and paused subtitle sessions", async () => {
   useStore.setState({ settings: { ...useStore.getState().settings, profiles: useStore.getState().settings.profiles.map(profile => ({ ...profile, provider: "openAIRealtime" })) } });
   await mount(); await select("service");
-  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   const target = [...host.querySelectorAll<HTMLButtonElement>("#translation-languages [role=group]")[1].querySelectorAll("button")].find(button => button.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.ja)!;
   await act(async () => { target.focus(); target.click(); });
   expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "ja" });
@@ -119,7 +120,7 @@ it("places independent proxy controls inside a service profile and blocks change
   await mount(); await select("service");
   expect(host.querySelector("#application-settings-panel #network-proxy")).toBeNull();
   expect(host.querySelector(".service-proxies")).toBeNull();
-  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.querySelector("#service-profiles-panel .service-proxies")?.textContent).toContain(I18N.settings.networkProxySpeechScope);
   expect(host.querySelectorAll('.service-proxies [role="combobox"]')).toHaveLength(2);
   const selector = host.querySelector<HTMLButtonElement>('.service-proxies [role="combobox"]')!;
@@ -136,24 +137,34 @@ it("places independent proxy controls inside a service profile and blocks change
 
 it("clears a saved-value reveal when leaving services while preserving the unsaved replacement draft", async () => {
   await mount(); await select("service");
-  await act(() => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   const replace = [...host.querySelectorAll<HTMLButtonElement>(".credential-panel button")].find((button) => button.textContent === I18N.settings.replaceCredentials)!;
-  await act(() => replace.click());
-  const draft = host.querySelector<HTMLInputElement>('.credential-panel input[type="password"]')!;
-  await act(() => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(draft, "synthetic-unsaved-replacement");
-    draft.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  await act(async () => replace.click());
+  const field = () => host.querySelector<HTMLInputElement>(".credential-panel input")!;
+  const eye = () => host.querySelector<HTMLButtonElement>(".saved-credential-input__toggle")!;
   expect(profileRevealCredential).not.toHaveBeenCalled();
   vi.mocked(profileRevealCredential).mockResolvedValue("synthetic-saved-preview");
-  await act(async () => { host.querySelector<HTMLButtonElement>(".stored-credential-reveal button")!.click(); });
-  expect(host.querySelector<HTMLInputElement>(".stored-credential-reveal input")!.value).toBe("synthetic-saved-preview");
+  await act(async () => eye().click());
+  expect(field().value).toBe("synthetic-saved-preview");
+  expect(field().type).toBe("text");
   await select("general");
-  expect(host.querySelector(".stored-credential-reveal")).toBeNull();
+  expect(field().value).toBe("");
+  expect(field().type).toBe("password");
   await select("service");
-  expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
-  expect(host.querySelector('.credential-panel input[type="password"]')).toBe(draft);
-  expect(draft.value).toBe("synthetic-unsaved-replacement");
+  expect(field().value).toBe("");
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field(), "synthetic-unsaved-replacement");
+    field().dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => eye().click());
+  expect(field().value).toBe("synthetic-unsaved-replacement");
+  expect(field().type).toBe("text");
+  expect(profileRevealCredential).toHaveBeenCalledOnce();
+  await select("general");
+  expect(field().type).toBe("password");
+  await select("service");
+  expect(field().value).toBe("synthetic-unsaved-replacement");
+  expect(field().type).toBe("password");
   expect(JSON.stringify(useStore.getState().settings)).not.toContain("synthetic-saved-preview");
   expect(saveProfileCredentials).not.toHaveBeenCalled();
 });
@@ -192,7 +203,7 @@ it("blocks placeholder session and credential controls while loading settings an
   expect(saveProfileCredentials).not.toHaveBeenCalled();
 });
 
-it("preserves a write-only unsaved credential draft while moving between categories", async () => {
+it("preserves a masked unsaved credential draft while moving between categories", async () => {
   await mount();
   await select("service");
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
@@ -204,8 +215,7 @@ it("preserves a write-only unsaved credential draft while moving between categor
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   for (const category of ["diagnostics", "general", "export", "subtitles", "service"]) await select(category);
-  expect(host.querySelector('.credential-panel input[type="password"]')).toBe(input);
-  expect(input.value).toBe("synthetic-unsaved-draft");
+  expect(host.querySelector<HTMLInputElement>('.credential-panel input[type="password"]')?.value).toBe("synthetic-unsaved-draft");
   expect(saveProfileCredentials).not.toHaveBeenCalled();
   expect(saveSettings).not.toHaveBeenCalled();
 });

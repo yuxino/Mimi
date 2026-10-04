@@ -150,6 +150,24 @@ export function profileDeleteAPIKey(
 
 export type StoredCredentialField = "apiKey" | "asrApiKey" | "token" | "secretId" | "secretKey" | "appKey";
 
+/** Editor-local configuration; endpoints may contain private path segments. */
+export interface CredentialEditorState {
+  savedFields: StoredCredentialField[];
+  endpoint?: string;
+  model?: string;
+  deployment?: string;
+  transcriptionDeployment?: string;
+  appId?: string;
+}
+
+/** Never retain this response in the shared settings store or diagnostics. */
+export function profileCredentialEditorState(request: {
+  profileId: string;
+  textTranslation?: Exclude<TextTranslation, "followService">;
+}): Promise<CredentialEditorState> {
+  return invoke<CredentialEditorState>("profile_credential_editor_state", request);
+}
+
 /** Settings-only, explicit user reveal. Never includes secrets in a snapshot. */
 export function profileRevealCredential(request: {
   profileId: string;

@@ -40,11 +40,12 @@ export default async function verifySettingsLayout(page) {
             for (const dialog of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
               if (dialog.scrollWidth > dialog.clientWidth + 1 || rect(dialog).left < 0 || rect(dialog).right > innerWidth + 1) issues.push("dialog overflow");
             }
-            for (const reveal of document.querySelectorAll(".stored-credential-reveal")) {
-              const button = reveal.querySelector("button"), caption = button.querySelector("span");
-              if (rect(caption).width < 2 || rect(caption).height < 2) issues.push("unlabeled saved-value action");
-              const field = reveal.closest(".settings-field"), input = field?.querySelector(".config-input-group");
-              if (input && rect(button).bottom > rect(input).top + 1) issues.push("saved-value action below field");
+            for (const button of document.querySelectorAll(".saved-credential-input__toggle")) {
+              const group = button.closest(".config-input");
+              const input = group.querySelector("input"), paste = group.querySelector(".config-input__paste");
+              if (!button.getAttribute("aria-label") || !button.title) issues.push("unlabeled credential eye");
+              if (rect(button).left < rect(input).left || rect(button).right > rect(paste).left) issues.push("credential action overlap");
+              if (group.querySelectorAll("input").length !== 1) issues.push("duplicate credential input");
             }
             const audioRows = [...document.querySelectorAll("#audio-input .settings-card__body > .settings-row")].filter(row => rect(row).width > 0);
             for (let i = 1; i < audioRows.length; i++) {

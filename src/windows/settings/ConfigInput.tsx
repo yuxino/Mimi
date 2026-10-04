@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState, type FocusEventHandler, type InputHTMLAttributes, type Ref } from "react";
+import { useEffect, useRef, useState, type FocusEventHandler, type InputHTMLAttributes, type ReactNode, type Ref } from "react";
 import { readClipboardText } from "../../lib/clipboard";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { useSettingsToast } from "./useSettingsToast";
 
 /** Clipboard access happens only on the user's paste action; the owning field decides when to commit. */
-export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
+export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, ref, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
   onValueChange: (value: string) => void;
   onPasteValue?: (value: string) => void;
   onGroupBlur?: FocusEventHandler<HTMLSpanElement>;
+  action?: ReactNode;
   ref?: Ref<HTMLInputElement>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -38,8 +39,9 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, ref, ...
     }
   };
   return <span className="config-input-group" onBlur={onGroupBlur}>
-    <span className="config-input">
+    <span className={`config-input${action ? " config-input--with-action" : ""}`}>
       <input {...props} ref={ref} onChange={event => { clearToast(); onValueChange(event.target.value); }} />
+      {action}
       <button type="button" className="config-input__paste" aria-label={I18N.settings.pasteFromClipboard} title={I18N.settings.pasteFromClipboard}
         disabled={props.disabled || busy} aria-busy={busy || undefined} onClick={() => { void paste(); }}><Icon name="clipboard" /><span className="settings-sr-only">{I18N.settings.pasteFromClipboard}</span></button>
     </span>

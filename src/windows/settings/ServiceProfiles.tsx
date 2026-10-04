@@ -39,7 +39,8 @@ import { SettingsHelp } from "./SettingsHelp";
 import { CredentialStorageHelp } from "./CredentialStorageHelp";
 import { ConnectionCheck } from "./ConnectionCheck";
 import { saveAndSelectProfile } from "./saveAndSelectProfile";
-import { StoredCredentialReveal } from "./StoredCredentialReveal";
+import { SavedCredentialInput } from "./SavedCredentialInput";
+import { useCredentialEditorState } from "./useCredentialEditorState";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
 import { textTranslationDisplayName } from "../../lib/textTranslationName";
 import { NetworkProxySettings } from "./NetworkProxySettings";
@@ -657,6 +658,14 @@ function CredentialEditor({
 }) {
   const [draft, setDraft] = useState<CredentialDraft>(emptyCredentialDraft);
   const [editingSavedCredential, setEditingSavedCredential] = useState(false);
+  const [changedFields, setChangedFields] = useState<Partial<Record<CredentialFieldName, true>>>({});
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const editorState = useCredentialEditorState(profile.id, undefined, !readOnly && visible && (profile.credentialState !== "present" || editingSavedCredential), editorEpoch);
+  const savedValues = editorState.state;
+  const displayedDraft = { ...draft };
+  for (const field of ["endpoint", "model", "deployment", "transcriptionDeployment", "appId"] as const) {
+    if (!changedFields[field]) displayedDraft[field] = savedValues?.[field] ?? "";
+  }
   const [endpointInvalid, setEndpointInvalid] = useState(false);
   const endpointRef = useRef<HTMLInputElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
@@ -674,23 +683,25 @@ function CredentialEditor({
   }, [feedback]);
   const saveFeedback = feedback && <div ref={feedbackRef} tabIndex={-1}><InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback></div>;
   const noteId = `${inputId}-storage-note`;
-  const credentials = buildProviderCredentials(profile.provider, draft);
+  const credentials = profile.credentialState === "present" && (editorState.loading || editorState.error) ? null : buildProviderCredentials(profile.provider, displayedDraft);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!credentials) return;
-    if (profile.provider === "deepLX" && !deepLXEndpointIsValid(draft.endpoint)) {
+    if (!credentials || disabled || readOnly) return;
+    if (profile.provider === "deepLX" && !deepLXEndpointIsValid(displayedDraft.endpoint)) {
       setEndpointInvalid(true);
       endpointRef.current?.focus();
       return;
     }
     setEndpointInvalid(false);
     setEditingSavedCredential(true);
-    // Saved-value previews are independent of this replacement draft. Keep
-    // only the user's edits on failure; discard after a successful save/use.
+    // Reading a saved value does not create a replacement draft. Keep only
+    // the user's edits on failure; discard after a successful save/use.
     void onSave(credentials).then((saved) => {
       if (saved) {
         setDraft(emptyCredentialDraft());
+        setChangedFields({});
+        setEditorEpoch(current => current + 1);
         setEditingSavedCredential(false);
       }
     });
@@ -701,6 +712,8 @@ function CredentialEditor({
     // Clear plaintext before the async keychain deletion starts. A failure
     // must never restore a replacement secret to WebView state or the DOM.
     setDraft(next.draft);
+    setChangedFields({});
+    setEditorEpoch(current => current + 1);
     setEditingSavedCredential(next.editingSavedCredential);
     void onConfirmDelete();
   };
@@ -781,6 +794,7 @@ function CredentialEditor({
       )}
 
       <form className="credential-form" onSubmit={handleSubmit}>
+        {editorState.error && <InlineFeedback tone="error">{editorState.error}<button type="button" className="settings-link" disabled={disabled} onClick={() => setEditorEpoch(current => current + 1)}>{I18N.settings.retryLoadingSettings}</button></InlineFeedback>}
         <div className="credential-form__fields">
           {credentialFieldsForProvider(profile.provider).map((field) => {
             const copy = credentialFieldCopy(field, profile.provider);
@@ -788,25 +802,42 @@ function CredentialEditor({
             return (
               <div className="settings-field" key={field}>
                 <label htmlFor={fieldId}>{copy.label}</label>
-                <ConfigInput
+                {copy.secret ? <SavedCredentialInput
+                  id={fieldId}
+                  profileId={profile.id}
+                  field={field as StoredCredentialField}
+                  label={copy.label}
+                  hasSavedValue={savedValues?.savedFields.includes(field as StoredCredentialField) ?? false}
+                  active={visible && !busy && !confirmingDelete}
+                  value={draft[field]}
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  aria-describedby={noteId}
+                  disabled={disabled}
+                  placeholder={copy.placeholder}
+                  onValueChange={(value) => {
+                    setEditingSavedCredential(true);
+                    setDraft((current) => ({ ...current, [field]: value }));
+                  }}
+                /> : <ConfigInput
                   id={fieldId}
                   ref={profile.provider === "deepLX" && field === "endpoint" ? endpointRef : undefined}
                   aria-invalid={field === "endpoint" && endpointInvalid ? true : undefined}
-                  type={copy.secret ? "password" : "text"}
+                  type="text"
                   inputMode={field === "appId" ? "numeric" : undefined}
-                  value={draft[field]}
-                  autoComplete="new-password"
+                  value={displayedDraft[field]}
+                  autoComplete="off"
                   spellCheck={false}
                   aria-describedby={field === "endpoint" && endpointInvalid ? `${fieldId}-error ${noteId}` : noteId}
                   disabled={disabled}
                   placeholder={copy.placeholder}
                   onValueChange={(value) => {
                     setEditingSavedCredential(true);
+                    setChangedFields((current) => ({ ...current, [field]: true }));
                     setDraft((current) => ({ ...current, [field]: value }));
                     if (field === "endpoint" && endpointInvalid) setEndpointInvalid(!deepLXEndpointIsValid(value));
                   }}
-                />
-                {copy.secret && profile.credentialState === "present" && visible && !busy && !confirmingDelete && <StoredCredentialReveal key={`${profile.id}:${field}`} profileId={profile.id} field={field as StoredCredentialField} label={copy.label} disabled={disabled} />}
+                />}
                 {field === "endpoint" && endpointInvalid && <span id={`${fieldId}-error`} role="alert" className="credential-unavailable">{I18N.settings.deepLXEndpointInvalid}</span>}
               </div>
             );
@@ -821,6 +852,7 @@ function CredentialEditor({
               disabled={disabled}
               onClick={() => {
                 setDraft(emptyCredentialDraft());
+                setChangedFields({});
                 setEditingSavedCredential(false);
               }}
             >

@@ -39,6 +39,11 @@ it("keeps non-subtitle windows and an unsaved credential draft stable across hig
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => useStore.setState({ session: { ...useStore.getState().session, status: { kind: "listening" }, isActive: true } }));
+    // Locking credentials intentionally discards the field's private reveal
+    // state. Subsequent subtitle snapshots must keep that locked field stable.
+    const lockedInput = host.querySelector<HTMLInputElement>('.credential-panel input[type="password"]')!;
+    expect(lockedInput.value).toBe("synthetic-unsaved-key");
+    expect(lockedInput.disabled).toBe(true);
     const before = { ...commits };
     for (let index = 0; index < 50; index++) {
       const incoming = JSON.parse(JSON.stringify(useStore.getState().session)) as typeof original.session;
@@ -49,9 +54,9 @@ it("keeps non-subtitle windows and an unsaved credential draft stable across hig
       await act(async () => useStore.setState((state) => ({ session: shareUnchangedSubtitleHistory(state.session, incoming) })));
     }
     expect(commits).toEqual(before);
-    expect(host.querySelector('.credential-panel input[type="password"]')).toBe(input);
-    expect(input.value).toBe("synthetic-unsaved-key");
-    expect(input.disabled).toBe(true);
+    expect(host.querySelector('.credential-panel input[type="password"]')).toBe(lockedInput);
+    expect(lockedInput.value).toBe("synthetic-unsaved-key");
+    expect(lockedInput.disabled).toBe(true);
   } finally {
     await act(async () => root.unmount()); host.remove(); useStore.setState(original, true);
     window.history.replaceState(null, "", window.location.pathname); setStoredUiLanguage("system"); vi.unstubAllGlobals();
