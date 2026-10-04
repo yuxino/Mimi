@@ -51,7 +51,11 @@ Chinese families ahead of the Japanese fallbacks outside Japanese UI
 `:lang(ja)` reverses only that ordering). `C:/Windows/Fonts/msyh.ttc` (19,704,352 B) exists
 and both `Microsoft YaHei` and `Microsoft YaHei UI` are registered.
 
-Screenshots: `assets/windows-verification-2026-10-04/settings-{zh,en,ja}-{narrow,max}.png`.
+| narrow | maximized |
+| --- | --- |
+| ![Chinese settings, minimum width](assets/windows-verification-2026-10-04/settings-zh-narrow.png) | ![Chinese settings, maximized](assets/windows-verification-2026-10-04/settings-zh-max.png) |
+| ![English settings, minimum width](assets/windows-verification-2026-10-04/settings-en-narrow.png) | ![English settings, maximized](assets/windows-verification-2026-10-04/settings-en-max.png) |
+| ![Japanese settings, minimum width](assets/windows-verification-2026-10-04/settings-ja-narrow.png) | ![Japanese settings, maximized](assets/windows-verification-2026-10-04/settings-ja-max.png) |
 
 **Boundary:** this is Windows 11 build 26200, **not** the reporter's Windows 10 IoT
 Enterprise LTSC 21H2 (19044). The font-fallback question on that image still needs a check
@@ -100,7 +104,9 @@ So on this build `跟随系统` followed the **audible** endpoint and captioned 
 system default stayed on the silent speakers. Point 2 staying on the headset is the documented
 "device is bound when the session starts" behaviour, recorded here as an observation, not a defect.
 
-Screenshots: `assets/windows-verification-2026-10-04/point-{1,2,3}-settings-row.png`.
+| point 1 — 跟随系统 | point 2 — same session, playing to the speakers | point 3 — 跟随通信设备（通话耳机） |
+| --- | --- | --- |
+| ![point 1 row](assets/windows-verification-2026-10-04/point-1-settings-row.png) | ![point 2 row](assets/windows-verification-2026-10-04/point-2-settings-row.png) | ![point 3 row](assets/windows-verification-2026-10-04/point-3-settings-row.png) |
 
 ### 2.4 Selected-application capture
 
@@ -115,7 +121,9 @@ Screenshots: `assets/windows-verification-2026-10-04/point-{1,2,3}-settings-row.
 * **Not verified:** actual per-application isolation (capturing one application while others
   keep playing) — only the picker, the real enumeration and the missing-target path were checked.
 
-Screenshot: `assets/windows-verification-2026-10-04/point3-capture-apps-open-cropped.png` (cropped).
+![Application picker, list cropped](assets/windows-verification-2026-10-04/point3-capture-apps-open-cropped.png)
+
+(The picker list is cropped here so third-party application names are not published.)
 
 ## 3. Windows install and in-app update
 
@@ -134,17 +142,21 @@ Post-update verification (independent of the app): uninstall entry `1.5.3` → `
 `THIRD_PARTY_NOTICES.md` added; Start-menu shortcut intact; `preferences.json` (mtime + SHA256)
 and `%APPDATA%\app.yuxino.mimi` (31 files / 160,632,634 B) unchanged.
 
-Screenshots: `assets/windows-verification-2026-10-04/update-{10,20,30,31}-*.png`.
+| baseline | after check | after download | install clicked |
+| --- | --- | --- | --- |
+| ![baseline](assets/windows-verification-2026-10-04/update-10-baseline.png) | ![after check](assets/windows-verification-2026-10-04/update-20-after-check.png) | ![after download](assets/windows-verification-2026-10-04/update-30-after-download.png) | ![install clicked](assets/windows-verification-2026-10-04/update-31-install-clicked.png) |
 
 MOTW / SmartScreen: a copy of `mimi_1.5.9_x64-setup.exe` was given
 `[ZoneTransfer] ZoneId=3` with the real `ReferrerUrl` (210-byte `Zone.Identifier`, SHA256
 unchanged) and launched 3× via `CreateProcess` and 1× via `Shell.Application` (ShellExecute).
 **No SmartScreen or security warning appeared**; the installer's own window appeared instead
-(`motw-installer-window.png`). Machine fact: `HKLM\SOFTWARE\Policies\Microsoft\Windows\System\EnableSmartScreen = 0`
+(`motw-installer-window.png` below). Machine fact: `HKLM\SOFTWARE\Policies\Microsoft\Windows\System\EnableSmartScreen = 0`
 (`ShellSmartScreenLevel = Warn` is inert while that policy is 0) — so this record does **not**
 verify SmartScreen behaviour; the unsigned-installer warning risk needs a machine with default
 policy. Packages are unsigned (`Get-AuthenticodeSignature` → `NotSigned`) and were downloaded
 without a `Zone.Identifier`.
+
+![Installer window after launching the MOTW-marked copy](assets/windows-verification-2026-10-04/motw-installer-window.png)
 
 MSI: only static properties were read — `ProductName mimi`, `ProductVersion 1.5.9`,
 `ProductCode {D518A90F-79C3-43D7-80A4-201E352F092D}`, `UpgradeCode {9E1B2E2D-EC9D-5A92-BD63-14963529932F}`,
