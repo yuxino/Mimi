@@ -46,6 +46,41 @@ Chinese conversational response instead of translating to English. Keep the
 documented dedicated model and `AUDIO` setup; do not change the model based only
 on its version number or successful setup.
 
+A subsequent configured comparison streamed the same three fixed FLEURS PCM
+inputs separately through the dedicated translator and `gemini-3.8-live`.
+The dialogue model used a translation-only `systemInstruction`, no
+`translationConfig`, automatic activity detection, and `NO_INTERRUPTION` so
+later source speech could not cut off generated speech. Both received identical
+16 kHz mono audio at 100 ms cadence, two seconds of trailing silence and
+`audioStreamEnd`. The observation window was bounded. This corrects the earlier
+uninstructed dialogue probe; it is still only one run per input/configuration,
+not a general model ranking or a native Mimi integration of the dialogue model.
+
+The dedicated translator returned its first nonempty translated transcript
+earlier in all three cases. The dialogue model corrected the Japanese time
+condition but changed an English ranking; its Chinese output transcription
+contained unexpected markup and omitted part of the clause despite generation
+completion. Transcript evidence does not identify whether that last failure
+originated in generated speech or the output transcription channel.
+
+A third bounded prototype used `gemini-3.5-transcribe-live` with automatic
+language detection, `VERBATIM`, and no reference vocabulary. Only authoritative
+`inputTranscription` events went to `gemini-3.8-flash` via `generateContent` with
+low thinking and a translation-only instruction. Interim hypotheses were
+recorded privately but not translated. Japanese semantics improved in this
+sample; English recognition errors and the Chinese place-name error remained
+and were carried into text translation. All three text requests returned HTTP
+200. This final-only prototype does not measure a production pipeline with
+preview translation, cancellation, context, reconnects or overlay rendering.
+
+Keep the current dedicated translator for the existing Gemini route. The
+comparison supports its continuous, earlier-output behavior for this subtitle
+use case, but not an accuracy endorsement. A transcription-plus-text route is a
+separate potential integration, not a model-name substitution. Do not add
+post-hoc word replacement rules or switch defaults based on these three clips.
+Exact timings, semantic limits and private evidence boundaries are in the
+integration run ledger.
+
 The [pricing page](https://ai.google.dev/gemini-api/docs/pricing) lists this same
 translation model for both free and paid tiers, and the
 [billing guide](https://ai.google.dev/gemini-api/docs/billing) describes tier,
