@@ -3,12 +3,14 @@
 // Synthetic state only; this does not verify native window or capture behavior.
 async (page) => {
   await page.goto("http://127.0.0.1:1420/?window=overlay");
+  await page.waitForSelector(".overlay-service__button");
 
   async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false }) {
     return page.evaluate(async ({ language, route, audioInput, timestamps }) => {
       const { useStore } = await import("/src/lib/store.ts");
       const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
       const { minimumOverlayHeight } = await import("/src/windows/overlay/overlayMinimumHeight.ts");
+      const { translationService } = await import("/src/windows/overlay/translationService.ts");
       setStoredUiLanguage(language);
       // Short lanes distinguish clipping from normal compact long-text layout.
       const history = [
@@ -48,8 +50,32 @@ async (page) => {
         },
       }));
       await document.fonts.ready;
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      return minimumOverlayHeight(useStore.getState().settings);
+      const expectedService = translationService(useStore.getState().settings);
+      const expectedTexts = history.flatMap(pair => route === "original" ? [pair.source] : [pair.source, pair.translation]);
+      let fixtureState;
+      // A long-running Vite process can leave the mounted overlay and direct
+      // imports on separate HMR module instances after a rebase. Stop here
+      // instead of reporting 90 geometry failures against the initial screen.
+      for (let frame = 0; frame < 12; frame++) {
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const service = document.querySelector(".overlay-service__button");
+        const actualLabel = document.querySelector(".overlay-service__name")?.textContent ?? null;
+        const timeline = document.querySelector(".overlay-timeline");
+        const actualTexts = [...(timeline?.querySelectorAll("span") ?? [])]
+          .filter(element => element.childElementCount === 0).map(element => element.textContent);
+        fixtureState = {
+          expectedLabel: expectedService?.label, actualLabel,
+          profileMatches: service?.getAttribute("aria-label") === expectedService?.detail,
+          activeChrome: Boolean(document.querySelector(".overlay-latency")),
+          timelinePresent: Boolean(timeline),
+          missingTexts: expectedTexts.filter(text => !actualTexts.includes(text)),
+        };
+        if (fixtureState.profileMatches && fixtureState.activeChrome && fixtureState.timelinePresent
+          && actualLabel === expectedService.label && fixtureState.missingTexts.length === 0) {
+          return minimumOverlayHeight(useStore.getState().settings);
+        }
+      }
+      throw new Error(`Overlay fixture did not reach the mounted UI. Restart Vite and reload after HMR/rebase changes before retrying. ${JSON.stringify({ language, route, audioInput, timestamps, ...fixtureState })}`);
     }, { language, route, audioInput, timestamps });
   }
 
@@ -62,6 +88,7 @@ async (page) => {
       const overlay = handle.parentElement.getBoundingClientRect();
       return { x: rect.x + 7, y: rect.y + 7, width: overlay.width, height: overlay.height };
     });
+    if (Math.abs(from.width - width) <= 1 && Math.abs(from.height - height) <= 1) return;
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     await page.mouse.move(from.x + width - from.width, from.y + height - from.height);
@@ -92,7 +119,7 @@ async (page) => {
           const latency = document.querySelector(".overlay-latency");
           const issues = [];
           if (!service || !drag || !name || !latency) return { issues: ["overlay chrome missing"] };
-          if (service.width < 28 || (icon && icon.width !== 16)) issues.push("icon squeezed");
+          if (service.width < 28 || (icon && Math.abs(icon.width - 16) > 0.5)) issues.push("icon squeezed");
           if (service.left < drag.right && service.right > drag.left && service.top < drag.bottom && service.bottom > drag.top) {
             issues.push("service overlaps drag");
           }
@@ -106,6 +133,7 @@ async (page) => {
         if (result.issues.length) failures.push({ check: "chrome", width, minimumHeight, language, route, ...result });
       }
     }
+    console.log(JSON.stringify({ progress: "chrome width complete", width, chromeChecked, failures: failures.length }));
   }
 
   for (const width of [360, 420]) {
@@ -155,8 +183,12 @@ async (page) => {
               if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
                 issues.push(`${text}: hidden by an ancestor`);
               }
-              if (/(hidden|clip|auto|scroll)/.test(`${style.overflowX} ${style.overflowY}`)
-                && glyphRects.some(rect => outside(rect, visibleBox(ancestor)))) {
+              const ancestorBox = visibleBox(ancestor);
+              const clipsX = /^(hidden|clip|auto|scroll)$/.test(style.overflowX);
+              const clipsY = /^(hidden|clip|auto|scroll)$/.test(style.overflowY);
+              if (glyphRects.some(rect =>
+                clipsX && (rect.left < ancestorBox.left - 1 || rect.right > ancestorBox.right + 1)
+                || clipsY && (rect.top < ancestorBox.top - 1 || rect.bottom > ancestorBox.bottom + 1))) {
                 issues.push(`${text}: clipped by a lane ancestor`);
               }
             }
@@ -177,6 +209,7 @@ async (page) => {
         if (result.issues.length) failures.push({ check: "subtitle", ...context, ...result });
       }
     }
+    console.log(JSON.stringify({ progress: "subtitle width complete", width, subtitleChecked: subtitleCases.length, failures: failures.length }));
   }
 
   const result = { checked: chromeChecked + subtitleCases.length, chromeChecked, subtitleChecked: subtitleCases.length, subtitleCases, failures };

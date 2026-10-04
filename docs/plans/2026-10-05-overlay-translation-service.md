@@ -24,6 +24,9 @@ immersive and collapsed presentations. Paused, locked and error states retain it
 
 Validation: focused route/action/state tests, the repository check, and
 `scripts/verify-overlay-service-layout.js` exercise 72 browser combinations of
-language, route and width. Native development verification and its limits belong
+language, route and width, plus 18 minimum-height cases that check actual subtitle
+glyphs and timestamps across single and dual inputs. The harness verifies that
+the mounted UI received its synthetic state before checking layout, so stale Vite
+modules after a rebase fail immediately. Native development verification and its limits belong
 in the integration run ledger. No provider, capture, recording or credential
 behavior changes are involved.
