@@ -566,6 +566,7 @@ class UiSmokeInstrumentation : Instrumentation() {
                 .addCategory(Intent.CATEGORY_HOME)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             waitForIdleSync()
+            SystemClock.sleep(1200)
             if (expectLandscape) {
                 var wide = false
                 for (attempt in 0 until 30) {
@@ -591,14 +592,18 @@ class UiSmokeInstrumentation : Instrumentation() {
                 }
             }
             capture("overlay-after-expanded-default-$theme")
+            checkOverlayHeaderLabels(expanded)
             val savedHistory = SettingsStore.historyLines(targetContext)
             targetContext.startService(Intent(targetContext, MimiService::class.java)
                 .setAction(MimiService.ACTION_UI_PREVIEW_HISTORY))
             waitForIdleSync()
             check(SettingsStore.historyLines(targetContext) == savedHistory)
             capture("overlay-after-expanded-history-$theme")
+            checkCurrentCaptionStart(expanded)
+            checkLongExpandedCaption(expanded)
             onUi { check(expanded.findViewWithTag<View>("collapse-overlay").performClick()) { "Collapse click failed" } }
             check(compact.isShown && !expanded.isShown) { "Floating overlay did not collapse" }
+            capture("overlay-long-compact-$theme")
             onUi { check(compact.performClick()) { "Compact reopen click failed" } }
             onUi { check(expanded.findViewWithTag<View>("enter-immersive").performClick()) { "Immersive entry click failed" } }
             acknowledgeImmersiveHelpIfShown()
@@ -638,8 +643,10 @@ class UiSmokeInstrumentation : Instrumentation() {
                 .setAction(MimiService.ACTION_APPLY_APPEARANCE))
             val settingsExit = waitForOverlayTag("exit-immersive")
             check(settingsExit?.isShown == true) { "Settings change did not apply to the active overlay" }
-            onUi { SubtitleBus.hideLive() }
+            onUi { SubtitleBus.clear(); SubtitleBus.hideLive() }
+            check(SubtitleBus.liveHidden && SubtitleBus.displaySource.isEmpty() && SubtitleBus.displayTranslation.isEmpty())
             check(settingsExit.isShown) { "Immersive exit disappeared when speech paused" }
+            capture("overlay-empty-$theme")
             SettingsStore.setImmersiveSubtitles(targetContext, false)
             targetContext.startService(Intent(targetContext, MimiService::class.java)
                 .setAction(MimiService.ACTION_APPLY_APPEARANCE))
@@ -662,6 +669,116 @@ class UiSmokeInstrumentation : Instrumentation() {
             SystemClock.sleep(100)
         }
         return null
+    }
+
+    private fun checkOverlayHeaderLabels(panel: View) {
+        onUi {
+            val panelLocation = IntArray(2)
+            panel.getLocationOnScreen(panelLocation)
+            for (tag in listOf("collapse-overlay", "enter-immersive", "overlay-font", "overlay-route")) {
+                val label = checkNotNull(panel.findViewWithTag<TextView>(tag))
+                check(label.lineCount == 1) { "Overlay action wraps: $tag" }
+                if (tag != "overlay-route") {
+                    check(label.paint.measureText(label.text.toString()) <= label.width - label.paddingLeft - label.paddingRight + 1) {
+                        "Overlay action text does not fit: $tag"
+                    }
+                }
+                val location = IntArray(2)
+                label.getLocationOnScreen(location)
+                check(label.width > 0 && location[0] >= panelLocation[0] + panel.paddingLeft &&
+                    location[0] + label.width <= panelLocation[0] + panel.width - panel.paddingRight) {
+                    "Overlay action extends outside its panel: $tag"
+                }
+            }
+        }
+    }
+
+    private fun checkLongExpandedCaption(panel: View) {
+        val source = "This is a deliberately long synthetic subtitle for layout review. It checks how the native reading panel wraps several lines while keeping the complete translation readable without starting audio capture."
+        val translation = "这是一段用于界面检查的合成长字幕，用来观察原生阅读面板如何换行。它包含较长的完整句子，以及足够多的文字，以便检查小屏幕上的排版和可读性。本次只展示合成内容，没有开启音频采集，也没有连接任何翻译服务。"
+        onUi {
+            SubtitleBus.clear()
+            SubtitleBus.setHistoryLimit(0)
+            SubtitleBus.onFinalPair(source, translation, "en")
+        }
+        capture("overlay-long-expanded-$theme")
+        checkCurrentCaptionStart(panel)
+        val scroll = checkNotNull(panel.findViewWithTag<ScrollView>("subtitle-transcript-scroll"))
+        val sourceView = checkNotNull(panel.findViewWithTag<TextView>("expanded-source"))
+        val translationView = checkNotNull(panel.findViewWithTag<TextView>("expanded-translation"))
+        onUi {
+            check(sourceView.text.toString() == source && translationView.text.toString() == translation)
+            check(sourceView.lineCount > 2 && translationView.lineCount > 3) { "Expanded captions kept compact line limits" }
+            check(scroll.canScrollVertically(1)) { "Long captions have no scrollable continuation" }
+            scroll.fullScroll(View.FOCUS_DOWN)
+        }
+        capture("overlay-long-expanded-end-$theme")
+        onUi {
+            check(scroll.scrollY > 0 && !scroll.canScrollVertically(1)) { "Caption end cannot be reached" }
+            val layout = checkNotNull(translationView.layout)
+            check(layout.getLineEnd(layout.lineCount - 1) == translation.length) { "Caption ending was truncated" }
+            val viewport = IntArray(2)
+            val text = IntArray(2)
+            scroll.getLocationOnScreen(viewport)
+            translationView.getLocationOnScreen(text)
+            check(text[1] + translationView.height <= viewport[1] + scroll.height - scroll.paddingBottom + 1) {
+                "Caption ending is outside the reading viewport"
+            }
+        }
+        // A new completed pair starts at its beginning even after the reader
+        // reached the end of the previous long pair.
+        onUi { SubtitleBus.onFinalPair("Another complete sentence. $source", translation, "en") }
+        waitForIdleSync()
+        SystemClock.sleep(250)
+        checkCurrentCaptionStart(panel)
+
+        onUi {
+            SubtitleBus.setHistoryLimit(3)
+            repeat(3) { index -> SubtitleBus.onFinalPair("History sentence $index. $source", translation, "en") }
+            SubtitleBus.onFinalPair(source, translation, "en")
+        }
+        waitForIdleSync()
+        SystemClock.sleep(250)
+        checkCurrentCaptionStart(panel)
+        onUi {
+            check(SubtitleBus.historySnapshot().isNotEmpty())
+            check(sourceView.top > 0) { "Fixture has no history above the current sentence" }
+            scroll.scrollTo(0, 0)
+        }
+        waitForIdleSync()
+        onUi { SubtitleBus.onFinalPair("The reader is reviewing history. $source", translation, "en") }
+        waitForIdleSync()
+        SystemClock.sleep(250)
+        onUi { check(scroll.scrollY == 0) { "New sentence interrupted history review" } }
+        // Reopening is an explicit request to return to the current sentence.
+        onUi {
+            panel.findViewWithTag<View>("collapse-overlay").performClick()
+            panel.rootView.findViewWithTag<View>("compact-subtitle").performClick()
+        }
+        waitForIdleSync()
+        SystemClock.sleep(250)
+        checkCurrentCaptionStart(panel)
+        onUi {
+            SubtitleBus.clear()
+            SubtitleBus.setHistoryLimit(0)
+            SubtitleBus.onFinalPair(source, translation, "en")
+        }
+        waitForIdleSync()
+        SystemClock.sleep(250)
+    }
+
+    private fun checkCurrentCaptionStart(panel: View) {
+        onUi {
+            val scroll = checkNotNull(panel.findViewWithTag<ScrollView>("subtitle-transcript-scroll"))
+            val source = checkNotNull(panel.findViewWithTag<TextView>("expanded-source"))
+            val viewport = IntArray(2)
+            val text = IntArray(2)
+            scroll.getLocationOnScreen(viewport)
+            source.getLocationOnScreen(text)
+            check(text[1] >= viewport[1] - 1 && text[1] < viewport[1] + scroll.height) {
+                "Current sentence beginning is outside the reading viewport"
+            }
+        }
     }
 
     private fun dragExitControl(exit: View) {

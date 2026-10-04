@@ -524,7 +524,7 @@ it.each([false, true])("switches microphone metadata without replacing history o
     expect(visibleLanes()).toEqual(lanes);
     expect(useStore.getState().session.subtitles.history).toBe(retained);
     expect(useStore.getState().settings.showSubtitleTimestamps).toBe(true);
-    expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(microphoneEnabled && !immersive ? 2 : 0);
+    expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(microphoneEnabled ? 2 : 0);
     expect(host.querySelectorAll('.subtitle-metadata')).toHaveLength(microphoneEnabled ? 2 : 0);
     expect(rows[0].querySelector('.subtitle-audio-source') !== null).toBe(microphoneEnabled);
     expect(rows[1].querySelector('.subtitle-audio-source')?.getAttribute('aria-label')).toBe(I18N.settings.audioInputMicrophone);

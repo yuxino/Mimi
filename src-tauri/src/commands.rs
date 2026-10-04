@@ -339,6 +339,29 @@ mod tests {
     }
 
     #[test]
+    fn control_panel_can_pause_and_resume_without_session_start_or_stop_access() {
+        let permission = include_str!("../permissions/app.toml")
+            .split("[[permission]]")
+            .find(|entry| entry.contains("identifier = \"app-overlay-control\""))
+            .unwrap();
+        assert!(permission.contains("\"session_toggle_paused\""));
+        assert!(!permission.contains("\"session_start\""));
+        assert!(!permission.contains("\"session_stop\""));
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/overlay-control.json")).unwrap();
+        assert_eq!(
+            capability["windows"],
+            serde_json::json!(["overlay-control"])
+        );
+        assert!(capability["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|permission| permission == "app-overlay-control"));
+        assert!(include_str!("lib.rs").contains("commands::session_toggle_paused,"));
+    }
+
+    #[test]
     fn native_pointer_cursor_intents_are_registered_and_overlay_scoped() {
         let permissions = include_str!("../permissions/app.toml");
         let permitted: Vec<_> = permissions

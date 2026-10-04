@@ -27,10 +27,12 @@ beforeEach(() => {
   props = {
     settings, model: overlayControlPanelModel(settings), phase: "listening",
     status: { source: "Automatic", separator: "→", target: "Chinese" },
-    isPaused: false, isWaitingForFinalTranslation: false, isChangingSession: false,
+    isPaused: false, canPauseSession: true, isWaitingForFinalTranslation: false, isChangingSession: false,
     onDismiss: vi.fn(), onSwitchSourceLanguage: vi.fn().mockResolvedValue(undefined),
+    onTogglePaused: vi.fn().mockResolvedValue(undefined),
     onSetSkipTranslation: vi.fn().mockResolvedValue(undefined),
     onSetIntermediateSubtitles: vi.fn().mockResolvedValue(undefined),
+    onSetSubtitleTimestamps: vi.fn().mockResolvedValue(undefined),
     onSetSubtitleDisplayMode: vi.fn().mockResolvedValue(undefined), onSetImmersiveMode: vi.fn().mockResolvedValue(undefined),
     onSetOverlayLocked: vi.fn().mockResolvedValue(undefined), onShowSettings: vi.fn().mockResolvedValue(undefined),
   };
@@ -67,7 +69,7 @@ it.each(["zh", "en", "ja"] as const)("keeps %s language, display and application
   expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(3);
   expect(host.querySelectorAll('.application-audio-picker')).toHaveLength(1);
   expect(host.querySelector('fieldset, .overlay-control-options, .overlay-control-group')).toBeNull();
-  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(4);
+  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(5);
   expect(host.querySelector('.overlay-control-setting small')).toBeNull();
   expect(picker(I18N.overlay.sourceLanguage)).toBe(document.activeElement);
   expect(props.onSwitchSourceLanguage).not.toHaveBeenCalled();
@@ -121,6 +123,45 @@ it("keeps recognition locked during transitions while independent display remain
   await mount();
   expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
   expect(picker(I18N.settings.subtitleDisplay).disabled).toBe(false);
+  expect(host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!.disabled).toBe(true);
+});
+
+it("keeps pause unavailable after the session has stopped", async () => {
+  props.canPauseSession = false;
+  await mount();
+  const pause = host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!;
+  expect(pause.disabled).toBe(true);
+  await act(async () => pause.click());
+  expect(props.onTogglePaused).not.toHaveBeenCalled();
+});
+
+it("keeps pause and resume in the immersive panel, blocks duplicate actions, and reports a failed retry", async () => {
+  configure({ subtitleBlendsWithBackground: true, audioInput: "microphone" });
+  let resolve!: () => void;
+  props.onTogglePaused = vi.fn(() => new Promise<void>(done => { resolve = done; }));
+  await mount();
+  const action = () => host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!;
+  expect(action().textContent).toBe(I18N.overlay.pause);
+  await act(async () => action().click());
+  expect(action().disabled).toBe(true);
+  expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-busy")).toBe("true");
+  await act(async () => action().click());
+  expect(props.onTogglePaused).toHaveBeenCalledTimes(1);
+  await act(async () => resolve());
+  props.isPaused = true;
+  await mount();
+  expect(action().textContent).toBe(I18N.overlay.resume);
+  expect(props.onDismiss).not.toHaveBeenCalled();
+  props.onTogglePaused = vi.fn().mockRejectedValueOnce(new Error("synthetic-private-resume-error")).mockResolvedValue(undefined);
+  await mount();
+  await act(async () => action().click());
+  expect(host.querySelector('.overlay-control-alert[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
+  expect(host.textContent).not.toContain("synthetic-private-resume-error");
+  expect(action().textContent).toBe(I18N.overlay.resume);
+  await act(async () => action().click());
+  expect(host.querySelector('.overlay-control-alert')).toBeNull();
+  expect(props.onTogglePaused).toHaveBeenCalledTimes(2);
+  expect(props.onDismiss).not.toHaveBeenCalled();
 });
 
 it.each(["zh", "en", "ja"] as const)("offers the same full source list as settings and searches French in %s", async locale => {

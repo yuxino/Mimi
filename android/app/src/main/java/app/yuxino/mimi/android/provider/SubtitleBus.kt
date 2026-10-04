@@ -24,6 +24,7 @@ object SubtitleBus {
         else snapshot.optJSONObject("displayPair")?.optString("source") ?: sourceDraft.ifEmpty { sourceFinal }
     val displayTranslation: String get() = if (originalOnly) "" else
         snapshot.optJSONObject("displayPair")?.optString("translation") ?: translationDraft.ifEmpty { translationFinal }
+    val displayPairFinal: Boolean get() = snapshot.optBoolean("displayPairFinal")
     @Volatile var statusLine = ""
     @Volatile var liveHidden = false
     @Volatile var detectedSourceLanguage: String? = null

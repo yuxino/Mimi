@@ -223,7 +223,11 @@ page must include a review of other instances of the same pattern.
 - Moving a control between windows also requires updating its Tauri command
   permissions. Settings audio switches once invoked a command authorized only
   for the floating panel, so browser tests passed while native clicks failed.
-  Check the actual calling windows and exercise both in the signed app.
+  The same gap recurred when pause/resume was added to the floating panel.
+  Check the actual calling windows, add a regression for the command registration
+  and that window's permission scope, then rebuild and restart the signed app
+  before exercising success and failure. Frontend reloads cannot update its
+  compiled Tauri permissions; do not widen unrelated start/stop permissions.
 - Searchable popups must scroll their result list directly. `scrollIntoView`
   can scroll a clipped ancestor in WebKit and hide rows below the search field;
   pointer hover must not move the list. Check a long list and keyboard search.

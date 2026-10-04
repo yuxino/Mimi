@@ -373,7 +373,7 @@ const SETTINGS_ZH = {
   subtitleDividers: "分句线",
   subtitleDividersHelp: "在句子之间显示淡细线；沉浸模式不显示。",
   subtitleTimestamps: "显示时间",
-  subtitleTimestampsHelp: "开启麦克风时，在已确认字幕旁显示本机时间（HH:mm:ss）。切回仅系统声音时隐藏，再次开启麦克风会恢复。时间以字幕确认为准，并非精确的说话起点；沉浸模式不显示。",
+  subtitleTimestampsHelp: "开启麦克风时，在已确认字幕旁显示本机时间（HH:mm:ss）。切回仅系统声音时隐藏，再次开启麦克风会恢复。时间以字幕确认为准，并非精确的说话起点；沉浸模式也跟随此开关。",
 
   sessionAudioTiming: "WAV 会省略暂停和重连间隙，音频与字幕时间戳不直接对齐。",
   sessionTranscriptTiming: "TXT 时间戳表示字幕确认时距会话开始的时间，并非媒体播放位置。",
@@ -774,7 +774,7 @@ const SETTINGS_EN = {
   subtitleDividers: "Sentence dividers",
   subtitleDividersHelp: "Faint lines between sentences, hidden in Immersive Mode.",
   subtitleTimestamps: "Show time",
-  subtitleTimestampsHelp: "Show local time (HH:mm:ss) beside confirmed subtitles while the microphone is enabled. Hidden for system audio only; restored when the microphone is enabled again. This is confirmation time, not the exact start of speech. Hidden in Immersive Mode.",
+  subtitleTimestampsHelp: "Show local time (HH:mm:ss) beside confirmed subtitles while the microphone is enabled. Hidden for system audio only; restored when the microphone is enabled again. This is confirmation time, not the exact start of speech. This setting also applies in Immersive Mode.",
 
   sessionAudioTiming: "WAV omits pauses and reconnect gaps. Its timeline does not directly align with subtitle timestamps.",
   sessionTranscriptTiming: "TXT timestamps mark final confirmation time since session start, not media playback positions.",
@@ -1173,7 +1173,7 @@ const SETTINGS_JA = {
   subtitleDividers: "文の区切り線",
   subtitleDividersHelp: "文の間に薄い細線を表示します。イマーシブモードでは非表示です。",
   subtitleTimestamps: "時刻を表示",
-  subtitleTimestampsHelp: "マイクがオンのとき、確定した字幕の横にローカル時刻（HH:mm:ss）を表示します。システム音声のみでは非表示となり、マイクを再びオンにすると戻ります。字幕の確定時刻であり、正確な発話開始時刻ではありません。イマーシブモードでは非表示です。",
+  subtitleTimestampsHelp: "マイクがオンのとき、確定した字幕の横にローカル時刻（HH:mm:ss）を表示します。システム音声のみでは非表示となり、マイクを再びオンにすると戻ります。字幕の確定時刻であり、正確な発話開始時刻ではありません。イマーシブモードでもこの設定に従います。",
 
   sessionAudioTiming: "WAV は一時停止や再接続中の空白を省くため、字幕のタイムスタンプとは一致しません。",
   sessionTranscriptTiming: "TXT の時刻はセッション開始から字幕確定までの経過時間で、メディアの再生位置ではありません。",

@@ -83,6 +83,7 @@ commands.allow = [
 identifier = "app-overlay-control"
 description = "Allows the overlay control island to change live options and manage its panel."
 commands.allow = [
+  "session_toggle_paused",
   "capture_status",
   "audio_applications",
   "session_switch_audio_input",

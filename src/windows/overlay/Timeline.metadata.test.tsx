@@ -29,8 +29,30 @@ it("keeps source identity accessible without repeated full-sized labels beside e
   expect(html).not.toContain('>System audio<');
 });
 
-it("never assigns the current clock to live text and keeps timestamps hidden in immersive mode", () => {
+it("never assigns the current clock to live text, including immersive mode", () => {
   const props = { fontSize: 18, alignment: "center" as const, color: "white" as const, displayMode: "bilingual" as const, showTimestamps: true };
   expect(renderToStaticMarkup(<Timeline {...props} blocks={[{ ...confirmed, createdAt: null, presentation: "live" }]} />)).not.toContain("subtitle-timestamp");
-  expect(renderToStaticMarkup(<Timeline {...props} blocks={[confirmed]} blendsWithBackground />)).not.toContain("subtitle-timestamp");
+  expect(renderToStaticMarkup(<Timeline {...props} blocks={[{ ...confirmed, createdAt: null, presentation: "live" }]} blendsWithBackground />)).not.toContain("subtitle-timestamp");
+});
+
+it.each([false, true])("honors the time opt-in in immersive mode (enabled=%s)", showTimestamps => {
+  const html = renderToStaticMarkup(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]}
+    fontSize={18} alignment="center" color="white" displayMode="bilingual" audioInput="microphone"
+    showTimestamps={showTimestamps} blendsWithBackground />);
+  expect(html.includes("subtitle-timestamp")).toBe(showTimestamps);
+  expect(html).toContain("filter:drop-shadow(");
+  expect(html).toContain("color:rgba(255,255,255,0.95)");
+  if (showTimestamps) {
+    expect(html).toContain("text-shadow:");
+    expect(html).toContain("font-size:13px;line-height:18px;font-weight:500");
+  }
+});
+
+it("protects the retained inline microphone icon without adding system-only timestamps", () => {
+  const html = renderToStaticMarkup(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]}
+    fontSize={18} alignment="center" color="white" displayMode="bilingual" audioInput="system"
+    showTimestamps blendsWithBackground />);
+  expect(html).toContain("filter:drop-shadow(");
+  expect(html).not.toContain("subtitle-metadata");
+  expect(html).not.toContain("subtitle-timestamp");
 });

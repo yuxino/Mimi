@@ -26,10 +26,12 @@ import { CaptureStatusRow } from "./CaptureStatusRow";
 import type { OverlayControlPanelModel } from "./overlayControlModel";
 
 type PendingAction =
+  | "pause"
   | "display"
   | "source"
   | "translation"
   | "intermediate"
+  | "timestamps"
   | "immersive"
   | "lock"
   | "settings";
@@ -40,13 +42,16 @@ interface OverlayControlPanelProps {
   settings: SettingsSnapshot;
   model: OverlayControlPanelModel;
   isPaused: boolean;
+  canPauseSession: boolean;
   isWaitingForFinalTranslation: boolean;
   isChangingSession: boolean;
   isStopping?: boolean;
   onDismiss: () => void;
+  onTogglePaused: () => Promise<void>;
   onSwitchSourceLanguage: (language: SourceLanguage) => Promise<void>;
   onSetSkipTranslation: (enabled: boolean) => Promise<void>;
   onSetIntermediateSubtitles: (enabled: boolean) => Promise<void>;
+  onSetSubtitleTimestamps: (enabled: boolean) => Promise<void>;
   onSetSubtitleDisplayMode: (mode: SubtitleDisplayMode) => Promise<void>;
   onSetImmersiveMode: (enabled: boolean) => Promise<void>;
   onSetOverlayLocked: (locked: boolean) => Promise<void>;
@@ -59,13 +64,16 @@ export function OverlayControlPanel({
   settings,
   model,
   isPaused,
+  canPauseSession,
   isWaitingForFinalTranslation,
   isChangingSession,
   isStopping = false,
   onDismiss,
+  onTogglePaused,
   onSwitchSourceLanguage,
   onSetSkipTranslation,
   onSetIntermediateSubtitles,
+  onSetSubtitleTimestamps,
   onSetSubtitleDisplayMode,
   onSetImmersiveMode,
   onSetOverlayLocked,
@@ -79,6 +87,7 @@ export function OverlayControlPanel({
   const immersiveRef = useRef<HTMLButtonElement>(null);
   const lockRef = useRef<HTMLButtonElement>(null);
   const intermediateHelpId = useId();
+  const timestampsHelpId = useId();
   const actionInFlight = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
@@ -128,6 +137,7 @@ export function OverlayControlPanel({
     name: PendingAction,
     operation: () => Promise<void>,
     dismissAfter = true,
+    failureMessage = I18N.overlay.controlActionFailed,
   ) => {
     if (actionInFlight.current) return;
     actionInFlight.current = true;
@@ -137,7 +147,7 @@ export function OverlayControlPanel({
       .then(() => {
         if (dismissAfter) onDismiss();
       })
-      .catch(() => setOperationError(I18N.overlay.controlActionFailed))
+      .catch(() => setOperationError(failureMessage))
       .finally(() => { actionInFlight.current = false; setPendingAction(null); });
   };
 
@@ -162,6 +172,17 @@ export function OverlayControlPanel({
           isStopping={isStopping}
           onToggle={onDismiss}
         />
+
+        <button
+          type="button"
+          className="overlay-control-session-action"
+          aria-label={isPaused ? I18N.overlay.resume : I18N.overlay.pause}
+          disabled={!canPauseSession || isChangingSession || pendingAction !== null}
+          onClick={() => performAction("pause", onTogglePaused, false)}
+        >
+          <Icon name={isPaused ? "play" : "pause"} />
+          <span>{isPaused ? I18N.overlay.resume : I18N.overlay.pause}</span>
+        </button>
 
         <CaptureStatusRow
           disabled={pendingAction !== null}
@@ -219,6 +240,25 @@ export function OverlayControlPanel({
             className={`overlay-control-setting overlay-control-setting--toggle${settings.showIntermediateSubtitles !== false ? " is-on" : ""}`}
             disabled={pendingAction !== null}
             onClick={() => performAction("intermediate", () => onSetIntermediateSubtitles(settings.showIntermediateSubtitles === false), false)}
+          >
+            <span className="overlay-control-switch" aria-hidden="true"><span /></span>
+          </button>
+        </div>
+
+        <div className="overlay-control-setting-row">
+          <span className="overlay-control-setting__icon" aria-hidden="true"><Icon name="captions-bubble" /></span>
+          <span className="overlay-control-setting__copy">
+            <strong>{I18N.settings.subtitleTimestamps}</strong>
+            <SettingsHelp id={timestampsHelpId} text={I18N.settings.subtitleTimestampsHelp} label={I18N.settings.helpLabel} />
+          </span>
+          <button type="button" role="switch"
+            aria-checked={settings.showSubtitleTimestamps ?? false}
+            aria-label={I18N.settings.subtitleTimestamps}
+            aria-describedby={timestampsHelpId}
+            className={`overlay-control-setting overlay-control-setting--toggle${settings.showSubtitleTimestamps ? " is-on" : ""}`}
+            disabled={pendingAction !== null}
+            onClick={() => performAction("timestamps", () => onSetSubtitleTimestamps(!settings.showSubtitleTimestamps), false,
+              I18N.settings.settingSaveFailed(I18N.settings.subtitleTimestamps))}
           >
             <span className="overlay-control-switch" aria-hidden="true"><span /></span>
           </button>

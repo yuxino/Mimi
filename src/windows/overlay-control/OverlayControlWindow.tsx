@@ -29,6 +29,8 @@ import "./overlay-control.css";
 export function OverlayControlWindow() {
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionIsPaused = useStore((state) => state.session.isPaused);
+  const sessionIsActive = useStore((state) => state.session.isActive);
+  const togglePaused = useStore((state) => state.togglePaused);
   const detectedLanguage = useStore(
     (state) => state.session.detectedLanguage,
   );
@@ -149,13 +151,16 @@ export function OverlayControlWindow() {
           settings={settings}
           model={model}
           isPaused={sessionIsPaused}
+          canPauseSession={sessionIsActive || sessionIsPaused}
           isWaitingForFinalTranslation={isWaiting}
           isChangingSession={isChangingSession}
           isStopping={sessionStatusKind === "stopping"}
           onDismiss={dismiss}
+          onTogglePaused={togglePaused}
           onSwitchSourceLanguage={switchSourceLanguage}
           onSetSkipTranslation={setSkipTranslation}
           onSetIntermediateSubtitles={(showIntermediateSubtitles) => saveSettings({ showIntermediateSubtitles })}
+          onSetSubtitleTimestamps={(showSubtitleTimestamps) => saveSettings({ showSubtitleTimestamps })}
           onSetSubtitleDisplayMode={(subtitleDisplayMode) => saveSettings({ subtitleDisplayMode })}
           onSetImmersiveMode={(subtitleBlendsWithBackground) =>
             saveSettings({ subtitleBlendsWithBackground })

@@ -350,6 +350,8 @@ export function OverlayWindow() {
               <DragHandle
                 onToggleCollapsed={toggleCollapsed}
                 width={topChromeLayout.dragHandleWidth}
+                disabled={controlAction.pending}
+                busy={pendingControl === "collapse"}
               />
             </div>
           </div>
@@ -512,7 +514,8 @@ export function OverlayWindow() {
           className="relative flex h-full items-center"
           style={{ gap: 8, padding: "0 10px" }}
         >
-          <DragHandle onToggleCollapsed={toggleCollapsed} compact />
+          <DragHandle onToggleCollapsed={toggleCollapsed} compact
+            disabled={controlAction.pending} busy={pendingControl === "collapse"} />
           <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
           <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
           <span

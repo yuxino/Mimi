@@ -66,6 +66,8 @@ update both implementations and their platform-specific tests in the same change
 | Translation scheduling | Speculative drafts plus serial prioritized finals and provider recovery | Final-only serial HTTP; same shared final bounds/retry decisions, native execution and cancellation |
 | Independent text HTTP bounds | HQ source fields up to 65,536 UTF-8 bytes; response bodies up to 1 MiB; decoded text uses native adapter bounds | Source/result text up to 4,096 UTF-16 code units; response bodies up to 64 KiB |
 | Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Existing native overlay background settings and history styling |
+| Floating subtitle controls | Shared settings/control-panel time preference; pause/resume is reachable in Immersive Mode. Keyboard-accessible collapse and native window drag/resize | Native collapse, font, language-route and immersive-entry actions; text-sized single-line labels reflow into two rows when width or system font size requires it |
+| Reading long current subtitles | Bounded live tail with explicit history reading and return-to-live behavior | Expanded panel scrolls the complete bounded current pair together with optional history; compact/immersive keep two source and three translation lines |
 | Audio capture | System audio by default; explicitly selected microphone or both sources with independent lanes. OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
 | Proxy preferences | Per-profile independent recognition/text routes; integrated realtime uses one route | Platform network defaults; no per-stage proxy controls |
 | Secret storage | Private local credential file; one-time OS-store migration | Android Keystore-backed encrypted preferences |
@@ -97,6 +99,25 @@ are not unified by the shared-core extraction.
   on both sides when changing scheduling. Desktop-only draft/reconnect machinery must not
   be copied into a final-only Android flow without a product need.
 
-Desktop subtitle controls support independent system/microphone subtitle colors, background transparency, and optional local HH:mm:ss confirmation timestamps while the microphone is selected. System-only mode restores plain subtitles and keeps any retained microphone rows identifiable with a small inline icon; the timestamp preference survives input changes. These are desktop presentation preferences; Android does not currently expose matching controls.
+Desktop subtitle controls support independent system/microphone subtitle colors,
+background transparency, and optional local HH:mm:ss confirmation timestamps while
+the microphone is selected, including Immersive Mode. Settings and the floating
+panel share the same time switch, which remains available in system-only mode.
+System-only mode restores plain subtitles and keeps any retained microphone rows
+identifiable with a small inline icon; the timestamp preference survives input
+changes. Single-source output keeps its own color and a neutral bilingual original.
+These are desktop presentation preferences; Android does not currently expose
+matching source-color or time controls, or desktop microphone selection.
+
+Android's expanded panel has a bounded reading viewport, with complete current
+source and translation text inside its scroll area. Opening it locates the current
+caption; a changed completed pair locates its beginning only while the user is
+still reading the current-caption region. Draft updates retain the scroll position,
+and reading earlier history is not interrupted. Completion uses the shared
+`displayPairFinal` field. Optional history keeps its existing display limit;
+expanded reading does not enable retention, and compact/immersive captions keep
+their existing line caps. This native presentation policy is separate from the
+desktop live-tail behavior and does not imply parity in capture, recording or
+timestamp preferences.
 
 Desktop offers a default-on **Show interim subtitles** preference, including live session changes. With it off, only final lines and confirmed pairs appear; bounded Stop-tail fallback still follows the existing desktop final lane. This affects presentation, not provider requests or accuracy. Android currently has no matching switch. Shared snapshots expose `displayPairFinal` on both platforms, and Rust/JNI fixtures distinguish a completed preview from an accepted final even without retained presentation history.

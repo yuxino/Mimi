@@ -161,6 +161,7 @@ export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE
     if (!drag) return;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
+    const region = drag.region.toLowerCase();
 
     // Anchor the dragged edge/corner: edges that move also shift the window
     // origin (top/left grow upward/leftward), matching native window resize.
@@ -168,18 +169,18 @@ export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE
     let height = drag.startHeight;
     let x = drag.startWinX;
     let y = drag.startWinY;
-    if (drag.region.includes("left")) {
+    if (region.includes("left")) {
       width = drag.startWidth - dx;
       x = drag.startWinX + dx;
     }
-    if (drag.region.includes("right")) {
+    if (region.includes("right")) {
       width = drag.startWidth + dx;
     }
-    if (drag.region.includes("top")) {
+    if (region.includes("top")) {
       height = drag.startHeight - dy;
       y = drag.startWinY + dy;
     }
-    if (drag.region.includes("bottom")) {
+    if (region.includes("bottom")) {
       height = drag.startHeight + dy;
     }
 
@@ -187,8 +188,8 @@ export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE
     const clampedH = clamp(Math.round(height), minimumHeight, OVERLAY_MAX_HEIGHT);
     // Recede the dragged edge when the size got clamped, so dragging past the
     // minimum does not keep drifting the window off-screen.
-    if (drag.region.includes("left")) x += width - clampedW;
-    if (drag.region.includes("top")) y += height - clampedH;
+    if (region.includes("left")) x += width - clampedW;
+    if (region.includes("top")) y += height - clampedH;
     // Keep at least a sliver of the window on screen so it cannot get lost.
     const minVisible = 48;
     x = clamp(

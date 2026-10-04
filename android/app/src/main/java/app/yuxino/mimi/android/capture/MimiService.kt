@@ -113,6 +113,9 @@ class MimiService : Service() {
     private var expandedStatusView: TextView? = null
     private var expandedSourceView: TextView? = null
     private var expandedTranslationView: TextView? = null
+    private var transcriptScrollView: ScrollView? = null
+    private var relayoutExpandedHeader: (() -> Unit)? = null
+    private var scrollToCurrentOnLayout = false
 
     private val busListener = object : SubtitleBus.Listener {
         override fun onSubtitleChanged() {
@@ -525,6 +528,8 @@ class MimiService : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         mainHandler.post {
+            relayoutExpandedHeader?.invoke()
+            updateOverlayFontSize()
             if (expanded) {
                 resizeExpandedOverlay(SubtitleBus.historySnapshot().size)
             }
@@ -768,10 +773,13 @@ class MimiService : Service() {
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val collapse = panelButton(getString(R.string.overlay_collapse)).apply {
             tag = "collapse-overlay"
+            minWidth = dp(58)
             contentDescription = getString(R.string.overlay_collapse_description)
             setOnClickListener { collapseOverlay() }
         }
         val font = panelButton("Aa").apply {
+            tag = "overlay-font"
+            minWidth = dp(42)
             contentDescription = getString(R.string.overlay_font_description)
             setOnClickListener {
                 val current = SettingsStore.fontSize(this@MimiService)
@@ -781,6 +789,7 @@ class MimiService : Service() {
         }
         val immersive = panelButton(getString(R.string.overlay_enter_immersive)).apply {
             tag = "enter-immersive"
+            minWidth = dp(58)
             contentDescription = getString(R.string.overlay_enter_immersive)
             setOnClickListener { setImmersiveMode(true) }
         }
@@ -788,6 +797,7 @@ class MimiService : Service() {
             if (sessionOriginalOnly) languageName(sessionSourceLanguage)
             else "${languageName(sessionSourceLanguage)} → ${languageName(SettingsStore.targetLang(this))}",
         ).apply {
+            tag = "overlay-route"
             contentDescription = getString(R.string.overlay_language_description)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -796,10 +806,39 @@ class MimiService : Service() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
-        header.addView(collapse, LinearLayout.LayoutParams(dp(58), dp(38)))
-        header.addView(route, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginStart = dp(8) })
-        header.addView(font, LinearLayout.LayoutParams(dp(42), dp(38)).apply { marginStart = dp(8) })
-        header.addView(immersive, LinearLayout.LayoutParams(dp(58), dp(38)).apply { marginStart = dp(8) })
+        relayoutExpandedHeader = {
+            listOf(collapse, route, font, immersive).forEach {
+                (it.parent as? android.view.ViewGroup)?.removeView(it)
+                it.textSize = 13f
+            }
+            header.removeAllViews()
+            header.orientation = LinearLayout.HORIZONTAL
+            val actions = listOf(collapse, font, immersive)
+            actions.forEach {
+                it.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.makeMeasureSpec(dp(38), View.MeasureSpec.EXACTLY))
+            }
+            val availableWidth = expandedPanelWidth() - panel.paddingLeft - panel.paddingRight
+            val requiredWidth = actions.sumOf { it.measuredWidth } + dp(58 + 3 * 8)
+            if (requiredWidth <= availableWidth) {
+                header.addView(collapse, LinearLayout.LayoutParams(-2, dp(38)))
+                header.addView(route, LinearLayout.LayoutParams(0, dp(38), 1f).apply { marginStart = dp(8) })
+                header.addView(font, LinearLayout.LayoutParams(-2, dp(38)).apply { marginStart = dp(8) })
+                header.addView(immersive, LinearLayout.LayoutParams(-2, dp(38)).apply { marginStart = dp(8) })
+            } else {
+                // Large system fonts need a second row, not smaller or clipped labels.
+                header.orientation = LinearLayout.VERTICAL
+                val actionsRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                actionsRow.addView(collapse, LinearLayout.LayoutParams(-2, dp(38)))
+                actionsRow.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+                actionsRow.addView(immersive, LinearLayout.LayoutParams(-2, dp(38)).apply { marginStart = dp(8) })
+                val preferencesRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+                preferencesRow.addView(route, LinearLayout.LayoutParams(0, dp(38), 1f))
+                preferencesRow.addView(font, LinearLayout.LayoutParams(-2, dp(38)).apply { marginStart = dp(8) })
+                header.addView(actionsRow, LinearLayout.LayoutParams(-1, -2))
+                header.addView(preferencesRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+            }
+        }
+        relayoutExpandedHeader?.invoke()
         panel.addView(header)
 
         expandedStatusView = TextView(this).apply {
@@ -809,7 +848,18 @@ class MimiService : Service() {
         }
         panel.addView(expandedStatusView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
-        val scroll = ScrollView(this).apply { isFillViewport = true }
+        val scroll = ScrollView(this).apply {
+            tag = "subtitle-transcript-scroll"
+            isFillViewport = true
+        }
+        transcriptScrollView = scroll
+        scroll.viewTreeObserver.addOnPreDrawListener {
+            if (expanded && scrollToCurrentOnLayout) {
+                scrollToCurrentOnLayout = false
+                currentExpandedCaption()?.let { scroll.scrollTo(0, it.top) }
+            }
+            true
+        }
         val transcript = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         historyView = TextView(this).apply {
             setTextColor(0xFFB9B9B9.toInt())
@@ -817,23 +867,26 @@ class MimiService : Service() {
             setLineSpacing(dp(5).toFloat(), 1f)
         }
         transcript.addView(historyView)
-        scroll.addView(transcript)
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(18) })
-        panel.addView(View(this).apply { setBackgroundColor(0xFF555555.toInt()) },
+        transcript.addView(View(this).apply { setBackgroundColor(0xFF555555.toInt()) },
             LinearLayout.LayoutParams(-1, dp(1)))
         expandedSourceView = TextView(this).apply {
+            tag = "expanded-source"
             setTextColor(0xFFD5D5D5.toInt())
             textSize = SettingsStore.fontSize(this@MimiService).toFloat()
-            maxLines = 2
         }
         expandedTranslationView = TextView(this).apply {
+            tag = "expanded-translation"
             setTextColor(SettingsStore.translationColor(this@MimiService))
             textSize = (SettingsStore.fontSize(this@MimiService) + 3).toFloat()
             setTypeface(typeface, Typeface.BOLD)
-            maxLines = 3
         }
-        panel.addView(expandedSourceView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
-        panel.addView(expandedTranslationView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        // The shared core bounds sentence content. The reading panel keeps its
+        // fixed viewport while allowing the complete current pair to scroll.
+        // Compact and immersive captions retain their two/three-line limits.
+        transcript.addView(expandedSourceView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        transcript.addView(expandedTranslationView, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        scroll.addView(transcript)
+        panel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(18) })
         return panel
     }
 
@@ -856,6 +909,7 @@ class MimiService : Service() {
     private fun panelButton(label: String): TextView = TextView(this).apply {
         text = label
         textSize = 13f
+        setSingleLine(true)
         setTypeface(typeface, Typeface.BOLD)
         setTextColor(Color.WHITE)
         gravity = Gravity.CENTER
@@ -893,6 +947,7 @@ class MimiService : Service() {
         compactView?.visibility = View.GONE
         panel.visibility = View.VISIBLE
         expanded = true
+        scrollToCurrentOnLayout = true
         params.width = expandedPanelWidth()
         params.height = expandedPanelHeight(0)
         params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
@@ -960,9 +1015,30 @@ class MimiService : Service() {
         expandedStatusView = null
         expandedSourceView = null
         expandedTranslationView = null
+        transcriptScrollView = null
+        relayoutExpandedHeader = null
+        scrollToCurrentOnLayout = false
+    }
+
+    private fun currentExpandedCaption(): TextView? =
+        expandedSourceView?.takeIf { it.visibility == View.VISIBLE && it.text.isNotEmpty() }
+            ?: expandedTranslationView?.takeIf { it.visibility == View.VISIBLE && it.text.isNotEmpty() }
+
+    private fun readingCurrentCaption(): Boolean {
+        val scroll = transcriptScrollView ?: return true
+        val current = currentExpandedCaption() ?: return true
+        val maxScroll = ((scroll.getChildAt(0)?.height ?: 0) - scroll.height).coerceAtLeast(0)
+        return scroll.scrollY >= minOf(current.top, maxScroll) - dp(8)
     }
 
     private fun renderBus() {
+        // Keep a new completed sentence readable, but do not interrupt a reader
+        // who scrolled up into history. Streaming drafts retain their position.
+        val currentPairChanged = expandedSourceView?.text?.toString() != SubtitleBus.displaySource ||
+            expandedTranslationView?.text?.toString() != SubtitleBus.displayTranslation
+        if (expanded && currentPairChanged && SubtitleBus.displayPairFinal && readingCurrentCaption()) {
+            scrollToCurrentOnLayout = true
+        }
         val observation = captureObservation?.state
         val statusLine = if (observation == CaptureHealth.State.NO_PCM || observation == CaptureHealth.State.SILENT) {
             getString(R.string.capture_no_sound_hint)

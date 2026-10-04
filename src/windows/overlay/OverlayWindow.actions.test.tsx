@@ -69,7 +69,9 @@ it.each([
   expect(selected.getAttribute("aria-busy")).toBe("true");
   expect(selected.disabled).toBe(true);
   expect(button(I18N.overlay.openSettings).disabled).toBe(true);
-  expect(host.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
+  // Both collapse affordances share the in-flight action; the keyboard drag
+  // handle must not remain active while the icon button is busy (or vice versa).
+  expect(host.querySelectorAll('[aria-busy="true"]')).toHaveLength(action === "setOverlayCollapsed" ? 2 : 1);
   await act(async () => reject(new Error("synthetic private detail must not be shown")));
   expect(selected.disabled).toBe(false);
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);

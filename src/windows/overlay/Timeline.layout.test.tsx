@@ -474,10 +474,12 @@ it("keeps retained mixed-source identity beside a single live row at the single-
   expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
 });
 
-it("fits confirmation time and both bilingual lanes at the timestamp minimum", async () => {
+it.each([false, true])("fits confirmation time and both bilingual lanes at the timestamp minimum (immersive=%s)", async immersive => {
   measuredHeight = 240;
-  viewportHeight = minimumOverlayHeight({ audioInput: "microphone", fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - OVERLAY_MAXIMUM_CHROME_HEIGHT;
-  await act(async () => root.render(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]} fontSize={20} alignment="center" color="white" displayMode="bilingual" audioInput="microphone" showTimestamps />));
+  // Immersive canvas: two 6px outer insets + 61px control band + 5px gap.
+  const chromeHeight = immersive ? 78 : OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  viewportHeight = minimumOverlayHeight({ audioInput: "microphone", fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - chromeHeight;
+  await act(async () => root.render(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]} fontSize={20} alignment="center" color="white" displayMode="bilingual" audioInput="microphone" showTimestamps blendsWithBackground={immersive} />));
   const row = host.querySelector<HTMLElement>("[data-utterance-id]")!;
   expect(row.querySelector(".subtitle-timestamp")).not.toBeNull();
   expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
