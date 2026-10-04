@@ -77,7 +77,7 @@ async function mode(value: SubtitleDisplayMode) {
 }
 
 function visibleLanes(): string[] {
-  return Array.from(host.querySelectorAll<HTMLElement>("[data-utterance-id] [aria-label]"))
+  return Array.from(host.querySelectorAll<HTMLElement>("[data-utterance-id] [aria-label]:not([role])"))
     .filter(lane => !lane.hidden && lane.getAttribute("aria-hidden") !== "true" && lane.style.display !== "none")
     .map(lane => {
       expect(Number.parseFloat(lane.style.height)).toBeGreaterThan(0);
@@ -421,10 +421,34 @@ function dualSnapshot(): SubtitleSnapshot {
     track("microphone", "Synthetic microphone phrase.", "麦克风合成译文。")], history: [] };
 }
 
+it.each([
+  { audioSource: "system" as const, withTrack: false },
+  { audioSource: "microphone" as const, withTrack: false },
+  { audioSource: "system" as const, withTrack: true },
+  { audioSource: "microphone" as const, withTrack: true },
+])("preserves single-source $audioSource colors without repeated labels (track=$withTrack)", async ({ audioSource, withTrack }) => {
+  const history = [{ ...confirmed, audioSource }];
+  const track = { ...empty, audioSource, history, detectedLanguage: "en", isTranslationPending: false, isTranslationTimedOut: false,
+    source: { text: "Single live source.", isFinal: false }, previewPair: { source: "Single live source.", translation: "单路实时译文。" } };
+  await mount({ ...track, tracks: withTrack ? [track] : undefined }, "bilingual", {
+    audioInput: withTrack ? "system" : audioSource,
+    subtitleColor: "#123456", microphoneSubtitleColor: "#abcdef", showSubtitleTimestamps: false,
+  });
+  expect(host.querySelectorAll(".subtitle-audio-source")).toHaveLength(0);
+  expect(host.querySelectorAll(".subtitle-metadata")).toHaveLength(0);
+  const expected = audioSource === "microphone" ? "rgb(171, 205, 239)" : "rgb(18, 52, 86)";
+  for (const text of [confirmed.translation, "单路实时译文。"]) {
+    expect(host.querySelector<HTMLElement>(`[data-utterance-id] [aria-label="${text}"] > span`)?.style.color).toBe(expected);
+  }
+  for (const text of [confirmed.source, "Single live source."]) {
+    expect(host.querySelector<HTMLElement>(`[data-utterance-id] [aria-label="${text}"] > span`)?.style.color).toBe("rgba(255, 255, 255, 0.86)");
+  }
+});
+
 it.each(modes)("keeps both source tails and labels independent in %s mode, including identical provider ids", async displayMode => {
   const dual = dualSnapshot();
   await mount(dual, displayMode, { audioInput: "both" });
-  expect([...host.querySelectorAll(".subtitle-audio-source")].map(label => label.textContent))
+  expect([...host.querySelectorAll(".subtitle-audio-source")].map(label => label.getAttribute("aria-label")))
     .toEqual([I18N.settings.audioInputSystem, I18N.settings.audioInputMicrophone]);
   const ids = [...host.querySelectorAll("[data-utterance-id]")].map(row => row.getAttribute("data-utterance-id"));
   expect(new Set(ids).size).toBe(2);
@@ -452,8 +476,8 @@ it("preserves source identity for simultaneous finals and a lagging other-source
   const rows = [...host.querySelectorAll('[data-utterance-id]')];
   expect(rows).toHaveLength(4);
   expect(new Set(rows.map(row => row.getAttribute("data-utterance-id"))).size).toBe(4);
-  expect(rows[0].textContent).toContain(I18N.settings.audioInputSystem);
-  expect(rows[1].textContent).toContain(I18N.settings.audioInputMicrophone);
+  expect(rows[0].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(I18N.settings.audioInputSystem);
+  expect(rows[1].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(I18N.settings.audioInputMicrophone);
   await publish({ ...empty, history: sameTime, tracks: dual.tracks!.map(track => ({ ...track,
     source: { text: "", isFinal: false }, previewPair: null, isTranslationPending: false })) }, { status: { kind: "connecting" } });
   expect(host.querySelectorAll('[data-utterance-id]')).toHaveLength(2);
@@ -477,8 +501,8 @@ it.each(["system", "microphone"] as const)("keeps both history labels but only t
   await mount({ ...remaining, history, tracks: [remaining] }, "bilingual", { audioInput: enabled });
   const rows = [...host.querySelectorAll('[data-utterance-id]')];
   expect(rows).toHaveLength(3);
-  expect(rows[0].textContent).toContain(I18N.settings.audioInputSystem);
-  expect(rows[1].textContent).toContain(I18N.settings.audioInputMicrophone);
+  expect(rows[0].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(I18N.settings.audioInputSystem);
+  expect(rows[1].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(I18N.settings.audioInputMicrophone);
   expect(rows[2].getAttribute("data-utterance-id")).toMatch(new RegExp(`^${enabled}:`));
   expect(visibleLanes()).not.toContain(enabled === "system" ? "麦克风合成译文。" : "系统声音合成译文。");
 });

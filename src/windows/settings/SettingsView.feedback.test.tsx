@@ -85,3 +85,23 @@ it("keeps the interim preference unchanged on failure and saves a quiet retry wh
   expect(useStore.getState().session.isActive).toBe(true);
   expect(host.querySelector(".settings-toast")).toBeNull();
 });
+
+it("keeps time display off by default and saves a quiet retry while subtitles are running", async () => {
+  useStore.setState({ session: { ...initial.session, isActive: true, status: { kind: "listening" } } });
+  save.mockRejectedValueOnce(new Error("synthetic-private-time-error"));
+  await render();
+  const timeSwitch = () => host.querySelector<HTMLButtonElement>(`[aria-label="${I18N.settings.subtitleTimestamps}"][role="switch"]`)!;
+  expect(timeSwitch().getAttribute("aria-checked")).toBe("false");
+  await act(async () => timeSwitch().click());
+  expect(save).toHaveBeenLastCalledWith({ showSubtitleTimestamps: true });
+  expect(timeSwitch().getAttribute("aria-checked")).toBe("false");
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(I18N.settings.settingSaveFailed(I18N.settings.subtitleTimestamps));
+  expect(host.textContent).not.toContain("synthetic-private-time-error");
+  await act(async () => timeSwitch().click());
+  expect(timeSwitch().getAttribute("aria-checked")).toBe("true");
+  expect(useStore.getState().session.isActive).toBe(true);
+  expect(host.querySelector(".settings-toast")).toBeNull();
+  await act(async () => timeSwitch().click());
+  expect(save).toHaveBeenLastCalledWith({ showSubtitleTimestamps: false });
+  expect(timeSwitch().getAttribute("aria-checked")).toBe("false");
+});

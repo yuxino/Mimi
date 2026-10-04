@@ -529,6 +529,7 @@ fn minimum_height_for_preferences(preferences: &Preferences) -> f64 {
         preferences.subtitle_display_mode,
         preferences.target_language,
         preferences.font_size,
+        preferences.show_subtitle_timestamps,
     )
 }
 
@@ -3078,18 +3079,22 @@ mod geometry_tests {
         assert!(!state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         preferences.audio_input = crate::core::audio_input::AudioInput::Both;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 188.0));
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 232.0));
         preferences.font_size = 20.0;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 200.0));
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
         preferences.subtitle_display_mode = crate::core::models::SubtitleDisplayMode::Original;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 152.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 200.0));
+        assert_eq!(state.minimum_height, 196.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
         preferences.audio_input = crate::core::audio_input::AudioInput::System;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.minimum_height, 136.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 200.0));
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        preferences.show_subtitle_timestamps = true;
+        assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
+        assert_eq!(state.minimum_height, 160.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
     }
 
     #[test]

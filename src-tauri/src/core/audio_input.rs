@@ -1,9 +1,9 @@
 //! Explicit capture selection. Missing preferences remain system-only.
 use serde::{Deserialize, Serialize};
 
-/// Temporarily expose system audio only. Keep the independent microphone lane
-/// implementation for a later return; this is the single native availability gate.
-pub const MICROPHONE_INPUT_AVAILABLE: bool = false;
+/// Expose the independent microphone lane while keeping system audio the default.
+/// Capturing the microphone still requires an explicit input selection.
+pub const MICROPHONE_INPUT_AVAILABLE: bool = true;
 
 pub use mimi_core::models::AudioSource;
 
@@ -65,9 +65,9 @@ mod tests {
     }
 
     #[test]
-    fn hidden_microphone_cannot_be_selected() {
+    fn all_explicit_input_selections_are_available() {
         assert!(AudioInput::System.is_available());
-        assert!(!AudioInput::Microphone.is_available());
-        assert!(!AudioInput::Both.is_available());
+        assert!(AudioInput::Microphone.is_available());
+        assert!(AudioInput::Both.is_available());
     }
 }

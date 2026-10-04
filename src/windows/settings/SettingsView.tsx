@@ -310,6 +310,13 @@ export function SettingsView() {
                           onChange={(showSubtitleDividers) => void savePreference({ showSubtitleDividers }, I18N.settings.subtitleDividers)}
                         />
                       </SettingsRow>
+                      <SettingsRow label={I18N.settings.subtitleTimestamps} description={I18N.settings.subtitleTimestampsHelp}>
+                        <Switch
+                          checked={settings.showSubtitleTimestamps ?? false}
+                          aria-label={I18N.settings.subtitleTimestamps}
+                          onChange={(showSubtitleTimestamps) => void savePreference({ showSubtitleTimestamps }, I18N.settings.subtitleTimestamps)}
+                        />
+                      </SettingsRow>
                       <SettingsRow
                         label={I18N.settings.pulseAnimation}
                       >

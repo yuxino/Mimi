@@ -122,6 +122,8 @@ export interface SettingsSnapshot {
   /** Missing legacy settings preserve immediate previews. */
   showIntermediateSubtitles?: boolean;
   showSubtitleDividers: boolean;
+  /** Missing legacy settings keep confirmation times hidden. */
+  showSubtitleTimestamps?: boolean;
   /** `null` follows the system reduce-motion setting. */
   pulseAnimation: boolean | null;
   pulseStyle: PulseStyle;
@@ -171,6 +173,7 @@ export interface SettingsDraft {
   subtitleDisplayMode?: SubtitleDisplayMode;
   showIntermediateSubtitles?: boolean;
   showSubtitleDividers?: boolean;
+  showSubtitleTimestamps?: boolean;
   pulseAnimation?: boolean;
   pulseStyle?: PulseStyle;
   subtitleAnimation?: boolean;

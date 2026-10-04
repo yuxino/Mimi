@@ -140,6 +140,8 @@ export function OverlayWindow() {
   const microphoneTrack = dual ? session.subtitles.tracks?.find(track => track.audioSource === "microphone") : undefined;
   const primarySubtitles = dual ? systemTrack ?? EMPTY_SYSTEM : session.subtitles;
   const microphoneSubtitles = microphoneTrack ?? EMPTY_MICROPHONE;
+  const primaryAudioSource = session.subtitles.tracks?.[0]?.audioSource
+    ?? (settings.audioInput === "microphone" ? "microphone" : "system");
   const running = OVERLAY_ACTIVITY_PHASES[phase].animationSpeed > 0;
   const primaryTail = useSubtitleTail(primarySubtitles, settings, dual ? systemTrack ?? EMPTY_SYSTEM : session, running, atomicProvider, "primary");
   const microphoneTail = useSubtitleTail(microphoneSubtitles, settings, microphoneSubtitles, running, atomicProvider, "microphone");
@@ -149,8 +151,8 @@ export function OverlayWindow() {
       { audioSource: "microphone", history: microphoneSubtitles.history, tail: microphoneTail },
     ])
     : buildSubtitleBlocks(session.subtitles.history, settings.subtitleDisplayMode, primaryTail)
-      .map(block => ({ ...block, audioSource: undefined })),
-  [dual, session.subtitles.history, settings.subtitleDisplayMode, primarySubtitles.history, primaryTail, microphoneSubtitles.history, microphoneTail]);
+      .map(block => ({ ...block, audioSource: block.audioSource ?? primaryAudioSource })),
+  [dual, session.subtitles.history, settings.subtitleDisplayMode, primarySubtitles.history, primaryTail, primaryAudioSource, microphoneSubtitles.history, microphoneTail]);
   const hasContent = hasSubtitleContent(session.subtitles);
   const phaseLabel = session.status.kind === "stopping" ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   const pauseLabel = session.isPaused
@@ -287,6 +289,8 @@ export function OverlayWindow() {
                 alignment={settings.subtitleAlignment}
                 displayMode={settings.subtitleDisplayMode}
                 showSubtitleDividers={settings.showSubtitleDividers}
+                showTimestamps={settings.showSubtitleTimestamps}
+                showAudioSources={dual}
                 microphoneColor={settings.microphoneSubtitleColor}
                 motionEnabled={motionOn}
                 blendsWithBackground
@@ -470,7 +474,9 @@ export function OverlayWindow() {
               alignment={settings.subtitleAlignment}
               displayMode={settings.subtitleDisplayMode}
               showSubtitleDividers={settings.showSubtitleDividers}
-                microphoneColor={settings.microphoneSubtitleColor}
+              showTimestamps={settings.showSubtitleTimestamps}
+              showAudioSources={dual}
+              microphoneColor={settings.microphoneSubtitleColor}
               motionEnabled={motionOn}
               followTailRequest={followTailRequest}
               onReadingHistoryChange={setReadingHistory}

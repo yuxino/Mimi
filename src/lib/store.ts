@@ -120,6 +120,7 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   subtitleDisplayMode: "translation",
   showIntermediateSubtitles: true,
   showSubtitleDividers: false,
+  showSubtitleTimestamps: false,
   pulseAnimation: null,
   pulseStyle: "ribbon",
   subtitleAnimation: null,

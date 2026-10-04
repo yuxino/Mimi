@@ -104,8 +104,19 @@ it("colors each confirmed and live source with its own preference, including bot
   ]} fontSize={18} alignment="left" color="#123456" microphoneColor="#abcdef" displayMode="bilingual" keepTextOpaque />).replaceAll(" ", "");
   const system = html.slice(html.indexOf('data-utterance-id="system"'), html.indexOf('data-utterance-id="microphone"'));
   const microphone = html.slice(html.indexOf('data-utterance-id="microphone"'));
-  expect(system.match(/color:rgba\(18,52,86,1\)/g)).toHaveLength(3);
+  expect(system.match(/color:rgba\(18,52,86,1\)/g)).toHaveLength(2);
   expect(system).not.toContain("171,205,239");
-  expect(microphone.match(/color:rgba\(171,205,239,1\)/g)).toHaveLength(3);
+  expect(microphone.match(/color:rgba\(171,205,239,1\)/g)).toHaveLength(2);
   expect(microphone).not.toContain("18,52,86");
+});
+
+it.each(["system", "microphone"] as const)("keeps %s color and neutral bilingual references when source icons are hidden", audioSource => {
+  const html = renderToStaticMarkup(<Timeline blocks={[
+    block({ audioSource, createdAt: 10, source: "Original", translation: "Translation" }),
+  ]} fontSize={18} alignment="left" color="#123456" microphoneColor="#abcdef"
+    displayMode="bilingual" showAudioSources={false} showTimestamps />).replaceAll(" ", "");
+  expect(html).toContain("color:rgba(255,255,255,0.86)");
+  expect(html).toContain(audioSource === "microphone" ? "color:rgba(171,205,239,1)" : "color:rgba(18,52,86,1)");
+  expect(html).not.toContain("subtitle-audio-source");
+  expect(html).toContain("subtitle-timestamp");
 });

@@ -81,6 +81,15 @@ describe("mergeSettingsSnapshot", () => {
     expect(mergeSettingsSnapshot(enabled, { showInDock: false }).showInDock).toBe(false);
   });
 
+  it("defaults legacy time display off and preserves either choice across unrelated saves", () => {
+    expect(mergeSettingsSnapshot(SETTINGS, {}).showSubtitleTimestamps).toBe(false);
+    const enabled = mergeSettingsSnapshot(SETTINGS, { showSubtitleTimestamps: true });
+    expect(mergeSettingsSnapshot(enabled, { fontSize: 20 }).showSubtitleTimestamps).toBe(true);
+    const disabled = mergeSettingsSnapshot(enabled, { showSubtitleTimestamps: false });
+    expect(mergeSettingsSnapshot(disabled, { audioInput: "both" }).showSubtitleTimestamps).toBe(false);
+    expect(enabled.translationMode).toBe(SETTINGS.translationMode);
+  });
+
   it("changes pulse style without changing explicit motion or unrelated choices", () => {
     const previous = { ...SETTINGS, pulseAnimation: false, subtitleAnimation: true, fontSize: 19 };
     const changed = mergeSettingsSnapshot(previous, { pulseStyle: "ribbon" });

@@ -60,16 +60,20 @@ function traceEntryLabel(entry: DebugEntry): string {
 
 function ReplayTimeline({ session, settings, route }: { session: SessionStateEvent; settings: SettingsSnapshot; route: Record<string, unknown> }) {
   const mode = ["original", "translation", "bilingual"].includes(String(route.subtitleDisplayMode)) ? route.subtitleDisplayMode as SettingsSnapshot["subtitleDisplayMode"] : settings.subtitleDisplayMode;
+  const showTimestamps = typeof route.showSubtitleTimestamps === "boolean" ? route.showSubtitleTimestamps : settings.showSubtitleTimestamps ?? false;
+  const blendsWithBackground = typeof route.blendsWithBackground === "boolean" ? route.blendsWithBackground : settings.subtitleBlendsWithBackground;
   const replaySettings = { ...settings, showIntermediateSubtitles: typeof route.showIntermediateSubtitles === "boolean" ? route.showIntermediateSubtitles : settings.showIntermediateSubtitles, subtitleDisplayMode: mode, sourceLanguage: (route.sourceLanguage ?? settings.sourceLanguage) as SettingsSnapshot["sourceLanguage"], targetLanguage: (route.targetLanguage ?? settings.targetLanguage) as SettingsSnapshot["targetLanguage"] };
-  const tracks = session.subtitles.tracks?.length ? session.subtitles.tracks : [{ ...session.subtitles, audioSource: "system" as const, detectedLanguage: session.detectedLanguage, isTranslationPending: session.isTranslationPending, isTranslationTimedOut: session.isTranslationTimedOut }];
+  const audioInput = route.audioInput ?? settings.audioInput;
+  const primaryAudioSource = session.subtitles.tracks?.[0]?.audioSource ?? (audioInput === "microphone" ? "microphone" : "system");
+  const tracks = session.subtitles.tracks?.length ? session.subtitles.tracks : [{ ...session.subtitles, audioSource: primaryAudioSource, detectedLanguage: session.detectedLanguage, isTranslationPending: session.isTranslationPending, isTranslationTimedOut: session.isTranslationTimedOut }];
   const atomic = usesAtomicSubtitlePreview(route.provider);
   const tail = (subtitles: typeof session.subtitles, signals: Pick<SessionStateEvent, "detectedLanguage" | "isTranslationPending" | "isTranslationTimedOut">) => {
     const selected = visibleLiveSubtitles(subtitles, replaySettings, signals.detectedLanguage, signals.isTranslationPending, signals.isTranslationTimedOut, atomic && subtitles.previewPair !== undefined);
     return { source: selected.find(p => p.kind === "source")?.text ?? null, translation: selected.find(p => p.kind === "translation")?.text ?? null, utteranceId: selected[0]?.utteranceId, isStreaming: false };
   };
   const dual = new Set([...tracks.map(track => track.audioSource), ...session.subtitles.history.map(pair => pair.audioSource ?? "system")]).size > 1;
-  const blocks = dual ? buildMultiSourceSubtitleBlocks(session.subtitles.history, mode, tracks.map(track => ({ audioSource: track.audioSource, history: track.history, tail: tail(track, track) }))) : buildSubtitleBlocks(session.subtitles.history, mode, tail(session.subtitles, session)).map(block => ({ ...block, audioSource: undefined }));
-  return <div className="development-debugger__replay"><Timeline blocks={blocks} fontSize={Number(route.fontSize) || settings.fontSize} alignment={(route.subtitleAlignment ?? settings.subtitleAlignment) as SettingsSnapshot["subtitleAlignment"]} color={(route.subtitleColor ?? settings.subtitleColor) as SettingsSnapshot["subtitleColor"]} displayMode={mode} motionEnabled={false} keepTextOpaque /></div>;
+  const blocks = dual ? buildMultiSourceSubtitleBlocks(session.subtitles.history, mode, tracks.map(track => ({ audioSource: track.audioSource, history: track.history, tail: tail(track, track) }))) : buildSubtitleBlocks(session.subtitles.history, mode, tail(session.subtitles, session)).map(block => ({ ...block, audioSource: block.audioSource ?? primaryAudioSource }));
+  return <div className="development-debugger__replay"><Timeline blocks={blocks} fontSize={Number(route.fontSize) || settings.fontSize} alignment={(route.subtitleAlignment ?? settings.subtitleAlignment) as SettingsSnapshot["subtitleAlignment"]} color={(route.subtitleColor ?? settings.subtitleColor) as SettingsSnapshot["subtitleColor"]} microphoneColor={(route.microphoneSubtitleColor ?? settings.microphoneSubtitleColor) as SettingsSnapshot["microphoneSubtitleColor"]} displayMode={mode} showTimestamps={showTimestamps} showAudioSources={dual} blendsWithBackground={blendsWithBackground} motionEnabled={false} keepTextOpaque /></div>;
 }
 
 export function DevelopmentDebugger({ visible }: { visible: boolean }) {

@@ -58,8 +58,11 @@ it.each(["zh", "en", "ja"] as const)("identifies selected inputs and prioritizes
       };
       await act(async () => root.render(<LanguageStatusCapsule {...props} />));
       const sources = host.querySelector('[role="img"]')!;
-      expect(sources.getAttribute("aria-label")).toBe(audioInputLabel(audioInput));
-      expect(sources.querySelectorAll("svg")).toHaveLength(audioInput === "both" ? 2 : 1);
+      if (audioInput === "system") expect(sources).toBeNull();
+      else {
+        expect(sources.getAttribute("aria-label")).toBe(audioInputLabel(audioInput));
+        expect(sources.querySelectorAll("svg")).toHaveLength(1);
+      }
       expect(host.querySelector("button")!.title).toContain(audioInputLabel(audioInput));
       expect(host.querySelector("button")!.getAttribute("aria-label")).toContain(audioInputLabel(audioInput));
 

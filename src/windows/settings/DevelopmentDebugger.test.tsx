@@ -7,12 +7,15 @@ import { setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { DevelopmentDebugger, type DebuggerSnapshot } from "./DevelopmentDebugger";
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), createObjectURL: vi.fn(), revokeObjectURL: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), createObjectURL: vi.fn(), revokeObjectURL: vi.fn(), timeline: vi.fn<(props: {
+  showTimestamps?: boolean; blendsWithBackground?: boolean; showAudioSources?: boolean;
+  microphoneColor?: string; blocks?: { audioSource?: string }[];
+}) => null>(() => null) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("../../lib/ipc", async importOriginal => ({
   ...await importOriginal<typeof import("../../lib/ipc")>(), isTauri: true,
 }));
-vi.mock("../overlay/Timeline", () => ({ Timeline: () => null }));
+vi.mock("../overlay/Timeline", () => ({ Timeline: mocks.timeline }));
 
 const original = useStore.getState();
 const OriginalURL = URL;
@@ -54,6 +57,7 @@ beforeEach(() => {
   setStoredUiLanguage("en");
   useStore.setState({ ...original, session: { ...original.session, isActive: false } }, true);
   report = snapshot();
+  mocks.timeline.mockClear();
   audioResult = async () => wavBytes;
   mocks.invoke.mockReset().mockImplementation(async (command: string, args?: Record<string, unknown>) => {
     switch (command) {
@@ -374,6 +378,38 @@ it("jumps directly to a case-bound snapshot and rejects out-of-range positions",
   expect(input.value).toBe("42");
   await change("53"); expect(button("Go").disabled).toBe(true);
   await change("0"); expect(button("Go").disabled).toBe(true);
+});
+
+it.each([
+  { recorded: false, initial: true, current: true, expected: false },
+  { recorded: true, initial: false, current: false, expected: true },
+  { recorded: undefined, initial: true, current: false, expected: true },
+  { recorded: undefined, initial: undefined, current: true, expected: true },
+])("replays time display from the captured snapshot before route or current settings: %j", async ({ recorded, initial, current, expected }) => {
+  report = { ...report, replaySnapshots: 1, route: { ...report.route, showSubtitleTimestamps: initial, blendsWithBackground: false } };
+  useStore.setState({ settings: { ...original.settings, showSubtitleTimestamps: current } });
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) => command === "development_debug_replay"
+    ? Promise.resolve({ elapsedMs: 20, snapshot: original.session,
+      projectionSettings: recorded === undefined ? undefined : { showSubtitleTimestamps: recorded, blendsWithBackground: true } })
+    : originalInvoke(command, args));
+  await mount();
+  await click("Go");
+  expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({ showTimestamps: expected, blendsWithBackground: recorded !== undefined });
+});
+
+it.each(["system", "microphone"] as const)("retains single-source %s replay colors without adding source icons", async audioSource => {
+  report = { ...report, replaySnapshots: 1, route: { ...report.route, audioInput: audioSource, microphoneSubtitleColor: "#abcdef" } };
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) => command === "development_debug_replay"
+    ? Promise.resolve({ elapsedMs: 20, snapshot: { ...original.session, subtitles: {
+      ...original.session.subtitles, source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
+      history: [{ source: "Synthetic source.", translation: "Synthetic translation.", createdAt: 20, audioSource }],
+    } } })
+    : originalInvoke(command, args));
+  await mount();
+  await click("Go");
+  expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({ showAudioSources: false, microphoneColor: "#abcdef", blocks: [{ audioSource }] });
 });
 
 it("loads private events only on request in bounded pages tied to the current case", async () => {

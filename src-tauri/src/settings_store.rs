@@ -196,6 +196,7 @@ pub struct Preferences {
     pub subtitle_display_mode: SubtitleDisplayMode,
     pub show_intermediate_subtitles: bool,
     pub show_subtitle_dividers: bool,
+    pub show_subtitle_timestamps: bool,
     /// Animation switches: `None` follows the system reduce-motion setting.
     pub pulse_animation: Option<bool>,
     pub pulse_style: PulseStyle,
@@ -233,6 +234,7 @@ impl Default for Preferences {
             subtitle_display_mode: SubtitleDisplayMode::Translation,
             show_intermediate_subtitles: true,
             show_subtitle_dividers: false,
+            show_subtitle_timestamps: false,
             pulse_animation: None,
             pulse_style: PulseStyle::Ribbon,
             subtitle_animation: None,
@@ -3413,7 +3415,7 @@ mod tests {
     }
 
     #[test]
-    fn loading_hidden_inputs_disables_microphone_and_its_recording_opt_in() {
+    fn loading_preferences_preserves_explicit_inputs_and_their_recording_opt_in() {
         for blocked_catalog in [false, true] {
             for input in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
                 let directory = tempfile::tempdir().unwrap();
@@ -3443,16 +3445,16 @@ mod tests {
                     Box::new(FakeSecretStore::default()),
                 );
                 let loaded = store.preferences();
-                assert_eq!(loaded.audio_input, AudioInput::System);
-                assert_eq!(loaded.record_session_audio, input == AudioInput::System);
+                assert_eq!(loaded.audio_input, input);
+                assert!(loaded.record_session_audio);
                 assert_eq!(loaded.font_size, previous.font_size);
                 assert_eq!(loaded.overlay_frame, previous.overlay_frame);
                 let persisted: Preferences = serde_json::from_slice(
                     &std::fs::read(directory.path().join("preferences.json")).unwrap(),
                 )
                 .unwrap();
-                assert_eq!(persisted.audio_input, AudioInput::System);
-                assert_eq!(persisted.record_session_audio, input == AudioInput::System);
+                assert_eq!(persisted.audio_input, input);
+                assert!(persisted.record_session_audio);
             }
         }
     }
@@ -7482,6 +7484,7 @@ mod tests {
         assert!(!preferences.subtitle_blends_with_background);
         assert!(preferences.show_intermediate_subtitles);
         assert!(!preferences.show_subtitle_dividers);
+        assert!(!preferences.show_subtitle_timestamps);
         assert_eq!(preferences.pulse_style, PulseStyle::Ribbon);
     }
 
@@ -7694,6 +7697,33 @@ mod tests {
                 SubtitleColor::Custom([0x12, 0x34, 0x56])
             );
             assert_eq!(reloaded.preferences().subtitle_color, SubtitleColor::White);
+        }
+    }
+
+    #[test]
+    fn subtitle_timestamps_persist_without_changing_provider_configuration() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        store
+            .save_api_key(DEFAULT_ALIBABA_PROFILE_ID, "synthetic-asr")
+            .unwrap();
+        let original_configuration = store.configuration().unwrap();
+        assert!(!store.preferences().show_subtitle_timestamps);
+        for enabled in [true, false] {
+            store
+                .save_preferences_for_active_profile(|prefs| {
+                    prefs.show_subtitle_timestamps = enabled;
+                })
+                .unwrap();
+            let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(reloaded.preferences().show_subtitle_timestamps, enabled);
+            assert_eq!(reloaded.configuration().unwrap(), original_configuration);
+            assert_eq!(
+                crate::commands::SettingsSnapshotPayload::from_store(&reloaded)
+                    .show_subtitle_timestamps,
+                enabled
+            );
         }
     }
 

@@ -372,6 +372,8 @@ const SETTINGS_ZH = {
   textAnimationHelp: "新句平滑接续，滚动时缓和位置变化。",
   subtitleDividers: "分句线",
   subtitleDividersHelp: "在句子之间显示淡细线；沉浸模式不显示。",
+  subtitleTimestamps: "显示时间",
+  subtitleTimestampsHelp: "在已确认字幕旁显示本机时间（HH:mm:ss），方便回看对话。时间以字幕确认为准，并非精确的说话起点；沉浸模式不显示。",
 
   sessionAudioTiming: "WAV 会省略暂停和重连间隙，音频与字幕时间戳不直接对齐。",
   sessionTranscriptTiming: "TXT 时间戳表示字幕确认时距会话开始的时间，并非媒体播放位置。",
@@ -771,6 +773,8 @@ const SETTINGS_EN = {
   textAnimationHelp: "New sentences settle smoothly and scrolling softens position changes.",
   subtitleDividers: "Sentence dividers",
   subtitleDividersHelp: "Faint lines between sentences, hidden in Immersive Mode.",
+  subtitleTimestamps: "Show time",
+  subtitleTimestampsHelp: "Show local time (HH:mm:ss) beside confirmed subtitles to help follow a conversation. This is the subtitle confirmation time, not the exact start of speech. Hidden in Immersive Mode.",
 
   sessionAudioTiming: "WAV omits pauses and reconnect gaps. Its timeline does not directly align with subtitle timestamps.",
   sessionTranscriptTiming: "TXT timestamps mark final confirmation time since session start, not media playback positions.",
@@ -1168,6 +1172,8 @@ const SETTINGS_JA = {
   textAnimationHelp: "新しい文とスクロール時の位置変化を滑らかにつなぎます。",
   subtitleDividers: "文の区切り線",
   subtitleDividersHelp: "文の間に薄い細線を表示します。イマーシブモードでは非表示です。",
+  subtitleTimestamps: "時刻を表示",
+  subtitleTimestampsHelp: "確定した字幕の横にローカル時刻（HH:mm:ss）を表示し、会話を振り返りやすくします。字幕が確定した時刻であり、正確な発話開始時刻ではありません。イマーシブモードでは非表示です。",
 
   sessionAudioTiming: "WAV は一時停止や再接続中の空白を省くため、字幕のタイムスタンプとは一致しません。",
   sessionTranscriptTiming: "TXT の時刻はセッション開始から字幕確定までの経過時間で、メディアの再生位置ではありません。",

@@ -564,8 +564,8 @@ pub fn record_snapshot(
     let preferences = settings.preferences();
     let mut bytes = match serde_json::to_vec(
         &serde_json::json!({"elapsedMs":case.epoch.elapsed().as_millis() as u64,"snapshot":snapshot,"projectionSettings":{
-            "sourceLanguage":preferences.source_language,"targetLanguage":preferences.target_language,"subtitleDisplayMode":preferences.subtitle_display_mode,"showIntermediateSubtitles":preferences.show_intermediate_subtitles,"fontSize":preferences.font_size,
-            "subtitleAlignment":preferences.subtitle_alignment,"subtitleColor":preferences.subtitle_color,"blendsWithBackground":preferences.subtitle_blends_with_background,
+            "sourceLanguage":preferences.source_language,"targetLanguage":preferences.target_language,"subtitleDisplayMode":preferences.subtitle_display_mode,"showIntermediateSubtitles":preferences.show_intermediate_subtitles,"showSubtitleTimestamps":preferences.show_subtitle_timestamps,"fontSize":preferences.font_size,
+            "subtitleAlignment":preferences.subtitle_alignment,"subtitleColor":preferences.subtitle_color,"microphoneSubtitleColor":preferences.microphone_subtitle_color,"blendsWithBackground":preferences.subtitle_blends_with_background,
         }}),
     ) {
         Ok(bytes) => bytes,
@@ -1046,8 +1046,8 @@ pub fn development_debug_start(
         "createdAtUnixMs":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,"clock":"sharedMonotonicEpoch",
         "provider":profile.as_ref().map(|p|p.provider),"textTranslation":profile.as_ref().map(|p|p.text_translation()),
         "sourceLanguage":preferences.source_language,"targetLanguage":preferences.target_language,"translationMode":preferences.translation_mode,
-        "audioInput":preferences.audio_input,"subtitleDisplayMode":preferences.subtitle_display_mode,"showIntermediateSubtitles":preferences.show_intermediate_subtitles,"fontSize":preferences.font_size,
-        "blendsWithBackground":preferences.subtitle_blends_with_background,"recordedContent":with_audio,
+        "audioInput":preferences.audio_input,"subtitleDisplayMode":preferences.subtitle_display_mode,"showIntermediateSubtitles":preferences.show_intermediate_subtitles,"showSubtitleTimestamps":preferences.show_subtitle_timestamps,"fontSize":preferences.font_size,
+        "blendsWithBackground":preferences.subtitle_blends_with_background,"microphoneSubtitleColor":preferences.microphone_subtitle_color,"recordedContent":with_audio,
         "evidenceWorkspace":debugger.workspace.label(),
     });
     if let Some(case) = debugger.case.as_ref() {

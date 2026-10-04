@@ -557,3 +557,27 @@
   正常加载，四个既有配置及选中项保留，应用留在空闲字幕设置供体验。
 - 安装收据及检查日志私有归档；未更改公开签名策略。继续保留本地
   功能分支，无 push、main 合并、tag 或公开发布。
+
+### 2026-10-05 — 麦克风入口、来源标识与确认时间
+
+- Revision: `babc8ea` + `feat/microphone-subtitle-style` task changes; signed
+  `local-dev` UI-only bundle at the canonical development path. The release app
+  was normally quit with user approval and reopened after QA; it was not replaced.
+- Restored explicit microphone/both selection; compact source controls and icon
+  metadata replace the large source-name column. Optional local HH:mm:ss reflects
+  confirmation time, not speech onset. Single-source microphone color is retained.
+- Final `scripts/check.sh` passed: desktop Rust 1,050 passed / 2 ignored, frontend
+  1,192 passed, shared native fixtures/JNI checks, strict lint and production build.
+  Regressions cover single-source color, retained mixed-source history at minimum
+  height, timestamps and bilingual lanes, and dual live rows with dividers.
+- Ego Lite verified zh/en/ja source buttons at 280px: both buttons stay 32px high,
+  no horizontal overflow, pointer cursor; the initial English wrap was repaired.
+  Inspected the actual subtitle and control-panel screenshots, not only geometry.
+- Signed macOS UI-only inspection exercised dual confirmed/live subtitles, source
+  selection from controls and settings, paused-state preservation, last-source
+  guards, time on/off, collapse/expand, and the default system-only capsule. Native
+  selection styling updated immediately. Settings/tray/overlay sibling source and
+  timestamp paths were reviewed; the tray has no duplicate source selector.
+- Synthetic UI fixtures only: no credentials, provider requests, microphone or
+  system capture, transcript retention or audio recording. Live acoustic/provider
+  validation and Windows/Linux native appearance were not repeated in this run.

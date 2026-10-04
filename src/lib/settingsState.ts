@@ -197,6 +197,7 @@ export function mergeSettingsSnapshot(
     subtitleDisplayMode: draft.subtitleDisplayMode ?? current.subtitleDisplayMode,
     showIntermediateSubtitles: draft.showIntermediateSubtitles ?? current.showIntermediateSubtitles ?? true,
     showSubtitleDividers: draft.showSubtitleDividers ?? current.showSubtitleDividers,
+    showSubtitleTimestamps: draft.showSubtitleTimestamps ?? current.showSubtitleTimestamps ?? false,
     pulseAnimation: draft.pulseAnimation ?? current.pulseAnimation,
     pulseStyle: draft.pulseStyle ?? current.pulseStyle,
     subtitleAnimation: draft.subtitleAnimation ?? current.subtitleAnimation,

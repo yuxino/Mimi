@@ -46,8 +46,8 @@ it.each(["system", "microphone", "both"] as const)("keeps %s sources identifiabl
   }));
   await act(async () => root.render(<OverlayWindow />));
   expect(host.querySelector('[role="group"]')?.getAttribute("aria-label")).toContain(audioInputLabel(audioInput));
-  expect(host.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe(audioInputLabel(audioInput));
-  expect(host.querySelector<HTMLElement>('[role="img"]')?.style.color).toContain("rgba(255,255,255,0.82)");
+  if (audioInput === "system") expect(host.querySelector('[role="img"]')).toBeNull();
+  else expect(host.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe(audioInputLabel(audioInput));
   expect(button(I18N.overlay.resume)).not.toBeNull();
   expect(button(I18N.overlay.expandSubtitle)).not.toBeNull();
 });

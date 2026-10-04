@@ -7,7 +7,8 @@ describe("browser and native minimum-height contract", () => {
   it.each(cases)("keeps $audioInput $displayMode font $fontSize at $minimumHeight px", fixture => {
     expect(minimumOverlayHeight({ audioInput: fixture.audioInput as AudioInput,
       subtitleDisplayMode: fixture.displayMode as SubtitleDisplayMode,
-      targetLanguage: fixture.targetLanguage as TargetLanguage, fontSize: fixture.fontSize }))
+      targetLanguage: fixture.targetLanguage as TargetLanguage, fontSize: fixture.fontSize,
+      showSubtitleTimestamps: fixture.showSubtitleTimestamps }))
       .toBe(fixture.minimumHeight);
   });
 

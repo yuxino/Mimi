@@ -1,5 +1,7 @@
 # Temporary system-audio-only desktop release and subtitle defaults
 
+The temporary microphone restriction is superseded by [restored microphone controls and subtitle time](2026-10-05-microphone-subtitle-metadata.md). The other defaults and debugger release boundaries below remain unchanged.
+
 Accepted user request: temporarily hide microphone input, keep the current dev overlay size and font as defaults, then publish a new version.
 
 - Preserve microphone capture, independent lanes, source identity and historical playback/export implementations. Set the native `MICROPHONE_INPUT_AVAILABLE` gate false and expose it as a read-only settings capability. Both dev and production use the same gate; it is unrelated to the development debugger gate.

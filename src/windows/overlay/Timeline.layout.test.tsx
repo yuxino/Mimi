@@ -72,11 +72,11 @@ it("keeps full confirmed history open when sentence dividers are toggled", async
   const timeline = await render(blocks, 18, false, true);
   await act(async () => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -30 })));
   const read = timeline.querySelector<HTMLElement>('[data-utterance-id="confirmed"]')!;
-  expect(read.querySelector("[aria-label]")).toBeNull();
+  expect(read.querySelector("[aria-label]:not([role])")).toBeNull();
   expect(timeline.querySelector(".subtitle-separator")).not.toBeNull();
   await render(blocks, 18, false, false);
   expect(timeline.querySelector('[data-utterance-id="confirmed"]')).toBe(read);
-  expect(read.querySelector("[aria-label]")).toBeNull();
+  expect(read.querySelector("[aria-label]:not([role])")).toBeNull();
   expect(read.textContent).toContain(confirmed.source);
   expect(read.textContent).toContain(confirmed.translation);
   expect(timeline.querySelector(".subtitle-separator")).toBeNull();
@@ -109,7 +109,7 @@ it.each(["Wait... really?", "等等……真的吗？", "待って…本当？",
         alignment="center" color="white" displayMode={displayMode} motionEnabled={false} />));
     };
     await mount(true);
-    const lanes = Array.from(host.querySelectorAll<HTMLElement>("[aria-label]"));
+    const lanes = Array.from(host.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
     const initialHeights = lanes.map(lane => lane.style.height);
     for (const lane of lanes) {
       const body = lane.firstElementChild!;
@@ -120,7 +120,7 @@ it.each(["Wait... really?", "等等……真的吗？", "待って…本当？",
     }
     await mount();
     await act(async () => { resize.forEach(callback => callback()); });
-    expect(Array.from(host.querySelectorAll<HTMLElement>("[aria-label]"))).toEqual(lanes);
+    expect(Array.from(host.querySelectorAll<HTMLElement>("[aria-label]:not([role])"))).toEqual(lanes);
     expect(lanes.map(lane => lane.style.height)).toEqual(initialHeights);
     await mount(true);
     await act(async () => { resize.forEach(callback => callback()); });
@@ -144,13 +144,13 @@ it("keeps the same confirmed long sentence bounded when the next live sentence a
   measuredHeight = 240;
   const timeline = await render([confirmed]);
   const before = timeline.querySelector<HTMLElement>('[data-utterance-id="confirmed"]')!;
-  const viewport = before.querySelector<HTMLElement>("[aria-label]");
+  const viewport = before.querySelector<HTMLElement>("[aria-label]:not([role])");
   expect(before.textContent).toContain(confirmed.source);
   expect(before.textContent).toContain(confirmed.translation);
   await render([{ ...confirmed, presentation: "history" }, live]);
   const after = timeline.querySelector<HTMLElement>('[data-utterance-id="confirmed"]')!;
   expect(after).toBe(before);
-  expect(after.querySelector("[aria-label]")).toBe(viewport);
+  expect(after.querySelector("[aria-label]:not([role])")).toBe(viewport);
   expect(after.textContent).toContain(confirmed.source);
   expect(after.textContent).toContain(confirmed.translation);
 });
@@ -167,7 +167,7 @@ it.each(["original", "translation", "bilingual"] as const)("keeps a fitting thre
   const phrase = { ...confirmed, source, translation };
   const timeline = await render([phrase], 18, false, false, displayMode);
   const row = timeline.querySelector<HTMLElement>('[data-utterance-id="confirmed"]')!;
-  const before = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]"));
+  const before = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   const heights = before.map(lane => Number.parseFloat(lane.style.height));
   expect(before.map(lane => lane.textContent)).toEqual(displayMode === "original" ? [source]
     : displayMode === "translation" ? [translation] : [source, translation]);
@@ -177,7 +177,7 @@ it.each(["original", "translation", "bilingual"] as const)("keeps a fitting thre
 
   await render([{ ...phrase, presentation: "history" }, live], 18, false, false, displayMode);
   const previous = timeline.querySelector<HTMLElement>('[data-utterance-id="confirmed"]')!;
-  const after = Array.from(previous.querySelectorAll<HTMLElement>("[aria-label]"));
+  const after = Array.from(previous.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   expect(previous).toBe(row);
   expect(after).toEqual(before);
   expect(after.map(lane => Number.parseFloat(lane.style.height))).toEqual(heights);
@@ -197,9 +197,9 @@ it("keeps both previous bilingual lanes visible and restores full text on readin
   expect(translation.style.height).toBe("48px");
   expect(Number.parseFloat(source.style.height) + Number.parseFloat(translation.style.height) + 2 + 2 + 2).toBeLessThanOrEqual(viewportHeight);
   const newest = timeline.querySelector<HTMLElement>('[data-utterance-id="live"]')!;
-  expect(newest.querySelector<HTMLElement>("[aria-label]")!.hidden).toBe(false);
+  expect(newest.querySelector<HTMLElement>("[aria-label]:not([role])")!.hidden).toBe(false);
   await act(async () => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -30 })));
-  expect(previous.querySelector("[aria-label]")).toBeNull();
+  expect(previous.querySelector("[aria-label]:not([role])")).toBeNull();
   expect(previous.textContent).toContain(confirmed.source);
   expect(previous.textContent).toContain(confirmed.translation);
   await act(async () => timeline.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "End" })));
@@ -213,14 +213,14 @@ it("reveals full confirmed history on upward intent and returns to compact follo
   const timeline = await render([{ ...confirmed, presentation: "history" }, live]);
   await act(async () => { timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -30 })); });
   const read = timeline.querySelector<HTMLElement>('[data-utterance-id="confirmed"]')!;
-  expect(read.querySelector("[aria-label]")).toBeNull();
+  expect(read.querySelector("[aria-label]:not([role])")).toBeNull();
   expect(read.textContent).toContain(confirmed.source);
   expect(read.textContent).toContain(confirmed.translation);
-  expect(timeline.querySelector('[data-utterance-id="live"] [aria-label]')).toBeNull();
+  expect(timeline.querySelector('[data-utterance-id="live"] [aria-label]:not([role])')).toBeNull();
   await render([{ ...confirmed, presentation: "history" }, { ...live, translation: "仍然流入" }]);
-  expect(read.querySelector("[aria-label]")).toBeNull();
+  expect(read.querySelector("[aria-label]:not([role])")).toBeNull();
   await act(async () => { timeline.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "End" })); });
-  expect(read.querySelector("[aria-label]")).not.toBeNull();
+  expect(read.querySelector("[aria-label]:not([role])")).not.toBeNull();
 });
 
 it.each(["original", "translation", "bilingual"] as const)("opens the complete lone live sentence on reading intent and returns to bounded lines with End in %s", async displayMode => {
@@ -229,30 +229,30 @@ it.each(["original", "translation", "bilingual"] as const)("opens the complete l
   const longLive = { ...confirmed, id: "live", createdAt: null, presentation: "live" as const, streaming: true as const };
   const timeline = await render([longLive], 20, false, false, displayMode);
   const row = timeline.querySelector('[data-utterance-id="live"]')!;
-  expect(row.querySelector("[aria-label]")).not.toBeNull();
+  expect(row.querySelector("[aria-label]:not([role])")).not.toBeNull();
   await act(async () => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -30 })));
   expect(timeline.querySelector('[data-utterance-id="live"]')).toBe(row);
-  expect(row.querySelector("[aria-label]")).toBeNull();
+  expect(row.querySelector("[aria-label]:not([role])")).toBeNull();
   const visible = Array.from(row.querySelectorAll<HTMLElement>(".subtitle-lane"));
   expect(visible.map(lane => lane.textContent)).toEqual(displayMode === "original" ? [longLive.source]
     : displayMode === "translation" ? [longLive.translation] : [longLive.source, longLive.translation]);
   expect(visible.every(lane => lane.style.overflow === "" && lane.parentElement?.style.overflow !== "hidden")).toBe(true);
   await act(async () => timeline.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "End" })));
   expect(timeline.querySelector('[data-utterance-id="live"]')).toBe(row);
-  expect(row.querySelector("[aria-label]")).not.toBeNull();
+  expect(row.querySelector("[aria-label]:not([role])")).not.toBeNull();
 });
 
 it("opens a single compact confirmed sentence without needing a scrollbar, while clicks keep following", async () => {
   measuredHeight = 240;
   const timeline = await render([confirmed]);
   await act(async () => { timeline.dispatchEvent(new Event("pointerdown", { bubbles: true })); });
-  expect(timeline.querySelector("[aria-label]")).not.toBeNull();
+  expect(timeline.querySelector("[aria-label]:not([role])")).not.toBeNull();
   await act(async () => { timeline.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp" })); });
-  expect(timeline.querySelector("[aria-label]")).toBeNull();
+  expect(timeline.querySelector("[aria-label]:not([role])")).toBeNull();
   // With no remaining overflow, a downward wheel must restore following even
   // though the browser does not produce a scroll event.
   await act(async () => { timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 30 })); });
-  expect(timeline.querySelector("[aria-label]")).not.toBeNull();
+  expect(timeline.querySelector("[aria-label]:not([role])")).not.toBeNull();
 });
 
 it("fits both long bilingual lanes into the actual 51px body and uses added space after resize", async () => {
@@ -260,7 +260,7 @@ it("fits both long bilingual lanes into the actual 51px body and uses added spac
   viewportHeight = 51;
   const timeline = await render([confirmed], 20);
   const row = timeline.firstElementChild as HTMLElement;
-  const lanes = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]"));
+  const lanes = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   const laneHeights = lanes.map(lane => Number.parseFloat(lane.style.height));
   expect(laneHeights).toEqual([22, 27]);
   expect(laneHeights.reduce((sum, height) => sum + height, 0) + 1 + 1).toBeLessThanOrEqual(viewportHeight);
@@ -284,9 +284,9 @@ it("uses a downward finger gesture to open full confirmed text while keeping tou
     timeline.dispatchEvent(event);
   };
   await act(async () => { touch("touchstart", 20); });
-  expect(timeline.querySelector("[aria-label]")).not.toBeNull();
+  expect(timeline.querySelector("[aria-label]:not([role])")).not.toBeNull();
   await act(async () => { touch("touchmove", 40); });
-  expect(timeline.querySelector("[aria-label]")).toBeNull();
+  expect(timeline.querySelector("[aria-label]:not([role])")).toBeNull();
 });
 
 it.each([80, 81])("fits long original and short translation at the %ipx responsive boundary", async (height) => {
@@ -297,7 +297,7 @@ it.each([80, 81])("fits long original and short translation at the %ipx responsi
   };
   const timeline = await render([{ ...confirmed, translation: "短句" }], 20);
   const row = timeline.firstElementChild as HTMLElement;
-  const lanes = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]"));
+  const lanes = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   const textHeight = lanes.reduce((sum, lane) => sum + Number.parseFloat(lane.style.height), 0);
   expect(textHeight + 7).toBeLessThanOrEqual(viewportHeight);
   expect(lanes[0].style.height).toBe("44px");
@@ -319,7 +319,7 @@ it.each([83, 84, 85])("keeps the reference font stable as translation arrives an
   expect(original.firstElementChild).toBe(text);
   expect(text.style.fontSize).toBe(font);
   expect(text.style.lineHeight).toBe(lineHeight);
-  const pairedLanes = Array.from(timeline.querySelectorAll<HTMLElement>("[aria-label]"));
+  const pairedLanes = Array.from(timeline.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   expect(pairedLanes.map(lane => lane.firstElementChild?.textContent)).toEqual([live.source, live.translation]);
   expect(pairedLanes.reduce((sum, lane) => sum + Number.parseFloat(lane.style.height), 0) + 7).toBeLessThanOrEqual(height);
 
@@ -333,14 +333,14 @@ it("gives a bilingual translation the unused original lane's space before that o
   measuredHeight = 240;
   viewportHeight = 51;
   const timeline = await render([{ ...live, source: null }]);
-  expect(timeline.querySelector<HTMLElement>("[aria-label]")?.style.height).toBe("48px");
+  expect(timeline.querySelector<HTMLElement>("[aria-label]:not([role])")?.style.height).toBe("48px");
 });
 
 it("rolls a newly clipped line up from its previous position without first opening a gap below the text", async () => {
   viewportHeight = 60;
   measuredHeight = 48;
   const timeline = await render([{ ...confirmed, source: null }], 18, true);
-  const inner = timeline.querySelector<HTMLElement>("[aria-label]")!.firstElementChild as HTMLElement;
+  const inner = timeline.querySelector<HTMLElement>("[aria-label]:not([role])")!.firstElementChild as HTMLElement;
   const transforms = vi.spyOn(inner.style, "transform", "set");
   measuredHeight = 72;
   await act(async () => { resize.forEach(callback => callback()); });
@@ -352,7 +352,7 @@ it("rolls a newly clipped line up from its previous position without first openi
 it("does not glide a new line that still fits the compact lane", async () => {
   measuredHeight = 24;
   const timeline = await render([{ ...confirmed, source: null }], 18, true);
-  const inner = timeline.querySelector<HTMLElement>("[aria-label]")!.firstElementChild as HTMLElement;
+  const inner = timeline.querySelector<HTMLElement>("[aria-label]:not([role])")!.firstElementChild as HTMLElement;
   const transforms = vi.spyOn(inner.style, "transform", "set");
   measuredHeight = 48;
   await act(async () => { resize.forEach(callback => callback()); });
@@ -366,7 +366,7 @@ it("stops an active glide and keeps further growth still when motion is disabled
   measuredHeight = 48;
   const blocks = [{ ...confirmed, source: null }];
   const timeline = await render(blocks, 18, true);
-  const inner = timeline.querySelector<HTMLElement>("[aria-label]")!.firstElementChild as HTMLElement;
+  const inner = timeline.querySelector<HTMLElement>("[aria-label]:not([role])")!.firstElementChild as HTMLElement;
   measuredHeight = 72;
   await act(async () => { resize.forEach(callback => callback()); });
   expect(inner.style.transition).toBe("transform 180ms ease-out");
@@ -379,28 +379,29 @@ it("stops an active glide and keeps further growth still when motion is disabled
   transforms.mockRestore();
 });
 
-it("shares the visible space between both long live sources with normal-sized source labels", async () => {
-  viewportHeight = 130;
+it("shares the visible space between both long live sources with compact source metadata", async () => {
+  viewportHeight = 174;
   measuredHeight = 240;
   const tracks = (["system", "microphone"] as const).map(audioSource => ({
     ...live, id: audioSource, audioSource, source: confirmed.source, translation: confirmed.translation,
   }));
   const timeline = await render(tracks, 18);
   const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
-  const heights = rows.map(row => [...row.querySelectorAll<HTMLElement>("[aria-label]")]
+  const heights = rows.map(row => [...row.querySelectorAll<HTMLElement>("[aria-label]:not([role])")]
     .reduce((sum, lane) => sum + Number.parseFloat(lane.style.height), 0));
-  expect(heights.reduce((sum, height) => sum + height + 7, 0)).toBeLessThanOrEqual(viewportHeight);
-  for (const row of rows) expect(row.querySelector<HTMLElement>(".subtitle-audio-source")?.style.fontSize).toBe("18px");
+  expect(heights.reduce((sum, height) => sum + height + 7 + 22, 0)).toBeLessThanOrEqual(viewportHeight);
+  for (const row of rows) expect(row.querySelector<HTMLElement>(".subtitle-audio-source")?.style.fontSize).toBe("14px");
 });
 
 function renderedBlockHeight(row: HTMLElement): number {
-  const lanes = [...row.querySelectorAll<HTMLElement>("[aria-label]")];
+  const lanes = [...row.querySelectorAll<HTMLElement>("[aria-label]:not([role])")];
   const column = lanes[0].parentElement!;
   const laneHeight = lanes.reduce((height, lane) => height + Number.parseFloat(lane.style.height), 0)
     + Math.max(0, lanes.length - 1) * Number.parseFloat(column.style.gap);
-  const label = row.querySelector<HTMLElement>(".subtitle-audio-source");
-  const labelHeight = label ? Number.parseFloat(label.style.fontSize) * Number.parseFloat(label.style.lineHeight) : 0;
-  return Number.parseFloat(row.style.paddingTop) + Number.parseFloat(row.style.paddingBottom) + Math.max(laneHeight, labelHeight);
+  const metadata = row.querySelector<HTMLElement>(".subtitle-metadata");
+  const metadataHeight = metadata ? Number.parseFloat(metadata.style.height) + Number.parseFloat(metadata.style.marginBottom) : 0;
+  const dividerHeight = row.querySelector(".subtitle-separator") ? 15 : 0;
+  return Number.parseFloat(row.style.paddingTop) + Number.parseFloat(row.style.paddingBottom) + laneHeight + metadataHeight + dividerHeight;
 }
 
 const dualLive = (["system", "microphone"] as const).map(audioSource => ({
@@ -416,7 +417,7 @@ it("reproduces the 136px native dual-bilingual clipping and fits both rows after
   expect(viewportHeight).toBe(51);
   expect(totalHeight).toBe(92);
   // Bottom following starts below the system original's entire first lane.
-  const systemOriginalHeight = Number.parseFloat(rows[0].querySelector<HTMLElement>("[aria-label]")!.style.height);
+  const systemOriginalHeight = Number.parseFloat(rows[0].querySelector<HTMLElement>("[aria-label]:not([role])")!.style.height);
   expect(totalHeight - viewportHeight).toBeGreaterThan(systemOriginalHeight);
   viewportHeight = minimumOverlayHeight({ audioInput: "both", subtitleDisplayMode: "bilingual", targetLanguage: "zh", fontSize: 18 })
     - OVERLAY_MAXIMUM_CHROME_HEIGHT;
@@ -433,9 +434,9 @@ it.each([14, 15, 16, 17, 18, 19, 20])("fits both long bilingual live rows below 
   const rows = dualLive.map(block => timeline.querySelector<HTMLElement>(`[data-utterance-id="${block.id}"]`)!);
   expect(rows.reduce((height, row) => height + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
   for (const row of rows) {
-    expect(row.querySelectorAll("[aria-label]")).toHaveLength(2);
-    expect(row.querySelector<HTMLElement>(".subtitle-audio-source")?.style.fontSize).toBe(`${fontSize}px`);
-    const lanes = [...row.querySelectorAll<HTMLElement>("[aria-label]")];
+    expect(row.querySelectorAll("[aria-label]:not([role])")).toHaveLength(2);
+    expect(row.querySelector<HTMLElement>(".subtitle-audio-source")?.style.fontSize).toBe("14px");
+    const lanes = [...row.querySelectorAll<HTMLElement>("[aria-label]:not([role])")];
     expect(lanes.every(lane => Number.parseFloat(lane.style.height) > 0 && !lane.hidden)).toBe(true);
   }
 });
@@ -449,7 +450,7 @@ it.each(["original", "translation"] as const)("fits both single-language rows at
     await act(async () => { resize.forEach(callback => callback()); });
     const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
     expect(rows.reduce((height, row) => height + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
-    expect(rows.every(row => row.querySelectorAll("[aria-label]").length === 1)).toBe(true);
+    expect(rows.every(row => row.querySelectorAll("[aria-label]:not([role])").length === 1)).toBe(true);
   }
 });
 
@@ -460,5 +461,34 @@ it("budgets original-target bilingual rows with a side label instead of adding a
   const timeline = await render(dualLive.map(block => ({ ...block, translation: null })), 20);
   const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
   expect(rows.reduce((height, row) => height + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
-  expect(rows.every(row => row.querySelectorAll("[aria-label]").length === 1)).toBe(true);
+  expect(rows.every(row => row.querySelectorAll("[aria-label]:not([role])").length === 1)).toBe(true);
+});
+
+it("keeps retained mixed-source identity beside a single live row at the single-input minimum", async () => {
+  measuredHeight = 240;
+  viewportHeight = 51;
+  const timeline = await render([{ ...live, audioSource: "microphone" }], 20);
+  const row = timeline.querySelector<HTMLElement>("[data-utterance-id]")!;
+  expect(row.querySelector(".subtitle-audio-source")).not.toBeNull();
+  expect(row.querySelector(".subtitle-metadata")).toBeNull();
+  expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+});
+
+it("fits confirmation time and both bilingual lanes at the timestamp minimum", async () => {
+  measuredHeight = 240;
+  viewportHeight = minimumOverlayHeight({ audioInput: "system", fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  await act(async () => root.render(<Timeline blocks={[confirmed]} fontSize={20} alignment="center" color="white" displayMode="bilingual" showTimestamps />));
+  const row = host.querySelector<HTMLElement>("[data-utterance-id]")!;
+  expect(row.querySelector(".subtitle-timestamp")).not.toBeNull();
+  expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+});
+
+
+it.each([244, 245, 250, 260])("fits dual bilingual live rows with dividers at native height %i", async height => {
+  measuredHeight = 240;
+  viewportHeight = height - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  const timeline = await render(dualLive, 20, false, true);
+  const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
+  expect(rows.reduce((sum, row) => sum + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
+  expect(rows[0].querySelector(".subtitle-separator")).not.toBeNull();
 });

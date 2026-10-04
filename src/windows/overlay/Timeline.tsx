@@ -5,7 +5,7 @@ import { subtitleColorHex } from "../../lib/subtitleColor";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
 import { TimelineScroll } from "./timelineScroll";
-import { rowHorizontalPadding } from "./alignment";
+import { Icon } from "../../components/Icon";
 import { compactRepetition } from "./compactRepetition";
 import {
   subtitleLaneBudget,
@@ -16,9 +16,6 @@ import {
   type SubtitleBlock,
 } from "./overlayModel";
 
-const ACCENT = "#7AA8FF";
-const MONO_FONT =
-  '"SF Mono", Menlo, Consolas, "Courier New", monospace';
 const IMMERSIVE_TEXT_SHADOW =
   "0 2px 5px rgba(0,0,0,0.98), 0 0 2px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.72)";
 /** Vertical rhythm: lines of one utterance sit close, sentences breathe. */
@@ -28,6 +25,7 @@ const LAST_BLOCK_PADDING_Y = 3;
 /** Separator gap for the card presentation; immersive mode uses space only. */
 const SEPARATOR_MARGIN_Y = 7;
 const IMMERSIVE_BLOCK_GAP = 6;
+const METADATA_HEIGHT = 22;
 interface TimelineProps {
   blocks: SubtitleBlock[];
   fontSize: number;
@@ -39,6 +37,8 @@ interface TimelineProps {
   displayMode: SettingsSnapshot["subtitleDisplayMode"];
   /** Optional metadata; hidden by default so sentence boundaries lead. */
   showTimestamps?: boolean;
+  /** Single-source views retain their color without repeating the input icon. */
+  showAudioSources?: boolean;
   showSubtitleDividers?: boolean;
   /** Fixed-opacity debugger replay; not a persisted product setting. */
   keepTextOpaque?: boolean;
@@ -64,6 +64,7 @@ export const Timeline = memo(function Timeline({
   blendsWithBackground = false,
   motionEnabled = true,
   showTimestamps = false,
+  showAudioSources = true,
   showSubtitleDividers = false,
   keepTextOpaque = false,
   microphoneColor = "yellow",
@@ -103,7 +104,7 @@ export const Timeline = memo(function Timeline({
 
   useLayoutEffect(() => {
     if (containerRef.current) scroll.reflow(containerRef.current);
-  }, [readingHistory, viewportHeight, showSubtitleDividers, scroll]);
+  }, [readingHistory, viewportHeight, showSubtitleDividers, showTimestamps, showAudioSources, scroll]);
 
   useLayoutEffect(() => {
     if (previousModeRef.current === displayMode) return;
@@ -226,14 +227,34 @@ export const Timeline = memo(function Timeline({
         const entering = !keepTextOpaque && block.presentation === "live";
         // Two independent live sources share the visible lane budget, so a
         // long microphone preview cannot push system speech out of view.
+        const liveSeparatorHeight = showSubtitleDividers && !blendsWithBackground
+          ? Math.max(0, liveBlockCount - 1) * (SEPARATOR_MARGIN_Y * 2 + 1) : 0;
         const blockViewportHeight = viewportHeight === null ? null
-          : compact && block.presentation === "live" && liveBlockCount > 1 ? viewportHeight / liveBlockCount : viewportHeight;
+          : compact && block.presentation === "live" && liveBlockCount > 1
+            ? (viewportHeight - liveSeparatorHeight) / liveBlockCount : viewportHeight;
+        const timestamp = showTimestamps && !blendsWithBackground && block.createdAt !== null
+          ? block.createdAt : null;
+        // A retained second-source history can outlive dual-input capture.
+        // At the single-input minimum, keep its identity beside the text so
+        // the metadata cannot consume a whole bilingual line.
+        const showSource = showAudioSources && block.audioSource != null;
+        const inlineSource = showSource && timestamp === null
+          && blockViewportHeight !== null && blockViewportHeight < 80;
+        const hasMetadata = (showSource && !inlineSource) || timestamp !== null;
+        const sourceIndicator = showSource && <span className="subtitle-audio-source" role="img"
+          aria-label={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
+          title={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
+          style={{ display: "inline-flex", alignItems: "center", fontSize: 14, flexShrink: 0,
+            color: "rgba(255,255,255,0.6)", textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined }}>
+          <Icon name={block.audioSource === "system" ? "speaker" : "microphone"} />
+        </span>;
+        const metadataHeight = hasMetadata ? METADATA_HEIGHT : 0;
         const availableLaneHeight = blockViewportHeight === null ? null
-          : blockViewportHeight - paddingTop - paddingBottom - (block.source !== null && block.translation !== null ? laneGap : 0);
+          : blockViewportHeight - paddingTop - paddingBottom - metadataHeight - (block.source !== null && block.translation !== null ? laneGap : 0);
         // A bilingual original keeps its reference font while waiting for MT.
         // Only its line budget changes when the translation takes its space.
         const sourceScale = subtitleSourceScale(blockViewportHeight === null ? null
-          : blockViewportHeight - paddingTop - paddingBottom - (displayMode === "bilingual" ? laneGap : 0));
+          : blockViewportHeight - paddingTop - paddingBottom - metadataHeight - (displayMode === "bilingual" ? laneGap : 0));
         // When the original has not arrived, the translation owns the full
         // viewport rather than reserving height for an absent reference lane.
         const budgetMode = displayMode === "bilingual" && block.source === null ? "translation" : displayMode;
@@ -260,16 +281,8 @@ export const Timeline = memo(function Timeline({
               // history overflows, keeping every sentence scrollable.
               marginTop: index === 0 ? "auto" : undefined,
               flexShrink: 0,
-              paddingLeft: rowHorizontalPadding(
-                alignment,
-                "left",
-                blendsWithBackground || !showTimestamps,
-              ),
-              paddingRight: rowHorizontalPadding(
-                alignment,
-                "right",
-                blendsWithBackground || !showTimestamps,
-              ),
+              paddingLeft: 10,
+              paddingRight: 10,
               paddingTop,
               paddingBottom: tight ? 1 : isLast ? LAST_BLOCK_PADDING_Y : BLOCK_PADDING_Y,
               // New blocks settle in with a brief rise-and-fade; the class runs
@@ -278,30 +291,21 @@ export const Timeline = memo(function Timeline({
               // when motion is off.
             }}
           >
-            {showTimestamps && !blendsWithBackground && block.createdAt !== null ? (
-              <span
-                className="subtitle-timestamp"
-                style={{
-                  position: "absolute",
-                  left: 18,
-                  top: isLast ? 12 : 10,
-                  width: 31,
-                  textAlign: "right",
-                  fontSize: 9,
-                  fontWeight: 500,
-                  fontFamily: MONO_FONT,
-                  fontVariantNumeric: "tabular-nums",
-                  color: hexToRgba(ACCENT, 0.46),
-                }}
-              >
-                {formatTimestamp(block.createdAt)}
-              </span>
-            ) : null}
-            <div style={{ display: "flex", gap: block.audioSource ? 10 : 0, alignItems: "flex-start" }}>
-              {block.audioSource && <span className="subtitle-audio-source" style={{
-                fontSize, lineHeight: SUBTITLE_LINE_HEIGHT, fontWeight: 500, flexShrink: 0,
-                color: hexToRgba(subtitleColorHex(sourceColor), keepTextOpaque ? 1 : 0.78), textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
-              }}>{block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}</span>}
+            {hasMetadata && <div className="subtitle-metadata" style={{
+              display: "flex", alignItems: "center", gap: 7, height: 18, marginBottom: 4,
+              justifyContent: alignment === "center" ? "center" : alignment === "right" ? "flex-end" : "flex-start",
+              color: "rgba(255,255,255,0.6)",
+              textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
+            }}>
+              {sourceIndicator}
+              {timestamp !== null && <time className="subtitle-timestamp" dateTime={new Date(timestamp).toISOString()}
+                style={{ fontSize: 12, lineHeight: "18px", fontWeight: 400,
+                  fontFamily: "var(--mimi-ui-font)", fontVariantNumeric: "tabular-nums", letterSpacing: "0.02em" }}>
+                {formatTimestamp(timestamp)}
+              </time>}
+            </div>}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: inlineSource ? 6 : 0 }}>
+            {inlineSource && <span style={{ paddingTop: 4, display: "inline-flex" }}>{sourceIndicator}</span>}
             <div style={{ display: "flex", flexDirection: "column", gap: laneGap, minWidth: 0, flex: 1 }}>
               {block.source !== null && displayMode !== "translation" ? (
                 <Lane
@@ -312,7 +316,7 @@ export const Timeline = memo(function Timeline({
                   alignment={alignment}
                   displayMode={displayMode}
                   color={sourceColor}
-                  tintReference={block.audioSource != null}
+                  tintReference={showSource}
                   blendsWithBackground={blendsWithBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
@@ -330,7 +334,7 @@ export const Timeline = memo(function Timeline({
                   alignment={alignment}
                   displayMode={displayMode}
                   color={sourceColor}
-                  tintReference={block.audioSource != null}
+                  tintReference={showSource}
                   blendsWithBackground={blendsWithBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
@@ -597,10 +601,11 @@ function useRollupGlide(
   }, [innerRef, innerHeight, enabled]);
 }
 
-/** HH:mm in local time using a 24-hour clock. */
+/** Confirmed subtitle time, in local HH:mm:ss; never a fabricated live clock. */
 function formatTimestamp(createdAt: number): string {
   const date = new Date(createdAt);
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
 }

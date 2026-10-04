@@ -44,19 +44,22 @@ afterEach(async () => {
 async function mount(disabled = false) { await act(async () => root.render(<CaptureStatusRow disabled={disabled} />)); }
 function row(source: AudioSource) { return host.querySelector<HTMLElement>(`[data-audio-source="${source}"]`)!; }
 function toggle(source: AudioSource) { return row(source).querySelector<HTMLButtonElement>('[role="switch"]')!; }
-function help(source: AudioSource) { return row(source).querySelector<HTMLButtonElement>('.settings-help-control__button')!; }
-function description(source: AudioSource) { return document.getElementById(help(source).getAttribute("aria-describedby")!)?.textContent ?? ""; }
+function description(source: AudioSource) { return row(source).querySelector('.settings-help-control__description')?.textContent ?? ""; }
 function status(source: AudioSource) { return description(source).split("\n")[0]; }
 async function session(patch: Partial<SessionStateEvent>) { await act(async () => useStore.setState(state => ({ session: { ...state.session, ...patch } }))); }
 
-it("always shows both switches, defaulting to system on and microphone off, with details only in help", async () => {
+it("groups independent source choices with one heading help and keeps details in source tooltips", async () => {
   await mount();
   expect(host.querySelectorAll('[role="switch"]')).toHaveLength(2);
   expect(toggle("system").getAttribute("aria-checked")).toBe("true");
   expect(toggle("microphone").getAttribute("aria-checked")).toBe("false");
   expect(toggle("system").disabled).toBe(true);
   expect(toggle("microphone").disabled).toBe(false);
-  expect(row("system").querySelector('.overlay-control-capture__source')?.textContent).toBe("System audio");
+  expect(toggle("system").textContent).toBe("System audio");
+  expect(host.querySelectorAll('.settings-help-control__button')).toHaveLength(1);
+  expect(host.querySelector('.overlay-control-capture__heading')?.textContent).toContain("Audio input");
+  expect(toggle("system").querySelector('.overlay-control-capture__check svg')).not.toBeNull();
+  expect(toggle("microphone").querySelector('.overlay-control-capture__check svg')).toBeNull();
   expect(status("system")).toBe("Receiving sound");
   expect(status("microphone")).toBe("Off");
   expect(host.querySelector('[role="status"]')).toBeNull();
@@ -64,15 +67,20 @@ it("always shows both switches, defaulting to system on and microphone off, with
   expect(description("system")).toContain("System output: Synthetic long headphones name");
   expect(description("system")).toContain("Keep at least one input on");
   expect(description("microphone")).not.toContain("Waiting for audio");
-  const button = help("system");
+  const button = host.querySelector<HTMLButtonElement>('.settings-help-control__button')!;
   const matches = button.matches.bind(button);
   vi.spyOn(button, "matches").mockImplementation(selector => selector === ":focus-visible" || matches(selector));
   await act(() => button.focus());
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Keep at least one input on");
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Synthetic long headphones name");
+  await act(() => button.blur());
+  await act(() => row("system").querySelector('.mimi-tooltip-trigger')!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })));
   expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Synthetic long headphones name");
 });
 
 it("switches independently while listening, keeping at least one input selected", async () => {
   await mount();
+  expect(host.querySelector('.application-audio-picker')).not.toBeNull();
   await act(async () => toggle("system").click());
   expect(mocks.switchAudioInput).not.toHaveBeenCalled();
   await act(async () => toggle("microphone").click());
@@ -83,10 +91,12 @@ it("switches independently while listening, keeping at least one input selected"
   expect(mocks.switchAudioInput).toHaveBeenLastCalledWith("microphone");
   expect(toggle("system").getAttribute("aria-checked")).toBe("false");
   expect(toggle("microphone").disabled).toBe(true);
+  expect(host.querySelector('.application-audio-picker')).toBeNull();
   await act(async () => toggle("system").click());
   await act(async () => toggle("microphone").click());
   expect(mocks.switchAudioInput).toHaveBeenLastCalledWith("system");
   expect(toggle("system").disabled).toBe(true);
+  expect(host.querySelector('.application-audio-picker')).not.toBeNull();
 });
 
 it("locks both switches while a change is pending and ignores repeated clicks", async () => {
@@ -162,7 +172,7 @@ it.each([false, true])("selects a real application from the floating panel while
   await session({ isPaused, isActive: !isPaused });
   await mount();
   expect(mocks.invoke).not.toHaveBeenCalledWith("audio_applications");
-  const target = row("system").querySelector<HTMLButtonElement>('button[role="combobox"]')!;
+  const target = host.querySelector<HTMLButtonElement>('button[role="combobox"]')!;
   expect(target.disabled).toBe(false);
   await act(async () => target.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "Player")!;
@@ -182,7 +192,7 @@ it.each(["en", "zh", "ja"] as const)("searches applications by text in the float
       { id: "example.chat", name: "Chat" },
     ] } : system);
   await mount();
-  const target = row("system").querySelector<HTMLButtonElement>('button[role="combobox"]')!;
+  const target = host.querySelector<HTMLButtonElement>('button[role="combobox"]')!;
   await act(async () => target.click());
   const input = document.querySelector<HTMLInputElement>('.mimi-select__search')!;
   expect(input.getAttribute("aria-label")).toBe(applicationAudioCopy().search);
@@ -207,7 +217,7 @@ it("locks the input switches while an application change is pending and maps kno
   let reject!: (reason: unknown) => void;
   mocks.switchSystemAudioTarget.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
   await mount();
-  const target = row("system").querySelector<HTMLButtonElement>('button[role="combobox"]')!;
+  const target = host.querySelector<HTMLButtonElement>('button[role="combobox"]')!;
   await act(async () => target.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "Player")!;
   await act(async () => option.click());
@@ -303,7 +313,7 @@ it("keeps long device names bounded in help and readable in full through the sou
   await mount();
   expect(description("system")).not.toContain(device);
   expect(description("system")).toContain(`${Array.from(device).slice(0, 39).join("")}…`);
-  expect(row("system").querySelector("label")?.title).toBe(`System output: ${device}`);
+  expect(toggle("system").title).toBe(`System output: ${device}`);
 });
 
 it("keeps restrictions in the relevant source help without repeating dual-input advice", async () => {
@@ -324,7 +334,7 @@ it.each([false, undefined])("keeps only the system row and application picker wh
   await mount();
   expect(host.querySelector('[data-audio-source="microphone"]')).toBeNull();
   expect(host.querySelector('[role="switch"]')).toBeNull();
-  expect(row("system").querySelector('button[role="combobox"]')).not.toBeNull();
+  expect(host.querySelector('button[role="combobox"]')).not.toBeNull();
   expect(description("system")).not.toContain(captureSwitchCopy().minimum);
   expect(mocks.switchAudioInput).not.toHaveBeenCalled();
 });
