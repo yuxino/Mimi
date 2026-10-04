@@ -12,9 +12,13 @@ import type { ProviderCredentialsInput, ServiceProfile, TextTranslation } from "
 import { DestructiveConfirmation } from "./DestructiveConfirmation";
 import { InlineFeedback, SettingsSelect } from "./SettingsPrimitives";
 import { StoredCredentialReveal } from "./StoredCredentialReveal";
+import { TextTranslationName } from "./TextTranslationName";
+import { textTranslationDisplayName } from "../../lib/textTranslationName";
+import type { TextTranslationNameDraft } from "../../lib/types";
 
 /** Alibaba provides recognition; independent text destinations use their own credentials. */
-export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visible = true, feedback, onSave, onRequestDelete, onConfirmDelete, confirmingDelete, onCancelDelete, connectionCheck, textConnectionCheck, readOnly = false, textOnly = false, storageNoteId }: {
+export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visible = true, feedback, onSave, onRequestDelete, onConfirmDelete, confirmingDelete, onCancelDelete, connectionCheck, textConnectionCheck, readOnly = false, textOnly = false, storageNoteId, onSaveTranslationName }: {
+  onSaveTranslationName?: (route: TextTranslationNameDraft["route"], name: string) => Promise<unknown>;
   connectionCheck?: ReactNode;
   textConnectionCheck?: (requiresSave: boolean) => ReactNode;
   readOnly?: boolean;
@@ -118,7 +122,7 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
     { value: "deepLX", label: I18N.settings.textTranslationCustom, icon: <ProviderIcon provider="deepLX" size={32} /> },
     { value: "chatMock", label: "ChatMock", icon: <ProviderIcon provider="chatMock" size={32} /> },
     { value: "openAICompatible", label: I18N.settings.textTranslationOpenAICompatible, icon: <ProviderIcon provider="openAICompatible" size={32} /> },
-  ];
+  ].map(option => option.value === "followService" ? option : { ...option, label: textTranslationDisplayName(profile, option.value as TextTranslation) });
   const selectedTranslation = translationOptions.find(option => option.value === translation)!;
 
   const stages = <>
@@ -150,6 +154,9 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
           : <SettingsSelect label={I18N.settings.textTranslationLabel} disabled={disabled} value={translation} options={translationOptions}
             onChange={(value) => { setTranslationDraft(value as TextTranslation); setEndpointInvalid(false); }} />}
       </div>
+      {!readOnly && translation !== "followService" && onSaveTranslationName && <TextTranslationName
+        key={`${profile.id}:${translation}`} profile={profile} route={translation} inputId={`${inputId}-name`}
+        disabled={disabled} onSave={onSaveTranslationName} />}
       {readOnly && <div className="service-stage__restriction"><InlineFeedback tone="info" icon="lock">{diagnosticCopy().localDevTranslationLocked}</InlineFeedback><SettingsHelp text={diagnosticCopy().localDevTranslationHelp} label={I18N.settings.helpLabel} /></div>}
       {!readOnly && translation !== "followService" && <div className="credential-form__fields">
         {(translation === "deepLX" || compatible) && <label className="settings-field" htmlFor={endpointId}>

@@ -7,7 +7,7 @@ use crate::core::models::{
     SourceLanguage, SubtitleColor, SubtitleDisplayMode, TargetLanguage, TranslationMode,
 };
 use crate::core::network_proxy::ProxyConfig;
-use crate::core::provider::{ProviderKind, ServiceProfile, TextTranslation};
+use crate::core::provider::{ProviderKind, ServiceProfile, TextTranslation, TextTranslationName};
 use crate::session_manager::{SessionManager, SessionStateEvent};
 use crate::settings_store::{CredentialState, PulseStyle, SettingsStore, SubtitleAlignment};
 use crate::windows::{
@@ -58,6 +58,7 @@ pub struct ServiceProfilePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_credential_state: Option<CredentialState>,
     pub text_translation: crate::core::provider::TextTranslation,
+    pub text_translation_names: std::collections::BTreeMap<TextTranslation, String>,
     pub speech_network_proxy: Option<ProxyConfig>,
     pub text_network_proxy: Option<ProxyConfig>,
 }
@@ -82,6 +83,7 @@ impl ServiceProfilePayload {
             speech_credential_state: states.map(|(speech, _)| speech),
             text_credential_state: states.map(|(_, text)| text),
             text_translation,
+            text_translation_names: profile.text_translation_names,
         }
     }
 
@@ -104,6 +106,7 @@ impl ServiceProfilePayload {
                 .is_custom_speech()
                 .then_some(CredentialState::Unavailable),
             text_translation,
+            text_translation_names: profile.text_translation_names,
         }
     }
 }
@@ -175,6 +178,33 @@ pub struct SettingsSnapshotPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn profile_snapshots_keep_translation_names_when_credentials_are_unavailable() {
+        let store = SettingsStore::in_memory(Box::new(PartiallyUnavailableSecretStore), false);
+        let mut profile = ServiceProfile::alibaba_default();
+        profile
+            .set_text_translation_name(TextTranslation::OpenAICompatible, "Work translator")
+            .unwrap();
+        for payload in [
+            ServiceProfilePayload::from_profile(&store, profile.clone()),
+            ServiceProfilePayload::unavailable(profile),
+        ] {
+            let json = serde_json::to_value(payload).unwrap();
+            assert_eq!(
+                json["textTranslationNames"]["openAICompatible"],
+                "Work translator"
+            );
+            for field in ["endpoint", "apiKey", "token", "model"] {
+                assert!(json.get(field).is_none());
+            }
+        }
+        let patch: TextTranslationName = serde_json::from_value(serde_json::json!({
+            "route": "openAICompatible", "name": "Work translator"
+        }))
+        .unwrap();
+        assert_eq!(patch.route, TextTranslation::OpenAICompatible);
+    }
 
     #[test]
     fn language_capability_snapshot_is_stamped_and_tracks_the_atomic_profile_route() {
@@ -557,6 +587,7 @@ mod tests {
                 speech_credential_state: None,
                 text_credential_state: None,
                 text_translation: crate::core::provider::TextTranslation::FollowService,
+                text_translation_names: std::collections::BTreeMap::new(),
             }],
             active_profile_id: "alibaba-default".into(),
             language_capabilities: None,
@@ -1440,6 +1471,7 @@ pub async fn profile_update(
     name: String,
     speech_network_proxy: Option<ProxyConfig>,
     text_network_proxy: Option<ProxyConfig>,
+    text_translation_name: Option<TextTranslationName>,
 ) -> Result<SettingsSnapshotPayload, String> {
     let _lifecycle = state.session.settings_mutation_guard(true).await?;
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
@@ -1448,6 +1480,7 @@ pub async fn profile_update(
         &name,
         speech_network_proxy,
         text_network_proxy,
+        text_translation_name,
     )?;
     emit_settings_snapshot(&app, &state.settings)
 }

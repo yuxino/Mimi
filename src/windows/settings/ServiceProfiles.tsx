@@ -25,6 +25,7 @@ import type {
   ServiceProvider,
   SessionStateEvent,
   SettingsSnapshot,
+  TextTranslationNameDraft,
 } from "../../lib/types";
 import { InlineFeedback, SettingsSection } from "./SettingsPrimitives";
 import { useSettingsToast } from "./useSettingsToast";
@@ -40,6 +41,7 @@ import { ConnectionCheck } from "./ConnectionCheck";
 import { saveAndSelectProfile } from "./saveAndSelectProfile";
 import { StoredCredentialReveal } from "./StoredCredentialReveal";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
+import { textTranslationDisplayName } from "../../lib/textTranslationName";
 import { NetworkProxySettings } from "./NetworkProxySettings";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
 
@@ -241,6 +243,21 @@ export function ServiceProfiles({
       () => updateProfile(selectedProfile.id, name),
       I18N.settings.profileNameSaved,
     );
+  };
+
+  const handleSaveTranslationName = async (profile: ServiceProfile, route: TextTranslationNameDraft["route"], name: string) => {
+    if (mutationInFlight.current || mutationsDisabled) return null;
+    mutationInFlight.current = true;
+    setPendingAction("rename");
+    const notify = beginToast();
+    try {
+      const snapshot = await updateProfile(profile.id, profile.name, { textTranslationName: { route, name } });
+      notify(I18N.settings.textTranslationNameSaved);
+      return snapshot;
+    } finally {
+      mutationInFlight.current = false;
+      setPendingAction(null);
+    }
   };
 
   const handleSaveProxy = async (profile: ServiceProfile, stage: "speech" | "text", config: NetworkProxyConfig) => {
@@ -472,6 +489,7 @@ export function ServiceProfiles({
               busy={pendingAction === "save-key" || pendingAction === "delete-key"}
               visible={visible && pendingConfirmation === null}
               feedback={feedback}
+              onSaveTranslationName={(route, name) => handleSaveTranslationName(selectedProfile, route, name)}
               onSave={(replacement) => handleSaveCredential(selectedProfile.id, replacement)}
               onRequestDelete={() => requestCredentialDelete(selectedProfile.id)}
               onConfirmDelete={() => confirmCredentialDelete(selectedProfile.id)}
@@ -567,13 +585,13 @@ export function ServiceProfiles({
                       void handleSelect(profile.id);
                     else openEditor(profile.id);
                   }}
-                  aria-label={`${profile.name}, ${credentialStateText(credentialStateForTarget(profile, settings.targetLanguage))}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${translationName(profile)}` : ""}: ${credentialStateForTarget(profile, settings.targetLanguage) === "present" && profile.id !== settings.activeProfileId ? I18N.settings.useProfile : I18N.settings.editProfile}`}
+                  aria-label={`${profile.name}, ${credentialStateText(credentialStateForTarget(profile, settings.targetLanguage))}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}: ${credentialStateForTarget(profile, settings.targetLanguage) === "present" && profile.id !== settings.activeProfileId ? I18N.settings.useProfile : I18N.settings.editProfile}`}
                 >
                   <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
                     <strong>{profileTitle(profile)}</strong>
                     {profileSecondaryLabel(profile) && <span className="service-row__provider">{profileSecondaryLabel(profile)}</span>}
-                    {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock"} size={32} /><span>{I18N.settings.textTranslationLabel} · {translationName(profile)}</span></span>}
+                    {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
                   </span>
                   <span className="service-row__state">
                     <CredentialBadge state={credentialStateForTarget(profile, settings.targetLanguage)} />
@@ -836,11 +854,6 @@ function profileDescription(profile: ServiceProfile): string {
   if (isCustomSpeechProvider(profile.provider)) return [I18N.settings.customSpeechDescription, I18N.settings.customSpeechLanguages].join("\n");
   const translation = textTranslationForProfile(profile);
   return translation === "deepL" ? I18N.settings.deepLChain : translation === "deepLX" ? I18N.settings.deepLXChain : (translation === "openAICompatible" || translation === "chatMock") ? I18N.settings.openAICompatibleChain : providerDescription(profile.provider);
-}
-
-function translationName(profile: ServiceProfile): string {
-  const translation = textTranslationForProfile(profile);
-  return translation === "deepL" ? "DeepL" : translation === "deepLX" ? "DeepLX" : translation === "chatMock" ? "ChatMock" : translation === "openAICompatible" ? I18N.settings.textTranslationOpenAICompatible : profileProviderName(profile);
 }
 
 function profileSecondaryLabel(profile: ServiceProfile): string | null {

@@ -9,7 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { observeSessionWireReceived } from "./developmentTrace";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
-  ProfileNetworkProxyDraft,
+  ProfileOptionsDraft,
   AudioInput,
   AudioSource,
   ProviderCredentialsInput,
@@ -119,9 +119,9 @@ export function profileCreate(
 export function profileUpdate(
   profileId: string,
   name: string,
-  proxies?: ProfileNetworkProxyDraft,
+  options?: ProfileOptionsDraft,
 ): Promise<SettingsSnapshot> {
-  return invoke<SettingsSnapshot>("profile_update", { profileId, name, ...proxies });
+  return invoke<SettingsSnapshot>("profile_update", { profileId, name, ...options });
 }
 
 export function profileSelect(profileId: string): Promise<SettingsSnapshot> {

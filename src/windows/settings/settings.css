@@ -2920,3 +2920,13 @@
 .session-export__explanation[open] summary svg {
   transform: rotate(180deg);
 }
+
+.translation-name-field .settings-field__inline {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.translation-name-field .settings-field__inline input { min-width: 0; flex: 1; }
+.translation-name-field__error { grid-column: 2; }
+@media (max-width: 680px) { .translation-name-field__error { grid-column: 1; } }

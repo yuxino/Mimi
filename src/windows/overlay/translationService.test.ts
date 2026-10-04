@@ -95,3 +95,55 @@ it.each(["zh", "en", "ja"] as const)("resolves service copy when the UI switches
   expect(translationService({ ...settings(), targetLanguage: "original" })?.label)
     .toBe(I18N.overlay.originalOnly);
 });
+
+it.each(["deepL", "deepLX", "chatMock", "openAICompatible"] as const)(
+  "uses the selected %s alias while retaining the protocol identity", textTranslation => {
+    const result = translationService(settings({
+      textTranslation,
+      textTranslationNames: { [textTranslation]: "My translator" },
+    }));
+    expect(result?.provider).toBe(textTranslation);
+    expect(result?.label).toBe("My translator");
+    expect(result?.detail).toContain("Text translation: My translator");
+    expect(result?.detail).toContain(`Speech recognition: ${providerDisplayName(profile.provider)}`);
+  },
+);
+
+it("resolves aliases separately for the selected route and active profile", () => {
+  const first = settings({
+    textTranslation: "openAICompatible",
+    textTranslationNames: { openAICompatible: "Office translator", deepL: "Backup translator" },
+  });
+  const second: ServiceProfile = {
+    ...profile, id: "second-profile", textTranslation: "openAICompatible",
+    textTranslationNames: { openAICompatible: "Home translator" },
+  };
+  expect(translationService(first)?.label).toBe("Office translator");
+  expect(translationService({ ...first, profiles: [...first.profiles, second], activeProfileId: second.id })?.label)
+    .toBe("Home translator");
+  expect(translationService({ ...first, profiles: [{ ...first.profiles[0], textTranslation: "deepL" }] })?.label)
+    .toBe("Backup translator");
+  expect(translationService({ ...first, profiles: [{ ...first.profiles[0], textTranslation: "chatMock" }] })?.label)
+    .toBe("ChatMock");
+});
+
+it.each(["", "  "])("falls back to the protocol name for a blank alias (%j)", name => {
+  expect(translationService(settings({
+    textTranslation: "openAICompatible", textTranslationNames: { openAICompatible: name },
+  }))?.label).toBe(I18N.settings.textTranslationOpenAICompatible);
+});
+
+it("does not leak inactive aliases into built-in or original-only translation labels", () => {
+  const named = settings({
+    textTranslation: "followService",
+    textTranslationNames: { openAICompatible: "Unused translator" },
+  });
+  expect(translationService(named)?.label).toBe(providerDisplayName(profile.provider));
+  expect(translationService(named)?.detail).not.toContain("Unused translator");
+  const originalOnly = translationService({
+    ...named, profiles: [{ ...named.profiles[0], textTranslation: "openAICompatible" }], targetLanguage: "original",
+  });
+  expect(originalOnly?.provider).toBeNull();
+  expect(originalOnly?.label).toBe(I18N.overlay.originalOnly);
+  expect(originalOnly?.detail).not.toContain("Unused translator");
+});

@@ -1,11 +1,12 @@
 //! Provider identity, service profiles, and capability normalization.
 //!
 //! Profiles contain display metadata only. Credentials deliberately live in
-//! the OS keychain and must never be serialized with a profile.
+//! a private local file and must never be serialized with a profile.
 
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode};
 use crate::core::network_proxy::{ProxyConfig, ProxyConfigError};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 use thiserror::Error;
 
@@ -367,10 +368,12 @@ pub enum ServiceProfileError {
     EmptyName,
     #[error("The service profile name is too long.")]
     NameTooLong,
+    #[error("The text translation service name is invalid.")]
+    InvalidTextTranslationName,
 }
 
 /// Independent text translation for supported speech-recognition chains.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum TextTranslation {
     #[serde(rename = "followService")]
     FollowService,
@@ -382,6 +385,14 @@ pub enum TextTranslation {
     OpenAICompatible,
     #[serde(rename = "chatMock")]
     ChatMock,
+}
+
+/// A patch for one route's optional display name; an empty name removes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextTranslationName {
+    pub route: TextTranslation,
+    pub name: String,
 }
 
 impl TextTranslation {
@@ -400,6 +411,9 @@ pub struct ServiceProfile {
     /// None preserves historical behavior, including legacy DeepLX profiles.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text_translation: Option<TextTranslation>,
+    /// Independent routes retain their own non-secret names across switches.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub text_translation_names: BTreeMap<TextTranslation, String>,
     /// Absent fields inherit the pre-existing global route.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speech_network_proxy: Option<ProxyConfig>,
@@ -437,6 +451,7 @@ impl ServiceProfile {
             name,
             provider,
             text_translation: None,
+            text_translation_names: BTreeMap::new(),
             speech_network_proxy: None,
             text_network_proxy: None,
         })
@@ -448,6 +463,7 @@ impl ServiceProfile {
             name: ProviderKind::AlibabaCloud.display_name().to_string(),
             provider: ProviderKind::AlibabaCloud,
             text_translation: None,
+            text_translation_names: BTreeMap::new(),
             speech_network_proxy: None,
             text_network_proxy: None,
         }
@@ -468,6 +484,9 @@ impl ServiceProfile {
             return Err(ServiceProfileError::UnsupportedTextTranslation);
         }
         profile.text_translation = self.text_translation;
+        for (&route, name) in &self.text_translation_names {
+            profile.set_text_translation_name(route, name)?;
+        }
         profile.speech_network_proxy = self
             .speech_network_proxy
             .as_ref()
@@ -479,6 +498,26 @@ impl ServiceProfile {
             .map(ProxyConfig::validate)
             .transpose()?;
         Ok(profile)
+    }
+
+    pub fn set_text_translation_name(
+        &mut self,
+        route: TextTranslation,
+        name: &str,
+    ) -> Result<(), ServiceProfileError> {
+        if route == TextTranslation::FollowService || !self.provider.supports_text_translation() {
+            return Err(ServiceProfileError::UnsupportedTextTranslation);
+        }
+        let name = name.trim();
+        if name.chars().count() > Self::MAXIMUM_NAME_LENGTH || name.chars().any(char::is_control) {
+            return Err(ServiceProfileError::InvalidTextTranslationName);
+        }
+        if name.is_empty() {
+            self.text_translation_names.remove(&route);
+        } else {
+            self.text_translation_names.insert(route, name.to_string());
+        }
+        Ok(())
     }
 
     pub fn text_translation(&self) -> TextTranslation {
@@ -1014,6 +1053,63 @@ mod tests {
         assert_eq!(json["provider"], "openAIRealtime");
         assert!(json.get("apiKey").is_none());
         assert!(json.get("credential").is_none());
+    }
+
+    #[test]
+    fn text_translation_names_are_optional_trimmed_route_metadata() {
+        let mut profile: ServiceProfile = serde_json::from_value(serde_json::json!({
+            "id": "legacy", "name": "Legacy", "provider": "alibabaCloud"
+        }))
+        .unwrap();
+        assert!(profile.text_translation_names.is_empty());
+        profile
+            .set_text_translation_name(TextTranslation::OpenAICompatible, "  My translator  ")
+            .unwrap();
+        profile
+            .set_text_translation_name(TextTranslation::DeepLX, "Local translator")
+            .unwrap();
+        let restored = profile.validated().unwrap();
+        assert_eq!(restored, profile);
+        let json = serde_json::to_value(&restored).unwrap();
+        assert_eq!(
+            json["textTranslationNames"]["openAICompatible"],
+            "My translator"
+        );
+        assert_eq!(json["textTranslationNames"]["deepLX"], "Local translator");
+        profile
+            .set_text_translation_name(TextTranslation::OpenAICompatible, "  ")
+            .unwrap();
+        assert!(!profile
+            .text_translation_names
+            .contains_key(&TextTranslation::OpenAICompatible));
+        assert_eq!(profile.text_translation_names.len(), 1);
+    }
+
+    #[test]
+    fn text_translation_names_reject_unsupported_routes_and_invalid_names() {
+        let mut profile = ServiceProfile::alibaba_default();
+        assert_eq!(
+            profile.set_text_translation_name(TextTranslation::FollowService, "Alias"),
+            Err(ServiceProfileError::UnsupportedTextTranslation)
+        );
+        for name in [
+            "x".repeat(65),
+            "line\nbreak".into(),
+            "control\u{0000}".into(),
+        ] {
+            assert_eq!(
+                profile.set_text_translation_name(TextTranslation::OpenAICompatible, &name),
+                Err(ServiceProfileError::InvalidTextTranslationName)
+            );
+        }
+        profile
+            .set_text_translation_name(TextTranslation::OpenAICompatible, &"名".repeat(64))
+            .unwrap();
+        profile.provider = ProviderKind::OpenAIRealtime;
+        assert_eq!(
+            profile.validated(),
+            Err(ServiceProfileError::UnsupportedTextTranslation)
+        );
     }
 
     #[test]

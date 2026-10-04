@@ -65,7 +65,7 @@ import {
   SnapshotResponseGate,
 } from "./settingsState";
 import type {
-  ProfileNetworkProxyDraft,
+  ProfileOptionsDraft,
   AudioInput,
   ProviderCredentialsInput,
   SessionStateEvent,
@@ -162,7 +162,7 @@ interface StoreState {
   updateProfile: (
     profileId: string,
     name: string,
-    proxies?: ProfileNetworkProxyDraft,
+    options?: ProfileOptionsDraft,
   ) => Promise<SettingsSnapshot>;
   selectProfile: (profileId: string) => Promise<SettingsSnapshot>;
   deleteProfile: (profileId: string) => Promise<SettingsSnapshot>;
@@ -511,11 +511,11 @@ export const useStore = create<StoreState>()((set, get) => ({
     return snapshot;
   },
 
-  updateProfile: async (profileId, name, proxies) => {
+  updateProfile: async (profileId, name, options) => {
     ensureProfileMutationsAllowed(get().session);
     if (isTauri) {
       const revision = settingsResponseGate.capture();
-      const snapshot = await profileUpdate(profileId, name, proxies);
+      const snapshot = await profileUpdate(profileId, name, options);
       if (settingsResponseGate.applyIfCurrent(revision)) {
         settingsSaveCoordinator.invalidate();
         set({ settings: snapshot });
@@ -527,7 +527,16 @@ export const useStore = create<StoreState>()((set, get) => ({
     const snapshot: SettingsSnapshot = {
       ...current,
       profiles: current.profiles.map((profile) =>
-        profile.id === profileId ? { ...profile, name, ...proxies } : profile,
+        profile.id === profileId ? (() => {
+          const { textTranslationName, ...proxies } = options ?? {};
+          const textTranslationNames = { ...profile.textTranslationNames };
+          if (textTranslationName) {
+            const value = textTranslationName.name.trim();
+            if (value) textTranslationNames[textTranslationName.route] = value;
+            else delete textTranslationNames[textTranslationName.route];
+          }
+          return { ...profile, name, ...proxies, textTranslationNames };
+        })() : profile,
       ),
     };
     set({ settings: snapshot });

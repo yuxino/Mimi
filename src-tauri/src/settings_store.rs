@@ -18,7 +18,8 @@ use crate::core::models::{
 };
 use crate::core::network_proxy::ProxyConfig;
 use crate::core::provider::{
-    ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation, DEFAULT_ALIBABA_PROFILE_ID,
+    ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation, TextTranslationName,
+    DEFAULT_ALIBABA_PROFILE_ID,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -1101,7 +1102,7 @@ impl SettingsStore {
 
     #[cfg(test)]
     pub fn update_profile(&self, profile_id: &str, name: &str) -> Result<ServiceProfile, String> {
-        self.update_profile_options(profile_id, name, None, None)
+        self.update_profile_options(profile_id, name, None, None, None)
     }
 
     pub fn update_profile_options(
@@ -1110,7 +1111,11 @@ impl SettingsStore {
         name: &str,
         speech_network_proxy: Option<ProxyConfig>,
         text_network_proxy: Option<ProxyConfig>,
+        text_translation_name: Option<TextTranslationName>,
     ) -> Result<ServiceProfile, String> {
+        if text_translation_name.is_some() {
+            self.require_writable_credentials(profile_id)?;
+        }
         self.mutate_catalog(|catalog| {
             let current = catalog
                 .profiles
@@ -1124,6 +1129,11 @@ impl SettingsStore {
             }
             if let Some(proxy) = text_network_proxy {
                 updated.text_network_proxy = Some(proxy);
+            }
+            if let Some(patch) = text_translation_name {
+                updated
+                    .set_text_translation_name(patch.route, &patch.name)
+                    .map_err(|error| error.to_string())?;
             }
             let updated = updated.validated().map_err(|error| error.to_string())?;
             *current = updated.clone();
@@ -3024,6 +3034,169 @@ mod animation_switch_tests {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn translation_names_persist_independently_without_credential_access() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let profile = store.active_profile().unwrap();
+        for (route, name) in [
+            (TextTranslation::OpenAICompatible, "  Work translator  "),
+            (TextTranslation::DeepLX, "Local translator"),
+        ] {
+            store
+                .update_profile_options(
+                    &profile.id,
+                    &profile.name,
+                    None,
+                    None,
+                    Some(TextTranslationName {
+                        route,
+                        name: name.into(),
+                    }),
+                )
+                .unwrap();
+        }
+        store
+            .update_profile(&profile.id, "Renamed profile")
+            .unwrap();
+        let other = store
+            .create_profile(ProviderKind::AlibabaCloud, "Other")
+            .unwrap();
+        assert!(other.text_translation_names.is_empty());
+        let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let restored = reloaded.profile(&profile.id).unwrap();
+        assert_eq!(restored.name, "Renamed profile");
+        assert_eq!(
+            restored.text_translation_names[&TextTranslation::OpenAICompatible],
+            "Work translator"
+        );
+        assert_eq!(
+            restored.text_translation_names[&TextTranslation::DeepLX],
+            "Local translator"
+        );
+        assert_eq!(restored.text_translation(), TextTranslation::FollowService);
+        reloaded
+            .update_profile_options(
+                &profile.id,
+                &restored.name,
+                None,
+                None,
+                Some(TextTranslationName {
+                    route: TextTranslation::OpenAICompatible,
+                    name: "  ".into(),
+                }),
+            )
+            .unwrap();
+        let reopened = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let names = reopened
+            .profile(&profile.id)
+            .unwrap()
+            .text_translation_names;
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[&TextTranslation::DeepLX], "Local translator");
+        let secrets = fake.state.lock().unwrap();
+        assert!(secrets.loads.is_empty());
+        assert!(secrets.values.is_empty());
+    }
+
+    #[test]
+    fn translation_name_updates_reject_invalid_values_and_roll_back_failed_writes() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let mut store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let profile = store.active_profile().unwrap();
+        for (route, name) in [
+            (TextTranslation::OpenAICompatible, "x".repeat(65)),
+            (TextTranslation::FollowService, "Unsupported".into()),
+        ] {
+            assert!(store
+                .update_profile_options(
+                    &profile.id,
+                    "Unpersisted profile name",
+                    None,
+                    None,
+                    Some(TextTranslationName { route, name }),
+                )
+                .is_err());
+            assert_eq!(store.active_profile().unwrap(), profile);
+        }
+        store.catalog_path = directory.path().join("blocked-catalog");
+        std::fs::create_dir(&store.catalog_path).unwrap();
+        assert!(store
+            .update_profile_options(
+                &profile.id,
+                &profile.name,
+                None,
+                None,
+                Some(TextTranslationName {
+                    route: TextTranslation::OpenAICompatible,
+                    name: "Unpersisted translator".into(),
+                }),
+            )
+            .is_err());
+        assert_eq!(store.active_profile().unwrap(), profile);
+        let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake));
+        assert_eq!(reloaded.active_profile().unwrap(), profile);
+    }
+
+    #[test]
+    fn translation_names_survive_route_saves_without_changing_saved_secrets() {
+        for provider in [ProviderKind::AlibabaCloud, ProviderKind::CustomOpenAIASR] {
+            let fake = FakeSecretStore::default();
+            let store = settings(&fake);
+            let profile = store.create_profile(provider, "Named translator").unwrap();
+            let speech = if provider.is_custom_speech() {
+                custom_speech_request("wss://speech.example/realtime", "speech-model", "synthetic")
+            } else {
+                ProviderCredentials::api_key("synthetic")
+            };
+            store.save_credentials(&profile.id, &speech).unwrap();
+            store
+                .save_credentials(
+                    &profile.id,
+                    &openai_compatible_request(
+                        "",
+                        "https://translation.example/v1",
+                        "synthetic-text-key",
+                        "text-model",
+                    ),
+                )
+                .unwrap();
+            let before = fake.state.lock().unwrap().values.clone();
+            fake.state.lock().unwrap().loads.clear();
+            let named = store
+                .update_profile_options(
+                    &profile.id,
+                    &profile.name,
+                    None,
+                    None,
+                    Some(TextTranslationName {
+                        route: TextTranslation::OpenAICompatible,
+                        name: "Work translator".into(),
+                    }),
+                )
+                .unwrap();
+            assert_eq!(fake.state.lock().unwrap().values, before);
+            assert!(fake.state.lock().unwrap().loads.is_empty());
+            for route in [
+                TextTranslation::FollowService,
+                TextTranslation::OpenAICompatible,
+            ] {
+                store
+                    .save_credentials(&profile.id, &translation_request(route, "", "", ""))
+                    .unwrap();
+                let switched = store.profile(&profile.id).unwrap();
+                assert_eq!(switched.text_translation(), route);
+                assert_eq!(
+                    switched.text_translation_names,
+                    named.text_translation_names
+                );
+            }
+            assert_eq!(fake.state.lock().unwrap().values, before);
+        }
+    }
+
+    #[test]
     fn profile_stage_proxies_persist_and_legacy_routes_remain_isolated() {
         use crate::core::network_proxy::ProxyMode;
         let directory = tempfile::tempdir().unwrap();
@@ -3044,7 +3217,7 @@ mod tests {
             url: None,
         };
         store
-            .update_profile_options(&profile.id, &profile.name, None, Some(text.clone()))
+            .update_profile_options(&profile.id, &profile.name, None, Some(text.clone()), None)
             .unwrap();
         let updated = store.active_profile().unwrap();
         assert_eq!(updated.speech_network_proxy, None);
@@ -3076,7 +3249,7 @@ mod tests {
             url: Some("socks5h://127.0.0.1:1080".into()),
         };
         store
-            .update_profile_options(&profile.id, "Renamed", Some(speech.clone()), None)
+            .update_profile_options(&profile.id, "Renamed", Some(speech.clone()), None, None)
             .unwrap();
         store.select_profile(&profile.id).unwrap();
         let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
@@ -3100,7 +3273,8 @@ mod tests {
                 Some(ProxyConfig {
                     mode: ProxyMode::Custom,
                     url: Some("http://user:private-value@localhost:7890".into())
-                })
+                }),
+                None
             )
             .is_err());
         assert_eq!(store.active_profile().unwrap(), before);
@@ -3112,6 +3286,7 @@ mod tests {
                 &profile.id,
                 "Unpersisted",
                 Some(ProxyConfig::default()),
+                None,
                 None
             )
             .is_err());
@@ -4939,6 +5114,24 @@ mod tests {
         assert_eq!(preset.id, LOCAL_DEV_ALIBABA_PROFILE_ID);
         assert_eq!(store.credential_state(&preset), CredentialState::Present);
         assert_eq!(store.profile_credential_storage(&preset.id), "localDevFile");
+        assert_eq!(
+            store.update_profile_options(
+                &preset.id,
+                &preset.name,
+                None,
+                None,
+                Some(TextTranslationName {
+                    route: TextTranslation::OpenAICompatible,
+                    name: "Read-only alias".into(),
+                }),
+            ),
+            Err("local_dev_credentials_read_only".into())
+        );
+        assert!(store
+            .profile(&preset.id)
+            .unwrap()
+            .text_translation_names
+            .is_empty());
         assert_eq!(
             store.save_credentials(
                 &preset.id,

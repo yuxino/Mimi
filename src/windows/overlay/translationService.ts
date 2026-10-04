@@ -1,3 +1,4 @@
+import { textTranslationDisplayName } from "../../lib/textTranslationName";
 import { I18N, providerDisplayName } from "../../lib/i18n";
 import {
   activeServiceProfile,
@@ -26,11 +27,7 @@ export function translationService(
     ? (profile.provider === "deepLX" ? "alibabaCloud" : profile.provider)
     : route;
   const label = provider === null ? I18N.overlay.originalOnly
-    : provider === "deepL" ? "DeepL"
-    : provider === "deepLX" ? "DeepLX"
-    : provider === "chatMock" ? "ChatMock"
-    : provider === "openAICompatible" ? I18N.settings.textTranslationOpenAICompatible
-    : providerDisplayName(provider);
+    : textTranslationDisplayName(profile);
 
   return {
     provider,

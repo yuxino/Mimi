@@ -61,6 +61,7 @@ update both implementations and their platform-specific tests in the same change
 | Area | Desktop | Android |
 | --- | --- | --- |
 | Independent text services | DeepL, DeepLX, ChatMock, OpenAI compatible; original-only with custom ASR | Same text choices after Alibaba realtime ASR; original-only supported |
+| Text service display names | Optional names per profile and independent route; shown in settings and subtitle service label | Existing provider labels |
 | Recognition selection | Eight built-in services plus custom DashScope/OpenAI ASR | Eight built-in adapters; independent text currently pairs with Alibaba ASR |
 | Built-in Alibaba pipeline | Desktop Audio 3.0/Qwen-MT scheduling | Existing integrated realtime translation adapter |
 | Translation scheduling | Speculative drafts plus serial prioritized finals and provider recovery | Final-only serial HTTP; same shared final bounds/retry decisions, native execution and cancellation |
