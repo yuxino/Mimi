@@ -839,7 +839,7 @@ fn start_capture_on_main(
     let configuration = SCStreamConfiguration::new();
     configuration.set_captures_audio(true);
     configuration.set_excludes_current_process_audio(true);
-    configuration.set_sample_rate(format.sample_rate_hz as f64);
+    set_capture_sample_rate(&configuration, format.sample_rate_hz);
     configuration.set_channel_count(1);
     configuration.set_width(2);
     configuration.set_height(2);
@@ -926,6 +926,12 @@ fn start_capture_on_main(
     }
     start_barrier.did_install();
     Ok(())
+}
+
+/// The crate binds this property as f64, but ScreenCaptureKit expects NSInteger.
+fn set_capture_sample_rate(configuration: &SCStreamConfiguration, sample_rate_hz: u32) {
+    // SAFETY: The native setter takes NSInteger, represented by isize on macOS.
+    let _: () = unsafe { msg_send![configuration, setSampleRate: sample_rate_hz as isize] };
 }
 
 /// Stops a stream that lost its generation race before it could become the
@@ -1483,6 +1489,17 @@ mod resampler_tests {
         })
         .await
         .expect("all retries resume after the real native completion");
+    }
+
+    #[test]
+    fn native_configuration_preserves_provider_sample_rate() {
+        let configuration = SCStreamConfiguration::new();
+        for sample_rate_hz in [16_000, 24_000] {
+            set_capture_sample_rate(&configuration, sample_rate_hz);
+            // SAFETY: The native getter returns NSInteger, rather than the crate's f64.
+            let actual: isize = unsafe { msg_send![&*configuration, sampleRate] };
+            assert_eq!(actual, sample_rate_hz as isize);
+        }
     }
 
     #[test]

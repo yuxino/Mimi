@@ -55,6 +55,23 @@ Rules:
   then relaunch the intended worktree. Do not reset preferences or permissions
   to repair a package mismatch.
 
+## ScreenCaptureKit native property types
+
+Use the Apple SDK and Objective-C runtime method signatures when checking native
+configuration accessors. In `screen-capture-kit` 0.7.1, `sampleRate` is bound as
+`f64`, although the native property is `NSInteger`. Use Mimi's integer setter
+adapter; a wrapper call completing without an exception does not prove that the
+native configuration received 16000 or 24000. The configuration-object regression
+checks both rates without starting capture or touching TCC.
+
+For a video with no subtitles, first check the actual sent-audio WAV and capture
+format diagnostics. A playing, decoded, unmuted browser video is not proof of
+nonzero system output. Entirely zero sent PCM cannot be scored as missed speech.
+Keep failed cases, compare a bounded authorized capture target, and distinguish
+configuration, source output, capture input, decode and provider evidence. Do not
+reset recording grants or expand an application filter from that observation
+alone.
+
 ## Know which prompt appeared
 
 For routine macOS API-key testing, the fixed dev launcher supports an explicitly
