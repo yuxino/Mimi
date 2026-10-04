@@ -51,12 +51,19 @@ class ServiceProtocolTest {
         BaiduProtocol(config(ServiceProvider.BAIDU),"en","zh").text("""{"code":20311,"message":"private text"}""")
     }
     @Test fun geminiCommitsAfterSameEnvelopeTranscriptsAndIgnoresAudio() {
-        val p=GeminiProtocol(config(ServiceProvider.GEMINI),"zh")
-        val setup=json(p.setup()).getJSONObject("setup").getJSONObject("generationConfig")
-        assertEquals("zh-Hans",setup.getJSONObject("translationConfig").getString("targetLanguageCode"))
+        var now=0L
+        val p=GeminiProtocol(config(ServiceProvider.GEMINI),"zh") { now }
+        val setup=json(p.setup()).getJSONObject("setup")
+        val generation=setup.getJSONObject("generationConfig")
+        assertEquals("zh-Hans",generation.getJSONObject("translationConfig").getString("targetLanguageCode"))
         assertTrue(setup.has("inputAudioTranscription"))
+        assertTrue(setup.has("outputAudioTranscription"))
+        assertFalse(generation.has("inputAudioTranscription"))
+        assertFalse(generation.has("outputAudioTranscription"))
         val events=p.text("""{"serverContent":{"inputTranscription":{"text":"Hello"},"outputTranscription":{"text":"你好"},"modelTurn":{"parts":[{"inlineData":{"data":"ignored"}}]},"turnComplete":true}}""")
-        assertEquals(4,events.size); assertEquals(ServiceEvent.Source("Hello",true),events[2]); assertEquals(ServiceEvent.Translation("你好",true),events[3])
+        assertEquals(2,events.size)
+        now=499; assertTrue(p.tick().isEmpty())
+        now=500; assertEquals(listOf(ServiceEvent.FinalPair("Hello","你好")),p.tick())
         assertEquals(emptyList<ServiceEvent>(),p.text("""{"serverContent":{"turnComplete":true}}"""))
     }
     @Test fun geminiInterruptedTurnDoesNotCommitOldText() {

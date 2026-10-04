@@ -13,6 +13,11 @@ internal fun obj(vararg pairs: Pair<String, Any>): JSONObject = JSONObject().app
 internal fun textFrame(value: JSONObject) = WireFrame.Text(value.toString())
 internal fun encoded(data: ByteArray) = Base64.getEncoder().encodeToString(data)
 internal fun JSONObject.bounded(key: String): String = getString(key).also { require(it.length <= 128 * 1024) }
+internal fun JSONObject.transcriptText(): String {
+    if (!has("text")) return ""
+    require(get("text") is String)
+    return bounded("text")
+}
 internal fun endpoint(config: ServiceConfiguration): okhttp3.HttpUrl {
     val url = normalizeWebSocketUrl(config.endpoint.ifBlank { config.provider.endpoint })
     require(url.startsWith("wss://"))
@@ -91,34 +96,53 @@ internal class TurnText {
     fun clear() { value = "" }
 }
 
-internal class GeminiProtocol(private val config: ServiceConfiguration, private val target: String) : ServiceProtocol {
+internal class GeminiProtocol(private val config: ServiceConfiguration, private val target: String, private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 }) : ServiceProtocol {
     override val frameBytes = 3200
-    private val source = TurnText(); private val translated = TurnText()
+    private var stream: String? = null
     private var sourceLanguage: String? = null
     override fun request() = request(endpoint(config).newBuilder().setQueryParameter("key", config.value("apiKey")).build()).build()
     override fun setup() = textFrame(obj("setup" to obj("model" to "models/${config.model.ifBlank { config.provider.model }}",
-        "generationConfig" to obj("responseModalities" to JSONArray(listOf("AUDIO")), "inputAudioTranscription" to obj(),
-            "outputAudioTranscription" to obj(), "translationConfig" to obj("targetLanguageCode" to if(target == "zh") "zh-Hans" else target, "echoTargetLanguage" to true)))))
+        "inputAudioTranscription" to obj(), "outputAudioTranscription" to obj(),
+        "generationConfig" to obj("responseModalities" to JSONArray(listOf("AUDIO")),
+            "translationConfig" to obj("targetLanguageCode" to if(target == "zh") "zh-Hans" else target, "echoTargetLanguage" to true)))))
     override fun audio(data: ByteArray): WireFrame { require(data.size == frameBytes); return textFrame(obj("realtimeInput" to obj("audio" to obj("data" to encoded(data), "mimeType" to "audio/pcm;rate=16000")))) }
     override fun finish() = textFrame(obj("realtimeInput" to obj("audioStreamEnd" to true)))
     override fun text(value: String): List<ServiceEvent> {
         val json = JSONObject(value); require(!json.has("error") && !json.has("goAway"))
         if (json.has("setupComplete")) return listOf(ServiceEvent.Ready)
         val content = json.optJSONObject("serverContent") ?: return emptyList()
-        if (content.optBoolean("interrupted")) { source.clear(); translated.clear(); return emptyList() }
+        if (content.optBoolean("interrupted")) { stream = null; sourceLanguage = null; return emptyList() }
         val events = mutableListOf<ServiceEvent>()
         content.optJSONObject("inputTranscription")?.let {
             sourceLanguage = it.optString("languageCode").ifBlank { it.optString("language") }.substringBefore('-').ifBlank { sourceLanguage }
-            events += ServiceEvent.Source(source.append(it.bounded("text")), language = sourceLanguage)
+            val text = it.transcriptText()
+            if (text.isNotEmpty()) events += exchange("source", text)
         }
-        content.optJSONObject("outputTranscription")?.let { events += ServiceEvent.Translation(translated.append(it.bounded("text"))) }
-        if (content.optBoolean("turnComplete")) {
-            if (source.value.isNotBlank()) events += ServiceEvent.Source(source.value, true, sourceLanguage)
-            if (translated.value.isNotBlank()) events += ServiceEvent.Translation(translated.value, true)
-            source.clear(); translated.clear()
+        content.optJSONObject("outputTranscription")?.let {
+            val text = it.transcriptText()
+            if (text.isNotEmpty()) events += exchange("translation", text)
         }
+        if (content.optBoolean("turnComplete")) events += exchange("turn_complete")
         return events
     }
+    private fun exchange(action: String, delta: String = ""): List<ServiceEvent> {
+        val response = SharedSubtitleCore.exchange(obj("state" to (stream ?: JSONObject.NULL),
+            "operation" to obj("type" to "gemini", "action" to action, "delta" to delta, "elapsed_ms" to nowMs())))
+        stream = response.getString("state")
+        val events = response.getJSONArray("events")
+        return (0 until events.length()).map { index ->
+            val event = events.getJSONObject(index)
+            when (event.getString("type")) {
+                "source_draft" -> ServiceEvent.Source(event.getJSONObject("payload").getString("text"), language = sourceLanguage)
+                "translation_draft" -> ServiceEvent.Translation(event.getString("payload"))
+                "subtitle_final_pair" -> event.getJSONObject("payload").let {
+                    ServiceEvent.FinalPair(it.getString("source"), it.getString("translation"), sourceLanguage)
+                }
+                else -> error("gemini_transcript_safety_limit")
+            }
+        }
+    }
+    override fun tick() = exchange("settle")
     override fun binary(value: ByteArray) = text(value.toString(Charsets.UTF_8))
 }
 

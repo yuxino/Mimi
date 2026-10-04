@@ -1,5 +1,5 @@
 //! The same synthetic wire examples also run against the Android adapters.
-use super::{deepl, deeplx, openai_compatible};
+use super::{deepl, deeplx, gemini_live::GeminiLiveRequestEncoder, openai_compatible};
 use crate::core::{
     credentials::TextTranslationCredentials,
     models::{SourceLanguage, TargetLanguage},
@@ -20,6 +20,8 @@ fn contract() -> Value {
         "models",
         "credentials",
         "optionalAuthorization",
+        "liveSetups",
+        "liveTranscriptSequences",
     ] {
         let cases = value[name].as_array().unwrap();
         assert!(!cases.is_empty(), "empty {name} contract");
@@ -29,7 +31,7 @@ fn contract() -> Value {
             if let Some(provider) = case.get("provider") {
                 assert!(matches!(
                     provider.as_str(),
-                    Some("deepL" | "deepLX" | "openaiCompatible")
+                    Some("deepL" | "deepLX" | "openaiCompatible" | "googleGeminiLive")
                 ));
             }
         }
@@ -187,4 +189,18 @@ fn shared_saved_credential_contracts_and_limits() {
         .unwrap() as usize;
     assert!(openai_compatible::validate_model(&"m".repeat(model_limit)).is_ok());
     assert!(openai_compatible::validate_model(&"m".repeat(model_limit + 1)).is_err());
+}
+
+#[test]
+fn shared_live_setup_contracts() {
+    for case in contract()["liveSetups"].as_array().unwrap() {
+        assert_eq!(case["provider"], "googleGeminiLive");
+        let target: TargetLanguage = serde_json::from_value(case["target"].clone()).unwrap();
+        assert_eq!(
+            GeminiLiveRequestEncoder::setup(target).unwrap(),
+            case["expected"],
+            "{}",
+            case["id"]
+        );
+    }
 }

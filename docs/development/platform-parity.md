@@ -1,7 +1,7 @@
 # PC and Android maintenance
 
 Subtitle state, complete current pairs, DashScope item-identity pairing, append-only
-OpenAI transcript alignment and final translation policy now have one implementation
+OpenAI/Gemini transcript alignment and final translation policy now have one implementation
 in `shared/mimi-core`. Desktop
 imports the Rust crate; Android's Kotlin adapters call that same crate through JNI.
 Provider transports and OS integration remain native. Their wire behavior is a shared
@@ -46,6 +46,12 @@ update both implementations and their platform-specific tests in the same change
 - DashScope realtime pairs source and translation using conversation-item links;
   a known response without a source link cannot guess a source by arrival order.
   OpenAI append-only streams share timing/punctuation alignment and safe tail flush.
+  Gemini transcription options belong to setup, and language-only text updates
+  are empty deltas. Its ID-less continuous transcript uses the shared complete-
+  block checkpoint after 2 seconds without nonempty text, regardless of unequal
+  sentence counts. This heuristic can delay confirmation during continuous speech;
+  drafts stay bounded at 5,120 characters. Both platforms retain explicit turn
+  boundaries with a shared 500 ms late-tail grace; interruptions discard buffers.
 - Configuration changes are drafts until the explicit save action. Field labels and
   errors stay legible; protocol explanations use help controls. Provider artwork comes
   from the same existing desktop asset source.

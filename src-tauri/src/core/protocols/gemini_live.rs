@@ -57,10 +57,10 @@ impl GeminiLiveRequestEncoder {
         Ok(json!({
             "setup": {
                 "model": format!("models/{}", GeminiLiveEndpoint::MODEL),
+                "inputAudioTranscription": {},
+                "outputAudioTranscription": {},
                 "generationConfig": {
                     "responseModalities": ["AUDIO"],
-                    "inputAudioTranscription": {},
-                    "outputAudioTranscription": {},
                     "translationConfig": {
                         "targetLanguageCode": target_language_code,
                         "echoTargetLanguage": true
@@ -246,11 +246,13 @@ fn required_transcript_text(
     transcription: &Value,
     field: &'static str,
 ) -> Result<String, GeminiLiveProtocolError> {
-    transcription
-        .get("text")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or(GeminiLiveProtocolError::MissingEventField(field))
+    match transcription.get("text") {
+        Some(Value::String(text)) => Ok(text.clone()),
+        // Protobuf JSON omits an empty string. Live Translate sends legal
+        // language-only transcription updates during silence.
+        None if transcription.is_object() => Ok(String::new()),
+        _ => Err(GeminiLiveProtocolError::MissingEventField(field)),
+    }
 }
 
 fn language_code(transcription: &Value) -> Option<String> {
@@ -333,8 +335,10 @@ mod tests {
         );
         let generation = &value["setup"]["generationConfig"];
         assert_eq!(generation["responseModalities"], json!(["AUDIO"]));
-        assert_eq!(generation["inputAudioTranscription"], json!({}));
-        assert_eq!(generation["outputAudioTranscription"], json!({}));
+        assert_eq!(value["setup"]["inputAudioTranscription"], json!({}));
+        assert_eq!(value["setup"]["outputAudioTranscription"], json!({}));
+        assert!(generation.get("inputAudioTranscription").is_none());
+        assert!(generation.get("outputAudioTranscription").is_none());
         assert_eq!(generation["translationConfig"]["targetLanguageCode"], "ja");
         assert_eq!(generation["translationConfig"]["echoTargetLanguage"], true);
         assert_eq!(
@@ -453,7 +457,7 @@ mod tests {
         );
         assert_eq!(
             GeminiLiveServerEvent::decode(
-                r#"{"serverContent":{"inputTranscription":{"languageCode":"en"}}}"#
+                r#"{"serverContent":{"inputTranscription":{"text":false}}}"#
             )
             .unwrap_err(),
             GeminiLiveProtocolError::MissingEventField("serverContent.inputTranscription.text")

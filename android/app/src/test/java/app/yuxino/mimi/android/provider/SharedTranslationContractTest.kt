@@ -25,8 +25,41 @@ class SharedTranslationContractTest {
         for (index in 0 until entries.length()) {
             val case = entries.getJSONObject(index)
             require(case.has("id") && case.has("expected")) { "Incomplete contract case" }
-            if (case.has("provider")) require(case.getString("provider") in setOf("deepL", "deepLX", "openaiCompatible"))
+            if (case.has("provider")) require(case.getString("provider") in setOf("deepL", "deepLX", "openaiCompatible", "googleGeminiLive"))
             check(case)
+        }
+    }
+
+    @Test fun sharedLiveSetupContracts() = cases("liveSetups") { case ->
+        assertEquals("googleGeminiLive", case.getString("provider"))
+        val protocol = GeminiProtocol(ServiceConfiguration(ServiceProvider.GEMINI, emptyMap()), case.getString("target"))
+        val actual = JSONObject((protocol.setup() as WireFrame.Text).value)
+        assertTrue(case.getString("id"), case.getJSONObject("expected").similar(actual))
+    }
+
+    @Test fun sharedGeminiTranscriptContractsCrossActualJni() = cases("liveTranscriptSequences") { case ->
+        var now = 0L
+        val protocol = GeminiProtocol(ServiceConfiguration(ServiceProvider.GEMINI, emptyMap()), "ja") { now }
+        val pairs = org.json.JSONArray()
+        val actual = runCatching {
+            val frames = case.getJSONArray("frames")
+            repeat(frames.length()) { index ->
+                now += 100
+                val events = protocol.text(frames.getString(index)).toMutableList()
+                val settle = case.optJSONArray("settleAfterFrames")
+                if (settle != null && (0 until settle.length()).any { settle.getInt(it) == index }) {
+                    now += 2_000
+                    events += protocol.tick()
+                }
+                events.filterIsInstance<ServiceEvent.FinalPair>().forEach {
+                    pairs.put(JSONObject().put("source", it.source).put("translation", it.translation).put("language", it.language ?: JSONObject.NULL))
+                }
+            }
+        }
+        if (case.isNull("expected")) assertTrue(case.getString("id"), actual.isFailure)
+        else {
+            assertTrue(case.getString("id"), actual.isSuccess)
+            assertTrue(case.getString("id"), case.getJSONArray("expected").similar(pairs))
         }
     }
 

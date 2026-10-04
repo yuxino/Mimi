@@ -1,13 +1,17 @@
-//! A read-only Alibaba preset beside ordinary development OS credentials.
+//! Read-only provider presets beside ordinary development OS credentials.
 //! Never source this file or inspect process environment variables for keys.
 
 use super::{
     KeyringSecretStore, SecretStore, SecretStoreError, DEVELOPMENT_APPLICATION_IDENTIFIER,
     DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, LOCAL_DEV_ALIBABA_PROFILE_ID,
+    LOCAL_DEV_GEMINI_PROFILE_ID,
 };
 #[cfg(unix)]
 use std::io::{ErrorKind, Read};
 use std::path::Path;
+
+#[cfg(all(test, feature = "local-dev-credentials", target_os = "macos"))]
+mod live_tests;
 
 #[cfg(unix)]
 const MAX_FILE_BYTES: u64 = 16 * 1024;
@@ -46,21 +50,36 @@ fn select_with_reader(
     }
     match read() {
         Ok(None) => None, // Only a genuinely absent file retains OS storage.
-        result => Some(Box::new(FileSecretStore {
-            key: result.and_then(|text| parse(text.as_deref().unwrap_or_default())),
-            os: Box::new(KeyringSecretStore),
-        })),
+        result => {
+            let keys = result.and_then(|text| parse(text.as_deref().unwrap_or_default()));
+            Some(Box::new(FileSecretStore {
+                key: keys
+                    .as_ref()
+                    .map(|keys| keys.alibaba.clone())
+                    .map_err(|error| *error),
+                gemini_key: keys
+                    .as_ref()
+                    .map(|keys| keys.gemini.clone())
+                    .map_err(|error| *error),
+                gemini_configured: keys.as_ref().map_or(true, |keys| keys.gemini_configured),
+                os: Box::new(KeyringSecretStore),
+            }))
+        }
     }
 }
 
 struct FileSecretStore {
     // No Debug/Serialize implementation: the value stays inside native storage.
     key: Result<Option<String>, SecretStoreError>,
+    gemini_key: Result<Option<String>, SecretStoreError>,
+    gemini_configured: bool,
     os: Box<dyn SecretStore>,
 }
 
 fn preset_account(account: &str) -> bool {
-    account.starts_with(&format!("provider-profile:{LOCAL_DEV_ALIBABA_PROFILE_ID}:"))
+    [LOCAL_DEV_ALIBABA_PROFILE_ID, LOCAL_DEV_GEMINI_PROFILE_ID]
+        .iter()
+        .any(|id| account.starts_with(&format!("provider-profile:{id}:")))
 }
 
 impl SecretStore for FileSecretStore {
@@ -71,12 +90,12 @@ impl SecretStore for FileSecretStore {
             return Ok(None);
         }
         if preset_account(account) {
-            return if account
-                == format!("provider-profile:{LOCAL_DEV_ALIBABA_PROFILE_ID}:alibabaCloud:api-key")
-            {
-                self.key.clone()
-            } else {
-                Ok(None)
+            return match account {
+                "provider-profile:alibaba-local-dev:alibabaCloud:api-key" => self.key.clone(),
+                "provider-profile:gemini-local-dev:googleGeminiLive:api-key" => {
+                    self.gemini_key.clone()
+                }
+                _ => Ok(None),
             };
         }
         self.os.load(service, account)
@@ -102,8 +121,12 @@ impl SecretStore for FileSecretStore {
         self.os.delete(service, account)
     }
 
-    fn local_dev_profile_id(&self) -> Option<&'static str> {
-        Some(LOCAL_DEV_ALIBABA_PROFILE_ID)
+    fn local_dev_profile_ids(&self) -> Vec<&'static str> {
+        let mut profiles = vec![LOCAL_DEV_ALIBABA_PROFILE_ID];
+        if self.gemini_configured {
+            profiles.push(LOCAL_DEV_GEMINI_PROFILE_ID);
+        }
+        profiles
     }
 }
 
@@ -112,23 +135,42 @@ pub(super) fn test_store(
     key: Result<Option<String>, SecretStoreError>,
     os: Box<dyn SecretStore>,
 ) -> Box<dyn SecretStore> {
-    Box::new(FileSecretStore { key, os })
+    Box::new(FileSecretStore {
+        key,
+        gemini_key: Ok(None),
+        gemini_configured: false,
+        os,
+    })
 }
 
-fn parse(text: &str) -> Result<Option<String>, SecretStoreError> {
+#[derive(Default)]
+struct LocalDevKeys {
+    alibaba: Option<String>,
+    gemini: Option<String>,
+    gemini_configured: bool,
+}
+
+fn parse(text: &str) -> Result<LocalDevKeys, SecretStoreError> {
     let invalid = || SecretStoreError::LocalDevFileUnavailable;
-    let mut key = None;
-    let mut found = false;
+    let mut keys = LocalDevKeys::default();
+    let mut alibaba_found = false;
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
         let (name, value) = line.split_once('=').ok_or_else(invalid)?;
-        if name.trim() != "ALIBABA_API_KEY" || found {
-            return Err(invalid());
-        }
-        found = true;
+        let slot = match name.trim() {
+            "ALIBABA_API_KEY" if !alibaba_found => {
+                alibaba_found = true;
+                &mut keys.alibaba
+            }
+            "GEMINI_API_KEY" if !keys.gemini_configured => {
+                keys.gemini_configured = true;
+                &mut keys.gemini
+            }
+            _ => return Err(invalid()),
+        };
         let value = value.trim();
         if value.len() > MAX_KEY_BYTES
             || value.bytes().any(|byte| {
@@ -138,10 +180,10 @@ fn parse(text: &str) -> Result<Option<String>, SecretStoreError> {
             return Err(invalid());
         }
         if !value.is_empty() {
-            key = Some(value.to_owned());
+            *slot = Some(value.to_owned());
         }
     }
-    Ok(key)
+    Ok(keys)
 }
 
 #[cfg(unix)]
@@ -242,6 +284,199 @@ mod tests {
     }
 
     const PRESET_ACCOUNT: &str = "provider-profile:alibaba-local-dev:alibabaCloud:api-key";
+    const GEMINI_ACCOUNT: &str = "provider-profile:gemini-local-dev:googleGeminiLive:api-key";
+
+    #[test]
+    fn local_dev_credentials_gemini_is_independent_read_only_and_never_falls_back() {
+        use super::super::SettingsStore;
+        use crate::core::credentials::{CredentialRevealField, ProviderCredentials};
+        use crate::core::provider::ProviderKind;
+        let keys =
+            parse("ALIBABA_API_KEY=synthetic-alibaba\nGEMINI_API_KEY=synthetic-gemini\n").unwrap();
+        assert_eq!(keys.alibaba.as_deref(), Some("synthetic-alibaba"));
+        assert_eq!(keys.gemini.as_deref(), Some("synthetic-gemini"));
+        let os = TestOsStore::default();
+        os.save(
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            GEMINI_ACCOUNT,
+            "synthetic-os-fallback",
+        )
+        .unwrap();
+        let secret = Box::new(FileSecretStore {
+            key: Ok(keys.alibaba),
+            gemini_key: Ok(keys.gemini),
+            gemini_configured: true,
+            os: Box::new(os.clone()),
+        });
+        let store = SettingsStore::in_memory_with_scope(
+            secret,
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        let (_, profiles) = store.profile_catalog().unwrap();
+        let gemini = profiles
+            .iter()
+            .find(|p| p.id == LOCAL_DEV_GEMINI_PROFILE_ID)
+            .unwrap();
+        assert_eq!(gemini.provider, ProviderKind::GoogleGeminiLive);
+        assert_eq!(store.profile_credential_storage(&gemini.id), "localDevFile");
+        store.select_profile(&gemini.id).unwrap();
+        let config = store.configuration().unwrap();
+        assert!(
+            matches!(config.credentials, ProviderCredentials::ApiKey { api_key } if api_key == "synthetic-gemini")
+        );
+        for result in [
+            store.save_credentials(
+                &gemini.id,
+                &ProviderCredentials::api_key("synthetic-replacement"),
+            ),
+            store.delete_api_key(&gemini.id),
+            store.delete_profile(&gemini.id),
+        ] {
+            assert_eq!(result, Err("local_dev_credentials_read_only".into()));
+        }
+        assert_eq!(
+            store.reveal_credential(&gemini.id, CredentialRevealField::ApiKey, None),
+            Err("local_dev_credentials_read_only".into())
+        );
+        let regular = store
+            .create_profile(ProviderKind::GoogleGeminiLive, "Regular Gemini")
+            .unwrap();
+        store.select_profile(&regular.id).unwrap();
+        assert!(store.configuration().is_err());
+        store
+            .save_credentials(
+                &regular.id,
+                &ProviderCredentials::api_key("synthetic-regular-gemini"),
+            )
+            .unwrap();
+        assert!(
+            matches!(store.configuration().unwrap().credentials, ProviderCredentials::ApiKey { api_key } if api_key == "synthetic-regular-gemini")
+        );
+        let catalog = serde_json::to_string(&store.profile_catalog().unwrap()).unwrap();
+        assert!(!catalog.contains("synthetic-gemini"));
+        let missing = FileSecretStore {
+            key: Ok(None),
+            gemini_key: Ok(None),
+            gemini_configured: true,
+            os: Box::new(os),
+        };
+        assert_eq!(
+            missing
+                .load(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, GEMINI_ACCOUNT)
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            missing
+                .load(
+                    DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                    "provider-profile:alibaba-local-dev:googleGeminiLive:api-key"
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            missing
+                .load(
+                    DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                    "provider-profile:gemini-local-dev:alibabaCloud:api-key"
+                )
+                .unwrap(),
+            None
+        );
+        for text in [
+            "GEMINI_API_KEY=a\nGEMINI_API_KEY=b",
+            "GEMINI_API_KEY=${OTHER}",
+            "GEMINI_API_KEY='quoted'",
+        ] {
+            assert!(matches!(
+                parse(text),
+                Err(SecretStoreError::LocalDevFileUnavailable)
+            ));
+        }
+    }
+
+    #[test]
+    fn local_dev_credentials_two_presets_preserve_selection_and_user_slots() {
+        use super::super::{SettingsStore, DEFAULT_ALIBABA_PROFILE_ID, MAXIMUM_PROFILE_COUNT};
+        use crate::core::provider::ProviderKind;
+        let directory = tempfile::tempdir().unwrap();
+        let load = |gemini_configured| {
+            SettingsStore::load_with_secret(
+                directory.path().into(),
+                false,
+                Box::new(FileSecretStore {
+                    key: Ok(Some("synthetic-alibaba".into())),
+                    gemini_key: Ok(Some("synthetic-gemini".into())),
+                    gemini_configured,
+                    os: Box::new(TestOsStore::default()),
+                }),
+                DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                false,
+            )
+        };
+        let store = load(true);
+        store.select_profile(LOCAL_DEV_GEMINI_PROFILE_ID).unwrap();
+        drop(store);
+        let reopened = load(true);
+        assert_eq!(
+            reopened.active_profile().unwrap().id,
+            LOCAL_DEV_GEMINI_PROFILE_ID
+        );
+        for _ in 1..MAXIMUM_PROFILE_COUNT {
+            reopened
+                .create_profile(ProviderKind::GoogleGeminiLive, "Regular")
+                .unwrap();
+        }
+        assert_eq!(
+            reopened.profile_catalog().unwrap().1.len(),
+            MAXIMUM_PROFILE_COUNT + 2
+        );
+        assert!(reopened
+            .create_profile(ProviderKind::GoogleGeminiLive, "Too many")
+            .is_err());
+        drop(reopened);
+        let removed = load(false);
+        assert_eq!(
+            removed.active_profile().unwrap().id,
+            LOCAL_DEV_ALIBABA_PROFILE_ID
+        );
+        assert!(!removed
+            .profile_catalog()
+            .unwrap()
+            .1
+            .iter()
+            .any(|p| p.id == LOCAL_DEV_GEMINI_PROFILE_ID));
+        assert!(removed
+            .profile_catalog()
+            .unwrap()
+            .1
+            .iter()
+            .any(|p| p.id == DEFAULT_ALIBABA_PROFILE_ID));
+    }
+
+    #[cfg(all(feature = "local-dev-credentials", target_os = "macos"))]
+    #[tokio::test]
+    #[ignore = "explicit live check using the private macOS Gemini dev preset; no audio capture"]
+    async fn local_dev_credentials_live_gemini_probe() {
+        use super::super::SettingsStore;
+        use crate::clients::connection_diagnostics::{check_speech_service, ServiceAvailability};
+        let directory = std::path::PathBuf::from(std::env::var_os("HOME").unwrap())
+            .join("Library/Application Support/app.yuxino.mimi.dev");
+        let secret = select(&directory, false, DEVELOPMENT_APPLICATION_IDENTIFIER).unwrap();
+        let store = SettingsStore::in_memory_with_scope(
+            secret,
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        store.select_profile(LOCAL_DEV_GEMINI_PROFILE_ID).unwrap();
+        let diagnostic = check_speech_service(&store.configuration().unwrap(), false).await;
+        println!("{}", serde_json::to_string(&diagnostic).unwrap());
+        assert_eq!(diagnostic.service, ServiceAvailability::Available);
+    }
 
     #[test]
     fn local_dev_credentials_all_gates_precede_any_file_access() {
@@ -285,8 +520,8 @@ mod tests {
                 select_with_reader(true, false, DEVELOPMENT_APPLICATION_IDENTIFIER, || result)
                     .unwrap();
             assert_eq!(
-                store.local_dev_profile_id(),
-                Some(LOCAL_DEV_ALIBABA_PROFILE_ID)
+                store.local_dev_profile_ids(),
+                vec![LOCAL_DEV_ALIBABA_PROFILE_ID, LOCAL_DEV_GEMINI_PROFILE_ID]
             );
             assert_eq!(
                 store.load(DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE, PRESET_ACCOUNT),
@@ -298,10 +533,12 @@ mod tests {
     #[test]
     fn local_dev_credentials_parser_is_literal_bounded_and_strict() {
         assert_eq!(
-            parse("# example\nALIBABA_API_KEY=synthetic-test-only\n").unwrap(),
+            parse("# example\nALIBABA_API_KEY=synthetic-test-only\n")
+                .unwrap()
+                .alibaba,
             Some("synthetic-test-only".into())
         );
-        assert_eq!(parse("ALIBABA_API_KEY=\n").unwrap(), None);
+        assert_eq!(parse("ALIBABA_API_KEY=\n").unwrap().alibaba, None);
         for text in [
             "ALIBABA_API_KEY='synthetic'",
             "ALIBABA_API_KEY=${OTHER}",
@@ -311,22 +548,27 @@ mod tests {
             "ALIBABA_API_KEY=a\nALIBABA_API_KEY=b",
             "ALIBABA_API_KEY=synthetic\nnot-an-assignment",
         ] {
-            assert_eq!(parse(text), Err(SecretStoreError::LocalDevFileUnavailable));
+            assert!(matches!(
+                parse(text),
+                Err(SecretStoreError::LocalDevFileUnavailable)
+            ));
         }
         assert!(parse(&format!("ALIBABA_API_KEY={}", "a".repeat(MAX_KEY_BYTES))).is_ok());
-        assert_eq!(
+        assert!(matches!(
             parse(&format!(
                 "ALIBABA_API_KEY={}",
                 "a".repeat(MAX_KEY_BYTES + 1)
             )),
             Err(SecretStoreError::LocalDevFileUnavailable)
-        );
+        ));
     }
 
     #[test]
     fn local_dev_credentials_preset_has_no_os_fallback_or_secret_writes() {
         let store = FileSecretStore {
             key: Ok(Some("synthetic-test-only".into())),
+            gemini_key: Ok(None),
+            gemini_configured: false,
             os: Box::new(TestOsStore::default()),
         };
         assert_eq!(
@@ -377,6 +619,8 @@ mod tests {
         use crate::core::provider::{ProviderKind, TextTranslation};
         let secret = Box::new(FileSecretStore {
             key: Ok(Some("synthetic-test-only".into())),
+            gemini_key: Ok(None),
+            gemini_configured: false,
             os: Box::new(TestOsStore::default()),
         });
         let store = SettingsStore::in_memory_with_scope(
@@ -435,6 +679,8 @@ mod tests {
         use super::super::SettingsStore;
         let secret = Box::new(FileSecretStore {
             key: Err(SecretStoreError::LocalDevFileUnavailable),
+            gemini_key: Err(SecretStoreError::LocalDevFileUnavailable),
+            gemini_configured: true,
             os: Box::new(TestOsStore::default()),
         });
         let store = SettingsStore::in_memory_with_scope(

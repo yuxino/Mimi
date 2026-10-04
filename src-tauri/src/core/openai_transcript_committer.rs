@@ -6,6 +6,12 @@ use mimi_core::openai_transcript_committer::{
 
 pub struct OpenAITranscriptPairCommitter(SharedCommitter);
 impl OpenAITranscriptPairCommitter {
+    pub fn new_gemini() -> Self {
+        Self(SharedCommitter::new_gemini())
+    }
+    pub fn settle(&mut self, now_ms: u64) -> Vec<LiveTranslateServerEvent> {
+        self.0.settle(now_ms).into_iter().map(adapt).collect()
+    }
     pub fn new(limit: usize, language: Option<String>) -> Self {
         Self(SharedCommitter::new(limit, language))
     }
@@ -33,6 +39,9 @@ impl OpenAITranscriptPairCommitter {
     }
     pub fn finish(&mut self) -> Vec<LiveTranslateServerEvent> {
         self.0.finish().into_iter().map(adapt).collect()
+    }
+    pub fn has_pending(&self) -> bool {
+        self.0.has_pending()
     }
     pub fn reset(&mut self) {
         self.0.reset();

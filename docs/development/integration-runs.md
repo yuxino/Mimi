@@ -142,3 +142,117 @@
 - Android JVM／设备、Windows 和 Linux 没有在本轮实测。
 - 后续获得继续测试的请求后，先补会话暂停／恢复／停止与收尾，再按当前
   具体质量问题选定可持久样本，记录 reference 并进行可比复测。
+
+## 2026-10-04：Gemini 连接拒绝与真人音频直连复测
+
+- Revision：`a2cf738` + `fix/gemini-live-setup` 未提交改动；macOS 原生
+  `GeminiLiveClient` 测试构建，开启 `local-dev-credentials`。使用用户授权的
+  免费 Gemini 测试账户、本机私有开发文件和固定 16 kHz 单声道 PCM，
+  按 100 ms 实时发送。未打开 GUI、未启动系统／麦克风捕获，未修改
+  保存选项或活动配置。密钥、音频、reference、原始服务正文和配对结果
+  均在 Git 外的持久开发 benchmark 目录；普通输出只有计数、标签和计时。
+- 连接失败边界：同一有效密钥列模型 HTTP 200；旧 setup WebSocket 1007，
+  `inputAudioTranscription` 层级被拒绝。两项转录选项移到 setup 后接收
+  `setupComplete`，原生 Settings 检查可用，971 ms。共享 setup 契约覆盖
+  zh/en/ja；不改模型、翻译配置或提示词。
+- 首次真人测试还复现语言字段单独出现时解析失败、连续服务无
+  `turnComplete` 导致尾部不确认。最初逐句修复在重复音频中串句并
+  `gemini_close_timeout`：服务译文与原文的标点数不能证明语义配对。
+  保留旧失败记录；改用共享 Rust 的完整块稳定检查点，2 秒无非空增量
+  且双方均结束于句末标点后整块确认。实际 JNI 与桌面使用同一逻辑；
+  显式 turn 仍留 500 ms 吸收尾部。稳定检查点是启发式，不是服务终止保证。
+- 固定 FLEURS 真人样本（3 个独立输入、1 个重复派生输入，CC BY 4.0）：
+
+  | 样本／方向 | 音频时长 | setup | 首条译文预览 | 完整块确认 | 错误 |
+  | --- | --- | --- | --- | --- | --- |
+  | `fleurs-english-1527` 英→中 | 23.44 s | 961 ms | 3,769 ms | 25,545 ms，1 组 | 0 |
+  | `fleurs-cmn_hans_cn-short-row3-id1648` 中→英 | 9.66 s | 928 ms | 5,928 ms | 11,045 ms，1 组 | 0 |
+  | `fleurs-ja_jp-short-row0-id1519` 日→中 | 11.10 s | 830 ms | 5,035 ms | 13,099 ms，1 组 | 0 |
+  | `repeat-en-two` 英→中，两遍同输入间隔 1 s | 47.88 s | 962 ms | 3,816 ms | 25,491／50,739 ms，2 组 | 0 |
+
+  首条译文和块确认均从开始送音频计时，含样本开头静音和服务处理；
+  不是从首个发声或每个词到屏幕的端到端延迟。两遍相同原文均保留，
+  无串句及收尾超时。取证文件 0600，旧失败与原始事件记录继续保留。
+- 质量：链路可用，但三组均有准确性问题。英→中保留主要赛事／名次，
+  姓名识别错误，译文另把一个运动员扩成两个姓名。中→英将 reference
+  地名识别成别处；另一次同输入连谓语也错。日→中将回国后的时间条件
+  识别为策划后的条件，译文转录也出现该错误。该模型直接做语音翻译；
+  不能据转录共同错误断定内部采用 ASR 文本再翻译。reference 来自既有固定 FLEURS
+  corpus，尚无本轮独立听审；不据此给整体准确率或宣称优于其他服务。
+- 回归保护：共享 setup／转录序列、实际 Android JNI、桌面 socket 模拟
+  覆盖缺省空文本、译文拆句、重复、显式边界晚尾、未配对文本与固定
+  内存上限。`./scripts/check.sh` 通过（桌面 1,015、前端 1,116）；
+  开发特性 Clippy 通过，Gemini 定向测试 25 passed／2 ignored；Android
+  `testDebugUnitTest lintDebug` 通过，包含实际 JNI。最终原生连接检查
+  1,005 ms 可用。签名 dev 已更新到 `/Applications/mimi-dev.app`，稳定
+  designated requirement 相同，`app.yuxino.mimi.dev`；正常退出旧实例后
+  `--no-launch` 安装，未打开新实例。提交后再次从干净 `c1ea751` 构建并
+  安装到同一 dev 路径；PR #134 全部 CI 通过并以 `3ac303d` 合并到 main，
+  未发布版本。
+- 模型调研：官方账号模型清单含实际请求的专用
+  `gemini-3.5-live-translate-preview`（`3.5-live-translate-06-2026`）；
+  Gemini 路由直接取原文／译文转录，没有独立二次 MT。官方模型能力和
+  参数依据见本轮 design note。用同一中文 PCM 比较两种额外配置：
+  专用模型请求 TEXT 仍生成 816,000 字节音频、无 model text parts，
+  有英文译文转录；3.8 Live 沿用 translationConfig 接受 setup，却用
+  中文对话回应，未执行目标英语翻译。连接成功不能证明字段生效或
+  模型可以互换。只做转录正文比较，未保存或听审输出音频。
+- 免费档位：官方把同一专用翻译模型列为 Free／Paid 可用；额度和
+  数据政策存在档位差异，但没有发现准确度降级声明。本轮没有付费
+  同模型对照，不能把错误归因于免费账号，也不能证明两档效果相同。
+- 限制／下一步：未验证原生浮窗、OS 捕获、Android 实机、跨平台真实
+  服务和长时连续无停顿语音。完整块策略可能延迟确认，持续输入到达
+  5,120 字符上限会有界失败；短样本成功不能替代长会话验收。先按相同
+  reference 人工听审与逐语义单元对比，再决定是否继续使用此 preview
+  模型；不要用词汇替换补丁掩盖服务 ASR／翻译错误。
+
+## 2026-10-04：Gemini 三条路线的固定音频对照
+
+- Revision：测试驱动对应 `c1ea751`；随后连接／配对修复以 `3ac303d`
+  合并到 main。本轮对照是独立、只读开发脚本直连官方 API，没有替换
+  Mimi 模型、增加产品配置、启动 GUI／OS 捕获或变更保存选项。继续
+  使用同一授权测试密钥、既有三段 FLEURS 真人 PCM 和原 reference；
+  核对输入 SHA256，以 100 ms 帧按实时钟发送，尾部静音 2 秒后发送
+  `audioStreamEnd`，等待窗口有界。每段每条路线仅跑一次。
+- 路线：专用 `gemini-3.5-live-translate-preview` 使用既有 AUDIO／目标
+  语言配置；`gemini-3.8-live` 改为专用翻译指令、AUDIO、自动 VAD 和
+  `NO_INTERRUPTION`，不传 translationConfig。这是正确配置的对照，
+  与上一轮无指令的替换探测分开。第三条是独立 prototype：
+  `gemini-3.5-transcribe-live` 自动语言／VERBATIM／无词表，收到
+  authoritative inputTranscription 后交给 `gemini-3.8-flash` 的
+  generateContent／low thinking 做文字翻译；不翻译 interim。
+
+  | 样本／方向 | 音频时长 | 专用翻译首条转录 | 3.8 Live 首条译文转录 | 识别后文字翻译首条结果 |
+  | --- | --- | --- | --- | --- |
+  | `fleurs-english-1527` 英→中 | 23.44 s | 3,830 ms | 24,769 ms | 26,274 ms |
+  | `fleurs-cmn_hans_cn-short-row3-id1648` 中→英 | 9.66 s | 5,865 ms | 7,687 ms，异常／不完整 | 16,868 ms |
+  | `fleurs-ja_jp-short-row0-id1519` 日→中 | 11.10 s | 4,902 ms | 11,394 ms | 13,375 ms |
+
+  均从开始送 PCM 到收到首个非空结果计时，含样本初始静音，排除
+  setup；不是首个发声到屏幕的延迟。setup 分别为专用 1,043／899／
+  1,051 ms、对话 878／1,009／848 ms、识别 920／857／625 ms。
+  文字翻译三个请求均 HTTP 200，耗时 2,743／9,226／2,875 ms；只有
+  单次观测，不能将较长一次等同于固定服务耗时。识别 interim 首条为
+  2,761／4,149／3,145 ms，最终原文首条为 23,529／7,642／10,500 ms；
+  原文 interim 不能当成已完成的翻译字幕。
+- 质量逐例：英→中专用模型仍有姓名错误，但保留第一处名次；对话
+  模型姓名更接近 reference，却改错第一处名次。第三条原文姓名更
+  接近，但国家和第一处名次错误，文字翻译继承错误。中→英三条
+  原文均识别错地名；对话模型另在译文转录中夹带异常标记并缺失后半
+  分句，有 generationComplete／turnComplete 仍不能认为译文完整。
+  日→中专用模型仍错时间条件，对话模型与第三条这次保留参考语义。
+  不把这些差异折算成总体准确率，也不推断服务内部 ASR／MT 实现。
+- 传输范围：九次会话均 setupComplete、正常 WebSocket 1000、无
+  传输错误；六次直接翻译都收到原文和译文。对话模型 generationComplete
+  三次均出现，turnComplete 英语 0／中文 1／日语 1，未改 Mimi 的终止
+  策略来适配它。专用模型这轮仍无 turnComplete。第三条三次各收到
+  一组最终原文并完成文字翻译；没有把它纳入产品原生验收。
+- 保存与结论：脚本、manifest、setup 指令、原始服务文本和结果存于
+  Git 外的 `2026-10-04-gemini` 私有 benchmark，独立 fair-comparison／
+  asr-mt-comparison 目录均 0700、文件 0600；旧失败不覆盖，诊断输出
+  仍只含标签、计数、状态与计时。专用模型在这三段更早输出，适合
+  当前连续字幕的交互；准确性尚不足以据此推荐替换既有其他服务。
+  3.8 Live 不是整体更好，也不是可直接换名的字幕模型。识别＋文字
+  翻译可独立调优，但本 prototype 等 final 后才请求，不证明具备
+  生产 preview／取消／上下文／重连／原生浮窗表现。尚缺本轮独立听审、
+  自然长语音、多轮重复和付费同模型对照；无证据归因于免费档位。

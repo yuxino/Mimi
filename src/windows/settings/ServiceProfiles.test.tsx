@@ -57,9 +57,9 @@ it("shows a custom speech profile as ready for Original even when its independen
   expect(host.querySelector(".service-stage--translation")?.textContent).toContain("DeepL");
   expect(host.querySelector('input[id$="-speech-key"]')).toBeNull();
 });
-it.each(["en", "zh", "ja"] as const)("keeps local dev file credentials out of editors and reveal in %s", async (language) => {
+it.each(["en", "zh", "ja"].flatMap(language => ["alibabaCloud", "googleGeminiLive"].map(provider => ({language, provider}))) as {language: "en" | "zh" | "ja"; provider: "alibabaCloud" | "googleGeminiLive"}[])("keeps $provider local dev credentials out of editors and reveal in $language", async ({language, provider}) => {
   setStoredUiLanguage(language);
-  const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", profiles: [{ ...profile, credentialStorage: "localDevFile", credentialState: "present" }] };
+  const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", profiles: [{ ...profile, provider, credentialStorage: "localDevFile", credentialState: "present" }] };
   await render(snapshot);
   expect(host.querySelector(".services-hint .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
   expect(host.querySelector("p.services-hint")).toBeNull();
@@ -67,10 +67,12 @@ it.each(["en", "zh", "ja"] as const)("keeps local dev file credentials out of ed
   expect(host.textContent).toContain(diagnosticCopy().localDevReadOnly);
   expect(host.querySelector('input[type="password"]')).toBeNull();
   expect(host.querySelector(".credential-form")).toBeNull();
-  expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
+  expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual(provider === "alibabaCloud" ? [I18N.settings.speechRecognition, I18N.settings.textTranslationLabel] : [I18N.settings.voiceTranslation]);
   expect(host.querySelector('.service-stage--translation [role="combobox"]')).toBeNull();
-  expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
-  expect(host.querySelector('.service-stage__restriction .settings-help-control__description')?.textContent).toBe(diagnosticCopy().localDevTranslationHelp);
+  if (provider === "alibabaCloud") {
+    expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
+    expect(host.querySelector('.service-stage__restriction .settings-help-control__description')?.textContent).toBe(diagnosticCopy().localDevTranslationHelp);
+  }
   expect(host.querySelector(".stored-credential-reveal, .credential-panel__saved-actions, .credential-form__actions")).toBeNull();
   expect(host.querySelector('button[type="submit"]:not(.service-detail__save-name)')).toBeNull();
   expect(host.querySelector<HTMLInputElement>(`#profile-name-${profile.id}`)?.disabled).toBe(false);
@@ -78,7 +80,7 @@ it.each(["en", "zh", "ja"] as const)("keeps local dev file credentials out of ed
   expect(vi.mocked(profileRevealCredential)).not.toHaveBeenCalled();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
   expect(actions.deleteProfileAPIKey).not.toHaveBeenCalled();
-  await render({ ...snapshot, profiles: [{ ...profile, credentialStorage: "localDevFile" }] });
+  await render({ ...snapshot, profiles: [{ ...profile, provider, credentialStorage: "localDevFile" }] });
   expect(host.textContent).toContain(diagnosticCopy().localDevUnavailable);
   expect(host.textContent).not.toContain(I18N.settings.credentialUnavailableHelp);
 });

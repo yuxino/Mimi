@@ -36,15 +36,19 @@ pub fn exchange(input: &str) -> Result<String, &'static str> {
     if kind == "policy" {
         return encode(json!({"policy": translation_policy::policy()}));
     }
-    if kind == "openai" {
+    if kind == "openai" || kind == "gemini" {
         use crate::openai_transcript_committer::OpenAITranscriptPairCommitter;
         let mut stream: OpenAITranscriptPairCommitter = match request.state {
             Some(state) => serde_json::from_str(&state).map_err(|_| "core_invalid_stream")?,
+            None if kind == "gemini" => OpenAITranscriptPairCommitter::new_gemini(),
             None => OpenAITranscriptPairCommitter::default(),
         };
         stream
             .validate_state(320)
             .map_err(|_| "core_invalid_stream")?;
+        if stream.is_stable_block_mode() != (kind == "gemini") {
+            return Err("core_invalid_stream");
+        }
         let delta = op["delta"].as_str().unwrap_or("");
         if !crate::subtitle_text_within_limit(delta) {
             return Err("core_stream_limit");
@@ -54,6 +58,13 @@ pub fn exchange(input: &str) -> Result<String, &'static str> {
             Some("source") => stream.append_source_delta(delta, time),
             Some("translation") => stream.append_translation_delta(delta, time),
             Some("finish") => stream.finish(),
+            Some("turn_complete") if kind == "gemini" => {
+                stream.note_turn_complete(time.ok_or("core_invalid_stream_operation")?);
+                Vec::new()
+            }
+            Some("settle") if kind == "gemini" => {
+                stream.settle(time.ok_or("core_invalid_stream_operation")?)
+            }
             Some("reset") => {
                 stream.reset();
                 Vec::new()

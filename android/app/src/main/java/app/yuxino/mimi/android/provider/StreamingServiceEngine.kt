@@ -11,6 +11,7 @@ internal sealed interface ServiceEvent {
     data object Closed : ServiceEvent
     data class Source(val text: String, val final: Boolean = false, val language: String? = null) : ServiceEvent
     data class Translation(val text: String, val final: Boolean = false) : ServiceEvent
+    data class FinalPair(val source: String, val translation: String, val language: String? = null) : ServiceEvent
 }
 internal sealed interface WireFrame {
     data class Text(val value: String) : WireFrame
@@ -23,6 +24,7 @@ internal interface ServiceProtocol {
     fun audio(data: ByteArray): WireFrame
     fun text(value: String): List<ServiceEvent> = emptyList()
     fun binary(value: ByteArray): List<ServiceEvent> = emptyList()
+    fun tick(): List<ServiceEvent> = emptyList()
     fun finish(): WireFrame?
 }
 
@@ -73,6 +75,7 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
                         if (!stopped && !finishGate.complete()) { shutdown(); listener.onClosed() }
                     }
                 })
+                timer.scheduleAtFixedRate({ receive { adapter.tick() } }, 250, 250, TimeUnit.MILLISECONDS)
                 timer.schedule({ synchronized(lock) { if (!stopped && !ready) fail("setup_timeout") } }, 20, TimeUnit.SECONDS)
             } catch (_: Exception) { fail("invalid_configuration") }
         }
@@ -89,6 +92,7 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
                         if (event.final) listener.onSourceFinal(event.text, event.language)
                         else listener.onSourceDraft(event.text, event.language)
                     }
+                    is ServiceEvent.FinalPair -> if (ready) listener.onFinalPair(event.source, event.translation, event.language)
                     is ServiceEvent.Translation -> if (ready) {
                         if (event.final) listener.onTranslationFinal(event.text)
                         else listener.onTranslationDraft(event.text)

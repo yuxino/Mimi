@@ -231,7 +231,7 @@ export interface ServiceProfile {
   name: string;
   provider: ServiceProvider;
   credentialState: CredentialState;
-  /** Only the built-in macOS development preset reads the private local file. */
+  /** Only built-in macOS development presets read the private local file. */
   credentialStorage?: "keychain" | "localDevFile";
   /** Custom speech profiles expose each independent store's availability, never its values. */
   speechCredentialState?: CredentialState;
