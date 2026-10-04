@@ -140,10 +140,10 @@ it.each(["zh", "en", "ja"] as const)("keeps the return action beside timings and
   useStore.setState({ togglePaused: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")) });
   await mount(); await readHistory();
   const row = host.querySelector<HTMLElement>(".overlay-status-row")!;
-  expect(row.style.top).toBe("47px");
+  expect(row.style.top).toBe("67px");
   expect(returnButton()?.textContent).toBe({ zh: "回到实时", en: "Back to live", ja: "リアルタイムへ" }[language]);
   expect(row.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
-  expect(returnButton()?.parentElement).toBe(row);
+  expect(returnButton()?.closest(".overlay-status-row")).toBe(row);
   expect(timeline().contains(returnButton())).toBe(false);
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!.click());
   expect(row.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);

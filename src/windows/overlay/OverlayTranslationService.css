@@ -1,0 +1,44 @@
+.overlay-service {
+  --provider-light-display: none;
+  --provider-dark-display: block;
+  --provider-backing-background: #fff;
+  min-width: 0;
+  max-width: 180px;
+  flex: 0 1 auto;
+  pointer-events: auto;
+}
+
+.overlay-service .mimi-tooltip-trigger { display: flex; min-width: 0; }
+.overlay-service__button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  height: 20px;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-family: var(--mimi-ui-font);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.overlay-service__button:hover:not(:disabled),
+.overlay-service__button[data-hovered="true"]:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+}
+.overlay-service__button:focus-visible { outline: 1px solid #fff; outline-offset: 1px; }
+.overlay-service__button:disabled { cursor: default; opacity: 0.5; }
+.overlay-service__button > svg { flex: 0 0 auto; }
+.overlay-service__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overlay-service .provider-icon__image,
+.overlay-service .provider-icon__generic { width: 16px; height: 16px; }
+.overlay-service .provider-icon__image--deeplx { border-radius: 3px; }
+.overlay-status-row__trailing--reading .overlay-service__name { display: none; }
+.overlay-service-tooltip { white-space: pre-line; }

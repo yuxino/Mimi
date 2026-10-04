@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AudioInput, SubtitleDisplayMode, TargetLanguage } from "../../lib/types";
 import cases from "../../../shared/overlay-layout-contracts.json";
-import { minimumOverlayHeight } from "./overlayMinimumHeight";
+import { minimumOverlayHeight, OVERLAY_MAXIMUM_CHROME_HEIGHT } from "./overlayMinimumHeight";
 
 describe("browser and native minimum-height contract", () => {
   it.each(cases)("keeps $audioInput $displayMode font $fontSize at $minimumHeight px", fixture => {
@@ -16,5 +16,12 @@ describe("browser and native minimum-height contract", () => {
     const minimum = (fontSize: number) => minimumOverlayHeight({ audioInput: "both", subtitleDisplayMode: "bilingual", targetLanguage: "zh", fontSize });
     expect(minimum(-1)).toBe(minimum(14)); expect(minimum(100)).toBe(minimum(20));
     for (const font of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) expect(minimum(font)).toBe(minimum(16));
+  });
+
+  it("reserves the separate service row without taking height from a maximum-font bilingual body", () => {
+    const settings = { audioInput: "system" as const, subtitleDisplayMode: "bilingual" as const,
+      targetLanguage: "zh" as const, fontSize: 20 };
+    expect(OVERLAY_MAXIMUM_CHROME_HEIGHT).toBe(61 + 20 + 12 + 10 + 2);
+    expect(minimumOverlayHeight(settings) - OVERLAY_MAXIMUM_CHROME_HEIGHT).toBeGreaterThanOrEqual(51);
   });
 });

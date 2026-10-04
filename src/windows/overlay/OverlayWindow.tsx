@@ -11,6 +11,8 @@ import { ControlButton } from "./ControlButton";
 import { DragHandle } from "./DragHandle";
 import { PulseRing } from "./PulseRing";
 import { OverlayLatency } from "./OverlayLatency";
+import { OverlayTranslationService } from "./OverlayTranslationService";
+import { translationService } from "./translationService";
 import { ResizeHandles } from "./ResizeHandles";
 import { Timeline } from "./Timeline";
 import { useResolvedMotion } from "./animation";
@@ -116,6 +118,9 @@ export function OverlayWindow() {
     session,
   );
   const showSessionControls = topChromeLayout.showControls;
+  const service = translationService(settings);
+  const separateMetadataRow = Boolean(service) && overlaySize.width < 552;
+  const contentTopBandHeight = topChromeLayout.topBandHeight + (separateMetadataRow ? 20 : 0);
 
   const collapsed = session.isOverlayCollapsed;
   const blendsWithBackground = settings.subtitleBlendsWithBackground;
@@ -237,20 +242,29 @@ export function OverlayWindow() {
     const returnToLive = readingHistory && blocks.length > 0 && !presentationCollapsed;
     const showTiming = session.isActive && !blendsWithBackground;
     const actionFailed = sessionAction.failed || controlAction.failed;
-    if (!showTiming && !sessionAction.pending && !actionFailed && !returnToLive) return null;
-    return <div className="overlay-status-row" style={{ top: topChromeLayout.topBandHeight - 14 }}>
-      {sessionAction.pending || actionFailed ? <div role={sessionAction.pending ? "status" : "alert"} className="overlay-action-feedback">
-        {sessionAction.pending ? I18N.overlay.connecting : I18N.overlay.controlActionFailed}
-      </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
-      {returnToLive && <button type="button" className="overlay-return-to-live" onClick={() => {
-        setReadingHistory(false);
-        setFollowTailRequest(request => request + 1);
-      }}>{I18N.overlay.returnToLive}</button>}
+    const visibleService = blendsWithBackground ? null : service;
+    if (!showTiming && !sessionAction.pending && !actionFailed && !returnToLive && !visibleService) return null;
+    return <div className={`overlay-status-row${separateMetadataRow ? " overlay-status-row--narrow" : ""}`}
+      style={{ top: contentTopBandHeight - 14, columnGap: separateMetadataRow || blendsWithBackground ? 8 : topChromeLayout.dragHandleWidth + 16 }}>
+      <div className="overlay-status-row__leading">
+        {sessionAction.pending || actionFailed ? <div role={sessionAction.pending ? "status" : "alert"} className="overlay-action-feedback">
+          {sessionAction.pending ? I18N.overlay.connecting : I18N.overlay.controlActionFailed}
+        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
+      </div>
+      <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
+        {visibleService && <OverlayTranslationService service={visibleService}
+          onClick={() => runControlAction("settings", () => showSettings("service"))}
+          disabled={controlAction.pending} />}
+        {returnToLive && <button type="button" className="overlay-return-to-live" onClick={() => {
+          setReadingHistory(false);
+          setFollowTailRequest(request => request + 1);
+        }}>{I18N.overlay.returnToLive}</button>}
+      </div>
     </div>;
   }
 
   function renderExpanded() {
-    const topBandHeight = topChromeLayout.topBandHeight;
+    const topBandHeight = contentTopBandHeight;
     const emptyDensity = emptyStateDensity(overlaySize.height);
     const compactEmptyPulse = emptyDensity === "compact";
     const pulseBaseSize = compactEmptyPulse ? 48 : 80;
@@ -329,7 +343,7 @@ export function OverlayWindow() {
           <div
             className="absolute inset-x-0 top-0"
             style={{
-              height: topBandHeight,
+              height: topChromeLayout.topBandHeight,
               pointerEvents: "none",
               // Always-visible drag affordance: dimmed while idle, full on
               // hover. A fully transparent handle leaves no cue that the

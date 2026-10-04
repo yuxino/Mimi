@@ -2,9 +2,11 @@
 use crate::core::audio_input::AudioInput;
 use crate::core::models::{SubtitleDisplayMode, TargetLanguage};
 
+/// Retain the saved-frame compatibility floor; current requirements add chrome.
 pub const BASE_MINIMUM_HEIGHT: f64 = 136.0;
-/// Active control band 61 + outside inset 12 + inner padding 10 + border 2.
-pub const MAXIMUM_CHROME_HEIGHT: f64 = 85.0;
+const SERVICE_ROW_HEIGHT: f64 = 20.0;
+/// Active band 61 + service row 20 + inset 12 + inner padding 10 + border 2.
+pub const MAXIMUM_CHROME_HEIGHT: f64 = 85.0 + SERVICE_ROW_HEIGHT;
 const MIN_FONT_SIZE: f64 = 14.0;
 const MAX_FONT_SIZE: f64 = 20.0;
 pub const DEFAULT_FONT_SIZE: f64 = 16.0;
@@ -25,14 +27,17 @@ pub fn minimum_overlay_height(
     } else {
         DEFAULT_FONT_SIZE
     };
+    // Reserve the narrow service row at every width: native resize gestures
+    // must never shrink the subtitle body before updating a width-based limit.
+    let minimum_height = BASE_MINIMUM_HEIGHT + SERVICE_ROW_HEIGHT;
     // A single tight block fits even at font 20: source 22 + translation 27
-    // + one-pixel gap + one-pixel padding = the 51px body at height 136.
+    // + one-pixel gap + one-pixel padding = the 51px body at height 156.
     // Either single input reserves a metadata row when timestamps are enabled.
     if audio_input.sources().len() == 1 {
         return if show_subtitle_timestamps {
-            ((BASE_MINIMUM_HEIGHT + METADATA_ROW_HEIGHT) / 4.0).ceil() * 4.0
+            ((minimum_height + METADATA_ROW_HEIGHT) / 4.0).ceil() * 4.0
         } else {
-            BASE_MINIMUM_HEIGHT
+            minimum_height
         };
     }
     // Each source keeps its own metadata row, regardless of timestamps.
@@ -48,7 +53,7 @@ pub fn minimum_overlay_height(
     };
     let required = MAXIMUM_CHROME_HEIGHT
         + audio_input.sources().len() as f64 * (row_height + METADATA_ROW_HEIGHT);
-    BASE_MINIMUM_HEIGHT.max((required / 4.0).ceil() * 4.0)
+    minimum_height.max((required / 4.0).ceil() * 4.0)
 }
 
 #[cfg(test)]
@@ -104,7 +109,7 @@ mod tests {
                             font as f64,
                             false,
                         ),
-                        136.0
+                        156.0
                     );
                     assert_eq!(
                         minimum_overlay_height(
@@ -114,7 +119,7 @@ mod tests {
                             font as f64,
                             true,
                         ),
-                        160.0
+                        180.0
                     );
                 }
             }
@@ -130,7 +135,7 @@ mod tests {
             20.0,
             false,
         );
-        assert_eq!(minimum, 244.0);
+        assert_eq!(minimum, 264.0);
         assert!(
             minimum - MAXIMUM_CHROME_HEIGHT
                 >= 2.0 * (METADATA_ROW_HEIGHT + 22.0 + 27.0 + 2.0 + 5.0)

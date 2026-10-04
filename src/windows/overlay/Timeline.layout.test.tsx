@@ -410,7 +410,7 @@ const dualLive = (["system", "microphone"] as const).map(audioSource => ({
 
 it("reproduces the 136px native dual-bilingual clipping and fits both rows after the minimum grows", async () => {
   measuredHeight = 240;
-  viewportHeight = 136 - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  viewportHeight = 136 - 85; // Original 136px contract before the service row.
   const timeline = await render(dualLive, 18);
   const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
   const totalHeight = rows.reduce((height, row) => height + renderedBlockHeight(row), 0);
@@ -479,13 +479,33 @@ it.each([
   { audioInput: "microphone", immersive: false }, { audioInput: "microphone", immersive: true },
 ] as const)("fits $audioInput time and both bilingual lanes at the timestamp minimum (immersive=$immersive)", async ({ audioInput, immersive }) => {
   measuredHeight = 240;
-  // Immersive canvas: two 6px outer insets + 61px control band + 5px gap.
-  const chromeHeight = immersive ? 78 : OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  // Narrow immersive canvas: 12px insets + 81px control/service band + 5px gap.
+  const chromeHeight = immersive ? 98 : OVERLAY_MAXIMUM_CHROME_HEIGHT;
   viewportHeight = minimumOverlayHeight({ audioInput, fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - chromeHeight;
   await act(async () => root.render(<Timeline blocks={[{ ...confirmed, audioSource: audioInput }]} fontSize={20} alignment="center" color="white" displayMode="bilingual" audioInput={audioInput} showTimestamps blendsWithBackground={immersive} />));
   const row = host.querySelector<HTMLElement>("[data-utterance-id]")!;
   expect(row.querySelector(".subtitle-timestamp")).not.toBeNull();
   expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+});
+
+it.each(["system", "microphone", "both"] as const)("keeps both bilingual lanes below the narrow service row for %s", async audioInput => {
+  measuredHeight = 240;
+  // Real narrow canvas budget: control band + separate service row + insets,
+  // padding and borders. Both sources retain timestamp metadata in this case.
+  const chromeHeight = 61 + 20 + 12 + 10 + 2;
+  viewportHeight = minimumOverlayHeight({ audioInput, subtitleDisplayMode: "bilingual", targetLanguage: "zh",
+    fontSize: 20, showSubtitleTimestamps: true }) - chromeHeight;
+  const blocks = (audioInput === "both" ? dualLive : [{ ...live, audioSource: audioInput }])
+    .map(block => ({ ...block, createdAt: 1_700_000_000_000, source: confirmed.source, translation: confirmed.translation }));
+  await act(async () => root.render(<Timeline blocks={blocks} fontSize={20} alignment="center" color="white"
+    displayMode="bilingual" audioInput={audioInput} showTimestamps />));
+  const rows = [...host.querySelectorAll<HTMLElement>("[data-utterance-id]")];
+  expect(rows).toHaveLength(audioInput === "both" ? 2 : 1);
+  expect(rows.reduce((sum, row) => sum + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
+  for (const row of rows) {
+    expect(row.querySelectorAll("[aria-label]:not([role])")).toHaveLength(2);
+    expect(row.querySelector(".subtitle-timestamp")).not.toBeNull();
+  }
 });
 
 it.each([false, true])("keeps retained microphone identity and system time readable at the minimum (time=%s)", async showTimestamps => {
@@ -504,7 +524,7 @@ it.each([false, true])("keeps retained microphone identity and system time reada
 });
 
 
-it.each([244, 245, 250, 260])("fits dual bilingual live rows with dividers at native height %i", async height => {
+it.each([264, 265, 270, 280])("fits dual bilingual live rows with dividers at native height %i", async height => {
   measuredHeight = 240;
   viewportHeight = height - OVERLAY_MAXIMUM_CHROME_HEIGHT;
   const timeline = await render(dualLive, 20, false, true);

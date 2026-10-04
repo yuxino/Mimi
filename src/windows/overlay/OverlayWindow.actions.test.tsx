@@ -38,6 +38,39 @@ afterEach(async () => {
 });
 function button(label: string) { return host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!; }
 
+it("shows the independent translation mark and opens settings with guarded failure feedback", async () => {
+  const showSettings = vi.fn().mockRejectedValueOnce(new Error("synthetic-private-error")).mockResolvedValue(undefined);
+  useStore.setState(state => ({ showSettings, settings: { ...state.settings,
+    profiles: [{ id: "test", name: "Translation profile", provider: "alibabaCloud", textTranslation: "deepL", credentialState: "present" }],
+    activeProfileId: "test",
+  } }));
+  await act(async () => root.render(<OverlayWindow />));
+  const service = host.querySelector<HTMLButtonElement>(".overlay-service__button")!;
+  expect(service.textContent).toBe("DeepL");
+  expect(service.querySelector('[data-provider="deepL"]')).not.toBeNull();
+  expect(service.getAttribute("aria-label")).toContain("Translation profile");
+  await act(async () => service.click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
+  await act(async () => service.click());
+  expect(showSettings).toHaveBeenCalledTimes(2);
+  expect(showSettings).toHaveBeenCalledWith("service");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("keeps the service visible when paused or locked and hides it with immersive or collapsed chrome", async () => {
+  await act(async () => root.render(<OverlayWindow />));
+  for (const change of [{ isPaused: true }, { isActive: false, status: { kind: "error" as const, message: "unavailable" } }]) {
+    await act(async () => useStore.setState(state => ({ session: { ...state.session, ...change } })));
+    expect(host.querySelector(".overlay-service")).not.toBeNull();
+  }
+  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: true } })));
+  expect(host.querySelector(".overlay-service")).not.toBeNull();
+  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: true } })));
+  expect(host.querySelector(".overlay-service")).toBeNull();
+  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false }, session: { ...state.session, isOverlayCollapsed: true } })));
+  expect(host.querySelector(".overlay-service")).toBeNull();
+});
+
 it.each(["system", "microphone", "both"] as const)("keeps %s sources identifiable in the collapsed and paused surface", async audioInput => {
   vi.stubGlobal("innerHeight", 54);
   vi.stubGlobal("innerWidth", 280);

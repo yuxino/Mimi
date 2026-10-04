@@ -3076,33 +3076,34 @@ mod geometry_tests {
             font_size: 18.0,
             ..Preferences::default()
         };
-        assert!(!state.update_minimum_height(minimum_height_for_preferences(&preferences)));
+        assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 156.0));
         preferences.audio_input = crate::core::audio_input::AudioInput::Both;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 232.0));
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 252.0));
         preferences.font_size = 20.0;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 264.0));
         preferences.subtitle_display_mode = crate::core::models::SubtitleDisplayMode::Original;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 196.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        assert_eq!(state.minimum_height, 216.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 264.0));
         preferences.audio_input = crate::core::audio_input::AudioInput::System;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 136.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        assert_eq!(state.minimum_height, 156.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 264.0));
         preferences.show_subtitle_timestamps = true;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 160.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        assert_eq!(state.minimum_height, 180.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 264.0));
         preferences.audio_input = crate::core::audio_input::AudioInput::Microphone;
         assert!(!state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 160.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        assert_eq!(state.minimum_height, 180.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 264.0));
         preferences.show_subtitle_timestamps = false;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 136.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        assert_eq!(state.minimum_height, 156.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 264.0));
     }
 
     #[test]
@@ -3113,13 +3114,13 @@ mod geometry_tests {
             ..Preferences::default()
         };
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 160.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 160.0));
+        assert_eq!(state.minimum_height, 180.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 180.0));
 
         preferences.show_subtitle_timestamps = false;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
-        assert_eq!(state.minimum_height, 136.0);
-        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 160.0));
+        assert_eq!(state.minimum_height, 156.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 180.0));
     }
 
     #[test]

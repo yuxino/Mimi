@@ -24,19 +24,25 @@
   left: 18px;
   right: 18px;
   z-index: 2;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
   height: 14px;
   min-width: 0;
   pointer-events: none;
 }
+.overlay-status-row__leading,
+.overlay-status-row__trailing { display: flex; align-items: center; min-width: 0; height: 14px; gap: 6px; }
+.overlay-status-row__trailing { justify-content: flex-end; }
+.overlay-status-row--narrow { grid-template-columns: minmax(0, 1fr) fit-content(45%); }
+.overlay-status-row--narrow .overlay-service { max-width: 96px; }
 .overlay-status-row .overlay-latency,
 .overlay-status-row .overlay-action-feedback {
   position: static;
   flex: 1;
   min-width: 0;
 }
+.overlay-status-row .overlay-latency { max-width: 100%; }
 .overlay-return-to-live {
   margin-left: auto;
   flex-shrink: 0;

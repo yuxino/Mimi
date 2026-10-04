@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { overlayTopChromeLayout, overlaySessionChromeLayout } from "./overlayChromeLayout";
 
-const CONTROL_ISLAND_RIGHT = 298;
-const CHROME_GAP = 6;
-
 function handleEdges(layout: ReturnType<typeof overlayTopChromeLayout>) {
   return {
     left: layout.dragHandleCenterX - layout.dragHandleWidth / 2,
@@ -35,24 +32,22 @@ describe("overlay top chrome layout", () => {
     expect(idle.showControls).toBe(false);
     expect(idle.topBandHeight).toBe(37);
   });
-  it("keeps the drag handle reachable to the right of the island at 360px", () => {
+  it("reserves a centered drag handle between metadata at 360px", () => {
     const layout = overlayTopChromeLayout(360, true);
     const handle = handleEdges(layout);
 
     expect(layout.showActions).toBe(false);
-    expect(handle.left).toBeGreaterThanOrEqual(
-      CONTROL_ISLAND_RIGHT + CHROME_GAP,
-    );
-    expect(handle.right).toBeLessThanOrEqual(360 - 10 - CHROME_GAP);
+    expect(layout.dragHandleCenterX).toBe(180);
+    expect(handle.left).toBeGreaterThanOrEqual(140);
+    expect(360 - handle.right).toBeGreaterThanOrEqual(140);
   });
 
   it("keeps the compact fallback through widths that cannot fit all actions", () => {
     for (const width of [400, 480]) {
       const layout = overlayTopChromeLayout(width, true);
       expect(layout.showActions).toBe(false);
-      expect(handleEdges(layout).left).toBeGreaterThanOrEqual(
-        CONTROL_ISLAND_RIGHT + CHROME_GAP,
-      );
+      expect(layout.dragHandleCenterX).toBe(width / 2);
+      expect(handleEdges(layout).left).toBeGreaterThanOrEqual(140);
     }
   });
 

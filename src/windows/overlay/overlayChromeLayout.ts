@@ -39,8 +39,8 @@ const MAXIMUM_ACTION_ROW_WIDTH =
  * Places the overlay's three independent top surfaces. When the full chrome
  * fits, the drag affordance stays visually centered on the subtitle window;
  * the native control island must not shift it to the right. Narrow overlays
- * temporarily yield the redundant actions and move the drag target into the
- * remaining reachable strip.
+ * temporarily yield the redundant actions. The handle sits below the native
+ * capsule; the metadata row reserves its center so all three remain reachable.
  */
 export function overlayTopChromeLayout(
   overlayWidth: number,
@@ -74,14 +74,11 @@ export function overlayTopChromeLayout(
     DRAG_HANDLE_MIN_WIDTH,
     DRAG_HANDLE_MAX_WIDTH,
   );
-  const minimumCenter =
-    CONTROL_ISLAND_RIGHT + CHROME_GAP + dragHandleWidth / 2;
-  const maximumCenter = rightBoundary - CHROME_GAP - dragHandleWidth / 2;
 
   return {
-    dragHandleCenterX: showActions
-      ? width / 2
-      : clamp(width / 2, minimumCenter, maximumCenter),
+    // The handle lives below the 30px native capsule, on the metadata row.
+    // Keep it centered so that row can reserve equal space on either side.
+    dragHandleCenterX: width / 2,
     dragHandleWidth,
     showActions,
   };

@@ -30,7 +30,7 @@ const PROVIDER_ASSETS: Record<Exclude<IconProvider, "openAICompatible" | "chatMo
 
 interface ProviderIconProps {
   provider: IconProvider;
-  size?: 32 | 36;
+  size?: 16 | 32 | 36;
   className?: string;
 }
 
