@@ -292,3 +292,69 @@
   翻译可独立调优，但本 prototype 等 final 后才请求，不证明具备
   生产 preview／取消／上下文／重连／原生浮窗表现。尚缺本轮独立听审、
   自然长语音、多轮重复和付费同模型对照；无证据归因于免费档位。
+
+## 2026-10-04：第二轮 Alibaba 真人语音与动画测试
+
+- Revision 分层：FLEURS／ASCEND 直连基线为干净 `a2cf738`；两段动画
+  直连为干净 `6cb8d52`；原生测试为干净 `660827a`，已合并 main 的
+  Gemini 兼容及设置布局修复（#134／#133）。采样率修复提交 `cceb683`。
+  直连复用既有手动 ASR runner，没有修改模型、服务提示词或依赖。
+- 基线：9 段 FLEURS（日／英／中朗读，CC BY 4.0）、6 段 ASCEND
+  （中／英／混用对话，CC BY-SA 4.0），15 个不同输入共 154.68 秒；
+  英语长样本另重复一次，共 16 次直连。均收到 task finish、无失败及
+  重复 final ID。固定版本、许可证、官方 reference、输入 hash 和
+  原始服务记录存于 Git 外的私有 catalog。ASCEND 只覆盖两个说话者
+  的定向片段，不代表自然对话整体表现。
+- 文字差异：官方 reference 尚未独立听审。离线 NFKC 比较 7／15 完全
+  相同，Rust runner 归一化为 6／15；全角数字处理解释其中一处差异。
+  不把字符／单词编辑距离当语义准确率。英语长样本两次均有 reference
+  之外的命题，首次可见于 ASR；没有听审 gold，保留为质量候选问题，
+  不宣称已确认服务幻觉或整体准确度提升。
+- 动画来源：官方东宝的[蜡笔小新预告](https://www.youtube.com/watch?v=duyJXUnB_Yg)
+  与[柯南预告](https://www.youtube.com/watch?v=mcb8DwNWdo0)，各约 30 秒。
+  以浏览器媒体元素的音轨生成私有 Opus 文件，再转为单声道 16 kHz PCM；
+  输入已核对时长、hash 与非零样本。未使用麦克风。自动视频字幕没有
+  当作 gold，版权预告没有加入可分发的 CC corpus 或 Git。
+- 动画直连：日语、同一 Audio 3.0 streaming 模型，两次均正常 finish，
+  各 2 个 final，无重复 ID。首个非空识别从送 PCM 开始分别为
+  419／378 ms，首个 final 为 20,619／20,235 ms；后者受长分段影响，
+  不是首词到浮窗延迟。加上 corpus 重复，共 18 次直连、17 个不同
+  源片段。没有独立对白／译文参考，不计算动画 CER 或语义质量分数；
+  final 数量不等于角色数，也不能证明全部对白正确识别。
+- macOS 修复：SDK 与 Objective-C runtime 都声明
+  `SCStreamConfiguration.sampleRate` 为 `NSInteger`，固定版本 wrapper
+  却用 `f64`。arm64 两类参数寄存器不同，配置对象探针证明旧调用未
+  设置预期值。改用整数 adapter；同一个生产 helper 的无采集回归
+  核对 16／24 kHz。未改 capture filter、实际 ASBD 重采样或依赖源码。
+- 旧失败保留：浏览器单应用与经授权的全部应用两份 sent WAV 均全零；
+  另一案例仅准备、未执行会话。全零不能评估漏识别。元素播放状态和
+  非零音轨不能证明系统输出，浏览器 tab／Space 静音另有一层。后来
+  使用本机 `afplay` 播放已验证的同源 WAV，改变了输出路径，不能据
+  后续成功认定 ABI 缺陷或单应用 filter 是旧全零案例的唯一原因。
+- 原生链路：固定签名 `/Applications/mimi-dev.app`，
+  `app.yuxino.mimi.dev`、准确进程、非 UI-only、干净 build revision
+  已确认。全部应用的系统声音、Alibaba 只读开发预设、日→简体中文、
+  原文＋译文；每段独立启用私有取证并在结束后封存。两份 sent WAV
+  为非零 16 kHz；小新 2 个 ASR final／2 个 accepted pair／2 条历史，
+  柯南 3／3／3，五条均有完整的准确事件身份及请求／返回链。
+  socket send、内容落盘、trace、前端 flush 均未观察到失败、取消或
+  丢失；mic send 为零。socket 完成不等于独立服务接收证明。
+- 时长与显示限制：素材播放分别 30.60／30.87 秒。小新停止控件定位
+  出错后改用新 AX 树定位，sent 取证总长 103.78 秒；柯南为 49.42 秒，
+  均含前后静音，不当成严格 30 秒捕获或可比端到端性能样本。
+  小新有 96 次、柯南 81 次 overlay DOM commit，最终发布已观察到。
+  柯南实际字幕正文窗口的日语／中文及原生截图已检查；小新仅完成
+  设置诊断和 DOM commit 取证。长段落产生 overflow 观测，不能仅凭
+  commit 次数宣称全文可读或全部可见；需另做滚动与长句可见性验收。
+- 质量界限：动画原文、草稿和专名存在待听审候选差异；链路成功不等于
+  翻译准确。没有新增基于个别词语的过滤、替换或提示词补丁。仍缺
+  独立日语听审、逐语义单元 MT 对照、重叠说话标注、长会话及其他
+  平台原生验收；本轮也没有覆盖 in-flight Stop／clear 或重连。
+- 检查与归档：最新合并后 `./scripts/check.sh` 通过，桌面 Rust
+  1,016 passed／2 ignored，前端 95 文件／1,122 tests，共享核心
+  69 单元＋3 契约；JNI 格式／Clippy／编译边界不冒充实际 JVM 测试。
+  私有 catalog `2026-10-04-quality-cycle-2` 保存输入、服务结果、旧失败、
+  播放收据与分析，原生案例留在独立 `quality-cycle-2-anime` workspace，
+  目录 0700、文件 0600。正常退出 dev，恢复临时配置与偏好，释放测试
+  browser Space；保留用户最新 `.env`、Keychain、正式应用及编译缓存。
+  音频、字幕正文、凭据、个人路径和构建产物均未提交，未发布版本。

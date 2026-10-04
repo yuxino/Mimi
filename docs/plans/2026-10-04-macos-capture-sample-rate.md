@@ -26,3 +26,10 @@ or translation quality. The ABI defect is independently established; that
 configuration-only proof does not establish the cause of the zero PCM. Native
 same-source capture must be retested with the signed development app and its
 actual packet format checked separately.
+
+The later clean merged build `660827a` captured nonzero 16 kHz sent PCM from
+verified local playback of two official trailer extracts and completed native
+ASR/translation/history chains. Playback changed from the browser to `afplay`,
+so this is useful post-change integration evidence, not a controlled causal
+explanation of the earlier zero PCM. See the second-cycle entry in
+[integration runs](../development/integration-runs.md) for scope and limits.

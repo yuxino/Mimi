@@ -72,6 +72,13 @@ configuration, source output, capture input, decode and provider evidence. Do no
 reset recording grants or expand an application filter from that observation
 alone.
 
+Browser tab/Space mute is separate from the media element's `muted` and `volume`
+properties. Ego's [changelog](https://www.egolite.ai/changelog) documents muted
+agent-created task tabs. Check the output boundary separately; extracting
+nonzero audio from an element does not prove the browser played it to the OS.
+If using a verified local clip as a playback control, record that source change
+and do not claim a causal before/after fix from it.
+
 ## Know which prompt appeared
 
 For routine macOS API-key testing, the fixed dev launcher supports an explicitly
