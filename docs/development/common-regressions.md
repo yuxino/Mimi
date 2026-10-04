@@ -193,6 +193,11 @@ For shared layout, notification choices and the cross-page review checklist,
 read [UI consistency and feedback](ui-guidelines.md). A fix to one reported
 page must include a review of other instances of the same pattern.
 
+- Subtitle confirmation time follows its own display preference for every audio
+  input. Do not gate it on microphone selection or source-icon visibility. Test
+  system, microphone and both inputs explicitly in normal and immersive views;
+  the Timeline default input can otherwise hide a system-only regression. Keep
+  the Rust/TypeScript minimum-height contract in sync with the metadata row.
 - The multilingual label repair in `dc2143f` did not cover the Windows-only
   output selector. Issue #132 put the selector and idle sentence in one inline
   wrapper: its intrinsic width squeezed Chinese labels into one-character

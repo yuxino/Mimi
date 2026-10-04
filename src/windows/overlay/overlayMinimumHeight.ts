@@ -10,7 +10,7 @@ export function minimumOverlayHeight(settings: Pick<SettingsSnapshot,
   "audioInput" | "subtitleDisplayMode" | "targetLanguage" | "fontSize">
   & Partial<Pick<SettingsSnapshot, "showSubtitleTimestamps">>): number {
   if (settings.audioInput !== "both") {
-    return settings.audioInput === "microphone" && settings.showSubtitleTimestamps
+    return settings.showSubtitleTimestamps
       ? Math.ceil((OVERLAY_BASE_MINIMUM_HEIGHT + METADATA_ROW_HEIGHT) / 4) * 4
       : OVERLAY_BASE_MINIMUM_HEIGHT;
   }

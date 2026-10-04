@@ -59,6 +59,37 @@ it("reports overlay-lock failure without hiding it in an empty catch", async () 
   expect(host.querySelector(".settings-toast")?.textContent).toBe(I18N.settings.settingSaveFailed(I18N.settings.lockPosition));
 });
 
+it.each([false, true])("reports an immersive preference failure in the shared toast and allows a quiet retry (enabled=%s)", async (enabled) => {
+  useStore.setState({
+    settings: { ...initial.settings, subtitleBlendsWithBackground: enabled },
+    session: { ...initial.session, isActive: true, status: { kind: "listening" } },
+  });
+  save.mockRejectedValueOnce(new Error("synthetic-private-immersive-error"));
+  await render();
+  const immersiveSwitch = () => host.querySelector<HTMLButtonElement>(`[aria-label="${I18N.settings.blendBackground}"][role="switch"]`)!;
+  await act(async () => immersiveSwitch().click());
+  expect(save).toHaveBeenLastCalledWith({ subtitleBlendsWithBackground: !enabled });
+  expect(immersiveSwitch().getAttribute("aria-checked")).toBe(String(enabled));
+  expect(host.querySelectorAll(".settings-toast")).toHaveLength(1);
+  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(I18N.settings.settingSaveFailed(I18N.settings.blendBackground));
+  expect(host.textContent).not.toContain("synthetic-private-immersive-error");
+  await act(async () => immersiveSwitch().click());
+  expect(immersiveSwitch().getAttribute("aria-checked")).toBe(String(!enabled));
+  expect(useStore.getState().session.isActive).toBe(true);
+  expect(host.querySelector(".settings-toast")).toBeNull();
+});
+
+it("does not revive a late immersive save failure after category navigation", async () => {
+  useStore.setState({ session: { ...initial.session, isActive: true, status: { kind: "listening" } } });
+  let fail!: (error: Error) => void;
+  save.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await render();
+  await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${I18N.settings.blendBackground}"][role="switch"]`)!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>("#settings-category-general")!.click());
+  await act(async () => fail(new Error("late synthetic immersive error")));
+  expect(host.querySelector(".settings-toast")).toBeNull();
+});
+
 it("preserves the session appearance choice and explains that storage failed", async () => {
   await render();
   await act(async () => host.querySelector<HTMLButtonElement>("#settings-category-general")!.click());

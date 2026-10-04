@@ -507,16 +507,19 @@ it.each(["system", "microphone"] as const)("keeps history identity but only the 
   expect(visibleLanes()).not.toContain(enabled === "system" ? "麦克风合成译文。" : "系统声音合成译文。");
 });
 
-it.each([false, true])("switches microphone metadata without replacing history or resetting time preference (immersive=%s)", async immersive => {
+it.each([false, true])("applies the time switch immediately across input modes without replacing subtitles (immersive=%s)", async immersive => {
   const history = [
     { ...confirmed, audioSource: "system" as const },
     { source: "Microphone confirmed.", translation: "麦克风已确认。", createdAt: 41, audioSource: "microphone" as const },
   ];
-  await mount({ ...empty, history }, "bilingual", { audioInput: "system", showSubtitleTimestamps: true,
+  await mount({ ...empty, history }, "bilingual", { audioInput: "system", showSubtitleTimestamps: false,
     subtitleBlendsWithBackground: immersive, subtitleColor: "#123456", microphoneSubtitleColor: "#abcdef" });
   const rows = [...host.querySelectorAll('[data-utterance-id]')];
   const lanes = visibleLanes();
   const retained = useStore.getState().session.subtitles.history;
+  expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(0);
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, showSubtitleTimestamps: true } })));
+  expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(2);
   for (const audioInput of ["system", "both", "system", "microphone", "system"] as const) {
     await act(() => useStore.setState(state => ({ settings: { ...state.settings, audioInput } })));
     const microphoneEnabled = audioInput !== "system";
@@ -524,15 +527,19 @@ it.each([false, true])("switches microphone metadata without replacing history o
     expect(visibleLanes()).toEqual(lanes);
     expect(useStore.getState().session.subtitles.history).toBe(retained);
     expect(useStore.getState().settings.showSubtitleTimestamps).toBe(true);
-    expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(microphoneEnabled ? 2 : 0);
-    expect(host.querySelectorAll('.subtitle-metadata')).toHaveLength(microphoneEnabled ? 2 : 0);
+    expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(2);
+    expect(host.querySelectorAll('.subtitle-metadata')).toHaveLength(2);
     expect(rows[0].querySelector('.subtitle-audio-source') !== null).toBe(microphoneEnabled);
     expect(rows[1].querySelector('.subtitle-audio-source')?.getAttribute('aria-label')).toBe(I18N.settings.audioInputMicrophone);
     const originalLane = rows[0].querySelector<HTMLElement>(`[aria-label="${confirmed.source}"] > span`)!;
     expect(originalLane.style.color).toBe(microphoneEnabled ? "rgba(18, 52, 86, 0.86)" : "rgba(255, 255, 255, 0.86)");
   }
-  await act(() => useStore.setState(state => ({ settings: { ...state.settings, showSubtitleTimestamps: false, audioInput: "both" } })));
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, showSubtitleTimestamps: false } })));
   expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(0);
+  expect(host.querySelectorAll('.subtitle-metadata')).toHaveLength(0);
+  expect([...host.querySelectorAll('[data-utterance-id]')]).toEqual(rows);
+  expect(visibleLanes()).toEqual(lanes);
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, audioInput: "both" } })));
   expect(host.querySelectorAll('.subtitle-audio-source')).toHaveLength(2);
 });
 

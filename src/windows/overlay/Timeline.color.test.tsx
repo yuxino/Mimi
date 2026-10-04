@@ -118,5 +118,5 @@ it.each(["system", "microphone"] as const)("keeps single-source %s color and neu
   expect(html).toContain("color:rgba(255,255,255,0.86)");
   expect(html).toContain(audioSource === "microphone" ? "color:rgba(171,205,239,1)" : "color:rgba(18,52,86,1)");
   expect(html.includes("subtitle-audio-source")).toBe(audioSource === "microphone");
-  expect(html.includes("subtitle-timestamp")).toBe(audioSource === "microphone");
+  expect(html).toContain("subtitle-timestamp");
 });

@@ -100,11 +100,11 @@ are not unified by the shared-core extraction.
   be copied into a final-only Android flow without a product need.
 
 Desktop subtitle controls support independent system/microphone subtitle colors,
-background transparency, and optional local HH:mm:ss confirmation timestamps while
-the microphone is selected, including Immersive Mode. Settings and the floating
-panel share the same time switch, which remains available in system-only mode.
-System-only mode restores plain subtitles and keeps any retained microphone rows
-identifiable with a small inline icon; the timestamp preference survives input
+background transparency, and optional local HH:mm:ss confirmation timestamps for
+every input, including Immersive Mode. Settings and the floating panel share the
+same time switch, which also takes effect immediately in system-only mode.
+System-only mode hides the system source icon and keeps retained microphone rows
+identifiable with a small icon (inline when time is off); the timestamp preference survives input
 changes. Single-source output keeps its own color and a neutral bilingual original.
 These are desktop presentation preferences; Android does not currently expose
 matching source-color or time controls, or desktop microphone selection.

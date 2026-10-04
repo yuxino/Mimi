@@ -5,6 +5,7 @@ import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { selectSessionErrorMessage, selectSessionStatusKind, useStore } from "../../lib/store";
 import { useSessionAction } from "../overlay/useSessionAction";
 import { SettingsSessionControls } from "./SettingsSessionControls";
+import { useSettingsToast } from "./useSettingsToast";
 import { SettingsSessionActionCoordinator, settingsSessionControlState, type SettingsSessionPendingAction, type SettingsSessionVisibleStatus } from "./settingsSessionControlModel";
 
 export function SubtitleSessionControls({ visible = true, compact = false, onConfigure }: { visible?: boolean; compact?: boolean; onConfigure: () => void }) {
@@ -19,6 +20,7 @@ export function SubtitleSessionControls({ visible = true, compact = false, onCon
   const start = useStore(state => state.start), stop = useStore(state => state.stop);
   const togglePaused = useStore(state => state.togglePaused);
   const saveSettings = useStore(state => state.saveSettings);
+  const { runWithToast } = useSettingsToast();
   const activeProfile = settings.profiles.find(profile => profile.id === settings.activeProfileId);
   const [sessionPendingAction, setSessionPendingAction] = useState<SettingsSessionPendingAction>(null);
   const [sessionActionError, setSessionActionError] = useState(false);
@@ -111,7 +113,10 @@ export function SubtitleSessionControls({ visible = true, compact = false, onCon
             desktopShortcuts={commands}
             onSessionChange={changeSession}
             onResume={resumeSession}
-            onImmersiveChange={(subtitleBlendsWithBackground) => void saveSettings({ subtitleBlendsWithBackground })}
+            onImmersiveChange={(subtitleBlendsWithBackground) => void runWithToast(
+              () => saveSettings({ subtitleBlendsWithBackground }),
+              I18N.settings.settingSaveFailed(I18N.settings.blendBackground),
+            )}
             onConfigure={onConfigure}
   /> : null;
 }

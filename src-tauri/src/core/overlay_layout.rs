@@ -27,9 +27,9 @@ pub fn minimum_overlay_height(
     };
     // A single tight block fits even at font 20: source 22 + translation 27
     // + one-pixel gap + one-pixel padding = the 51px body at height 136.
-    // System-only captions omit metadata without clearing the saved preference.
+    // Either single input reserves a metadata row when timestamps are enabled.
     if audio_input.sources().len() == 1 {
-        return if audio_input == AudioInput::Microphone && show_subtitle_timestamps {
+        return if show_subtitle_timestamps {
             ((BASE_MINIMUM_HEIGHT + METADATA_ROW_HEIGHT) / 4.0).ceil() * 4.0
         } else {
             BASE_MINIMUM_HEIGHT
@@ -114,11 +114,7 @@ mod tests {
                             font as f64,
                             true,
                         ),
-                        if input == AudioInput::Microphone {
-                            160.0
-                        } else {
-                            136.0
-                        }
+                        160.0
                     );
                 }
             }

@@ -663,3 +663,30 @@
   desktop microphone/time controls. Live acoustics/provider quality and native
   Windows/Linux rendering were not repeated. The development app exited normally
   and the installed formal app was reopened idle without replacement.
+
+### 2026-10-05 — Time preference applies to system audio
+
+- Base revision: `97f48d1` plus `fix/subtitle-time-toggle` task changes.
+  User feedback supersedes the microphone-only timestamp condition recorded above:
+  the enabled time switch must display confirmation time for every input.
+- Removed the microphone gate from time rendering and synchronized the native and
+  browser 160px single-input minimum. Source icons, source colors, retained history
+  and live-draft timestamp semantics remain unchanged. Updated zh/en/ja help.
+- The adjacent settings audit covered interim display, dividers, colors, alignment,
+  background opacity, animations, immersive mode and position lock across settings,
+  floating controls, tray and overlay. Fixed one additional confirmed defect:
+  settings-page immersive save failures now use the shared sanitized transient
+  toast; successful saves stay quiet and late failures cannot revive after navigation.
+- `scripts/check.sh` passed: desktop Rust 1,057 passed / 2 ignored, frontend
+  1,244 passed, shared core/JNI, strict lint/typecheck and production build.
+  Focused regressions cover live time toggling, repeated input changes, both overlay
+  modes, retained microphone identity, minimum geometry and failure/retry feedback.
+- Ego Lite rendered all 12 input/mode/time combinations correctly. Actual corner
+  dragging reached 360x160 with confirmation time and both language lanes visible;
+  ordinary and immersive screenshots were inspected. A synthetic save rejection
+  showed one localized toast, retained the old switch value and exposed no raw error.
+- Native UI revalidation is pending: the existing canonical development app had
+  an active microphone session, so it was not restarted without confirmation.
+  Browser fixtures are not native acceptance. No audio capture, credentials,
+  provider requests, transcript retention or recording were initiated by this run;
+  installed applications were not replaced. Windows/Linux UI was not revalidated.

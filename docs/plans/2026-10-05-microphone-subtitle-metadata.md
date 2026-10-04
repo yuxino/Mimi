@@ -18,26 +18,28 @@ compact metadata line follows the subtitle alignment, with no left timestamp
 gutter. At short heights, an icon without a timestamp moves beside the text so
 retained mixed history cannot clip a single-source bilingual row.
 
-Switching to system audio only restores plain system subtitles with no metadata
-row. Retained microphone subtitles keep a small inline microphone icon and their
-source color, so switching does not erase who spoke. Keep source-aware history
+Switching to system audio only hides the system source icon. With time disabled,
+there is no metadata row. Retained microphone subtitles keep a small microphone
+icon and their source color, so switching does not erase who spoke. Keep source-aware history
 projection independent of this presentation choice. Single-source bilingual
 originals remain neutral; merely showing a microphone icon does not tint them.
 The primary subtitle lane uses its own source color even when only one input is
 selected. Hiding a source label never discards its identity or color preference.
 
 Restore an opt-in persisted “Show time” setting in subtitle appearance. Default
-it off, including old settings/snapshots. With microphone selected, display local
-HH:mm:ss on confirmed
-subtitles; the stored timestamp is confirmation time, not speech onset or a media
+it off, including old settings/snapshots. For every selected input, display local
+HH:mm:ss on confirmed subtitles; the stored timestamp is confirmation time,
+not speech onset or a media
 playhead. Do not invent a time for a streaming draft. The overlay control panel
 and settings share the same opt-in, including Immersive Mode. Immersive metadata
 uses near-white text, slightly larger icons/digits and compact black shadows; SVG
 icons receive their own drop-shadow to improve contrast over light footage.
-Keep the switch available in both surfaces for system-only sessions, but hide
-timestamps until the microphone is selected. Preserve the preference through input
-changes; turning the microphone back on restores it. System-only retains its original
-minimum window height even with this preference on. No transcript retention or
+The switch takes effect immediately in both surfaces, including system-only
+sessions. Preserve the preference and visible times through input changes.
+Both single-input modes reserve a metadata row when time is enabled, raising the
+minimum window height from 136px to 160px. This corrects the earlier microphone-only
+condition, which left an enabled switch with no visible effect for system audio.
+With time disabled, retained microphone icons stay inline. No transcript retention or
 recording is enabled by this setting.
 
 The floating control panel exposes both the time preference and pause/resume so

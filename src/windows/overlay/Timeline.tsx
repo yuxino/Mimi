@@ -40,7 +40,7 @@ interface TimelineProps {
   displayMode: SettingsSnapshot["subtitleDisplayMode"];
   /** Optional metadata; hidden by default so sentence boundaries lead. */
   showTimestamps?: boolean;
-  /** Microphone-enabled modes use metadata; system-only keeps old mic identity inline. */
+  /** Source icons follow the selected inputs; old mic identity stays inline when time is off. */
   audioInput?: SettingsSnapshot["audioInput"];
   showSubtitleDividers?: boolean;
   /** Fixed-opacity debugger replay; not a persisted product setting. */
@@ -237,10 +237,10 @@ export const Timeline = memo(function Timeline({
         const blockViewportHeight = viewportHeight === null ? null
           : compact && block.presentation === "live" && liveBlockCount > 1
             ? (viewportHeight - liveSeparatorHeight) / liveBlockCount : viewportHeight;
-        const timestamp = microphoneEnabled && showTimestamps && block.createdAt !== null
+        const timestamp = showTimestamps && block.createdAt !== null
           ? block.createdAt : null;
-        // Switching back to system-only restores plain system subtitles. Old
-        // microphone rows retain a small inline identity without a metadata row.
+        // Source icons follow the input selection; confirmation times follow
+        // their own preference. Retained microphone rows keep their identity.
         const showSource = block.audioSource != null && (microphoneEnabled || block.audioSource === "microphone");
         const inlineSource = showSource && timestamp === null
           && (!microphoneEnabled || blockViewportHeight !== null && blockViewportHeight < 80);

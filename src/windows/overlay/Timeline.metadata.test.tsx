@@ -48,11 +48,11 @@ it.each([false, true])("honors the time opt-in in immersive mode (enabled=%s)", 
   }
 });
 
-it("protects the retained inline microphone icon without adding system-only timestamps", () => {
+it.each([false, true])("protects retained microphone identity in system-only mode (time=%s)", showTimestamps => {
   const html = renderToStaticMarkup(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]}
     fontSize={18} alignment="center" color="white" displayMode="bilingual" audioInput="system"
-    showTimestamps blendsWithBackground />);
+    showTimestamps={showTimestamps} blendsWithBackground />);
   expect(html).toContain("filter:drop-shadow(");
-  expect(html).not.toContain("subtitle-metadata");
-  expect(html).not.toContain("subtitle-timestamp");
+  expect(html.includes("subtitle-metadata")).toBe(showTimestamps);
+  expect(html.includes("subtitle-timestamp")).toBe(showTimestamps);
 });
