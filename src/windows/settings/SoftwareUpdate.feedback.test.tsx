@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N } from "../../lib/i18n";
 import { appOpenReleases } from "../../lib/ipc";
 import { SoftwareUpdate } from "./SoftwareUpdate";
+import { createSoftwareUpdateSession } from "./softwareUpdateSession";
 import { SettingsToastRegion } from "./SettingsToast";
 import { createUpdaterForEnvironment } from "./softwareUpdateEnvironment";
 
@@ -17,7 +18,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
-async function render() { await act(async () => root.render(<><SoftwareUpdate /><SettingsToastRegion /></>)); }
+async function render() { await act(async () => root.render(<><SoftwareUpdate session={createSoftwareUpdateSession()} /><SettingsToastRegion /></>)); }
 async function openReleases() { await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.openReleaseRecovery)!.click()); }
 
 it.each(["portable", "linuxPackage"] as const)("reports %s Releases-open failure as a toast and allows retry", async kind => {
@@ -36,7 +37,7 @@ it("keeps the updater failure actionable while its separate recovery-link failur
   vi.mocked(createUpdaterForEnvironment).mockRejectedValue(new Error("fixture environment failure"));
   vi.mocked(appOpenReleases).mockRejectedValue(new Error("private browser failure"));
   await render(); await openReleases();
-  expect(host.querySelector(".software-update .settings-feedback")?.textContent).toBe(I18N.settings.updateCheckFailed);
+  expect(host.querySelector(".software-update__state")?.textContent).toBe(I18N.settings.updateCheckFailed);
   expect(host.querySelector(".settings-toast")?.textContent).toBe(I18N.settings.openUpdateFailed);
   expect(host.querySelector(".software-update__recovery [role=alert]")).toBeNull();
   expect(host.querySelector<HTMLButtonElement>(".software-update__recovery button")!.disabled).toBe(false);

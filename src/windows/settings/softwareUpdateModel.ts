@@ -1,3 +1,4 @@
+import { RELEASE_NOTES_SOURCE_LIMIT } from "./releaseNotesModel";
 import type {
   UpdateDownloadEvent,
   UpdaterPlatform,
@@ -20,6 +21,7 @@ export type UpdateCheckState =
       update: AvailableUpdate;
       downloadedBytes: number;
       totalBytes?: number;
+      transferComplete?: boolean;
     }
   | { kind: "downloaded"; update: AvailableUpdate }
   | { kind: "installing"; update: AvailableUpdate; platform: UpdaterPlatform }
@@ -85,7 +87,7 @@ export function applyDownloadEvent(
           state.downloadedBytes + Math.max(0, event.data.chunkLength),
       };
     case "Finished":
-      return state;
+      return { ...state, transferComplete: true };
   }
 }
 
@@ -101,7 +103,7 @@ export function downloadPercent(state: UpdateCheckState): number | undefined {
 
 export function normalizeReleaseNotes(notes?: string): string {
   const normalized = notes?.replace(/\r\n/g, "\n").trim() ?? "";
-  return normalized.slice(0, 4_000);
+  return normalized.slice(0, RELEASE_NOTES_SOURCE_LIMIT);
 }
 
 export function isErrorState(

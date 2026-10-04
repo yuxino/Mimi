@@ -84,7 +84,17 @@ export function createFixtureSoftwareUpdater(
 
       return {
         version: updateVersion,
-        notes: options.notes ?? "Signed updater fixture release notes.",
+        notes: options.notes ?? [
+          "## English",
+          "- A **preview update** for checking the interface.",
+          "- Download and installation are simulated; the app is not replaced.",
+          "## 中文",
+          "- 用于检查界面的 **更新预览**。",
+          "- 下载与安装均为模拟操作，不会替换应用。",
+          "## 日本語",
+          "- 画面確認用の **アップデートプレビュー** です。",
+          "- ダウンロードとインストールは模擬操作で、アプリは置き換えません。",
+        ].join("\n"),
         async download(onEvent) {
           onEvent({
             event: "Started",

@@ -1,0 +1,11 @@
+# General-page update experience
+
+Opening General checks the existing signed stable-release updater. A settings-window session owns environment detection, the candidate, and all pending operations. StrictMode/remounts and rapid category changes share one operation; automatic no-update and failed checks have a 15-minute entry cooldown. Manual retry bypasses the cooldown. Available updates and downloaded packages remain available across category changes. There is no polling timer, automatic download, automatic installation, or new relaunch behavior. Windows still delegates its explicit install-and-restart action to the installer. Portable Windows and Linux packages retain their manual Releases path, and failed distribution detection remains fail-closed.
+
+The update row shows the installed version, new version or actionable status, and one primary action. Completion and failure feedback stay beside the version instead of creating another boxed row. Release notes expand into normal page flow without a nested gray scrolling box. Source notes are bounded, then selected by the current Chinese, English or Japanese interface language (English fallback). A small dependency-free renderer supports headings, lists, emphasis and code. It never inserts HTML, loads images or follows note-provided URLs; link labels remain readable and the existing fixed GitHub Releases action provides navigation.
+
+Automatic results never create toasts; manual checks may confirm no update. A transfer Finished event does not imply signature verification: only successful resolution of the native download call enables Install. Failed initialization, checks, downloads, installs and restarts retain explicit retry.
+
+Credential and related composite inputs use a single focus outline around their shared field container. Keyboard focus on an embedded action remains local to that action, preserving visible focus without stacking outlines.
+
+Verification covers session deduplication and retries, download/signature/install boundaries, locale selection and untrusted notes, rendered component states, light/dark and narrow layouts, and signed macOS UI-only fixtures. UI fixtures simulate an update and cannot validate a real downloaded release, OS installation, Windows/Linux runtime, provider access or audio capture.

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mimi software update fixture — simulated browser states</title></head>
+<body><main id="root"></main><script type="module">
+// Real SettingsView and SoftwareUpdate, with a fixture-only session. This page
+// provides browser layout evidence, not native installer/signature evidence.
+// Never create a Tauri bridge or use the production updater here.
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { useStore } from "/src/lib/store.ts";
+import { setStoredUiLanguage } from "/src/lib/i18n.ts";
+import { createSoftwareUpdateSession, softwareUpdateSession } from "/src/windows/settings/softwareUpdateSession.ts";
+import { createFixtureSoftwareUpdater } from "/src/windows/settings/softwareUpdater.ts";
+import { SettingsView } from "/src/windows/settings/SettingsView.tsx";
+import "/src/index.css";
+import "/src/linux.css";
+
+if (window.__TAURI_INTERNALS__) throw new Error("This fixture must run in a browser without a native bridge");
+const root = createRoot(document.getElementById("root"));
+const initial = useStore.getState();
+const never = () => new Promise(() => {});
+let generation = 0;
+let activeSession;
+
+// Test-only delegation avoids adding a fixture API to the product SettingsView.
+// Each keyed mount subscribes to one real session factory instance.
+for (const method of ["getSnapshot", "subscribe", "enter", "performAction", "setRecoveryStatus"]) {
+  softwareUpdateSession[method] = (...args) => activeSession[method](...args);
+}
+
+const longCode = "mimi-universal-signed-update-".repeat(16) + ".app.tar.gz";
+const notes = [
+  "## English", "### English update details", "",
+  "- **Update controls** stay available when switching settings pages.",
+  "- Read *release notes* in your language before downloading.",
+  "- Keep the `mimi.app` filename when reviewing [installation instructions](https://github.com/yuxino-labs/mimi/releases).",
+  "", "```text", longCode, "```", "",
+  "## 中文", "### 中文更新内容", "",
+  "- **版本更新操作**会在切换设置页面后继续保留。",
+  "- 下载前可阅读当前语言的*版本说明*。",
+  "- 查看[安装说明](https://github.com/yuxino-labs/mimi/releases)时，确认文件名为 `mimi.app`。",
+  "", "```text", longCode, "```", "",
+  "## 日本語", "### 日本語の更新内容", "",
+  "- 設定ページを切り替えても、**更新操作**の状態を保持します。",
+  "- ダウンロード前に、使用言語の*リリースノート*を確認できます。",
+  "- [インストール手順](https://github.com/yuxino-labs/mimi/releases)で `mimi.app` のファイル名を確認してください。",
+  "", "```text", longCode, "```",
+].join("\n");
+
+window.applyUpdateCase = async (options = {}) => {
+  const next = { state: "available", language: "zh", theme: "light", notesOpen: false, ...options };
+  const allowed = ["normal", "checking", "noUpdate", "available", "checkError", "downloading", "verifying", "downloaded", "downloadError", "installError", "restartReady", "restartError"];
+  if (!allowed.includes(next.state)) throw new Error("Unknown fixture state");
+  const counters = { checks: 0, downloads: 0, installs: 0, relaunches: 0 };
+  const fixture = createFixtureSoftwareUpdater({
+    currentVersion: "1.5.12",
+    updateVersion: ["normal", "noUpdate"].includes(next.state) ? null : "1.5.13",
+    notes,
+    contentLength: 100 * 1024 * 1024,
+    chunks: [24 * 1024 * 1024, 26 * 1024 * 1024, 50 * 1024 * 1024],
+    checkError: next.state === "checkError" ? new Error("fixture check failure") : undefined,
+    downloadError: next.state === "downloadError" ? new Error("fixture verification failure") : undefined,
+    installError: next.state === "installError" ? new Error("fixture install failure") : undefined,
+    relaunchError: next.state === "restartError" ? new Error("fixture restart failure") : undefined,
+  });
+  const updater = {
+    ...fixture,
+    async check() {
+      counters.checks++;
+      if (next.state === "checking") return never();
+      const candidate = await fixture.check();
+      if (!candidate) return null;
+      return {
+        ...candidate,
+        async download(onEvent) {
+          counters.downloads++;
+          if (["downloading", "verifying"].includes(next.state)) {
+            onEvent({ event: "Started", data: { contentLength: 100 * 1024 * 1024 } });
+            onEvent({ event: "Progress", data: { chunkLength: (next.state === "verifying" ? 100 : 42) * 1024 * 1024 } });
+            if (next.state === "verifying") onEvent({ event: "Finished" });
+            return never();
+          }
+          return candidate.download(onEvent);
+        },
+        async install() { counters.installs++; return candidate.install(); },
+      };
+    },
+    async relaunch() { counters.relaunches++; return fixture.relaunch(); },
+  };
+  activeSession = createSoftwareUpdateSession({ createEnvironment: async () => ({ kind: "installed", updater }) });
+  if (next.state === "checking") void activeSession.enter();
+  else await activeSession.enter();
+  if (["downloading", "verifying", "downloaded", "downloadError", "installError", "restartReady", "restartError"].includes(next.state)) {
+    if (["downloading", "verifying"].includes(next.state)) void activeSession.performAction();
+    else await activeSession.performAction();
+  }
+  if (["installError", "restartReady", "restartError"].includes(next.state)) await activeSession.performAction();
+  if (next.state === "restartError") await activeSession.performAction();
+
+  document.documentElement.dataset.platform = "macos";
+  document.documentElement.lang = next.language === "zh" ? "zh-CN" : next.language;
+  history.replaceState(null, "", "#application-settings");
+  localStorage.setItem("mimi.settings-theme", next.theme);
+  setStoredUiLanguage(next.language);
+  useStore.setState({
+    initializationStatus: "ready",
+    settings: { ...initial.settings, uiLanguage: next.language },
+    session: { ...initial.session },
+  });
+  flushSync(() => root.render(React.createElement(SettingsView, { key: ++generation })));
+  if (next.notesOpen) document.querySelector(".software-update__release")?.setAttribute("open", "");
+  // Normal is the quiet automatic result; noUpdate exercises actual manual
+  // feedback by clicking the real control after its initial render.
+  if (next.state === "noUpdate") {
+    document.querySelector(".software-update-button").click();
+    await activeSession.enter();
+  }
+  // Flush real component effects without relying on foreground animation frames.
+  flushSync(() => root.render(React.createElement(SettingsView, { key: generation })));
+  window.updateFixture = { options: next, counters, session: activeSession };
+  return { state: activeSession.getSnapshot().state.kind, counters };
+};
+await window.applyUpdateCase();
+window.updateFixtureReady = true;
+</script></body></html>

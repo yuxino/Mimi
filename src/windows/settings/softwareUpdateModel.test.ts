@@ -97,7 +97,7 @@ describe("software update interaction", () => {
 
   it("bounds release notes and detects Windows only from a Windows user agent", () => {
     expect(normalizeReleaseNotes(`  a\r\nb  `)).toBe("a\nb");
-    expect(normalizeReleaseNotes("x".repeat(5_000))).toHaveLength(4_000);
+    expect(normalizeReleaseNotes("x".repeat(40_000))).toHaveLength(32_000);
     expect(isWindowsUserAgent("Windows NT 10.0")).toBe(true);
     expect(isWindowsUserAgent("Macintosh; Intel Mac OS X")).toBe(false);
   });

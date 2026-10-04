@@ -566,96 +566,117 @@
   justify-content: flex-end;
 }
 
-.software-update-live-status {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
+/* The update row uses the same neutral type and controls as its neighbors. */
 .software-update {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.software-update__details:empty {
-  display: none;
-}
-
-.software-update__details,
-.software-update__release,
-.software-update__progress {
   display: flex;
   min-width: 0;
   flex-direction: column;
-}
-
-.software-update__details {
   gap: 10px;
-  padding-top: 2px;
 }
 
-.software-update__release {
-  gap: 5px;
-  padding: 12px;
-  border: 1px solid var(--settings-border);
-  border-radius: 10px;
-  background: var(--settings-selection-soft);
+.software-update__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 18px;
+  flex-wrap: wrap;
 }
 
-.software-update__version,
-.software-update__notes-label,
-.software-update__notes {
-  margin: 0;
+.software-update__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 180px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.software-update__version,
-.software-update__notes-label {
-  color: var(--settings-text);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.software-update__notes-label {
-  margin-top: 4px;
-  color: var(--settings-text-muted);
-  font-size: 11px;
-}
-
-.software-update__notes {
-  max-height: 132px;
-  overflow: auto;
+.software-update__current {
   color: var(--settings-text-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.software-update__actions {
+  display: flex;
+  max-width: 100%;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.software-update-button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.software-update__status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--settings-text-muted);
   font-size: 12px;
   line-height: 1.5;
-  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+
+.software-update__status:empty { display: none; }
+.software-update__status--error .software-update__state { color: var(--settings-danger); }
+.software-update__version { color: var(--settings-text); font-weight: 590; }
+.software-update__state { display: flex; align-items: baseline; gap: 5px; }
+.software-update__state svg { flex-shrink: 0; align-self: center; }
 
 .software-update__progress {
-  gap: 6px;
-  color: var(--settings-text-faint);
-  font-size: 11px;
-}
-
-.software-update__progress progress {
   width: 100%;
-  height: 6px;
+  height: 4px;
   accent-color: var(--settings-text);
 }
 
-.software-update__recovery {
+.software-update__details {
+  min-width: 0;
+  border-top: 1px solid var(--settings-border);
+  padding-top: 6px;
+}
+
+.software-update__release > summary {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: var(--settings-text);
-  font-size: 11px;
+  gap: 5px;
+  width: fit-content;
+  padding: 4px 0;
+  color: var(--settings-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  list-style: none;
 }
+
+.software-update__release > summary::-webkit-details-marker { display: none; }
+.software-update__release[open] > summary svg { transform: rotate(90deg); }
+.software-update__release > summary:hover { color: var(--settings-text); }
+.software-update__release > summary:focus-visible { outline: 2px solid var(--settings-text); outline-offset: 3px; border-radius: 3px; }
+
+.software-update__notes {
+  padding: 6px 0 2px;
+  color: var(--settings-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.software-update__notes p,
+.software-update__notes ul,
+.software-update__notes ol { margin: 0 0 10px; }
+.software-update__notes ul,
+.software-update__notes ol { padding-left: 19px; }
+.software-update__notes ul { list-style: disc; }
+.software-update__notes ol { list-style: decimal; }
+.software-update__notes li + li { margin-top: 5px; }
+.software-update__notes h3,
+.software-update__notes h4 { margin: 12px 0 5px; color: var(--settings-text); font-size: 12px; font-weight: 600; }
+.software-update__notes strong { font-weight: 600; color: var(--settings-text); }
+.software-update__notes code { font-size: 0.95em; }
+.software-update__notes pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.software-update__release-link { margin-left: auto; }
+.software-update__release .software-update__release-link { display: flex; }
+.software-update__recovery { display: flex; justify-content: flex-end; }
 
 .settings-select-wrap {
   position: relative;
@@ -2706,11 +2727,20 @@
   font-size: 13px;
 }
 .config-input-group { display: grid; min-width: 0; gap: 6px; }
-.config-input { display: flex; align-items: center; min-width: 0; position: relative; }
+.config-input { display: flex; align-items: center; min-width: 0; position: relative; border-radius: 9px; }
 .config-input > input { width: 100%; min-width: 0; padding-right: 42px; }
 .config-input__paste { position: absolute; right: 9px; display: flex; padding: 4px; border: 0; background: transparent; color: var(--settings-text-muted); cursor: pointer; }
 .config-input__paste:disabled { opacity: .4; cursor: default; }
 .config-input__paste:focus-visible { outline: 2px solid var(--settings-text-muted); outline-offset: 2px; border-radius: 4px; }
+/* A compound field has one focus outline; its action buttons keep their own. */
+.settings-console .config-input:has(> input:focus-visible) {
+  outline: 2px solid var(--settings-text);
+  outline-offset: -1px;
+}
+.settings-console .config-input > input:focus-visible { outline: none; }
+@media (forced-colors: active) {
+  .settings-console .config-input:has(> input:focus-visible) { outline-color: Highlight; }
+}
 .service-stage .settings-field > .config-input-group { grid-column: 2; }
 .stored-credential-reveal > .stored-credential-reveal__toggle {
   display: inline-flex;
