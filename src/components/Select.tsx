@@ -25,6 +25,8 @@ interface SelectProps {
   /** Enables an explicit filter input; callers supply localized copy. */
   searchLabel?: string;
   emptyMessage?: string;
+  /** Visible progress for choices loaded after opening a searchable picker. */
+  loadingMessage?: string;
   /** Label for a saved selection that is not in the current results. */
   valueLabel?: string;
   /** Decorative fallback for a saved selection not in the current results. */
@@ -35,7 +37,7 @@ interface SelectProps {
 }
 
 /** One app-styled picker for Settings, the subtitle controls, and the tray. */
-export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, valueLabel, valueIcon, onOpen, onChange }: SelectProps) {
+export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, loadingMessage, valueLabel, valueIcon, onOpen, onChange }: SelectProps) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -57,7 +59,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
   const [cursor, setCursor] = useState({ selection: value, query: "", index: 0 });
   // A shortcut/another window can change the value while the menu is open.
   const active = visible.length === 0 ? -1 : Math.min(visible.length - 1,
-    cursor.selection === value && cursor.query === query ? cursor.index : Math.max(0, selectedVisible));
+    cursor.selection === value && cursor.query === query && cursor.index >= 0 ? cursor.index : Math.max(0, selectedVisible));
   const open = popup !== null && !disabled;
 
   function setActive(index: number | ((previous: number) => number), reveal = true) {
@@ -65,7 +67,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     setCursor(previous => ({
       selection: value,
       query,
-      index: typeof index === "number" ? index : index(previous.selection === value && previous.query === query ? previous.index : Math.max(0, selectedVisible)),
+      index: typeof index === "number" ? index : index(previous.selection === value && previous.query === query && previous.index >= 0 ? previous.index : Math.max(0, selectedVisible)),
     }));
   }
 
@@ -106,7 +108,8 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     });
     setQuery("");
     revealActive.current = true;
-    setCursor({ selection: value, query: "", index: Math.max(0, selected) });
+    // Follow the saved choice while lazy options arrive, until the user navigates.
+    setCursor({ selection: value, query: "", index: -1 });
     typeahead.current = { text: "", at: 0 };
     onOpen?.();
   }
@@ -248,9 +251,10 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
               aria-autocomplete="list" aria-haspopup="listbox" aria-controls={id} aria-activedescendant={activeId}
               autoComplete="off" spellCheck={false} value={query}
               onChange={event => updateQuery(event.currentTarget.value)} onKeyDown={onKeyDown} />
-            <div ref={list} id={id} className="mimi-select__options" role="listbox" aria-label={label}>
+            {loadingMessage && <div className="mimi-select__empty" role="status">{loadingMessage}</div>}
+            <div ref={list} id={id} className="mimi-select__options" role="listbox" aria-label={label} aria-busy={loadingMessage ? true : undefined}>
               {rows}
-              {visible.length === 0 && <div className="mimi-select__empty" role="status">{emptyMessage}</div>}
+              {visible.length === 0 && !loadingMessage && <div className="mimi-select__empty" role="status">{emptyMessage}</div>}
             </div>
           </> : rows}
         </div>, document.body,

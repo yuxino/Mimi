@@ -299,6 +299,7 @@ export function OverlayWindow() {
               <Timeline
                 blocks={blocks}
                 fontSize={settings.fontSize}
+              fontFamily={settings.subtitleFontFamily}
                 color={settings.subtitleColor}
                 alignment={settings.subtitleAlignment}
                 displayMode={settings.subtitleDisplayMode}
@@ -486,6 +487,7 @@ export function OverlayWindow() {
             <Timeline
               blocks={blocks}
               fontSize={settings.fontSize}
+              fontFamily={settings.subtitleFontFamily}
               color={settings.subtitleColor}
               alignment={settings.subtitleAlignment}
               displayMode={settings.subtitleDisplayMode}

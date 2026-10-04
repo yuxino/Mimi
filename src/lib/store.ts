@@ -113,6 +113,7 @@ const INITIAL_SETTINGS: SettingsSnapshot = {
   targetLanguage: "zh",
   translationMode: "turbo",
   fontSize: 16,
+  subtitleFontFamily: "",
   subtitleBackgroundOpacity: 80,
   subtitleColor: "white",
   microphoneSubtitleColor: "yellow",

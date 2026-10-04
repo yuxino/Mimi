@@ -113,6 +113,8 @@ export interface SettingsSnapshot {
   translationMode: TranslationMode;
   /** 14..20 */
   fontSize: number;
+  /** Empty or omitted uses the language-aware system font stack. */
+  subtitleFontFamily?: string;
   /** 0..100, background only. */
   subtitleBackgroundOpacity: number;
   subtitleColor: SubtitleColor;
@@ -166,6 +168,7 @@ export interface SettingsDraft {
   targetLanguage?: TargetLanguage;
   translationMode?: TranslationMode;
   fontSize?: number;
+  subtitleFontFamily?: string;
   subtitleBackgroundOpacity?: number;
   subtitleColor?: SubtitleColor;
   microphoneSubtitleColor?: SubtitleColor;

@@ -92,6 +92,7 @@
   user-select: none;
 }
 .mimi-select__option[data-active="true"] { background: var(--select-hover); }
+.mimi-select__option .mimi-select__label { overflow-wrap: anywhere; }
 .mimi-select__option > svg { flex-shrink: 0; font-size: 12px; }
 .mimi-select__menu--searchable {
   display: flex;

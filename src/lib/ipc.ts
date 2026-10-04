@@ -81,6 +81,10 @@ export function sessionSwitchTranslationMode(
   return invoke("session_switch_translation_mode", { mode });
 }
 
+export function installedFontFamilies(): Promise<string[]> {
+  return isTauri ? invoke<string[]>("installed_font_families") : Promise.resolve([]);
+}
+
 export function settingsGet(): Promise<SettingsSnapshot> {
   return invoke<SettingsSnapshot>("settings_get");
 }

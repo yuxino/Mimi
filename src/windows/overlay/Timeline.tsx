@@ -1,6 +1,7 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { hexToRgba } from "../../lib/types";
 import { I18N } from "../../lib/i18n";
+import { subtitleFontFamily } from "../../lib/subtitleFont";
 import { subtitleColorHex } from "../../lib/subtitleColor";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
@@ -32,6 +33,7 @@ const METADATA_HEIGHT = 22;
 interface TimelineProps {
   blocks: SubtitleBlock[];
   fontSize: number;
+  fontFamily?: string;
   alignment: SubtitleAlignment;
   color: SubtitleColor;
   /** Lane hierarchy follows the display mode: bilingual keeps the recognized
@@ -61,6 +63,7 @@ interface TimelineProps {
 export const Timeline = memo(function Timeline({
   blocks,
   fontSize,
+  fontFamily,
   alignment,
   color,
   displayMode,
@@ -138,7 +141,7 @@ export const Timeline = memo(function Timeline({
     // effect in the same render. Real subsequent text still follows the tail.
     if (modeChangedRef.current) { modeChangedRef.current = false; return; }
     scroll.contentChanged(element, newBlock && motionEnabled ? "smooth" : "instant");
-  }, [blocks.length, lastTextLength, fontSize, alignment, blendsWithBackground, motionEnabled, displayMode, scroll]);
+  }, [blocks.length, lastTextLength, fontSize, fontFamily, alignment, blendsWithBackground, motionEnabled, displayMode, scroll]);
 
   useLayoutEffect(() => {
     const element = containerRef.current;
@@ -319,6 +322,7 @@ export const Timeline = memo(function Timeline({
                   text={block.source}
                   kind="source"
                   lines={compact && budget.source > 0 ? budget.source : null}
+                  fontFamily={subtitleFontFamily(fontFamily)}
                   fontSize={fontSize}
                   alignment={alignment}
                   displayMode={displayMode}
@@ -337,6 +341,7 @@ export const Timeline = memo(function Timeline({
                   text={block.translation}
                   kind="translation"
                   lines={compact && budget.translation > 0 ? budget.translation : null}
+                  fontFamily={subtitleFontFamily(fontFamily)}
                   fontSize={fontSize}
                   alignment={alignment}
                   displayMode={displayMode}
@@ -378,6 +383,7 @@ interface LaneProps {
    * confirmed sentence when the user is reading history. */
   lines: number | null;
   fontSize: number;
+  fontFamily: string;
   alignment: SubtitleAlignment;
   displayMode: SettingsSnapshot["subtitleDisplayMode"];
   color: SubtitleColor;
@@ -397,6 +403,7 @@ function Lane({
   kind,
   lines,
   fontSize,
+  fontFamily,
   alignment,
   displayMode,
   color,
@@ -418,6 +425,7 @@ function Lane({
   const lineHeightPx = Math.ceil(laneFontSize * SUBTITLE_LINE_HEIGHT);
   const textStyle = {
     fontSize: laneFontSize,
+    fontFamily,
     fontWeight: isReference ? 400 : 500,
     color: hexToRgba(isReference && !tintReference ? "#FFFFFF" : subtitleColorHex(color), isReference && !keepTextOpaque ? 0.86 : 1),
     lineHeight: `${lineHeightPx}px`,
@@ -466,6 +474,7 @@ interface CompactLaneProps {
   onMeasure?: (height: number) => void;
   textStyle: {
     fontSize: number;
+    fontFamily: string;
     fontWeight: number;
     color: string;
     lineHeight: string;

@@ -20,6 +20,7 @@ use crate::core::network_proxy::ProxyConfig;
 use crate::core::provider::{
     ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation, DEFAULT_ALIBABA_PROFILE_ID,
 };
+use crate::core::subtitle_font::normalize_family_name;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 #[cfg(unix)]
@@ -188,6 +189,8 @@ pub struct Preferences {
     pub target_language: TargetLanguage,
     pub translation_mode: TranslationMode,
     pub font_size: f64,
+    /// Empty follows the system font stack; otherwise one installed family name.
+    pub subtitle_font_family: String,
     /// Background opacity in percent; independent of subtitle text.
     pub subtitle_background_opacity: u8,
     pub subtitle_color: SubtitleColor,
@@ -227,6 +230,7 @@ impl Default for Preferences {
             target_language: TargetLanguage::SimplifiedChinese,
             translation_mode: TranslationMode::Turbo,
             font_size: DEFAULT_FONT_SIZE,
+            subtitle_font_family: String::new(),
             subtitle_background_opacity: 80,
             subtitle_color: SubtitleColor::White,
             microphone_subtitle_color: SubtitleColor::Yellow,
@@ -804,6 +808,9 @@ impl SettingsStore {
             .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
         let prefs = Preferences {
             font_size,
+            subtitle_font_family: normalize_family_name(&prefs.subtitle_font_family)
+                .unwrap_or_default()
+                .to_owned(),
             subtitle_background_opacity: prefs.subtitle_background_opacity.min(100),
             ..prefs
         };
@@ -953,6 +960,9 @@ impl SettingsStore {
             .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
         *store.prefs.lock().unwrap() = Preferences {
             font_size,
+            subtitle_font_family: normalize_family_name(&prefs.subtitle_font_family)
+                .unwrap_or_default()
+                .to_owned(),
             subtitle_background_opacity: prefs.subtitle_background_opacity.min(100),
             ..prefs
         };
@@ -1003,6 +1013,7 @@ impl SettingsStore {
             .font_size
             .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
         next.subtitle_background_opacity = next.subtitle_background_opacity.min(100);
+        next.subtitle_font_family = normalize_family_name(&next.subtitle_font_family)?.to_owned();
         next.network_proxy = next
             .network_proxy
             .validate()
@@ -6736,6 +6747,7 @@ mod tests {
                 preferences.pulse_animation = Some(false);
                 preferences.subtitle_animation = Some(true);
                 preferences.ui_language = Some("ja".into());
+                preferences.subtitle_font_family = "Noto Sans CJK JP".into();
                 preferences.windows_audio_source = "safe-fixture-endpoint".into();
             })
             .unwrap();
@@ -7474,6 +7486,7 @@ mod tests {
     fn legacy_preferences_default_to_centered_card_presentation() {
         let preferences: Preferences = serde_json::from_str("{}").unwrap();
 
+        assert!(preferences.subtitle_font_family.is_empty());
         assert_eq!(preferences.subtitle_background_opacity, 80);
         assert_eq!(preferences.subtitle_color, SubtitleColor::White);
         assert_eq!(preferences.subtitle_alignment, SubtitleAlignment::Center);
@@ -7579,6 +7592,92 @@ mod tests {
             assert_eq!(prefs.font_size, 19.0);
             assert_eq!(prefs.pulse_animation, Some(false));
             assert_eq!(prefs.subtitle_animation, Some(true));
+        }
+        assert!(fake.state.lock().unwrap().loads.is_empty());
+    }
+
+    #[test]
+    fn subtitle_font_family_persists_and_resets_without_secret_access() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let original_catalog = store.profile_catalog().unwrap();
+        for (input, expected) in [
+            ("  思源黑体  ", "思源黑体"),
+            (
+                "A Font Removed From This Computer",
+                "A Font Removed From This Computer",
+            ),
+            ("", ""),
+        ] {
+            store
+                .save_preferences_for_active_profile(|prefs| {
+                    prefs.subtitle_font_family = input.into();
+                })
+                .unwrap();
+            store
+                .save_preferences_for_active_profile(|prefs| prefs.font_size = 19.0)
+                .unwrap();
+            let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(reloaded.preferences().subtitle_font_family, expected);
+            assert_eq!(reloaded.preferences().font_size, 19.0);
+            assert_eq!(reloaded.profile_catalog().unwrap(), original_catalog);
+        }
+        let state = fake.state.lock().unwrap();
+        assert!(state.loads.is_empty());
+        assert!(state.values.is_empty());
+    }
+
+    #[test]
+    fn subtitle_font_invalid_save_rolls_back_all_preferences_and_disk() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        store
+            .save_preferences(|prefs| prefs.subtitle_font_family = "Noto Sans".into())
+            .unwrap();
+        let before = store.preferences();
+        let bytes = std::fs::read(directory.path().join("preferences.json")).unwrap();
+        for invalid in ["Font\nName".to_owned(), "字".repeat(257)] {
+            assert_eq!(
+                store.save_preferences_for_active_profile(|prefs| {
+                    prefs.font_size = 20.0;
+                    prefs.subtitle_font_family = invalid;
+                }),
+                Err(crate::core::subtitle_font::INVALID_FAMILY_NAME.into())
+            );
+            assert_eq!(store.preferences(), before);
+            assert_eq!(
+                std::fs::read(directory.path().join("preferences.json")).unwrap(),
+                bytes
+            );
+        }
+        assert!(fake.state.lock().unwrap().loads.is_empty());
+    }
+
+    #[test]
+    fn subtitle_font_load_sanitizes_invalid_names_without_resetting_other_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        for (input, expected) in [
+            ("  Noto Sans  ".to_owned(), "Noto Sans"),
+            ("Font\u{7f}".to_owned(), ""),
+            ("字".repeat(257), ""),
+        ] {
+            std::fs::write(
+                directory.path().join("preferences.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "subtitle_font_family": input,
+                    "font_size": 19,
+                    "show_in_dock": false
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(store.preferences().subtitle_font_family, expected);
+            assert_eq!(store.preferences().font_size, 19.0);
+            assert!(!store.preferences().show_in_dock);
         }
         assert!(fake.state.lock().unwrap().loads.is_empty());
     }

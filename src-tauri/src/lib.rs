@@ -20,6 +20,7 @@ mod development_content;
 mod development_content;
 #[cfg(any(test, feature = "development-debugger"))]
 mod development_debugger;
+mod fonts;
 #[cfg(target_os = "linux")]
 mod linux_startup;
 #[cfg(any(target_os = "macos", test))]
@@ -343,6 +344,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::settings_get,
+            fonts::installed_font_families,
             commands::windows_audio_status,
             commands::audio_census,
             commands::support_diagnostics,

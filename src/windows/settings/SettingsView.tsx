@@ -9,6 +9,8 @@ import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
 import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
 import { subtitleBackgroundColor, subtitleColorHex } from "../../lib/subtitleColor";
 import type { SubtitleDisplayMode } from "../../lib/types";
+import { subtitleFontFamily } from "../../lib/subtitleFont";
+import { SubtitleFontControl } from "./SubtitleFontControl";
 import { SubtitleColorControl } from "./SubtitleColorControl";
 import { ServiceProfiles } from "./ServiceProfiles";
 import { SupportDiagnostics } from "./SupportDiagnostics";
@@ -265,7 +267,7 @@ export function SettingsView() {
                       </div>
                       <div
                         className="subtitle-preview__text"
-                        style={{ fontSize: settings.fontSize, color: subtitleColorHex(settings.subtitleColor),
+                        style={{ fontSize: settings.fontSize, fontFamily: subtitleFontFamily(settings.subtitleFontFamily), color: subtitleColorHex(settings.subtitleColor),
                           background: settings.subtitleBlendsWithBackground ? "transparent" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity) }}
                       >
                         {settings.subtitleDisplayMode !== "translation" && (
@@ -285,6 +287,8 @@ export function SettingsView() {
                           onChange={(value) => void savePreference({ subtitleDisplayMode: value as SubtitleDisplayMode }, I18N.settings.subtitleDisplay)}
                         />
                       </SettingsRow>
+                      <SubtitleFontControl value={settings.subtitleFontFamily ?? ""}
+                        onChange={subtitleFontFamily => savePreference({ subtitleFontFamily }, I18N.settings.subtitleFont)} />
                       <SettingsRow label={I18N.settings.showIntermediateSubtitles} description={I18N.settings.showIntermediateSubtitlesHelp}>
                         <Switch
                           checked={settings.showIntermediateSubtitles !== false}

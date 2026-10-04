@@ -145,6 +145,7 @@ pub struct SettingsSnapshotPayload {
     pub target_language: TargetLanguage,
     pub translation_mode: TranslationMode,
     pub font_size: f64,
+    pub subtitle_font_family: String,
     pub subtitle_background_opacity: u8,
     pub subtitle_color: SubtitleColor,
     pub microphone_subtitle_color: SubtitleColor,
@@ -523,6 +524,22 @@ mod tests {
     }
 
     #[test]
+    fn subtitle_font_choice_is_optional_and_allowed_during_an_active_session() {
+        assert!(SettingsDraft::default().subtitle_font_family.is_none());
+        for family in ["", "Noto Sans CJK SC", "思源黑体"] {
+            let draft: SettingsDraft =
+                serde_json::from_value(serde_json::json!({"subtitleFontFamily": family})).unwrap();
+            assert_eq!(draft.subtitle_font_family.as_deref(), Some(family));
+            assert!(ensure_settings_draft_allowed(&draft, true).is_ok());
+            assert!(ensure_settings_draft_window_allowed("settings", &draft).is_ok());
+        }
+        assert!(serde_json::from_value::<SettingsDraft>(
+            serde_json::json!({"subtitleFontFamily": ["Font", "Fallback"]})
+        )
+        .is_err());
+    }
+
+    #[test]
     fn dock_access_does_not_widen_settings_only_preferences() {
         for field in [
             serde_json::json!({"retainSessionHistory": false}),
@@ -564,6 +581,7 @@ mod tests {
             target_language: TargetLanguage::SimplifiedChinese,
             translation_mode: TranslationMode::HighQuality,
             font_size: 18.0,
+            subtitle_font_family: "Noto Sans CJK SC".into(),
             subtitle_background_opacity: 80,
             subtitle_color: SubtitleColor::White,
             microphone_subtitle_color: SubtitleColor::Yellow,
@@ -602,6 +620,7 @@ mod tests {
             assert!(json["profiles"][0].get(secret_field).is_none());
         }
         assert_eq!(json["subtitleAlignment"], "center");
+        assert_eq!(json["subtitleFontFamily"], "Noto Sans CJK SC");
         assert_eq!(json["subtitleBackgroundOpacity"], 80);
         assert_eq!(json["subtitleColor"], "white");
         assert_eq!(json["subtitleDisplayMode"], "translation");
@@ -746,6 +765,7 @@ mod tests {
 
         let visual = SettingsDraft {
             font_size: Some(19.0),
+            subtitle_font_family: Some("Noto Sans CJK SC".into()),
             subtitle_background_opacity: Some(65),
             subtitle_color: Some(SubtitleColor::Custom([0x12, 0x34, 0x56])),
             subtitle_alignment: Some(SubtitleAlignment::Right),
@@ -869,6 +889,7 @@ impl SettingsSnapshotPayload {
                     target_language: prefs.target_language,
                     translation_mode: prefs.translation_mode,
                     font_size: prefs.font_size,
+                    subtitle_font_family: prefs.subtitle_font_family,
                     subtitle_background_opacity: prefs.subtitle_background_opacity,
                     subtitle_color: prefs.subtitle_color,
                     microphone_subtitle_color: prefs.microphone_subtitle_color,
@@ -919,6 +940,7 @@ impl SettingsSnapshotPayload {
             target_language: prefs.target_language,
             translation_mode: prefs.translation_mode,
             font_size: prefs.font_size,
+            subtitle_font_family: prefs.subtitle_font_family,
             subtitle_background_opacity: prefs.subtitle_background_opacity,
             subtitle_color: prefs.subtitle_color,
             microphone_subtitle_color: prefs.microphone_subtitle_color,
@@ -954,6 +976,7 @@ pub struct SettingsDraft {
     pub target_language: Option<TargetLanguage>,
     pub translation_mode: Option<TranslationMode>,
     pub font_size: Option<f64>,
+    pub subtitle_font_family: Option<String>,
     pub subtitle_background_opacity: Option<u8>,
     pub subtitle_color: Option<SubtitleColor>,
     pub microphone_subtitle_color: Option<SubtitleColor>,
@@ -1143,6 +1166,7 @@ fn apply_settings_draft_guarded(
         || draft.target_language.is_some()
         || draft.translation_mode.is_some()
         || draft.font_size.is_some()
+        || draft.subtitle_font_family.is_some()
         || draft.subtitle_background_opacity.is_some()
         || draft.subtitle_color.is_some()
         || draft.microphone_subtitle_color.is_some()
@@ -1216,6 +1240,9 @@ fn apply_settings_draft_guarded(
             }
             if let Some(font_size) = draft.font_size {
                 prefs.font_size = font_size;
+            }
+            if let Some(family) = &draft.subtitle_font_family {
+                prefs.subtitle_font_family = family.clone();
             }
             if let Some(mode) = draft.subtitle_display_mode {
                 prefs.subtitle_display_mode = mode;
