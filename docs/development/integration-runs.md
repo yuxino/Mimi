@@ -727,3 +727,42 @@
   Browser fixtures are not native acceptance. No audio capture, credentials,
   provider requests, transcript retention or recording were initiated by this run;
   installed applications were not replaced. Windows/Linux UI was not revalidated.
+
+### 2026-10-05 — Editable configuration and independent translation names
+
+- Implementation revision: `e7a0b7b` (including `9a55349` independent names and
+  `ea56c46` saved-field integration). Desktop configuration changes only;
+  provider wire protocols, capture and shared subtitle behavior are unchanged.
+- `scripts/check.sh` passed: desktop Rust 1,075 passed / 2 ignored, frontend
+  1,365 passed across 101 files, shared core/JNI, strict lint/typecheck, production
+  build and development-mode launcher regressions.
+- Audited every product text-entry call site: settings contains persistent
+  configuration; tray/overlay share transient searchable pickers. All persistent
+  nonsecret text fields now support full wrapping edits. Search, color, range,
+  replay-number and diagnostic report controls retain their existing behavior.
+  Saved nonsecret metadata is an actual value; secrets use presence-driven masks
+  and explicit local reveal. Optional absent keys remain honestly empty.
+- Browser synthetic fixtures passed 690 existing settings layout cases before
+  the expansion change, then 36 targeted expansion cases across Chinese, English,
+  Japanese, light/dark and 520/952px widths. The targeted run verifies actual long
+  values, single textbox/focus, wrapping, collapse retention and secret exclusion.
+  A 760px screenshot was inspected. These are renderer checks, not native Windows
+  or Linux evidence.
+- Signed canonical macOS development app verified real saved endpoint/model
+  loading, masked saved-key presence, genuinely empty optional keys, full-address
+  expansion, editing an unsaved synthetic address, collapse retention, an enabled
+  draft-check action and cancellation restoring the saved address. No provider
+  request, audio capture, transcript retention or recording was started.
+- Real macOS mouse expansion of an invalid unsaved proxy draft exposed premature
+  blur validation. Shared focus handling was repaired and a WebKit-style null
+  related-target regression added. The final signed bundle was built, but final
+  native replay was interrupted by another development-app instance/relaunch.
+  The user chose to finish code/automated checks without coordinating or taking
+  over other active development sessions. Final native proxy replay, actual
+  provider checks and native name-save/relaunch remain unverified.
+- A normal dev launch was observed with a residual UI-test flag; the precise
+  relaunch source was not proven. The launcher now explicitly sets its mode and
+  disables automatic start for live mode. A subsequent ordinary signed launch
+  loaded real profiles. The formal app was quit with explicit user permission
+  and its installed bundle was not replaced. Temporary editor drafts were
+  cancelled/restored before releasing the development app to other work.
