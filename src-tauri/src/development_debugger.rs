@@ -564,7 +564,7 @@ pub fn record_snapshot(
     let preferences = settings.preferences();
     let mut bytes = match serde_json::to_vec(
         &serde_json::json!({"elapsedMs":case.epoch.elapsed().as_millis() as u64,"snapshot":snapshot,"projectionSettings":{
-            "sourceLanguage":preferences.source_language,"targetLanguage":preferences.target_language,"subtitleDisplayMode":preferences.subtitle_display_mode,"showIntermediateSubtitles":preferences.show_intermediate_subtitles,"showSubtitleTimestamps":preferences.show_subtitle_timestamps,"fontSize":preferences.font_size,
+            "audioInput":preferences.audio_input,"sourceLanguage":preferences.source_language,"targetLanguage":preferences.target_language,"subtitleDisplayMode":preferences.subtitle_display_mode,"showIntermediateSubtitles":preferences.show_intermediate_subtitles,"showSubtitleTimestamps":preferences.show_subtitle_timestamps,"fontSize":preferences.font_size,
             "subtitleAlignment":preferences.subtitle_alignment,"subtitleColor":preferences.subtitle_color,"microphoneSubtitleColor":preferences.microphone_subtitle_color,"blendsWithBackground":preferences.subtitle_blends_with_background,
         }}),
     ) {

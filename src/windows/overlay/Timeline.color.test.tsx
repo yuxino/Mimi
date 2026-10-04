@@ -110,13 +110,13 @@ it("colors each confirmed and live source with its own preference, including bot
   expect(microphone).not.toContain("18,52,86");
 });
 
-it.each(["system", "microphone"] as const)("keeps %s color and neutral bilingual references when source icons are hidden", audioSource => {
+it.each(["system", "microphone"] as const)("keeps single-source %s color and neutral references independently of metadata", audioSource => {
   const html = renderToStaticMarkup(<Timeline blocks={[
     block({ audioSource, createdAt: 10, source: "Original", translation: "Translation" }),
   ]} fontSize={18} alignment="left" color="#123456" microphoneColor="#abcdef"
-    displayMode="bilingual" showAudioSources={false} showTimestamps />).replaceAll(" ", "");
+    displayMode="bilingual" audioInput={audioSource} showTimestamps />).replaceAll(" ", "");
   expect(html).toContain("color:rgba(255,255,255,0.86)");
   expect(html).toContain(audioSource === "microphone" ? "color:rgba(171,205,239,1)" : "color:rgba(18,52,86,1)");
-  expect(html).not.toContain("subtitle-audio-source");
-  expect(html).toContain("subtitle-timestamp");
+  expect(html.includes("subtitle-audio-source")).toBe(audioSource === "microphone");
+  expect(html.includes("subtitle-timestamp")).toBe(audioSource === "microphone");
 });

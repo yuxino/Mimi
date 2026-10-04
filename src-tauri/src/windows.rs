@@ -3092,8 +3092,16 @@ mod geometry_tests {
         assert_eq!(state.minimum_height, 136.0);
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
         preferences.show_subtitle_timestamps = true;
+        assert!(!state.update_minimum_height(minimum_height_for_preferences(&preferences)));
+        assert_eq!(state.minimum_height, 136.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        preferences.audio_input = crate::core::audio_input::AudioInput::Microphone;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.minimum_height, 160.0);
+        assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
+        preferences.show_subtitle_timestamps = false;
+        assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
+        assert_eq!(state.minimum_height, 136.0);
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 244.0));
     }
 

@@ -37,8 +37,8 @@ interface TimelineProps {
   displayMode: SettingsSnapshot["subtitleDisplayMode"];
   /** Optional metadata; hidden by default so sentence boundaries lead. */
   showTimestamps?: boolean;
-  /** Single-source views retain their color without repeating the input icon. */
-  showAudioSources?: boolean;
+  /** Microphone-enabled modes use metadata; system-only keeps old mic identity inline. */
+  audioInput?: SettingsSnapshot["audioInput"];
   showSubtitleDividers?: boolean;
   /** Fixed-opacity debugger replay; not a persisted product setting. */
   keepTextOpaque?: boolean;
@@ -64,7 +64,7 @@ export const Timeline = memo(function Timeline({
   blendsWithBackground = false,
   motionEnabled = true,
   showTimestamps = false,
-  showAudioSources = true,
+  audioInput = "both",
   showSubtitleDividers = false,
   keepTextOpaque = false,
   microphoneColor = "yellow",
@@ -81,6 +81,8 @@ export const Timeline = memo(function Timeline({
   }, [blocks]);
   const blockLayoutKey = useMemo(() => JSON.stringify(blocks.map(block => block.id)), [blocks]);
   const liveBlockCount = blocks.filter(block => block.presentation === "live").length;
+  const microphoneEnabled = audioInput !== "system";
+  const mixedSources = new Set(blocks.map(block => block.audioSource).filter(Boolean)).size > 1;
   const prevBlockCountRef = useRef(blocks.length);
   const previousModeRef = useRef(displayMode);
   const modeChangedRef = useRef(false);
@@ -104,7 +106,7 @@ export const Timeline = memo(function Timeline({
 
   useLayoutEffect(() => {
     if (containerRef.current) scroll.reflow(containerRef.current);
-  }, [readingHistory, viewportHeight, showSubtitleDividers, showTimestamps, showAudioSources, scroll]);
+  }, [readingHistory, viewportHeight, showSubtitleDividers, showTimestamps, audioInput, scroll]);
 
   useLayoutEffect(() => {
     if (previousModeRef.current === displayMode) return;
@@ -232,14 +234,14 @@ export const Timeline = memo(function Timeline({
         const blockViewportHeight = viewportHeight === null ? null
           : compact && block.presentation === "live" && liveBlockCount > 1
             ? (viewportHeight - liveSeparatorHeight) / liveBlockCount : viewportHeight;
-        const timestamp = showTimestamps && !blendsWithBackground && block.createdAt !== null
+        const timestamp = microphoneEnabled && showTimestamps && !blendsWithBackground && block.createdAt !== null
           ? block.createdAt : null;
-        // A retained second-source history can outlive dual-input capture.
-        // At the single-input minimum, keep its identity beside the text so
-        // the metadata cannot consume a whole bilingual line.
-        const showSource = showAudioSources && block.audioSource != null;
+        // Switching back to system-only restores plain system subtitles. Old
+        // microphone rows retain a small inline identity without a metadata row.
+        const showSource = block.audioSource != null && (microphoneEnabled || block.audioSource === "microphone");
         const inlineSource = showSource && timestamp === null
-          && blockViewportHeight !== null && blockViewportHeight < 80;
+          && (!microphoneEnabled || blockViewportHeight !== null && blockViewportHeight < 80);
+        const tintReference = mixedSources && (microphoneEnabled || block.audioSource === "microphone");
         const hasMetadata = (showSource && !inlineSource) || timestamp !== null;
         const sourceIndicator = showSource && <span className="subtitle-audio-source" role="img"
           aria-label={block.audioSource === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}
@@ -316,7 +318,7 @@ export const Timeline = memo(function Timeline({
                   alignment={alignment}
                   displayMode={displayMode}
                   color={sourceColor}
-                  tintReference={showSource}
+                  tintReference={tintReference}
                   blendsWithBackground={blendsWithBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}
@@ -334,7 +336,7 @@ export const Timeline = memo(function Timeline({
                   alignment={alignment}
                   displayMode={displayMode}
                   color={sourceColor}
-                  tintReference={showSource}
+                  tintReference={tintReference}
                   blendsWithBackground={blendsWithBackground}
                   motionEnabled={motionEnabled}
                   entering={entering}

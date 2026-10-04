@@ -426,7 +426,7 @@ it.each([
   { audioSource: "microphone" as const, withTrack: false },
   { audioSource: "system" as const, withTrack: true },
   { audioSource: "microphone" as const, withTrack: true },
-])("preserves single-source $audioSource colors without repeated labels (track=$withTrack)", async ({ audioSource, withTrack }) => {
+])("preserves single-source $audioSource colors when metadata follows input selection (track=$withTrack)", async ({ audioSource, withTrack }) => {
   const history = [{ ...confirmed, audioSource }];
   const track = { ...empty, audioSource, history, detectedLanguage: "en", isTranslationPending: false, isTranslationTimedOut: false,
     source: { text: "Single live source.", isFinal: false }, previewPair: { source: "Single live source.", translation: "单路实时译文。" } };
@@ -434,8 +434,8 @@ it.each([
     audioInput: withTrack ? "system" : audioSource,
     subtitleColor: "#123456", microphoneSubtitleColor: "#abcdef", showSubtitleTimestamps: false,
   });
-  expect(host.querySelectorAll(".subtitle-audio-source")).toHaveLength(0);
-  expect(host.querySelectorAll(".subtitle-metadata")).toHaveLength(0);
+  expect(host.querySelectorAll(".subtitle-audio-source")).toHaveLength(audioSource === "microphone" ? 2 : 0);
+  expect(host.querySelectorAll(".subtitle-metadata")).toHaveLength(audioSource === "microphone" && !withTrack ? 2 : 0);
   const expected = audioSource === "microphone" ? "rgb(171, 205, 239)" : "rgb(18, 52, 86)";
   for (const text of [confirmed.translation, "单路实时译文。"]) {
     expect(host.querySelector<HTMLElement>(`[data-utterance-id] [aria-label="${text}"] > span`)?.style.color).toBe(expected);
@@ -491,7 +491,7 @@ it("uses each source's detected language when the other source does not need tra
   expect(visibleLanes()).toEqual(["Synthetic system phrase.", "麦克风合成译文。"]);
 });
 
-it.each(["system", "microphone"] as const)("keeps both history labels but only the %s live tail after disabling the other input", async enabled => {
+it.each(["system", "microphone"] as const)("keeps history identity but only the %s live tail after disabling the other input", async enabled => {
   const dual = dualSnapshot();
   const history = [
     { audioSource: "system" as const, source: "System confirmed.", translation: "系统已确认。", createdAt: 40 },
@@ -501,10 +501,39 @@ it.each(["system", "microphone"] as const)("keeps both history labels but only t
   await mount({ ...remaining, history, tracks: [remaining] }, "bilingual", { audioInput: enabled });
   const rows = [...host.querySelectorAll('[data-utterance-id]')];
   expect(rows).toHaveLength(3);
-  expect(rows[0].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(I18N.settings.audioInputSystem);
+  expect(rows[0].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(enabled === "system" ? undefined : I18N.settings.audioInputSystem);
   expect(rows[1].querySelector(".subtitle-audio-source")?.getAttribute("aria-label")).toBe(I18N.settings.audioInputMicrophone);
   expect(rows[2].getAttribute("data-utterance-id")).toMatch(new RegExp(`^${enabled}:`));
   expect(visibleLanes()).not.toContain(enabled === "system" ? "麦克风合成译文。" : "系统声音合成译文。");
+});
+
+it.each([false, true])("switches microphone metadata without replacing history or resetting time preference (immersive=%s)", async immersive => {
+  const history = [
+    { ...confirmed, audioSource: "system" as const },
+    { source: "Microphone confirmed.", translation: "麦克风已确认。", createdAt: 41, audioSource: "microphone" as const },
+  ];
+  await mount({ ...empty, history }, "bilingual", { audioInput: "system", showSubtitleTimestamps: true,
+    subtitleBlendsWithBackground: immersive, subtitleColor: "#123456", microphoneSubtitleColor: "#abcdef" });
+  const rows = [...host.querySelectorAll('[data-utterance-id]')];
+  const lanes = visibleLanes();
+  const retained = useStore.getState().session.subtitles.history;
+  for (const audioInput of ["system", "both", "system", "microphone", "system"] as const) {
+    await act(() => useStore.setState(state => ({ settings: { ...state.settings, audioInput } })));
+    const microphoneEnabled = audioInput !== "system";
+    expect([...host.querySelectorAll('[data-utterance-id]')]).toEqual(rows);
+    expect(visibleLanes()).toEqual(lanes);
+    expect(useStore.getState().session.subtitles.history).toBe(retained);
+    expect(useStore.getState().settings.showSubtitleTimestamps).toBe(true);
+    expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(microphoneEnabled && !immersive ? 2 : 0);
+    expect(host.querySelectorAll('.subtitle-metadata')).toHaveLength(microphoneEnabled ? 2 : 0);
+    expect(rows[0].querySelector('.subtitle-audio-source') !== null).toBe(microphoneEnabled);
+    expect(rows[1].querySelector('.subtitle-audio-source')?.getAttribute('aria-label')).toBe(I18N.settings.audioInputMicrophone);
+    const originalLane = rows[0].querySelector<HTMLElement>(`[aria-label="${confirmed.source}"] > span`)!;
+    expect(originalLane.style.color).toBe(microphoneEnabled ? "rgba(18, 52, 86, 0.86)" : "rgba(255, 255, 255, 0.86)");
+  }
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, showSubtitleTimestamps: false, audioInput: "both" } })));
+  expect(host.querySelectorAll('.subtitle-timestamp')).toHaveLength(0);
+  expect(host.querySelectorAll('.subtitle-audio-source')).toHaveLength(2);
 });
 
 it("applies background opacity to expanded and collapsed cards and restores it after immersive mode", async () => {

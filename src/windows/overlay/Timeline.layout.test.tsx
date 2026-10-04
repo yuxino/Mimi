@@ -476,11 +476,25 @@ it("keeps retained mixed-source identity beside a single live row at the single-
 
 it("fits confirmation time and both bilingual lanes at the timestamp minimum", async () => {
   measuredHeight = 240;
-  viewportHeight = minimumOverlayHeight({ audioInput: "system", fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - OVERLAY_MAXIMUM_CHROME_HEIGHT;
-  await act(async () => root.render(<Timeline blocks={[confirmed]} fontSize={20} alignment="center" color="white" displayMode="bilingual" showTimestamps />));
+  viewportHeight = minimumOverlayHeight({ audioInput: "microphone", fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  await act(async () => root.render(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]} fontSize={20} alignment="center" color="white" displayMode="bilingual" audioInput="microphone" showTimestamps />));
   const row = host.querySelector<HTMLElement>("[data-utterance-id]")!;
   expect(row.querySelector(".subtitle-timestamp")).not.toBeNull();
   expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+});
+
+it.each([136, 240])("restores system rows and keeps old microphone identity inline at height %i despite saved time preference", async height => {
+  measuredHeight = 240;
+  viewportHeight = height - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  await act(async () => root.render(<Timeline blocks={[
+    { ...confirmed, audioSource: "system" },
+    { ...confirmed, id: "microphone-history", audioSource: "microphone" },
+  ]} fontSize={20} alignment="center" color="white" displayMode="bilingual" audioInput="system" showTimestamps />));
+  const rows = [...host.querySelectorAll<HTMLElement>("[data-utterance-id]")];
+  expect(host.querySelector('.subtitle-metadata')).toBeNull();
+  expect(rows[0].querySelector('.subtitle-audio-source')).toBeNull();
+  expect(rows[1].querySelector('.subtitle-audio-source')).not.toBeNull();
+  expect(rows.every(row => renderedBlockHeight(row) <= viewportHeight)).toBe(true);
 });
 
 

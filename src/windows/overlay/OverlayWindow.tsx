@@ -290,7 +290,7 @@ export function OverlayWindow() {
                 displayMode={settings.subtitleDisplayMode}
                 showSubtitleDividers={settings.showSubtitleDividers}
                 showTimestamps={settings.showSubtitleTimestamps}
-                showAudioSources={dual}
+                audioInput={settings.audioInput}
                 microphoneColor={settings.microphoneSubtitleColor}
                 motionEnabled={motionOn}
                 blendsWithBackground
@@ -475,7 +475,7 @@ export function OverlayWindow() {
               displayMode={settings.subtitleDisplayMode}
               showSubtitleDividers={settings.showSubtitleDividers}
               showTimestamps={settings.showSubtitleTimestamps}
-              showAudioSources={dual}
+              audioInput={settings.audioInput}
               microphoneColor={settings.microphoneSubtitleColor}
               motionEnabled={motionOn}
               followTailRequest={followTailRequest}

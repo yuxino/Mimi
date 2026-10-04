@@ -13,20 +13,29 @@ no longer adds an icon to the compact status capsule; its accessible description
 and the expanded source choice remain. Microphone-enabled modes add one mic icon.
 
 Replace the large source-name column beside every subtitle with a small source
-icon. Mixed-source history retains both identities after changing inputs. A
+icon while the microphone is selected, either alone or with system audio. A
 compact metadata line follows the subtitle alignment, with no left timestamp
 gutter. At short heights, an icon without a timestamp moves beside the text so
 retained mixed history cannot clip a single-source bilingual row.
 
+Switching to system audio only restores plain system subtitles with no metadata
+row. Retained microphone subtitles keep a small inline microphone icon and their
+source color, so switching does not erase who spoke. Keep source-aware history
+projection independent of this presentation choice. Single-source bilingual
+originals remain neutral; merely showing a microphone icon does not tint them.
+
 Restore an opt-in persisted “Show time” setting in subtitle appearance. Default
-it off, including old settings/snapshots. Display local HH:mm:ss on confirmed
+it off, including old settings/snapshots. With microphone selected, display local HH:mm:ss on confirmed
 subtitles; the stored timestamp is confirmation time, not speech onset or a media
 playhead. Do not invent a time for a streaming draft. Immersive mode still hides
-timestamps. No transcript retention or recording is enabled by this setting.
+timestamps. Keep the opt-in value through input changes and hide it in system-only
+mode; turning the microphone back on restores it. System-only retains its original
+minimum window height even with this preference on. No transcript retention or
+recording is enabled by this setting.
 
 Reserve metadata space in line budgets and synchronized native/browser minimum
 heights. Preserve history reading, alignment, text colors and live-tail behavior.
-Debugger replay preserves the chosen timestamp presentation. Verification covers
+Debugger replay preserves each snapshot's selected inputs and timestamp presentation. Verification covers
 settings persistence/failure feedback, seconds and source semantics, small-window
 geometry, all three locales, and signed macOS UI-only states. UI-only evidence
 never claims microphone hardware or live provider validation.

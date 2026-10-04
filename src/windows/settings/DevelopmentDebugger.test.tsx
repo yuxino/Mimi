@@ -8,7 +8,7 @@ import { useStore } from "../../lib/store";
 import { DevelopmentDebugger, type DebuggerSnapshot } from "./DevelopmentDebugger";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), createObjectURL: vi.fn(), revokeObjectURL: vi.fn(), timeline: vi.fn<(props: {
-  showTimestamps?: boolean; blendsWithBackground?: boolean; showAudioSources?: boolean;
+  showTimestamps?: boolean; blendsWithBackground?: boolean; audioInput?: "system" | "microphone" | "both";
   microphoneColor?: string; blocks?: { audioSource?: string }[];
 }) => null>(() => null) }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
@@ -398,7 +398,7 @@ it.each([
   expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({ showTimestamps: expected, blendsWithBackground: recorded !== undefined });
 });
 
-it.each(["system", "microphone"] as const)("retains single-source %s replay colors without adding source icons", async audioSource => {
+it.each(["system", "microphone"] as const)("retains single-source %s replay colors and capture mode", async audioSource => {
   report = { ...report, replaySnapshots: 1, route: { ...report.route, audioInput: audioSource, microphoneSubtitleColor: "#abcdef" } };
   const originalInvoke = mocks.invoke.getMockImplementation()!;
   mocks.invoke.mockImplementation((command, args) => command === "development_debug_replay"
@@ -409,7 +409,48 @@ it.each(["system", "microphone"] as const)("retains single-source %s replay colo
     : originalInvoke(command, args));
   await mount();
   await click("Go");
-  expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({ showAudioSources: false, microphoneColor: "#abcdef", blocks: [{ audioSource }] });
+  expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({ audioInput: audioSource, microphoneColor: "#abcdef", blocks: [{ audioSource }] });
+});
+
+it("replays source switches with the captured mode while preserving earlier microphone history", async () => {
+  const inputs = ["both", "system", "microphone"] as const;
+  const history = [
+    { source: "Synthetic system sentence.", translation: "Synthetic system translation.", createdAt: 20, audioSource: "system" },
+    { source: "Synthetic microphone sentence.", translation: "Synthetic microphone translation.", createdAt: 21, audioSource: "microphone" },
+  ];
+  report = { ...report, replaySnapshots: inputs.length, route: { ...report.route, audioInput: "both", showSubtitleTimestamps: false } };
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) => command === "development_debug_replay"
+    ? Promise.resolve({ elapsedMs: 20, snapshot: { ...original.session, subtitles: {
+      ...original.session.subtitles, source: { text: "", isFinal: false }, translation: { text: "", isFinal: false }, history,
+    } }, projectionSettings: { audioInput: inputs[Number(args?.index)], showSubtitleTimestamps: true } })
+    : originalInvoke(command, args));
+  await mount();
+  for (const [index, audioInput] of inputs.entries()) {
+    await click(index === 0 ? "Go" : "Next");
+    expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({
+      audioInput, showTimestamps: true, blocks: [{ audioSource: "system" }, { audioSource: "microphone" }],
+    });
+  }
+});
+
+it.each([
+  { recorded: undefined, initial: "microphone", current: "system", expected: "microphone" },
+  { recorded: undefined, initial: undefined, current: "both", expected: "both" },
+  { recorded: "invalid", initial: "microphone", current: "system", expected: "microphone" },
+  { recorded: null, initial: "both", current: "microphone", expected: "both" },
+  { recorded: 1, initial: "invalid", current: "microphone", expected: "microphone" },
+] as const)("uses a valid recorded input before legacy or current settings: %j", async ({ recorded, initial, current, expected }) => {
+  report = { ...report, replaySnapshots: 1, route: { ...report.route, audioInput: initial } };
+  useStore.setState({ settings: { ...original.settings, audioInput: current } });
+  const originalInvoke = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation((command, args) => command === "development_debug_replay"
+    ? Promise.resolve({ elapsedMs: 20, snapshot: original.session,
+      projectionSettings: recorded === undefined ? undefined : { audioInput: recorded } })
+    : originalInvoke(command, args));
+  await mount();
+  await click("Go");
+  expect(mocks.timeline.mock.calls.at(-1)?.[0]).toMatchObject({ audioInput: expected });
 });
 
 it("loads private events only on request in bounded pages tied to the current case", async () => {

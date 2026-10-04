@@ -97,6 +97,6 @@ are not unified by the shared-core extraction.
   on both sides when changing scheduling. Desktop-only draft/reconnect machinery must not
   be copied into a final-only Android flow without a product need.
 
-Desktop subtitle controls support independent system/microphone subtitle colors, background transparency, and optional local HH:mm:ss confirmation timestamps. Source icons distinguish mixed-input subtitles without repeating source names beside the text. These are desktop presentation preferences; Android does not currently expose matching controls.
+Desktop subtitle controls support independent system/microphone subtitle colors, background transparency, and optional local HH:mm:ss confirmation timestamps while the microphone is selected. System-only mode restores plain subtitles and keeps any retained microphone rows identifiable with a small inline icon; the timestamp preference survives input changes. These are desktop presentation preferences; Android does not currently expose matching controls.
 
 Desktop offers a default-on **Show interim subtitles** preference, including live session changes. With it off, only final lines and confirmed pairs appear; bounded Stop-tail fallback still follows the existing desktop final lane. This affects presentation, not provider requests or accuracy. Android currently has no matching switch. Shared snapshots expose `displayPairFinal` on both platforms, and Rust/JNI fixtures distinguish a completed preview from an accepted final even without retained presentation history.
