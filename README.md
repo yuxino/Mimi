@@ -21,7 +21,7 @@
   </p>
 </div>
 
-Mimi turns speech playing on your computer into live translated subtitles. Watch films, follow streams, or take lessons with subtitles floating over your screen.
+<p align="center">Mimi turns speech playing on your computer into live translated subtitles. Watch films, follow streams, or take lessons with subtitles floating over your screen.</p>
 
 ![Mimi's bilingual subtitle window over an original illustrated scene](docs/assets/readme-preview.png)
 
@@ -33,7 +33,7 @@ Mimi turns speech playing on your computer into live translated subtitles. Watch
 
 ## Get started
 
-For your first setup, we recommend starting with Alibaba Cloud. We’ve done more real-world testing with it. We’re still improving support for other services, so results and reliability may vary.
+For your first setup, **we recommend starting with Alibaba Cloud**. We’ve done more real-world testing with it. We’re still improving support for other services, so results and reliability may vary.
 
 1. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save.
 2. Choose the recognition and translation languages.
