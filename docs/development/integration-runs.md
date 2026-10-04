@@ -581,3 +581,7 @@
 - Synthetic UI fixtures only: no credentials, provider requests, microphone or
   system capture, transcript retention or audio recording. Live acoustic/provider
   validation and Windows/Linux native appearance were not repeated in this run.
+- CI caught a UTC-only assertion error in the new metadata test: a raw text
+  count also matched the HTML `datetime` attribute. The regression now counts
+  visible `<time>` content; the focused suite passed under UTC and Asia/Shanghai.
+  No product behavior changed in that correction.

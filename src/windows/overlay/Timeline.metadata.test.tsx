@@ -21,7 +21,9 @@ it("keeps source identity accessible without repeated full-sized labels beside e
     fontSize={18} alignment="left" color="white" displayMode="bilingual" showTimestamps />);
   expect(html.match(/subtitle-audio-source/g)).toHaveLength(2);
   expect(html.match(/role="img"/g)).toHaveLength(2);
-  expect(html.match(/12:34:56/g)).toHaveLength(2);
+  // Count visible timestamps only: in UTC the ISO dateTime attribute has
+  // the same clock text, while local offsets can hide that mistake.
+  expect(html.match(/>12:34:56<\/time>/g)).toHaveLength(2);
   expect(html).toContain('aria-label="System audio"');
   expect(html).toContain('aria-label="Microphone"');
   expect(html).not.toContain('>System audio<');
