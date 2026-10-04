@@ -176,6 +176,81 @@ impl fmt::Debug for TextTranslationCredentials {
 }
 
 impl TextTranslationCredentials {
+    /// Resolve a write-only draft without requiring or exposing a speech key.
+    /// Saves and draft checks share endpoint-bound optional authentication.
+    pub fn resolve_update(
+        route: TextTranslation,
+        saved: Option<&Self>,
+        endpoint: &str,
+        token_update: Option<&str>,
+        model: &str,
+    ) -> Result<Self, ProviderCredentialsError> {
+        let saved = saved.filter(|value| value.translation() == route);
+        let (old_endpoint, old_model, old_key) = match saved {
+            Some(Self::DeepL { api_key }) => ("", "", api_key.as_str()),
+            Some(Self::DeepLX { endpoint, token }) => (endpoint.as_str(), "", token.as_str()),
+            Some(
+                Self::OpenAICompatible {
+                    endpoint,
+                    model,
+                    api_key,
+                }
+                | Self::ChatMock {
+                    endpoint,
+                    model,
+                    api_key,
+                },
+            ) => (endpoint.as_str(), model.as_str(), api_key.as_str()),
+            None => ("", "", ""),
+        };
+        let endpoint = if endpoint.trim().is_empty() {
+            old_endpoint.to_string()
+        } else if route.uses_chat_completions() {
+            crate::core::protocols::openai_compatible::endpoint(endpoint)
+                .map_err(|_| ProviderCredentialsError::InvalidOpenAICompatibleEndpoint)?
+                .to_string()
+        } else if route == TextTranslation::DeepLX {
+            crate::core::protocols::deeplx::endpoint(endpoint)
+                .map_err(|_| ProviderCredentialsError::InvalidDeepLXEndpoint)?
+                .to_string()
+        } else {
+            String::new()
+        };
+        let key = token_update.unwrap_or(if endpoint == old_endpoint {
+            old_key
+        } else {
+            ""
+        });
+        let model = if model.trim().is_empty() {
+            old_model
+        } else {
+            model
+        };
+        match route {
+            TextTranslation::DeepL => Self::DeepL {
+                api_key: key.into(),
+            },
+            TextTranslation::DeepLX => Self::DeepLX {
+                endpoint,
+                token: key.into(),
+            },
+            TextTranslation::OpenAICompatible => Self::OpenAICompatible {
+                endpoint,
+                model: model.into(),
+                api_key: key.into(),
+            },
+            TextTranslation::ChatMock => Self::ChatMock {
+                endpoint,
+                model: model.into(),
+                api_key: key.into(),
+            },
+            TextTranslation::FollowService => {
+                return Err(ProviderCredentialsError::ProviderMismatch)
+            }
+        }
+        .validated()
+    }
+
     pub const fn translation(&self) -> TextTranslation {
         match self {
             Self::DeepL { .. } => TextTranslation::DeepL,
@@ -251,6 +326,134 @@ impl fmt::Debug for ProviderCredentials {
 }
 
 impl ProviderCredentials {
+    /// Saved values are used only for blank draft fields; changed service
+    /// addresses never inherit authentication for a different destination.
+    pub fn resolve_draft(
+        &self,
+        provider: ProviderKind,
+        saved: Option<&Self>,
+    ) -> Result<Self, ProviderCredentialsError> {
+        let retain = |draft: &str, previous: &str| {
+            if draft.trim().is_empty() {
+                previous.to_string()
+            } else {
+                draft.to_string()
+            }
+        };
+        let merged = match (self, saved) {
+            (Self::ApiKey { api_key }, previous) => Self::api_key(retain(
+                api_key,
+                previous
+                    .and_then(Self::alibaba_key)
+                    .or_else(|| previous.and_then(Self::direct_api_key))
+                    .unwrap_or_default(),
+            )),
+            (
+                Self::CustomSpeech {
+                    endpoint,
+                    model,
+                    api_key,
+                },
+                previous,
+            ) => {
+                let (old_endpoint, old_model, old_key) = match previous {
+                    Some(Self::CustomSpeech {
+                        endpoint,
+                        model,
+                        api_key,
+                    }) => (endpoint.as_str(), model.as_str(), api_key.as_str()),
+                    None => ("", "", ""),
+                    _ => return Err(ProviderCredentialsError::ProviderMismatch),
+                };
+                let endpoint = if endpoint.trim().is_empty() {
+                    old_endpoint.to_string()
+                } else {
+                    crate::core::protocols::custom_speech::endpoint(endpoint, provider)
+                        .map_err(|_| ProviderCredentialsError::InvalidCustomSpeechEndpoint)?
+                        .to_string()
+                };
+                let same = endpoint == old_endpoint;
+                Self::CustomSpeech {
+                    endpoint,
+                    model: retain(model, if same { old_model } else { "" }),
+                    api_key: retain(api_key, if same { old_key } else { "" }),
+                }
+            }
+            (
+                Self::AzureOpenAI {
+                    endpoint,
+                    deployment,
+                    transcription_deployment,
+                    api_key,
+                },
+                Some(Self::AzureOpenAI {
+                    endpoint: old_endpoint,
+                    deployment: old_deployment,
+                    transcription_deployment: old_transcription,
+                    api_key: old_key,
+                }),
+            ) => {
+                let endpoint = validated_azure_endpoint(&retain(endpoint, old_endpoint))?;
+                let api_key = retain(
+                    api_key,
+                    if endpoint == *old_endpoint {
+                        old_key
+                    } else {
+                        ""
+                    },
+                );
+                Self::AzureOpenAI {
+                    endpoint,
+                    api_key,
+                    deployment: retain(deployment, old_deployment),
+                    transcription_deployment: retain(transcription_deployment, old_transcription),
+                }
+            }
+            (
+                Self::TencentCloud {
+                    app_id,
+                    secret_id,
+                    secret_key,
+                },
+                Some(Self::TencentCloud {
+                    app_id: old_app_id,
+                    secret_id: old_id,
+                    secret_key: old_key,
+                }),
+            ) => {
+                let app_id = retain(app_id, old_app_id);
+                let same_app = app_id.trim() == old_app_id;
+                let secret_id = retain(secret_id, if same_app { old_id } else { "" });
+                let secret_key = retain(
+                    secret_key,
+                    if same_app && secret_id.trim() == old_id {
+                        old_key
+                    } else {
+                        ""
+                    },
+                );
+                Self::TencentCloud {
+                    app_id,
+                    secret_id,
+                    secret_key,
+                }
+            }
+            (
+                Self::BaiduTranslate { app_id, app_key },
+                Some(Self::BaiduTranslate {
+                    app_id: old_id,
+                    app_key: old_key,
+                }),
+            ) => {
+                let app_id = retain(app_id, old_id);
+                let app_key = retain(app_key, if app_id.trim() == old_id { old_key } else { "" });
+                Self::BaiduTranslate { app_id, app_key }
+            }
+            _ => self.clone(),
+        };
+        merged.validated_for(provider)
+    }
+
     /// Returns only the requested known-provider field. An independent text
     /// destination must match the saved route, so an unsaved route switch
     /// cannot reveal another service's token or official API key.
@@ -698,6 +901,162 @@ fn validated_azure_endpoint(value: &str) -> Result<String, ProviderCredentialsEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_draft_merging_binds_optional_auth_to_route_and_endpoint() {
+        for route in [
+            TextTranslation::OpenAICompatible,
+            TextTranslation::ChatMock,
+            TextTranslation::DeepLX,
+        ] {
+            let saved = TextTranslationCredentials::resolve_update(
+                route,
+                None,
+                "https://text.example/v1",
+                Some("synthetic-saved"),
+                "saved-model",
+            )
+            .unwrap();
+            let same = TextTranslationCredentials::resolve_update(
+                route,
+                Some(&saved),
+                "https://text.example/v1",
+                None,
+                "draft-model",
+            )
+            .unwrap();
+            let changed = TextTranslationCredentials::resolve_update(
+                route,
+                Some(&saved),
+                "https://other.example/v1",
+                None,
+                "draft-model",
+            )
+            .unwrap();
+            let key = |value: &TextTranslationCredentials| match value {
+                TextTranslationCredentials::OpenAICompatible { api_key, .. }
+                | TextTranslationCredentials::ChatMock { api_key, .. } => api_key.clone(),
+                TextTranslationCredentials::DeepLX { token, .. } => token.clone(),
+                _ => unreachable!(),
+            };
+            assert_eq!(key(&same), "synthetic-saved");
+            assert!(key(&changed).is_empty());
+            let cleared =
+                TextTranslationCredentials::resolve_update(route, Some(&saved), "", Some(""), "")
+                    .unwrap();
+            assert!(key(&cleared).is_empty());
+            if route.uses_chat_completions() {
+                let other_route = if route == TextTranslation::ChatMock {
+                    TextTranslation::OpenAICompatible
+                } else {
+                    TextTranslation::ChatMock
+                };
+                let other = TextTranslationCredentials::resolve_update(
+                    other_route,
+                    Some(&saved),
+                    "https://text.example/v1",
+                    None,
+                    "other-model",
+                )
+                .unwrap();
+                assert!(key(&other).is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn general_drafts_reuse_keys_only_for_unchanged_service_identity() {
+        let azure = ProviderCredentials::AzureOpenAI {
+            endpoint: "https://old.openai.azure.com".into(),
+            deployment: "translate".into(),
+            transcription_deployment: "transcribe".into(),
+            api_key: "synthetic-azure".into(),
+        };
+        let tencent = ProviderCredentials::TencentCloud {
+            app_id: "123".into(),
+            secret_id: "synthetic-id".into(),
+            secret_key: "synthetic-key".into(),
+        };
+        let baidu = ProviderCredentials::BaiduTranslate {
+            app_id: "123".into(),
+            app_key: "synthetic-baidu".into(),
+        };
+        for (provider, saved, blank, changed) in [
+            (
+                ProviderKind::AzureOpenAIRealtime,
+                azure,
+                ProviderCredentials::AzureOpenAI {
+                    endpoint: String::new(),
+                    deployment: "new-deployment".into(),
+                    transcription_deployment: String::new(),
+                    api_key: String::new(),
+                },
+                ProviderCredentials::AzureOpenAI {
+                    endpoint: "https://new.openai.azure.com".into(),
+                    deployment: String::new(),
+                    transcription_deployment: String::new(),
+                    api_key: String::new(),
+                },
+            ),
+            (
+                ProviderKind::TencentCloud,
+                tencent,
+                ProviderCredentials::TencentCloud {
+                    app_id: "123".into(),
+                    secret_id: String::new(),
+                    secret_key: String::new(),
+                },
+                ProviderCredentials::TencentCloud {
+                    app_id: "456".into(),
+                    secret_id: String::new(),
+                    secret_key: String::new(),
+                },
+            ),
+            (
+                ProviderKind::BaiduTranslate,
+                baidu,
+                ProviderCredentials::BaiduTranslate {
+                    app_id: "123".into(),
+                    app_key: String::new(),
+                },
+                ProviderCredentials::BaiduTranslate {
+                    app_id: "456".into(),
+                    app_key: String::new(),
+                },
+            ),
+        ] {
+            assert!(blank.resolve_draft(provider, Some(&saved)).is_ok());
+            assert!(changed.resolve_draft(provider, Some(&saved)).is_err());
+        }
+    }
+
+    #[test]
+    fn custom_speech_draft_does_not_reuse_key_or_model_for_changed_endpoint() {
+        let saved = ProviderCredentials::CustomSpeech {
+            endpoint: "wss://speech.example/realtime".into(),
+            model: "saved-model".into(),
+            api_key: "synthetic-key".into(),
+        };
+        let draft = ProviderCredentials::CustomSpeech {
+            endpoint: String::new(),
+            model: "new-model".into(),
+            api_key: String::new(),
+        };
+        let resolved = draft
+            .resolve_draft(ProviderKind::CustomOpenAIASR, Some(&saved))
+            .unwrap();
+        assert!(
+            matches!(resolved, ProviderCredentials::CustomSpeech { api_key, model, .. } if api_key == "synthetic-key" && model == "new-model")
+        );
+        let changed = ProviderCredentials::CustomSpeech {
+            endpoint: "wss://other.example/realtime".into(),
+            model: "new-model".into(),
+            api_key: String::new(),
+        };
+        assert!(changed
+            .resolve_draft(ProviderKind::CustomOpenAIASR, Some(&saved))
+            .is_err());
+    }
 
     #[test]
     fn custom_speech_credentials_are_independent_scoped_and_debug_redacted() {

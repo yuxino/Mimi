@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ProviderIcon } from "../../components/ProviderIcon";
-import { ConfigInput } from "./ConfigInput";
+import { ConfigInput, type ConfigInputElement } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
 import { CredentialStorageHelp } from "./CredentialStorageHelp";
 import { Icon } from "../../components/Icon";
@@ -20,8 +20,8 @@ import { useCredentialEditorState } from "./useCredentialEditorState";
 /** Alibaba provides recognition; independent text destinations use their own credentials. */
 export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visible = true, feedback, onSave, onRequestDelete, onConfirmDelete, confirmingDelete, onCancelDelete, connectionCheck, textConnectionCheck, readOnly = false, textOnly = false, storageNoteId, onSaveTranslationName }: {
   onSaveTranslationName?: (route: TextTranslationNameDraft["route"], name: string) => Promise<unknown>;
-  connectionCheck?: ReactNode;
-  textConnectionCheck?: (requiresSave: boolean) => ReactNode;
+  connectionCheck?: ReactNode | ((draft?: ProviderCredentialsInput | null) => ReactNode);
+  textConnectionCheck?: (draft?: ProviderCredentialsInput | null) => ReactNode;
   readOnly?: boolean;
   textOnly?: boolean;
   storageNoteId?: string;
@@ -57,8 +57,8 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
   const endpointDraft = translation !== savedTranslation ? endpointValue : endpointChanged ? draft.endpoint : "";
   const modelDraft = translation !== savedTranslation ? modelValue : modelChanged ? draft.model : "";
   const hasTranslationKey = translationState.state?.savedFields.includes("token") ?? false;
-  const endpointRef = useRef<HTMLInputElement>(null);
-  const modelRef = useRef<HTMLInputElement>(null);
+  const endpointRef = useRef<ConfigInputElement>(null);
+  const modelRef = useRef<ConfigInputElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   const saved = (textOnly ? profile.textCredentialState : profile.credentialState) === "present" || (textOnly && savedTranslation === "followService");
   // Replacement drafts and saved-value previews must never carry across
@@ -76,6 +76,37 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
   const compatible = isChatCompletionsTranslation(translation);
   const keepsSavedDestination = saved && translation === savedTranslation;
   const awaitingSavedDestination = keepsSavedDestination && (translationState.loading || !!translationState.error);
+  const savedSpeech = (profile.speechCredentialState ?? profile.credentialState) === "present";
+  const unavailableSpeech = (profile.speechCredentialState ?? profile.credentialState) === "unavailable";
+  const keepsSavedText = (profile.textCredentialState ?? profile.credentialState) === "present" && translation === savedTranslation;
+  const speechCheckDraft: ProviderCredentialsInput | null | undefined = readOnly || !draft.apiKey.trim()
+    ? readOnly || savedSpeech || (unavailableSpeech && !draft.apiKey) ? undefined : null
+    : { kind: "alibabaTranslation", apiKey: draft.apiKey.trim(), textTranslation: "followService", endpoint: "", token: "", model: "" };
+  const textChanged = translation !== savedTranslation || endpointChanged || modelChanged || !!draft.token.trim() || clearTranslationToken || (translation === "followService" && !!draft.apiKey.trim());
+  let textCheckDraft: ProviderCredentialsInput | null | undefined;
+  if (!readOnly && textChanged) {
+    const endpointRequired = translation === "deepLX" || compatible;
+    const invalidEndpoint = endpointRequired && (editedFields.endpoint || !keepsSavedText) && !deepLXEndpointIsValid(endpointValue);
+    const invalidModel = compatible && (editedFields.model || !keepsSavedText) && !openAICompatibleModelIsValid(modelValue);
+    const missingToken = translation === "deepL" && !draft.token.trim() && !keepsSavedText;
+    const completeExplicitText = translation === "deepL" ? !!draft.token.trim()
+      : endpointRequired && deepLXEndpointIsValid(draft.endpoint) && (!compatible || openAICompatibleModelIsValid(draft.model)) && (!!draft.token.trim() || (compatible && clearTranslationToken));
+    const unavailableSavedText = keepsSavedText && (translationState.loading || !!translationState.error) && !completeExplicitText;
+    const unavailableBuiltIn = translation === "followService" && (textOnly || (!draft.apiKey.trim() && !savedSpeech));
+    // A text-only probe must not need or submit a recognition key. Include
+    // known nonsecret configuration so legacy combined records can be checked
+    // without reading their speech slot; native normalization preserves auth
+    // when the displayed address still identifies the same destination.
+    textCheckDraft = invalidEndpoint || invalidModel || missingToken || unavailableSavedText || unavailableBuiltIn ? null : {
+      kind: "alibabaTranslation",
+      apiKey: translation === "followService" ? draft.apiKey.trim() : "",
+      textTranslation: translation,
+      endpoint: endpointRequired ? endpointValue.trim() : "",
+      model: compatible ? modelValue.trim() : "",
+      token: translation === "followService" || clearTranslationToken ? "" : draft.token.trim(),
+      ...(compatible && clearTranslationToken ? { clearToken: true } : {}),
+    };
+  }
   const destinationKeyLabel = translation === "deepL" ? I18N.settings.deepLApiKey : compatible ? I18N.settings.openAICompatibleApiKey : I18N.settings.deepLXToken;
   const endpointId = `${inputId}-endpoint`;
   const modelId = `${inputId}-model`;
@@ -157,7 +188,7 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
       <header className="service-stage__heading">
         <div className="service-stage__name-help"><h3 id={`${inputId}-translation-title`}>{I18N.settings.textTranslationLabel}</h3><SettingsHelp text={translationHelp} label={I18N.settings.helpLabel} /></div>
         <div className="service-stage__actions">
-          {textConnectionCheck?.(translation !== savedTranslation || endpointChanged || !!draft.token.trim() || modelChanged || clearTranslationToken || (!textOnly && translation === "followService" && !!draft.apiKey.trim()))}
+          {textConnectionCheck?.(textCheckDraft)}
         </div>
       </header>
       <div className="settings-field service-stage__selector">
@@ -173,12 +204,12 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
       {!readOnly && translation !== "followService" && <div className="credential-form__fields">
         {(translation === "deepLX" || compatible) && <label className="settings-field" htmlFor={endpointId}>
           <span>{compatible ? I18N.settings.openAICompatibleEndpoint : I18N.settings.deepLXEndpoint}</span>
-          <ConfigInput key={translation} ref={endpointRef} id={endpointId} type="text" autoComplete="off" spellCheck={false} disabled={disabled} required value={endpointValue} placeholder={translation === "chatMock" ? CHATMOCK_DEFAULT_ENDPOINT : compatible ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : "https://example.com/translate"} aria-invalid={endpointInvalid || undefined} aria-describedby={endpointInvalid ? `${endpointId}-error ${noteId}` : noteId} onValueChange={(value) => { setEditedFields((current) => ({ ...current, endpoint: true })); setDraft((current) => ({ ...current, endpoint: value })); if (endpointInvalid) setEndpointInvalid(!deepLXEndpointIsValid(value)); }} />
+          <ConfigInput expandable key={translation} ref={endpointRef} id={endpointId} type="text" autoComplete="off" spellCheck={false} disabled={disabled} required value={endpointValue} placeholder={I18N.settings.serviceAddressPlaceholder} aria-invalid={endpointInvalid || undefined} aria-describedby={endpointInvalid ? `${endpointId}-error ${noteId}` : noteId} onValueChange={(value) => { setEditedFields((current) => ({ ...current, endpoint: true })); setDraft((current) => ({ ...current, endpoint: value })); if (endpointInvalid) setEndpointInvalid(!deepLXEndpointIsValid(value)); }} />
           {endpointInvalid && <span id={`${endpointId}-error`} role="alert" className="credential-unavailable">{I18N.settings.deepLXEndpointInvalid}</span>}
         </label>}
         {compatible && <label className="settings-field" htmlFor={modelId}>
           <span>{I18N.settings.openAICompatibleModel}</span>
-          <ConfigInput key={translation} ref={modelRef} id={modelId} type="text" autoComplete="off" spellCheck={false} disabled={disabled} required value={modelValue} placeholder={translation === "chatMock" ? I18N.settings.chatMockModelPlaceholder : "qwen-turbo"} aria-invalid={modelInvalid || undefined} aria-describedby={modelInvalid ? `${modelId}-error ${noteId}` : noteId} onValueChange={(value) => { setEditedFields((current) => ({ ...current, model: true })); setDraft((current) => ({ ...current, model: value })); if (modelInvalid) setModelInvalid(!openAICompatibleModelIsValid(value)); }} />
+          <ConfigInput expandable key={translation} ref={modelRef} id={modelId} type="text" autoComplete="off" spellCheck={false} disabled={disabled} required value={modelValue} placeholder={translation === "chatMock" ? I18N.settings.chatMockModelPlaceholder : I18N.settings.modelNamePlaceholder} aria-invalid={modelInvalid || undefined} aria-describedby={modelInvalid ? `${modelId}-error ${noteId}` : noteId} onValueChange={(value) => { setEditedFields((current) => ({ ...current, model: true })); setDraft((current) => ({ ...current, model: value })); if (modelInvalid) setModelInvalid(!openAICompatibleModelIsValid(value)); }} />
           {modelInvalid && <span id={`${modelId}-error`} role="alert" className="credential-unavailable">{I18N.settings.openAICompatibleModelInvalid}</span>}
         </label>}
         <div className="settings-field">
@@ -197,7 +228,7 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
   return <div className="credential-panel" aria-busy={busy}>
     {!textOnly && <div className="service-credential-toolbar">
       <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />
-      {connectionCheck}
+      {typeof connectionCheck === "function" ? connectionCheck(speechCheckDraft) : connectionCheck}
       {!readOnly && saved && !dirty && <span className="credential-panel__saved-actions">
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled} onClick={() => setEditingKey(true)}><Icon name="key" />{I18N.settings.replaceCredentials}</button>
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled || confirmingDelete} onClick={onRequestDelete}><Icon name="trash" />{I18N.settings.deleteCredentials}</button>

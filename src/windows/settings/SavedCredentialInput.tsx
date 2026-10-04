@@ -9,7 +9,7 @@ import type { TextTranslation } from "../../lib/types";
 import { ConfigInput } from "./ConfigInput";
 import { useSettingsToast } from "./useSettingsToast";
 
-type Props = Omit<ComponentProps<typeof ConfigInput>, "value" | "action"> & {
+type Props = Omit<ComponentProps<typeof ConfigInput>, "value" | "action" | "expandable"> & {
   profileId: string;
   field: StoredCredentialField;
   textTranslation?: Exclude<TextTranslation, "followService">;
@@ -102,7 +102,7 @@ function CredentialInput({ profileId, field, textTranslation, label, hasSavedVal
     : value ? shown ? I18N.settings.hideCredential : I18N.settings.showCredential
     : shown ? I18N.settings.hideSavedCredential : I18N.settings.revealSavedCredential;
 
-  return <ConfigInput {...inputProps} disabled={disabled || !active}
+  return <ConfigInput {...inputProps} expandable={false} disabled={disabled || !active}
     value={value || (shown && hasSavedValue ? preview.saved ?? "" : "")} type={shown ? "text" : "password"}
     placeholder={hasSavedValue && !value ? "••••••••" : inputProps.placeholder}
     aria-description={inputProps["aria-description"] ?? (hasSavedValue && !value ? I18N.settings.savedCredential : undefined)}
@@ -124,7 +124,7 @@ function CredentialInput({ profileId, field, textTranslation, label, hasSavedVal
       disabled={disabled || !active} aria-label={`${actionText}: ${label}`} title={`${actionText}: ${label}`}
       aria-pressed={shown} aria-busy={preview.status === "loading" || undefined} onClick={reveal}
       onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); hide(); } }}>
-      <Icon name={preview.status === "hidden" ? "eye" : "eye-off"} /><span className="settings-sr-only">{actionText}</span>
+      <Icon name={preview.status === "hidden" ? "eye" : "eye-off"} /><span>{actionText}</span>
     </button>}
   />;
 }

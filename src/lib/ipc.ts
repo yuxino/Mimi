@@ -352,6 +352,6 @@ export interface ConnectionDiagnostic {
   elapsedMs?: number | null;
 }
 export type ConnectionCheckStage = "speech" | "text";
-export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage): Promise<ConnectionDiagnostic> {
-  return invoke("profile_test_connection", stage ? { profileId, stage } : { profileId });
+export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput): Promise<ConnectionDiagnostic> {
+  return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}) });
 }

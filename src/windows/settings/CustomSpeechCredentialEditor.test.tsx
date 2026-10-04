@@ -22,13 +22,76 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function render(next = props) { props = next; await act(async () => root.render(<CustomSpeechCredentialEditor {...props} />)); }
 async function change(selector: string, value: string) {
-  const input = host.querySelector<HTMLInputElement>(selector)!;
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  const input = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
+  await act(async () => { Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
 }
 async function submit(selector = ".service-stage:not(.service-stage--translation) form") { await act(async () => { const node = host.querySelector(selector)!; (node instanceof HTMLFormElement ? node : node.closest("form")!).dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); }
 async function fillSpeech(endpoint = "wss://speech.example/inference") {
   await change("#test-speech-endpoint", endpoint); await change("#test-speech-model", "synthetic-asr-model"); await change("#test-speech-key", "synthetic-asr-key");
 }
+it("checks a complete speech draft without saving and disables incomplete or unsafe drafts", async () => {
+  const connectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, connectionCheck });
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-endpoint", "wss://speech.example/inference");
+  await change("#test-speech-model", "synthetic-asr-model");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-key", "synthetic-asr-key");
+  expect(connectionCheck).toHaveBeenLastCalledWith({ kind: "customSpeech", endpoint: "wss://speech.example/inference", model: "synthetic-asr-model", apiKey: "synthetic-asr-key" });
+  await change("#test-speech-endpoint", "wss://speech.example?key=synthetic");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-endpoint", "wss://speech.example/inference");
+  await change("#test-speech-model", "x".repeat(257));
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it.each(["unavailable", undefined] as const)("retries unavailable saved speech (%s) but does not submit an incomplete replacement", async speechCredentialState => {
+  vi.mocked(profileCredentialEditorState).mockRejectedValue("credential_store_unavailable");
+  const connectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...props.profile, credentialState: "unavailable", speechCredentialState }, connectionCheck });
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined);
+  await change("#test-speech-endpoint", "wss://replacement.example/inference");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-model", "replacement-model");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-key", "synthetic-replacement-key");
+  expect(connectionCheck).toHaveBeenLastCalledWith({ kind: "customSpeech", endpoint: "wss://replacement.example/inference", model: "replacement-model", apiKey: "synthetic-replacement-key" });
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+
+it("checks a complete explicit speech replacement after the saved metadata read fails", async () => {
+  vi.mocked(profileCredentialEditorState).mockRejectedValue("credential_store_unavailable");
+  const connectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...props.profile, credentialState: "present", speechCredentialState: "present" }, connectionCheck });
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === I18N.settings.editSpeechConfiguration)!.click());
+  await change("#test-speech-model", "synthetic-asr-model");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-endpoint", "wss://speech.example/inference");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-key", "synthetic-asr-key");
+  expect(connectionCheck).toHaveBeenLastCalledWith({ kind: "customSpeech", endpoint: "wss://speech.example/inference", model: "synthetic-asr-model", apiKey: "synthetic-asr-key" });
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+
+it("checks saved speech model changes with native key reuse and requires a key for a new endpoint", async () => {
+  vi.mocked(profileCredentialEditorState).mockResolvedValue({ savedFields: ["apiKey"], endpoint: "wss://saved.example/inference", model: "saved-model" });
+  const connectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...props.profile, credentialState: "present", speechCredentialState: "present" }, connectionCheck });
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined);
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === I18N.settings.editSpeechConfiguration)!.click());
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined);
+  await change("#test-speech-model", "edited-model");
+  expect(connectionCheck).toHaveBeenLastCalledWith({ kind: "customSpeech", endpoint: "", model: "edited-model", apiKey: "" });
+  await change("#test-speech-endpoint", "wss://new.example/inference");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-speech-key", "synthetic-new-key");
+  expect(connectionCheck).toHaveBeenLastCalledWith({ kind: "customSpeech", endpoint: "wss://new.example/inference", model: "edited-model", apiKey: "synthetic-new-key" });
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === I18N.settings.cancel)!.click());
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined);
+  expect(props.onSave).not.toHaveBeenCalled();
+});
 it.each(["en", "zh", "ja"] as const)("separates stage identities and puts protocol requirements in help in %s", async language => {
   setStoredUiLanguage(language); await render();
   expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
@@ -119,6 +182,31 @@ it("shows saved speech address and model in editable fields and reveals its key 
   await change("#test-speech-model", "edited-asr-model");
   await submit();
   expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "customSpeech", endpoint: "", model: "edited-asr-model", apiKey: "" });
+});
+
+it.each(["customDashScopeASR", "customOpenAIASR"] as const)("expands long saved %s fields without loading secrets and preserves a model edit", async provider => {
+  const endpoint = `wss://synthetic.example/${"speech-path/".repeat(20)}inference`;
+  const model = `synthetic-${"speech-model-".repeat(12)}revision`;
+  vi.mocked(profileCredentialEditorState).mockResolvedValue({ savedFields: ["apiKey"], endpoint, model });
+  await render({ ...props, profile: { ...props.profile, provider, credentialState: "present", speechCredentialState: "present" } });
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === I18N.settings.editSpeechConfiguration)!.click());
+  const endpointGroup = host.querySelector("#test-speech-endpoint")!.closest(".config-input-group")!;
+  await act(() => endpointGroup.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+  expect(endpointGroup.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(endpoint);
+  expect(endpointGroup.querySelector<HTMLTextAreaElement>("textarea")!.readOnly).toBe(false);
+  await act(() => endpointGroup.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+  expect(host.querySelector<HTMLInputElement>("#test-speech-endpoint")!.value).toBe(endpoint);
+  expect(props.onSave).not.toHaveBeenCalled();
+
+  const modelGroup = host.querySelector("#test-speech-model")!.closest(".config-input-group")!;
+  await act(() => modelGroup.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+  expect(modelGroup.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(model);
+  await change("#test-speech-model", `${model}-edited`);
+  await submit();
+  expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "customSpeech", endpoint: "", model: `${model}-edited`, apiKey: "" });
+  expect(modelGroup.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(`${model}-edited`);
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(host.querySelector("#test-speech-key")!.closest(".config-input-group")!.querySelector(".config-input__expand")).toBeNull();
 });
 
 it("preserves custom speech edits against a delayed metadata read and clears the revealed key on cancel", async () => {

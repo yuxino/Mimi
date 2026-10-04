@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildProviderCredentials,
+  buildProviderProbeCredentials,
   buildCustomSpeechCredentials,
   customSpeechEndpointIsValid,
   buildAlibabaTranslationCredentials,
@@ -87,6 +88,57 @@ describe("provider credential payloads", () => {
       draft: emptyCredentialDraft(),
       editingSavedCredential: false,
     });
+  });
+});
+
+describe("temporary provider check payloads", () => {
+  it.each(["alibabaCloud", "openAIRealtime", "googleGeminiLive", "volcanoEngine", "xAIRealtime"] as const)(
+    "keeps an empty %s saved key in native storage and prefers an explicit replacement", provider => {
+      const draft = emptyCredentialDraft();
+      expect(buildProviderProbeCredentials(provider, draft)).toBeNull();
+      expect(buildProviderProbeCredentials(provider, draft, ["apiKey"])).toEqual({ kind: "apiKey", apiKey: "" });
+      expect(buildProviderCredentials(provider, draft)).toBeNull();
+      expect(buildProviderProbeCredentials(provider, { ...draft, apiKey: "  synthetic-new-key  " }, ["apiKey"]))
+        .toEqual({ kind: "apiKey", apiKey: "synthetic-new-key" });
+      expect(draft).toEqual(emptyCredentialDraft());
+    },
+  );
+
+  it("requires Azure endpoint and deployment metadata while allowing only its known saved key to remain blank", () => {
+    const draft = { ...emptyCredentialDraft(), endpoint: " https://synthetic.openai.azure.com ", deployment: " changed-translation ", transcriptionDeployment: " saved-transcription " };
+    expect(buildProviderProbeCredentials("azureOpenAIRealtime", draft, ["apiKey"])).toEqual({
+      kind: "azureOpenAI", endpoint: "https://synthetic.openai.azure.com", deployment: "changed-translation",
+      transcriptionDeployment: "saved-transcription", apiKey: "",
+    });
+    for (const field of ["endpoint", "deployment", "transcriptionDeployment"] as const) {
+      expect(buildProviderProbeCredentials("azureOpenAIRealtime", { ...draft, [field]: "" }, ["apiKey"])).toBeNull();
+    }
+    expect(buildProviderProbeCredentials("azureOpenAIRealtime", draft, ["appKey"])).toBeNull();
+    expect(buildProviderCredentials("azureOpenAIRealtime", draft)).toBeNull();
+  });
+
+  it("builds partial Tencent checks from the exact saved secret slots without changing normal saves", () => {
+    const draft = { ...emptyCredentialDraft(), appId: " 123456 ", secretId: " synthetic-new-id " };
+    expect(buildProviderProbeCredentials("tencentCloud", draft, ["secretKey"])).toEqual({
+      kind: "tencentCloud", appId: "123456", secretId: "synthetic-new-id", secretKey: "",
+    });
+    expect(buildProviderProbeCredentials("tencentCloud", draft, ["secretId", "apiKey"])).toBeNull();
+    expect(buildProviderProbeCredentials("tencentCloud", { ...draft, appId: "" }, ["secretId", "secretKey"])).toBeNull();
+    expect(buildProviderProbeCredentials("tencentCloud", { ...draft, secretId: "" }, ["secretId", "secretKey"]))
+      .toEqual({ kind: "tencentCloud", appId: "123456", secretId: "", secretKey: "" });
+    expect(buildProviderCredentials("tencentCloud", draft)).toBeNull();
+  });
+
+  it("keeps Baidu app identity mandatory and does not borrow another provider's saved key marker", () => {
+    const draft = { ...emptyCredentialDraft(), appId: " 123456 " };
+    expect(buildProviderProbeCredentials("baiduTranslate", draft, ["appKey"])).toEqual({
+      kind: "baiduTranslate", appId: "123456", appKey: "",
+    });
+    expect(buildProviderProbeCredentials("baiduTranslate", draft, ["apiKey"])).toBeNull();
+    expect(buildProviderProbeCredentials("baiduTranslate", emptyCredentialDraft(), ["appKey"])).toBeNull();
+    expect(buildProviderProbeCredentials("baiduTranslate", { ...draft, appKey: " synthetic-new-app-key " }, ["appKey"]))
+      .toEqual({ kind: "baiduTranslate", appId: "123456", appKey: "synthetic-new-app-key" });
+    expect(buildProviderCredentials("baiduTranslate", draft)).toBeNull();
   });
 });
 

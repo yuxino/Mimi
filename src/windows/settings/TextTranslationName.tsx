@@ -3,6 +3,7 @@ import { profileErrorMessage } from "../../lib/connectionDiagnostics";
 import { I18N } from "../../lib/i18n";
 import { defaultTextTranslationName } from "../../lib/textTranslationName";
 import type { ServiceProfile, TextTranslationNameDraft } from "../../lib/types";
+import { ConfigInput } from "./ConfigInput";
 import { InlineFeedback } from "./SettingsPrimitives";
 
 /** Display metadata is saved independently of endpoint, model and credential drafts. */
@@ -48,10 +49,10 @@ export function TextTranslationName({ profile, route, inputId, disabled, onSave 
   return <div className="settings-field translation-name-field">
     <label htmlFor={inputId}>{I18N.settings.textTranslationName}</label>
     <span className="settings-field__inline">
-      <input id={inputId} value={draft} maxLength={64} disabled={disabled || saving}
+      <ConfigInput expandable id={inputId} value={draft} maxLength={64} disabled={disabled || saving}
         placeholder={defaultTextTranslationName(route)} autoComplete="off"
         aria-invalid={error ? true : undefined} aria-describedby={error ? `${inputId}-error` : undefined}
-        onChange={event => { setDraft(event.target.value); setError(null); }}
+        onValueChange={value => { setDraft(value); setError(null); }}
         onKeyDown={event => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing) {
             event.preventDefault();

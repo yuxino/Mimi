@@ -337,3 +337,21 @@ Run `./scripts/check.sh`. For signing changes, additionally build with
 requirement with any app that would be replaced. Before a commit, inspect the
 diff for credentials, recordings, subtitle content, personal paths, build
 artifacts, and signing material.
+
+## Configuration input and development-mode acceptance
+
+- A long placeholder cannot be selected or edited. Load saved nonsecret fields
+  into their real input value and use concise empty-field hints. Check the full
+  value and actual editing, not just absence of page overflow. Persistent text
+  configuration uses the shared wrapping expansion; secrets keep their explicit
+  reveal boundary.
+- macOS WebKit mouse activation may blur an input with no related target before
+  an inline button gets focus. Replacing that input with a textarea can therefore
+  trigger proxy auto-save/validation during expansion. Preserve focus through
+  the shared expansion action and verify a dirty draft by real mouse activation;
+  a DOM test that focuses the button first does not reproduce this path.
+- Set UI-test and automatic-start flags explicitly on every canonical dev launch.
+  A normal launch was observed with a residual UI-test flag despite omitting
+  `--ui-only`; its relaunch source was not proven. Verify the exact running bundle
+  and runtime/window mode, not only the script's success message. After UI-only
+  QA, restore the ordinary idle development app before handing it to the user.

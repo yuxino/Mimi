@@ -132,9 +132,9 @@ async function previewProvider(provider: ServiceProfile["provider"]) {
   await act(async () => button.click());
 }
 async function change(selector: string, value: string) {
-  const node = host.querySelector<HTMLInputElement>(selector)!;
+  const node = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(node, value);
+    Object.getOwnPropertyDescriptor(node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(node, value);
     node.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
@@ -298,7 +298,7 @@ it("does not publish a late translation check into a subsequent recognition chec
   expect(testProfileConnection).toHaveBeenNthCalledWith(2, profile.id, "speech");
 });
 
-it("requires saving an unsaved translation route before checking it while leaving recognition available", async () => {
+it("waits for required draft fields and checks them without saving while leaving recognition available", async () => {
   vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null });
   await render({ ...settings, profiles: [{ ...profile, credentialState: "present", textTranslation: "deepLX" }] });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
@@ -310,13 +310,22 @@ it("requires saving an unsaved translation route before checking it while leavin
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "DeepL")!;
   await act(async () => option.click());
   expect(textCheck.querySelector<HTMLButtonElement>("button.settings-button")!.disabled).toBe(true);
-  expect(textCheck.querySelector(".settings-help-control__description")?.textContent).toBe(I18N.settings.saveTranslationBeforeCheck);
+  expect(textCheck.querySelector(".settings-help-control__description")).toBeNull();
   expect(textCheck.querySelector(".settings-feedback")).toBeNull();
   await act(async () => textCheck.querySelector<HTMLButtonElement>("button.settings-button")!.click());
   expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(profile.id, "text");
   await click(I18N.settings.checkSpeechRecognition);
   expect(testProfileConnection).toHaveBeenLastCalledWith(profile.id, "speech");
   expect(testProfileConnection).toHaveBeenCalledTimes(2);
+  await change('input[id$="-token"]', "synthetic-draft-key");
+  expect(textCheck.querySelector<HTMLButtonElement>("button.settings-button")!.disabled).toBe(false);
+  await click(I18N.settings.checkTextTranslation);
+  expect(testProfileConnection).toHaveBeenLastCalledWith(profile.id, "text", {
+    kind: "alibabaTranslation", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-draft-key", model: "",
+  });
+  expect(textCheck.querySelector('[data-tone="success"]')).not.toBeNull();
+  await change('input[id$="-token"]', "synthetic-new-key");
+  expect(textCheck.querySelector(".settings-feedback")).toBeNull();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
 });
 
@@ -431,7 +440,7 @@ it.each(["zh", "en", "ja"] as const)("groups the service identity, credential st
   expect(integratedStage.querySelector('[role="combobox"], p')).toBeNull();
   expect(host.querySelector(".service-detail__name label")?.textContent).toBe(I18N.settings.profileName);
   expect(host.querySelector(".service-detail__name")?.closest("details")).toBeNull();
-  expect(host.querySelector(".service-detail__name button")).toBeNull();
+  expect(host.querySelector(".service-detail__save-name")).toBeNull();
   expect(host.querySelector(".service-detail__configuration .credential-panel")).not.toBeNull();
   expect(host.querySelector(".service-detail__actions")?.textContent).toContain(I18N.settings.deleteProfile);
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
@@ -456,15 +465,15 @@ it.each(["zh", "en", "ja"] as const)("shows a default provider name once and kee
 it("offers the small name-save action only for a draft change, without touching a credential draft", async () => {
   await render({ ...settings, profiles: [{ ...profile, credentialState: "present" }] });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  expect(host.querySelector(".service-detail__name button")).toBeNull();
+  expect(host.querySelector(".service-detail__save-name")).toBeNull();
   await click(I18N.settings.replaceCredentials);
   await change('input[type="password"]', "synthetic-replacement");
   await change(".service-detail__name input", "Other name");
-  expect(host.querySelector(".service-detail__name button")?.textContent).toBe(I18N.settings.saveName);
-  expect(host.querySelector(".service-detail__name button")?.classList.contains("settings-link")).toBe(true);
+  expect(host.querySelector(".service-detail__save-name")?.textContent).toBe(I18N.settings.saveName);
+  expect(host.querySelector(".service-detail__save-name")?.classList.contains("settings-link")).toBe(true);
   expect(host.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe("synthetic-replacement");
   await change(".service-detail__name input", profile.name);
-  expect(host.querySelector(".service-detail__name button")).toBeNull();
+  expect(host.querySelector(".service-detail__save-name")).toBeNull();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
   expect(actions.updateProfile).not.toHaveBeenCalled();
 });
@@ -557,7 +566,7 @@ it.each(["credential_service_unavailable", "credential_store_access_denied", "cr
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   await change('input[type="password"]', "synthetic-asr");
   await chooseCustomTranslation();
-  await change('input[type="text"][placeholder="https://example.com/translate"]', "https://example.com/translate");
+  await change('.service-stage--translation input[id$="-endpoint"]', "https://example.com/translate");
   await change('input[id$="-token"]', "synthetic-token");
   await submit();
   expect(actions.selectProfile).not.toHaveBeenCalled();
@@ -566,11 +575,13 @@ it.each(["credential_service_unavailable", "credential_store_access_denied", "cr
   for (const [credential, reason] of [["serviceUnavailable", "credentialsServiceUnavailable"], ["accessDenied", "credentialsAccessDenied"], ["missing", "credentialsMissing"]] as const) {
     vi.mocked(testProfileConnection).mockResolvedValue({ credential, service: "unavailable", reason });
     await click(diagnosticCopy("linux").test);
-    expect(testProfileConnection).toHaveBeenLastCalledWith(profile.id, "speech");
+    expect(testProfileConnection).toHaveBeenLastCalledWith(profile.id, "speech", {
+      kind: "alibabaTranslation", apiKey: "synthetic-asr", textTranslation: "followService", endpoint: "", token: "", model: "",
+    });
     expect(host.querySelector(".connection-check .settings-feedback")?.textContent).toBe(`${diagnosticCopy("linux").unavailable}: ${diagnosticCopy("linux").reasons[reason]}`);
     expect(host.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe("synthetic-asr");
     expect(host.querySelector<HTMLInputElement>('input[id$="-token"]')!.value).toBe("synthetic-token");
-    expect(host.querySelector<HTMLInputElement>('input[placeholder="https://example.com/translate"]')!.value).toBe("https://example.com/translate");
+    expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-endpoint"]')!.value).toBe("https://example.com/translate");
     expect(host.querySelector('[role="combobox"]')!.textContent).toBe(I18N.settings.textTranslationCustom);
     expect(host.querySelector("select")).toBeNull();
     expect(host.querySelector<HTMLButtonElement>('.credential-form button[type="submit"]')!.disabled).toBe(false);
@@ -760,6 +771,34 @@ it("prefills Azure nonsecret fields without reading its key and preserves an edi
   expect(actions.saveProfileCredentials).toHaveBeenCalledExactlyOnceWith(profile.id, { kind: "azureOpenAI", endpoint: "https://synthetic.openai.azure.com", deployment: "edited-deployment", transcriptionDeployment: "stored-transcription", apiKey: "synthetic-new-key" });
 });
 
+it("expands long Azure configuration values and checks the edited deployment without saving or revealing its key", async () => {
+  const endpoint = `https://${"synthetic-resource-".repeat(3)}one.openai.azure.com`;
+  const deployment = `synthetic-${"translation-".repeat(12)}deployment`;
+  const transcriptionDeployment = `synthetic-${"recognition-".repeat(12)}deployment`;
+  vi.mocked(profileCredentialEditorState).mockResolvedValue({ savedFields: ["apiKey"], endpoint, deployment, transcriptionDeployment });
+  vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null });
+  await render({ ...settings, profiles: [{ ...profile, provider: "azureOpenAIRealtime", credentialState: "present" }] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.replaceCredentials);
+  for (const [field, value] of [["endpoint", endpoint], ["deployment", deployment], ["transcriptionDeployment", transcriptionDeployment]] as const) {
+    const group = host.querySelector(`input[id$="-${field}"]`)!.closest(".config-input-group")!;
+    await act(() => group.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+    expect(group.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(value);
+    expect(group.querySelector<HTMLTextAreaElement>("textarea")!.readOnly).toBe(false);
+  }
+  expect(testProfileConnection).not.toHaveBeenCalled();
+  await change('textarea[id$="-deployment"]', `${deployment}-edited`);
+  await click(diagnosticCopy().test);
+  expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(profile.id, undefined, {
+    kind: "azureOpenAI", endpoint, deployment: `${deployment}-edited`, transcriptionDeployment, apiKey: "",
+  });
+  expect(host.querySelector<HTMLTextAreaElement>('textarea[id$="-deployment"]')!.value).toBe(`${deployment}-edited`);
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  expect(host.querySelector('input[id$="-apiKey"]')!.closest(".config-input-group")!.querySelector(".config-input__expand")).toBeNull();
+});
+
 it("keeps a new generic key while toggling visibility and discards a late saved read after leaving its profile", async () => {
   const configured: ServiceProfile = { ...profile, provider: "openAIRealtime", credentialState: "present" };
   await render({ ...settings, profiles: [configured] });
@@ -807,4 +846,171 @@ it("waits for saved configuration before submitting a replacement key and keeps 
   actions.selectProfile.mockResolvedValue(snapshot);
   await submit();
   expect(actions.saveProfileCredentials).toHaveBeenCalledExactlyOnceWith(profile.id, { kind: "apiKey", apiKey: "synthetic-unsaved-key" });
+});
+
+it.each([
+  { provider: "openAIRealtime", fields: { apiKey: "synthetic-new-key" }, expected: { kind: "apiKey", apiKey: "synthetic-new-key" } },
+  { provider: "azureOpenAIRealtime", fields: { endpoint: "https://synthetic.openai.azure.com", deployment: "translate", transcriptionDeployment: "transcribe", apiKey: "synthetic-new-key" },
+    expected: { kind: "azureOpenAI", endpoint: "https://synthetic.openai.azure.com", deployment: "translate", transcriptionDeployment: "transcribe", apiKey: "synthetic-new-key" } },
+  { provider: "tencentCloud", fields: { appId: "123", secretId: "synthetic-id", secretKey: "synthetic-key" },
+    expected: { kind: "tencentCloud", appId: "123", secretId: "synthetic-id", secretKey: "synthetic-key" } },
+  { provider: "baiduTranslate", fields: { appId: "123", appKey: "synthetic-key" }, expected: { kind: "baiduTranslate", appId: "123", appKey: "synthetic-key" } },
+] as const)("checks an explicit complete $provider replacement while saved metadata is unavailable", async ({ provider, fields, expected }) => {
+  let reject!: (reason: unknown) => void;
+  vi.mocked(profileCredentialEditorState).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null });
+  await render({ ...settings, profiles: [{ ...profile, provider, credentialState: "present" }] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.replaceCredentials);
+  const entries = Object.entries(fields);
+  for (const [index, [field, value]] of entries.entries()) {
+    await change(`.credential-form input[id$="-${field}"]`, value);
+    expect(host.querySelector<HTMLButtonElement>(".connection-check button")!.disabled).toBe(index < entries.length - 1);
+  }
+  await act(async () => reject("credential_store_unavailable"));
+  expect(host.querySelector('.credential-form [role="alert"]')).not.toBeNull();
+  expect(host.querySelector<HTMLButtonElement>(".connection-check button")!.disabled).toBe(false);
+  await click(diagnosticCopy().test);
+  expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(profile.id, undefined, expected);
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it("shows independent translation names in the profile list and route picker without changing protocol icons", async () => {
+  const named: ServiceProfile = { ...profile, credentialState: "present", textTranslation: "openAICompatible",
+    textTranslationNames: { openAICompatible: "Office translator", deepLX: "Local translator" } };
+  await render({ ...settings, profiles: [named] });
+  expect(host.querySelector(".service-row__translation")?.textContent).toBe(`${I18N.settings.textTranslationLabel} · Office translator`);
+  expect(host.querySelector(".service-row__translation .provider-icon")?.getAttribute("data-provider")).toBe("openAICompatible");
+  expect(host.querySelector(".service-row__main")?.getAttribute("aria-label")).toContain("Office translator");
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  const picker = host.querySelector<HTMLButtonElement>('.service-stage--translation [role="combobox"]')!;
+  expect(picker.textContent).toBe("Office translator");
+  await act(async () => picker.click());
+  const local = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === "Local translator")!;
+  expect(local.querySelector(".provider-icon")?.getAttribute("data-provider")).toBe("deepLX");
+  await act(async () => local.click());
+  expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.value).toBe("Local translator");
+  expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.placeholder).toBe("DeepLX");
+  expect(actions.updateProfile).not.toHaveBeenCalled();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+});
+
+it.each(["alibabaCloud", "customDashScopeASR", "customOpenAIASR"] as const)(
+  "saves and clears a %s translation name independently of pending credentials and profile-name edits", async provider => {
+    const named: ServiceProfile = { ...profile, provider, credentialState: "present", speechCredentialState: "present", textCredentialState: "present",
+      textTranslation: "openAICompatible", textTranslationNames: { openAICompatible: "Old name" } };
+    const snapshot = { ...settings, profiles: [named] };
+    vi.mocked(profileCredentialEditorState).mockImplementation(async request => request.textTranslation
+      ? { savedFields: ["token"], endpoint: "https://synthetic.example/v1", model: "saved-model" }
+      : { savedFields: ["apiKey"] });
+    const renamed: SettingsSnapshot = { ...snapshot, profiles: [{ ...named, textTranslationNames: { openAICompatible: "Office translator" } }] };
+    actions.updateProfile.mockResolvedValueOnce(renamed);
+    await render(snapshot);
+    await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+    expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-endpoint"]')!.value).toBe("https://synthetic.example/v1");
+    expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-model"]')!.value).toBe("saved-model");
+    await change(".service-detail__name input", "Unsaved configuration name");
+    await change('.service-stage--translation input[id$="-token"]', "synthetic-unsaved-token");
+    await change(".translation-name-field input", "  Office translator  ");
+    await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
+    expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, profile.name, {
+      textTranslationName: { route: "openAICompatible", name: "Office translator" },
+    });
+    expect(host.querySelector('.settings-toast[role="status"]')?.textContent).toBe(I18N.settings.textTranslationNameSaved);
+    expect(host.querySelector(".translation-name-field .settings-button")).toBeNull();
+    await render(renamed);
+    expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-token"]')!.value).toBe("synthetic-unsaved-token");
+    expect(host.querySelector<HTMLInputElement>(".service-detail__name input")!.value).toBe("Unsaved configuration name");
+    expect(host.querySelector('.service-stage--translation [role="combobox"]')?.textContent).toBe("Office translator");
+    expect(profileRevealCredential).not.toHaveBeenCalled();
+
+    const cleared: SettingsSnapshot = { ...snapshot, profiles: [{ ...named, textTranslationNames: {} }] };
+    actions.updateProfile.mockResolvedValueOnce(cleared);
+    await change(".translation-name-field input", "   ");
+    await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
+    expect(actions.updateProfile).toHaveBeenLastCalledWith(profile.id, profile.name, {
+      textTranslationName: { route: "openAICompatible", name: "" },
+    });
+    await render(cleared);
+    expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.value).toBe("");
+    expect(host.querySelector('.service-stage--translation [role="combobox"]')?.textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
+    expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-token"]')!.value).toBe("synthetic-unsaved-token");
+    expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+    expect(actions.selectProfile).not.toHaveBeenCalled();
+  },
+);
+
+it("keeps a failed translation-name edit beside its field and retries without credential writes", async () => {
+  const named: ServiceProfile = { ...profile, credentialState: "present", textTranslation: "deepLX", textTranslationNames: { deepLX: "Old translator" } };
+  const snapshot = { ...settings, profiles: [named] };
+  actions.updateProfile.mockRejectedValueOnce(new Error("synthetic-private-save-error"));
+  await render(snapshot);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await change(".translation-name-field input", "Unsaved translator");
+  await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
+  expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.value).toBe("Unsaved translator");
+  expect(host.querySelector('.translation-name-field [role="alert"]')?.textContent).toBe(I18N.settings.profileActionFailed);
+  expect(host.querySelector('.settings-toast[role="status"]')).toBeNull();
+  expect(host.textContent).not.toContain("synthetic-private-save-error");
+  expect(host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.disabled).toBe(false);
+  actions.updateProfile.mockResolvedValueOnce({ ...snapshot, profiles: [{ ...named, textTranslationNames: { deepLX: "Unsaved translator" } }] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
+  expect(actions.updateProfile).toHaveBeenCalledTimes(2);
+  expect(actions.updateProfile).toHaveBeenLastCalledWith(profile.id, profile.name, {
+    textTranslationName: { route: "deepLX", name: "Unsaved translator" },
+  });
+  expect(host.querySelector('.translation-name-field [role="alert"]')).toBeNull();
+  expect(host.querySelector('.settings-toast[role="status"]')?.textContent).toBe(I18N.settings.textTranslationNameSaved);
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+});
+
+it("checks a new OpenAI key draft directly without saving or selecting the profile", async () => {
+  const unconfigured: ServiceProfile = { ...profile, provider: "openAIRealtime", credentialState: "missing" };
+  vi.mocked(profileCredentialEditorState).mockResolvedValue({ savedFields: [] });
+  vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null });
+  await render({ ...settings, profiles: [unconfigured] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await change('.credential-form input[id$="-apiKey"]', "  synthetic-new-api-key  ");
+  await click(diagnosticCopy().test);
+  expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(profile.id, undefined, {
+    kind: "apiKey", apiKey: "synthetic-new-api-key",
+  });
+  expect(host.querySelector('.connection-check [data-tone="success"]')?.textContent).toBe(diagnosticCopy().available);
+  expect(host.querySelector<HTMLInputElement>('.credential-form input[id$="-apiKey"]')!.value).toBe("  synthetic-new-api-key  ");
+  expect(host.querySelector(".credential-badge")?.getAttribute("aria-label")).toBe(I18N.settings.credentialMissing);
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.updateProfile).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+});
+
+it("checks saved OpenAI credentials after reveal, then checks an actual secret edit as a separate draft", async () => {
+  const configured: ServiceProfile = { ...profile, provider: "openAIRealtime", credentialState: "present" };
+  vi.mocked(profileRevealCredential).mockResolvedValue("synthetic-stored-api-key");
+  vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null });
+  await render({ ...settings, profiles: [configured] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.replaceCredentials);
+  await click(I18N.settings.revealSavedCredential);
+  expect(profileRevealCredential).toHaveBeenCalledExactlyOnceWith({ profileId: profile.id, field: "apiKey" });
+  expect(host.querySelector<HTMLInputElement>('.credential-form input[id$="-apiKey"]')!.value).toBe("synthetic-stored-api-key");
+  await click(diagnosticCopy().test);
+  expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(profile.id);
+  expect(host.querySelector('.connection-check [data-tone="success"]')).not.toBeNull();
+
+  await change('.credential-form input[id$="-apiKey"]', "synthetic-replacement-api-key");
+  expect(host.querySelector(".connection-check .settings-feedback")).toBeNull();
+  await click(diagnosticCopy().test);
+  expect(testProfileConnection).toHaveBeenNthCalledWith(2, profile.id, undefined, {
+    kind: "apiKey", apiKey: "synthetic-replacement-api-key",
+  });
+  expect(host.querySelector<HTMLInputElement>('.credential-form input[id$="-apiKey"]')!.value).toBe("synthetic-replacement-api-key");
+  expect(host.querySelector('.connection-check [data-tone="success"]')).not.toBeNull();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.updateProfile).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
 });

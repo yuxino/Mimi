@@ -195,3 +195,21 @@ it("preserves edits across unrelated snapshots and refreshes when the saved name
   expect(saveButton()).toBeUndefined();
   expect(save).not.toHaveBeenCalled();
 });
+
+it("expands a long saved name for editing and keeps Enter scoped to the name save", async () => {
+  const name = "翻译服务名称".repeat(8);
+  await render({ current: { ...profile, textTranslationNames: { openAICompatible: name } } });
+  await act(() => host.querySelector<HTMLButtonElement>('.config-input__expand')!.click());
+  const expanded = host.querySelector<HTMLTextAreaElement>('#translation-name')!;
+  expect(expanded.tagName).toBe("TEXTAREA");
+  expect(expanded.value).toBe(name);
+  expect(expanded.maxLength).toBe(64);
+  expect(save).not.toHaveBeenCalled();
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(expanded, "我的翻译");
+    expanded.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => expanded.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  expect(save).toHaveBeenCalledExactlyOnceWith("openAICompatible", "我的翻译");
+  expect(credentialsSubmit).not.toHaveBeenCalled();
+});

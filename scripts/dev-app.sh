@@ -9,6 +9,7 @@ set -euo pipefail
 # one canonical path, and verifies the exact process that was opened.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$SCRIPT_DIR/dev-app-launch.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 TARGET_DIR="${CARGO_TARGET_DIR:-$PROJECT_DIR/src-tauri/target}"
 if [[ "$TARGET_DIR" != /* ]]; then
@@ -468,11 +469,7 @@ if [[ "$SHOULD_LAUNCH" == "1" ]]; then
     exit 1
   fi
 
-  if [[ "$MODE" == "ui-only" ]]; then
-    open -n --env MIMI_UI_TEST=1 --env "MIMI_DEVELOPMENT_EVIDENCE_WORKSPACE=$EVIDENCE_WORKSPACE" "$CANONICAL_APP"
-  else
-    open -n --env "MIMI_DEVELOPMENT_EVIDENCE_WORKSPACE=$EVIDENCE_WORKSPACE" "$CANONICAL_APP"
-  fi
+  open_mimi_development_app "$MODE" "$EVIDENCE_WORKSPACE" "$CANONICAL_APP"
 
   RUNNING_CANONICAL_PIDS=()
   for _ in {1..50}; do

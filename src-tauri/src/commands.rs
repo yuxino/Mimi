@@ -1986,6 +1986,7 @@ pub async fn profile_test_connection(
     state: tauri::State<'_, AppState>,
     profile_id: String,
     stage: Option<crate::clients::connection_diagnostics::ConnectionCheckStage>,
+    credentials: Option<ProviderCredentials>,
 ) -> Result<crate::clients::connection_diagnostics::ConnectionDiagnostic, String> {
     use crate::clients::connection_diagnostics::{
         check_service, check_speech_service, check_text_service, preparation_failure,
@@ -1996,6 +1997,29 @@ pub async fn profile_test_connection(
         .iter()
         .find(|p| p.id == profile_id)
         .ok_or("profile_not_found")?;
+    if let Some(credentials) = credentials {
+        // A draft is an explicit, ephemeral check, never a saved-profile
+        // readiness request. In particular it must not emit a credential snapshot.
+        return Ok(match stage {
+            Some(ConnectionCheckStage::Text) => match state
+                .settings
+                .configuration_for_text_draft_probe(profile, &credentials)
+            {
+                Err(error) => preparation_failure(&error),
+                Ok(_) if app_is_ui_test() => ConnectionDiagnostic::not_tested("present"),
+                Ok(configuration) => check_text_service(&configuration).await,
+            },
+            stage => match state.settings.configuration_for_speech_draft_probe(
+                profile,
+                &credentials,
+                stage.is_some(),
+            ) {
+                Err(error) => preparation_failure(&error),
+                Ok(_) if app_is_ui_test() => ConnectionDiagnostic::not_tested("present"),
+                Ok(configuration) => check_speech_service(&configuration, stage.is_none()).await,
+            },
+        });
+    }
     if let Some(stage) = stage {
         // Stage checks deliberately avoid an aggregate credential snapshot: a
         // text-only check must not prompt for or require the recognizer's key.

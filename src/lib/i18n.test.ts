@@ -47,7 +47,7 @@ it("keeps the text destination labels short in all UI languages", () => {
     expect(I18N.settings.deepLXChain).toContain("DeepLX");
     expect(I18N.settings.deepLXChain.length).toBeLessThan(55);
     expect(I18N.settings.deepLXToken).not.toContain("Bearer");
-    expect(I18N.settings.savedServiceAddressPlaceholder).not.toBe("");
+    expect(I18N.settings.savedCredential).not.toBe("");
     expect(I18N.settings.asrApiKey).not.toBe(I18N.settings.deepLXEndpoint);
     expect(I18N.settings.textTranslationCustom).toBe("DeepLX");
     expect(I18N.settings.openAICompatibleRequirements).toContain("POST /chat/completions");

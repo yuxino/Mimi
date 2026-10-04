@@ -27,9 +27,9 @@ beforeEach(() => {
 afterEach(async () => { await act(() => root.unmount()); host.remove(); setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 async function render(next = props) { props = next; await act(async () => { root.render(<AlibabaCredentialEditor {...props} />); }); }
 async function change(selector: string, value: string) {
-  const node = host.querySelector<HTMLInputElement>(selector)!;
+  const node = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
   await act(() => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(node, value);
+    Object.getOwnPropertyDescriptor(node instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(node, value);
     node.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
@@ -95,7 +95,7 @@ it("retains the historical DeepLX route and switches back without repeating the 
   expect(host.querySelector('.service-stage:not(.service-stage--translation) .provider-icon[data-provider="alibabaCloud"]')).not.toBeNull();
   expect(host.textContent).toContain(I18N.settings.deepLXChain);
   expect(host.querySelector('input[type="password"]')?.getAttribute("id")).toBe("test-token");
-  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.placeholder).not.toBe(I18N.settings.savedServiceAddressPlaceholder);
+  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.placeholder).not.toMatch(/留空|Leave blank|空欄/);
   await chooseTranslation("followService"); await submit();
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "followService", endpoint: "", token: "" });
 });
@@ -284,8 +284,8 @@ it("adds an OpenAI-compatible destination without repeating the saved recognitio
   const model = host.querySelector<HTMLInputElement>("#test-model")!;
   const token = host.querySelector<HTMLInputElement>("#test-token")!;
   expect(endpoint.value).toBe(""); expect(model.value).toBe(""); expect(token.value).toBe("");
-  expect(endpoint.placeholder).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1");
-  expect(model.placeholder).toBe("qwen-turbo");
+  expect(endpoint.placeholder).toBe(I18N.settings.serviceAddressPlaceholder);
+  expect(model.placeholder).toBe(I18N.settings.modelNamePlaceholder);
   expect([endpoint, model].every(node => node.required)).toBe(true);
   expect(token.required).toBe(false);
   expect(token.placeholder).toBe(I18N.settings.optionalTranslationKeyPlaceholder);
@@ -302,7 +302,7 @@ it("keeps saved OpenAI-compatible values unread until revealed and permits chang
   expect(host.querySelectorAll(".saved-credential-input__toggle")).toHaveLength(1);
   expect(host.querySelector(".stored-credential-reveal input")).toBeNull();
   expect(profileRevealCredential).not.toHaveBeenCalled();
-  expect(host.querySelector<HTMLInputElement>("#test-model")!.placeholder).toBe("qwen-turbo");
+  expect(host.querySelector<HTMLInputElement>("#test-model")!.placeholder).toBe(I18N.settings.modelNamePlaceholder);
   await change("#test-model", "new-model"); await submit();
   expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "", token: "", model: "new-model" });
   await change("#test-endpoint", "https://new.example/v1");
@@ -359,16 +359,16 @@ it("keeps removal of a saved translation key reversible and separate from empty 
   const textConnectionCheck = vi.fn().mockReturnValue(null);
   await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" }, textConnectionCheck });
   const action = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === label)!;
-  expect(textConnectionCheck).toHaveBeenLastCalledWith(false);
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
   await act(() => action(I18N.settings.removeTranslationApiKey).click());
   expect(props.onSave).not.toHaveBeenCalled();
   expect(host.querySelector<HTMLInputElement>("#test-token")!.disabled).toBe(true);
   expect(host.querySelector<HTMLInputElement>("#test-token")!.placeholder).toBe(I18N.settings.noTranslationKeyPlaceholder);
-  expect(textConnectionCheck).toHaveBeenLastCalledWith(true);
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "", token: "", model: "", clearToken: true });
   await act(() => action(I18N.settings.cancelTranslationKeyRemoval).click());
   expect(host.querySelector<HTMLInputElement>("#test-token")!.disabled).toBe(false);
   expect(host.querySelector<HTMLInputElement>("#test-token")!.placeholder).toBe("••••••••");
-  expect(textConnectionCheck).toHaveBeenLastCalledWith(false);
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
   expect(host.querySelector('button[type="submit"]')).toBeNull();
   await act(() => action(I18N.settings.removeTranslationApiKey).click());
   await submit();
@@ -457,7 +457,7 @@ it("never replaces a saved ChatMock destination with the local preset on reopen"
   await render({ ...props, profile: { ...profile, textTranslation: "chatMock" } });
   expect(picker().textContent).toBe("ChatMock");
   expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.value).toBe("");
-  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.placeholder).not.toBe(I18N.settings.savedServiceAddressPlaceholder);
+  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.placeholder).not.toMatch(/留空|Leave blank|空欄/);
   expect(host.querySelector('button[type="submit"]')).toBeNull();
   await change("#test-model", "new-model"); await submit();
   expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "chatMock", endpoint: "", token: "", model: "new-model" });
@@ -492,11 +492,43 @@ it.each(["openAICompatible", "chatMock"] as const)("shows saved %s configuration
   expect(host.querySelector(".service-stage--translation .saved-credential-input__toggle")).toBeNull();
   expect([...host.querySelectorAll("button")].some(button => button.textContent === I18N.settings.removeTranslationApiKey)).toBe(false);
   expect(host.textContent).not.toContain(I18N.settings.savedCredentialMissing);
-  expect(textConnectionCheck).toHaveBeenLastCalledWith(false);
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
   expect(host.querySelector('button[type="submit"]')).toBeNull();
   await change("#test-model", "new-model"); await submit();
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: route, endpoint: "", token: "", model: "new-model" });
   expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it.each(["openAICompatible", "chatMock"] as const)("expands long saved %s address and model into the same editable draft", async route => {
+  const endpoint = `https://synthetic.example/${"translation-path/".repeat(16)}v1`;
+  const model = `synthetic-${"model-".repeat(24)}revision`;
+  vi.mocked(profileCredentialEditorState).mockImplementation(async ({ textTranslation }) => textTranslation
+    ? { savedFields: [], endpoint, model } : { savedFields: ["apiKey"] });
+  await render({ ...props, profile: { ...profile, textTranslation: route } });
+  const endpointGroup = host.querySelector("#test-endpoint")!.closest(".config-input-group")!;
+  await act(() => endpointGroup.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+  expect(endpointGroup.querySelector("input")).toBeNull();
+  expect(endpointGroup.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(endpoint);
+  expect(endpointGroup.querySelector<HTMLTextAreaElement>("textarea")!.readOnly).toBe(false);
+  expect(endpointGroup.querySelector<HTMLTextAreaElement>("textarea")!.wrap).toBe("soft");
+  expect(props.onSave).not.toHaveBeenCalled();
+  const editedEndpoint = `${endpoint}/edited`;
+  await change("#test-endpoint", editedEndpoint);
+  await act(() => endpointGroup.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+  expect(host.querySelector<HTMLInputElement>("#test-endpoint")!.value).toBe(editedEndpoint);
+
+  const modelGroup = host.querySelector("#test-model")!.closest(".config-input-group")!;
+  await act(() => modelGroup.querySelector<HTMLButtonElement>(".config-input__expand")!.click());
+  expect(modelGroup.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(model);
+  const editedModel = `${model}-edited`;
+  await change("#test-model", editedModel);
+  expect(props.onSave).not.toHaveBeenCalled();
+  await submit();
+  expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: route,
+    endpoint: editedEndpoint, token: "", model: editedModel });
+  expect(modelGroup.querySelector<HTMLTextAreaElement>("textarea")!.value).toBe(editedModel);
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(host.querySelector("#test-token")!.closest(".config-input-group")!.querySelector(".config-input__expand")).toBeNull();
 });
 
 it("does not overwrite edits when saved configuration arrives late", async () => {
@@ -516,15 +548,117 @@ it("does not overwrite edits when saved configuration arrives late", async () =>
 
 it("waits for saved destination metadata before a save can clear or reuse its token", async () => {
   let complete!: (value: Awaited<ReturnType<typeof profileCredentialEditorState>>) => void;
+  const textConnectionCheck = vi.fn().mockReturnValue(null);
   vi.mocked(profileCredentialEditorState).mockImplementation(({ textTranslation }) => textTranslation
     ? new Promise(resolve => { complete = resolve; }) : Promise.resolve({ savedFields: ["apiKey"] }));
-  await render({ ...props, profile: { ...profile, textTranslation: "deepLX" } });
+  await render({ ...props, profile: { ...profile, textTranslation: "deepLX" }, textConnectionCheck });
   await change("#test-endpoint", "https://example.com/translate");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
   await change("#test-token", "synthetic-new-token");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(expect.objectContaining({ endpoint: "https://example.com/translate", token: "synthetic-new-token" }));
   expect(host.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
   await submit();
   expect(props.onSave).not.toHaveBeenCalled();
   await act(async () => complete({ savedFields: ["token"], endpoint: "https://example.com/translate" }));
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(expect.objectContaining({ endpoint: "https://example.com/translate", token: "synthetic-new-token" }));
   await submit();
   expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({ endpoint: "", token: "synthetic-new-token" }));
+});
+
+it("checks a complete translation draft before saving or configuring recognition", async () => {
+  const textConnectionCheck = vi.fn().mockReturnValue(null);
+  const connectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...profile, credentialState: "missing", speechCredentialState: "missing", textCredentialState: "missing" }, textConnectionCheck, connectionCheck });
+  await chooseTranslation("openAICompatible");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-endpoint", "https://translation.example/v1");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-model", " synthetic-model ");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "https://translation.example/v1", model: "synthetic-model", token: "" });
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  await change("#test-apiKey", "synthetic-speech-key");
+  expect(connectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "synthetic-speech-key", textTranslation: "followService", endpoint: "", model: "", token: "" });
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(expect.objectContaining({ apiKey: "", textTranslation: "openAICompatible" }));
+  await change("#test-token", "synthetic-text-key");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(expect.objectContaining({ apiKey: "", token: "synthetic-text-key" }));
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+
+it("allows retrying unavailable saved recognition without requiring a replacement key", async () => {
+  vi.mocked(profileCredentialEditorState).mockRejectedValue("credential_store_unavailable");
+  const connectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...profile, credentialState: "unavailable" }, connectionCheck });
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined);
+  await change("#test-apiKey", " ");
+  expect(connectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-apiKey", "synthetic-replacement-key");
+  expect(connectionCheck).toHaveBeenLastCalledWith(expect.objectContaining({ apiKey: "synthetic-replacement-key" }));
+  await change("#test-apiKey", "");
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined);
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+
+it("checks an explicit complete text replacement when saved metadata cannot be read", async () => {
+  vi.mocked(profileCredentialEditorState).mockRejectedValue("credential_store_unavailable");
+  const textConnectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" }, textConnectionCheck });
+  await change("#test-endpoint", "https://replacement.example/v1");
+  await change("#test-model", "replacement-model");
+  // Blank optional auth could still mean retain a saved token; do not guess.
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-token", "synthetic-explicit-key");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "https://replacement.example/v1", model: "replacement-model", token: "synthetic-explicit-key" });
+  expect(props.onSave).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it("checks edited saved translation values with visible configuration and native auth reuse", async () => {
+  vi.mocked(profileCredentialEditorState).mockImplementation(async ({ textTranslation }) => textTranslation
+    ? { savedFields: ["token"], endpoint: "https://saved.example/v1/chat/completions", model: "saved-model" }
+    : { savedFields: ["apiKey"] });
+  const textConnectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...profile, textTranslation: "openAICompatible" }, textConnectionCheck });
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
+  await change("#test-model", "edited-model");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "openAICompatible", endpoint: "https://saved.example/v1/chat/completions", token: "", model: "edited-model" });
+  await change("#test-endpoint", "https://new.example/v1");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(expect.objectContaining({ endpoint: "https://new.example/v1", token: "", model: "edited-model" }));
+  await change("#test-endpoint", "https://new.example/v1?key=synthetic");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-endpoint", "https://saved.example/v1/chat/completions");
+  await change("#test-model", "x".repeat(257));
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-model", "saved-model");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
+  expect(props.onSave).not.toHaveBeenCalled();
+});
+
+it("checks a legacy DeepLX token edit using the visible saved endpoint without a speech credential draft", async () => {
+  vi.mocked(profileCredentialEditorState).mockImplementation(async ({ textTranslation }) => textTranslation
+    ? { savedFields: ["token"], endpoint: "https://legacy.example/translate" }
+    : { savedFields: ["asrApiKey"] });
+  const textConnectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...profile, provider: "deepLX" }, textConnectionCheck });
+  await change("#test-token", "synthetic-new-token");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepLX", endpoint: "https://legacy.example/translate", token: "synthetic-new-token", model: "" });
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  expect(props.onSave).not.toHaveBeenCalled();
+  await submit();
+  expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepLX", endpoint: "", token: "synthetic-new-token", model: "" });
+});
+
+it("checks DeepL and built-in translation drafts using only the relevant key", async () => {
+  const textConnectionCheck = vi.fn().mockReturnValue(null);
+  await render({ ...props, profile: { ...profile, credentialState: "missing" }, textConnectionCheck });
+  await change("#test-apiKey", "synthetic-speech-key");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "synthetic-speech-key", textTranslation: "followService", endpoint: "", token: "", model: "" });
+  await chooseTranslation("deepL");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
+  await change("#test-token", "synthetic-deepl-key");
+  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key", model: "" });
+  await render({ ...props, readOnly: true });
+  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
+  expect(props.onSave).not.toHaveBeenCalled();
 });

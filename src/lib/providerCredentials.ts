@@ -83,11 +83,24 @@ export function buildProviderCredentials(
   provider: ServiceProvider,
   draft: CredentialDraft,
 ): ProviderCredentialsInput | null {
+  return buildProviderInput(provider, draft, []);
+}
+
+/** Empty saved secret slots are resolved natively for a temporary check. */
+export function buildProviderProbeCredentials(
+  provider: ServiceProvider,
+  draft: CredentialDraft,
+  savedFields: readonly string[] = [],
+): ProviderCredentialsInput | null {
+  return buildProviderInput(provider, draft, savedFields);
+}
+
+function buildProviderInput(provider: ServiceProvider, draft: CredentialDraft, savedFields: readonly string[]): ProviderCredentialsInput | null {
   const values = Object.fromEntries(
     Object.entries(draft).map(([key, value]) => [key, value.trim()]),
   ) as CredentialDraft;
   if (
-    credentialFieldsForProvider(provider).some((field) => field !== "token" && !values[field])
+    credentialFieldsForProvider(provider).some((field) => field !== "token" && !values[field] && !savedFields.includes(field))
   ) {
     return null;
   }

@@ -9,6 +9,7 @@ import { SERVICE_PROVIDERS, credentialStateForTarget, isCustomSpeechProvider, su
 import { DEFAULT_NETWORK_PROXY, networkProxyConfigKey } from "../../lib/networkProxy";
 import {
   buildProviderCredentials,
+  buildProviderProbeCredentials,
   deepLXEndpointIsValid,
   credentialEditorStateAfterDeleteRequest,
   credentialFieldsForProvider,
@@ -34,10 +35,10 @@ import { DestructiveConfirmation, SettingsConfirmation } from "./DestructiveConf
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 import { CustomSpeechCredentialEditor } from "./CustomSpeechCredentialEditor";
 
-import { ConfigInput } from "./ConfigInput";
+import { ConfigInput, type ConfigInputElement } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
 import { CredentialStorageHelp } from "./CredentialStorageHelp";
-import { ConnectionCheck } from "./ConnectionCheck";
+import { DraftConnectionCheck } from "./ConnectionCheck";
 import { saveAndSelectProfile } from "./saveAndSelectProfile";
 import { SavedCredentialInput } from "./SavedCredentialInput";
 import { useCredentialEditorState } from "./useCredentialEditorState";
@@ -51,7 +52,7 @@ const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 type Feedback = { tone: "success" | "error" | "info"; message: string };
 type PendingAction = "create" | "rename" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | null;
 type CheckStage = ConnectionCheckStage | "combined";
-type CheckOutcome = { profileId: string; result: ConnectionDiagnostic | null; error: string | null };
+type CheckOutcome = { profileId: string; input: symbol; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
   | { kind: "profile"; profileId: string; name: string }
   | { kind: "credential"; profileId: string }
@@ -361,12 +362,12 @@ export function ServiceProfiles({
     setShowsEditor(true);
   };
 
-  const handleConnectionCheck = (stage?: ConnectionCheckStage) => {
+  const handleConnectionCheck = (input: symbol, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput) => {
     if (!selectedProfile || pendingAction !== null || checkInFlight.current) return;
     checkInFlight.current = true;
     const profileId = selectedProfile.id;
     const key = stage ?? "combined";
-    const publish = (result: ConnectionDiagnostic | null, error: string | null) => setDiagnostics(current => ({ ...current, [key]: { profileId, result, error } }));
+    const publish = (result: ConnectionDiagnostic | null, error: string | null) => setDiagnostics(current => ({ ...current, [key]: { profileId, input, result, error } }));
     const request = ++checkRequest.current;
     const epoch = profileCheckEpochs.current.get(profileId) ?? 0;
     const checkedProxyKey = proxyKeys[profileId]?.[key];
@@ -387,7 +388,7 @@ export function ServiceProfiles({
       setPendingCheckStage(null);
       setPendingAction(null);
     }, CONNECTION_CHECK_TIMEOUT_MS);
-    void (stage ? testProfileConnection(profileId, stage) : testProfileConnection(profileId))
+    void (credentials ? testProfileConnection(profileId, stage, credentials) : stage ? testProfileConnection(profileId, stage) : testProfileConnection(profileId))
       .then((result) => {
         if (canPublish()) publish(result, null);
       })
@@ -405,10 +406,14 @@ export function ServiceProfiles({
       });
   };
 
-  const renderConnectionCheck = (profile: ServiceProfile, stage?: ConnectionCheckStage, requiresSave = false) => {
+  const renderConnectionCheck = (profile: ServiceProfile, stage?: ConnectionCheckStage, draft?: ProviderCredentialsInput | null) => {
     const key = stage ?? "combined";
     const outcome = diagnostics[key];
-    return <ConnectionCheck result={!requiresSave && outcome?.profileId === profile.id ? outcome.result : null} error={!requiresSave && outcome?.profileId === profile.id ? outcome.error : null} pending={pendingCheckStage === key} disabled={mutationsDisabled || requiresSave} requiresSave={requiresSave} onCheck={() => handleConnectionCheck(stage)} label={stage === "text" ? I18N.settings.checkTextTranslation : stage === "speech" ? I18N.settings.checkSpeechRecognition : undefined} />;
+    return <DraftConnectionCheck key={`${profile.id}:${key}`} draft={draft}
+      outcome={outcome?.profileId === profile.id ? outcome : undefined}
+      pending={pendingCheckStage === key} disabled={mutationsDisabled}
+      onCheck={input => { if (draft !== null) handleConnectionCheck(input, stage, draft); }}
+      label={stage === "text" ? I18N.settings.checkTextTranslation : stage === "speech" ? I18N.settings.checkSpeechRecognition : undefined} />;
   };
 
   if (initializationStatus !== "ready") {
@@ -473,15 +478,15 @@ export function ServiceProfiles({
             <div className="settings-field">
               <label htmlFor={`profile-name-${selectedProfile.id}`}>{I18N.settings.profileName}</label>
               <span className="settings-field__inline">
-                <input id={`profile-name-${selectedProfile.id}`} value={nameDraft} maxLength={64} disabled={mutationsDisabled} readOnly={selectedProfileReadOnly} placeholder={I18N.settings.profileNamePlaceholder} onChange={(event) => { setNameDraft(event.target.value); setFeedback(null); }} />
+                <ConfigInput expandable id={`profile-name-${selectedProfile.id}`} value={nameDraft} maxLength={64} disabled={mutationsDisabled} readOnly={selectedProfileReadOnly} placeholder={I18N.settings.profileNamePlaceholder} onValueChange={(value) => { setNameDraft(value); setFeedback(null); }} />
                 {nameDraft.trim() !== selectedProfile.name && <button type="submit" className="settings-link service-detail__save-name" disabled={mutationsDisabled || !nameDraft.trim()}>{I18N.settings.saveName}</button>}
               </span>
             </div>
           </form>
           <div className="service-detail__connection">
             <SelectedCredentialEditor
-              connectionCheck={renderConnectionCheck(selectedProfile, isCustomSpeechProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined)}
-              textConnectionCheck={(requiresSave) => renderConnectionCheck(selectedProfile, "text", requiresSave)}
+              connectionCheck={(draft: ProviderCredentialsInput | null | undefined) => renderConnectionCheck(selectedProfile, isCustomSpeechProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined, draft)}
+              textConnectionCheck={(draft) => renderConnectionCheck(selectedProfile, "text", draft)}
               readOnly={selectedProfileReadOnly}
               key={selectedProfile.id}
               profile={selectedProfile}
@@ -641,8 +646,8 @@ function CredentialEditor({
   connectionCheck,
   readOnly = false,
 }: {
-  connectionCheck?: ReactNode;
-  textConnectionCheck?: (requiresSave: boolean) => ReactNode;
+  connectionCheck?: ReactNode | ((draft?: ProviderCredentialsInput | null) => ReactNode);
+  textConnectionCheck?: (draft?: ProviderCredentialsInput | null) => ReactNode;
   readOnly?: boolean;
   profile: ServiceProfile;
   inputId: string;
@@ -667,7 +672,7 @@ function CredentialEditor({
     if (!changedFields[field]) displayedDraft[field] = savedValues?.[field] ?? "";
   }
   const [endpointInvalid, setEndpointInvalid] = useState(false);
-  const endpointRef = useRef<HTMLInputElement>(null);
+  const endpointRef = useRef<ConfigInputElement>(null);
   const feedbackRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (endpointInvalid) {
@@ -684,6 +689,16 @@ function CredentialEditor({
   const saveFeedback = feedback && <div ref={feedbackRef} tabIndex={-1}><InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback></div>;
   const noteId = `${inputId}-storage-note`;
   const credentials = profile.credentialState === "present" && (editorState.loading || editorState.error) ? null : buildProviderCredentials(profile.provider, displayedDraft);
+
+  const hasCredentialChanges = Object.keys(changedFields).length > 0;
+  // A complete explicit replacement can be checked without saved metadata.
+  // Partial drafts may reuse saved fields only after that metadata loaded.
+  const probeCredentials = buildProviderCredentials(profile.provider, draft)
+    ?? (editorState.loading || editorState.error ? null
+      : buildProviderProbeCredentials(profile.provider, displayedDraft, savedValues?.savedFields));
+  const check = typeof connectionCheck === "function"
+    ? connectionCheck(readOnly || !hasCredentialChanges ? undefined : probeCredentials)
+    : connectionCheck;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -723,12 +738,12 @@ function CredentialEditor({
     <div className="settings-field service-stage__selector"><span>{I18N.settings.serviceProvider}</span><span className="service-stage__provider"><ProviderIcon provider={profile.provider} size={32} />{providerDisplayName(profile.provider)}</span></div>
   </section>;
   const storageHelp = <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />;
-  if (readOnly) return <div className="credential-panel"><div className="service-credential-toolbar">{storageHelp}{connectionCheck}</div>{serviceIdentity}</div>;
+  if (readOnly) return <div className="credential-panel"><div className="service-credential-toolbar">{storageHelp}{check}</div>{serviceIdentity}</div>;
 
   if (profile.credentialState === "present" && !editingSavedCredential) {
     return (
       <div className="credential-panel credential-panel--saved">
-        <div className="service-credential-toolbar">{storageHelp}{connectionCheck}<span className="credential-panel__saved-actions">
+        <div className="service-credential-toolbar">{storageHelp}{check}<span className="credential-panel__saved-actions">
           <button
             type="button"
             className="settings-button settings-button--quiet settings-button--compact"
@@ -762,7 +777,7 @@ function CredentialEditor({
 
   return (
     <div className="credential-panel" aria-busy={busy}>
-      <div className="service-credential-toolbar">{connectionCheck}</div>
+      <div className="service-credential-toolbar">{check}</div>
       {serviceIdentity}
       <div className="credential-panel__heading">
         {storageHelp}
@@ -817,9 +832,10 @@ function CredentialEditor({
                   placeholder={copy.placeholder}
                   onValueChange={(value) => {
                     setEditingSavedCredential(true);
+                    setChangedFields((current) => ({ ...current, [field]: true }));
                     setDraft((current) => ({ ...current, [field]: value }));
                   }}
-                /> : <ConfigInput
+                /> : <ConfigInput expandable
                   id={fieldId}
                   ref={profile.provider === "deepLX" && field === "endpoint" ? endpointRef : undefined}
                   aria-invalid={field === "endpoint" && endpointInvalid ? true : undefined}
@@ -901,7 +917,7 @@ function credentialFieldCopy(field: CredentialFieldName, provider: ServiceProvid
 } {
   switch (field) {
     case "model":
-      return { label: I18N.settings.customSpeechModel, placeholder: "recognition-model", secret: false };
+      return { label: I18N.settings.customSpeechModel, placeholder: I18N.settings.modelNamePlaceholder, secret: false };
     case "asrApiKey":
       return { label: I18N.settings.asrApiKey, placeholder: I18N.settings.apiKeyPlaceholder, secret: true };
     case "token":
@@ -915,7 +931,7 @@ function credentialFieldCopy(field: CredentialFieldName, provider: ServiceProvid
     case "endpoint":
       return {
         label: provider === "deepLX" ? I18N.settings.deepLXEndpoint : I18N.settings.azureEndpoint,
-        placeholder: provider === "deepLX" ? "https://example.com/translate" : I18N.settings.azureEndpointPlaceholder,
+        placeholder: provider === "deepLX" ? I18N.settings.serviceAddressPlaceholder : I18N.settings.azureEndpointPlaceholder,
         secret: false,
       };
     case "deployment":

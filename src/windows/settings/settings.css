@@ -2696,7 +2696,18 @@
 .config-input__paste:disabled { opacity: .4; cursor: default; }
 .config-input__paste:focus-visible { outline: 2px solid var(--settings-text-muted); outline-offset: 2px; border-radius: 4px; }
 .service-stage .settings-field > .config-input-group { grid-column: 2; }
-.config-input--with-action > input { padding-right: 76px; }
+.config-input--with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 32px;
+  gap: 4px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: var(--settings-control);
+}
+.config-input--with-action > input { padding-right: 8px; border: 0; background: transparent; }
+.config-input--with-action .config-input__paste { position: static; justify-self: center; }
+.config-input--with-action .saved-credential-input__toggle { position: static; align-items: center; gap: 6px; white-space: nowrap; font: inherit; font-size: 12px; }
+.config-input--with-action:focus-within { border-color: var(--settings-text-muted); }
 .saved-credential-input__toggle {
   position: absolute;
   right: 41px;
@@ -2896,3 +2907,45 @@
 .translation-name-field .settings-field__inline input { min-width: 0; flex: 1; }
 .translation-name-field__error { grid-column: 2; }
 @media (max-width: 680px) { .translation-name-field__error { grid-column: 1; } }
+
+.settings-field__inline > .config-input-group { flex: 1; min-width: 0; }
+
+/* Long configuration values keep one native textbox and wrap only on request. */
+.config-input--expandable { align-items: flex-start; }
+.config-input--expandable > input { padding-right: 74px; }
+.config-input__expand {
+  position: absolute;
+  top: 6px;
+  right: 41px;
+  display: flex;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--settings-text-muted);
+  cursor: pointer;
+}
+.config-input__expand:disabled { opacity: .4; cursor: default; }
+.config-input__expand:focus-visible { outline: 2px solid var(--settings-text-muted); outline-offset: 2px; }
+.config-input--expandable .config-input__paste { top: 6px; }
+.config-input--expanded > textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 76px;
+  max-height: 240px;
+  padding: 8px 74px 8px 10px;
+  border: 1px solid var(--settings-border-strong);
+  border-radius: 9px;
+  color: var(--settings-text);
+  background: var(--settings-control);
+  font: inherit;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: vertical;
+  outline: 0;
+}
+.config-input--expanded > textarea::placeholder { color: var(--settings-text-faint); }
+.config-input--expanded > textarea:focus { border-color: var(--settings-text-muted); }
+.config-input--expanded > textarea:disabled { opacity: .55; }

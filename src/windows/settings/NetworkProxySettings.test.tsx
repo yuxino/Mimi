@@ -156,3 +156,30 @@ it("commits when keyboard focus leaves the address group after passing through p
   await act(async () => paste.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null })));
   expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "custom", url: "http://127.0.0.1:7890/" });
 });
+
+it("expands a long saved proxy address, keeps editing local and saves only after focus leaves the field group", async () => {
+  const endpoint = `http://${"synthetic-proxy-".repeat(3)}one.example:7890/`;
+  await render({ mode: "custom", url: endpoint });
+  const input = host.querySelector<HTMLInputElement>(".network-proxy-address input")!;
+  const expand = host.querySelector<HTMLButtonElement>(".network-proxy-address .config-input__expand")!;
+  await act(() => input.focus());
+  await act(() => expand.focus());
+  await act(() => expand.click());
+  const textarea = host.querySelector<HTMLTextAreaElement>(".network-proxy-address textarea")!;
+  expect(textarea.value).toBe(endpoint);
+  expect(textarea.readOnly).toBe(false);
+  expect(textarea.maxLength).toBe(2_048);
+  expect(save).not.toHaveBeenCalled();
+  const edited = endpoint.replace(":7890/", ":7891/");
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, edited);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(save).not.toHaveBeenCalled();
+  await act(() => expand.focus());
+  await act(() => expand.click());
+  expect(host.querySelector<HTMLInputElement>(".network-proxy-address input")!.value).toBe(edited);
+  expect(save).not.toHaveBeenCalled();
+  await blur();
+  expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "custom", url: edited });
+});

@@ -45,12 +45,20 @@ These project rules apply to implementation and review.
 - Credentials use one editable input with an inline eye and paste action. Saved
   secret presence determines whether the eye can read an existing value; a
   usable service configuration alone does not imply a saved optional key.
-  Keep localized accessible labels and tooltips for the eye. Show stored values
+  Keep localized visible action text, accessible labels and tooltips for the eye. Show stored values
   in that same input only on explicit request; viewing alone is not an edit.
   If a replacement draft exists, the eye toggles that draft without reading or
   overwriting it. Clear loaded values and invalidate pending reads on focus
   loss, hide, close, route change and unmount. Nonsecret configuration values
   load into editable fields locally, never into a secret-containing snapshot.
+
+- Store loaded nonsecret configuration in the actual editable value, never a
+  placeholder. Empty fields use concise localized entry hints; concrete examples
+  must not look like saved/default values. Long persistent text fields share the
+  inline wrapping editor, with selection/editing and validation checked at narrow
+  widths. Expansion stays within the field group and must not trigger auto-save.
+  Never enable this by inferring that `type="text"` means nonsecret: revealed
+  credential fields also use that input type.
 
 ## Choose feedback by purpose
 
