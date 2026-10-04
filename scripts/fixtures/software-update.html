@@ -54,9 +54,9 @@ window.applyUpdateCase = async (options = {}) => {
   if (!allowed.includes(next.state)) throw new Error("Unknown fixture state");
   const counters = { checks: 0, downloads: 0, installs: 0, relaunches: 0 };
   const fixture = createFixtureSoftwareUpdater({
-    currentVersion: "1.5.12",
-    updateVersion: ["normal", "noUpdate"].includes(next.state) ? null : "1.5.13",
-    notes,
+    currentVersion: next.currentVersion ?? "1.5.12",
+    updateVersion: ["normal", "noUpdate"].includes(next.state) ? null : next.updateVersion ?? "1.5.13",
+    notes: next.notes ?? notes,
     contentLength: 100 * 1024 * 1024,
     chunks: [24 * 1024 * 1024, 26 * 1024 * 1024, 50 * 1024 * 1024],
     checkError: next.state === "checkError" ? new Error("fixture check failure") : undefined,

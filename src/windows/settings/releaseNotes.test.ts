@@ -5,6 +5,11 @@ import { ReleaseNotes } from "./ReleaseNotes";
 import { normalizeReleaseNotes } from "./softwareUpdateModel";
 import { parseReleaseNotes, parseReleaseNotesInline, selectLocalizedReleaseNotes } from "./releaseNotesModel";
 
+import release1512 from "../../../docs/releases/v1.5.12.md?raw";
+import release1511 from "../../../docs/releases/v1.5.11.md?raw";
+import release1510 from "../../../docs/releases/v1.5.10.md?raw";
+import release159 from "../../../docs/releases/v1.5.9.md?raw";
+
 const bilingual = "## English\n### Changes\n- **Fixed** startup.\n\n## 中文\n### 改进\n- **修复**启动问题。";
 
 describe("localized release notes", () => {
@@ -82,5 +87,24 @@ describe("safe release notes rendering", () => {
       notes: "```html\n<img src=x>\n**literal**", language: "en",
     }));
     expect(code).toContain("<pre><code>&lt;img src=x&gt;\n**literal**</code></pre>");
+  });
+});
+
+
+describe("published bilingual release history", () => {
+  it.each([
+    ["v1.5.9", release159], ["v1.5.10", release1510],
+    ["v1.5.11", release1511], ["v1.5.12", release1512],
+  ])("preserves each complete language in %s and renders real Markdown", (_version, notes) => {
+    const [english, chinese] = notes.replace("## English", "").split("## 中文").map(section => section.trim());
+    expect(selectLocalizedReleaseNotes(normalizeReleaseNotes(notes), "en")).toBe(english);
+    expect(selectLocalizedReleaseNotes(normalizeReleaseNotes(notes), "zh")).toBe(chinese);
+    expect(selectLocalizedReleaseNotes(normalizeReleaseNotes(notes), "ja")).toBe(english);
+    for (const language of ["zh", "en", "ja"] as const) {
+      const html = renderToStaticMarkup(createElement(ReleaseNotes, { notes, language }));
+      expect(html).toContain("<ul>");
+      expect(html).toContain("<code>");
+      expect(html).not.toMatch(/## English|## 中文|\*\*|https:\/\/github.com/);
+    }
   });
 });
