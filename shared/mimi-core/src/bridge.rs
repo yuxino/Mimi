@@ -161,6 +161,7 @@ pub fn exchange(input: &str) -> Result<String, &'static str> {
             op["limit"].as_u64().ok_or("core_invalid_history_limit")?,
         )?),
         "reset" => reducer.reset_transient(),
+        "begin_session" => reducer.begin_new_session(),
         _ => return Err("core_invalid_operation"),
     }
     reducer

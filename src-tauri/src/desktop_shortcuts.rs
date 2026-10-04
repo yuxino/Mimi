@@ -123,7 +123,7 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
                         }
                         if session.is_active() {
                             session.stop().await;
-                        } else if session.start(true).await.is_err() {
+                        } else if session.start().await.is_err() {
                             // SessionManager publishes the normal localized
                             // error state; keep logs free of provider content.
                             tracing::warn!("desktop session shortcut failed");

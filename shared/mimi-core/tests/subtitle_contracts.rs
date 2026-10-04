@@ -35,6 +35,8 @@ fn shared_synthetic_contracts_preserve_every_complete_field_and_identity_boundar
                 reducer.apply(event);
             } else if step["resetTransient"] == true {
                 reducer.reset_transient();
+            } else if step["beginSession"] == true {
+                reducer.begin_new_session();
             } else if let Some(limit) = step["historyLimit"].as_u64() {
                 reducer.set_history_limit(limit as usize);
             } else {
@@ -84,6 +86,8 @@ fn stateless_bridge_executes_the_same_contract_cases_without_a_second_reducer() 
                 json!({"type":"apply","event":event})
             } else if step["resetTransient"] == true {
                 json!({"type":"reset"})
+            } else if step["beginSession"] == true {
+                json!({"type":"begin_session"})
             } else {
                 json!({"type":"history_limit","limit":step["historyLimit"]})
             };

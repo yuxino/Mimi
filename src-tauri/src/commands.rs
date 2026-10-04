@@ -1490,7 +1490,7 @@ pub async fn profile_reveal_credential(
 #[tauri::command]
 pub async fn session_start(state: State<'_, AppState>) -> Result<(), String> {
     ensure_audio_input_available(state.settings.preferences().audio_input)?;
-    state.session.start(true).await
+    state.session.start().await
 }
 
 #[tauri::command]

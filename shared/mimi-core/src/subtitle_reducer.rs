@@ -28,6 +28,10 @@ fn fresh_layout_epoch() -> u64 {
 const MAX_PREVIEW_TEXT_BYTES: usize = crate::models::MAX_SUBTITLE_TEXT_BYTES;
 const MAX_IDENTIFIED_SOURCES: usize = 64;
 
+fn legacy_has_session_confirmation() -> bool {
+    true
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct IdentifiedSource {
@@ -58,6 +62,10 @@ pub struct SubtitleReducer<A: ArchiveSink = NoopArchive> {
     pub archive: A,
     max_history_count: usize,
     source_draft_since_confirmation: bool,
+    /// A manually started session may begin with an identical ID-less final.
+    /// Reconnection alone must not rearm that admission boundary.
+    #[serde(default = "legacy_has_session_confirmation")]
+    has_session_confirmation: bool,
     last_confirmed_id: Option<u64>,
     latest_source_utterance_id: Option<u64>,
     last_confirmed_source_id: Option<u64>,
@@ -87,6 +95,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             archive: Default::default(),
             max_history_count,
             source_draft_since_confirmation: false,
+            has_session_confirmation: false,
             last_confirmed_id: None,
             latest_source_utterance_id: None,
             last_confirmed_source_id: None,
@@ -529,10 +538,19 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 self.snapshot.display_pair_final = false;
                 self.layout_epoch = fresh_layout_epoch();
                 self.source_draft_since_confirmation = false;
+                self.has_session_confirmation = false;
                 // Clearing the display is not a new generation. Keep its
                 // watermark so a replay cannot restore explicitly cleared text.
             }
         }
+    }
+
+    /// Begins a distinct user session without erasing its bounded display.
+    /// Its first valid confirmation is new even if an ID-less provider repeats
+    /// the previous session's final text. Archive lifetime remains caller-owned.
+    pub fn begin_new_session(&mut self) {
+        self.reset_transient();
+        self.has_session_confirmation = false;
     }
 
     /// Drops generation-local state while preserving confirmed history and any
@@ -671,9 +689,13 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             });
         let mut pair = SubtitlePair::new(source, translation, created_at_ms);
         pair.audio_source = self.audio_source;
-        if !is_new_utterance && self.snapshot.history.last() == Some(&pair) {
+        if self.has_session_confirmation
+            && !is_new_utterance
+            && self.snapshot.history.last() == Some(&pair)
+        {
             return;
         }
+        self.has_session_confirmation = true;
         self.archive.append(&pair);
         self.snapshot.history.push(pair);
         if self.snapshot.history.len() > self.max_history_count {
@@ -1298,6 +1320,83 @@ mod tests {
             translation: "Confirmed translation".into(),
         });
         assert_eq!(reducer.snapshot.history.len(), 1);
+    }
+
+    #[test]
+    fn new_session_admits_one_identical_idless_final_after_empty_events_and_reconnect() {
+        let mut reducer = SubtitleReducer::default();
+        let pair = || SubtitleEvent::FinalPair {
+            source: "Repeated confirmation".into(),
+            translation: "Repeated translation".into(),
+        };
+        reducer.apply(pair());
+        reducer.begin_new_session();
+        reducer.archive.begin(true, 1);
+        assert_eq!(reducer.snapshot.history.len(), 1);
+        for (source, translation) in [("", "Repeated translation"), ("Repeated confirmation", "")] {
+            reducer.apply(SubtitleEvent::FinalPair {
+                source: source.into(),
+                translation: translation.into(),
+            });
+        }
+        reducer.apply(SubtitleEvent::SourceDraft(" \n".into()));
+        // Start may perform several connection attempts before a valid final.
+        reducer.reset_transient();
+        reducer.reset_transient();
+        reducer.apply(pair());
+        assert_eq!(reducer.snapshot.history.len(), 2);
+        assert_eq!(reducer.archive.count(), 1);
+        reducer.apply(pair());
+        reducer.reset_transient();
+        reducer.apply(pair());
+        assert_eq!(reducer.snapshot.history.len(), 2);
+        assert_eq!(reducer.archive.count(), 1);
+    }
+
+    #[test]
+    fn identified_confirmations_consume_the_new_session_idless_admission() {
+        for event in [
+            SubtitleEvent::ConfirmedPair {
+                utterance_id: 1,
+                source_utterance_id: Some(1),
+                source: "Same confirmation".into(),
+                translation: "Same translation".into(),
+            },
+            SubtitleEvent::IdentifiedFinalPair {
+                utterance_id: "provider-item-1".into(),
+                source: "Same confirmation".into(),
+                translation: "Same translation".into(),
+            },
+        ] {
+            let mut reducer = SubtitleReducer::default();
+            reducer.begin_new_session();
+            reducer.apply(event);
+            reducer.reset_transient();
+            reducer.apply(SubtitleEvent::FinalPair {
+                source: "Same confirmation".into(),
+                translation: "Same translation".into(),
+            });
+            assert_eq!(reducer.snapshot.history.len(), 1);
+        }
+    }
+
+    #[test]
+    fn older_serialized_states_keep_idless_duplicate_suppression() {
+        let mut reducer = SubtitleReducer::default();
+        let pair = || SubtitleEvent::FinalPair {
+            source: "Existing confirmation".into(),
+            translation: "Existing translation".into(),
+        };
+        reducer.apply(pair());
+        let mut state = serde_json::to_value(&reducer).unwrap();
+        state
+            .as_object_mut()
+            .unwrap()
+            .remove("has_session_confirmation");
+        let mut restored: SubtitleReducer = serde_json::from_value(state).unwrap();
+        restored.reset_transient();
+        restored.apply(pair());
+        assert_eq!(restored.snapshot.history.len(), 1);
     }
 
     #[test]

@@ -198,7 +198,7 @@ pub fn run() {
                 let session_for_probe = Arc::clone(&session);
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    let _ = session_for_probe.start(true).await;
+                    let _ = session_for_probe.start().await;
                 });
             }
 
@@ -813,7 +813,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                         if session.is_active() {
                             session.stop().await;
                         } else {
-                            let _ = session.start(true).await;
+                            let _ = session.start().await;
                         }
                     });
                 }
@@ -1067,7 +1067,7 @@ fn setup_global_shortcuts(
                     if session.is_active() {
                         session.stop().await;
                     } else {
-                        let _ = session.start(true).await;
+                        let _ = session.start().await;
                     }
                 });
             });

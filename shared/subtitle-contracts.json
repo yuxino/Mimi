@@ -1877,6 +1877,361 @@
           }
         }
       ]
+    },
+    {
+      "id": "manual-session-admits-identical-first-final-without-changing-reconnect-dedup",
+      "maxHistoryCount": 3,
+      "audioSource": "system",
+      "steps": [
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "Repeated session confirmation",
+            "translation": "Repeated session translation"
+          },
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "resetTransient": true,
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "Repeated session confirmation",
+            "translation": "Repeated session translation"
+          },
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "beginSession": true,
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "resetTransient": true,
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "",
+            "translation": "Repeated session translation"
+          },
+          "expected": {
+            "source": {
+              "text": "",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "Repeated session confirmation",
+            "translation": ""
+          },
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "resetTransient": true,
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "Repeated session confirmation",
+            "translation": "Repeated session translation"
+          },
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              },
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "Repeated session confirmation",
+            "translation": "Repeated session translation"
+          },
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              },
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "resetTransient": true,
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              },
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        },
+        {
+          "event": {
+            "type": "final_pair",
+            "source": "Repeated session confirmation",
+            "translation": "Repeated session translation"
+          },
+          "expected": {
+            "source": {
+              "text": "Repeated session confirmation",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Repeated session translation",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Repeated session confirmation",
+              "translation": "Repeated session translation"
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              },
+              {
+                "audioSource": "system",
+                "source": "Repeated session confirmation",
+                "translation": "Repeated session translation"
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

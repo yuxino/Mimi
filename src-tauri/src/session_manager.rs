@@ -1535,8 +1535,10 @@ impl SessionManager {
         self.is_overlay_collapsed.load(Ordering::SeqCst)
     }
 
-    /// Starts (or restarts) a listening session with the saved settings.
-    pub async fn start(self: &Arc<Self>, clear_subtitles: bool) -> Result<(), String> {
+    /// Starts a listening session while preserving the bounded confirmed display.
+    /// Only the explicit clear action erases subtitles; new sessions reset their
+    /// transport state and opt-in archives independently.
+    pub async fn start(self: &Arc<Self>) -> Result<(), String> {
         self.record_diagnostic_event(DiagnosticEvent::Lifecycle {
             action: LifecycleAction::StartRequested,
         });
@@ -1654,17 +1656,14 @@ impl SessionManager {
         for recording in self.recording.lock().unwrap().iter_mut() {
             recording.begin(false);
         }
-        if clear_subtitles {
-            self.controller.lock().unwrap().clear_subtitles();
-        }
-        self.controller.lock().unwrap().begin_connecting();
+        self.controller.lock().unwrap().begin_session();
         self.publish_state();
         // UI fixtures must never read credentials, open a socket, or touch
         // native audio capture. This branch intentionally runs before resolving
         // settings because that resolution reads the OS credential store.
         if self.is_ui_test() {
             if self.is_generation_current(request_generation) {
-                self.establish_ui_test_session(false);
+                self.establish_ui_test_session();
             }
             return Ok(());
         }
@@ -1703,24 +1702,19 @@ impl SessionManager {
         // lifecycle gate across socket setup or capture authorization: stop
         // must be able to invalidate this generation immediately.
         drop(lifecycle);
-        self.establish_session(false, request_generation).await
+        self.establish_session(request_generation).await
     }
 
-    async fn establish_session(
-        self: &Arc<Self>,
-        clear_subtitles: bool,
-        generation: u64,
-    ) -> Result<(), String> {
+    async fn establish_session(self: &Arc<Self>, generation: u64) -> Result<(), String> {
         self.stop_health_checks().await;
 
         self.ensure_generation_current(generation)?;
 
         if self.is_ui_test() {
-            self.establish_ui_test_session(clear_subtitles);
+            self.establish_ui_test_session();
             return Ok(());
         }
 
-        let mut clear = clear_subtitles;
         // A language/mode switch may land while connecting (the picker stays
         // usable during connecting); at most one rebuild picks up the change
         // so a rapid switch storm cannot loop forever.
@@ -1736,10 +1730,7 @@ impl SessionManager {
                 }
             };
 
-            pipeline_log!("session connecting clear={}", u8::from(clear));
-            if clear {
-                self.controller.lock().unwrap().clear_subtitles();
-            }
+            pipeline_log!("session connecting");
             self.ensure_generation_current(generation)?;
             self.controller.lock().unwrap().begin_connecting();
             self.publish_state();
@@ -1793,7 +1784,6 @@ impl SessionManager {
             pipeline_log!("session rebuild for settings changed mid-connect");
             self.cleanup_generation(generation).await;
             self.ensure_generation_current(generation)?;
-            clear = false;
         }
     }
 
@@ -2236,7 +2226,7 @@ impl SessionManager {
             .store(resume_generation, Ordering::SeqCst);
         self.retag_active_settings(resume_generation);
         drop(lifecycle);
-        let resumed = self.establish_session(false, resume_generation).await;
+        let resumed = self.establish_session(resume_generation).await;
         match resumed {
             Ok(()) => {
                 pipeline_log!("session resumed");
@@ -2403,15 +2393,13 @@ impl SessionManager {
         self.active_generation.store(generation, Ordering::SeqCst);
         self.retag_active_settings(generation);
         drop(lifecycle);
-        self.establish_session(false, generation)
-            .await
-            .map_err(|error| {
-                if error == SESSION_START_CANCELLED {
-                    "audio_input_switch_superseded".into()
-                } else {
-                    error
-                }
-            })
+        self.establish_session(generation).await.map_err(|error| {
+            if error == SESSION_START_CANCELLED {
+                "audio_input_switch_superseded".into()
+            } else {
+                error
+            }
+        })
     }
 
     /// Quick-switches the source language, reconnecting when needed.
@@ -2685,7 +2673,7 @@ impl SessionManager {
             .store(reconnect_generation, Ordering::SeqCst);
         self.retag_active_settings(reconnect_generation);
         drop(lifecycle);
-        let _ = self.establish_session(false, reconnect_generation).await;
+        let _ = self.establish_session(reconnect_generation).await;
     }
 
     /// Machine-readable status kind for the global shortcut gate.
@@ -3618,7 +3606,7 @@ impl SessionManager {
                 .store(recovery_generation, Ordering::SeqCst);
             self.retag_active_settings(recovery_generation);
             drop(lifecycle);
-            match self.establish_session(false, recovery_generation).await {
+            match self.establish_session(recovery_generation).await {
                 Ok(()) => {
                     self.record_recovery_if_current(RecoveryAction::Recovered, recovery_generation);
                     recovered = true;
@@ -4379,12 +4367,9 @@ impl SessionManager {
         self.settings.is_ui_test()
     }
 
-    fn establish_ui_test_session(self: &Arc<Self>, clear_subtitles: bool) {
+    fn establish_ui_test_session(self: &Arc<Self>) {
         self.cancel_translation_timeout();
         self.clear_active_settings();
-        if clear_subtitles {
-            self.controller.lock().unwrap().clear_subtitles();
-        }
         self.controller.lock().unwrap().begin_connecting();
         self.publish_state();
         self.controller.lock().unwrap().did_connect();

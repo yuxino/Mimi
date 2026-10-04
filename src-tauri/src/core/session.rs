@@ -63,6 +63,11 @@ impl SourceSessionController {
         self.state.is_translation_preview_pending = false;
     }
 
+    pub fn begin_session(&mut self) {
+        self.subtitle_reducer.begin_new_session();
+        self.begin_connecting();
+    }
+
     pub fn begin_connecting(&mut self) {
         self.clear_preview_pending();
         self.state.translation_recovery = None;
@@ -378,9 +383,7 @@ fn source_index(source: AudioSource) -> usize {
 impl TranslationSessionController {
     pub fn set_audio_input(&mut self, audio_input: AudioInput) {
         if self.audio_input != audio_input {
-            self.clear_subtitles();
-            self.audio_input = audio_input;
-            self.refresh();
+            self.reconfigure_audio_input(audio_input);
         }
     }
 
@@ -446,6 +449,15 @@ impl TranslationSessionController {
     fn apply_to_sources(&mut self, action: impl Fn(&mut SourceSessionController)) {
         for source in self.audio_input.sources() {
             action(&mut self.sources[source_index(*source)]);
+        }
+        self.refresh();
+    }
+
+    pub fn begin_session(&mut self) {
+        // A source enabled later must share this session's admission boundary,
+        // even when it is dormant at the manual start.
+        for source in &mut self.sources {
+            source.begin_session();
         }
         self.refresh();
     }
@@ -1196,6 +1208,248 @@ mod dual_source_tests {
             translation: translation.into(),
             language: Some("en".into()),
         }
+    }
+
+    #[test]
+    fn stopped_session_restart_keeps_confirmations_and_starts_a_separate_archive() {
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.archive_mut().begin(true, 0);
+        controller.begin_session();
+        controller.did_connect();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            controller.handle_from(source, final_pair(1, "Old confirmation", "Old translation"));
+            controller.handle_from(
+                source,
+                LiveTranslateServerEvent::SourceDraft {
+                    text: "Obsolete draft".into(),
+                    language: Some("ja".into()),
+                },
+            );
+            controller.handle_from(
+                source,
+                LiveTranslateServerEvent::SubtitlePreviewPair {
+                    source_utterance_id: Some(2),
+                    source: "Obsolete draft".into(),
+                    language: Some("ja".into()),
+                    translation: "Obsolete preview".into(),
+                },
+            );
+            controller.handle_from(source, LiveTranslateServerEvent::TranslationStarted);
+            controller.handle_from(
+                source,
+                LiveTranslateServerEvent::PreviewTranslationStarted { request_id: 2 },
+            );
+        }
+        controller.clear_translation_pending_from(AudioSource::Microphone);
+        let confirmed = controller.state.subtitles.history.clone();
+        assert_eq!(controller.archive().count(), 2);
+        controller.begin_stopping();
+        controller.did_stop();
+
+        controller.set_audio_input(AudioInput::Both);
+        controller.archive_mut().begin(true, 1);
+        controller.begin_session();
+        assert_eq!(controller.state.status, SessionStatus::Connecting);
+        assert_eq!(controller.state.subtitles.history, confirmed);
+        assert_eq!(controller.archive().count(), 0);
+        assert!(controller.state.subtitles.tracks.iter().all(|track| {
+            !track.is_translation_pending
+                && !track.is_translation_preview_pending
+                && !track.is_translation_timed_out
+                && track.preview_pair.is_none()
+                && track.source.text != "Obsolete draft"
+                && track.translation.text != "Obsolete preview"
+                && track.detected_language.is_none()
+        }));
+
+        controller.did_connect();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            controller.handle_from(source, final_pair(1, "New confirmation", "New translation"));
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 4);
+        assert_eq!(&controller.state.subtitles.history[..2], &confirmed);
+        assert_eq!(controller.archive().count(), 2);
+        let exported = controller.archive().export().unwrap();
+        assert!(!exported.contains("Old confirmation"));
+        assert_eq!(exported.matches("New confirmation").count(), 2);
+        assert_eq!(
+            controller.state.subtitles.history[2].audio_source,
+            AudioSource::System
+        );
+        assert_eq!(
+            controller.state.subtitles.history[3].audio_source,
+            AudioSource::Microphone
+        );
+
+        controller.clear_subtitles();
+        assert!(controller.state.subtitles.history.is_empty());
+        assert!(controller
+            .state
+            .subtitles
+            .tracks
+            .iter()
+            .all(|track| track.history.is_empty()));
+        assert_eq!(controller.archive().count(), 0);
+    }
+
+    #[test]
+    fn stopped_session_source_change_keeps_history_and_filters_inactive_events() {
+        let mut controller = TranslationSessionController::default();
+        controller.begin_session();
+        controller.did_connect();
+        controller.handle_from(
+            AudioSource::System,
+            final_pair(1, "Previous system confirmation", "Previous translation"),
+        );
+        controller.begin_stopping();
+        controller.did_stop();
+        let confirmed = controller.state.subtitles.history.clone();
+
+        controller.set_audio_input(AudioInput::Microphone);
+        assert_eq!(controller.state.status, SessionStatus::Idle);
+        assert_eq!(controller.state.subtitles.history, confirmed);
+        assert_eq!(controller.state.subtitles.tracks.len(), 1);
+        assert_eq!(
+            controller.state.subtitles.tracks[0].audio_source,
+            AudioSource::Microphone
+        );
+        controller.begin_session();
+        controller.did_connect();
+        controller.handle_from(
+            AudioSource::System,
+            final_pair(2, "Unselected system", "Ignored translation"),
+        );
+        assert_eq!(controller.state.subtitles.history, confirmed);
+        controller.handle_from(
+            AudioSource::Microphone,
+            final_pair(1, "New microphone confirmation", "New translation"),
+        );
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        assert_eq!(
+            controller.state.subtitles.history[0].audio_source,
+            AudioSource::System
+        );
+        assert_eq!(
+            controller.state.subtitles.history[1].audio_source,
+            AudioSource::Microphone
+        );
+    }
+
+    #[test]
+    fn repeated_session_restarts_keep_display_history_bounded_without_retention() {
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        for session in 0..25 {
+            controller.archive_mut().begin(false, session);
+            controller.begin_session();
+            controller.did_connect();
+            for source in [AudioSource::System, AudioSource::Microphone] {
+                controller.handle_from(
+                    source,
+                    final_pair(1, "Synthetic final", "Synthetic translation"),
+                );
+            }
+            controller.begin_stopping();
+            controller.did_stop();
+            assert!(controller.state.subtitles.history.len() <= 20);
+            assert!(controller
+                .state
+                .subtitles
+                .tracks
+                .iter()
+                .all(|track| track.history.len() <= 20));
+            assert_eq!(controller.archive().count(), 0);
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 20);
+        assert!(controller
+            .state
+            .subtitles
+            .tracks
+            .iter()
+            .all(|track| track.history.len() == 20));
+    }
+
+    #[test]
+    fn manual_restart_accepts_an_identical_idless_final_once_in_the_new_archive() {
+        let mut controller = TranslationSessionController::default();
+        let final_event = LiveTranslateServerEvent::SubtitleFinalPair {
+            source: "Repeated confirmation".into(),
+            language: Some("en".into()),
+            translation: "Repeated translation".into(),
+        };
+        controller.archive_mut().begin(true, 0);
+        controller.begin_session();
+        controller.did_connect();
+        controller.handle_from(AudioSource::System, final_event.clone());
+        controller.begin_stopping();
+        controller.did_stop();
+        let previous_time = controller.state.subtitles.history[0].created_at_ms;
+
+        controller.archive_mut().begin(true, 1);
+        controller.begin_session();
+        // Connecting can be retried before the new session produces any text.
+        controller.begin_connecting();
+        controller.begin_connecting();
+        controller.did_connect();
+        controller.handle_from(AudioSource::System, final_event.clone());
+        controller.handle_from(AudioSource::System, final_event.clone());
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        assert!(controller.state.subtitles.history[1].created_at_ms > previous_time);
+        assert_eq!(controller.archive().count(), 1);
+        assert_eq!(
+            controller
+                .archive()
+                .export()
+                .unwrap()
+                .matches("Repeated confirmation")
+                .count(),
+            1
+        );
+
+        // A reconnect within that session still suppresses duplicate finals.
+        controller.begin_connecting();
+        controller.did_connect();
+        controller.handle_from(AudioSource::System, final_event);
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        assert_eq!(controller.archive().count(), 1);
+    }
+
+    #[test]
+    fn enabling_a_dormant_source_uses_the_current_manual_session_boundary() {
+        let mut controller = TranslationSessionController::default();
+        let final_event = LiveTranslateServerEvent::SubtitleFinalPair {
+            source: "Repeated microphone confirmation".into(),
+            language: Some("en".into()),
+            translation: "Repeated microphone translation".into(),
+        };
+        controller.set_audio_input(AudioInput::Both);
+        controller.begin_session();
+        controller.did_connect();
+        controller.handle_from(AudioSource::Microphone, final_event.clone());
+        controller.begin_stopping();
+        controller.did_stop();
+
+        controller.set_audio_input(AudioInput::System);
+        controller.archive_mut().begin(true, 1);
+        controller.begin_session();
+        controller.did_connect();
+        assert_eq!(controller.state.subtitles.tracks.len(), 1);
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+
+        controller.reconfigure_audio_input(AudioInput::Both);
+        controller.begin_connecting();
+        controller.did_connect();
+        controller.handle_from(AudioSource::Microphone, final_event.clone());
+        controller.handle_from(AudioSource::Microphone, final_event);
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        assert!(controller
+            .state
+            .subtitles
+            .history
+            .iter()
+            .all(|pair| pair.audio_source == AudioSource::Microphone));
+        assert_eq!(controller.archive().count(), 1);
     }
 
     #[test]

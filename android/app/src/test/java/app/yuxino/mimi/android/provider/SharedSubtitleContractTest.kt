@@ -50,6 +50,7 @@ class SharedSubtitleContractTest {
                 val operation = when {
                     step.has("event") -> JSONObject().put("type", "apply").put("event", step.getJSONObject("event"))
                     step.optBoolean("resetTransient") -> JSONObject().put("type", "reset")
+                    step.optBoolean("beginSession") -> JSONObject().put("type", "begin_session")
                     step.has("historyLimit") -> JSONObject().put("type", "history_limit").put("limit", step.getInt("historyLimit"))
                     else -> error("Unknown shared subtitle contract operation")
                 }
