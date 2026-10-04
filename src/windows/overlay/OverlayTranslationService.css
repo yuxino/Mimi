@@ -9,6 +9,7 @@
 }
 
 .overlay-service .mimi-tooltip-trigger { display: flex; min-width: 0; }
+.overlay-service--split { max-width: 260px; }
 .overlay-service__button {
   display: flex;
   align-items: center;
@@ -35,10 +36,14 @@
 }
 .overlay-service__button:focus-visible { outline: 1px solid #fff; outline-offset: 1px; }
 .overlay-service__button:disabled { cursor: default; opacity: 0.5; }
-.overlay-service__button > svg { flex: 0 0 auto; }
+.overlay-service__separator { flex: 0 0 auto; opacity: 0.6; }
+.overlay-service__stage { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.overlay-service--split .overlay-service__stage { flex: 1 1 0; max-width: max-content; }
+.overlay-service--split .overlay-service__button { gap: 4px; }
 .overlay-service__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .overlay-service .provider-icon__image,
 .overlay-service .provider-icon__generic { width: 16px; height: 16px; }
 .overlay-service .provider-icon__image--deeplx { border-radius: 3px; }
 .overlay-status-row__trailing--reading .overlay-service__name { display: none; }
+.overlay-status-row__trailing--reading .overlay-service__stage { flex: 0 0 auto; }
 .overlay-service-tooltip { white-space: pre-line; }

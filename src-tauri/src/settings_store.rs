@@ -1153,13 +1153,13 @@ impl SettingsStore {
 
     #[cfg(test)]
     pub fn update_profile(&self, profile_id: &str, name: &str) -> Result<ServiceProfile, String> {
-        self.update_profile_options(profile_id, name, None, None, None)
+        self.update_profile_options(profile_id, Some(name), None, None, None)
     }
 
     pub fn update_profile_options(
         &self,
         profile_id: &str,
-        name: &str,
+        name: Option<&str>,
         speech_network_proxy: Option<ProxyConfig>,
         text_network_proxy: Option<ProxyConfig>,
         text_translation_name: Option<TextTranslationName>,
@@ -1174,7 +1174,9 @@ impl SettingsStore {
                 .find(|profile| profile.id == profile_id)
                 .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
             let mut updated = current.clone();
-            updated.name = name.trim().to_string();
+            if let Some(name) = name {
+                updated.name = name.trim().to_string();
+            }
             if let Some(proxy) = speech_network_proxy {
                 updated.speech_network_proxy = Some(proxy);
             }
@@ -3467,6 +3469,97 @@ mod tests {
     }
 
     #[test]
+    fn profile_metadata_patches_preserve_independent_names_and_proxies() {
+        use crate::core::network_proxy::ProxyMode;
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let profile = store.active_profile().unwrap();
+        let configuration_name = "B 站 · @home / (测试) 😀";
+        let translator_name = "翻译 & 字幕 + [本地] 🐱";
+        store
+            .update_profile(&profile.id, &format!("  {configuration_name}  "))
+            .unwrap();
+        let text_proxy = ProxyConfig {
+            mode: ProxyMode::Direct,
+            url: None,
+        };
+        store
+            .update_profile_options(
+                &profile.id,
+                None,
+                None,
+                Some(text_proxy.clone()),
+                Some(TextTranslationName {
+                    route: TextTranslation::OpenAICompatible,
+                    name: format!("  {translator_name}  "),
+                }),
+            )
+            .unwrap();
+        // An independently saved alias or proxy must not replay a name copied
+        // from an older snapshot. Renaming in turn preserves those fields.
+        assert_eq!(store.profile(&profile.id).unwrap().name, configuration_name);
+        let renamed = format!("{configuration_name} 2");
+        store.update_profile(&profile.id, &renamed).unwrap();
+        store
+            .update_profile_options(&profile.id, None, Some(ProxyConfig::default()), None, None)
+            .unwrap();
+        let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let saved = reloaded.profile(&profile.id).unwrap();
+        assert_eq!(saved.name, renamed);
+        assert_eq!(saved.text_network_proxy, Some(text_proxy));
+        assert_eq!(saved.speech_network_proxy, Some(ProxyConfig::default()));
+        assert_eq!(
+            saved.text_translation_names[&TextTranslation::OpenAICompatible],
+            translator_name
+        );
+        let secrets = fake.state.lock().unwrap();
+        assert!(secrets.loads.is_empty());
+        assert!(secrets.values.is_empty());
+    }
+
+    #[test]
+    fn profile_name_patches_enforce_unicode_bounds_without_losing_saved_metadata() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(FakeSecretStore::default()),
+        );
+        let profile = store.active_profile().unwrap();
+        let name = "😀".repeat(64);
+        let saved = store
+            .update_profile_options(
+                &profile.id,
+                Some(&name),
+                None,
+                None,
+                Some(TextTranslationName {
+                    route: TextTranslation::OpenAICompatible,
+                    name: name.clone(),
+                }),
+            )
+            .unwrap();
+        assert_eq!(saved.name, name);
+        for invalid in ["  ".to_string(), "😀".repeat(65)] {
+            assert!(store.update_profile(&profile.id, &invalid).is_err());
+            assert_eq!(store.profile(&profile.id).unwrap(), saved);
+        }
+        assert!(store
+            .update_profile_options(
+                &profile.id,
+                None,
+                None,
+                None,
+                Some(TextTranslationName {
+                    route: TextTranslation::OpenAICompatible,
+                    name: "😀".repeat(65),
+                }),
+            )
+            .is_err());
+        assert_eq!(store.profile(&profile.id).unwrap(), saved);
+    }
+
+    #[test]
     fn translation_names_persist_independently_without_credential_access() {
         let directory = tempfile::tempdir().unwrap();
         let fake = FakeSecretStore::default();
@@ -3479,7 +3572,7 @@ mod tests {
             store
                 .update_profile_options(
                     &profile.id,
-                    &profile.name,
+                    None,
                     None,
                     None,
                     Some(TextTranslationName {
@@ -3511,7 +3604,7 @@ mod tests {
         reloaded
             .update_profile_options(
                 &profile.id,
-                &restored.name,
+                None,
                 None,
                 None,
                 Some(TextTranslationName {
@@ -3545,7 +3638,7 @@ mod tests {
             assert!(store
                 .update_profile_options(
                     &profile.id,
-                    "Unpersisted profile name",
+                    Some("Unpersisted profile name"),
                     None,
                     None,
                     Some(TextTranslationName { route, name }),
@@ -3558,7 +3651,7 @@ mod tests {
         assert!(store
             .update_profile_options(
                 &profile.id,
-                &profile.name,
+                None,
                 None,
                 None,
                 Some(TextTranslationName {
@@ -3600,7 +3693,7 @@ mod tests {
             let named = store
                 .update_profile_options(
                     &profile.id,
-                    &profile.name,
+                    None,
                     None,
                     None,
                     Some(TextTranslationName {
@@ -3650,7 +3743,7 @@ mod tests {
             url: None,
         };
         store
-            .update_profile_options(&profile.id, &profile.name, None, Some(text.clone()), None)
+            .update_profile_options(&profile.id, None, None, Some(text.clone()), None)
             .unwrap();
         let updated = store.active_profile().unwrap();
         assert_eq!(updated.speech_network_proxy, None);
@@ -3682,7 +3775,13 @@ mod tests {
             url: Some("socks5h://127.0.0.1:1080".into()),
         };
         store
-            .update_profile_options(&profile.id, "Renamed", Some(speech.clone()), None, None)
+            .update_profile_options(
+                &profile.id,
+                Some("Renamed"),
+                Some(speech.clone()),
+                None,
+                None,
+            )
             .unwrap();
         store.select_profile(&profile.id).unwrap();
         let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
@@ -3701,7 +3800,7 @@ mod tests {
         assert!(store
             .update_profile_options(
                 &profile.id,
-                "Rejected",
+                Some("Rejected"),
                 None,
                 Some(ProxyConfig {
                     mode: ProxyMode::Custom,
@@ -3717,7 +3816,7 @@ mod tests {
         assert!(store
             .update_profile_options(
                 &profile.id,
-                "Unpersisted",
+                Some("Unpersisted"),
                 Some(ProxyConfig::default()),
                 None,
                 None
@@ -5567,7 +5666,7 @@ mod tests {
         assert_eq!(
             store.update_profile_options(
                 &preset.id,
-                &preset.name,
+                None,
                 None,
                 None,
                 Some(TextTranslationName {

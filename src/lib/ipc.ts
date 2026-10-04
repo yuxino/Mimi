@@ -122,7 +122,7 @@ export function profileCreate(
 
 export function profileUpdate(
   profileId: string,
-  name: string,
+  name: string | undefined,
   options?: ProfileOptionsDraft,
 ): Promise<SettingsSnapshot> {
   return invoke<SettingsSnapshot>("profile_update", { profileId, name, ...options });

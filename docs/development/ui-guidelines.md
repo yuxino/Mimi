@@ -60,6 +60,13 @@ These project rules apply to implementation and review.
   Never enable this by inferring that `type="text"` means nonsecret: revealed
   credential fields also use that input type.
 
+- Configuration and translation display names use the shared automatic name
+  field: preserve the visible draft, spaces, caret and IME composition while
+  saving quietly. Serialize/coalesce writes per field, keep failed drafts with
+  inline retry, and update only the requested metadata so an alias or proxy
+  cannot replay an old configuration name. Keep compact labels single-line;
+  expanded editing is explicit.
+
 ## Choose feedback by purpose
 
 | Situation | Required behavior |

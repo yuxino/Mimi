@@ -162,7 +162,7 @@ interface StoreState {
   ) => Promise<SettingsSnapshot>;
   updateProfile: (
     profileId: string,
-    name: string,
+    name: string | undefined,
     options?: ProfileOptionsDraft,
   ) => Promise<SettingsSnapshot>;
   selectProfile: (profileId: string) => Promise<SettingsSnapshot>;
@@ -520,9 +520,11 @@ export const useStore = create<StoreState>()((set, get) => ({
       if (settingsResponseGate.applyIfCurrent(revision)) {
         settingsSaveCoordinator.invalidate();
         set({ settings: snapshot });
-        return snapshot;
       }
-      return get().settings;
+      // This response acknowledges the requested metadata even if a newer
+      // event already owns global state. Returning that unrelated event could
+      // make an autosave editor mistake a successful rename for a rejection.
+      return snapshot;
     }
     const current = get().settings;
     const snapshot: SettingsSnapshot = {
@@ -536,7 +538,7 @@ export const useStore = create<StoreState>()((set, get) => ({
             if (value) textTranslationNames[textTranslationName.route] = value;
             else delete textTranslationNames[textTranslationName.route];
           }
-          return { ...profile, name, ...proxies, textTranslationNames };
+          return { ...profile, ...(name === undefined ? {} : { name: name.trim() }), ...proxies, textTranslationNames };
         })() : profile,
       ),
     };

@@ -36,6 +36,7 @@
 .overlay-status-row__trailing { justify-content: flex-end; }
 .overlay-status-row--narrow { grid-template-columns: minmax(0, 1fr) fit-content(45%); }
 .overlay-status-row--narrow .overlay-service { max-width: 96px; }
+.overlay-status-row--narrow .overlay-service--split { max-width: 120px; }
 .overlay-status-row .overlay-latency,
 .overlay-status-row .overlay-action-feedback {
   position: static;

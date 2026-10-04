@@ -46,7 +46,8 @@ it("shows the independent translation mark and opens settings with guarded failu
   } }));
   await act(async () => root.render(<OverlayWindow />));
   const service = host.querySelector<HTMLButtonElement>(".overlay-service__button")!;
-  expect(service.textContent).toBe("DeepL");
+  expect(service.textContent).toBe("Alibaba CloudDeepL");
+  expect(service.querySelector('[data-stage="recognition"] [data-provider="alibabaCloud"]')).not.toBeNull();
   expect(service.querySelector('[data-provider="deepL"]')).not.toBeNull();
   expect(service.getAttribute("aria-label")).toContain("Translation profile");
   await act(async () => service.click());

@@ -107,7 +107,10 @@ it("keeps placeholders empty and blocks line breaks without intercepting IME con
   const composing = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, isComposing: true });
   await act(() => textarea.dispatchEvent(composing));
   expect(composing.defaultPrevented).toBe(false);
-  expect(onKeyDown).toHaveBeenCalledTimes(2);
+  const webkitCommit = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, keyCode: 229 });
+  await act(() => textarea.dispatchEvent(webkitCommit));
+  expect(webkitCommit.defaultPrevented).toBe(false);
+  expect(onKeyDown).toHaveBeenCalledTimes(3);
 });
 
 it("keeps expansion focus inside the field group and passes a single-line pasted draft to its owner", async () => {

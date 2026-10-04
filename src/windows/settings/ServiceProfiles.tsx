@@ -46,11 +46,12 @@ import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
 import { textTranslationDisplayName } from "../../lib/textTranslationName";
 import { NetworkProxySettings } from "./NetworkProxySettings";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
+import { AutoSaveNameField } from "./AutoSaveNameField";
 
 const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
-type PendingAction = "create" | "rename" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | null;
+type PendingAction = "create" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | null;
 type CheckStage = ConnectionCheckStage | "combined";
 type CheckOutcome = { profileId: string; input: symbol; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
@@ -91,7 +92,6 @@ export function ServiceProfiles({
   );
   const [showsEditor, setShowsEditor] = useState(false);
   const [showsProviderPicker, setShowsProviderPicker] = useState(false);
-  const [nameDraft, setNameDraft] = useState(activeProfile?.name ?? "");
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const { beginToast } = useSettingsToast();
@@ -118,10 +118,7 @@ export function ServiceProfiles({
   const checkInFlight = useRef(false);
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const profileCheckEpochs = useRef(new Map<string, number>());
-  const [renderedProfile, setRenderedProfile] = useState({
-    id: activeProfile?.id,
-    name: activeProfile?.name,
-  });
+  const [renderedProfileId, setRenderedProfileId] = useState(activeProfile?.id);
 
   const selectedProfile = useMemo(
     () => settings.profiles.find((profile) => profile.id === selectedProfileId) ?? activeProfile,
@@ -166,13 +163,9 @@ export function ServiceProfiles({
 
   if (
     selectedProfile &&
-    (selectedProfile.id !== renderedProfile.id || selectedProfile.name !== renderedProfile.name)
+    selectedProfile.id !== renderedProfileId
   ) {
-    setRenderedProfile({
-      id: selectedProfile.id,
-      name: selectedProfile.name,
-    });
-    setNameDraft(selectedProfile.name);
+    setRenderedProfileId(selectedProfile.id);
     setFeedback(null);
     setPendingConfirmation(null);
   }
@@ -206,7 +199,7 @@ export function ServiceProfiles({
       return snapshot;
     } catch (error) {
       // Keep unsaved edits actionable in their form; list operations have no field to correct.
-      if (action === "save-key" || action === "rename") setFeedback({ tone: "error", message: profileErrorMessage(error) });
+      if (action === "save-key") setFeedback({ tone: "error", message: profileErrorMessage(error) });
       else notify(profileErrorMessage(error), true);
       return null;
     } finally {
@@ -236,30 +229,12 @@ export function ServiceProfiles({
     } finally { creationInFlight.current = false; }
   };
 
-  const handleRename = async () => {
-    if (!selectedProfile) return;
-    const name = nameDraft.trim();
-    if (!name || name === selectedProfile.name) return;
-    await perform(
-      "rename",
-      () => updateProfile(selectedProfile.id, name),
-      I18N.settings.profileNameSaved,
-    );
+  const handleRename = async (profileId: string, name: string) => {
+    return updateProfile(profileId, name);
   };
 
   const handleSaveTranslationName = async (profile: ServiceProfile, route: TextTranslationNameDraft["route"], name: string) => {
-    if (mutationInFlight.current || mutationsDisabled) return null;
-    mutationInFlight.current = true;
-    setPendingAction("rename");
-    const notify = beginToast();
-    try {
-      const snapshot = await updateProfile(profile.id, profile.name, { textTranslationName: { route, name } });
-      notify(I18N.settings.textTranslationNameSaved);
-      return snapshot;
-    } finally {
-      mutationInFlight.current = false;
-      setPendingAction(null);
-    }
+    return updateProfile(profile.id, undefined, { textTranslationName: { route, name } });
   };
 
   const handleSaveProxy = async (profile: ServiceProfile, stage: "speech" | "text", config: NetworkProxyConfig) => {
@@ -267,7 +242,7 @@ export function ServiceProfiles({
     mutationInFlight.current = true;
     setPendingAction("save-proxy");
     try {
-      await updateProfile(profile.id, profile.name, stage === "speech" ? { speechNetworkProxy: config } : { textNetworkProxy: config });
+      await updateProfile(profile.id, undefined, stage === "speech" ? { speechNetworkProxy: config } : { textNetworkProxy: config });
       invalidateProfileCheck(profile.id, stage);
     } finally {
       mutationInFlight.current = false;
@@ -456,7 +431,7 @@ export function ServiceProfiles({
               <ProviderIcon provider={selectedProfile.provider === "deepLX" ? "alibabaCloud" : selectedProfile.provider} />
               <div className="service-detail__copy">
                 <div className="service-detail__title">
-                  <div className="service-detail__name-help"><h2>{profileTitle(selectedProfile)}</h2><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></div>
+                  <div className="service-detail__name-help"><h2 key={selectedProfile.name}>{profileTitle(selectedProfile)}</h2><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></div>
                   <div className="service-detail__status">
                     <CredentialBadge state={credentialStateForTarget(selectedProfile, settings.targetLanguage)} />
                     {selectedProfile.id === settings.activeProfileId && (
@@ -471,18 +446,12 @@ export function ServiceProfiles({
             </div>
           </div>
           <div className="service-detail__configuration">
-          <form
-            className="profile-form service-detail__name"
-            onSubmit={(event) => { event.preventDefault(); void handleRename(); }}
-          >
-            <div className="settings-field">
-              <label htmlFor={`profile-name-${selectedProfile.id}`}>{I18N.settings.profileName}</label>
-              <span className="settings-field__inline">
-                <ConfigInput expandable id={`profile-name-${selectedProfile.id}`} value={nameDraft} maxLength={64} disabled={mutationsDisabled} readOnly={selectedProfileReadOnly} placeholder={I18N.settings.profileNamePlaceholder} onValueChange={(value) => { setNameDraft(value); setFeedback(null); }} />
-                {nameDraft.trim() !== selectedProfile.name && <button type="submit" className="settings-link service-detail__save-name" disabled={mutationsDisabled || !nameDraft.trim()}>{I18N.settings.saveName}</button>}
-              </span>
-            </div>
-          </form>
+          <div className="profile-form service-detail__name">
+            <AutoSaveNameField key={selectedProfile.id} id={`profile-name-${selectedProfile.id}`}
+              label={I18N.settings.profileName} value={selectedProfile.name} allowEmpty={false}
+              placeholder={I18N.settings.profileNamePlaceholder} disabled={mutationsDisabled} readOnly={selectedProfileReadOnly}
+              onSave={name => handleRename(selectedProfile.id, name)} />
+          </div>
           <div className="service-detail__connection">
             <SelectedCredentialEditor
               connectionCheck={(draft: ProviderCredentialsInput | null | undefined) => renderConnectionCheck(selectedProfile, isCustomSpeechProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined, draft)}
@@ -595,7 +564,7 @@ export function ServiceProfiles({
                 >
                   <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
-                    <strong>{profileTitle(profile)}</strong>
+                    <strong key={profile.name}>{profileTitle(profile)}</strong>
                     {profileSecondaryLabel(profile) && <span className="service-row__provider">{profileSecondaryLabel(profile)}</span>}
                     {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
                   </span>

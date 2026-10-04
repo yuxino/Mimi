@@ -53,6 +53,7 @@ const CATEGORY_SECTION_IDS: Record<SettingsCategory, string> = {
 export function SettingsView() {
   const { nativeShortcuts, commands: desktopShortcutCommands } = useDesktopShortcuts();
   const [showShortcutSetup, setShowShortcutSetup] = useState(false);
+  const [subtitleFontPreview, setSubtitleFontPreview] = useState<string | undefined>();
   const { theme, resolvedTheme, changeTheme } = useSettingsTheme();
   // Subscribe only to state rendered in this window. Subtitle text updates do
   // not re-render settings while a stream is active.
@@ -267,7 +268,7 @@ export function SettingsView() {
                       </div>
                       <div
                         className="subtitle-preview__text"
-                        style={{ fontSize: settings.fontSize, fontFamily: subtitleFontFamily(settings.subtitleFontFamily), color: subtitleColorHex(settings.subtitleColor),
+                        style={{ fontSize: settings.fontSize, fontFamily: subtitleFontFamily(subtitleFontPreview ?? settings.subtitleFontFamily), color: subtitleColorHex(settings.subtitleColor),
                           background: settings.subtitleBlendsWithBackground ? "transparent" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity) }}
                       >
                         {settings.subtitleDisplayMode !== "translation" && (
@@ -289,7 +290,8 @@ export function SettingsView() {
                           />
                         </SettingsRow>
                         <SubtitleFontControl value={settings.subtitleFontFamily ?? ""}
-                          onChange={subtitleFontFamily => savePreference({ subtitleFontFamily }, I18N.settings.subtitleFont)} />
+                          onPreview={setSubtitleFontPreview}
+                          onChange={subtitleFontFamily => saveSettings({ subtitleFontFamily })} />
                       </div>
                       <SettingsRow label={I18N.settings.showIntermediateSubtitles} description={I18N.settings.showIntermediateSubtitlesHelp}>
                         <Switch

@@ -462,20 +462,25 @@ it.each(["zh", "en", "ja"] as const)("shows a default provider name once and kee
   expect(rows.every((row) => !!row.querySelector(".service-row__main") && !!row.querySelector(".service-row__edit"))).toBe(true);
 });
 
-it("offers the small name-save action only for a draft change, without touching a credential draft", async () => {
-  await render({ ...settings, profiles: [{ ...profile, credentialState: "present" }] });
+it("autosaves a name without a save button, stealing focus or touching a credential draft", async () => {
+  vi.useFakeTimers();
+  const snapshot = { ...settings, profiles: [{ ...profile, credentialState: "present" as const }] };
+  actions.updateProfile.mockResolvedValue(snapshot);
+  await render(snapshot);
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  expect(host.querySelector(".service-detail__save-name")).toBeNull();
   await click(I18N.settings.replaceCredentials);
   await change('input[type="password"]', "synthetic-replacement");
-  await change(".service-detail__name input", "Other name");
-  expect(host.querySelector(".service-detail__save-name")?.textContent).toBe(I18N.settings.saveName);
-  expect(host.querySelector(".service-detail__save-name")?.classList.contains("settings-link")).toBe(true);
-  expect(host.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe("synthetic-replacement");
-  await change(".service-detail__name input", profile.name);
+  const name = host.querySelector<HTMLInputElement>(".service-detail__name input")!;
+  name.focus();
+  await change(".service-detail__name input", "Other name · 空格 & (2)");
   expect(host.querySelector(".service-detail__save-name")).toBeNull();
+  await act(async () => vi.advanceTimersByTimeAsync(400));
+  expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, "Other name · 空格 & (2)");
+  expect(document.activeElement).toBe(name);
+  expect(name.disabled).toBe(false);
+  expect(host.querySelector<HTMLInputElement>('input[type="password"]')!.value).toBe("synthetic-replacement");
+  expect(host.querySelector('.settings-toast[role="status"]')).toBeNull();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
-  expect(actions.updateProfile).not.toHaveBeenCalled();
 });
 
 it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as const)("makes supported %s languages directly selectable in the active service", async (provider) => {
@@ -519,7 +524,7 @@ it("keeps profile rename and delete actions reachable without opening another pa
   await render(snapshot);
   await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
   await change(".service-detail__name input", "Renamed");
-  await act(async () => { host.querySelector(".service-detail__name")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+  await act(async () => { host.querySelector<HTMLInputElement>(".service-detail__name input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
   expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith("other", "Renamed");
   const management = host.querySelector(".service-detail__actions")!;
   expect(management.textContent).toContain(I18N.settings.useProfile);
@@ -710,7 +715,7 @@ it("saves only the chosen stage with its profile and restores saved choices when
   expect(selectors[1]!.getAttribute("aria-label")).toBe(I18N.settings.textTranslationLabel);
   await change(".service-detail__name input", "Unsaved name");
   await chooseStageProxy(1, I18N.settings.networkProxyDirect);
-  expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, profile.name, { textNetworkProxy: { mode: "direct", url: null } });
+  expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, undefined, { textNetworkProxy: { mode: "direct", url: null } });
   expect(host.querySelector<HTMLInputElement>(".service-detail__name input")!.value).toBe("Unsaved name");
   await chooseStageProxy(0, I18N.settings.networkProxyCustom);
   await click(I18N.settings.backToServices);
@@ -915,11 +920,11 @@ it.each(["alibabaCloud", "customDashScopeASR", "customOpenAIASR"] as const)(
     await change(".service-detail__name input", "Unsaved configuration name");
     await change('.service-stage--translation input[id$="-token"]', "synthetic-unsaved-token");
     await change(".translation-name-field input", "  Office translator  ");
-    await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
-    expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, profile.name, {
+    await act(async () => host.querySelector<HTMLInputElement>(".translation-name-field input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, undefined, {
       textTranslationName: { route: "openAICompatible", name: "Office translator" },
     });
-    expect(host.querySelector('.settings-toast[role="status"]')?.textContent).toBe(I18N.settings.textTranslationNameSaved);
+    expect(host.querySelector('.settings-toast[role="status"]')).toBeNull();
     expect(host.querySelector(".translation-name-field .settings-button")).toBeNull();
     await render(renamed);
     expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-token"]')!.value).toBe("synthetic-unsaved-token");
@@ -930,12 +935,12 @@ it.each(["alibabaCloud", "customDashScopeASR", "customOpenAIASR"] as const)(
     const cleared: SettingsSnapshot = { ...snapshot, profiles: [{ ...named, textTranslationNames: {} }] };
     actions.updateProfile.mockResolvedValueOnce(cleared);
     await change(".translation-name-field input", "   ");
-    await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
-    expect(actions.updateProfile).toHaveBeenLastCalledWith(profile.id, profile.name, {
+    await act(async () => host.querySelector<HTMLInputElement>(".translation-name-field input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+    expect(actions.updateProfile).toHaveBeenLastCalledWith(profile.id, undefined, {
       textTranslationName: { route: "openAICompatible", name: "" },
     });
     await render(cleared);
-    expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.value).toBe("");
+    expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.value.trim()).toBe("");
     expect(host.querySelector('.service-stage--translation [role="combobox"]')?.textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
     expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-token"]')!.value).toBe("synthetic-unsaved-token");
     expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
@@ -950,22 +955,54 @@ it("keeps a failed translation-name edit beside its field and retries without cr
   await render(snapshot);
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   await change(".translation-name-field input", "Unsaved translator");
-  await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
+  await act(async () => host.querySelector<HTMLInputElement>(".translation-name-field input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
   expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.value).toBe("Unsaved translator");
-  expect(host.querySelector('.translation-name-field [role="alert"]')?.textContent).toBe(I18N.settings.profileActionFailed);
+  expect(host.querySelector('.translation-name-field [role="alert"]')?.textContent).toContain(I18N.settings.profileActionFailed);
   expect(host.querySelector('.settings-toast[role="status"]')).toBeNull();
   expect(host.textContent).not.toContain("synthetic-private-save-error");
-  expect(host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.disabled).toBe(false);
+  expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.disabled).toBe(false);
   actions.updateProfile.mockResolvedValueOnce({ ...snapshot, profiles: [{ ...named, textTranslationNames: { deepLX: "Unsaved translator" } }] });
-  await act(async () => host.querySelector<HTMLButtonElement>(".translation-name-field .settings-button")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(".auto-save-name-field__error button")!.click());
   expect(actions.updateProfile).toHaveBeenCalledTimes(2);
-  expect(actions.updateProfile).toHaveBeenLastCalledWith(profile.id, profile.name, {
+  expect(actions.updateProfile).toHaveBeenLastCalledWith(profile.id, undefined, {
     textTranslationName: { route: "deepLX", name: "Unsaved translator" },
   });
   expect(host.querySelector('.translation-name-field [role="alert"]')).toBeNull();
-  expect(host.querySelector('.settings-toast[role="status"]')?.textContent).toBe(I18N.settings.textTranslationNameSaved);
+  expect(host.querySelector('.settings-toast[role="status"]')).toBeNull();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
   expect(actions.selectProfile).not.toHaveBeenCalled();
+});
+
+it("keeps both name fields editable while independent autosaves finish in either order", async () => {
+  vi.useFakeTimers();
+  const named: ServiceProfile = { ...profile, credentialState: "present", textTranslation: "deepLX", textTranslationNames: { deepLX: "Old translator" } };
+  const snapshot = { ...settings, profiles: [named] };
+  let finishProfile!: (value: SettingsSnapshot) => void;
+  let finishTranslation!: (value: SettingsSnapshot) => void;
+  actions.updateProfile.mockImplementation((_id, name) => new Promise(resolve => {
+    if (name === undefined) finishTranslation = resolve;
+    else finishProfile = resolve;
+  }));
+  await render(snapshot);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await change(".service-detail__name input", "Configuration B 站");
+  await change(".translation-name-field input", "B 站 · @home / (测试) 😀");
+  await act(async () => vi.advanceTimersByTimeAsync(400));
+  expect(actions.updateProfile).toHaveBeenCalledWith(profile.id, "Configuration B 站");
+  expect(actions.updateProfile).toHaveBeenCalledWith(profile.id, undefined, { textTranslationName: { route: "deepLX", name: "B 站 · @home / (测试) 😀" } });
+  expect(host.querySelector<HTMLInputElement>(".service-detail__name input")!.disabled).toBe(false);
+  expect(host.querySelector<HTMLInputElement>(".translation-name-field input")!.disabled).toBe(false);
+  const translated = { ...snapshot, profiles: [{ ...named, textTranslationNames: { deepLX: "B 站 · @home / (测试) 😀" } }] };
+  await act(async () => finishTranslation(translated));
+  await render(translated);
+  expect(host.querySelector<HTMLInputElement>(".service-detail__name input")!.value).toBe("Configuration B 站");
+  const both = { ...translated, profiles: [{ ...translated.profiles[0], name: "Configuration B 站" }] };
+  await act(async () => finishProfile(both));
+  await render(both);
+  expect(host.querySelector(".service-detail__title h2")?.textContent).toBe("Configuration B 站");
+  expect(host.querySelector('.service-stage--translation [role="combobox"]')?.textContent).toBe("B 站 · @home / (测试) 😀");
+  expect(host.querySelector('.settings-toast[role="status"]')).toBeNull();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
 });
 
 it("checks a new OpenAI key draft directly without saving or selecting the profile", async () => {

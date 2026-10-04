@@ -91,8 +91,9 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
   return <span className="config-input-group" onBlur={event => { if (!switchingField.current) onGroupBlur?.(event); }}>
     <span className={`config-input${action ? " config-input--with-action" : ""}${canExpand ? " config-input--expandable" : ""}${isExpanded ? " config-input--expanded" : ""}`}>
       {isExpanded ? <textarea {...props} ref={assignField} rows={3} wrap="soft" onChange={event => change(event.target.value)} onKeyDown={event => {
-        if (!event.nativeEvent.isComposing && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); toggle(); }
-        if (!event.nativeEvent.isComposing && event.key === "Enter") event.preventDefault();
+        const composing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+        if (!composing && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); toggle(); }
+        if (!composing && event.key === "Enter") event.preventDefault();
         onKeyDown?.(event);
       }} /> : <input {...props} type={type} ref={assignField} onKeyDown={onKeyDown} onChange={event => change(event.target.value)} />}
       {action}

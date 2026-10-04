@@ -1496,7 +1496,7 @@ pub async fn profile_update(
     app: AppHandle,
     state: State<'_, AppState>,
     profile_id: String,
-    name: String,
+    name: Option<String>,
     speech_network_proxy: Option<ProxyConfig>,
     text_network_proxy: Option<ProxyConfig>,
     text_translation_name: Option<TextTranslationName>,
@@ -1505,7 +1505,7 @@ pub async fn profile_update(
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
     state.settings.update_profile_options(
         &profile_id,
-        &name,
+        name.as_deref(),
         speech_network_proxy,
         text_network_proxy,
         text_translation_name,

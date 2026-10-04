@@ -33,11 +33,13 @@ interface SelectProps {
   valueIcon?: ReactNode;
   /** Load choices only after the user opens the picker. */
   onOpen?: () => void;
+  /** Apply adjacent choices with closed-menu arrows after all options are loaded. */
+  closedArrowSelection?: boolean;
   onChange: (value: string) => void;
 }
 
 /** One app-styled picker for Settings, the subtitle controls, and the tray. */
-export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, loadingMessage, valueLabel, valueIcon, onOpen, onChange }: SelectProps) {
+export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, loadingMessage, valueLabel, valueIcon, onOpen, closedArrowSelection = false, onChange }: SelectProps) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -46,6 +48,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
   const revealActive = useRef(true);
   const optionNodes = useRef(new Map<string, HTMLDivElement>());
   const typeahead = useRef({ text: "", at: 0 });
+  const lastChoice = useRef(value);
   const [popup, setPopup] = useState<MenuStyle | null>(null);
   const [query, setQuery] = useState("");
   const searchable = searchLabel !== undefined;
@@ -54,6 +57,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     return options.filter(option => !text || option.label.toLocaleLowerCase().includes(text) || option.value.toLocaleLowerCase().includes(text));
   }, [options, query, searchable]);
   const selected = options.findIndex((option) => option.value === value);
+  const selectedLabel = options[selected]?.label ?? valueLabel ?? value;
   const selectedIcon = selected >= 0 ? options[selected].icon : valueIcon;
   const selectedVisible = visible.findIndex(option => option.value === value);
   const [cursor, setCursor] = useState({ selection: value, query: "", index: 0 });
@@ -61,6 +65,8 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
   const active = visible.length === 0 ? -1 : Math.min(visible.length - 1,
     cursor.selection === value && cursor.query === query && cursor.index >= 0 ? cursor.index : Math.max(0, selectedVisible));
   const open = popup !== null && !disabled;
+
+  useEffect(() => { lastChoice.current = value; }, [value]);
 
   function setActive(index: number | ((previous: number) => number), reveal = true) {
     revealActive.current = reveal;
@@ -118,7 +124,10 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     const option = visible[index];
     setPopup(null);
     trigger.current?.focus();
-    if (option && option.value !== value) onChange(option.value);
+    if (option && option.value !== value) {
+      lastChoice.current = option.value;
+      onChange(option.value);
+    }
   }
 
   useEffect(() => {
@@ -166,7 +175,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement | HTMLInputElement>) {
     const editing = event.currentTarget === input.current;
-    if (editing && event.nativeEvent.isComposing) return;
+    if (disabled || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Tab" || event.key === "Escape") {
       if (open && event.key === "Escape") {
         event.preventDefault();
@@ -180,6 +189,21 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     }
     if (["ArrowDown", "ArrowUp", "Home", "End", "Enter"].includes(event.key) || (!editing && event.key === " ")) {
       event.preventDefault();
+      if (!open && closedArrowSelection && !event.altKey && !event.ctrlKey && !event.metaKey &&
+        (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        // Use the complete list, never the previous search results. Track the
+        // latest choice synchronously so repeated keys can precede a render.
+        if (options.length === 0) return;
+        const previous = options.findIndex(option => option.value === lastChoice.current);
+        const index = previous < 0 ? event.key === "ArrowDown" ? 0 : options.length - 1
+          : (previous + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+        const next = options[index].value;
+        if (next !== lastChoice.current) {
+          lastChoice.current = next;
+          onChange(next);
+        }
+        return;
+      }
       if (!open) { show(); return; }
       if (visible.length === 0) return;
       if (event.key === "Enter" || event.key === " ") choose(active);
@@ -237,9 +261,9 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
         onClick={() => open ? setPopup(null) : show()}>
         {/* Replacing the label node also invalidates retained WebKit pixels on
             external value changes, while the focused trigger remains stable. */}
-        <span key={value} className="mimi-select__content">
+        <span key={JSON.stringify([value, selectedLabel])} className="mimi-select__content">
           {selectedIcon && <span className="mimi-select__icon" aria-hidden="true">{selectedIcon}</span>}
-          <span className="mimi-select__label">{options[selected]?.label ?? valueLabel ?? value}</span>
+          <span className="mimi-select__label">{selectedLabel}</span>
         </span><Icon name="chevron-down" />
       </button>
       {open && createPortal(

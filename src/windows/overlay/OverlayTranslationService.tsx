@@ -1,4 +1,5 @@
-import { Captions } from "lucide-react";
+import { Fragment } from "react";
+import { ArrowRight } from "lucide-react";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { Tooltip } from "../../components/Tooltip";
 import { I18N } from "../../lib/i18n";
@@ -10,14 +11,18 @@ export function OverlayTranslationService({ service, onClick, disabled }: {
   onClick: () => void;
   disabled: boolean;
 }) {
-  return <div className="overlay-service">
+  return <div className={`overlay-service${service.stages.length > 1 ? " overlay-service--split" : ""}`}>
     <Tooltip label={`${service.detail}\n${I18N.overlay.openSettings}`} popupClassName="overlay-service-tooltip">
       {(descriptionId, hovered) => <button type="button" className="overlay-service__button"
         aria-label={service.detail} aria-describedby={descriptionId}
         data-hovered={hovered || undefined} disabled={disabled} onClick={onClick}>
-        {service.provider ? <ProviderIcon provider={service.provider} size={16} />
-          : <Captions size={16} strokeWidth={1.7} aria-hidden="true" />}
-        <span className="overlay-service__name">{service.label}</span>
+        {service.stages.map((stage, index) => <Fragment key={stage.role}>
+          {index > 0 && <ArrowRight className="overlay-service__separator" size={10} strokeWidth={1.7} aria-hidden="true" />}
+          <span className="overlay-service__stage" data-stage={stage.role}>
+            <ProviderIcon provider={stage.provider} size={16} />
+            <span className="overlay-service__name">{stage.label}</span>
+          </span>
+        </Fragment>)}
       </button>}
     </Tooltip>
   </div>;

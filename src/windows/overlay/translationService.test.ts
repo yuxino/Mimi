@@ -24,52 +24,62 @@ afterEach(() => setStoredUiLanguage("system"));
 it.each([
   "alibabaCloud", "openAIRealtime", "googleGeminiLive", "azureOpenAIRealtime",
   "volcanoEngine", "tencentCloud", "baiduTranslate", "xAIRealtime",
-] as const)("identifies the built-in %s service", provider => {
+] as const)("combines recognition and translation from the built-in %s service", provider => {
   const result = translationService(settings({ provider }));
-  expect(result?.provider).toBe(provider);
-  expect(result?.label).toBe(providerDisplayName(provider));
+  expect(result?.stages).toEqual([{ role: "combined", provider, label: providerDisplayName(provider) }]);
   expect(result?.detail).toContain(`Current configuration: ${profile.name}`);
+  expect(result?.detail).toContain(`Speech recognition: ${providerDisplayName(provider)}`);
   expect(result?.detail).toContain(`Text translation: ${providerDisplayName(provider)}`);
 });
 
 it.each(["alibabaCloud", "customDashScopeASR", "customOpenAIASR"] as const)(
-  "identifies independent text translation instead of the %s recognition service", provider => {
+  "keeps %s recognition visible beside each independent translator", provider => {
     for (const [textTranslation, label] of [
       ["deepL", "DeepL"], ["deepLX", "DeepLX"], ["chatMock", "ChatMock"],
       ["openAICompatible", "OpenAI-compatible API"],
     ] as const) {
       const result = translationService(settings({ provider, textTranslation }));
-      expect(result?.provider).toBe(textTranslation);
-      expect(result?.label).toBe(label);
+      expect(result?.stages).toEqual([
+        { role: "recognition", provider, label: providerDisplayName(provider) },
+        { role: "translation", provider: textTranslation, label },
+      ]);
       expect(result?.detail).toContain(`Speech recognition: ${providerDisplayName(provider)}`);
       expect(result?.detail).toContain(`Text translation: ${label}`);
     }
   },
 );
 
-it("restores the translation route in legacy DeepLX snapshots", () => {
-  expect(translationService(settings({ provider: "deepLX" }))?.provider).toBe("deepLX");
-  expect(translationService(settings({ provider: "deepLX" }))?.label).toBe("DeepLX");
-  expect(translationService(settings({ provider: "deepLX", textTranslation: "followService" }))?.provider).toBe("alibabaCloud");
+it("resolves legacy DeepLX recognition to Alibaba and retains its independent translator", () => {
+  const result = translationService(settings({ provider: "deepLX" }));
+  expect(result?.stages).toEqual([
+    { role: "recognition", provider: "alibabaCloud", label: "Alibaba Cloud" },
+    { role: "translation", provider: "deepLX", label: "DeepLX" },
+  ]);
+  expect(result?.detail).toContain("Speech recognition: Alibaba Cloud");
+  expect(translationService(settings({ provider: "deepLX", textTranslation: "followService" }))?.stages)
+    .toEqual([{ role: "combined", provider: "alibabaCloud", label: "Alibaba Cloud" }]);
 });
 
-it("does not claim the configured translator is used when translation is disabled", () => {
+it("keeps recognition without claiming an unused translator when translation is disabled", () => {
   const result = translationService({ ...settings({ textTranslation: "chatMock" }), targetLanguage: "original" });
-  expect(result?.provider).toBeNull();
-  expect(result?.label).toBe("Original only");
+  expect(result?.stages).toEqual([{ role: "recognition", provider: "alibabaCloud", label: "Alibaba Cloud" }]);
+  expect(result?.detail).toContain("Text translation: Original only");
   expect(result?.detail).not.toContain("ChatMock");
 });
 
 it.each(["customDashScopeASR", "customOpenAIASR"] as const)(
   "does not invent built-in translation for %s without an independent route", provider => {
-    expect(translationService(settings({ provider }))?.provider).toBeNull();
-    expect(translationService(settings({ provider, textTranslation: "followService" }))?.label).toBe("Original only");
+    for (const textTranslation of [undefined, "followService"] as const) {
+      const result = translationService(settings({ provider, textTranslation }));
+      expect(result?.stages).toEqual([{ role: "recognition", provider, label: providerDisplayName(provider) }]);
+      expect(result?.detail).toContain("Text translation: Original only");
+    }
   },
 );
 
-it("keeps the translation route when only the subtitle display hides translations", () => {
+it("keeps both actual routes when the display preference only hides translated subtitles", () => {
   const originalDisplay = { ...settings({ textTranslation: "deepL" }), subtitleDisplayMode: "original" as const };
-  expect(translationService(originalDisplay)?.provider).toBe("deepL");
+  expect(translationService(originalDisplay)?.stages.map(stage => stage.provider)).toEqual(["alibabaCloud", "deepL"]);
 });
 
 it("omits unavailable profiles instead of borrowing a different configuration", () => {
@@ -77,73 +87,74 @@ it("omits unavailable profiles instead of borrowing a different configuration", 
   expect(translationService({ ...settings(), profiles: [] })).toBeNull();
 });
 
-it("follows profile and route changes without retaining the previous service", () => {
-  const first = settings({ textTranslation: "deepL" });
-  const secondProfile: ServiceProfile = { ...profile, id: "second", name: "Second configuration", textTranslation: "chatMock" };
-  const profiles = [...first.profiles, secondProfile];
-  expect(translationService({ ...first, profiles })?.label).toBe("DeepL");
-  expect(translationService({ ...first, profiles, activeProfileId: secondProfile.id })?.detail)
-    .toContain("Current configuration: Second configuration");
-  expect(translationService({ ...first, profiles, activeProfileId: secondProfile.id })?.label).toBe("ChatMock");
-  expect(translationService(settings({ textTranslation: "openAICompatible" }))?.label).toBe("OpenAI-compatible API");
-});
-
-it.each(["zh", "en", "ja"] as const)("resolves service copy when the UI switches to %s", language => {
+it.each(["zh", "en", "ja"] as const)("resolves both stages and original-only copy when the UI switches to %s", language => {
   setStoredUiLanguage(language);
-  expect(translationService(settings({ textTranslation: "openAICompatible" }))?.label)
-    .toBe(I18N.settings.textTranslationOpenAICompatible);
-  expect(translationService({ ...settings(), targetLanguage: "original" })?.label)
-    .toBe(I18N.overlay.originalOnly);
+  expect(translationService(settings({ textTranslation: "openAICompatible" }))?.stages).toEqual([
+    { role: "recognition", provider: profile.provider, label: providerDisplayName(profile.provider) },
+    { role: "translation", provider: "openAICompatible", label: I18N.settings.textTranslationOpenAICompatible },
+  ]);
+  expect(translationService({ ...settings(), targetLanguage: "original" })?.detail)
+    .toContain(`${I18N.settings.textTranslationLabel}: ${I18N.overlay.originalOnly}`);
 });
 
 it.each(["deepL", "deepLX", "chatMock", "openAICompatible"] as const)(
-  "uses the selected %s alias while retaining the protocol identity", textTranslation => {
+  "uses the selected %s alias while retaining its protocol and recognition identities", textTranslation => {
     const result = translationService(settings({
       textTranslation,
-      textTranslationNames: { [textTranslation]: "My translator" },
+      textTranslationNames: { [textTranslation]: "B 站 / 日本語 & 🌸" },
     }));
-    expect(result?.provider).toBe(textTranslation);
-    expect(result?.label).toBe("My translator");
-    expect(result?.detail).toContain("Text translation: My translator");
-    expect(result?.detail).toContain(`Speech recognition: ${providerDisplayName(profile.provider)}`);
+    expect(result?.stages).toEqual([
+      { role: "recognition", provider: profile.provider, label: providerDisplayName(profile.provider) },
+      { role: "translation", provider: textTranslation, label: "B 站 / 日本語 & 🌸" },
+    ]);
+    expect(result?.detail).toContain("Text translation: B 站 / 日本語 & 🌸");
   },
 );
 
-it("resolves aliases separately for the selected route and active profile", () => {
+it("resolves aliases separately for the active profile and route on every update", () => {
   const first = settings({
     textTranslation: "openAICompatible",
     textTranslationNames: { openAICompatible: "Office translator", deepL: "Backup translator" },
   });
   const second: ServiceProfile = {
-    ...profile, id: "second-profile", textTranslation: "openAICompatible",
+    ...profile, id: "second-profile", name: "Second configuration", provider: "customOpenAIASR", textTranslation: "openAICompatible",
     textTranslationNames: { openAICompatible: "Home translator" },
   };
-  expect(translationService(first)?.label).toBe("Office translator");
-  expect(translationService({ ...first, profiles: [...first.profiles, second], activeProfileId: second.id })?.label)
-    .toBe("Home translator");
-  expect(translationService({ ...first, profiles: [{ ...first.profiles[0], textTranslation: "deepL" }] })?.label)
+  expect(translationService(first)?.stages[1].label).toBe("Office translator");
+  const switched = translationService({ ...first, profiles: [...first.profiles, second], activeProfileId: second.id });
+  expect(switched?.stages.map(stage => stage.label)).toEqual([providerDisplayName(second.provider), "Home translator"]);
+  expect(switched?.detail).toContain("Current configuration: Second configuration");
+  expect(translationService({ ...first, profiles: [{ ...first.profiles[0], textTranslation: "deepL" }] })?.stages[1].label)
     .toBe("Backup translator");
-  expect(translationService({ ...first, profiles: [{ ...first.profiles[0], textTranslation: "chatMock" }] })?.label)
+  expect(translationService({ ...first, profiles: [{ ...first.profiles[0], textTranslation: "chatMock" }] })?.stages[1].label)
     .toBe("ChatMock");
 });
 
 it.each(["", "  "])("falls back to the protocol name for a blank alias (%j)", name => {
   expect(translationService(settings({
     textTranslation: "openAICompatible", textTranslationNames: { openAICompatible: name },
-  }))?.label).toBe(I18N.settings.textTranslationOpenAICompatible);
+  }))?.stages[1].label).toBe(I18N.settings.textTranslationOpenAICompatible);
 });
 
-it("does not leak inactive aliases into built-in or original-only translation labels", () => {
+it("does not merge different services with matching display names", () => {
+  const result = translationService(settings({
+    textTranslation: "openAICompatible", textTranslationNames: { openAICompatible: "Alibaba Cloud" },
+  }));
+  expect(result?.stages.map(stage => stage.label)).toEqual(["Alibaba Cloud", "Alibaba Cloud"]);
+  expect(result?.stages.map(stage => stage.provider)).toEqual(["alibabaCloud", "openAICompatible"]);
+});
+
+it("does not leak inactive aliases into built-in or original-only translation", () => {
   const named = settings({
     textTranslation: "followService",
     textTranslationNames: { openAICompatible: "Unused translator" },
   });
-  expect(translationService(named)?.label).toBe(providerDisplayName(profile.provider));
+  expect(translationService(named)?.stages).toHaveLength(1);
   expect(translationService(named)?.detail).not.toContain("Unused translator");
   const originalOnly = translationService({
     ...named, profiles: [{ ...named.profiles[0], textTranslation: "openAICompatible" }], targetLanguage: "original",
   });
-  expect(originalOnly?.provider).toBeNull();
-  expect(originalOnly?.label).toBe(I18N.overlay.originalOnly);
+  expect(originalOnly?.stages).toHaveLength(1);
+  expect(originalOnly?.detail).toContain(I18N.overlay.originalOnly);
   expect(originalOnly?.detail).not.toContain("Unused translator");
 });

@@ -6,23 +6,23 @@ import { installedFontFamilies } from "../../lib/ipc";
 import { I18N } from "../../lib/i18n";
 import { SubtitleFontControl } from "./SubtitleFontControl";
 import { SettingsToastRegion } from "./SettingsToast";
-import { useSettingsToast } from "./useSettingsToast";
 
 vi.mock("../../lib/ipc", async original => ({ ...await original<typeof import("../../lib/ipc")>(), installedFontFamilies: vi.fn(), isTauri: false }));
 let host: HTMLDivElement, root: Root;
 const save = vi.fn();
+const preview = vi.fn();
 function Harness({ initial = "" }: { initial?: string }) {
   const [value, setValue] = useState(initial);
-  const { runWithToast } = useSettingsToast();
-  return <><SubtitleFontControl value={value} onChange={family => runWithToast(async () => {
+  return <><SubtitleFontControl value={value} onPreview={preview} onChange={async family => {
     await save(family);
     setValue(family);
-  }, I18N.settings.settingSaveFailed(I18N.settings.subtitleFont))} /><SettingsToastRegion /></>;
+  }} /><SettingsToastRegion /></>;
 }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.mocked(installedFontFamilies).mockReset().mockResolvedValue(["Arial", "Noto Sans CJK SC", "Times New Roman"]);
   save.mockReset().mockResolvedValue(undefined);
+  preview.mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => {
@@ -33,6 +33,9 @@ function trigger() { return host.querySelector<HTMLButtonElement>('button[role="
 async function open() { await act(async () => trigger().click()); }
 function options() { return [...document.querySelectorAll<HTMLElement>('[role="option"]')]; }
 async function choose(label: string) { await act(async () => options().find(option => option.textContent === label)!.click()); }
+async function arrow(key: "ArrowDown" | "ArrowUp") {
+  await act(async () => trigger().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })));
+}
 
 it("loads on opening, searches installed families, saves a choice and restores the system default", async () => {
   await mount();
@@ -134,4 +137,120 @@ it("opens with an arrow key, browses loaded fonts in both directions and only sa
   expect(document.querySelector('[role="listbox"]')).toBeNull();
   expect(trigger().textContent).toBe("Noto Sans CJK SC");
   expect(save).toHaveBeenCalledTimes(1);
+});
+
+it("cycles all installed fonts directly after a filtered selection while keeping the focused menu closed", async () => {
+  await mount("Arial"); await open();
+  const search = document.querySelector<HTMLInputElement>(".mimi-select__search")!;
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "noto");
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await choose("Noto Sans CJK SC");
+  const button = trigger();
+  expect(document.activeElement).toBe(button);
+  for (const [key, value] of [
+    ["ArrowDown", "Times New Roman"], ["ArrowUp", "Noto Sans CJK SC"], ["ArrowUp", "Arial"],
+    ["ArrowUp", ""], ["ArrowUp", "Times New Roman"], ["ArrowDown", ""],
+  ] as const) {
+    await arrow(key);
+    expect(save).toHaveBeenLastCalledWith(value);
+    expect(trigger().textContent).toBe(value || I18N.settings.subtitleFontDefault);
+    expect(document.activeElement).toBe(button);
+    expect(button.disabled).toBe(false);
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+  }
+  expect(installedFontFamilies).toHaveBeenCalledOnce();
+});
+
+it("previews rapid arrows immediately and serializes only the latest queued choice without losing focus", async () => {
+  let finishFirst!: () => void, finishLast!: () => void;
+  save.mockImplementationOnce(() => new Promise<void>(resolve => { finishFirst = resolve; }))
+    .mockImplementationOnce(() => new Promise<void>(resolve => { finishLast = resolve; }));
+  await mount("Arial"); await open(); await choose("Noto Sans CJK SC");
+  const button = trigger();
+  expect(button.disabled).toBe(false);
+  expect(preview).toHaveBeenLastCalledWith("Noto Sans CJK SC");
+  await act(() => {
+    for (const key of ["ArrowDown", "ArrowDown", "ArrowDown"]) button.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  });
+  expect(preview.mock.calls).toEqual([["Noto Sans CJK SC"], ["Times New Roman"], [""], ["Arial"]]);
+  expect(button.textContent).toBe("Arial");
+  expect(save).toHaveBeenCalledExactlyOnceWith("Noto Sans CJK SC");
+  expect(document.activeElement).toBe(button);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  await act(async () => finishFirst());
+  expect(save.mock.calls).toEqual([["Noto Sans CJK SC"], ["Arial"]]);
+  expect(button.textContent).toBe("Arial");
+  expect(preview).toHaveBeenLastCalledWith("Arial");
+  await act(async () => finishLast());
+  expect(preview).toHaveBeenLastCalledWith(undefined);
+  expect(button.textContent).toBe("Arial");
+  expect(document.activeElement).toBe(button);
+  expect(host.querySelector('.settings-select-wrap[aria-busy="true"]')).toBeNull();
+});
+
+it("does not save again when rapid arrows return to the choice already being persisted", async () => {
+  let finish!: () => void;
+  save.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  await mount("Arial"); await open(); await choose("Noto Sans CJK SC");
+  await arrow("ArrowDown"); await arrow("ArrowUp");
+  await act(async () => finish());
+  expect(save).toHaveBeenCalledExactlyOnceWith("Noto Sans CJK SC");
+  expect(trigger().textContent).toBe("Noto Sans CJK SC");
+  expect(preview).toHaveBeenLastCalledWith(undefined);
+});
+
+it("rolls a failed final choice back to the last saved font and permits another arrow", async () => {
+  let finishFirst!: () => void, rejectLast!: (error: Error) => void;
+  save.mockImplementationOnce(() => new Promise<void>(resolve => { finishFirst = resolve; }))
+    .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectLast = reject; }));
+  await mount("Arial"); await open(); await choose("Noto Sans CJK SC");
+  await arrow("ArrowDown");
+  await act(async () => finishFirst());
+  expect(trigger().textContent).toBe("Times New Roman");
+  await act(async () => rejectLast(new Error("private-save-error")));
+  expect(trigger().textContent).toBe("Noto Sans CJK SC");
+  expect(document.activeElement).toBe(trigger());
+  expect(preview).toHaveBeenLastCalledWith(undefined);
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain(I18N.settings.settingSaveFailed(I18N.settings.subtitleFont));
+  expect(document.body.textContent).not.toContain("private-save-error");
+  await arrow("ArrowDown");
+  expect(save).toHaveBeenLastCalledWith("Times New Roman");
+  expect(trigger().textContent).toBe("Times New Roman");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each([
+  ["ArrowDown", ""], ["ArrowUp", "Times New Roman"],
+] as const)("replaces a removed font from a defined boundary on %s", async (key, expected) => {
+  await mount("Removed Font"); await open();
+  await act(() => document.querySelector<HTMLInputElement>(".mimi-select__search")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await arrow(key);
+  expect(save).toHaveBeenCalledExactlyOnceWith(expected);
+  expect(trigger().textContent).toBe(expected || I18N.settings.subtitleFontDefault);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
+
+it("keeps an empty installed list on system default without creating saves", async () => {
+  vi.mocked(installedFontFamilies).mockResolvedValueOnce([]);
+  await mount(); await open(); await choose(I18N.settings.subtitleFontDefault);
+  await arrow("ArrowDown"); await arrow("ArrowUp");
+  expect(save).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect(trigger().textContent).toBe(I18N.settings.subtitleFontDefault);
+});
+
+it("finishes the latest queued choice after navigation without reviving the old preview or failed-save notice", async () => {
+  let finish!: () => void;
+  save.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }))
+    .mockRejectedValueOnce(new Error("late-save-error"));
+  await mount("Arial"); await open(); await choose("Noto Sans CJK SC"); await arrow("ArrowDown");
+  await act(() => root.render(<SettingsToastRegion scopeKey="other-page" />));
+  expect(preview).toHaveBeenLastCalledWith(undefined);
+  const callsAtNavigation = preview.mock.calls.length;
+  await act(async () => finish());
+  expect(save.mock.calls).toEqual([["Noto Sans CJK SC"], ["Times New Roman"]]);
+  expect(preview).toHaveBeenCalledTimes(callsAtNavigation);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
 });

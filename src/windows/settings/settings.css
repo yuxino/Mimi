@@ -1812,6 +1812,7 @@
 .service-detail__copy {
   min-width: 0;
 }
+.service-detail__name-help { max-width: 100%; }
 .service-detail__title {
   display: flex;
   align-items: center;
@@ -1823,7 +1824,10 @@
   font-size: 18px;
   line-height: 1.4;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .service-detail__copy > p {
   margin-top: 5px;
@@ -1883,16 +1887,12 @@
   gap: 12px;
 }
 .service-detail__name .settings-field__inline {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
 }
 .service-detail__name input {
   min-height: 34px;
   font-size: 12px;
-}
-.service-detail__save-name {
-  padding: 3px 0;
-  font-size: 11.5px;
 }
 .profile-language-settings {
   margin-top: 22px;
@@ -2938,8 +2938,11 @@
   gap: 8px;
 }
 .translation-name-field .settings-field__inline input { min-width: 0; flex: 1; }
-.translation-name-field__error { grid-column: 2; }
-@media (max-width: 680px) { .translation-name-field__error { grid-column: 1; } }
+.auto-save-name-field > label { white-space: nowrap; }
+.auto-save-name-field__error { grid-column: 2; min-width: 0; }
+.auto-save-name-field__error .settings-feedback { margin: 0; }
+.auto-save-name-field__error .settings-link { margin-left: 8px; white-space: nowrap; }
+@media (max-width: 700px) { .auto-save-name-field__error { grid-column: 1 / -1; } }
 
 .settings-field__inline > .config-input-group { flex: 1; min-width: 0; }
 

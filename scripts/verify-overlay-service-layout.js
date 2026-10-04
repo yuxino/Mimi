@@ -1,20 +1,32 @@
 // Browser harness for the actual overlay components. Start Vite on port 1420,
 // then pass this complete function to the project's supported browser page API.
 // Synthetic state only; this does not verify native window or capture behavior.
-async (page) => {
-  await page.goto("http://127.0.0.1:1420/?window=overlay");
+async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "en", "ja"], themes = ["dark", "light"] } = {}) => {
+  await page.goto(`${baseUrl}/?window=overlay`);
+  await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-service__button");
 
-  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false }) {
-    return page.evaluate(async ({ language, route, audioInput, timestamps }) => {
-      const { useStore } = await import("/src/lib/store.ts");
-      const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
+  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, theme = "dark" }) {
+    await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
+    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias }) => {
+      if (typeof window.__TAURI_INTERNALS__ !== "undefined") throw new Error("Memory-only browser preview required");
+      // Vite may keep timestamped dependency imports even after page reload.
+      // Import the actual module already loaded by the mounted UI; importing
+      // the same path without its query creates a second Zustand/language store.
+      const mountedModule = path => {
+        const loaded = performance.getEntriesByType("resource")
+          .filter(entry => new URL(entry.name).pathname === path);
+        const latestVersion = loaded.filter(entry => new URL(entry.name).search).at(-1);
+        return import(latestVersion?.name ?? loaded.at(-1)?.name ?? path);
+      };
+      const { useStore } = await mountedModule("/src/lib/store.ts");
+      const { setStoredUiLanguage } = await mountedModule("/src/lib/i18n.ts");
       const { minimumOverlayHeight } = await import("/src/windows/overlay/overlayMinimumHeight.ts");
-      const { translationService } = await import("/src/windows/overlay/translationService.ts");
+      const { translationService } = await mountedModule("/src/windows/overlay/translationService.ts");
       setStoredUiLanguage(language);
       // Short lanes distinguish clipping from normal compact long-text layout.
       const history = [
-        { audioSource: "system", source: "Synthetic S", translation: "Synthetic T", createdAt: 1_700_000_000_000 },
+        { audioSource: audioInput === "microphone" ? "microphone" : "system", source: "Synthetic S", translation: "Synthetic T", createdAt: 1_700_000_000_000 },
         ...(audioInput === "both" ? [
           { audioSource: "microphone", source: "Mic S", translation: "Mic T", createdAt: 1_700_000_001_000 },
         ] : []),
@@ -36,8 +48,9 @@ async (page) => {
           activeProfileId: "preview",
           profiles: [{
             id: "preview", name: "Long configuration name · 長い設定名 · 较长的配置名称",
-            provider: route === "followService" ? "openAIRealtime" : "alibabaCloud",
+            provider: provider ?? (route === "followService" ? "openAIRealtime" : "alibabaCloud"),
             textTranslation: route === "original" ? "deepL" : route, credentialState: "present",
+            textTranslationNames: alias ? { [route]: alias } : undefined,
           }],
         },
         session: {
@@ -53,30 +66,29 @@ async (page) => {
       const expectedService = translationService(useStore.getState().settings);
       const expectedTexts = history.flatMap(pair => route === "original" ? [pair.source] : [pair.source, pair.translation]);
       let fixtureState;
-      // A long-running Vite process can leave the mounted overlay and direct
-      // imports on separate HMR module instances after a rebase. Stop here
-      // instead of reporting 90 geometry failures against the initial screen.
+      // Verify the actual screen before measuring geometry. An unrelated HMR
+      // reload must not turn an initial/default screen into a passing fixture.
       for (let frame = 0; frame < 12; frame++) {
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const service = document.querySelector(".overlay-service__button");
-        const actualLabel = document.querySelector(".overlay-service__name")?.textContent ?? null;
+        const actualLabels = [...document.querySelectorAll(".overlay-service__name")].map(node => node.textContent);
         const timeline = document.querySelector(".overlay-timeline");
         const actualTexts = [...(timeline?.querySelectorAll("span") ?? [])]
           .filter(element => element.childElementCount === 0).map(element => element.textContent);
         fixtureState = {
-          expectedLabel: expectedService?.label, actualLabel,
+          expectedLabels: expectedService?.stages.map(stage => stage.label), actualLabels,
           profileMatches: service?.getAttribute("aria-label") === expectedService?.detail,
           activeChrome: Boolean(document.querySelector(".overlay-latency")),
           timelinePresent: Boolean(timeline),
           missingTexts: expectedTexts.filter(text => !actualTexts.includes(text)),
         };
         if (fixtureState.profileMatches && fixtureState.activeChrome && fixtureState.timelinePresent
-          && actualLabel === expectedService.label && fixtureState.missingTexts.length === 0) {
+          && actualLabels.join("\n") === expectedService.stages.map(stage => stage.label).join("\n") && fixtureState.missingTexts.length === 0) {
           return minimumOverlayHeight(useStore.getState().settings);
         }
       }
       throw new Error(`Overlay fixture did not reach the mounted UI. Restart Vite and reload after HMR/rebase changes before retrying. ${JSON.stringify({ language, route, audioInput, timestamps, ...fixtureState })}`);
-    }, { language, route, audioInput, timestamps });
+    }, { language, route, audioInput, timestamps, provider, alias });
   }
 
   async function resize(width, height) {
@@ -105,42 +117,62 @@ async (page) => {
   let chromeChecked = 0;
   const subtitleCases = [];
 
-  for (const width of [360, 420, 552, 640]) {
-    for (const language of ["zh", "en", "ja"]) {
-      for (const route of ["followService", "deepL", "deepLX", "chatMock", "openAICompatible", "original"]) {
-        const minimumHeight = await configure({ language, route });
-        await resize(width, minimumHeight);
-        const result = await page.evaluate(route => {
-          const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
-          const service = rect(".overlay-service__button");
-          const drag = rect('[data-testid="drag-handle"]');
-          const icon = rect(".overlay-service .provider-icon");
-          const name = document.querySelector(".overlay-service__name");
-          const latency = document.querySelector(".overlay-latency");
-          const issues = [];
-          if (!service || !drag || !name || !latency) return { issues: ["overlay chrome missing"] };
-          if (service.width < 28 || (icon && Math.abs(icon.width - 16) > 0.5)) issues.push("icon squeezed");
-          if (service.left < drag.right && service.right > drag.left && service.top < drag.bottom && service.bottom > drag.top) {
-            issues.push("service overlaps drag");
-          }
-          if (latency.scrollWidth > latency.clientWidth + 1) issues.push("latency clipped");
-          if (["deepL", "deepLX", "chatMock"].includes(route) && name.scrollWidth > name.clientWidth + 1) {
-            issues.push("short name clipped");
-          }
-          return { issues, label: name.textContent };
-        }, route);
-        chromeChecked++;
-        if (result.issues.length) failures.push({ check: "chrome", width, minimumHeight, language, route, ...result });
+  for (const width of widths) {
+    for (const language of languages) {
+      for (const theme of themes) {
+        for (const candidate of [
+          ...["followService", "deepL", "deepLX", "chatMock", "openAICompatible", "original"].map(route => ({ route })),
+          { route: "openAICompatible", alias: "B 站 / long translator name with spaces 日本語 🌸 ".repeat(2) },
+          { route: "deepL", provider: "customOpenAIASR" },
+          { route: "followService", provider: "customDashScopeASR" },
+        ]) {
+          const minimumHeight = await configure({ language, theme, ...candidate });
+          await resize(width, minimumHeight);
+          const result = await page.evaluate(() => {
+            const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
+            const service = rect(".overlay-service__button");
+            const drag = rect('[data-testid="drag-handle"]');
+            const icons = [...document.querySelectorAll(".overlay-service .provider-icon")];
+            const names = [...document.querySelectorAll(".overlay-service__name")];
+            const latency = document.querySelector(".overlay-latency");
+            const issues = [];
+            if (!service || !drag || !names.length || !latency) return { issues: ["overlay chrome missing"] };
+            if (service.width < 28 || icons.some(icon => Math.abs(icon.getBoundingClientRect().width - 16) > 0.5)) issues.push("icon squeezed");
+            if (service.left < drag.right && service.right > drag.left && service.top < drag.bottom && service.bottom > drag.top) {
+              issues.push("service overlaps drag");
+            }
+            const timing = latency.getBoundingClientRect();
+            if (latency.scrollWidth > latency.clientWidth + 1) issues.push("latency clipped");
+            if (timing.right > service.left + 1 && timing.top < service.bottom && timing.bottom > service.top) issues.push("timing and services overlap");
+            if (service.right > innerWidth || service.height > 20.5) issues.push("service overflow or wrapping");
+            for (const name of names) {
+              const style = getComputedStyle(name), box = name.getBoundingClientRect();
+              if (style.whiteSpace !== "nowrap" || style.textOverflow !== "ellipsis" || box.height > 16.5) issues.push("name wraps");
+              if (box.width < 22) issues.push("service name squeezed beyond recognition");
+              if (box.left < service.left || box.right > service.right + 1) issues.push("name escapes button");
+            }
+            const naturalWidth = names.reduce((sum, name) => sum + name.scrollWidth, 0)
+              + (names.length === 2 ? 66 : 28);
+            if (service.width + 1 >= naturalWidth && names.some(name => name.scrollWidth > name.clientWidth + 1)) {
+              issues.push("name clipped despite sufficient combined width");
+            }
+            return { issues, labels: names.map(name => name.textContent), nameWidths: names.map(name => name.clientWidth) };
+          });
+          chromeChecked++;
+          if (result.issues.length) failures.push({ check: "chrome", width, minimumHeight, language, theme, ...candidate, ...result });
+        }
       }
     }
     console.log(JSON.stringify({ progress: "chrome width complete", width, chromeChecked, failures: failures.length }));
   }
 
-  for (const width of [360, 420]) {
-    for (const language of ["zh", "en", "ja"]) {
+  for (const width of widths.filter(width => width < 552)) {
+    for (const language of languages) {
       for (const { audioInput, timestamps } of [
         { audioInput: "system", timestamps: false },
         { audioInput: "system", timestamps: true },
+        { audioInput: "microphone", timestamps: false },
+        { audioInput: "microphone", timestamps: true },
         { audioInput: "both", timestamps: true },
       ]) {
         const minimumHeight = await configure({ language, route: "deepL", audioInput, timestamps });
@@ -212,6 +244,8 @@ async (page) => {
     console.log(JSON.stringify({ progress: "subtitle width complete", width, subtitleChecked: subtitleCases.length, failures: failures.length }));
   }
 
+  await page.cdp("Emulation.setEmulatedMedia", { features: [] });
+  await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
   const result = { checked: chromeChecked + subtitleCases.length, chromeChecked, subtitleChecked: subtitleCases.length, subtitleCases, failures };
   console.log(JSON.stringify(result));
   if (failures.length) throw new Error(JSON.stringify(failures));

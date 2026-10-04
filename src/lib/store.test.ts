@@ -8,6 +8,27 @@ import {
 } from "./store";
 
 describe("local preview store", () => {
+  it("keeps profile names, translation aliases and proxies independent across repeated metadata patches", async () => {
+    const original = useStore.getState();
+    const profile = original.settings.profiles[0];
+    const proxy = { mode: "direct" as const, url: null };
+    try {
+      await useStore.getState().updateProfile(profile.id, "  B 站 · @home / (测试) 😀  ");
+      await useStore.getState().updateProfile(profile.id, undefined, {
+        textTranslationName: { route: "openAICompatible", name: "  翻译 & 字幕 + [本地] 🐱  " },
+      });
+      await useStore.getState().updateProfile(profile.id, "B 站 2");
+      await useStore.getState().updateProfile(profile.id, undefined, { textNetworkProxy: proxy });
+      expect(useStore.getState().settings.profiles[0]).toMatchObject({
+        name: "B 站 2", textTranslationNames: { openAICompatible: "翻译 & 字幕 + [本地] 🐱" }, textNetworkProxy: proxy,
+      });
+      await useStore.getState().updateProfile(profile.id, undefined, {
+        textTranslationName: { route: "openAICompatible", name: "  " },
+      });
+      expect(useStore.getState().settings.profiles[0]).toMatchObject({ name: "B 站 2", textTranslationNames: {}, textNetworkProxy: proxy });
+    } finally { useStore.setState(original, true); }
+  });
+
   it.each([false, true])("switches the preview application without starting or resuming capture, paused=%s", async isPaused => {
     const original = useStore.getState();
     const session = { ...original.session, status: { kind: "listening" as const }, isActive: !isPaused, isPaused,

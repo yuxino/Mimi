@@ -112,6 +112,25 @@ it("updates the visible label on an external value change without losing trigger
   }
 });
 
+it("repaints repeated label edits for the same route without replacing the focused trigger", async () => {
+  const renderName = async (label: string) => act(() => root.render(
+    <Select label="Translator" value="custom" options={[{ value: "custom", label }]} onChange={onChange} />,
+  ));
+  await renderName("b");
+  const button = trigger();
+  button.focus();
+  let content = button.querySelector(".mimi-select__content");
+  for (const label of ["B 站", "B 站 · @home / (测试) 😀", "Another service"]) {
+    await renderName(label);
+    expect(trigger()).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(button.textContent).toBe(label);
+    expect(button.querySelector(".mimi-select__content")).not.toBe(content);
+    content = button.querySelector(".mimi-select__content");
+  }
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 it("follows an external value while the menu is open, including its keyboard choice", async () => {
   await render("translation");
   await act(() => trigger().click());
@@ -123,6 +142,54 @@ it("follows an external value while the menu is open, including its keyboard cho
   await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   expect(onChange).toHaveBeenCalledExactlyOnceWith("original");
   expect(trigger().getAttribute("aria-expanded")).toBe("false");
+});
+
+it("applies rapid closed-menu arrows only when opted in, keeps focus and wraps the complete list", async () => {
+  await act(() => root.render(<Select label="Choice" value="bilingual" options={options} closedArrowSelection onChange={onChange} />));
+  const button = trigger();
+  button.focus();
+  await act(() => {
+    for (const key of ["ArrowDown", "ArrowDown", "ArrowUp"]) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      button.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+  });
+  expect(onChange.mock.calls).toEqual([["original"], ["translation"], ["original"]]);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect(document.activeElement).toBe(button);
+  // Other selects retain their standard open-and-confirm arrow behavior.
+  onChange.mockClear();
+  await render("bilingual");
+  await act(() => button.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["ArrowDown", "translation"], ["ArrowUp", "original"],
+])("starts an unavailable closed selection at a defined boundary for %s", async (key, expected) => {
+  await act(() => root.render(<Select label="Choice" value="removed" options={options} closedArrowSelection onChange={onChange} />));
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+  expect(onChange).toHaveBeenCalledExactlyOnceWith(expected);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
+
+it("uses all options for a closed arrow after a filtered manual choice and follows an external reset", async () => {
+  const renderChoice = async (value: string) => act(() => root.render(<Select label="Language" value={value} options={languages}
+    searchLabel="Search" closedArrowSelection onChange={onChange} />));
+  await renderChoice("zh");
+  await act(() => trigger().click());
+  await typeQuery("de");
+  await key("Enter");
+  expect(onChange).toHaveBeenLastCalledWith("de");
+  await renderChoice("de");
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+  expect(onChange).toHaveBeenLastCalledWith("ja");
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  await renderChoice("pt");
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(onChange).toHaveBeenLastCalledWith("zh");
 });
 
 async function renderSearch(value = "zh", list = languages, disabled = false) {
@@ -276,6 +343,19 @@ it("leaves text editing and IME Enter alone, and dismisses on an outside pointer
   expect(document.querySelector('[role="listbox"]')).not.toBeNull();
   await act(() => document.body.dispatchEvent(new Event("pointerdown", { bubbles: true })));
   expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
+
+it("does not confirm a searchable selection on WebKit's IME Enter with keyCode 229", async () => {
+  await renderSearch();
+  await act(() => trigger().click());
+  await typeQuery("de");
+  const event = await key("Enter", { isComposing: false, keyCode: 229 });
+  expect(event.defaultPrevented).toBe(false);
+  expect(document.activeElement).toBe(input());
+  expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+  await key("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("de");
 });
 
 it("starts an explicit query when typing on the closed trigger and keeps a searchable popup inside the viewport", async () => {

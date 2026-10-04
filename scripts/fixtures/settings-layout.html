@@ -20,6 +20,25 @@ window.__TAURI_INTERNALS__ = {
       };
     }
     if (command === "app_desktop_shortcut_commands") return null;
+    if (command === "profile_update") {
+      if (fixture.nameSaveDelay) await new Promise(resolve => setTimeout(resolve, fixture.nameSaveDelay));
+      if (fixture.failNameSave) throw new Error("fixture_name_save_failed");
+      const current = useStore.getState().settings;
+      const snapshot = { ...current, profiles: current.profiles.map(profile => {
+        if (profile.id !== args.profileId) return profile;
+        const next = { ...profile, ...(args.name === undefined ? {} : { name: args.name.trim() }) };
+        if (args.textTranslationName) {
+          next.textTranslationNames = { ...profile.textTranslationNames };
+          const { route, name } = args.textTranslationName;
+          if (name.trim()) next.textTranslationNames[route] = name.trim();
+          else delete next.textTranslationNames[route];
+        }
+        return next;
+      }) };
+      // Stand in for the native settings event; this fixture never writes disk.
+      useStore.setState({ settings: snapshot });
+      return snapshot;
+    }
     if (command === "profile_credential_editor_state") return args.textTranslation
       ? { savedFields: fixture.keyless ? [] : ["token"], endpoint: "http://127.0.0.1:8080/v1", model: "fixture-model" }
       : { savedFields: ["apiKey"], endpoint: "wss://speech.example/v1/realtime", model: "fixture-speech-model" };
@@ -53,7 +72,7 @@ window.applyLayoutCase = async next => {
   useStore.setState({
     initializationStatus: "ready",
     settings: { ...initial.settings, uiLanguage: next.language, microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
-      ...(next.editor ? { profiles: [{ id: "layout-custom", name: "Fixture configuration", provider: next.provider ?? "customDashScopeASR", credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: "chatMock" }], activeProfileId: "layout-custom" } : {}),
+      ...(next.editor ? { profiles: [{ id: "layout-custom", name: next.profileName ?? "Fixture configuration", provider: next.provider ?? "customDashScopeASR", credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: "chatMock", textTranslationNames: { chatMock: next.translationName ?? "" } }], activeProfileId: "layout-custom" } : {}),
     },
     session: { ...initial.session, isActive: active || next.state === "paused", isPaused: next.state === "paused", status: { kind: active ? "listening" : next.state === "paused" ? "paused" : "idle" } },
   });
