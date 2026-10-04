@@ -181,7 +181,6 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" data-action="copy" disabled={busy}
           onClick={() => void perform("copy")}><Copy size={14} aria-hidden="true" /><span>{text.copy}</span></button>
       </div>
-      <div className="settings-diagnostic-privacy"><SettingsHelp text={I18N.settings.diagnosticsHelp} label={I18N.settings.helpLabel} icon="shield-check" /></div>
     </div>
     {summary && <section className="settings-diagnostic-events" aria-label={text.recent}>
       <div className="settings-diagnostic-events__heading"><h2>{text.recent}</h2><SettingsHelp text={text.sinceStart} label={I18N.settings.helpLabel} /></div>

@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type ComponentProps, type FormEvent } from
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
-import { credentialUnavailableHelp, diagnosticCopy } from "../../lib/connectionDiagnostics";
+import { credentialUnavailableHelp } from "../../lib/connectionDiagnostics";
 import { buildCustomSpeechCredentials, customSpeechEndpointIsValid, emptyCredentialDraft, openAICompatibleModelIsValid } from "../../lib/providerCredentials";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 import { StoredCredentialReveal } from "./StoredCredentialReveal";
 import { ConfigInput } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
+import { CredentialStorageHelp } from "./CredentialStorageHelp";
 import { InlineFeedback } from "./SettingsPrimitives";
 import { DestructiveConfirmation } from "./DestructiveConfirmation";
 
@@ -50,12 +51,12 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
   };
   return <div className="credential-panel" aria-busy={busy}>
     <div className="service-credential-toolbar">
+      <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />
       {connectionCheck}
       {!readOnly && saved && !editing && <span className="credential-panel__saved-actions">
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled} onClick={() => setEditing(true)}><Icon name="key" />{I18N.settings.editSpeechConfiguration}</button>
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled || confirmingDelete} onClick={onRequestDelete}><Icon name="trash" />{I18N.settings.deleteCredentials}</button>
       </span>}
-      <SettingsHelp id={noteId} text={readOnly ? profile.credentialState === "unavailable" ? diagnosticCopy().localDevUnavailable : diagnosticCopy().localDevReadOnly : I18N.settings.credentialNote} label={I18N.settings.helpLabel} icon="shield-check" />
     </div>
     {!readOnly && profile.credentialState === "unavailable" && !feedback && <p role="status" className="credential-unavailable">{credentialUnavailableHelp()}</p>}
     <section className="service-stage" aria-labelledby={`${speechId}-title`}>

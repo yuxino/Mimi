@@ -84,7 +84,7 @@ it("keeps the existing reviewed public feedback action", async () => {
 it.each(["zh", "en", "ja"] as const)("keeps refresh, copy and feedback actions labeled and keyboard-reachable in %s", async (language) => {
   setStoredUiLanguage(language);
   await mount();
-  expect(host.querySelector(".settings-diagnostic-privacy .settings-help-control__description")?.textContent).toBe(I18N.settings.diagnosticsHelp);
+  expect(host.querySelector(".settings-diagnostic-privacy")).toBeNull();
   expect(host.querySelector(".settings-support-diagnostics > p.settings-caption")).toBeNull();
   const buttons = [...host.querySelectorAll<HTMLButtonElement>(".settings-support-diagnostics__actions button")];
   expect(buttons).toHaveLength(3);

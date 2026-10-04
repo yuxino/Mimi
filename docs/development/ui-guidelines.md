@@ -37,6 +37,11 @@ These project rules apply to implementation and review.
 - All interface text, native controls, tooltips and portaled menus use
   `--mimi-ui-font`. Order CJK fallbacks for the interface language and include
   Windows non-UI family names; do not add a separate stack to a shared tooltip.
+- Anchor help to its visible heading, field label or action with a small gap.
+  Do not leave an icon-only help row below a list, push it to an unrelated
+  far edge, or use a shield to disguise generic help. Credential storage help
+  uses the shared labeled `CredentialStorageHelp`; diagnostic privacy help
+  stays with the page heading. Inspect all sibling uses when this recurs.
 
 ## Choose feedback by purpose
 

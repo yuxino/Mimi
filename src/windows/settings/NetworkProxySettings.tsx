@@ -3,7 +3,6 @@ import { I18N } from "../../lib/i18n";
 import { DEFAULT_NETWORK_PROXY, networkProxyConfigKey, validateNetworkProxy, type NetworkProxyValidationError } from "../../lib/networkProxy";
 import type { NetworkProxyConfig, NetworkProxyMode } from "../../lib/types";
 import { ConfigInput } from "./ConfigInput";
-import { SettingsHelp } from "./SettingsHelp";
 import { InlineFeedback, SettingsRow, SettingsSection, SettingsSelect } from "./SettingsPrimitives";
 
 function validationMessage(error: NetworkProxyValidationError): string {
@@ -83,12 +82,11 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
 
   const control = <>
     <form className="network-proxy-form" aria-busy={busy} onSubmit={(event) => { event.preventDefault(); void save(); }}>
-      <SettingsRow label={label}>
+      <SettingsRow label={label} descriptionId={`${addressId}-help`} description={[scope, help, ...(disabled ? [I18N.settings.networkProxyLocked] : [])].join("\n")}>
         {busy && <span className="network-proxy-saving" role="status">
           <span className="settings-spinner" aria-hidden="true" />
           <span className="settings-sr-only">{I18N.settings.networkProxySaving}</span>
         </span>}
-        <SettingsHelp id={`${addressId}-help`} text={[scope, help, ...(disabled ? [I18N.settings.networkProxyLocked] : [])].join("\n")} label={I18N.settings.helpLabel} />
         <SettingsSelect label={label} value={mode} disabled={locked}
           options={[
             { value: "system", label: I18N.settings.networkProxySystem },

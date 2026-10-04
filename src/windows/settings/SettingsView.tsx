@@ -130,7 +130,7 @@ export function SettingsView() {
     service: I18N.settings.servicePageDescription,
     general: I18N.settings.generalPageDescription,
     export: I18N.settings.exportPageDescription,
-    diagnostics: I18N.settings.diagnosticsPageDescription,
+    diagnostics: `${I18N.settings.diagnosticsPageDescription}\n${I18N.settings.diagnosticsHelp}`,
     guide: I18N.settings.quickStartDescription,
   };
 

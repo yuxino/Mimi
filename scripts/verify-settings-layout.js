@@ -14,7 +14,11 @@ export default async function verifySettingsLayout(page) {
         const cases = (platform === "windows" ? ["idle", "receiving", "silent", "noData", "paused", "missing", "empty", "failed"] : ["idle"])
           .map(state => ({ width, language, theme, platform, state, deviceName: "FixtureHeadphones音声出力 / ".repeat(24) }));
         if (platform === "windows") {
-          cases.push({ width, language, theme, platform, state: "idle", editor: true, deviceName: "Fixture headphones" });
+          for (const provider of ["alibabaCloud", "customDashScopeASR", "openAIRealtime"]) {
+            cases.push({ width, language, theme, platform, state: "idle", editor: true, provider, deviceName: "Fixture headphones" });
+          }
+          cases.push({ width, language, theme, platform, state: "idle", providerPicker: true, deviceName: "Fixture headphones" });
+          cases.push({ width, language, theme, platform, state: "idle", providerConfirmation: true, deviceName: "Fixture headphones" });
           for (const category of ["subtitle-settings", "application-settings", "session-export", "diagnostics", "getting-started"]) {
             cases.push({ width, language, theme, platform, category, state: "idle", deviceName: "Fixture headphones" });
           }
@@ -27,6 +31,14 @@ export default async function verifySettingsLayout(page) {
             const rect = node => node.getBoundingClientRect();
             const frame = document.querySelector(".settings-console__frame");
             if (frame.scrollWidth > frame.clientWidth + 1) issues.push("frame overflow");
+            if (document.querySelector(".services-hint, .settings-diagnostic-privacy")) issues.push("detached help footer");
+            for (const group of document.querySelectorAll(".credential-storage-help, .service-detail__name-help, .provider-picker__name-help, .service-stage__name-help")) {
+              const context = group.firstElementChild, help = group.querySelector(".settings-help-control__button");
+              if (rect(group).width > 0 && rect(help).left - rect(context).right > 8) issues.push("detached contextual help");
+            }
+            for (const dialog of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
+              if (dialog.scrollWidth > dialog.clientWidth + 1 || rect(dialog).left < 0 || rect(dialog).right > innerWidth + 1) issues.push("dialog overflow");
+            }
             const audioRows = [...document.querySelectorAll("#audio-input .settings-card__body > .settings-row")].filter(row => rect(row).width > 0);
             for (let i = 1; i < audioRows.length; i++) {
               if (rect(audioRows[i]).top - rect(audioRows[i - 1]).bottom < 12) issues.push("crowded audio rows");
@@ -44,7 +56,7 @@ export default async function verifySettingsLayout(page) {
               if (row.querySelector('.settings-row__control [role="status"]')) issues.push("status inside control");
             }
             const output = [...document.querySelectorAll(".settings-row")].find(row => row.querySelector(".settings-row__feedback") || row.querySelector('[role="combobox"]')?.getAttribute("aria-label") === ({ en: "Output device", zh: "输出设备", ja: "出力デバイス" })[next.language]);
-            if (!next.category && !next.editor && (next.platform === "windows") !== Boolean(output)) issues.push("platform output visibility");
+            if (!next.category && !next.editor && !next.providerPicker && !next.providerConfirmation && (next.platform === "windows") !== Boolean(output)) issues.push("platform output visibility");
             if (output && ["idle", "paused"].includes(next.state) && output.querySelector('[role="status"]')) issues.push("persistent idle guidance");
             if (!document.querySelector(".settings-console").classList.contains(`settings-console--${next.theme}`)) issues.push("wrong fixture theme");
             results.push(issues);

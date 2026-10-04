@@ -172,6 +172,11 @@ page must include a review of other instances of the same pattern.
   Japanese fallbacks outside Japanese UI, include `Microsoft YaHei` as well as
   `Microsoft YaHei UI`, and verify the actual installed font on the affected
   Windows image before claiming its serif-font report resolved.
+- The #132 screenshot review also missed a lone shield below the configuration
+  list. It was storage help, but its detached position gave no clue what it
+  described. Attach it to the configuration count, and inspect diagnostics,
+  profile headings, credential toolbars, proxy rows and confirmation previews
+  for the same pattern. Help needs a visible context, not its own empty row.
 
 - Moving a control between windows also requires updating its Tauri command
   permissions. Settings audio switches once invoked a command authorized only

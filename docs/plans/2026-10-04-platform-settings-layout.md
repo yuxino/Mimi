@@ -17,6 +17,12 @@ selection persistence and safe save-failure toasts keep their existing behavior.
 Keep 16 px between directly adjacent setting rows without changing separator
 spacing. The first repaired preview still had touching picker borders; label
 width and no-overflow assertions must be accompanied by screenshot review.
+The next screenshot review exposed detached storage help below the profile
+list. Anchor generic help to the configuration count, service/provider names,
+credential labels, proxy labels and applicable actions. Diagnostic privacy
+explanation joins the page-heading help. Reuse labeled credential storage help
+across the three editors and preserve their input description IDs; do not change
+credential access or persistence behavior. Remove the obsolete footer styles.
 
 Windows uses endpoint-specific WASAPI loopback, so it exposes output selection.
 macOS ScreenCaptureKit captures the system/application mix independently of an
@@ -34,7 +40,9 @@ credential-free bridge in `scripts/fixtures/settings-layout.html`.
 `scripts/verify-settings-layout.js` checks frame/row overflow, label/control
 overlap, squeezed labels, feedback placement and platform capability visibility
 across five widths, three languages, two themes and device states, including
-all six settings categories and a service editor (480 cases). Run it with
+all six settings categories, three service editors and provider selection /
+confirmation (600 cases). It also rejects detached help footers and verifies
+the gap between contextual help and its label. Run it with
 an ego-browser managed Page while `npm run dev` serves this checkout. These
 fixtures verify geometry, not Windows capture or installed Windows glyphs.
 Also inspect the signed macOS UI-only app, the sibling settings rows, tray and

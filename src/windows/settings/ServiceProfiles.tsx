@@ -35,6 +35,7 @@ import { CustomSpeechCredentialEditor } from "./CustomSpeechCredentialEditor";
 
 import { ConfigInput } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
+import { CredentialStorageHelp } from "./CredentialStorageHelp";
 import { ConnectionCheck } from "./ConnectionCheck";
 import { saveAndSelectProfile } from "./saveAndSelectProfile";
 import { StoredCredentialReveal } from "./StoredCredentialReveal";
@@ -432,7 +433,7 @@ export function ServiceProfiles({
               <ProviderIcon provider={selectedProfile.provider === "deepLX" ? "alibabaCloud" : selectedProfile.provider} />
               <div className="service-detail__copy">
                 <div className="service-detail__title">
-                  <h2>{profileTitle(selectedProfile)}</h2>
+                  <div className="service-detail__name-help"><h2>{profileTitle(selectedProfile)}</h2><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></div>
                   <div className="service-detail__status">
                     <CredentialBadge state={credentialStateForTarget(selectedProfile, settings.targetLanguage)} />
                     {selectedProfile.id === settings.activeProfileId && (
@@ -443,7 +444,6 @@ export function ServiceProfiles({
                     )}
                   </div>
                 </div>
-                <span className="service-detail__description"><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></span>
               </div>
             </div>
           </div>
@@ -498,9 +498,9 @@ export function ServiceProfiles({
             ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} />
             : null}
           <div className="service-detail__actions">
-            {selectedProfile.id !== settings.activeProfileId && <SettingsHelp text={I18N.settings.useProfileForLanguages} label={I18N.settings.helpLabel} />}
             {credentialStateForTarget(selectedProfile, settings.targetLanguage) === "present" &&
               selectedProfile.id !== settings.activeProfileId && (
+                <span className="service-detail__use">
                 <button
                   type="button"
                   className="settings-button settings-button--quiet settings-button--compact"
@@ -510,6 +510,8 @@ export function ServiceProfiles({
                   <Icon name="checkmark" />
                   {I18N.settings.useProfile}
                 </button>
+                <SettingsHelp text={I18N.settings.useProfileForLanguages} label={I18N.settings.helpLabel} />
+                </span>
               )}
             {selectedProfileReadOnly ? <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={mutationsDisabled || atProfileLimit} onClick={() => setShowsProviderPicker(true)}><Icon name="plus" />{I18N.settings.addProfile}</button> : <button
               type="button"
@@ -535,7 +537,7 @@ export function ServiceProfiles({
       ) : (
         <div className="services-home">
           <div className="services-toolbar">
-            <span>{I18N.settings.profileCount(settings.profiles.length)}</span>
+            <span className="services-toolbar__count">{I18N.settings.profileCount(settings.profiles.length)}<SettingsHelp label={I18N.settings.helpLabel} text={settings.profiles.some(profile => profile.credentialStorage === "localDevFile") ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint} /></span>
             <button
               type="button"
               className="settings-button settings-button--compact settings-button--quiet"
@@ -594,7 +596,6 @@ export function ServiceProfiles({
               </div>
             ))}
           </div>
-          <div className="services-hint"><SettingsHelp icon="shield-check" label={I18N.settings.helpLabel} text={settings.profiles.some(profile => profile.credentialStorage === "localDevFile") ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint} /></div>
           {atProfileLimit && (
             <InlineFeedback tone="info">{I18N.settings.profileLimitReached}</InlineFeedback>
           )}
@@ -690,13 +691,13 @@ function CredentialEditor({
     <header className="service-stage__heading"><h3>{I18N.settings.voiceTranslation}</h3><SettingsHelp text={I18N.settings.textTranslationUnsupported} label={I18N.settings.helpLabel} /></header>
     <div className="settings-field service-stage__selector"><span>{I18N.settings.serviceProvider}</span><span className="service-stage__provider"><ProviderIcon provider={profile.provider} size={32} />{providerDisplayName(profile.provider)}</span></div>
   </section>;
-  const storageHelp = <SettingsHelp id={noteId} text={readOnly ? profile.credentialState === "unavailable" ? diagnosticCopy().localDevUnavailable : diagnosticCopy().localDevReadOnly : I18N.settings.credentialNote} icon="shield-check" label={I18N.settings.helpLabel} />;
-  if (readOnly) return <div className="credential-panel"><div className="service-credential-toolbar">{connectionCheck}{storageHelp}</div>{serviceIdentity}</div>;
+  const storageHelp = <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />;
+  if (readOnly) return <div className="credential-panel"><div className="service-credential-toolbar">{storageHelp}{connectionCheck}</div>{serviceIdentity}</div>;
 
   if (profile.credentialState === "present" && !editingSavedCredential) {
     return (
       <div className="credential-panel credential-panel--saved">
-        <div className="service-credential-toolbar">{connectionCheck}<span className="credential-panel__saved-actions">
+        <div className="service-credential-toolbar">{storageHelp}{connectionCheck}<span className="credential-panel__saved-actions">
           <button
             type="button"
             className="settings-button settings-button--quiet settings-button--compact"
@@ -713,7 +714,7 @@ function CredentialEditor({
           >
             <Icon name="trash" />{I18N.settings.deleteCredentials}
           </button>
-        </span>{storageHelp}</div>
+        </span></div>
         {serviceIdentity}
         {saveFeedback}
         {confirmingDelete && (
@@ -730,7 +731,7 @@ function CredentialEditor({
 
   return (
     <div className="credential-panel" aria-busy={busy}>
-      <div className="service-credential-toolbar">{connectionCheck}{storageHelp}</div>
+      <div className="service-credential-toolbar">{storageHelp}{connectionCheck}</div>
       {serviceIdentity}
       <div className="credential-panel__heading">
         <span>
@@ -950,8 +951,7 @@ function ProviderPicker({
       {selectedProvider && <SettingsConfirmation message={I18N.settings.confirmAddProfile} disabled={disabled} variant="default" confirmLabel={I18N.settings.confirmAddProfile} confirmIcon="plus" onCancel={() => { if (!disabled) setSelectedProvider(null); }} onConfirm={() => onChoose(selectedProvider)}>
         <div className="provider-picker__preview">
           <ProviderIcon provider={selectedProvider} />
-          <h3>{providerDisplayName(selectedProvider)}</h3>
-          <SettingsHelp text={providerDescription(selectedProvider)} label={I18N.settings.helpLabel} />
+          <div className="provider-picker__name-help"><h3>{providerDisplayName(selectedProvider)}</h3><SettingsHelp text={providerDescription(selectedProvider)} label={I18N.settings.helpLabel} /></div>
         </div>
         {feedback && <InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback>}
       </SettingsConfirmation>}

@@ -1672,6 +1672,16 @@
   color: var(--settings-text-faint);
   font-size: 12px;
 }
+.services-toolbar__count,
+.service-detail__name-help,
+.provider-picker__name-help,
+.service-stage__name-help,
+.service-detail__use {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .service-rows {
   border-top: 1px solid var(--settings-border);
 }
@@ -1753,10 +1763,6 @@
 .service-row button:disabled {
   cursor: default;
   opacity: 0.55;
-}
-.services-hint {
-  margin-top: 20px !important;
-  max-width: 40em;
 }
 .service-back {
   min-height: 36px;
@@ -2288,10 +2294,6 @@
   color: var(--settings-danger);
   font-weight: 500;
 }
-.settings-diagnostic-privacy {
-  display: flex;
-  flex: 0 0 auto;
-}
 .settings-diagnostic-events__heading {
   display: flex;
   align-items: center;
@@ -2493,6 +2495,14 @@
 .service-credential-toolbar .credential-panel__saved-actions {
   gap: 8px;
 }
+.credential-storage-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-end: auto;
+  color: var(--settings-text-muted);
+  font-size: 14px;
+}
 .service-credential-toolbar .connection-check {
   justify-content: flex-end;
 }
@@ -2519,8 +2529,8 @@
 .service-stage__heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .service-stage__heading h3 {
   margin: 0;
@@ -2575,21 +2585,6 @@
 }
 .service-stage__field-label label {
   min-width: 0;
-}
-.services-hint {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-.service-detail__copy {
-  position: relative;
-  flex: 1;
-  padding-right: 30px;
-}
-.service-detail__description {
-  position: absolute;
-  right: 0;
-  top: 0;
 }
 .service-row__translation {
   display: inline-flex;
@@ -2653,10 +2648,8 @@
   margin: 0;
   font-size: 14px;
 }
-.provider-picker__preview > .settings-help-control {
-  margin-left: auto;
-}
 .service-stage__actions {
+  margin-inline-start: auto;
   justify-content: flex-end;
   flex-wrap: wrap;
 }

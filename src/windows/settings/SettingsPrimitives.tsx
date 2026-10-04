@@ -32,6 +32,7 @@ export function SettingsSection({
 export function SettingsRow({
   label,
   description,
+  descriptionId,
   hint,
   children,
   feedback,
@@ -39,6 +40,7 @@ export function SettingsRow({
 }: {
   label: string;
   description?: string;
+  descriptionId?: string;
   hint?: string;
   children: ReactNode;
   /** Ongoing state belongs below the controls, outside their intrinsic width. */
@@ -48,7 +50,7 @@ export function SettingsRow({
   return (
     <div className={`settings-row settings-row--${align}`}>
       <span className="settings-row__copy">
-        <span className="settings-row__label">{label}{(description || hint) && <SettingsHelp text={[description, hint].filter(Boolean).join("\n")} label={I18N.settings.helpLabel} />}</span>
+        <span className="settings-row__label">{label}{(description || hint) && <SettingsHelp id={descriptionId} text={[description, hint].filter(Boolean).join("\n")} label={I18N.settings.helpLabel} />}</span>
       </span>
       <span className="settings-row__control">{children}</span>
       {feedback && <div className="settings-row__feedback">{feedback}</div>}
