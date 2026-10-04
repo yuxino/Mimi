@@ -480,6 +480,9 @@
   min-width: 0;
   flex-direction: column;
 }
+.settings-card__body > .settings-row + .settings-row {
+  margin-top: 16px;
+}
 .settings-field-group {
   display: flex;
   flex-direction: column;
@@ -511,9 +514,9 @@
 
 .settings-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, auto);
   align-items: center;
-  gap: 18px;
+  gap: 8px 18px;
   min-height: 36px;
 }
 
@@ -535,6 +538,25 @@
   color: var(--settings-text-faint);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.settings-row__feedback {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--settings-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Bound every row picker, including native-platform-only device choices.
+   Feedback must never contribute to the control column's intrinsic width. */
+.settings-row:has(.settings-select-wrap, .application-audio-picker) {
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 276px);
+}
+.settings-row__control > .settings-select-wrap,
+.settings-row__control:has(> .application-audio-picker) {
+  width: 100%;
 }
 
 .settings-row__control {
@@ -1192,11 +1214,11 @@
   .settings-row {
     gap: 12px;
   }
-  .settings-row:has(.settings-select-wrap),
+  .settings-row:has(.settings-select-wrap, .application-audio-picker),
   .settings-row:has(.font-size-control) {
     grid-template-columns: minmax(0, 1fr);
   }
-  .settings-row__control:has(.settings-select-wrap) {
+  .settings-row__control:has(.settings-select-wrap, .application-audio-picker) {
     justify-content: stretch;
   }
   .settings-select-wrap {
@@ -1650,6 +1672,16 @@
   color: var(--settings-text-faint);
   font-size: 12px;
 }
+.services-toolbar__count,
+.service-detail__name-help,
+.provider-picker__name-help,
+.service-stage__name-help,
+.service-detail__use {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .service-rows {
   border-top: 1px solid var(--settings-border);
 }
@@ -1731,10 +1763,6 @@
 .service-row button:disabled {
   cursor: default;
   opacity: 0.55;
-}
-.services-hint {
-  margin-top: 20px !important;
-  max-width: 40em;
 }
 .service-back {
   min-height: 36px;
@@ -2266,10 +2294,6 @@
   color: var(--settings-danger);
   font-weight: 500;
 }
-.settings-diagnostic-privacy {
-  display: flex;
-  flex: 0 0 auto;
-}
 .settings-diagnostic-events__heading {
   display: flex;
   align-items: center;
@@ -2471,6 +2495,14 @@
 .service-credential-toolbar .credential-panel__saved-actions {
   gap: 8px;
 }
+.credential-storage-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-end: auto;
+  color: var(--settings-text-muted);
+  font-size: 14px;
+}
 .service-credential-toolbar .connection-check {
   justify-content: flex-end;
 }
@@ -2497,8 +2529,8 @@
 .service-stage__heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .service-stage__heading h3 {
   margin: 0;
@@ -2553,21 +2585,6 @@
 }
 .service-stage__field-label label {
   min-width: 0;
-}
-.services-hint {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 8px;
-}
-.service-detail__copy {
-  position: relative;
-  flex: 1;
-  padding-right: 30px;
-}
-.service-detail__description {
-  position: absolute;
-  right: 0;
-  top: 0;
 }
 .service-row__translation {
   display: inline-flex;
@@ -2631,10 +2648,8 @@
   margin: 0;
   font-size: 14px;
 }
-.provider-picker__preview > .settings-help-control {
-  margin-left: auto;
-}
 .service-stage__actions {
+  margin-inline-start: auto;
   justify-content: flex-end;
   flex-wrap: wrap;
 }
@@ -2697,7 +2712,37 @@
 .config-input__paste:disabled { opacity: .4; cursor: default; }
 .config-input__paste:focus-visible { outline: 2px solid var(--settings-text-muted); outline-offset: 2px; border-radius: 4px; }
 .service-stage .settings-field > .config-input-group { grid-column: 2; }
-.stored-credential-reveal > .stored-credential-reveal__toggle { font-size: 14px; display: inline-flex; align-items: center; padding: 4px; }
+.stored-credential-reveal > .stored-credential-reveal__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 6px;
+  font-size: 14px;
+  text-align: start;
+}
+.stored-credential-reveal { min-width: 0; max-width: 100%; }
+.stored-credential-reveal > input { min-width: 0; }
+.service-stage__heading > .stored-credential-reveal { margin-inline-start: auto; }
+/* Saved-value actions share their field's label line, never a lone icon below it. */
+.settings-field:has(> .stored-credential-reveal) {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, auto);
+  gap: 8px;
+}
+.settings-field:has(> .stored-credential-reveal) > label,
+.settings-field:has(> .stored-credential-reveal) > .service-stage__field-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+.settings-field:has(> .stored-credential-reveal) > .stored-credential-reveal {
+  grid-column: 2;
+  grid-row: 1;
+}
+.settings-field:has(> .stored-credential-reveal) > .config-input-group {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
 @media (max-width: 700px) { .service-stage .settings-field > .config-input-group { grid-column: 1 / -1; } }
 
 /* Restored session controls from the previous settings layout. */

@@ -69,7 +69,7 @@ it.each(["zh", "en", "ja"] as const)("offers five categories in the expected ord
   for (const [category, description] of [
     ["subtitles", I18N.settings.subtitlePageDescription], ["service", I18N.settings.servicePageDescription],
     ["export", I18N.settings.exportPageDescription], ["general", I18N.settings.generalPageDescription],
-    ["diagnostics", I18N.settings.diagnosticsPageDescription],
+    ["diagnostics", `${I18N.settings.diagnosticsPageDescription}\n${I18N.settings.diagnosticsHelp}`],
   ] as const) {
     await select(category);
     expect(host.querySelector(".settings-session-card") !== null).toBe(category === "subtitles");

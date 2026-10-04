@@ -61,8 +61,8 @@ it.each(["en", "zh", "ja"].flatMap(language => ["alibabaCloud", "googleGeminiLiv
   setStoredUiLanguage(language);
   const snapshot: SettingsSnapshot = { ...settings, credentialStorage: "localDevFile", profiles: [{ ...profile, provider, credentialStorage: "localDevFile", credentialState: "present" }] };
   await render(snapshot);
-  expect(host.querySelector(".services-hint .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
-  expect(host.querySelector("p.services-hint")).toBeNull();
+  expect(host.querySelector(".services-toolbar__count .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
+  expect(host.querySelector(".services-hint")).toBeNull();
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.textContent).toContain(diagnosticCopy().localDevReadOnly);
   expect(host.querySelector('input[type="password"]')).toBeNull();
@@ -412,7 +412,8 @@ it.each(["zh", "en", "ja"] as const)("groups the service identity, credential st
   expect(identity.querySelector("h2")?.textContent).toBe(profile.name);
   expect(identity.querySelector(".service-detail__title .credential-badge")?.getAttribute("aria-label")).toBe(I18N.settings.credentialPresent);
   expect(identity.querySelector(".service-detail__title .profile-active-badge")?.textContent).toBe(I18N.settings.activeProfile);
-  expect(identity.querySelector(".service-detail__description .settings-help-control__description")?.textContent).toContain(I18N.settings.providerOpenAIDescription);
+  expect(identity.querySelector(".service-detail__name-help .settings-help-control__description")?.textContent).toContain(I18N.settings.providerOpenAIDescription);
+  expect(host.querySelector(".credential-storage-help > span")?.textContent).toBe(I18N.settings.credentials);
   expect(identity.querySelector(".service-detail__copy > p")).toBeNull();
   expect(identity.querySelector(".service-language-support")).toBeNull();
   expect(host.querySelector(".service-detail__configuration #translation-languages")).not.toBeNull();

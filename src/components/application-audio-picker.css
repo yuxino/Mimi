@@ -44,6 +44,5 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.settings-row__control:has(> .application-audio-picker) { width: min(276px, 48vw); }
 .overlay-control-capture__application { grid-column: 1 / -1; display: block; width: 100%; padding: 2px 0 7px 21px; min-width: 0; box-sizing: border-box; }
 .overlay-control-capture__application .mimi-select__trigger { height: 32px; }

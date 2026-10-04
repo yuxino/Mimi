@@ -76,7 +76,7 @@ function SavedCredentialPreview({ profileId, field, textTranslation, label, disa
 
   return <span className="stored-credential-reveal">
     <button type="button" className="settings-link stored-credential-reveal__toggle" title={`${preview.status === "hidden" ? I18N.settings.revealSavedCredential : I18N.settings.hideSavedCredential}: ${label}`} disabled={disabled && preview.status === "hidden"} aria-label={`${preview.status === "hidden" ? I18N.settings.revealSavedCredential : I18N.settings.hideSavedCredential}: ${label}`} aria-expanded={preview.status !== "hidden"} aria-busy={preview.status === "loading"} onClick={preview.status === "hidden" ? reveal : hide}>
-      <Icon name={preview.status === "hidden" ? "eye" : "eye-off"} /><span className="settings-sr-only">{preview.status === "hidden" ? I18N.settings.revealSavedCredential : preview.status === "loading" ? I18N.settings.readingSavedCredential : I18N.settings.hideSavedCredential}</span>
+      <Icon name={preview.status === "hidden" ? "eye" : "eye-off"} /><span>{preview.status === "hidden" ? I18N.settings.revealSavedCredential : preview.status === "loading" ? I18N.settings.readingSavedCredential : I18N.settings.hideSavedCredential}</span>
     </button>
     {preview.status === "shown" && <input type="text" readOnly value={preview.value} aria-label={`${label}: ${I18N.settings.savedCredential}`} autoComplete="off" spellCheck={false} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); hide(); } }} />}
   </span>;

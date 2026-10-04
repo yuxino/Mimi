@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { ConfigInput } from "./ConfigInput";
 import { SettingsHelp } from "./SettingsHelp";
+import { CredentialStorageHelp } from "./CredentialStorageHelp";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { credentialUnavailableHelp, diagnosticCopy } from "../../lib/connectionDiagnostics";
@@ -138,10 +139,9 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
     </section>}
     <section className="service-stage service-stage--translation" aria-labelledby={`${inputId}-translation-title`}>
       <header className="service-stage__heading">
-        <h3 id={`${inputId}-translation-title`}>{I18N.settings.textTranslationLabel}</h3>
+        <div className="service-stage__name-help"><h3 id={`${inputId}-translation-title`}>{I18N.settings.textTranslationLabel}</h3><SettingsHelp text={translationHelp} label={I18N.settings.helpLabel} /></div>
         <div className="service-stage__actions">
           {textConnectionCheck?.(translation !== savedTranslation || !!draft.endpoint.trim() || !!draft.token.trim() || !!draft.model.trim() || clearTranslationToken || (!textOnly && translation === "followService" && !!draft.apiKey.trim()))}
-          <SettingsHelp text={translationHelp} label={I18N.settings.helpLabel} />
         </div>
       </header>
       <div className="settings-field service-stage__selector">
@@ -178,12 +178,12 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
 
   return <div className="credential-panel" aria-busy={busy}>
     {!textOnly && <div className="service-credential-toolbar">
+      <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />
       {connectionCheck}
       {!readOnly && saved && !dirty && <span className="credential-panel__saved-actions">
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled} onClick={() => setEditingKey(true)}><Icon name="key" />{I18N.settings.replaceCredentials}</button>
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled || confirmingDelete} onClick={onRequestDelete}><Icon name="trash" />{I18N.settings.deleteCredentials}</button>
       </span>}
-      <SettingsHelp id={noteId} text={readOnly ? profile.credentialState === "unavailable" ? diagnosticCopy().localDevUnavailable : diagnosticCopy().localDevReadOnly : I18N.settings.credentialNote} label={I18N.settings.helpLabel} icon="shield-check" />
     </div>}
     {!textOnly && !readOnly && profile.credentialState === "unavailable" && (feedback?.tone !== "error" || feedback.message === I18N.settings.profileActionFailed) && <p role="status" className="credential-unavailable">{credentialUnavailableHelp()}</p>}
     {readOnly ? <div className="service-stages service-stages--readonly">{stages}</div> : <form className="credential-form service-stages" onSubmit={submit}>

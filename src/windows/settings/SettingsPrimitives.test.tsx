@@ -54,6 +54,12 @@ it("does not add an empty help icon to a clear control", async () => {
   expect(host.querySelectorAll("button")).toHaveLength(1);
 });
 
+it("keeps ongoing feedback out of the label and control width", async () => {
+  await act(() => root.render(<SettingsRow label="Output" feedback={<span role="status">No audio data</span>}><button>Choose</button></SettingsRow>));
+  expect(host.querySelector('.settings-row > .settings-row__feedback [role="status"]')?.textContent).toBe("No audio data");
+  expect(host.querySelector('.settings-row__control')?.textContent).toBe("Choose");
+});
+
 it("opens the combined help on keyboard focus and dismisses Escape while keeping the description available", async () => {
   await render("Choose how subtitles look.", "You can change this while subtitles are running.");
   const button = host.querySelector<HTMLButtonElement>(".settings-help-control__button")!;

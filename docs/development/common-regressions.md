@@ -173,6 +173,33 @@ For shared layout, notification choices and the cross-page review checklist,
 read [UI consistency and feedback](ui-guidelines.md). A fix to one reported
 page must include a review of other instances of the same pattern.
 
+- The multilingual label repair in `dc2143f` did not cover the Windows-only
+  output selector. Issue #132 put the selector and idle sentence in one inline
+  wrapper: its intrinsic width squeezed Chinese labels into one-character
+  lines and misaligned the picker even in a maximized window. Keep status out
+  of the control column, bound long device names, and test platform-only controls
+  with explicit fixtures on all three interface languages. An idle instruction
+  belongs in help; missing-device and live-capture states stay visible below.
+- The first #132 preview still let adjacent 36 px pickers touch: the shared
+  section body had no gap. Preserve explicit spacing between sibling rows and
+  assert the rendered gap in the same geometry regression. Inspect the actual
+  screenshot before delivery; correct label width does not prove visual quality.
+- Windows CJK glyph fallback cannot be inferred from a macOS screenshot or a
+  successful CSS `font-family` assertion. Keep Chinese sans families ahead of
+  Japanese fallbacks outside Japanese UI, include `Microsoft YaHei` as well as
+  `Microsoft YaHei UI`, and verify the actual installed font on the affected
+  Windows image before claiming its serif-font report resolved.
+- The #132 screenshot review also missed a lone shield below the configuration
+  list. It was storage help, but its detached position gave no clue what it
+  described. Attach it to the configuration count, and inspect diagnostics,
+  profile headings, credential toolbars, proxy rows and confirmation previews
+  for the same pattern. Help needs a visible context, not its own empty row.
+- The same review missed the saved-key eye below the translation field. Its
+  action text existed only for screen readers, so DOM text tests passed while
+  the visible action was ambiguous. Make the text visible in all three languages,
+  share the field's label line, and check actual caption dimensions plus preview
+  states. Do not populate a replacement draft with a revealed saved credential.
+
 - Moving a control between windows also requires updating its Tauri command
   permissions. Settings audio switches once invoked a command authorized only
   for the floating panel, so browser tests passed while native clicks failed.

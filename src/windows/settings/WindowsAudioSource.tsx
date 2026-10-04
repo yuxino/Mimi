@@ -56,11 +56,11 @@ export function WindowsAudioSource() {
   const missing = isDeviceSource(selected) && !snapshot.devices.some((device) => device.id === selected);
   const current = snapshot.devices.find((device) => device.id === snapshot.currentDevice)?.name;
   const status = failed ? text.failed : missing || snapshot.devices.length === 0 ? text.missing
-    : active && !paused ? snapshot.receivingSound ? text.receiving : snapshot.receivingAudioData ? text.silent : text.noData : text.idle;
+    : active && !paused ? snapshot.receivingSound ? text.receiving : snapshot.receivingAudioData ? text.silent : text.noData : null;
   const requiresStop = active || paused || statusKind === "connecting" || statusKind === "stopping";
   return (
-    <SettingsRow label={text.title} description={requiresStop ? text.stop : text.help}>
-      <span>
+    <SettingsRow label={text.title} description={requiresStop ? text.stop : `${text.help}\n${text.idle}`}
+      feedback={status && <span role="status">{current && active ? `${current} · ` : ""}{status}</span>}>
         <SettingsSelect label={text.title} value={selected} disabled={requiresStop || failed || saving}
           onChange={(value) => {
             if (inFlight.current) return;
@@ -78,8 +78,6 @@ export function WindowsAudioSource() {
             ...snapshot.devices.map((device) => ({ value: device.id, label: device.name })),
             ...(missing ? [{ value: selected, label: text.unavailable }] : []),
           ]} />
-        <span className="settings-row__description" role="status">{current && active ? `${current} · ` : ""}{status}</span>
-      </span>
     </SettingsRow>
   );
 }
