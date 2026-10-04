@@ -60,8 +60,8 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
     </div>
     {!readOnly && profile.credentialState === "unavailable" && !feedback && <p role="status" className="credential-unavailable">{credentialUnavailableHelp()}</p>}
     <section className="service-stage" aria-labelledby={`${speechId}-title`}>
-      <header className="service-stage__heading"><h3 id={`${speechId}-title`}>{I18N.settings.speechRecognition}</h3>
-      {!readOnly && saved && props.visible !== false && !busy && !confirmingDelete && <StoredCredentialReveal key={`${profile.id}:${translationEpoch}`} profileId={profile.id} field="apiKey" label={I18N.settings.apiKey} disabled={disabled} />}<SettingsHelp id={helpId} text={requirements} label={I18N.settings.helpLabel} /></header>
+      <header className="service-stage__heading"><div className="service-stage__name-help"><h3 id={`${speechId}-title`}>{I18N.settings.speechRecognition}</h3><SettingsHelp id={helpId} text={requirements} label={I18N.settings.helpLabel} /></div>
+      {!readOnly && saved && props.visible !== false && !busy && !confirmingDelete && <StoredCredentialReveal key={`${profile.id}:${translationEpoch}`} profileId={profile.id} field="apiKey" label={I18N.settings.apiKey} disabled={disabled} />}</header>
       <div className="settings-field service-stage__selector"><span>{I18N.settings.serviceProvider}</span><span className="service-stage__provider"><ProviderIcon provider={profile.provider} size={32} />{openAI ? "OpenAI Realtime ASR" : "DashScope ASR"}</span></div>
       {!readOnly && (!saved || editing) && <form className="credential-form" onSubmit={submit}>
         <div className="credential-form__fields">

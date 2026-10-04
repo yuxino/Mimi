@@ -20,6 +20,7 @@ window.__TAURI_INTERNALS__ = {
       };
     }
     if (command === "app_desktop_shortcut_commands") return null;
+    if (command === "profile_reveal_credential") return "fixture-saved-value";
     if (command === "plugin:event|listen") return 0;
     if (command === "plugin:event|unlisten") return;
     throw new Error("fixture_command_unavailable");
@@ -56,6 +57,12 @@ window.applyLayoutCase = async next => {
   if (next.editor) {
     document.querySelector(".service-row__edit").click();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (next.reveal) {
+      if (!document.querySelector(".stored-credential-reveal__toggle")) document.querySelector(".credential-panel__saved-actions button").click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      for (const button of document.querySelectorAll(".stored-credential-reveal__toggle")) button.click();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
   }
   if (next.providerPicker || next.providerConfirmation) {
     document.querySelector(".services-toolbar > button").click();

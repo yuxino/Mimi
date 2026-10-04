@@ -731,12 +731,10 @@ function CredentialEditor({
 
   return (
     <div className="credential-panel" aria-busy={busy}>
-      <div className="service-credential-toolbar">{storageHelp}{connectionCheck}</div>
+      <div className="service-credential-toolbar">{connectionCheck}</div>
       {serviceIdentity}
       <div className="credential-panel__heading">
-        <span>
-          <span className="credential-panel__label">{I18N.settings.credentials}</span>
-        </span>
+        {storageHelp}
         {profile.credentialState === "present" && (
           <button
             type="button"

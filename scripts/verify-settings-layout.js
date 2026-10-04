@@ -16,6 +16,7 @@ export default async function verifySettingsLayout(page) {
         if (platform === "windows") {
           for (const provider of ["alibabaCloud", "customDashScopeASR", "openAIRealtime"]) {
             cases.push({ width, language, theme, platform, state: "idle", editor: true, provider, deviceName: "Fixture headphones" });
+            cases.push({ width, language, theme, platform, state: "idle", editor: true, provider, reveal: true, deviceName: "Fixture headphones" });
           }
           cases.push({ width, language, theme, platform, state: "idle", providerPicker: true, deviceName: "Fixture headphones" });
           cases.push({ width, language, theme, platform, state: "idle", providerConfirmation: true, deviceName: "Fixture headphones" });
@@ -38,6 +39,12 @@ export default async function verifySettingsLayout(page) {
             }
             for (const dialog of document.querySelectorAll('[role="dialog"], [role="alertdialog"]')) {
               if (dialog.scrollWidth > dialog.clientWidth + 1 || rect(dialog).left < 0 || rect(dialog).right > innerWidth + 1) issues.push("dialog overflow");
+            }
+            for (const reveal of document.querySelectorAll(".stored-credential-reveal")) {
+              const button = reveal.querySelector("button"), caption = button.querySelector("span");
+              if (rect(caption).width < 2 || rect(caption).height < 2) issues.push("unlabeled saved-value action");
+              const field = reveal.closest(".settings-field"), input = field?.querySelector(".config-input-group");
+              if (input && rect(button).bottom > rect(input).top + 1) issues.push("saved-value action below field");
             }
             const audioRows = [...document.querySelectorAll("#audio-input .settings-card__body > .settings-row")].filter(row => rect(row).width > 0);
             for (let i = 1; i < audioRows.length; i++) {

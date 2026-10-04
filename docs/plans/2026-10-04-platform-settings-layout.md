@@ -23,6 +23,10 @@ credential labels, proxy labels and applicable actions. Diagnostic privacy
 explanation joins the page-heading help. Reuse labeled credential storage help
 across the three editors and preserve their input description IDs; do not change
 credential access or persistence behavior. Remove the obsolete footer styles.
+Saved-value controls also need visible localized action text: their eye icon
+alone did not explain the difference between a stored key and a replacement
+draft. Keep the action on the field-label or stage-heading line. Preserve the
+existing explicit read, cancel, hide, blur and navigation clearing behavior.
 
 Windows uses endpoint-specific WASAPI loopback, so it exposes output selection.
 macOS ScreenCaptureKit captures the system/application mix independently of an
@@ -41,8 +45,8 @@ credential-free bridge in `scripts/fixtures/settings-layout.html`.
 overlap, squeezed labels, feedback placement and platform capability visibility
 across five widths, three languages, two themes and device states, including
 all six settings categories, three service editors and provider selection /
-confirmation (600 cases). It also rejects detached help footers and verifies
-the gap between contextual help and its label. Run it with
+confirmation and synthetic saved-value previews (690 cases). It also rejects
+detached help footers and verifies the gap between contextual help and its label. Run it with
 an ego-browser managed Page while `npm run dev` serves this checkout. These
 fixtures verify geometry, not Windows capture or installed Windows glyphs.
 Also inspect the signed macOS UI-only app, the sibling settings rows, tray and

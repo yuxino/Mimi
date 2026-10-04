@@ -177,6 +177,11 @@ page must include a review of other instances of the same pattern.
   described. Attach it to the configuration count, and inspect diagnostics,
   profile headings, credential toolbars, proxy rows and confirmation previews
   for the same pattern. Help needs a visible context, not its own empty row.
+- The same review missed the saved-key eye below the translation field. Its
+  action text existed only for screen readers, so DOM text tests passed while
+  the visible action was ambiguous. Make the text visible in all three languages,
+  share the field's label line, and check actual caption dimensions plus preview
+  states. Do not populate a replacement draft with a revealed saved credential.
 
 - Moving a control between windows also requires updating its Tauri command
   permissions. Settings audio switches once invoked a command authorized only

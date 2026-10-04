@@ -42,6 +42,11 @@ These project rules apply to implementation and review.
   far edge, or use a shield to disguise generic help. Credential storage help
   uses the shared labeled `CredentialStorageHelp`; diagnostic privacy help
   stays with the page heading. Inspect all sibling uses when this recurs.
+- Saved-credential viewing must show its localized action text. Place the action
+  beside its field label or stage heading; a lone eye beneath an input does not
+  explain that it reads the saved value rather than the replacement draft.
+  Check rendered text visibility and hidden/loading/shown states, not just DOM
+  text or a tooltip title. Keep preview clearing and credential boundaries intact.
 
 ## Choose feedback by purpose
 

@@ -30,6 +30,7 @@ it.each(["zh", "en", "ja"] as const)("reads only on explicit request, offers a s
   const storage = vi.spyOn(Storage.prototype, "setItem");
   await render();
   expect(host.textContent).toBe(I18N.settings.revealSavedCredential);
+  expect(host.querySelector("button > span")?.classList.contains("settings-sr-only")).toBe(false);
   expect(profileRevealCredential).not.toHaveBeenCalled();
   vi.mocked(profileRevealCredential).mockResolvedValue("synthetic-stored-key");
   await click();
