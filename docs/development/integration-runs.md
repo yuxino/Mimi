@@ -601,3 +601,31 @@
   count also matched the HTML `datetime` attribute. The regression now counts
   visible `<time>` content; the focused suite passed under UTC and Asia/Shanghai.
   No product behavior changed in that correction.
+
+
+### 2026-10-05 — Metadata follows microphone selection
+
+- Source revision: `e7341f7` (`fc333b1` plus the microphone-mode follow-up).
+  Signed canonical `local-dev` UI-only bundle; no formal installation replaced.
+- Accepted behavior: system-only subtitles return to the plain presentation;
+  retained microphone rows keep a small inline icon. Microphone-only and dual
+  modes display metadata, with confirmation time following the saved opt-in.
+  Switching preserves history, colors and the opt-in, and system-only can again
+  use the original 136px minimum. Replay records each snapshot's selected input.
+- `scripts/check.sh` passed: desktop Rust 1,055 passed / 2 ignored, frontend
+  1,205 passed, shared fixtures/JNI, lint, typecheck and production build.
+  Focused tests cover repeated system/both/microphone switches, ordinary and
+  immersive presentation, retained history, single-source colors, compact
+  layouts and replay fallbacks. Independent diff review found no open issue.
+- Signed native UI-only QA exercised both-source confirmations, system-only
+  selection and microphone re-enabling through settings and the control panel.
+  Native accessibility confirmed system icons/times disappear while the old mic
+  identity remains; re-enabling restores the same confirmation times. Inspected
+  the dual-source card and retained system/microphone text in immersive mode.
+  Also exercised microphone-only selection and its last-source guard. The time
+  preference remained enabled through switching, as shown in native settings.
+- Only synthetic text was used. No credentials, network, real audio capture,
+  transcript persistence or recording were enabled. The development app exited
+  normally and the formal app was reopened under the user's existing approval.
+  Real microphone/provider behavior and other-platform native appearance were
+  not revalidated; this run verifies the desktop presentation follow-up.
