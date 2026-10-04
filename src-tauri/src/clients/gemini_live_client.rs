@@ -26,7 +26,9 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 // not provide a separate transcript-terminal event. Treat every normal turn
 // boundary (and the final close boundary) as provisional until transcripts
 // have stayed quiet long enough to absorb ordinary network jitter.
-const TAIL_QUIET_PERIOD: Duration = Duration::from_millis(500);
+const TAIL_QUIET_PERIOD: Duration =
+    Duration::from_millis(mimi_core::openai_transcript_committer::GEMINI_TURN_TAIL_QUIET_MS);
+#[cfg(test)]
 const MAXIMUM_TRANSCRIPT_BYTES: usize = 128 * 1_024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -56,89 +58,104 @@ enum SetupState {
     Rejected,
 }
 
-#[derive(Default)]
 struct GeminiTranscriptPairCommitter {
-    source: String,
+    stream: crate::core::openai_transcript_committer::OpenAITranscriptPairCommitter,
     source_language: Option<String>,
-    translation: String,
+    clock: std::time::Instant,
     discard_current_turn: bool,
     turn_complete_received: bool,
 }
 
+impl Default for GeminiTranscriptPairCommitter {
+    fn default() -> Self {
+        Self {
+            stream:
+                crate::core::openai_transcript_committer::OpenAITranscriptPairCommitter::new_gemini(
+                ),
+            source_language: None,
+            clock: std::time::Instant::now(),
+            discard_current_turn: false,
+            turn_complete_received: false,
+        }
+    }
+}
+
 impl GeminiTranscriptPairCommitter {
+    fn elapsed_ms(&self) -> u64 {
+        self.clock.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
+    }
+    fn settle(&mut self) -> Vec<LiveTranslateServerEvent> {
+        let events = self.stream.settle(self.elapsed_ms());
+        self.adapt(events)
+    }
     fn append_source(
         &mut self,
         text: &str,
         language_code: Option<String>,
     ) -> Vec<LiveTranslateServerEvent> {
-        if self.discard_current_turn {
-            return Vec::new();
-        }
-        self.source.push_str(text);
         if language_code.is_some() {
             self.source_language = language_code;
         }
-        if self.exceeded_safety_limit() {
-            return self.safety_limit_error();
-        }
-        vec![LiveTranslateServerEvent::SourceDraft {
-            text: self.source.clone(),
-            language: self.source_language.clone(),
-        }]
+        let events = self
+            .stream
+            .append_source_delta(text, Some(self.elapsed_ms()));
+        self.adapt(events)
     }
 
     fn append_translation(&mut self, text: &str) -> Vec<LiveTranslateServerEvent> {
-        if self.discard_current_turn {
-            return Vec::new();
+        let events = self
+            .stream
+            .append_translation_delta(text, Some(self.elapsed_ms()));
+        self.adapt(events)
+    }
+
+    fn adapt(&mut self, events: Vec<LiveTranslateServerEvent>) -> Vec<LiveTranslateServerEvent> {
+        let mut adapted = Vec::new();
+        for mut event in events {
+            if matches!(event, LiveTranslateServerEvent::Error { .. }) {
+                self.discard_current_turn = true;
+                adapted.push(LiveTranslateServerEvent::Error {
+                    code: "gemini_transcript_safety_limit".into(),
+                    message:
+                        "Gemini Live Translation transcript buffering exceeded its safety limit."
+                            .into(),
+                });
+                continue;
+            }
+            if self.discard_current_turn {
+                if matches!(event, LiveTranslateServerEvent::SubtitleFinalPair { .. }) {
+                    self.discard_current_turn = false;
+                }
+                continue;
+            }
+            match &mut event {
+                LiveTranslateServerEvent::SourceDraft { language, .. }
+                | LiveTranslateServerEvent::SubtitleFinalPair { language, .. } => {
+                    *language = self.source_language.clone()
+                }
+                _ => {}
+            }
+            adapted.push(event);
         }
-        self.translation.push_str(text);
-        if self.exceeded_safety_limit() {
-            return self.safety_limit_error();
-        }
-        vec![LiveTranslateServerEvent::TranslationDraft(
-            self.translation.clone(),
-        )]
+        adapted
     }
 
     fn finish_turn(&mut self) -> Vec<LiveTranslateServerEvent> {
-        if self.discard_current_turn {
-            self.reset();
-            return Vec::new();
-        }
-        let source = self.source.trim().to_string();
-        let translation = self.translation.trim().to_string();
-        let language = self.source_language.clone();
+        let events = self.stream.finish();
+        let events = self.adapt(events);
         self.reset();
-        if source.is_empty() || translation.is_empty() {
-            return Vec::new();
-        }
-        vec![LiveTranslateServerEvent::SubtitleFinalPair {
-            source,
-            language,
-            translation,
-        }]
+        events
+    }
+
+    fn has_pending(&self) -> bool {
+        self.stream.has_pending()
     }
 
     fn reset(&mut self) {
-        self.source.clear();
+        self.stream.reset();
         self.source_language = None;
-        self.translation.clear();
         self.discard_current_turn = false;
         self.turn_complete_received = false;
-    }
-
-    fn exceeded_safety_limit(&self) -> bool {
-        self.source.len().saturating_add(self.translation.len()) > MAXIMUM_TRANSCRIPT_BYTES
-    }
-
-    fn safety_limit_error(&mut self) -> Vec<LiveTranslateServerEvent> {
-        self.reset();
-        self.discard_current_turn = true;
-        vec![LiveTranslateServerEvent::Error {
-            code: "gemini_transcript_safety_limit".into(),
-            message: "Gemini Live Translation transcript buffering exceeded its safety limit."
-                .into(),
-        }]
     }
 }
 
@@ -185,9 +202,7 @@ impl GeminiLiveClient {
         cancel_normal_turn_boundary(&self.inner);
         let mut committer = self.inner.committer.lock().await;
         let pending_boundary = committer.turn_complete_received;
-        let active = committer.discard_current_turn
-            || !committer.source.is_empty()
-            || !committer.translation.is_empty();
+        let active = committer.discard_current_turn || committer.has_pending();
         committer.reset();
         committer.discard_current_turn = active;
         committer.turn_complete_received = pending_boundary;
@@ -433,12 +448,23 @@ impl GeminiLiveClient {
                 );
             }
             Err(_) if self.is_current_generation(generation) => {
-                self.inner.committer.lock().await.reset();
+                let _content = self.inner.content_lock.lock().await;
+                let mut committer = self.inner.committer.lock().await;
+                let pending = committer.has_pending();
+                committer.reset();
                 self.inner.pending_audio.lock().await.clear();
+                // The continuous translation model need not emit turnComplete.
+                // Already committed stable blocks are durable; an unmatched
+                // tail is still rejected rather than promoted at the deadline.
                 self.emit(
-                    LiveTranslateServerEvent::Error {
-                        code: "gemini_close_timeout".into(),
-                        message: "Gemini Live Translation did not finish closing in time.".into(),
+                    if pending {
+                        LiveTranslateServerEvent::Error {
+                            code: "gemini_close_timeout".into(),
+                            message: "Gemini Live Translation did not finish closing in time."
+                                .into(),
+                        }
+                    } else {
+                        LiveTranslateServerEvent::SessionFinished
                     },
                     generation,
                 );
@@ -579,7 +605,20 @@ struct ReceiveContext {
 }
 
 async fn receive_loop(mut context: ReceiveContext) {
-    while let Some(message) = context.stream.next().await {
+    let mut tick = tokio::time::interval(Duration::from_millis(250));
+    loop {
+        let message = tokio::select! {
+            message = context.stream.next() => { let Some(message) = message else { break }; message },
+            _ = tick.tick() => {
+                let _content = context.inner.content_lock.lock().await;
+                if context.inner.generation.load(Ordering::SeqCst) != context.generation { return; }
+                let mut committer = context.inner.committer.lock().await;
+                if !committer.turn_complete_received {
+                    emit_all_if_current(&context, committer.settle());
+                }
+                continue;
+            }
+        };
         if context.inner.generation.load(Ordering::SeqCst) != context.generation {
             return;
         }
@@ -945,7 +984,7 @@ mod tests {
         ));
         {
             let mut committer = client.inner.committer.lock().await;
-            assert!(committer.source.is_empty() && committer.translation.is_empty());
+            assert!(!committer.has_pending());
             assert!(committer.append_source("late old source", None).is_empty());
             assert!(committer
                 .append_translation("late old translation")
@@ -987,6 +1026,101 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use serde_json::{json, Value};
     use tokio::net::TcpListener;
+
+    #[test]
+    fn shared_gemini_transcript_contracts() {
+        let fixtures: Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/translation-contracts.json"
+        )))
+        .unwrap();
+        for case in fixtures["liveTranscriptSequences"].as_array().unwrap() {
+            let mut committer = GeminiTranscriptPairCommitter::default();
+            let mut pairs = Vec::new();
+            let mut failed = false;
+            for (index, frame) in case["frames"].as_array().unwrap().iter().enumerate() {
+                let Ok(decoded) = GeminiLiveServerEvent::decode(frame.as_str().unwrap()) else {
+                    failed = true;
+                    break;
+                };
+                for event in decoded {
+                    let events = match event {
+                        GeminiLiveServerEvent::SourceTranscript {
+                            text,
+                            language_code,
+                        } => committer.append_source(&text, language_code),
+                        GeminiLiveServerEvent::TranslationTranscript { text, .. } => {
+                            committer.append_translation(&text)
+                        }
+                        GeminiLiveServerEvent::TurnComplete => committer.finish_turn(),
+                        _ => Vec::new(),
+                    };
+                    for event in events {
+                        if let LiveTranslateServerEvent::SubtitleFinalPair {
+                            source,
+                            language,
+                            translation,
+                        } = event
+                        {
+                            pairs.push(json!({"source":source,"language":language,"translation":translation}));
+                        }
+                    }
+                }
+                if case["settleAfterFrames"].as_array().is_some_and(|indices| {
+                    indices
+                        .iter()
+                        .any(|value| value.as_u64() == Some(index as u64))
+                }) {
+                    let events = committer.stream.settle(u64::MAX);
+                    for event in committer.adapt(events) {
+                        if let LiveTranslateServerEvent::SubtitleFinalPair {
+                            source,
+                            language,
+                            translation,
+                        } = event
+                        {
+                            pairs.push(json!({"source":source,"language":language,"translation":translation}));
+                        }
+                    }
+                }
+            }
+            if case["expected"].is_null() {
+                assert!(failed, "{}", case["id"]);
+            } else {
+                assert!(!failed);
+                assert_eq!(json!(pairs), case["expected"], "{}", case["id"]);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn continuous_sentence_pairs_survive_language_only_updates_and_close_without_turn_complete(
+    ) {
+        let (client, mut events) = test_client(|mut socket| Box::pin(async move {
+            assert_setup(socket.next().await.unwrap().unwrap());
+            socket.send(Message::Text(r#"{"setupComplete":{}}"#.into())).await.unwrap();
+            socket.send(Message::Text(r#"{"serverContent":{"inputTranscription":{"text":"Hello.","languageCode":"en"},"outputTranscription":{"text":"こんにちは。"}}}"#.into())).await.unwrap();
+            socket.send(Message::Text(r#"{"serverContent":{"inputTranscription":{"languageCode":"en"},"outputTranscription":{"languageCode":"ja"}}}"#.into())).await.unwrap();
+            while socket.next().await.is_some() {}
+        })).await;
+        client.connect().await.unwrap();
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(3), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            if matches!(event, LiveTranslateServerEvent::SubtitleFinalPair { .. }) {
+                break;
+            }
+        }
+        client.finish(Duration::from_millis(50)).await;
+        let mut finished = false;
+        while let Ok(event) = events.try_recv() {
+            assert!(!matches!(event, LiveTranslateServerEvent::Error { .. }));
+            finished |= matches!(event, LiveTranslateServerEvent::SessionFinished);
+        }
+        assert!(finished);
+    }
 
     async fn test_client(
         server: impl FnOnce(
@@ -1211,13 +1345,14 @@ mod tests {
 
         let _ = committer.append_source("Next sentence.", Some("en".into()));
         let _ = committer.append_translation("次の文。");
+        let events = committer.finish_turn();
         assert!(matches!(
-            committer.finish_turn().as_slice(),
-            [LiveTranslateServerEvent::SubtitleFinalPair {
+            events.last(),
+            Some(LiveTranslateServerEvent::SubtitleFinalPair {
                 source,
                 language,
                 translation,
-            }] if source == "Next sentence."
+            }) if source == "Next sentence."
                 && language.as_deref() == Some("en")
                 && translation == "次の文。"
         ));

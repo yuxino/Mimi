@@ -765,5 +765,158 @@
       "apiKey": "synthetic key",
       "expected": true
     }
+  ],
+  "liveSetups": [
+    {
+      "id": "gemini-live-setup-zh",
+      "provider": "googleGeminiLive",
+      "target": "zh",
+      "expected": {
+        "setup": {
+          "model": "models/gemini-3.5-live-translate-preview",
+          "inputAudioTranscription": {},
+          "outputAudioTranscription": {},
+          "generationConfig": {
+            "responseModalities": [
+              "AUDIO"
+            ],
+            "translationConfig": {
+              "targetLanguageCode": "zh-Hans",
+              "echoTargetLanguage": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-live-setup-en",
+      "provider": "googleGeminiLive",
+      "target": "en",
+      "expected": {
+        "setup": {
+          "model": "models/gemini-3.5-live-translate-preview",
+          "inputAudioTranscription": {},
+          "outputAudioTranscription": {},
+          "generationConfig": {
+            "responseModalities": [
+              "AUDIO"
+            ],
+            "translationConfig": {
+              "targetLanguageCode": "en",
+              "echoTargetLanguage": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-live-setup-ja",
+      "provider": "googleGeminiLive",
+      "target": "ja",
+      "expected": {
+        "setup": {
+          "model": "models/gemini-3.5-live-translate-preview",
+          "inputAudioTranscription": {},
+          "outputAudioTranscription": {},
+          "generationConfig": {
+            "responseModalities": [
+              "AUDIO"
+            ],
+            "translationConfig": {
+              "targetLanguageCode": "ja",
+              "echoTargetLanguage": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "liveTranscriptSequences": [
+    {
+      "id": "gemini-continuous-transcripts-without-turn-complete",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Hello \",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"こんにちは\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"world.\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"世界。\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"languageCode\":\"ja\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Hello world.\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"こんにちは世界。\"}}}"
+      ],
+      "expected": [
+        {
+          "source": "Hello world.",
+          "translation": "こんにちは世界。",
+          "language": "en"
+        },
+        {
+          "source": "Hello world.",
+          "translation": "こんにちは世界。",
+          "language": "en"
+        }
+      ],
+      "settleAfterFrames": [
+        5,
+        7
+      ]
+    },
+    {
+      "id": "gemini-explicit-turn-flushes-paired-tail",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Synthetic source\",\"languageCode\":\"en\"},\"outputTranscription\":{\"text\":\"テスト訳\"}}}",
+        "{\"serverContent\":{\"turnComplete\":true}}"
+      ],
+      "expected": [
+        {
+          "source": "Synthetic source",
+          "translation": "テスト訳",
+          "language": "en"
+        }
+      ],
+      "settleAfterFrames": [
+        1
+      ]
+    },
+    {
+      "id": "gemini-lagging-unmatched-tail-is-not-final",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"First. Second.\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"一文。\"}}}"
+      ],
+      "expected": []
+    },
+    {
+      "id": "gemini-transcription-rejects-non-string",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":false}}}"
+      ],
+      "expected": null
+    },
+    {
+      "id": "gemini-unequal-punctuation-keeps-delayed-translation-in-one-block",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"First sentence.\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"第一部分。\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"后半部分。\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\" Next sentence.\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"下一句。\"}}}"
+      ],
+      "settleAfterFrames": [
+        4
+      ],
+      "expected": [
+        {
+          "source": "First sentence. Next sentence.",
+          "translation": "第一部分。后半部分。下一句。",
+          "language": "en"
+        }
+      ]
+    }
   ]
 }

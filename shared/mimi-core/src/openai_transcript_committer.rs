@@ -1,4 +1,4 @@
-//! Aligns append-only OpenAI source and translation transcript streams.
+//! Aligns append-only source and translation streams used by OpenAI and Gemini.
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,8 @@ pub enum TranscriptEvent {
     },
 }
 
+pub const GEMINI_TRANSCRIPT_QUIET_MS: u64 = 2_000;
+pub const GEMINI_TURN_TAIL_QUIET_MS: u64 = 500;
 const MAXIMUM_ALIGNMENT_SKEW_MS: u64 = 400;
 const MINIMUM_BUFFER_SAFETY_LIMIT: usize = 4_096;
 const BUFFER_SAFETY_LIMIT_MULTIPLIER: usize = 16;
@@ -121,6 +123,12 @@ pub struct OpenAITranscriptPairCommitter {
     maximum_pending_characters: usize,
     maximum_buffer_characters: usize,
     source_language: Option<String>,
+    #[serde(default)]
+    stable_block_mode: bool,
+    #[serde(default)]
+    last_delta_ms: Option<u64>,
+    #[serde(default)]
+    explicit_turn: bool,
     source: TimedTextBuffer,
     translation: TimedTextBuffer,
 }
@@ -169,8 +177,61 @@ impl OpenAITranscriptPairCommitter {
             maximum_pending_characters,
             maximum_buffer_characters,
             source_language,
+            stable_block_mode: false,
+            last_delta_ms: None,
+            explicit_turn: false,
             source: TimedTextBuffer::default(),
             translation: TimedTextBuffer::default(),
+        }
+    }
+
+    /// Gemini supplies append-only text without utterance IDs or audio timing.
+    /// Keep whole blocks together: equal punctuation counts do not prove alignment.
+    pub fn new_gemini() -> Self {
+        Self {
+            stable_block_mode: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn is_stable_block_mode(&self) -> bool {
+        self.stable_block_mode
+    }
+
+    /// The caller supplies a monotonic receipt clock, never an audio timestamp.
+    /// Silence is a heuristic checkpoint, not a provider terminal event. Require
+    /// both complete buffers and retain unmatched/unpunctuated tails for a turn.
+    pub fn settle(&mut self, now_ms: u64) -> Vec<TranscriptEvent> {
+        let quiet_ms = if self.explicit_turn {
+            GEMINI_TURN_TAIL_QUIET_MS
+        } else {
+            GEMINI_TRANSCRIPT_QUIET_MS
+        };
+        if !self.stable_block_mode
+            || self
+                .last_delta_ms
+                .is_none_or(|last| now_ms.saturating_sub(last) < quiet_ms)
+            || (!self.explicit_turn
+                && (!ends_complete(&self.source.text) || !ends_complete(&self.translation.text)))
+        {
+            return Vec::new();
+        }
+        self.finish()
+    }
+
+    pub fn note_turn_complete(&mut self, now_ms: u64) {
+        if self.stable_block_mode {
+            self.explicit_turn = true;
+            self.last_delta_ms = Some(now_ms);
+        }
+    }
+
+    fn receipt_time(&mut self, elapsed_ms: Option<u64>) -> Option<u64> {
+        if self.stable_block_mode {
+            self.last_delta_ms = elapsed_ms;
+            None
+        } else {
+            elapsed_ms
         }
     }
 
@@ -182,7 +243,8 @@ impl OpenAITranscriptPairCommitter {
         if delta.is_empty() {
             return Vec::new();
         }
-        self.source.append(delta, elapsed_ms);
+        let timing = self.receipt_time(elapsed_ms);
+        self.source.append(delta, timing);
         let preview = TranscriptEvent::SourceDraft {
             text: self.source.text.clone(),
             language: self.source_language.clone(),
@@ -198,7 +260,8 @@ impl OpenAITranscriptPairCommitter {
         if delta.is_empty() {
             return Vec::new();
         }
-        self.translation.append(delta, elapsed_ms);
+        let timing = self.receipt_time(elapsed_ms);
+        self.translation.append(delta, timing);
         let preview = TranscriptEvent::TranslationDraft(self.translation.text.clone());
         self.events_after_append(preview)
     }
@@ -227,9 +290,15 @@ impl OpenAITranscriptPairCommitter {
         event.into_iter().collect()
     }
 
+    pub fn has_pending(&self) -> bool {
+        is_meaningful(&self.source.text) || is_meaningful(&self.translation.text)
+    }
+
     pub fn reset(&mut self) {
         self.source.reset();
         self.translation.reset();
+        self.last_delta_ms = None;
+        self.explicit_turn = false;
     }
 
     #[cfg(test)]
@@ -270,6 +339,9 @@ impl OpenAITranscriptPairCommitter {
     }
 
     fn next_safe_commit_lengths(&self) -> Option<(usize, usize)> {
+        if self.stable_block_mode {
+            return None;
+        }
         if let Some((source_aligned_length, translation_aligned_length)) = self
             .source
             .aligned_prefixes(&self.translation, MAXIMUM_ALIGNMENT_SKEW_MS)
@@ -358,6 +430,13 @@ impl Default for OpenAITranscriptPairCommitter {
     }
 }
 
+fn ends_complete(text: &str) -> bool {
+    text.trim_end()
+        .chars()
+        .next_back()
+        .is_some_and(|c| SENTENCE_DELIMITERS.contains(&c))
+}
+
 fn char_prefix(text: &str, count: usize) -> String {
     text.chars().take(count).collect()
 }
@@ -387,6 +466,68 @@ fn is_meaningful(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gemini_keeps_split_translation_with_its_original_block() {
+        let mut stream = OpenAITranscriptPairCommitter::new_gemini();
+        stream.append_source_delta("First sentence.", Some(0));
+        let events = stream.append_translation_delta("第一部分。", Some(100));
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e, TranscriptEvent::SubtitleFinalPair { .. })));
+        assert!(stream.settle(1_900).is_empty());
+        stream.append_translation_delta("后半部分。", Some(1_000));
+        stream.append_source_delta(" Next sentence.", Some(1_100));
+        stream.append_translation_delta("下一句。", Some(1_900));
+        assert!(stream.settle(3_899).is_empty());
+        assert!(
+            matches!(stream.settle(3_900).as_slice(), [TranscriptEvent::SubtitleFinalPair { source, translation, .. }] if source == "First sentence. Next sentence." && translation == "第一部分。后半部分。下一句。")
+        );
+        assert!(!stream.has_pending());
+        // A genuine repetition belongs to a new block, not a deduplication filter.
+        stream.append_source_delta("First sentence.", Some(4_000));
+        stream.append_translation_delta("第一句。", Some(4_100));
+        assert_eq!(stream.settle(6_100).len(), 1);
+    }
+
+    #[test]
+    fn gemini_explicit_boundary_absorbs_late_unpunctuated_tail() {
+        let mut stream = OpenAITranscriptPairCommitter::new_gemini();
+        stream.append_source_delta("Source ", Some(0));
+        stream.append_translation_delta("翻訳", Some(50));
+        stream.note_turn_complete(100);
+        assert!(stream.settle(599).is_empty());
+        stream.append_source_delta("tail", Some(300));
+        stream.append_translation_delta("末尾", Some(350));
+        assert!(stream.settle(849).is_empty());
+        assert!(
+            matches!(stream.settle(850).as_slice(), [TranscriptEvent::SubtitleFinalPair { source, translation, .. }] if source == "Source tail" && translation == "翻訳末尾")
+        );
+    }
+
+    #[test]
+    fn gemini_quiet_does_not_commit_unmatched_or_incomplete_text() {
+        let mut stream = OpenAITranscriptPairCommitter::new_gemini();
+        stream.append_source_delta("Complete.", Some(0));
+        assert!(stream.settle(5_000).is_empty());
+        stream.append_translation_delta("尚未完成", Some(5_100));
+        assert!(stream.settle(10_000).is_empty());
+        assert_eq!(stream.finish().len(), 1);
+    }
+
+    #[test]
+    fn pending_status_tracks_unmatched_content_without_counting_whitespace() {
+        let mut stream = OpenAITranscriptPairCommitter::default();
+        assert!(!stream.has_pending());
+        stream.append_source_delta("Hello.", None);
+        assert!(stream.has_pending());
+        stream.append_translation_delta("こんにちは。 ", None);
+        assert!(!stream.has_pending());
+        stream.append_source_delta("Unmatched", None);
+        assert!(stream.has_pending());
+        stream.reset();
+        assert!(!stream.has_pending());
+    }
 
     #[test]
     fn accumulates_append_only_drafts() {

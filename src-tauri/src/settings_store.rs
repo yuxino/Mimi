@@ -31,6 +31,14 @@ use std::sync::Mutex;
 pub const PROFILE_KEYCHAIN_SERVICE: &str = "app.yuxino.mimi.credentials.profiles";
 pub const DEVELOPMENT_APPLICATION_IDENTIFIER: &str = "app.yuxino.mimi.dev";
 const LOCAL_DEV_ALIBABA_PROFILE_ID: &str = "alibaba-local-dev";
+const LOCAL_DEV_GEMINI_PROFILE_ID: &str = "gemini-local-dev";
+
+fn is_local_dev_profile_id(id: &str) -> bool {
+    matches!(
+        id,
+        LOCAL_DEV_ALIBABA_PROFILE_ID | LOCAL_DEV_GEMINI_PROFILE_ID
+    )
+}
 const DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE: &str = "app.yuxino.mimi.dev.credentials.profiles";
 pub const LEGACY_KEYCHAIN_SERVICE_V3: &str = "app.yuxino.mimi.credentials.v3";
 pub const LEGACY_KEYCHAIN_SERVICE_V2: &str = "app.yuxino.mimi.credentials.v2";
@@ -360,8 +368,8 @@ pub trait SecretStore: Send + Sync {
     fn is_read_only(&self) -> bool {
         false
     }
-    fn local_dev_profile_id(&self) -> Option<&'static str> {
-        None
+    fn local_dev_profile_ids(&self) -> Vec<&'static str> {
+        Vec::new()
     }
 }
 
@@ -587,34 +595,50 @@ impl Default for ProfileCatalog {
 }
 
 impl ProfileCatalog {
-    fn with_local_dev_profile(mut self, enabled: bool) -> Self {
-        let existed = self
-            .profiles
-            .iter()
-            .any(|p| p.id == LOCAL_DEV_ALIBABA_PROFILE_ID);
-        let previous = self
-            .profiles
-            .iter()
-            .find(|p| p.id == LOCAL_DEV_ALIBABA_PROFILE_ID)
-            .cloned();
-        self.profiles
-            .retain(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID);
-        if self.profiles.is_empty() && !enabled {
+    fn with_local_dev_profiles(mut self, enabled: &[&str]) -> Self {
+        let previous = self.profiles.clone();
+        self.profiles.retain(|p| !is_local_dev_profile_id(&p.id));
+        if self.profiles.is_empty() && enabled.is_empty() {
             self.profiles.push(ServiceProfile::alibaba_default());
         }
-        if enabled {
-            let mut profile = previous.unwrap_or_else(|| ServiceProfile {
-                id: LOCAL_DEV_ALIBABA_PROFILE_ID.into(),
-                name: "Alibaba Cloud · dev".into(),
-                ..ServiceProfile::alibaba_default()
-            });
-            profile.provider = ProviderKind::AlibabaCloud;
+        let mut presets = Vec::new();
+        for (id, provider, name) in [
+            (
+                LOCAL_DEV_ALIBABA_PROFILE_ID,
+                ProviderKind::AlibabaCloud,
+                "Alibaba Cloud · dev",
+            ),
+            (
+                LOCAL_DEV_GEMINI_PROFILE_ID,
+                ProviderKind::GoogleGeminiLive,
+                "Google Gemini · dev",
+            ),
+        ] {
+            if !enabled.contains(&id) {
+                continue;
+            }
+            let mut profile = previous
+                .iter()
+                .find(|p| p.id == id)
+                .cloned()
+                .unwrap_or_else(|| ServiceProfile {
+                    id: id.into(),
+                    name: name.into(),
+                    ..ServiceProfile::alibaba_default()
+                });
+            profile.provider = provider;
             profile.text_translation = Some(TextTranslation::FollowService);
-            if !existed && self.active_profile_id == DEFAULT_ALIBABA_PROFILE_ID {
+            if id == LOCAL_DEV_ALIBABA_PROFILE_ID
+                && !previous.iter().any(|p| p.id == id)
+                && self.active_profile_id == DEFAULT_ALIBABA_PROFILE_ID
+            {
                 self.active_profile_id = LOCAL_DEV_ALIBABA_PROFILE_ID.into();
             }
-            self.profiles.insert(0, profile);
-        } else if self.active_profile_id == LOCAL_DEV_ALIBABA_PROFILE_ID {
+            presets.push(profile);
+        }
+        presets.append(&mut self.profiles);
+        self.profiles = presets;
+        if !self.profiles.iter().any(|p| p.id == self.active_profile_id) {
             self.active_profile_id = self.profiles[0].id.clone();
         }
         self
@@ -626,7 +650,7 @@ impl ProfileCatalog {
             || self
                 .profiles
                 .iter()
-                .filter(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID)
+                .filter(|p| !is_local_dev_profile_id(&p.id))
                 .count()
                 > MAXIMUM_PROFILE_COUNT
         {
@@ -693,7 +717,7 @@ impl SettingsStore {
         let secret =
             local_dev_credentials::select(&app_config_dir, is_ui_test, application_identifier)
                 .unwrap_or(secret);
-        let is_file_mode = secret.is_read_only() || secret.local_dev_profile_id().is_some();
+        let is_file_mode = secret.is_read_only() || !secret.local_dev_profile_ids().is_empty();
         Self::load_with_secret(
             app_config_dir,
             is_ui_test,
@@ -752,7 +776,7 @@ impl SettingsStore {
 
         let normalized = catalog
             .clone()
-            .with_local_dev_profile(secret.local_dev_profile_id().is_some());
+            .with_local_dev_profiles(&secret.local_dev_profile_ids());
         let should_create_catalog = should_create_catalog || normalized != catalog;
         let store = Self {
             prefs_path,
@@ -799,8 +823,11 @@ impl SettingsStore {
         profile_keychain_service: &'static str,
         migrate_legacy_alibaba: bool,
     ) -> Self {
-        let catalog = ProfileCatalog::default()
-            .with_local_dev_profile(!is_ui_test && secret.local_dev_profile_id().is_some());
+        let catalog = ProfileCatalog::default().with_local_dev_profiles(&if is_ui_test {
+            Vec::new()
+        } else {
+            secret.local_dev_profile_ids()
+        });
         Self {
             prefs_path: PathBuf::new(),
             prefs: Mutex::new(Preferences::default()),
@@ -999,7 +1026,7 @@ impl SettingsStore {
             if catalog
                 .profiles
                 .iter()
-                .filter(|p| p.id != LOCAL_DEV_ALIBABA_PROFILE_ID)
+                .filter(|p| !is_local_dev_profile_id(&p.id))
                 .count()
                 >= MAXIMUM_PROFILE_COUNT
             {
@@ -1282,7 +1309,7 @@ impl SettingsStore {
     /// Public source only; never exposes a file path or secret. This is not a
     /// persisted preference and cannot enable file mode from the frontend.
     pub fn credential_storage(&self) -> &'static str {
-        if self.secret.is_read_only() || self.secret.local_dev_profile_id().is_some() {
+        if self.secret.is_read_only() || !self.secret.local_dev_profile_ids().is_empty() {
             "localDevFile"
         } else {
             "keychain"
@@ -1290,7 +1317,7 @@ impl SettingsStore {
     }
 
     pub fn profile_uses_local_dev_credentials(&self, profile_id: &str) -> bool {
-        !self.is_ui_test && self.secret.local_dev_profile_id() == Some(profile_id)
+        !self.is_ui_test && self.secret.local_dev_profile_ids().contains(&profile_id)
     }
 
     pub fn profile_credential_storage(&self, profile_id: &str) -> &'static str {
@@ -1525,8 +1552,11 @@ impl SettingsStore {
             return Ok(None);
         }
         if self.profile_uses_local_dev_credentials(&profile.id)
-            && (profile.provider != ProviderKind::AlibabaCloud
-                || profile.text_translation() != TextTranslation::FollowService)
+            && (!matches!(
+                (profile.id.as_str(), profile.provider),
+                (LOCAL_DEV_ALIBABA_PROFILE_ID, ProviderKind::AlibabaCloud)
+                    | (LOCAL_DEV_GEMINI_PROFILE_ID, ProviderKind::GoogleGeminiLive)
+            ) || profile.text_translation() != TextTranslation::FollowService)
         {
             return Ok(None);
         }
