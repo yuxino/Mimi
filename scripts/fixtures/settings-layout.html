@@ -9,6 +9,7 @@ window.__TAURI_INTERNALS__ = {
   transformCallback: () => 0,
   unregisterCallback: () => {},
   invoke: async (command, args) => {
+    if (command === "get_apple_speech_support") return fixture.appleSupport ?? { available: false, languages: [] };
     if (command === "windows_audio_status") {
       if (fixture.platform !== "windows") return null;
       if (fixture.state === "failed") throw new Error("fixture_unavailable");
@@ -72,10 +73,18 @@ window.applyLayoutCase = async next => {
   location.hash = next.category ?? "service-profiles";
   localStorage.setItem("mimi.settings-theme", next.theme);
   setStoredUiLanguage(next.language);
+  const appleProfile = next.editor && next.provider === "appleSpeech";
+  const sourceLanguage = next.sourceLanguage ?? (appleProfile ? "en" : initial.settings.sourceLanguage);
+  const targetLanguage = next.targetLanguage ?? (appleProfile ? "original" : initial.settings.targetLanguage);
+  const profile = { id: next.profileId ?? "layout-custom", name: next.profileName ?? "Fixture configuration", provider: next.provider ?? "customDashScopeASR", credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: next.textTranslation ?? (appleProfile ? "followService" : "chatMock"), textTranslationNames: { chatMock: next.translationName ?? "" }, speechRecognitionName: next.speechRecognitionName, ...next.profileOverrides };
   useStore.setState({
     initializationStatus: "ready",
     settings: { ...initial.settings, uiLanguage: next.language, microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
-      ...(next.editor ? { profiles: [{ id: "layout-custom", name: next.profileName ?? "Fixture configuration", provider: next.provider ?? "customDashScopeASR", credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: "chatMock", textTranslationNames: { chatMock: next.translationName ?? "" }, speechRecognitionName: next.speechRecognitionName }], activeProfileId: "layout-custom" } : {}),
+      sourceLanguage, targetLanguage,
+      ...(next.editor ? { profiles: [profile], activeProfileId: profile.id } : {}),
+      ...(appleProfile ? { languageCapabilities: { profileId: profile.id, provider: "appleSpeech", textTranslation: profile.textTranslation, targetLanguage,
+        sourceLanguages: next.sourceLanguages ?? next.appleSupport?.languages.filter(language => language.installed).map(language => language.sourceLanguage) ?? [],
+        targetLanguages: next.targetLanguages ?? ["original"], appleSpeechSupportRevision: 1 } } : {}),
     },
     session: { ...initial.session, isActive: active || next.state === "paused", isPaused: next.state === "paused", status: { kind: active ? "listening" : next.state === "paused" ? "paused" : "idle" } },
   });
@@ -88,6 +97,11 @@ window.applyLayoutCase = async next => {
       document.querySelector(".credential-panel__saved-actions button")?.click();
       await settle();
       for (const button of document.querySelectorAll(".saved-credential-input__toggle")) button.click();
+      await settle();
+    }
+    if (next.appleExpanded) {
+      document.querySelector(".apple-speech-tutorial-toggle")?.click();
+      document.querySelector('.apple-speech-resource-actions button[aria-controls$="-apple-packs"]')?.click();
       await settle();
     }
   }

@@ -11,8 +11,9 @@ export type DraftCheckOutcome = { input: symbol; result: ConnectionDiagnostic | 
 
 /** A content-free identity keeps earlier results off a changed draft. Private
  * input comparisons stay local; neither input nor signature enters diagnostics. */
-export function DraftConnectionCheck({ draft, outcome, onCheck, ...props }: {
+export function DraftConnectionCheck({ draft, context, outcome, onCheck, ...props }: {
   draft?: ProviderCredentialsInput | null;
+  context?: string;
   outcome?: DraftCheckOutcome;
   onCheck: (input: symbol) => void;
   pending: boolean;
@@ -20,7 +21,8 @@ export function DraftConnectionCheck({ draft, outcome, onCheck, ...props }: {
   label?: string;
 }) {
   const signature = JSON.stringify(draft);
-  const input = useMemo(() => Symbol(signature === undefined ? "saved" : "draft"), [signature]);
+  const identity = useMemo(() => ({ context, token: Symbol(signature === undefined ? "saved" : "draft") }), [signature, context]);
+  const input = identity.token;
   const current = outcome?.input === input ? outcome : undefined;
   return <ConnectionCheck {...props} result={current?.result ?? null} error={current?.error ?? null}
     disabled={props.disabled || draft === null} onCheck={() => onCheck(input)} />;

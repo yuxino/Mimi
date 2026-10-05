@@ -120,6 +120,12 @@ pub fn preparation_failure(error: &str) -> ConnectionDiagnostic {
         _ if error.starts_with("Add the connection credentials for ") => "missing",
         _ => "invalid",
     };
+    if error == "apple_speech_language_unsupported" {
+        return ConnectionDiagnostic::unavailable(
+            "present",
+            ConnectionCheckReason::AppleSpeechLanguageUnsupported,
+        );
+    }
     if error == "text_translation_not_configured" {
         return ConnectionDiagnostic::unavailable(
             "missing",
@@ -998,6 +1004,10 @@ mod tests {
             (
                 "credential_store_access_denied",
                 ConnectionCheckReason::CredentialsAccessDenied,
+            ),
+            (
+                "apple_speech_language_unsupported",
+                ConnectionCheckReason::AppleSpeechLanguageUnsupported,
             ),
             (
                 "arbitrary private native error",

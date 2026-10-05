@@ -2555,8 +2555,18 @@ impl SessionManager {
     /// selected sources. A live selection reconnects; a paused one only
     /// replaces the configuration used by Resume.
     pub async fn switch_profile(self: &Arc<Self>, profile_id: &str) -> Result<(), String> {
+        self.switch_profile_with_source(profile_id, None).await
+    }
+
+    pub async fn switch_profile_with_source(
+        self: &Arc<Self>,
+        profile_id: &str,
+        source_language: Option<SourceLanguage>,
+    ) -> Result<(), String> {
         let switch_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
-        let lifecycle = self.settings_mutation_guard(false).await?;
+        let lifecycle = self
+            .settings_mutation_guard(source_language.is_some())
+            .await?;
         if !self.is_lifecycle_request_current(switch_epoch) {
             return Err("profile_switch_superseded".into());
         }
@@ -2569,7 +2579,7 @@ impl SessionManager {
         )
         .map_err(str::to_owned)?;
         let current_profile = self.settings.active_profile()?;
-        if current_profile.id == profile_id {
+        if current_profile.id == profile_id && source_language.is_none() {
             return Ok(());
         }
         let configuration_failure = self.configuration_failure_snapshot();
@@ -2578,6 +2588,9 @@ impl SessionManager {
             .iter()
             .find(|profile| profile.id == profile_id)
             .ok_or_else(|| "The service profile does not exist.".to_string())?;
+        let selection = self
+            .settings
+            .preferences_for_profile_selection(profile, source_language)?;
         let apple_support = if profile.provider == ProviderKind::AppleSpeech {
             if self.is_ui_test() {
                 return Err("apple_speech_ui_test_unavailable".into());
@@ -2603,17 +2616,22 @@ impl SessionManager {
         // Validate before persistence: an incomplete profile must not replace
         // the working session. UI fixtures never resolve credentials.
         let proposed = if live && !self.is_ui_test() {
-            Some(self.settings.configuration_for_profile_selection(profile)?)
+            Some(match source_language {
+                Some(source) => self
+                    .settings
+                    .configuration_for_profile_selection_with_source(profile, Some(source))?,
+                None => self.settings.configuration_for_profile_selection(profile)?,
+            })
         } else {
             None
         };
-        if let (Some(support), Some(configuration)) = (apple_support, &proposed) {
+        if let Some(support) = apple_support {
             crate::apple_speech_support::validate_refreshed_profile_source(
                 Ok(support),
                 profile,
-                configuration.source_language,
-                configuration.target_language,
-                true,
+                selection.source_language,
+                selection.target_language,
+                live || source_language.is_some(),
                 || self.publish_settings(),
             )?;
         }
@@ -2647,9 +2665,13 @@ impl SessionManager {
                 &self.active_settings,
                 proposed,
                 || {
-                    self.settings
-                        .select_profile(profile_id)
-                        .map_err(|_| "profile_switch_save_failed".to_string())
+                    match source_language {
+                        Some(source) => self
+                            .settings
+                            .select_profile_with_source(profile_id, Some(source)),
+                        None => self.settings.select_profile(profile_id),
+                    }
+                    .map_err(|_| "profile_switch_save_failed".to_string())
                 },
             )?;
         }

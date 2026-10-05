@@ -221,3 +221,15 @@ it("keeps Apple resource navigation reachable when no language is ready or the s
   expect(open).toHaveBeenCalledOnce();
   expect(save).not.toHaveBeenCalled();
 });
+
+it("omits a duplicate Apple source control while retaining independently configured translation controls", async () => {
+  settings = { ...settings, sourceLanguage: "en", targetLanguage: "zh", activeProfileId: "apple",
+    profiles: [{ id: "apple", name: "Apple Speech", provider: "appleSpeech", credentialState: "present", textTranslation: "deepL" }],
+    languageCapabilities: { profileId: "apple", provider: "appleSpeech", textTranslation: "deepL", targetLanguage: "zh", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "en", "ja"] } };
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
+  expect(host.querySelector(`[aria-label="${I18N.settings.sourceLanguage}"]`)).toBeNull();
+  expect(host.querySelector(`[aria-label="${I18N.settings.translateTo}"]`)).not.toBeNull();
+  settings = { ...settings, targetLanguage: "original", profiles: [{ ...settings.profiles[0], textTranslation: "followService" }], languageCapabilities: undefined };
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
+  expect(host.querySelector("section")).toBeNull();
+});

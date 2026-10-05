@@ -1937,8 +1937,17 @@ pub async fn profile_select(
     app: AppHandle,
     state: State<'_, AppState>,
     profile_id: String,
+    source_language: Option<SourceLanguage>,
 ) -> Result<SettingsSnapshotPayload, String> {
-    state.session.switch_profile(&profile_id).await?;
+    match source_language {
+        Some(source) => {
+            state
+                .session
+                .switch_profile_with_source(&profile_id, Some(source))
+                .await?
+        }
+        None => state.session.switch_profile(&profile_id).await?,
+    }
     emit_settings_snapshot(&app, &state.settings)
 }
 
@@ -2460,6 +2469,7 @@ pub async fn profile_test_connection(
     profile_id: String,
     stage: Option<crate::clients::connection_diagnostics::ConnectionCheckStage>,
     credentials: Option<ProviderCredentials>,
+    source_language: Option<SourceLanguage>,
 ) -> Result<crate::clients::connection_diagnostics::ConnectionDiagnostic, String> {
     use crate::clients::connection_diagnostics::{
         check_service, check_speech_service, check_text_service, preparation_failure,
@@ -2470,6 +2480,13 @@ pub async fn profile_test_connection(
         .iter()
         .find(|p| p.id == profile_id)
         .ok_or("profile_not_found")?;
+    if source_language.is_some()
+        && (profile.provider != ProviderKind::AppleSpeech
+            || stage != Some(ConnectionCheckStage::Speech)
+            || credentials.is_some())
+    {
+        return Err("apple_speech_source_override_invalid".into());
+    }
     if let Some(credentials) = credentials {
         // A draft is an explicit, ephemeral check, never a saved-profile
         // readiness request. In particular it must not emit a credential snapshot.
@@ -2498,7 +2515,13 @@ pub async fn profile_test_connection(
         // text-only check must not prompt for or require the recognizer's key.
         return Ok(match stage {
             ConnectionCheckStage::Speech => {
-                match state.settings.configuration_for_speech_probe(profile) {
+                let configuration = match source_language {
+                    Some(source) => state
+                        .settings
+                        .configuration_for_speech_probe_with_source(profile, Some(source)),
+                    None => state.settings.configuration_for_speech_probe(profile),
+                };
+                match configuration {
                     Err(error) => preparation_failure(&error),
                     Ok(_) if app_is_ui_test() => ConnectionDiagnostic::not_tested("present"),
                     Ok(configuration) => check_speech_service(&configuration, false).await,

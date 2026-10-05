@@ -42,7 +42,7 @@ beforeEach(() => {
   vi.mocked(prepareAppleSpeechLanguage).mockReset().mockResolvedValue(ready);
   props = { profile, settings: settings(), sourceLanguage: "en", support: ready, loading: false, failed: false,
     inputId: "synthetic-apple", disabled: false, busy: false, feedback: null, confirmingDelete: false,
-    onRetry: vi.fn().mockResolvedValue(undefined), onPrepared: vi.fn(), onBusyChange: vi.fn(),
+    onRetry: vi.fn().mockResolvedValue(undefined), onPrepared: vi.fn(), onBusyChange: vi.fn(), onSelectProfile: vi.fn().mockResolvedValue(undefined),
     onSave: vi.fn().mockResolvedValue(undefined), onRequestDelete: vi.fn(), onConfirmDelete: vi.fn().mockResolvedValue(undefined), onCancelDelete: vi.fn() };
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -57,31 +57,44 @@ async function render(overrides: Partial<typeof props> = {}) {
 function button(label: string) {
   return [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === label);
 }
-async function choose(source: SourceLanguage) {
-  await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"]')!.click());
-  const choice = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === SOURCE_LANGUAGE_DISPLAY_NAMES[source])!;
+async function choose(source: SourceLanguage, label = I18N.settings.sourceLanguage) {
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${label}"]`)!.click());
+  const choice = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent?.startsWith(SOURCE_LANGUAGE_DISPLAY_NAMES[source]))!;
   await act(async () => choice.click());
 }
 
-it.each(["en", "zh", "ja"] as const)("shows essential setup steps and the active language without an extra action in %s", async locale => {
+it.each(["en", "zh", "ja"] as const)("keeps adding a language discoverable after the current language is downloaded in %s", async locale => {
   setStoredUiLanguage(locale);
   await render();
   const section = host.querySelector<HTMLElement>("#apple-speech-resources")!;
   expect(section.tabIndex).toBe(-1);
-  expect(section.querySelector(":scope > .settings-row__label")?.textContent).toBe(I18N.settings.appleSpeechSetupSteps);
+  expect(button(I18N.settings.appleSpeechAddLanguagePack)?.getAttribute("aria-expanded")).toBe("false");
+  expect(button(I18N.settings.appleSpeechInstallHelp)?.getAttribute("aria-expanded")).toBe("false");
+  expect(section.querySelector(".apple-speech-tutorial")).toBeNull();
+  expect(section.querySelector(".apple-speech-pack-manager")).toBeNull();
   expect(section.textContent).toContain(I18N.settings.appleSpeechLanguageInUse);
   expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
   expect(save).not.toHaveBeenCalled();
   expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
 });
 
-it("keeps essential steps visible while resource loading fails", async () => {
+it("keeps the click-accessible installation guide available through loading and retry states", async () => {
   await render({ loading: true, support: null });
-  expect(host.textContent).toContain(I18N.settings.appleSpeechSetupSteps);
+  const help = button(I18N.settings.appleSpeechInstallHelp)!;
+  help.focus();
+  await act(async () => help.click());
+  expect(help.getAttribute("aria-expanded")).toBe("true");
+  const tutorial = document.getElementById(help.getAttribute("aria-controls")!)!;
+  expect(tutorial.querySelectorAll("li")).toHaveLength(3);
+  expect(tutorial.textContent).toContain(I18N.settings.appleSpeechDownloadLocation);
   await render({ loading: false, failed: true });
-  expect(host.textContent).toContain(I18N.settings.appleSpeechSetupSteps);
+  expect(host.textContent).toContain(I18N.settings.appleSpeechInstallStepDownload);
   expect(host.textContent).toContain(I18N.settings.appleSpeechLoadFailed);
+  await act(async () => button(I18N.settings.retryLoadingSettings)!.click());
+  expect(props.onRetry).toHaveBeenCalledOnce();
   expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
+  await act(async () => help.click());
+  expect(document.getElementById(help.getAttribute("aria-controls")!)).toBeNull();
 });
 
 it("saves only after the explicit action and serializes duplicate clicks with resource controls", async () => {
@@ -109,23 +122,27 @@ it("saves only after the explicit action and serializes duplicate clicks with re
 it("preparation alone never changes recognition and requires a ready snapshot before use", async () => {
   const unprepared = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: language.sourceLanguage !== "ja" })) };
   await render({ support: unprepared, settings: { ...props.settings, languageCapabilities: { ...props.settings.languageCapabilities!, sourceLanguages: ["en", "fr"] } } });
-  await choose("ja");
+  await act(async () => button(I18N.settings.appleSpeechAddLanguagePack)!.click());
+  await choose("ja", I18N.settings.appleSpeechLanguagePack);
   expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
   await act(async () => button(I18N.settings.appleSpeechPrepare)!.click());
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("ja");
   expect(props.onPrepared).toHaveBeenCalledWith(ready);
   expect(save).not.toHaveBeenCalled();
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+  expect(host.querySelector(".apple-speech-pack-manager")).toBeNull();
   await render({ support: ready, settings: settings() });
   expect(button(I18N.settings.appleSpeechUseLanguage)).toBeDefined();
   expect(save).not.toHaveBeenCalled();
 });
 
-it("requires selecting the edited Apple profile before changing the active language", async () => {
+it("uses the edited Apple profile and chosen language through one explicit action", async () => {
   const other: ServiceProfile = { id: "other", name: "Other", provider: "googleGeminiLive", credentialState: "present" };
   await render({ settings: { ...props.settings, profiles: [profile, other], activeProfileId: other.id, languageCapabilities: undefined } });
   await choose("ja");
-  expect(host.textContent).toContain(I18N.settings.appleSpeechSelectProfileFirst);
-  expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+  await act(async () => button(I18N.settings.appleSpeechUseLanguage)!.click());
+  expect(props.onSelectProfile).toHaveBeenCalledExactlyOnceWith(profile.id, "ja");
   expect(save).not.toHaveBeenCalled();
 });
 
@@ -133,21 +150,42 @@ it("keeps route-incompatible prepared resources available without offering a fai
   const deepL = { ...profile, textTranslation: "deepL" as const };
   const translated: SettingsSnapshot = { ...props.settings, profiles: [deepL], targetLanguage: "en",
     languageCapabilities: { ...props.settings.languageCapabilities!, textTranslation: "deepL", targetLanguage: "en", sourceLanguages: ["en"], targetLanguages: ["original", "en"] } };
-  await render({ profile: deepL, settings: translated });
+  await render({ profile: deepL, settings: { ...translated, targetLanguage: "original", languageCapabilities: { ...translated.languageCapabilities!, targetLanguage: "original", sourceLanguages: ["en", "fr"] } } });
   await choose("fr");
+  await render({ settings: translated });
   expect(host.textContent).toContain("fr-FR");
   expect(host.textContent).toContain(I18N.settings.appleSpeechLanguageRouteUnsupported);
   expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
   expect(save).not.toHaveBeenCalled();
+  await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"]')!.click());
+  expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual([SOURCE_LANGUAGE_DISPLAY_NAMES.en]);
+  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await render({ settings: { ...translated, targetLanguage: "original", languageCapabilities: { ...translated.languageCapabilities!, targetLanguage: "original", sourceLanguages: ["en", "fr"] } } });
   expect(button(I18N.settings.appleSpeechUseLanguage)).toBeDefined();
 });
 
-it("explains the stop requirement and never suggests starting an already active session", async () => {
+it("keeps an inactive profile's translator restrictions in its recognition choices", async () => {
+  const other: ServiceProfile = { id: "other", name: "Other", provider: "googleGeminiLive", credentialState: "present" };
+  const deepL = { ...profile, textTranslation: "deepL" as const };
+  await render({ profile: deepL, sourceLanguage: "fr", settings: { ...props.settings, profiles: [deepL, other], activeProfileId: other.id, targetLanguage: "zh", languageCapabilities: undefined } });
+  expect(host.textContent).toContain(I18N.settings.appleSpeechLanguageRouteUnsupported);
+  expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
+  await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"]')!.click());
+  expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).not.toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.fr);
+  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await render({ settings: { ...props.settings, targetLanguage: "original" } });
+  expect(button(I18N.settings.appleSpeechUseLanguage)).toBeDefined();
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+});
+
+it("explains the stop requirement while allowing users to read the installation guide and language list", async () => {
   await render({ requiresStop: true });
   expect(host.textContent).toContain(I18N.settings.languageChangeRequiresStop);
-  expect(host.textContent).not.toContain(I18N.settings.appleSpeechLanguageInUse);
   expect(host.querySelector<HTMLButtonElement>('[role="combobox"]')!.disabled).toBe(true);
+  await act(async () => button(I18N.settings.appleSpeechAddLanguagePack)!.click());
+  expect(host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.appleSpeechLanguagePack}"]`)!.disabled).toBe(true);
+  await act(async () => button(I18N.settings.appleSpeechInstallHelp)!.click());
+  expect(host.textContent).toContain(I18N.settings.appleSpeechDownloadLocation);
   expect(save).not.toHaveBeenCalled();
   expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
 });
@@ -184,4 +222,79 @@ it("does not revive successful language feedback after navigating away", async (
   await act(async () => root.render(<SettingsToastRegion />));
   await act(async () => resolve());
   expect(document.body.textContent).not.toContain(I18N.settings.appleSpeechLanguageSelected);
+});
+
+it("lists download status for every supported language without downloading on open or selection", async () => {
+  const unprepared = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: language.sourceLanguage === "en" })) };
+  await render({ support: unprepared });
+  await act(async () => button(I18N.settings.appleSpeechAddLanguagePack)!.click());
+  const selector = host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.appleSpeechLanguagePack}"]`)!;
+  await act(async () => selector.click());
+  const choices = [...document.querySelectorAll<HTMLElement>('[role="option"]')].map(option => option.textContent);
+  expect(choices).toContain(`${SOURCE_LANGUAGE_DISPLAY_NAMES.en} · ${I18N.settings.appleSpeechInstalled}`);
+  expect(choices).toContain(`${SOURCE_LANGUAGE_DISPLAY_NAMES.ja} · ${I18N.settings.appleSpeechNotInstalled}`);
+  const french = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent?.startsWith(SOURCE_LANGUAGE_DISPLAY_NAMES.fr))!;
+  await act(async () => french.click());
+  expect(host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.textContent).toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.en);
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("serializes download clicks, preserves retry state, and keeps native failure details private", async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(prepareAppleSpeechLanguage).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  const unprepared = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: language.sourceLanguage !== "ja" })) };
+  await render({ support: unprepared });
+  await act(async () => button(I18N.settings.appleSpeechAddLanguagePack)!.click());
+  const download = button(I18N.settings.appleSpeechPrepare)!;
+  await act(async () => { download.click(); download.click(); });
+  expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("ja");
+  expect(download.disabled).toBe(true);
+  expect(button(I18N.settings.appleSpeechAddLanguagePack)?.disabled).toBe(true);
+  expect(host.textContent).toContain(I18N.settings.appleSpeechPreparing);
+  await act(async () => reject(new Error("private-native-error")));
+  expect(host.querySelector(".apple-speech-pack-manager")?.textContent).toContain(I18N.settings.appleSpeechPrepareFailed);
+  expect(host.textContent).not.toContain("private-native-error");
+  expect(button(I18N.settings.appleSpeechRetryDownload)?.disabled).toBe(false);
+  await act(async () => button(I18N.settings.appleSpeechRetryDownload)!.click());
+  expect(prepareAppleSpeechLanguage).toHaveBeenCalledTimes(2);
+  expect(props.onPrepared).toHaveBeenCalledWith(ready);
+  expect(save).not.toHaveBeenCalled();
+  expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+});
+
+it("provides the add-language path with no downloaded languages and honors its stop lock", async () => {
+  const missing = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: false })) };
+  await render({ support: missing, requiresStop: true });
+  expect(host.querySelector<HTMLButtonElement>('[role="combobox"]')!.disabled).toBe(true);
+  expect(button(I18N.settings.appleSpeechUseLanguage)).toBeUndefined();
+  await act(async () => button(I18N.settings.appleSpeechAddLanguagePack)!.click());
+  expect(button(I18N.settings.appleSpeechPrepare)?.disabled).toBe(true);
+  await act(async () => button(I18N.settings.appleSpeechPrepare)!.click());
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+  await render({ requiresStop: false });
+  expect(button(I18N.settings.appleSpeechPrepare)?.disabled).toBe(false);
+});
+
+it("keeps unsupported devices and empty capability lists out of download actions", async () => {
+  for (const support of [{ available: false, languages: [] }, { available: true, languages: [] }]) {
+    await render({ support });
+    expect(host.textContent).toContain(I18N.settings.appleSpeechUnavailable);
+    expect(button(I18N.settings.appleSpeechPrepare)).toBeUndefined();
+    expect(button(I18N.settings.appleSpeechAddLanguagePack)).toBeUndefined();
+    expect(button(I18N.settings.appleSpeechInstallHelp)).toBeDefined();
+  }
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+});
+
+it("checks the chosen recognition language rather than an unrelated language-pack selection", async () => {
+  const connectionCheck = vi.fn().mockReturnValue(<span>Recognition check</span>);
+  await render({ connectionCheck });
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined, "en");
+  await choose("fr");
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined, "fr");
+  await act(async () => button(I18N.settings.appleSpeechAddLanguagePack)!.click());
+  await choose("ja", I18N.settings.appleSpeechLanguagePack);
+  expect(connectionCheck).toHaveBeenLastCalledWith(undefined, "fr");
+  expect(save).not.toHaveBeenCalled();
 });

@@ -148,8 +148,8 @@ export function profileUpdate(
   });
 }
 
-export function profileSelect(profileId: string): Promise<SettingsSnapshot> {
-  return invoke<SettingsSnapshot>("profile_select", { profileId });
+export function profileSelect(profileId: string, sourceLanguage?: SourceLanguage): Promise<SettingsSnapshot> {
+  return invoke<SettingsSnapshot>("profile_select", { profileId, ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
 
 export function profileDelete(profileId: string): Promise<SettingsSnapshot> {
@@ -376,6 +376,6 @@ export interface ConnectionDiagnostic {
   elapsedMs?: number | null;
 }
 export type ConnectionCheckStage = "speech" | "text";
-export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput): Promise<ConnectionDiagnostic> {
-  return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}) });
+export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput, sourceLanguage?: SourceLanguage): Promise<ConnectionDiagnostic> {
+  return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}), ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
