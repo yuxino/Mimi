@@ -88,7 +88,9 @@ internal class TencentProtocol(config: ServiceConfiguration, private val source:
             else -> null
         }
         if (finalValue == 1L) return listOf(ServiceEvent.Closed)
-        if (!json.has("result")) return if (finalValue != null) emptyList() else listOf(ServiceEvent.Ready)
+        // Tencent's authenticated startup acknowledgement carries final=0.
+        // Result frames also carry zero and must continue through transcript parsing.
+        if (!json.has("result")) return if (finalValue == null || finalValue == 0L) listOf(ServiceEvent.Ready) else emptyList()
         val result = json.getJSONObject("result")
         val sourceText = transcript(result, "source_text")
         val targetText = transcript(result, "target_text")

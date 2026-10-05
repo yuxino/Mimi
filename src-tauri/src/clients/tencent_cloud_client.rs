@@ -944,6 +944,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn zero_final_handshake_is_ready_before_audio() {
+        let (observed_audio, audio_observation) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                socket
+                    .send(Message::Text(
+                        r#"{"code":0,"message":"success","voice_id":"fixture-voice","final":0}"#
+                            .into(),
+                    ))
+                    .await
+                    .unwrap();
+                let mut saw_audio = false;
+                while let Some(Ok(message)) = socket.next().await {
+                    saw_audio |= matches!(message, Message::Binary(_));
+                    if matches!(message, Message::Close(_)) {
+                        break;
+                    }
+                }
+                observed_audio.send(saw_audio).unwrap();
+            })
+        })
+        .await;
+
+        client
+            .connect_with_timeout(Duration::from_millis(500))
+            .await
+            .unwrap();
+        assert!(client.inner.ready.load(Ordering::SeqCst));
+        for expected in [
+            LiveTranslateServerEvent::SessionCreated,
+            LiveTranslateServerEvent::SessionUpdated,
+        ] {
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(1), events.recv())
+                    .await
+                    .unwrap(),
+                Some(expected)
+            );
+        }
+        client.disconnect().await;
+        assert!(
+            !tokio::time::timeout(Duration::from_secs(1), audio_observation)
+                .await
+                .unwrap()
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
     async fn mock_websocket_covers_setup_audio_ping_transcript_and_finish() {
         let (client, mut events) = test_client(|mut socket| {
             Box::pin(async move {

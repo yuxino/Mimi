@@ -1040,3 +1040,40 @@
 - After integrating main's Tencent fixes, final `scripts/check.sh` at `5b689c78`
   passed: Rust 1,177 / 2 ignored, shared core 72 plus JNI checks, frontend 1,743
   across 120 files, formatting, Clippy, lint, typecheck, production build and diff.
+
+### 2026-10-05 — Tencent explicit-zero handshake readiness
+
+- Source baseline `962c2480`; a live handshake probe using the existing service
+  profile received HTTP 101 at 124 ms and the first JSON response at 154 ms:
+  `code=0`, `final=0`, `has_result=false`. No raw response, signed URL, account
+  identifiers or credentials are recorded here.
+- The documented ready example omits `final`; the actual explicit zero is
+  ignored by both existing decoders. Desktop consequently waits until its
+  5-second setup timeout. Android has the same decoder defect and a separate
+  20-second readiness timer; this probe did not measure Android behavior.
+- Repair scope: both decoders accept absent/zero `final` as ready only for a
+  successful response without `result`; shared fixtures protect transcript,
+  completion and rejection handling. A loopback test verifies readiness
+  before sending audio. See the [design](../plans/2026-10-05-tencent-handshake-ready.md).
+- The old signed app's Japanese → Chinese check through the system proxy timed
+  out at 5,195 ms. The patched canonical signed app (`962c2480` plus the
+  uncommitted Tencent fix) passed with the same credentials and configuration
+  in 222 ms.
+- Native system-only playback, microphone off: an English → Chinese
+  15.091-second synthetic QuickTime sample produced two confirmed bilingual
+  overlay groups through the final sentence; pause/resume and replay added two
+  more, for four total. RTT was 16 ms initially and 12 ms after resume, not
+  end-to-end subtitle latency. Diagnostics recorded resume connecting at
+  299.3 s, listening at 299.7 s and stop at 359.2 s. The black background remained;
+  immersive mode was off and transparency stayed at 23. The session was stopped
+  and Japanese → Chinese restored.
+- The new Rust handshake regression failed against the old decoder and all 21
+  focused Tencent tests passed after the fix. Canonical `scripts/check.sh`
+  passed: Rust 1,178 / 2 ignored, shared core 72 plus JNI, frontend 1,749 across
+  121 files, formatting, Clippy, typecheck, lint and production build. Android
+  passed 135 tests across 21 suites, including two JNI tests. After a test-only
+  oneshot follow-up made spawned-server assertion failures visible, the 21
+  focused Rust tests, strict Clippy, formatting and diff checks passed again.
+- Sustained stability, Android hardware and billing eligibility remain
+  unverified. The native evidence covers only the observed connection,
+  subtitle and pause/resume run.

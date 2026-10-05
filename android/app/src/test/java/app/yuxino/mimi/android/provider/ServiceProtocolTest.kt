@@ -51,7 +51,8 @@ class ServiceProtocolTest {
         assertEquals("Y43cc1HS6RnEpdWr1dLaa1fnsQU=",p.request().url.queryParameter("signature"))
         assertEquals("hunyuan-translation-lite",p.request().url.queryParameter("trans_model"))
         assertEquals(6400,p.frameBytes)
-        assertEquals(listOf(ServiceEvent.Ready),p.text("""{"code":0}"""))
+        assertNull(p.setup())
+        assertEquals(listOf(ServiceEvent.Ready),p.text("""{"code":0,"final":0}"""))
         val events=p.text("""{"code":0,"result":{"source_text":"Hello","target_text":"你好","source":"en","target":"zh","sentence_end":true}}""")
         assertEquals(listOf(ServiceEvent.FinalPair("Hello", "你好", "en")),events)
     }

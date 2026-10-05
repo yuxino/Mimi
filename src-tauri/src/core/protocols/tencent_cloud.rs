@@ -292,13 +292,13 @@ impl TencentCloudServerEvent {
             });
         }
 
-        if let Some(final_value) = final_value {
-            return Ok(Self::Ignored {
-                kind: format!("final_{final_value}"),
-            });
+        match final_value {
+            // A successful handshake includes final: 0 before any audio is sent.
+            None | Some(0) => Ok(Self::SessionReady),
+            Some(value) => Ok(Self::Ignored {
+                kind: format!("final_{value}"),
+            }),
         }
-
-        Ok(Self::SessionReady)
     }
 }
 
