@@ -1,6 +1,192 @@
 {
   "schemaVersion": 1,
-  "description": "Shared independent text translation wire semantics. Synthetic fixtures only. Platform-specific UI, transport limits and scheduling are tested separately.",
+  "description": "Shared text translation and provider wire semantics. Synthetic fixtures only. Platform-specific UI, transport limits and scheduling are tested separately.",
+  "tencentSpeechTranslation": {
+    "signing": [
+      {
+        "id": "hmac-sha1-golden",
+        "credentials": {
+          "appId": "1250000000",
+          "secretId": "AKIDEXAMPLE",
+          "secretKey": "secret-key"
+        },
+        "source": "zh",
+        "target": "en",
+        "timestamp": 1700000000,
+        "expired": 1700003600,
+        "nonce": 123456,
+        "voiceId": "voice-123",
+        "expected": {
+          "url": "wss://asr.cloud.tencent.com/asr/speech_translate/1250000000?expired=1700003600&nonce=123456&secretid=AKIDEXAMPLE&source=zh&target=en&timestamp=1700000000&trans_model=hunyuan-translation-lite&voice_format=1&voice_id=voice-123&signature=Y43cc1HS6RnEpdWr1dLaa1fnsQU%3D",
+          "frameBytes": 6400
+        }
+      }
+    ],
+    "events": [
+      {
+        "id": "ready",
+        "frame": "{\"code\":0}",
+        "expected": {
+          "type": "ready"
+        }
+      },
+      {
+        "id": "draft",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":\"Synthetic source\",\"target_text\":\"合成译文\",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":false}}",
+        "expected": {
+          "type": "draft",
+          "source": "Synthetic source",
+          "translation": "合成译文",
+          "language": "en"
+        }
+      },
+      {
+        "id": "atomic-final-pair",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":\"  Synthetic source.  \",\"target_text\":\" 合成译文。 \",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":true}}",
+        "expected": {
+          "type": "finalPair",
+          "source": "Synthetic source.",
+          "translation": "合成译文。",
+          "language": "en"
+        }
+      },
+      {
+        "id": "blank-final-ignored",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":\"Synthetic source.\",\"target_text\":\"  \",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":true}}",
+        "expected": {
+          "type": "ignored"
+        }
+      },
+      {
+        "id": "session-finished",
+        "frame": "{\"code\":0,\"final\":1}",
+        "expected": {
+          "type": "finished"
+        }
+      },
+      {
+        "id": "ready-zero-final",
+        "frame": "{\"code\":0,\"message\":\"success\",\"voice_id\":\"synthetic-voice\",\"final\":0}",
+        "expected": {
+          "type": "ready"
+        }
+      },
+      {
+        "id": "nonterminal-final-two-ignored",
+        "frame": "{\"code\":0,\"final\":2}",
+        "expected": {
+          "type": "ignored"
+        }
+      },
+      {
+        "id": "unknown-final-ignored",
+        "frame": "{\"code\":0,\"final\":99}",
+        "expected": {
+          "type": "ignored"
+        }
+      },
+      {
+        "id": "zero-final-draft-result",
+        "frame": "{\"code\":0,\"final\":0,\"result\":{\"source_text\":\"Synthetic source\",\"target_text\":\"合成译文\",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":false}}",
+        "expected": {
+          "type": "draft",
+          "source": "Synthetic source",
+          "translation": "合成译文",
+          "language": "en"
+        }
+      },
+      {
+        "id": "zero-final-atomic-pair",
+        "frame": "{\"code\":0,\"final\":0,\"result\":{\"source_text\":\"  Synthetic source.  \",\"target_text\":\" 合成译文。 \",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":true}}",
+        "expected": {
+          "type": "finalPair",
+          "source": "Synthetic source.",
+          "translation": "合成译文。",
+          "language": "en"
+        }
+      },
+      {
+        "id": "missing-source-language",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":\"Synthetic source.\",\"target_text\":\"合成译文。\",\"target\":\"zh\",\"sentence_end\":true}}",
+        "expected": null
+      },
+      {
+        "id": "invalid-language-label",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":\"Synthetic source.\",\"target_text\":\"合成译文。\",\"source\":\"private label\",\"target\":\"zh\",\"sentence_end\":true}}",
+        "expected": null
+      },
+      {
+        "id": "non-string-transcript",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":123,\"target_text\":\"合成译文。\",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":true}}",
+        "expected": null
+      },
+      {
+        "id": "string-boolean-rejected",
+        "frame": "{\"code\":0,\"result\":{\"source_text\":\"Synthetic source.\",\"target_text\":\"合成译文。\",\"source\":\"en\",\"target\":\"zh\",\"sentence_end\":\"true\"}}",
+        "expected": null
+      },
+      {
+        "id": "string-status-rejected",
+        "frame": "{\"code\":\"0\"}",
+        "expected": null
+      },
+      {
+        "id": "fractional-status-rejected",
+        "frame": "{\"code\":0.5}",
+        "expected": null
+      }
+    ],
+    "errors": [
+      {
+        "id": "status-6001",
+        "code": 6001,
+        "expected": "configuration",
+        "label": "tencent_configuration_rejected"
+      },
+      {
+        "id": "status-6002",
+        "code": 6002,
+        "expected": "authentication",
+        "label": "credential_authentication_failed"
+      },
+      {
+        "id": "status-6003",
+        "code": 6003,
+        "expected": "activation",
+        "label": "tencent_service_activation_required"
+      },
+      {
+        "id": "status-6004",
+        "code": 6004,
+        "expected": "quota",
+        "label": "tencent_quota_exhausted"
+      },
+      {
+        "id": "status-6005",
+        "code": 6005,
+        "expected": "quota",
+        "label": "tencent_quota_exhausted"
+      },
+      {
+        "id": "status-6006",
+        "code": 6006,
+        "expected": "capacity",
+        "label": "tencent_capacity_exceeded"
+      },
+      {
+        "id": "status-6008",
+        "code": 6008,
+        "expected": "rejected",
+        "label": "tencent_provider_rejected"
+      },
+      {
+        "id": "status-9999",
+        "code": 9999,
+        "expected": "rejected",
+        "label": "tencent_provider_rejected"
+      }
+    ]
+  },
   "websocketHandshakeFailures": [
     { "id": "unauthorized", "httpStatus": 401, "expected": "credential_authentication_failed" },
     { "id": "forbidden", "httpStatus": 403, "expected": "credential_authentication_failed" },
@@ -1613,6 +1799,305 @@
           "source": "First sentence. Next sentence.",
           "translation": "第一部分。后半部分。下一句。",
           "language": "en"
+        }
+      ]
+    },
+    {
+      "id": "gemini-cumulative-extensions-preview-before-unpunctuated-checkpoint",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"I\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"我\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"I do\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"我今天\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"I do not\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"我今天不\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"I do not want to leave\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"我今天不想出去。\"}}}"
+      ],
+      "settleAfterFrames": [
+        7
+      ],
+      "expected": [
+        {
+          "source": "I do not want to leave",
+          "translation": "我今天不想出去。",
+          "language": "en"
+        }
+      ],
+      "expectedDrafts": [
+        {
+          "kind": "source",
+          "text": "I"
+        },
+        {
+          "kind": "translation",
+          "text": "我"
+        },
+        {
+          "kind": "source",
+          "text": "I do"
+        },
+        {
+          "kind": "translation",
+          "text": "我今天"
+        },
+        {
+          "kind": "source",
+          "text": "I do not"
+        },
+        {
+          "kind": "translation",
+          "text": "我今天不"
+        },
+        {
+          "kind": "source",
+          "text": "I do not want to leave"
+        },
+        {
+          "kind": "translation",
+          "text": "我今天不想出去。"
+        }
+      ]
+    },
+    {
+      "id": "gemini-fragments-preserve-subwords-and-genuine-repetition",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"syn\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"合\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"thetic\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"成\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\" very\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"合\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\" very\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"成\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\".\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"。\"}}}"
+      ],
+      "settleAfterFrames": [
+        9
+      ],
+      "expected": [
+        {
+          "source": "synthetic very very.",
+          "translation": "合成合成。",
+          "language": "en"
+        }
+      ],
+      "expectedDrafts": [
+        {
+          "kind": "source",
+          "text": "syn"
+        },
+        {
+          "kind": "translation",
+          "text": "合"
+        },
+        {
+          "kind": "source",
+          "text": "synthetic"
+        },
+        {
+          "kind": "translation",
+          "text": "合成"
+        },
+        {
+          "kind": "source",
+          "text": "synthetic very"
+        },
+        {
+          "kind": "translation",
+          "text": "合成合"
+        },
+        {
+          "kind": "source",
+          "text": "synthetic very very"
+        },
+        {
+          "kind": "translation",
+          "text": "合成合成"
+        },
+        {
+          "kind": "source",
+          "text": "synthetic very very."
+        },
+        {
+          "kind": "translation",
+          "text": "合成合成。"
+        }
+      ]
+    },
+    {
+      "id": "gemini-mixed-stream-ignores-equal-observed-snapshots",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Synthetic\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"合\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Synthetic source\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"合成\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\" fragment\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"文本\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Synthetic source fragment\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"合成文本\"}}}"
+      ],
+      "settleAfterFrames": [
+        7
+      ],
+      "expected": [
+        {
+          "source": "Synthetic source fragment",
+          "translation": "合成文本",
+          "language": "en"
+        }
+      ],
+      "expectedDrafts": [
+        {
+          "kind": "source",
+          "text": "Synthetic"
+        },
+        {
+          "kind": "translation",
+          "text": "合"
+        },
+        {
+          "kind": "source",
+          "text": "Synthetic source"
+        },
+        {
+          "kind": "translation",
+          "text": "合成"
+        },
+        {
+          "kind": "source",
+          "text": "Synthetic source fragment"
+        },
+        {
+          "kind": "translation",
+          "text": "合成文本"
+        }
+      ]
+    },
+    {
+      "id": "gemini-cumulative-checkpoints-retain-prefix-until-explicit-turn",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"A\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"甲\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"AB\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"甲乙\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"AB\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"甲乙\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"ABC\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"甲乙丙\"}}}",
+        "{\"serverContent\":{\"turnComplete\":true}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"ABC\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"甲乙丙\"}}}"
+      ],
+      "settleAfterFrames": [
+        3,
+        7,
+        8,
+        10
+      ],
+      "expected": [
+        {
+          "source": "AB",
+          "translation": "甲乙",
+          "language": "en"
+        },
+        {
+          "source": "C",
+          "translation": "丙",
+          "language": "en"
+        },
+        {
+          "source": "ABC",
+          "translation": "甲乙丙",
+          "language": "en"
+        }
+      ],
+      "expectedDrafts": [
+        {
+          "kind": "source",
+          "text": "A"
+        },
+        {
+          "kind": "translation",
+          "text": "甲"
+        },
+        {
+          "kind": "source",
+          "text": "AB"
+        },
+        {
+          "kind": "translation",
+          "text": "甲乙"
+        },
+        {
+          "kind": "source",
+          "text": "C"
+        },
+        {
+          "kind": "translation",
+          "text": "丙"
+        },
+        {
+          "kind": "source",
+          "text": "ABC"
+        },
+        {
+          "kind": "translation",
+          "text": "甲乙丙"
+        }
+      ]
+    },
+    {
+      "id": "gemini-checkpoints-keep-delta-and-cumulative-lanes-independent",
+      "provider": "googleGeminiLive",
+      "frames": [
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Hello\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"你\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"你好\"}}}",
+        "{\"serverContent\":{\"inputTranscription\":{\"text\":\"Hello again\",\"languageCode\":\"en\"}}}",
+        "{\"serverContent\":{\"outputTranscription\":{\"text\":\"你好世界\"}}}"
+      ],
+      "settleAfterFrames": [
+        2,
+        4
+      ],
+      "expected": [
+        {
+          "source": "Hello",
+          "translation": "你好",
+          "language": "en"
+        },
+        {
+          "source": "Hello again",
+          "translation": "世界",
+          "language": "en"
+        }
+      ],
+      "expectedDrafts": [
+        {
+          "kind": "source",
+          "text": "Hello"
+        },
+        {
+          "kind": "translation",
+          "text": "你"
+        },
+        {
+          "kind": "translation",
+          "text": "你好"
+        },
+        {
+          "kind": "source",
+          "text": "Hello again"
+        },
+        {
+          "kind": "translation",
+          "text": "世界"
         }
       ]
     }

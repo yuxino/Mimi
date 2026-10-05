@@ -3,12 +3,32 @@ import { afterEach, expect, it } from "vitest";
 import { I18N, setStoredUiLanguage } from "./i18n";
 import { sessionErrorSettingsTarget, sessionActionErrorMessage, languageActionErrorMessage, connectionDiagnosticMessage, credentialErrorMessage, credentialUnavailableHelp, profileErrorMessage, diagnosticCopy, diagnosticPlatform } from "./connectionDiagnostics";
 
+it.each(["zh", "en", "ja"] as const)("gives Tencent activation, quota and concurrency recovery without provider text in %s", language => {
+  setStoredUiLanguage(language);
+  const reasons = {
+    tencent_configuration_rejected: "invalidConfiguration",
+    tencent_service_activation_required: "serviceNotActivated",
+    tencent_quota_exhausted: "quotaExhausted",
+    tencent_capacity_exceeded: "concurrencyLimited",
+    tencent_provider_rejected: "serviceRejected",
+  } as const;
+  for (const [label, reason] of Object.entries(reasons)) {
+    expect(credentialErrorMessage(label)).toBe(diagnosticCopy().reasons[reason]);
+    expect(connectionDiagnosticMessage({ credential: "present", service: "unavailable", reason }))
+      .toContain(diagnosticCopy().reasons[reason]);
+    expect(credentialErrorMessage(`${label}: private-provider-body`)).toBeNull();
+  }
+  for (const label of ["tencent_configuration_rejected", "tencent_service_activation_required", "tencent_quota_exhausted"])
+    expect(sessionErrorSettingsTarget(label)).toBe("service");
+  expect(sessionErrorSettingsTarget("tencent_capacity_exceeded")).toBeNull();
+});
+
 it.each(["zh", "en", "ja"] as const)("gives Apple resource and language recovery in %s without exposing runtime labels", language => {
   setStoredUiLanguage(language);
   expect(credentialErrorMessage("apple_speech_assets_missing")).toBe(I18N.settings.appleSpeechAssetsMissing);
   expect(profileErrorMessage("apple_speech_language_unsupported")).toBe(I18N.settings.appleSpeechLanguageUnsupported);
   expect(profileErrorMessage("apple_speech_translation_language_unsupported")).toBe(I18N.settings.appleSpeechTranslationLanguageUnsupported);
-  expect(I18N.settings.appleSpeechAssetsMissing).toContain(I18N.settings.appleSpeechResources);
+  expect(I18N.settings.appleSpeechAssetsMissing).toContain(I18N.settings.appleSpeechAddLanguagePack);
   expect(credentialErrorMessage("apple_speech_unavailable")).toBe(I18N.settings.appleSpeechUnavailable);
   for (const suffix of ["setup_timeout", "start_failed", "recognition_failed", "audio_failed", "not_connected", "result_backlog", "invalid_result", "finalize_timeout"]) {
     expect(credentialErrorMessage(`apple_speech_${suffix}`)).toBe(I18N.settings.appleSpeechRecognitionFailed);
@@ -44,11 +64,14 @@ it.each(["zh", "en", "ja"] as const)("keeps every Apple readiness failure specif
     }
   }
   for (const message of [I18N.settings.appleSpeechLanguageUnsupported,
-    I18N.settings.appleSpeechTranslationLanguageUnsupported, I18N.settings.appleSpeechUnavailable,
-    I18N.settings.appleSpeechPrepareFailed, I18N.settings.appleSpeechPreparationInProgress]) {
+    I18N.settings.appleSpeechTranslationLanguageUnsupported, I18N.settings.appleSpeechUnavailable]) {
     expect(message).toContain(I18N.settings.serviceProfilesTitle);
     expect(message).not.toBe(I18N.overlay.controlActionFailed);
   }
+  // Download failures keep their retry/wait instruction beside the action;
+  // they must not tell a user already in this editor to find it again.
+  expect(I18N.settings.appleSpeechPrepareFailed).not.toBe(I18N.overlay.controlActionFailed);
+  expect(I18N.settings.appleSpeechPreparationInProgress).not.toBe(I18N.overlay.controlActionFailed);
   expect(sessionActionErrorMessage({ message: "apple_speech_assets_missing" }, "fallback")).toBe("fallback");
 });
 

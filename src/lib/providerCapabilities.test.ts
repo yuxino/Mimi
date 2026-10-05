@@ -163,12 +163,12 @@ describe("provider capabilities", () => {
     expect(new Set(SERVICE_PROVIDERS).size).toBe(11);
     expect(SERVICE_PROVIDERS).toEqual([
       "alibabaCloud",
-      "openAIRealtime",
       "googleGeminiLive",
-      "azureOpenAIRealtime",
       "volcanoEngine",
       "tencentCloud",
       "baiduTranslate",
+      "openAIRealtime",
+      "azureOpenAIRealtime",
       "xAIRealtime",
       "appleSpeech",
       "customDashScopeASR",

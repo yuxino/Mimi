@@ -533,6 +533,7 @@ mod tests {
             "app_open_support_issue",
             "profile_reveal_credential",
             "profile_credential_editor_state",
+            "open_tencent_setup_page",
         ] {
             assert!(include_str!("lib.rs").contains(&format!("commands::{command},")));
             let permissions = include_str!("../permissions/app.toml");
@@ -550,6 +551,21 @@ mod tests {
                 .iter()
                 .any(|permission| permission == "app-settings"));
             assert_eq!(capability["windows"], serde_json::json!(["settings"]));
+        }
+    }
+
+    #[test]
+    fn tencent_setup_pages_reject_arbitrary_urls() {
+        for (value, expected) in [
+            ("account", "https://console.cloud.tencent.com/developer"),
+            ("apiKey", "https://console.cloud.tencent.com/cam/capi"),
+            ("asr", "https://console.cloud.tencent.com/asr"),
+        ] {
+            let page: TencentSetupPage = serde_json::from_value(serde_json::json!(value)).unwrap();
+            assert_eq!(page.url(), expected);
+        }
+        for value in ["https://example.com", "file:///tmp/test", "Account", ""] {
+            assert!(serde_json::from_value::<TencentSetupPage>(serde_json::json!(value)).is_err());
         }
     }
 
@@ -1438,6 +1454,38 @@ pub fn app_open_releases(app: AppHandle) -> Result<(), String> {
         })
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TencentSetupPage {
+    Account,
+    ApiKey,
+    Asr,
+}
+
+impl TencentSetupPage {
+    fn url(self) -> &'static str {
+        match self {
+            Self::Account => "https://console.cloud.tencent.com/developer",
+            Self::ApiKey => "https://console.cloud.tencent.com/cam/capi",
+            Self::Asr => "https://console.cloud.tencent.com/asr",
+        }
+    }
+}
+
+/// Settings can open these public setup pages without supplying an arbitrary URL.
+#[tauri::command]
+pub fn open_tencent_setup_page(app: AppHandle, page: TencentSetupPage) -> Result<(), String> {
+    app.opener()
+        .open_url(page.url(), None::<&str>)
+        .map_err(|_| {
+            tracing::warn!(
+                label = "system_opener_failed",
+                "Tencent setup page open failed"
+            );
+            "Could not open the Tencent Cloud setup page.".to_string()
+        })
+}
+
 fn ensure_settings_draft_window_allowed(label: &str, draft: &SettingsDraft) -> Result<(), String> {
     if (draft.retain_session_history.is_some()
         || draft.record_session_audio.is_some()
@@ -1889,8 +1937,17 @@ pub async fn profile_select(
     app: AppHandle,
     state: State<'_, AppState>,
     profile_id: String,
+    source_language: Option<SourceLanguage>,
 ) -> Result<SettingsSnapshotPayload, String> {
-    state.session.switch_profile(&profile_id).await?;
+    match source_language {
+        Some(source) => {
+            state
+                .session
+                .switch_profile_with_source(&profile_id, Some(source))
+                .await?
+        }
+        None => state.session.switch_profile(&profile_id).await?,
+    }
     emit_settings_snapshot(&app, &state.settings)
 }
 
@@ -2412,6 +2469,7 @@ pub async fn profile_test_connection(
     profile_id: String,
     stage: Option<crate::clients::connection_diagnostics::ConnectionCheckStage>,
     credentials: Option<ProviderCredentials>,
+    source_language: Option<SourceLanguage>,
 ) -> Result<crate::clients::connection_diagnostics::ConnectionDiagnostic, String> {
     use crate::clients::connection_diagnostics::{
         check_service, check_speech_service, check_text_service, preparation_failure,
@@ -2422,6 +2480,13 @@ pub async fn profile_test_connection(
         .iter()
         .find(|p| p.id == profile_id)
         .ok_or("profile_not_found")?;
+    if source_language.is_some()
+        && (profile.provider != ProviderKind::AppleSpeech
+            || stage != Some(ConnectionCheckStage::Speech)
+            || credentials.is_some())
+    {
+        return Err("apple_speech_source_override_invalid".into());
+    }
     if let Some(credentials) = credentials {
         // A draft is an explicit, ephemeral check, never a saved-profile
         // readiness request. In particular it must not emit a credential snapshot.
@@ -2450,7 +2515,13 @@ pub async fn profile_test_connection(
         // text-only check must not prompt for or require the recognizer's key.
         return Ok(match stage {
             ConnectionCheckStage::Speech => {
-                match state.settings.configuration_for_speech_probe(profile) {
+                let configuration = match source_language {
+                    Some(source) => state
+                        .settings
+                        .configuration_for_speech_probe_with_source(profile, Some(source)),
+                    None => state.settings.configuration_for_speech_probe(profile),
+                };
+                match configuration {
                     Err(error) => preparation_failure(&error),
                     Ok(_) if app_is_ui_test() => ConnectionDiagnostic::not_tested("present"),
                     Ok(configuration) => check_speech_service(&configuration, false).await,

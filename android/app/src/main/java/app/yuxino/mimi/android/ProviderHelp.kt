@@ -3,8 +3,10 @@ package app.yuxino.mimi.android
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.provider.TextTranslationProvider
 
-/** Public official help shared with desktop; reviewed 2026-09-30. */
-internal data class ProviderHelp(val setup: Int, val documentation: String, val billing: String)
+/** Public official help shared with desktop; Tencent reviewed 2026-10-05. */
+internal data class ProviderSetupLink(val label: Int, val url: String)
+internal data class ProviderHelp(val setup: Int, val documentation: String, val billing: String,
+    val setupLinks: List<ProviderSetupLink> = emptyList())
 internal fun providerHelp(provider: ServiceProvider): ProviderHelp = when (provider) {
     ServiceProvider.DASHSCOPE -> ProviderHelp(R.string.guide_help_dashscope,
         "https://help.aliyun.com/zh/model-studio/get-api-key",
@@ -23,7 +25,12 @@ internal fun providerHelp(provider: ServiceProvider): ProviderHelp = when (provi
         "https://docs.volcengine.com/docs/DoubaoVoice/BillingOverview-15?lang=zh")
     ServiceProvider.TENCENT -> ProviderHelp(R.string.guide_help_tencent,
         "https://cloud.tencent.com/document/api/1093/127565",
-        "https://cloud.tencent.com/document/product/1093/35686")
+        "https://cloud.tencent.com/document/product/1093/35686",
+        listOf(
+            ProviderSetupLink(R.string.guide_tencent_app_id, "https://console.cloud.tencent.com/developer"),
+            ProviderSetupLink(R.string.guide_tencent_secret_pair, "https://console.cloud.tencent.com/cam/capi"),
+            ProviderSetupLink(R.string.guide_tencent_asr, "https://console.cloud.tencent.com/asr"),
+        ))
     ServiceProvider.BAIDU -> ProviderHelp(R.string.guide_help_baidu,
         "https://ai.baidu.com/ai-doc/MT/2l317egif",
         "https://ai.baidu.com/ai-doc/MT/Tl9pjqsym")

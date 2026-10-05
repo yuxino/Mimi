@@ -27,21 +27,43 @@ internal fun endpoint(config: ServiceConfiguration): okhttp3.HttpUrl {
 }
 internal fun request(url: okhttp3.HttpUrl) = Request.Builder().url(url.toString().replaceFirst("https://", "wss://"))
 
+internal class TencentProviderException(val status: Long) : IllegalArgumentException("tencent_provider_rejected") {
+    val category: String get() = when (status) {
+        6001L -> "configuration"
+        6002L -> "authentication"
+        6003L -> "activation"
+        6004L, 6005L -> "quota"
+        6006L -> "capacity"
+        else -> "rejected"
+    }
+    val errorCode: String get() = when (category) {
+        "configuration" -> "tencent_configuration_rejected"
+        "authentication" -> CREDENTIAL_AUTHENTICATION_FAILED
+        "activation" -> "tencent_service_activation_required"
+        "quota" -> "tencent_quota_exhausted"
+        "capacity" -> "tencent_capacity_exceeded"
+        else -> "tencent_provider_rejected"
+    }
+}
+
 internal class TencentProtocol(config: ServiceConfiguration, private val source: String, private val target: String,
     timestamp: Long = System.currentTimeMillis() / 1000, nonce: Long = (UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE) % 9999999999L + 1,
     voiceId: String = UUID.randomUUID().toString()) : ServiceProtocol {
     override val frameBytes = 6400
     private val signedRequest: Request
     init {
-        val appId = config.value("appId"); val secretId = config.value("secretId")
+        val appId = config.value("appId").trim(); val secretId = config.value("secretId").trim()
+        val secretKey = config.value("secretKey").trim()
         require(appId.matches(Regex("[0-9]+")) && secretId.matches(Regex("[a-zA-Z0-9_.~-]+")))
         require(voiceId.matches(Regex("[a-zA-Z0-9_.~-]{1,128}")) && nonce in 1..9999999999L)
+        require(secretKey.isNotEmpty() && timestamp in 0..(Long.MAX_VALUE - 3600))
+        require(source in ServiceProvider.TENCENT.sources && target in ServiceProvider.TENCENT.targets)
         val values = sortedMapOf("expired" to "${timestamp + 3600}", "nonce" to "$nonce", "secretid" to secretId,
             "source" to source, "target" to target, "timestamp" to "$timestamp", "trans_model" to "hunyuan-translation-lite",
             "voice_format" to "1", "voice_id" to voiceId)
         val path = "asr.cloud.tencent.com/asr/speech_translate/$appId"
         val canonical = path + "?" + values.entries.joinToString("&") { "${it.key}=${it.value}" }
-        val mac = Mac.getInstance("HmacSHA1").apply { init(SecretKeySpec(config.value("secretKey").toByteArray(), "HmacSHA1")) }
+        val mac = Mac.getInstance("HmacSHA1").apply { init(SecretKeySpec(secretKey.toByteArray(), "HmacSHA1")) }
         val url = "https://$path".toHttpUrl().newBuilder()
         values.forEach { (k,v) -> url.addQueryParameter(k,v) }
         url.addQueryParameter("signature", encoded(mac.doFinal(canonical.toByteArray())))
@@ -52,13 +74,38 @@ internal class TencentProtocol(config: ServiceConfiguration, private val source:
     override fun audio(data: ByteArray): WireFrame { require(data.size == frameBytes); return WireFrame.Binary(data) }
     override fun finish() = textFrame(obj("type" to "end"))
     override fun text(value: String): List<ServiceEvent> {
-        val json = JSONObject(value); require(json.getInt("code") == 0)
-        if (json.optInt("final", -1) == 1) return listOf(ServiceEvent.Closed)
-        val result = json.optJSONObject("result") ?: return if (json.has("final")) emptyList() else listOf(ServiceEvent.Ready)
-        val final = result.getBoolean("sentence_end")
-        return listOf(ServiceEvent.Source(result.bounded("source_text"), final, result.optString("source", source)),
-            ServiceEvent.Translation(result.bounded("target_text"), final))
+        require(value.toByteArray(Charsets.UTF_8).size <= 256 * 1024)
+        val json = JSONObject(value)
+        val code = when (val status = json.get("code")) {
+            is Int -> status.toLong()
+            is Long -> status
+            else -> error("invalid_tencent_status")
+        }
+        if (code != 0L) throw TencentProviderException(code)
+        val finalValue = when (val value = json.opt("final")) {
+            is Int -> value.toLong().takeIf { it >= 0 }
+            is Long -> value.takeIf { it >= 0 }
+            else -> null
+        }
+        if (finalValue == 1L) return listOf(ServiceEvent.Closed)
+        // Tencent's authenticated startup acknowledgement carries final=0.
+        // Result frames also carry zero and must continue through transcript parsing.
+        if (!json.has("result")) return if (finalValue == null || finalValue == 0L) listOf(ServiceEvent.Ready) else emptyList()
+        val result = json.getJSONObject("result")
+        val sourceText = transcript(result, "source_text")
+        val targetText = transcript(result, "target_text")
+        val sourceLanguage = language(result, "source")
+        language(result, "target")
+        val final = result.get("sentence_end").also { require(it is Boolean) } as Boolean
+        return if (final) {
+            if (sourceText.isBlank() || targetText.isBlank()) emptyList()
+            else listOf(ServiceEvent.FinalPair(sourceText.trim(), targetText.trim(), sourceLanguage))
+        } else listOf(ServiceEvent.Source(sourceText, language = sourceLanguage), ServiceEvent.Translation(targetText))
     }
+    private fun transcript(result: JSONObject, field: String): String = (result.get(field).also { require(it is String) } as String)
+        .also { require(it.toByteArray(Charsets.UTF_8).size <= 128 * 1024) }
+    private fun language(result: JSONObject, field: String): String = (result.get(field).also { require(it is String) } as String)
+        .also { require(it.matches(Regex("[a-zA-Z0-9_-]{1,16}"))) }
 }
 
 internal class BaiduProtocol(private val config: ServiceConfiguration, private val source: String, private val target: String) : ServiceProtocol {

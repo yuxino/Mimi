@@ -24,7 +24,6 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const CLOSE_TIMEOUT: Duration = Duration::from_millis(250);
 const SIGNATURE_LIFETIME_SECONDS: u64 = 24 * 60 * 60;
 const MAXIMUM_AUDIO_CHUNK_BYTES: usize = TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT * 64;
-const GENERIC_PROVIDER_ERROR: &str = "Tencent Cloud realtime translation rejected the session.";
 const GENERIC_PROTOCOL_ERROR: &str =
     "Tencent Cloud realtime translation returned an invalid response.";
 const GENERIC_TRANSPORT_ERROR: &str = "The Tencent Cloud realtime translation connection failed.";
@@ -48,6 +47,8 @@ pub enum TencentCloudClientError {
     TransportFailure,
     #[error("Tencent Cloud realtime translation rejected the session configuration.")]
     SessionSetupRejected,
+    #[error("{}", provider_rejection_label(*code))]
+    ProviderRejected { code: i64 },
     #[error("Tencent Cloud realtime translation did not confirm the session in time.")]
     SessionSetupTimedOut,
 }
@@ -59,7 +60,7 @@ type Stream = futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<T
 enum SetupState {
     Awaiting,
     Ready,
-    Rejected,
+    Rejected(Option<i64>),
 }
 
 #[derive(Default)]
@@ -270,8 +271,11 @@ impl TencentCloudClient {
             loop {
                 match *setup_rx.borrow() {
                     SetupState::Ready => return Ok(()),
-                    SetupState::Rejected => {
-                        return Err(TencentCloudClientError::SessionSetupRejected)
+                    SetupState::Rejected(code) => {
+                        return Err(match code {
+                            Some(code) => TencentCloudClientError::ProviderRejected { code },
+                            None => TencentCloudClientError::SessionSetupRejected,
+                        })
                     }
                     SetupState::Awaiting => {}
                 }
@@ -497,6 +501,19 @@ fn map_protocol_configuration_error(
     }
 }
 
+/// Fixed labels from the speech-translation API's status table. Never expose
+/// its free-form message: it can include request details or user content.
+fn provider_rejection_label(code: i64) -> &'static str {
+    match code {
+        6001 => "tencent_configuration_rejected",
+        6002 => "credential_authentication_failed",
+        6003 => "tencent_service_activation_required",
+        6004 | 6005 => "tencent_quota_exhausted",
+        6006 => "tencent_capacity_exceeded",
+        _ => "tencent_provider_rejected",
+    }
+}
+
 fn take_complete_frames(pending: &mut Vec<u8>) -> Vec<Vec<u8>> {
     let frame_size = TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT;
     let complete_bytes = pending.len() / frame_size * frame_size;
@@ -617,7 +634,7 @@ async fn handle_server_event(context: &ReceiveContext, event: TencentCloudServer
         TencentCloudServerEvent::SessionFinished => {
             *turn = SentenceContentState::default();
             if *context.setup.borrow() == SetupState::Awaiting {
-                let _ = context.setup.send(SetupState::Rejected);
+                let _ = context.setup.send(SetupState::Rejected(None));
                 return true;
             }
             if !context.inner.is_closing.load(Ordering::SeqCst) {
@@ -640,13 +657,13 @@ async fn handle_server_event(context: &ReceiveContext, event: TencentCloudServer
         }
         TencentCloudServerEvent::ProviderError { code } => {
             if *context.setup.borrow() == SetupState::Awaiting {
-                let _ = context.setup.send(SetupState::Rejected);
+                let _ = context.setup.send(SetupState::Rejected(Some(code)));
             } else {
                 emit_if_current(
                     context,
                     LiveTranslateServerEvent::Error {
-                        code: format!("tencent_{code}"),
-                        message: GENERIC_PROVIDER_ERROR.into(),
+                        code: format!("tencent_provider_{code}"),
+                        message: provider_rejection_label(code).into(),
                     },
                 );
             }
@@ -661,7 +678,7 @@ async fn handle_server_event(context: &ReceiveContext, event: TencentCloudServer
 
 fn fail_receive_loop(context: &ReceiveContext, code: &str, message: &str) {
     if *context.setup.borrow() == SetupState::Awaiting {
-        let _ = context.setup.send(SetupState::Rejected);
+        let _ = context.setup.send(SetupState::Rejected(None));
     } else {
         emit_if_current(
             context,
@@ -681,6 +698,83 @@ fn emit_if_current(context: &ReceiveContext, event: LiveTranslateServerEvent) {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn setup_rejections_preserve_status_without_provider_message_content() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/translation-contracts.json"
+        )))
+        .unwrap();
+        for case in contract["tencentSpeechTranslation"]["errors"]
+            .as_array()
+            .unwrap()
+        {
+            let code = case["code"].as_i64().unwrap();
+            let expected_label = case["label"].as_str().unwrap();
+            let (client, _events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    let rejected = serde_json::json!({
+                        "code": code,
+                        "message": "private-provider-response-secret",
+                    });
+                    socket
+                        .send(Message::Text(rejected.to_string().into()))
+                        .await
+                        .unwrap();
+                })
+            })
+            .await;
+            let error = client
+                .connect_with_timeout(Duration::from_secs(2))
+                .await
+                .unwrap_err();
+            assert_eq!(error, TencentCloudClientError::ProviderRejected { code });
+            assert_eq!(error.to_string(), expected_label);
+            assert!(!format!("{error:?}").contains("private-provider-response-secret"));
+            assert!(!client.inner.ready.load(Ordering::SeqCst));
+        }
+    }
+
+    #[tokio::test]
+    async fn active_session_rejection_keeps_code_and_a_fixed_safe_label() {
+        let (reject, rejected) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                socket
+                    .send(Message::Text(
+                        r#"{"code":0,"message":"success","voice_id":"v"}"#.into(),
+                    ))
+                    .await
+                    .unwrap();
+                rejected.await.unwrap();
+                socket
+                    .send(Message::Text(
+                        r#"{"code":6005,"message":"private-provider-response-secret"}"#.into(),
+                    ))
+                    .await
+                    .unwrap();
+            })
+        })
+        .await;
+        client
+            .connect_with_timeout(Duration::from_secs(2))
+            .await
+            .unwrap();
+        reject.send(()).unwrap();
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            if let LiveTranslateServerEvent::Error { code, message } = event {
+                assert_eq!(code, "tencent_provider_6005");
+                assert_eq!(message, "tencent_quota_exhausted");
+                break;
+            }
+        }
+        client.disconnect().await;
+    }
+
     #[tokio::test]
     async fn handshake_authentication_rejections_preserve_transport_failures() {
         for (status, expected_auth_label) in
@@ -847,6 +941,55 @@ mod tests {
         assert_eq!(padded.len(), TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT);
         assert_eq!(&padded[..19], &[7; 19]);
         assert!(padded[19..].iter().all(|byte| *byte == 0));
+    }
+
+    #[tokio::test]
+    async fn zero_final_handshake_is_ready_before_audio() {
+        let (observed_audio, audio_observation) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                socket
+                    .send(Message::Text(
+                        r#"{"code":0,"message":"success","voice_id":"fixture-voice","final":0}"#
+                            .into(),
+                    ))
+                    .await
+                    .unwrap();
+                let mut saw_audio = false;
+                while let Some(Ok(message)) = socket.next().await {
+                    saw_audio |= matches!(message, Message::Binary(_));
+                    if matches!(message, Message::Close(_)) {
+                        break;
+                    }
+                }
+                observed_audio.send(saw_audio).unwrap();
+            })
+        })
+        .await;
+
+        client
+            .connect_with_timeout(Duration::from_millis(500))
+            .await
+            .unwrap();
+        assert!(client.inner.ready.load(Ordering::SeqCst));
+        for expected in [
+            LiveTranslateServerEvent::SessionCreated,
+            LiveTranslateServerEvent::SessionUpdated,
+        ] {
+            assert_eq!(
+                tokio::time::timeout(Duration::from_secs(1), events.recv())
+                    .await
+                    .unwrap(),
+                Some(expected)
+            );
+        }
+        client.disconnect().await;
+        assert!(
+            !tokio::time::timeout(Duration::from_secs(1), audio_observation)
+                .await
+                .unwrap()
+                .unwrap()
+        );
     }
 
     #[tokio::test]

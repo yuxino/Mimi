@@ -26,4 +26,9 @@
     <string name="lang_en">English</string>
     <string name="lang_ja">日本語</string>
     <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">腾讯云拒绝了会话配置。请检查 AppID 和所选语言。</string>
+    <string name="tencent_service_activation_required">请在腾讯云语音识别控制台开通实时语音翻译服务。</string>
+    <string name="tencent_quota_exhausted">腾讯云额度不足或账号欠费。请在控制台检查资源包、余额和计费状态。</string>
+    <string name="tencent_capacity_exceeded">腾讯云并发会话已达上限。请关闭其他会话后重试，或在控制台调整并发额度。</string>
+    <string name="tencent_provider_rejected">腾讯云拒绝了会话。请在控制台检查服务状态后重试。</string>
 </resources>

@@ -103,12 +103,11 @@ it.each(["zh", "en", "ja"] as const)("shows local Apple resources and independen
   expect(host.textContent).toContain("en-US");
   expect(host.textContent).toContain(I18N.settings.appleSpeechNotInstalled);
   expect(host.textContent).toContain(I18N.settings.checkSpeechRecognition);
-  expect(host.textContent).toContain(I18N.settings.checkTextTranslation);
+  expect(host.textContent).not.toContain(I18N.settings.checkTextTranslation);
   expect(host.querySelectorAll(".service-proxies .network-proxy-settings").length).toBeLessThanOrEqual(1);
-  const sources = host.querySelector('#translation-languages [role="group"]');
-  expect(sources?.textContent).toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.en);
-  expect(sources?.textContent).toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.ja);
-  expect(sources?.textContent).not.toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.auto);
+  expect(host.querySelector("#translation-languages")).toBeNull();
+  expect(host.querySelectorAll(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)).toHaveLength(1);
+  expect(host.textContent).toContain(I18N.settings.appleSpeechAddLanguagePack);
   expect(profileRevealCredential).not.toHaveBeenCalled();
   expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
   expect(actions.saveSettings).not.toHaveBeenCalled();
@@ -120,16 +119,17 @@ it("prepares only the explicitly chosen Apple language and blocks duplicate prep
   vi.mocked(prepareAppleSpeechLanguage).mockReturnValue(new Promise(done => { resolve = done; }));
   await render(appleSettings());
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.appleSpeechAddLanguagePack);
   await click(I18N.settings.appleSpeechPrepare);
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("en");
   expect(host.textContent).toContain(I18N.settings.appleSpeechPreparing);
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(true);
-  const prepareButton = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechPreparing)!;
+  const prepareButton = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechPrepare)!;
   expect(prepareButton.disabled).toBe(true);
   await act(async () => prepareButton.click());
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledOnce();
   await act(async () => resolve({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true })) }));
-  expect(host.textContent).toContain(I18N.settings.appleSpeechInstalled);
+  expect(host.textContent).toContain(I18N.settings.appleSpeechLanguageInUse);
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(false);
   expect(actions.saveSettings).not.toHaveBeenCalled();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
@@ -140,11 +140,12 @@ it("retains a failed Apple preparation as retryable feedback without exposing na
   vi.mocked(prepareAppleSpeechLanguage).mockRejectedValue(new Error("private-native-path"));
   await render(appleSettings());
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.appleSpeechAddLanguagePack);
   await click(I18N.settings.appleSpeechPrepare);
   expect(host.textContent).toContain(I18N.settings.appleSpeechPrepareFailed);
   expect(document.body.textContent).not.toContain("private-native-path");
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(false);
-  expect([...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechPrepare)?.disabled).toBe(false);
+  expect([...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechRetryDownload)?.disabled).toBe(false);
 });
 
 it("lets a user prepare another supported language without changing the active recognition language", async () => {
@@ -153,9 +154,7 @@ it("lets a user prepare another supported language without changing the active r
   await render({ ...appleSettings(), sourceLanguage: "ja" });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.textContent).toContain("ja-JP");
-  await act(async () => host.querySelector<HTMLButtonElement>('.apple-speech-settings [role="combobox"]')!.click());
-  const english = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === SOURCE_LANGUAGE_DISPLAY_NAMES.en)!;
-  await act(async () => english.click());
+  await click(I18N.settings.appleSpeechAddLanguagePack);
   expect(host.textContent).toContain("en-US");
   await click(I18N.settings.appleSpeechPrepare);
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("en");
@@ -339,6 +338,73 @@ it.each(["zh", "en", "ja"] as const)("previews a provider and leaves settings un
   expect(actions.createProfile).not.toHaveBeenCalled();
   expect(actions.selectProfile).not.toHaveBeenCalled();
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["active", true, false, "listening"],
+  ["paused", false, true, "listening"],
+  ["connecting", false, false, "connecting"],
+  ["stopping", false, false, "stopping"],
+] as const)("keeps provider-picker cancellation available when the session becomes %s", async (_state, active, paused, status) => {
+  await render();
+  await click(I18N.settings.addProfile);
+  await act(async () => root.render(<><ServiceProfiles settings={settings} sessionIsActive={active} sessionIsPaused={paused} sessionStatusKind={status} /><SettingsToastRegion /></>));
+  const picker = host.querySelector(".provider-picker")!;
+  for (const button of picker.querySelectorAll<HTMLButtonElement>(".provider-option")) {
+    expect(button.disabled).toBe(true);
+    await act(async () => button.click());
+  }
+  const hint = picker.querySelector('.settings-feedback[data-tone="info"]')!;
+  expect(hint.textContent).toBe(I18N.settings.profileCreateRequiresStop);
+  expect(hint.closest('[role="tooltip"], [aria-hidden="true"]')).toBeNull();
+  const cancel = picker.querySelector<HTMLButtonElement>(".provider-picker__heading button.settings-link")!;
+  expect(cancel.disabled).toBe(false);
+  await act(async () => cancel.click());
+  expect(host.querySelector(".provider-picker")).toBeNull();
+  expect(host.querySelectorAll(".service-row")).toHaveLength(1);
+  expect(host.querySelector<HTMLButtonElement>(".services-toolbar button.settings-button")?.disabled).toBe(true);
+  expect(actions.createProfile).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+});
+
+it("allows cancelling a provider preview after the session starts while keeping creation blocked", async () => {
+  await render();
+  await click(I18N.settings.addProfile);
+  await previewProvider("alibabaCloud");
+  await act(async () => root.render(<><ServiceProfiles settings={settings} sessionIsActive sessionStatusKind="listening" /><SettingsToastRegion /></>));
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.querySelector('.settings-feedback[data-tone="info"]')?.textContent).toBe(I18N.settings.profileCreateRequiresStop);
+  const confirm = dialog.querySelector<HTMLButtonElement>(".settings-confirmation__confirm")!;
+  expect(confirm.disabled).toBe(true);
+  await act(async () => confirm.click());
+  expect(actions.createProfile).not.toHaveBeenCalled();
+  await click(I18N.settings.cancel);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(host.querySelector(".provider-picker")).not.toBeNull();
+  await click(I18N.settings.cancel);
+  expect(host.querySelector(".provider-picker")).toBeNull();
+});
+
+it("keeps provider-picker and preview cancellation blocked only while creation is pending", async () => {
+  let reject!: (error: unknown) => void;
+  actions.createProfile.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  await render();
+  await click(I18N.settings.addProfile);
+  await previewProvider("alibabaCloud");
+  await click(I18N.settings.confirmAddProfile);
+  expect(host.querySelector<HTMLButtonElement>(".provider-picker__heading button.settings-link")?.disabled).toBe(true);
+  expect(document.querySelector('.settings-feedback[data-tone="info"]')).toBeNull();
+  await click(I18N.settings.cancel);
+  expect(document.querySelector(".provider-picker__preview")).not.toBeNull();
+  await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(document.querySelector(".provider-picker__preview")).not.toBeNull();
+  expect(actions.createProfile).toHaveBeenCalledOnce();
+  await act(async () => reject("synthetic-failed-create"));
+  await click(I18N.settings.cancel);
+  expect(document.querySelector(".provider-picker__preview")).toBeNull();
+  expect(host.querySelector<HTMLButtonElement>(".provider-picker__heading button.settings-link")?.disabled).toBe(false);
+  await click(I18N.settings.cancel);
+  expect(host.querySelector(".provider-picker")).toBeNull();
 });
 
 it("creates the selected provider only after confirmation and opens the created profile", async () => {
@@ -1411,6 +1477,7 @@ it.each([false, true])("waits for preparation without reviving a cancelled resou
   vi.mocked(prepareAppleSpeechLanguage).mockReturnValue(new Promise(resolve => { prepared = resolve; }));
   await show(0);
   await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
+  await click(I18N.settings.appleSpeechAddLanguagePack);
   await click(I18N.settings.appleSpeechPrepare);
   await show(1);
   expect(host.querySelector(".service-detail__title")?.textContent).toContain(otherApple.name);
@@ -1441,4 +1508,35 @@ it("waits for initialized Apple settings and does not revive a resource intent r
   await act(async () => document.body.focus());
   await show(appleSettings(), 2);
   expect(scroller).not.toHaveBeenCalled();
+});
+
+
+it("checks the displayed Apple language on an inactive profile without saving it", async () => {
+  const readySupport = { ...appleSupport, languages: appleSupport.languages.map(language => ({ ...language, installed: true })) };
+  vi.mocked(getAppleSpeechSupport).mockResolvedValue(readySupport);
+  vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null, elapsedMs: 95 });
+  await render({ ...settings, profiles: [profile, appleProfile], sourceLanguage: "auto" });
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
+  await click(I18N.settings.checkSpeechRecognition);
+  expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(appleProfile.id, "speech", undefined, "en");
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  expect(actions.saveSettings).not.toHaveBeenCalled();
+  expect(host.querySelector(".connection-check__elapsed")?.textContent).toContain("95 ms");
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.click());
+  await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === SOURCE_LANGUAGE_DISPLAY_NAMES.ja)!.click());
+  expect(host.querySelector(".connection-check__elapsed")).toBeNull();
+  await click(I18N.settings.checkSpeechRecognition);
+  expect(testProfileConnection).toHaveBeenLastCalledWith(appleProfile.id, "speech", undefined, "ja");
+});
+
+it("applies an inactive Apple profile and selected language in one action and surfaces failure", async () => {
+  vi.mocked(getAppleSpeechSupport).mockResolvedValue({ ...appleSupport, languages: appleSupport.languages.map(language => ({ ...language, installed: true })) });
+  actions.selectProfile.mockRejectedValue(new Error("apple_speech_assets_missing"));
+  await render({ ...settings, profiles: [profile, appleProfile], sourceLanguage: "en" });
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
+  await click(I18N.settings.appleSpeechUseLanguage);
+  expect(actions.selectProfile).toHaveBeenCalledExactlyOnceWith(appleProfile.id, "en");
+  expect(actions.saveSettings).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain(I18N.settings.appleSpeechAssetsMissing);
+  expect(host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.disabled).toBe(false);
 });

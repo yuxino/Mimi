@@ -57,7 +57,10 @@
     <string name="guide_help_gemini">Create a Gemini API key in Google AI Studio and check Live API availability for your project.</string>
     <string name="guide_help_azure">Create an Azure OpenAI resource supporting Realtime. Deploy realtime and transcription models; use your own deployment names.</string>
     <string name="guide_help_volcano">Verify your account and enable Simultaneous Interpretation 2.0 in the new Doubao Voice console. Mimi uses the new API key, not the legacy AppID/access token.</string>
-    <string name="guide_help_tencent">Enable realtime speech translation in Tencent Cloud ASR. Obtain your account AppID and API secret pair; pay-as-you-go must be enabled explicitly.</string>
+    <string name="guide_help_tencent">Realtime speech translation requires your account AppID and a SecretID / SecretKey pair from the same account. Find AppID on Account Information, not UIN; find the pair on CAM API Keys. Enable the service in the ASR console. A single Hunyuan model API key cannot authenticate this API. Pay-as-you-go must be enabled explicitly.</string>
+    <string name="guide_tencent_app_id">Get AppID (Account Information)</string>
+    <string name="guide_tencent_secret_pair">Get SecretID / SecretKey (API Keys)</string>
+    <string name="guide_tencent_asr">Enable ASR</string>
     <string name="guide_help_baidu">Create a Machine Translation app in Baidu AI Cloud with realtime speech translation access. AppKey means the app\'s API Key, not Secret Key.</string>
     <string name="guide_help_xai">Create an API key in the xAI console and check realtime voice access and available credits.</string>
     <string name="guide_projection_revoked">Session consent ended / revoked · allow again</string>

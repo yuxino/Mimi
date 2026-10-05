@@ -53,6 +53,9 @@ pub enum ConnectionCheckReason {
     LocalRecognitionOverloaded,
     LocalRecognitionTimeout,
     AuthenticationRejected,
+    ServiceNotActivated,
+    QuotaExhausted,
+    ConcurrencyLimited,
     ServiceRejected,
     Timeout,
     Unreachable,
@@ -117,6 +120,12 @@ pub fn preparation_failure(error: &str) -> ConnectionDiagnostic {
         _ if error.starts_with("Add the connection credentials for ") => "missing",
         _ => "invalid",
     };
+    if error == "apple_speech_language_unsupported" {
+        return ConnectionDiagnostic::unavailable(
+            "present",
+            ConnectionCheckReason::AppleSpeechLanguageUnsupported,
+        );
+    }
     if error == "text_translation_not_configured" {
         return ConnectionDiagnostic::unavailable(
             "missing",
@@ -598,6 +607,14 @@ fn connection_reason(error: &ConnectError) -> ConnectionCheckReason {
     use crate::clients::xai_realtime_client::XAIRealtimeClientError as Xai;
     match error {
         ConnectError::MT(error) => qwen_reason(error),
+        ConnectError::TencentCloud(Tencent::ProviderRejected { code }) => match code {
+            6001 => ConnectionCheckReason::InvalidConfiguration,
+            6002 => ConnectionCheckReason::AuthenticationRejected,
+            6003 => ConnectionCheckReason::ServiceNotActivated,
+            6004 | 6005 => ConnectionCheckReason::QuotaExhausted,
+            6006 => ConnectionCheckReason::ConcurrencyLimited,
+            _ => ConnectionCheckReason::ServiceRejected,
+        },
         ConnectError::OpenAI(OpenAI::AuthenticationFailed)
         | ConnectError::Live(Live::AuthenticationFailed)
         | ConnectError::Gemini(Gemini::AuthenticationFailed)
@@ -705,6 +722,35 @@ pub(crate) async fn rejected_websocket_endpoint(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tencent_json_rejections_use_shared_actionable_categories() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/translation-contracts.json"
+        )))
+        .unwrap();
+        for case in contract["tencentSpeechTranslation"]["errors"]
+            .as_array()
+            .unwrap()
+        {
+            let expected = match case["expected"].as_str().unwrap() {
+                "configuration" => ConnectionCheckReason::InvalidConfiguration,
+                "authentication" => ConnectionCheckReason::AuthenticationRejected,
+                "activation" => ConnectionCheckReason::ServiceNotActivated,
+                "quota" => ConnectionCheckReason::QuotaExhausted,
+                "capacity" => ConnectionCheckReason::ConcurrencyLimited,
+                "rejected" => ConnectionCheckReason::ServiceRejected,
+                unknown => panic!("unsupported Tencent fixture category: {unknown}"),
+            };
+            let error = ConnectError::TencentCloud(
+                crate::clients::tencent_cloud_client::TencentCloudClientError::ProviderRejected {
+                    code: case["code"].as_i64().unwrap(),
+                },
+            );
+            assert_eq!(connection_reason(&error), expected);
+        }
+    }
+
     #[test]
     fn provider_handshake_authentication_is_an_actionable_diagnostic() {
         for error in [
@@ -958,6 +1004,10 @@ mod tests {
             (
                 "credential_store_access_denied",
                 ConnectionCheckReason::CredentialsAccessDenied,
+            ),
+            (
+                "apple_speech_language_unsupported",
+                ConnectionCheckReason::AppleSpeechLanguageUnsupported,
             ),
             (
                 "arbitrary private native error",

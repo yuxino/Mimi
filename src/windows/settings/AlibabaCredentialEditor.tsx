@@ -8,7 +8,7 @@ import { I18N } from "../../lib/i18n";
 import { credentialUnavailableHelp, diagnosticCopy } from "../../lib/connectionDiagnostics";
 import { isChatCompletionsTranslation, textTranslationForProfile } from "../../lib/providerCapabilities";
 import { CHATMOCK_DEFAULT_ENDPOINT, buildAlibabaTranslationCredentials, deepLXEndpointIsValid, emptyCredentialDraft, openAICompatibleModelIsValid } from "../../lib/providerCredentials";
-import type { ProviderCredentialsInput, ServiceProfile, TextTranslation } from "../../lib/types";
+import type { ProviderCredentialsInput, ServiceProfile, SourceLanguage, TextTranslation } from "../../lib/types";
 import { DestructiveConfirmation } from "./DestructiveConfirmation";
 import { InlineFeedback, SettingsSelect } from "./SettingsPrimitives";
 import { TextTranslationName } from "./TextTranslationName";
@@ -20,7 +20,7 @@ import { useCredentialEditorState } from "./useCredentialEditorState";
 /** Alibaba provides recognition; independent text destinations use their own credentials. */
 export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visible = true, feedback, onSave, onRequestDelete, onConfirmDelete, confirmingDelete, onCancelDelete, connectionCheck, textConnectionCheck, readOnly = false, textOnly = false, storageNoteId, onSaveTranslationName }: {
   onSaveTranslationName?: (route: TextTranslationNameDraft["route"], name: string) => Promise<unknown>;
-  connectionCheck?: ReactNode | ((draft?: ProviderCredentialsInput | null) => ReactNode);
+  connectionCheck?: ReactNode | ((draft?: ProviderCredentialsInput | null, sourceLanguage?: SourceLanguage) => ReactNode);
   textConnectionCheck?: (draft?: ProviderCredentialsInput | null) => ReactNode;
   readOnly?: boolean;
   textOnly?: boolean;
@@ -188,7 +188,7 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
       <header className="service-stage__heading">
         <div className="service-stage__name-help"><h3 id={`${inputId}-translation-title`}>{I18N.settings.textTranslationLabel}</h3><SettingsHelp text={translationHelp} label={I18N.settings.helpLabel} /></div>
         <div className="service-stage__actions">
-          {textConnectionCheck?.(textCheckDraft)}
+          {!(textOnly && translation === "followService") && textConnectionCheck?.(textCheckDraft)}
         </div>
       </header>
       <div className="settings-field service-stage__selector">

@@ -51,12 +51,23 @@ class ServiceSettingsActivity : AppCompatActivity() {
         header.addView(helpButton(this, R.string.translation_speech_help_title, providerHelp(provider).setup, "speech-help").apply {
             setOnClickListener {
                 val help = providerHelp(provider)
-                com.google.android.material.dialog.MaterialAlertDialogBuilder(this@ServiceSettingsActivity)
+                val message = android.text.SpannableStringBuilder(getString(help.setup))
+                help.setupLinks.forEach { link ->
+                    message.append("\n\n")
+                    val start = message.length
+                    message.append(getString(link.label))
+                    message.setSpan(object : android.text.style.ClickableSpan() {
+                        override fun onClick(widget: View) { openHelp(link.url) }
+                    }, start, message.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+                message.append("\n\n").append(getString(R.string.guide_local_save))
+                val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this@ServiceSettingsActivity)
                     .setTitle(providerTitle(this@ServiceSettingsActivity, provider))
-                    .setMessage(getString(help.setup) + "\n\n" + getString(R.string.guide_local_save))
+                    .setMessage(message)
                     .setPositiveButton(android.R.string.ok, null)
                     .setNeutralButton(R.string.guide_official) { _, _ -> openHelp(help.documentation) }
                     .setNegativeButton(R.string.guide_billing) { _, _ -> openHelp(help.billing) }.show()
+                dialog.findViewById<android.widget.TextView>(android.R.id.message)?.movementMethod = android.text.method.LinkMovementMethod.getInstance()
             }
         }, LinearLayout.LayoutParams(dp(48),dp(48)))
         root.addView(header,LinearLayout.LayoutParams(-1,dp(64)))

@@ -245,7 +245,7 @@ pub enum TencentCloudServerEvent {
     },
     SessionFinished,
     ProviderError {
-        code: String,
+        code: i64,
     },
     Ignored {
         kind: String,
@@ -268,9 +268,7 @@ impl TencentCloudServerEvent {
             .and_then(Value::as_i64)
             .ok_or(TencentCloudProtocolError::MissingEventField("code"))?;
         if code != 0 {
-            return Ok(Self::ProviderError {
-                code: format!("provider_{code}"),
-            });
+            return Ok(Self::ProviderError { code });
         }
 
         let final_value = value.get("final").and_then(Value::as_u64);
@@ -294,13 +292,13 @@ impl TencentCloudServerEvent {
             });
         }
 
-        if let Some(final_value) = final_value {
-            return Ok(Self::Ignored {
-                kind: format!("final_{final_value}"),
-            });
+        match final_value {
+            // A successful handshake includes final: 0 before any audio is sent.
+            None | Some(0) => Ok(Self::SessionReady),
+            Some(value) => Ok(Self::Ignored {
+                kind: format!("final_{value}"),
+            }),
         }
-
-        Ok(Self::SessionReady)
     }
 }
 
@@ -485,22 +483,80 @@ mod tests {
 
     #[test]
     fn signed_endpoint_uses_the_official_sorted_query_contract() {
-        let endpoint = TencentCloudEndpoint::new(
-            "1250000000",
-            "AKIDEXAMPLE",
-            "secret-key",
-            SourceLanguage::Chinese,
-            TargetLanguage::English,
-            1_700_000_000,
-            1_700_003_600,
-            123_456,
-            "voice-123",
-        )
+        for case in shared_contract()["signing"].as_array().unwrap() {
+            let credentials = &case["credentials"];
+            let endpoint = TencentCloudEndpoint::new(
+                credentials["appId"].as_str().unwrap(),
+                credentials["secretId"].as_str().unwrap(),
+                credentials["secretKey"].as_str().unwrap(),
+                serde_json::from_value(case["source"].clone()).unwrap(),
+                serde_json::from_value(case["target"].clone()).unwrap(),
+                case["timestamp"].as_u64().unwrap(),
+                case["expired"].as_u64().unwrap(),
+                case["nonce"].as_u64().unwrap(),
+                case["voiceId"].as_str().unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                endpoint.url().as_str(),
+                case["expected"]["url"].as_str().unwrap()
+            );
+            assert_eq!(
+                TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT as u64,
+                case["expected"]["frameBytes"].as_u64().unwrap()
+            );
+        }
+    }
+
+    fn shared_contract() -> Value {
+        let contract: Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/translation-contracts.json"
+        )))
         .unwrap();
-        assert_eq!(
-            endpoint.url().as_str(),
-            "wss://asr.cloud.tencent.com/asr/speech_translate/1250000000?expired=1700003600&nonce=123456&secretid=AKIDEXAMPLE&source=zh&target=en&timestamp=1700000000&trans_model=hunyuan-translation-lite&voice_format=1&voice_id=voice-123&signature=Y43cc1HS6RnEpdWr1dLaa1fnsQU%3D"
-        );
+        contract["tencentSpeechTranslation"].clone()
+    }
+
+    #[test]
+    fn shared_response_contract_rejects_malformed_fields_and_keeps_final_pairs() {
+        for case in shared_contract()["events"].as_array().unwrap() {
+            let actual = TencentCloudServerEvent::decode(case["frame"].as_str().unwrap());
+            let expected = &case["expected"];
+            if expected.is_null() {
+                assert!(actual.is_err(), "{}", case["id"]);
+                continue;
+            }
+            match (actual.unwrap(), expected["type"].as_str().unwrap()) {
+                (TencentCloudServerEvent::SessionReady, "ready")
+                | (TencentCloudServerEvent::SessionFinished, "finished")
+                | (TencentCloudServerEvent::Ignored { .. }, "ignored") => {}
+                (
+                    TencentCloudServerEvent::Transcript {
+                        source_text,
+                        target_text,
+                        source_language,
+                        sentence_end,
+                    },
+                    kind,
+                ) => {
+                    if kind == "ignored" {
+                        assert!(
+                            sentence_end
+                                && (source_text.trim().is_empty() || target_text.trim().is_empty())
+                        );
+                    } else {
+                        assert_eq!(sentence_end, kind == "finalPair");
+                        assert_eq!(source_text.trim(), expected["source"].as_str().unwrap());
+                        assert_eq!(
+                            target_text.trim(),
+                            expected["translation"].as_str().unwrap()
+                        );
+                        assert_eq!(source_language, expected["language"].as_str().unwrap());
+                    }
+                }
+                (event, kind) => panic!("unexpected Tencent fixture event {event:?} for {kind}"),
+            }
+        }
     }
 
     #[test]
@@ -555,9 +611,7 @@ mod tests {
         assert_eq!(
             TencentCloudServerEvent::decode(r#"{"code":6008,"message":"private provider detail"}"#)
                 .unwrap(),
-            TencentCloudServerEvent::ProviderError {
-                code: "provider_6008".into()
-            }
+            TencentCloudServerEvent::ProviderError { code: 6008 }
         );
         let oversized = "x".repeat(MAXIMUM_TRANSCRIPT_BYTES + 1);
         let value = json!({

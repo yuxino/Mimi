@@ -4,6 +4,89 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-06：Apple Speech 语言包入口与安装说明（#178）
+
+- 基线 `9df1a69b` 加本轮修改（验证时 dirty）。语言包管理与实际识别
+  语言分开；下载与应用分别由用户点击，非当前配置可一次保存配置及语言。
+  识别检查绑定界面当前语言，语言或资源变化后旧结果失效。
+- `./scripts/check.sh` 通过：桌面 Rust 1190 passed／2 ignored、共享
+  Rust 测试通过，前端 122 文件／1779 项通过；fmt、严格 clippy、lint、
+  类型检查、生产构建及生产调试器隔离检查通过。最终教程列表编号和
+  浏览器验证脚本调整后补跑 lint、签名开发构建、diff 检查通过。
+- canonical 签名 `local-dev` 正常模式实测：读取 Apple 原生资源状态；
+  显式点击中文包下载后显示已下载，再点设为识别语言，非当前 Apple
+  配置和中文一起启用。重启仍保留该选择，识别检查可用（489 ms）。
+  未启动采音；该次准备可能复用 Apple 缓存，不是冷下载或字幕延迟证据。
+- 实际设置组件的浏览器矩阵 24 组通过：520/952 px × 中英日 × 明暗 ×
+  空闲/暂停，教程及语言包管理展开无溢出或重叠。Enter/Space 可展开；
+  教程原生截图确认 1、2、3 编号可见。仅平台能力由 fixture 提供，
+  不作为系统下载证据。下载失败/重试、保存回滚、会话锁及不兼容路由
+  由自动测试覆盖；未通过断网或写坏真实用户数据制造故障。
+- 签名 UI-only 原生补测：设置空闲、合成会话的空白 Listening 浮窗、
+  暂停、折叠/展开与停止后回到尚未启动均已检查；未采音或录音。托盘、
+  错误、翻译中和长字幕原生状态本轮未重跑，对应自动测试通过。
+- 本轮不新增 Apple 系统文字翻译。未验证冷下载耗时、真实音频识别质量、
+  Windows/Linux 原生界面。下一项是审阅 PR #181 中实际截图与操作步骤。
+
+## 2026-10-05：Gemini 连续字幕与计划换连接移植
+
+- 基线 `219c4b0` 加本轮修改（验证时 dirty）。保留上游非 atomic 草稿投影
+  与认证分类；新增共享 fragment/cumulative 合并、无标点静默 checkpoint、
+  Gemini 100/250 ms 译文展示和桌面 GoAway 计划切换。只有 Gemini live 块
+  启用显示断行，原始缓冲与确认历史不被修改。
+- macOS Intel 目标在本机 Rosetta 下通过 fmt、严格 clippy 和全量桌面 Rust
+  测试：1168 passed／2 ignored，其中 Gemini 客户端 23 项通过；额外
+  local-dev-credentials feature 的严格 clippy 通过。共享 Rust 79 项及
+  Android debug/release JVM 各 129 项通过，实际加载 host JNI。
+- 前端全量 120 文件／1744 项通过，lint、类型检查、生产构建与生产调试器
+  排除检查通过。覆盖 445 draft／18 confirmation、两音源、关闭中间字幕、
+  Clear、原始缓冲／历史不写回和其他服务保持原换行行为。
+- 移植后复用此前获授权日语视频的前 30 秒，16 kHz mono PCM16，原速经
+  Gemini 客户端发送：setup 1089 ms，首条译文 4717 ms，原文／译文草稿
+  16／15 次，1 个本地确认，报告错误为 0。短测不触发 GoAway；结束等待
+  12006 ms，沿用既有关闭上限。不是原生浮窗或旧新版端到端比较。
+- 移植前 `a0ac37f` 加同一 Gemini 修复的 600 秒日语实测，经实际
+  AudioSendPipeline 的 30000 个 20 ms buffer 送完 19200000 原始 PCM
+  字节，错误为 0；GoAway 后切换完成 1564 ms，新译文随后等待 6951 ms，
+  相邻译文间隔 10852 ms，切换后继续 40 次 draft。该历史证据未在本次
+  移植后重跑，也不能证明边界翻译完整或无感接续。
+- 公开提交前再同步到 `962c248`，保留上游腾讯／火山错误处理及重连背景
+  修复。`CARGO_BUILD_TARGET=x86_64-apple-darwin ./scripts/check.sh` 完整
+  通过：桌面 1177 passed／2 ignored、共享 79 项、前端 122 文件／1763
+  项；fmt、严格 clippy、lint、类型／生产构建通过。Android 实际 host JNI
+  debug/release 重新验证，各 135 项通过。30 秒服务探测仍属于前述
+  `219c4b0` 移植阶段；本次同步没有重跑服务探测或 ARM64 原生验收。
+- 用户试用移植前已签名 macOS 开发修复版，报告明显改善且仍有错漏；这是
+  未计时体验反馈，不是准确率评估。该 app 本轮未替换。
+- `./scripts/check.sh` 已尝试，但 ARM64 构建在 Apple Speech build.rs
+  因本机 macOS SDK 15.4（要求 26+）失败；未修改／绕过 Apple adapter。
+  当前 ARM64 签名包、原生 UI、Windows/Linux、Android 实机及多次真实
+  GoAway 尚待验证。下一项是用 Xcode 26+ 复跑 ARM64 完整检查和原生字幕。
+
+## 2026-10-05：腾讯云凭据指引与协议修复
+
+- 基线 `219c4b0f` 加本轮修复（验证时 dirty）。核对官方实时语音翻译
+  WebSocket 文档，仍需账号 AppID 与 SecretID/SecretKey；桌面配置与
+  Android 帮助增加账号信息、API 密钥及 ASR 控制台入口。
+- 修复两端丢失腾讯云结构化拒绝原因的问题，区分参数、鉴权、开通、额度
+  和并发上限；仅使用固定脱敏文案。Android 最终原文/译文成对提交，
+  停止时将不足一帧的 PCM 补静音后再发送结束消息；六种固定帧协议的
+  尾帧保留由回归测试覆盖。共享腾讯云签名、响应及错误 fixtures 由两端消费。
+- `./scripts/check.sh` 通过：桌面 Rust 1173 passed／2 ignored，前端
+  120 文件／1737 项通过；共享 Rust、lint、类型和生产构建通过。
+  Android `testDebugUnitTest` 135 项通过（含实际 host JNI），`lintDebug` 通过。
+- canonical 签名 `local-dev` UI-only 原生检查：确认添加腾讯云才创建配置，
+  空字段不允许保存，三项获取入口可见，键盘焦点显示帮助，缺少凭据的
+  检查反馈留在操作旁。未输入真实凭据或启动采音。随后恢复普通开发模式，
+  确认原有配置可读且会话停止。
+- Ego 浏览器 24 组配置界面检查通过：520/952 px × 中英日 × 明暗主题 ×
+  已保存/编辑。三项入口均可见、无溢出，窄屏日文正常换行；键盘与鼠标
+  帮助、打开失败的脱敏 toast 通过。目视检查代表截图；模拟桥接不计为
+  真实控制台跳转，临时截图未作为持久媒体基线。
+- 未验证腾讯云真实账号开通/计费、云端字幕质量与延迟、Android 真机或
+  Windows/Linux 原生界面。下一项为用户配置腾讯云凭据后的实际连接与
+  同一短音频样本验收；自动测试和 UI-only 结果不能替代该证据。
+
 ## 2026-10-05：运行中切换已保存的服务配置
 
 - 基线 `4634034` 加本轮改动（验证时 dirty）。设置、托盘和字幕控制面板
@@ -931,3 +1014,125 @@
   session idle. Playback and content-free tracing were stopped. The formal
   application was not replaced. The sample and sanitized diagnostics remain
   in a private local regression directory; credentials remain in app storage.
+
+### 2026-10-05 — Volcano activation and retained four-window regression
+
+- The user completed account setup, activated simultaneous interpretation 2.0
+  as a formal service and entered the key in Mimi. The console initially showed
+  1,000,000 / 1,000,000 tokens remaining and expiry `-`; this does not mean the
+  allowance never expires. The agent did not perform those account/key actions.
+  See the [provider matrix](provider-regression-matrix.md) for API and billing
+  boundaries, including automatic postpaid charging after free resources run out.
+- Clean signed canonical build `5b29d05e` produced `en` → `zh` subtitles during
+  YouTube DevDay playback. Private trace counters for private events, replay
+  snapshots and content bytes were all zero; no media URL, subtitle content,
+  account identifier or credential is included here.
+- Trace-relative timestamps, not app uptime: pause at 123.991 s completed at
+  124.071 s (80 ms). Resume at 143.024 s reached listening at 143.502 s (478 ms);
+  generation 5's first
+  confirmed pair arrived at 145.165 s. The retained interval contains 15 final
+  pairs and no error events.
+- Across 88 snapshots numbered 123–210, all four windows agreed on receipt and
+  application, and the overlay rendered every snapshot. Application delay was
+  a median 53 ms and maximum 106 ms. These snapshot propagation and recovery
+  timings do not measure end-to-end subtitle latency.
+- The trace recorded 5,059 events, retained 2,048 and evicted 3,011. Analysis is
+  limited to trace-relative 119.122–180.540 s; `traceDropped`, `frontendDropped`
+  and `staleFrontendRejected` were zero, and `unflushedWindows` was empty. The
+  3,011 evictions reflect bounded retention; this is not a full-session trace.
+- Normal quit from the running state was confirmed with `isRunning: false`,
+  followed by reopening the canonical app. The active Volcano profile,
+  `en` → `zh` selection and saved credentials persisted; microphone capture
+  remained off. A real connection check succeeded in 375 ms.
+- After restart, YouTube playback produced four confirmed pairs. A subsequent
+  new session replayed the saved 15.091-second synthetic English sample in
+  QuickTime; the native overlay showed six source/translation groups through
+  the final sentence, with RTT 47 ms. This verifies configuration retention and
+  subtitle output after cold launch/new start; it does not establish sustained
+  stability. These timings do not measure end-to-end subtitle latency.
+- During later silence after audio completion, the UI showed temporary
+  translation failure with reconnect guidance. Support-journal timestamps:
+  `listening` 193,880 ms → reconnect 254,481 ms → `listening` 254,956 ms →
+  `OTHER` error 258,640 ms (3.684 s after reconnection completed). Manual start
+  266,856 ms → `listening` 267,292 ms → `OTHER` error 272,668 ms (5.376 s later).
+  No trace was active for these events; private events and recording remained
+  off. The cause remains unknown. Sustained stability did not pass, and no
+  silence timeout or root-cause fix is established.
+- The subsequent `support_diagnostics.rs` patch only adds safe numeric provider
+  status and fixed-label classification. The clean follow-up below ran the patch
+  natively without triggering its numeric failure path. Provider behavior,
+  protocol and automatic recovery are unchanged.
+
+- Earlier signed `6aa143dc` plus diagnostic/UI patch: silent listening lasted
+  166.585 s without a recorded failure. A later audio replay was interrupted by
+  another task installing UI-test mode at the canonical path and is excluded.
+- Automated follow-up: `scripts/check.sh` passed with 1,172 Rust tests / 2 ignored,
+  72 shared-core tests and JNI checks, and 1,730 frontend tests. After the
+  provider-picker Cancel/navigation fix, the complete frontend suite passed
+  1,736 tests across 119 files; lint, typecheck and production build also passed.
+
+### 2026-10-05 — Clean Volcano audio and sustained-silence follow-up
+
+- Signed canonical build from clean `82514e5d`, system audio on and microphone
+  off. The configured route was **`ja` → `zh`**, but the existing 15.091-second
+  synthetic sample was **English**. This run verifies transport/lifecycle and
+  output counts, not English language support or recognition/translation accuracy.
+- Support diagnostics remained `listening` from app uptime 138,481 to
+  346,969 ms (208.488 s), with six confirmed pairs and no error. The trace's
+  final pair was at 163,298 ms and last audible batch at 163,068 ms. Silent PCM
+  sends continued from 165,062 through 365,062 ms: at least 200 s, with 101
+  send-statistic observations at -96 dBFS and a maximum observation gap of
+  2,013 ms (not audio packet spacing). No provider error, recovery or
+  reconnection was recorded in this run.
+- Trace IDs 1–1,331 were contiguous, with no eviction, drops, cap hits or write
+  failures, and `unflushedWindows` was empty at stop. All 64 published snapshots
+  (IDs 1–64) reported successful delivery and reached `wireReceived`/`storeApplied`
+  in each of four windows. Source, translation, history and track counts had
+  zero mismatches; `overlayCommitted` covered all 64. Content, private-event and
+  replay counters were all zero.
+- Service-picker guidance and Cancel return were verified natively during an
+  active session. The diagnostic patch also ran natively, but the old `OTHER`
+  failure did not recur. Its cause remains unresolved; the safe numeric error
+  path still has automated coverage only. This is not evidence of a root-cause
+  fix or a general silence timeout rule. See the
+  [provider matrix](provider-regression-matrix.md) for earlier evidence and limits.
+- After integrating main's Tencent fixes, final `scripts/check.sh` at `5b689c78`
+  passed: Rust 1,177 / 2 ignored, shared core 72 plus JNI checks, frontend 1,743
+  across 120 files, formatting, Clippy, lint, typecheck, production build and diff.
+
+### 2026-10-05 — Tencent explicit-zero handshake readiness
+
+- Source baseline `962c2480`; a live handshake probe using the existing service
+  profile received HTTP 101 at 124 ms and the first JSON response at 154 ms:
+  `code=0`, `final=0`, `has_result=false`. No raw response, signed URL, account
+  identifiers or credentials are recorded here.
+- The documented ready example omits `final`; the actual explicit zero is
+  ignored by both existing decoders. Desktop consequently waits until its
+  5-second setup timeout. Android has the same decoder defect and a separate
+  20-second readiness timer; this probe did not measure Android behavior.
+- Repair scope: both decoders accept absent/zero `final` as ready only for a
+  successful response without `result`; shared fixtures protect transcript,
+  completion and rejection handling. A loopback test verifies readiness
+  before sending audio. See the [design](../plans/2026-10-05-tencent-handshake-ready.md).
+- The old signed app's Japanese → Chinese check through the system proxy timed
+  out at 5,195 ms. The patched canonical signed app (`962c2480` plus the
+  uncommitted Tencent fix) passed with the same credentials and configuration
+  in 222 ms.
+- Native system-only playback, microphone off: an English → Chinese
+  15.091-second synthetic QuickTime sample produced two confirmed bilingual
+  overlay groups through the final sentence; pause/resume and replay added two
+  more, for four total. RTT was 16 ms initially and 12 ms after resume, not
+  end-to-end subtitle latency. Diagnostics recorded resume connecting at
+  299.3 s, listening at 299.7 s and stop at 359.2 s. The black background remained;
+  immersive mode was off and transparency stayed at 23. The session was stopped
+  and Japanese → Chinese restored.
+- The new Rust handshake regression failed against the old decoder and all 21
+  focused Tencent tests passed after the fix. Canonical `scripts/check.sh`
+  passed: Rust 1,178 / 2 ignored, shared core 72 plus JNI, frontend 1,749 across
+  121 files, formatting, Clippy, typecheck, lint and production build. Android
+  passed 135 tests across 21 suites, including two JNI tests. After a test-only
+  oneshot follow-up made spawned-server assertion failures visible, the 21
+  focused Rust tests, strict Clippy, formatting and diff checks passed again.
+- Sustained stability, Android hardware and billing eligibility remain
+  unverified. The native evidence covers only the observed connection,
+  subtitle and pause/resume run.

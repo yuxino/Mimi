@@ -11,7 +11,7 @@ existing account has credits, model access, or a working Mimi session.
 | --- | --- | --- |
 | OpenAI: `/v1/realtime/translations`, `gpt-realtime-translate`, with `gpt-realtime-whisper` source transcription | The translation model explicitly does not support the Free tier. | [Model](https://developers.openai.com/api/docs/models/gpt-realtime-translate). New API accounts use prepaid billing, with a [$5 minimum purchase](https://help.openai.com/en/articles/8264644-what-is-prepaid-billing). Access must be from a [supported region](https://help.openai.com/en/articles/5347006-openai-api-supported-countries-and-territories); mainland China is not listed. ChatGPT subscriptions do not establish API credit. |
 | Azure OpenAI: `/openai/v1/realtime/translations`, separate configured translation and transcription deployments | No dedicated free translation allowance confirmed. The general new-customer $200 / 30-day offer does not establish this model's deployment eligibility or credit applicability. | [Model and pay-as-you-go deployment](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-realtime-translate); [realtime region prerequisites](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets) list East US 2 and Sweden Central. [Azure signup](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account) requires a phone and non-prepaid credit/debit card; its global trial excludes Azure China. Model quota is distinct from a free spending allowance. |
-| Volcano Engine: `/api/v4/ast/v2/translate`, resource `volc.service_type.10053`, simultaneous interpretation 2.0 in speech-to-text mode | The new speech console offers a first-activation API trial bundle, but the public material inspected did not establish the exact allowance or expiry for resource `10053`. Confirm that resource before testing. | [Official onboarding](https://docs.volcengine.com/docs/DoubaoVoice/QuickStartNewConsole?lang=zh) requires real-name verification; the gift is issued once and is not repeated for new projects. It describes automatic postpaid charging after free resources run out. [Speech console](https://console.volcengine.com/speech/new/overview?projectName=default). Do not substitute Ark token, ordinary ASR, or website-demo allowances. |
+| Volcano Engine: `/api/v4/ast/v2/translate`, resource `volc.service_type.10053`, simultaneous interpretation 2.0 in speech-to-text mode | The public material inspected establishes a first-activation API trial bundle but not this resource's exact allowance or expiry. After the user completed activation, the console showed **1,000,000 / 1,000,000 tokens remaining** for simultaneous interpretation 2.0 and expiry **`-`**. This is observed account eligibility, not a universal offer or proof of no expiry. | [Official onboarding](https://docs.volcengine.com/docs/DoubaoVoice/QuickStartNewConsole?lang=zh) requires real-name verification; the gift is issued once and is not repeated for new projects. It describes automatic postpaid charging after free resources run out. [Speech console](https://console.volcengine.com/speech/new/overview?projectName=default). Do not substitute Ark token, ordinary ASR, or website-demo allowances. |
 | Tencent Cloud: `asr.cloud.tencent.com/asr/speech_translate/<appid>`, `hunyuan-translation-lite` | The ASR billing table explicitly lists **no free allowance** for large-model realtime speech translation. | [Exact API and activation](https://cloud.tencent.com/document/product/1093/127565), [billing](https://cloud.tencent.com/document/product/1093/35686), [real-name prerequisite](https://cloud.tencent.com/document/product/1093/35687). Ordinary ASR and TRTC free packages are different products. The [legacy machine-translation notice](https://cloud.tencent.com/announce/detail/2448) also names this replacement API as having no free allowance. |
 | Baidu: `aip.baidubce.com/ws/realtime_speech_trans` | **2 hours after personal real-name verification; 10 hours after enterprise verification; none without verification.** | [Exact API](https://ai.baidu.com/ai-doc/MT/Sl9p2h5k9), [free allowance](https://ai.baidu.com/ai-doc/MT/Tl9pjqsym), [registration, claim and application setup](https://ai.baidu.com/ai-doc/MT/2l317egif). The inspected guide does not list a payment card as a trial prerequisite. Free-package expiry was not confirmed; the paid package's 365-day validity must not be reused as a free-trial claim. |
 | xAI: `/v1/realtime?model=grok-voice-latest`, with `grok-transcribe` input transcription | No external-API free allowance confirmed. The current speech-to-speech API price is $0.08/minute. | [Voice API](https://docs.x.ai/developers/model-capabilities/audio/voice), [signup and credits](https://docs.x.ai/developers/quickstart), [billing](https://docs.x.ai/console/billing). The free Console Playground is not evidence of credit for Mimi's API requests. API-specific region or identity prerequisites were not established by this review. |
@@ -28,8 +28,9 @@ text translator retains its own eligibility and billing.
 Unless a row states otherwise, the native observations below used the signed
 canonical `/Applications/mimi-dev.app`, build **`d58f4bad`**, which does **not**
 contain this audit's authentication/error-mapping patches. The comparable input
-was a fixed 15.091-second synthetic English sample. These observations are not a
-complete multiwindow snapshot trace or a complete stop/start/app-restart regression.
+was a fixed 15.091-second synthetic English sample. Volcano's playback sources
+and multiwindow trace coverage are recorded separately below. These results
+do not establish complete-session or full lifecycle coverage for every provider.
 
 | Service / route | Available setup evidence | Current audit status |
 | --- | --- | --- |
@@ -41,7 +42,7 @@ complete multiwindow snapshot trace or a complete stop/start/app-restart regress
 | Whisper + Index text translation | Existing configured route; ASR check 67 ms, MT check 851 ms on `d58f4bad`. | The 15.091-second sample's final ASR and MT both reached the last sentence. Local ASR was observed to be slow, but end-to-end latency was not measured. Pause/resume was not exercised; this is not a latency or full lifecycle pass. |
 | Parakeet | On build `fbf3c06c`, the 16 ms availability check returned unavailable. | Capture was not started. This is an unavailable preflight result, not successful recognition or a native session pass. |
 | HyMT / TranslateGemma independent text translation | On build `fbf3c06c`, connection checks returned unavailable: HyMT 6 ms, TranslateGemma 0 ms. | Capture was not started. These are unavailable preflight results, not successful translation or native session passes. |
-| Volcano Engine | Signup required a phone number, SMS verification and agreement acceptance. The agreement was not accepted and registration was not completed. | No native test; resource `10053` trial eligibility remains unconfirmed. |
+| Volcano Engine | The user completed account setup and activated simultaneous interpretation 2.0 as a formal service, then entered the key in Mimi. The observed initial allowance was 1,000,000 / 1,000,000 tokens; expiry displayed `-`. The agent did not create the account, activate the service or enter the key. | Clean `5b29d05e` verified output, pause/resume and bounded four-window consistency, then encountered unexplained `OTHER` errors after later silence. Clean `82514e5d` produced six pairs and sent at least 200 s of silent PCM without provider errors or reconnection; all 64 snapshots agreed across four windows. Its `ja` → `zh` setting with an English sample limits this result to transport/lifecycle and output counts. The earlier fault did not recur, so its cause remains unresolved and the numeric failure classification still has automated coverage only. |
 | OpenAI / Azure OpenAI / Tencent Cloud / xAI | No confirmed free allowance for Mimi's exact API; Azure's general trial remains distinct from model eligibility. | No native test this round. |
 
 ### Clean `6ac14bde` follow-up
@@ -93,6 +94,89 @@ Actual host JNI compilation passed; the run includes 2 shared-core JNI tests,
 11 shared translation tests and the 3 new handshake/feedback tests. Android code
 was unchanged after that successful run. Android physical-device and Release
 validation remain unverified.
+
+### Clean `5b29d05e` Volcano session and retained multiwindow trace
+
+The user completed the account, service activation and Mimi credential entry.
+The signed canonical development app used clean `5b29d05e`, with Volcano
+simultaneous interpretation 2.0 translating `en` → `zh` during YouTube DevDay
+playback. The privately exported trace contains no private events, replay
+snapshots or content bytes: all three counters were zero.
+
+The following timestamps are trace-relative, not app uptime. Pause was requested
+at 123.991 s and completed at 124.071 s (**80 ms**).
+Resume at 143.024 s reached listening at 143.502 s (**478 ms**); generation 5's
+first confirmed pair arrived at 145.165 s. The retained interval contains 15 final
+pairs and no error events. For all 88 snapshots numbered 123–210, receipt and
+application agreed across four windows, and the overlay rendered every snapshot.
+Snapshot application delay was a median 53 ms and maximum 106 ms; these are
+snapshot propagation timings, not end-to-end subtitle latency.
+
+The trace recorded 5,059 events, retained 2,048 and evicted 3,011 under its bounded
+retention policy. The available interval spans trace-relative 119.122–180.540 s;
+`traceDropped`, `frontendDropped` and `staleFrontendRejected` were zero, and
+`unflushedWindows` was empty. These observations
+do not establish an error-free full session or coverage outside that interval.
+Normal app quit from the running state was verified with `isRunning: false`.
+After reopening the canonical app, the active Volcano profile, `en` → `zh`
+selection and saved credentials remained available, with microphone capture off.
+A real connection check succeeded in 375 ms. YouTube playback after restart
+produced four confirmed pairs. A subsequent new session replayed the saved
+15.091-second synthetic English sample in QuickTime; the native overlay showed
+six source/translation groups through the final sentence, with RTT 47 ms.
+This verifies saved configuration and subtitle output after cold launch and a
+new start. The connection check and RTT do not measure end-to-end subtitle latency.
+
+Later, after audio finished and playback was silent, the UI showed temporary
+translation failure with reconnect guidance. The support journal recorded
+`listening` at 193,880 ms, reconnection at 254,481 ms, `listening` at 254,956 ms,
+and `OTHER` error at 258,640 ms, 3.684 s after reconnection completed. A manual
+start at 266,856 ms reached `listening` at 267,292 ms and failed with `OTHER` at
+272,668 ms, 5.376 s later. These later events were outside the exported trace;
+private events and recording remained off. The cause is unknown, so this run
+does not pass sustained-session stability or establish a silence timeout rule.
+The subsequent `support_diagnostics.rs` patch adds safe numeric provider status
+and fixed-label classification only. The clean native follow-up below ran the
+patch, but did not trigger its numeric failure path. Provider behavior, protocol
+and automatic recovery are unchanged.
+
+An earlier signed `6aa143dc` build plus the diagnostic/UI patch remained silently
+listening for 166.585 s. Its later audio replay was interrupted by another task
+replacing the canonical app with UI-test mode and is excluded from provider results.
+
+### Clean `82514e5d` Volcano audio and sustained-silence follow-up
+
+The signed canonical native build used system audio with microphone capture off.
+The configured route was **`ja` → `zh`**, while playback used the existing
+15.091-second **English** synthetic sample. This mismatch limits the evidence
+to transport, lifecycle and output counts; it is not an English language or
+recognition/translation accuracy pass.
+
+Support diagnostics showed `listening` from app uptime 138,481 ms through
+346,969 ms (**208.488 s**), with six confirmed pairs and no error. In the trace,
+the last audible batch was at 163,068 ms and the final pair at 163,298 ms.
+Silent PCM sends span 165,062–365,062 ms: at least **200 s**, with 101 send-statistic
+observations at -96 dBFS and a maximum observation gap of 2,013 ms. This interval
+describes statistics, not audio packet spacing. No provider error, recovery or
+reconnection was recorded in this run.
+
+All 1,331 trace event IDs were contiguous, with no eviction, drops, cap hits or
+write failures; stopping the trace left `unflushedWindows` empty. All 64 published
+snapshots (IDs 1–64) reported successful delivery and had `wireReceived` and
+`storeApplied` in each of the four windows. Source, translation, history and
+track counts had zero mismatches; `overlayCommitted` covered all 64 snapshots.
+Content, private-event and replay counters were all zero. The service picker's
+guidance and Cancel return were also exercised natively during an active session.
+
+The diagnostic patch ran natively, but the earlier `OTHER` failure did not recur.
+Its cause is still unresolved, and this observation does not establish a fix or
+a general silence timeout rule. The safe numeric classification's actual failure
+path remains covered by automated tests only.
+
+After integrating main's Tencent fixes, the final `scripts/check.sh` at
+`5b689c78` passed: Rust 1,177 / 2 ignored, 72 shared-core tests plus JNI checks,
+and 1,743 frontend tests across 120 files; formatting, Clippy, lint, typecheck,
+production build and diff checks all passed.
 
 Keep account identifiers, keys, provider bodies, recognized/translated text and
 private media out of this matrix. Add only observed revisions, route/language

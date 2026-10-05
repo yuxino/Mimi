@@ -396,3 +396,18 @@ artifacts, and signing material.
   `--ui-only`; its relaunch source was not proven. Verify the exact running bundle
   and runtime/window mode, not only the script's success message. After UI-only
   QA, restore the ordinary idle development app before handing it to the user.
+
+## Gemini rotation and continuous transcripts
+
+Stage rotation audio by a finite PCM-byte bound. A native callback can be 20 ms;
+a fixed count of callbacks does not establish a two-second buffer. Do not hold
+the audio sender behind the old transcript drain. Exercise the real
+AudioSendPipeline with byte order, padding, Stop, Clear, cancellation and the
+staging cap. Replacement readiness and first subsequent transcript are separate
+measurements; a successful socket switch does not prove complete translation.
+
+Keep Gemini fragment/cumulative assembly in shared Rust and assert drafts through
+actual JNI as well as Rust fixtures. Preserve raw spaces and subwords, and do
+not deduplicate by matching tails. Sentence breaks belong only to live display,
+never to transcript buffers or committed history. Keep preview clocks separate
+from local quiet checkpoints.

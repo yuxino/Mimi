@@ -168,7 +168,7 @@ interface StoreState {
     name: string | undefined,
     options?: ProfileOptionsDraft,
   ) => Promise<SettingsSnapshot>;
-  selectProfile: (profileId: string) => Promise<SettingsSnapshot>;
+  selectProfile: (profileId: string, sourceLanguage?: SourceLanguage) => Promise<SettingsSnapshot>;
   deleteProfile: (profileId: string) => Promise<SettingsSnapshot>;
   saveProfileCredentials: (
     profileId: string,
@@ -569,12 +569,18 @@ export const useStore = create<StoreState>()((set, get) => ({
     return snapshot;
   },
 
-  selectProfile: async (profileId) => {
-    if (profileId === get().settings.activeProfileId) return get().settings;
+  selectProfile: async (profileId, sourceLanguage) => {
+    if (profileId === get().settings.activeProfileId && !sourceLanguage) return get().settings;
     if (sessionSettingsAreChanging(get().session)) throw new Error("profile_switch_busy");
+    if (sourceLanguage) {
+      ensureProfileMutationsAllowed(get().session);
+      if (get().settings.profiles.find(profile => profile.id === profileId)?.provider !== "appleSpeech" || sourceLanguage === "auto") {
+        throw new Error("apple_speech_language_unsupported");
+      }
+    }
     if (isTauri) {
       const revision = settingsResponseGate.capture();
-      const snapshot = await profileSelect(profileId);
+      const snapshot = await profileSelect(profileId, sourceLanguage);
       if (settingsResponseGate.applyIfCurrent(revision)) {
         settingsSaveCoordinator.invalidate();
         set({ settings: snapshot });
@@ -591,6 +597,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       snapshot.sourceLanguage = capabilities.sourceLanguages.includes(current.sourceLanguage) ? current.sourceLanguage : capabilities.sourceLanguages[0] ?? current.sourceLanguage;
       snapshot.targetLanguage = capabilities.targetLanguages.includes(current.targetLanguage) ? current.targetLanguage : capabilities.targetLanguages[0]!;
     }
+    if (sourceLanguage) snapshot.sourceLanguage = sourceLanguage;
     snapshot.activeProfileId = profileId;
     set({ settings: snapshot });
     return snapshot;

@@ -31,6 +31,11 @@ export function usesAtomicSubtitlePreview(provider: unknown): provider is Atomic
   return ATOMIC_SUBTITLE_PROVIDERS.some(candidate => candidate === provider);
 }
 
+/** Gemini transcribes a continuous stream; coalesce its live display briefly. */
+export function usesStreamingSubtitlePreview(provider: unknown): provider is "googleGeminiLive" {
+  return provider === "googleGeminiLive";
+}
+
 export type SubtitleBlockPresentation = "history" | "latestCommitted" | "live";
 
 /** One spoken utterance: the unit the timeline groups, spaces and fades. */

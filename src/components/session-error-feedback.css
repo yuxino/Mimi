@@ -83,7 +83,10 @@
 }
 
 .overlay-session-error-content > .session-error-feedback {
-  margin: 0 12px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(16, 16, 16, 0.96);
 }
 
 .overlay-control-panel .session-error-feedback {

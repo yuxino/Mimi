@@ -25,4 +25,9 @@
     <string name="lang_en">English</string>
     <string name="lang_ja">日本語</string>
     <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">Tencent Cloud rejected the session configuration. Check the AppID and selected languages.</string>
+    <string name="tencent_service_activation_required">Enable realtime speech translation in the Tencent Cloud ASR console.</string>
+    <string name="tencent_quota_exhausted">Tencent Cloud quota is exhausted or payment is overdue. Check packages, balance and billing status in the console.</string>
+    <string name="tencent_capacity_exceeded">Tencent Cloud concurrent sessions have reached the limit. Close other sessions and retry, or adjust your concurrency quota in the console.</string>
+    <string name="tencent_provider_rejected">Tencent Cloud rejected the session. Check the service status in the console and retry.</string>
 </resources>

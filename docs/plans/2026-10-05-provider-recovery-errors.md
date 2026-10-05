@@ -117,3 +117,26 @@ keepalives or treat a successful manual retry as proof of long-session stability
 Automatic END recovery was not added: the existing retry limit bounds consecutive
 connection failures, not repeated successful connections followed by END. Android
 physical-device/Release and Windows/Linux native behavior remain unverified.
+
+## Volcano native follow-up
+
+The native Volcano run on clean `5b29d05e` established pause/resume and bounded
+four-window consistency, then exposed a later silence-period failure after a
+cold launch. The support snapshot reduced its existing client error to `OTHER`.
+A successful sample and restart do not establish continuous-session stability.
+
+Preserve only exact Mimi-owned Volcano error labels and a canonical bounded
+numeric provider status in support diagnostics. Serialize that status separately
+from the static category/code; do not retain free-form messages, response bodies,
+keys, session identifiers or endpoint URLs. Malformed numeric labels and private
+prefixes/suffixes retain the unknown fallback. This is diagnostic coverage only:
+provider framing, capture and recovery policy remain unchanged until the actual
+server response has been observed. See the provider regression matrix for the
+measured interval and outstanding live verification.
+
+The same native run exposed a provider-picker navigation lock: opening the
+picker while idle and then starting subtitles disabled both provider creation
+and Cancel. Keep creation blocked for active, paused, connecting and stopping
+sessions, show a short translated stop-first instruction, and allow Cancel
+when no creation request is pending. Preserve the pending-request guard for
+both the picker and its provider confirmation.

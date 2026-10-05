@@ -12,7 +12,7 @@ commands.allow = [
 
 [[permission]]
 identifier = "app-settings"
-description = "Allows the settings window to manage the live-subtitle session, preferences, profiles, updater fixture mode, and fixed release recovery source."
+description = "Allows the settings window to manage the live-subtitle session, preferences, profiles, updater fixture mode, and fixed release and provider setup pages."
 commands.allow = [
   "settings_save",
   "installed_font_families",
@@ -47,6 +47,7 @@ commands.allow = [
   "session_archive_clear",
   "session_export",
   "app_open_releases",
+  "open_tencent_setup_page",
   "profile_create",
   "profile_update",
   "profile_select",

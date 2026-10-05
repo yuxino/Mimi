@@ -34,6 +34,7 @@ import {
   emptyStateText,
   hasSubtitleContent,
   usesAtomicSubtitlePreview,
+  usesStreamingSubtitlePreview,
 } from "./overlayModel";
 
 const ACCENT = "#7AA8FF";
@@ -149,6 +150,7 @@ export function OverlayWindow() {
   const phase = computeActivityPhase(session, settings);
   const activeProvider = settings.profiles.find(profile => profile.id === settings.activeProfileId)?.provider;
   const atomicProvider = usesAtomicSubtitlePreview(activeProvider);
+  const streamingProvider = usesStreamingSubtitlePreview(activeProvider);
   // Disabling an input keeps its confirmed captions and source identity.
   const dual = new Set([
     ...(session.subtitles.tracks ?? []).map(track => track.audioSource),
@@ -161,8 +163,8 @@ export function OverlayWindow() {
   const primaryAudioSource = session.subtitles.tracks?.[0]?.audioSource
     ?? (settings.audioInput === "microphone" ? "microphone" : "system");
   const running = OVERLAY_ACTIVITY_PHASES[phase].animationSpeed > 0;
-  const primaryTail = useSubtitleTail(primarySubtitles, settings, dual ? systemTrack ?? EMPTY_SYSTEM : session, running, atomicProvider, "primary");
-  const microphoneTail = useSubtitleTail(microphoneSubtitles, settings, microphoneSubtitles, running, atomicProvider, "microphone");
+  const primaryTail = useSubtitleTail(primarySubtitles, settings, dual ? systemTrack ?? EMPTY_SYSTEM : session, running, atomicProvider, "primary", streamingProvider);
+  const microphoneTail = useSubtitleTail(microphoneSubtitles, settings, microphoneSubtitles, running, atomicProvider, "microphone", streamingProvider);
   const blocks = useMemo(() => dual
     ? buildMultiSourceSubtitleBlocks(session.subtitles.history, settings.subtitleDisplayMode, [
       { audioSource: "system", history: primarySubtitles.history, tail: primaryTail },
@@ -323,6 +325,7 @@ export function OverlayWindow() {
           >
             {blocks.length > 0 && (
               <Timeline
+                preserveLiveLineBreaks={streamingProvider}
                 blocks={blocks}
                 fontSize={settings.fontSize}
               fontFamily={settings.subtitleFontFamily}
@@ -354,7 +357,12 @@ export function OverlayWindow() {
         className="relative h-full w-full overflow-hidden"
         style={{
           borderRadius: 16,
-          background: hasSessionError ? "rgba(16,16,16,0.96)" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
+          // Ordinary mode keeps the same canvas through errors and retries.
+          // The error feedback owns its contrast; only a saved immersive mode
+          // needs a temporary opaque canvas while recovery is interactive.
+          background: hasSessionError && settings.subtitleBlendsWithBackground
+            ? "rgba(16,16,16,0.96)"
+            : subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
           border: `${borderWidth}px solid ${borderColor}`,
         }}
         onMouseEnter={() => setIsHovering(true)}
@@ -521,6 +529,7 @@ export function OverlayWindow() {
             </div>
           ) : (
             <Timeline
+              preserveLiveLineBreaks={streamingProvider}
               blocks={blocks}
               fontSize={settings.fontSize}
               fontFamily={settings.subtitleFontFamily}

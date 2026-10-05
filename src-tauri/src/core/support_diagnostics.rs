@@ -51,6 +51,8 @@ pub struct SafeFailure {
     phase: &'static str,
     category: &'static str,
     code: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_status_code: Option<u32>,
 }
 
 impl SafeFailure {
@@ -59,9 +61,13 @@ impl SafeFailure {
             phase: "unknown",
             category: "unknown",
             code: "OTHER",
+            provider_status_code: None,
         };
         if error.len() > 128 {
             return unknown;
+        }
+        if let Some(failure) = Self::from_volcano_error(error) {
+            return failure;
         }
         let translation_failure = match error {
             "translation_rate_limited" => Some(("rate_limit", "TRANSLATION_RATE_LIMITED")),
@@ -79,6 +85,7 @@ impl SafeFailure {
                 phase: "text_translation",
                 category,
                 code,
+                provider_status_code: None,
             };
         }
         let runtime_failure = match error {
@@ -133,6 +140,7 @@ impl SafeFailure {
                 phase,
                 category,
                 code,
+                provider_status_code: None,
             };
         }
         if error == "credential_authentication_failed" {
@@ -140,6 +148,7 @@ impl SafeFailure {
                 phase: "unknown",
                 category: "authentication",
                 code: "AUTHENTICATION_FAILED",
+                provider_status_code: None,
             };
         }
         let storage_code = match error {
@@ -153,9 +162,10 @@ impl SafeFailure {
                 phase: "setup",
                 category: "credential_storage",
                 code,
+                provider_status_code: None,
             };
         }
-        if error == "The selected sound output is unavailable. Stop subtitles and choose another sound source in Settings." { return Self { phase: "capture_setup", category: "device_unavailable", code: "OUTPUT_UNAVAILABLE" }; }
+        if error == "The selected sound output is unavailable. Stop subtitles and choose another sound source in Settings." { return Self { phase: "capture_setup", category: "device_unavailable", code: "OUTPUT_UNAVAILABLE", provider_status_code: None }; }
         let mut parts = error.split('.');
         if parts.next() != Some("audio3_error") {
             return unknown;
@@ -199,11 +209,92 @@ impl SafeFailure {
             phase,
             category,
             code,
+            provider_status_code: None,
         }
+    }
+
+    /// Only locally emitted labels and canonical nonnegative protobuf int32 codes
+    /// are accepted. Never retain the provider's free-form response message.
+    fn from_volcano_error(error: &str) -> Option<Self> {
+        if let Some(status) = error.strip_prefix("volcano_provider_error.") {
+            if status.is_empty()
+                || status.len() > 10
+                || !status.bytes().all(|byte| byte.is_ascii_digit())
+                || (status.len() > 1 && status.starts_with('0'))
+            {
+                return None;
+            }
+            let status = status.parse::<u32>().ok()?;
+            if status > i32::MAX as u32 {
+                return None;
+            }
+            return Some(Self {
+                phase: "websocket_connection",
+                category: "service_error",
+                code: "VOLCANO_PROVIDER_ERROR",
+                provider_status_code: Some(status),
+            });
+        }
+        let (phase, category, code) = match error {
+            "volcano_provider_error" | "Volcano Engine rejected the translation session." => (
+                "websocket_connection",
+                "service_error",
+                "VOLCANO_PROVIDER_ERROR",
+            ),
+            "volcano_unexpected_session_finished"
+            | "Volcano Engine ended the translation session unexpectedly." => (
+                "websocket_connection",
+                "service_error",
+                "VOLCANO_UNEXPECTED_SESSION_FINISHED",
+            ),
+            "volcano_protocol_error" | "Volcano Engine returned an invalid response." => (
+                "websocket_connection",
+                "service_error",
+                "VOLCANO_PROTOCOL_ERROR",
+            ),
+            "volcano_session_close_failed" => {
+                ("session_close", "transport", "VOLCANO_SESSION_CLOSE_FAILED")
+            }
+            "volcano_close_timeout" | "Volcano Engine did not finish closing in time." => {
+                ("session_close", "timeout", "VOLCANO_CLOSE_TIMEOUT")
+            }
+            "The Volcano Engine connection failed." | "The Volcano Engine transport failed." => (
+                "websocket_connection",
+                "transport",
+                "VOLCANO_TRANSPORT_ERROR",
+            ),
+            "The Volcano Engine translation session is not connected." => {
+                ("websocket_connection", "transport", "VOLCANO_NOT_CONNECTED")
+            }
+            "The Volcano Engine connection stopped responding." => {
+                ("websocket_connection", "timeout", "VOLCANO_HEALTH_TIMEOUT")
+            }
+            "The Volcano Engine connection could not be established in time." => (
+                "websocket_connection",
+                "timeout",
+                "VOLCANO_CONNECTION_TIMEOUT",
+            ),
+            "Volcano Engine did not confirm the session configuration in time." => {
+                ("setup", "timeout", "VOLCANO_SETUP_TIMEOUT")
+            }
+            "Volcano Engine rejected the session configuration." => {
+                ("setup", "request_rejected", "VOLCANO_SETUP_REJECTED")
+            }
+            _ => return None,
+        };
+        Some(Self {
+            phase,
+            category,
+            code,
+            provider_status_code: None,
+        })
     }
 
     /// Known local transport/MT labels win over arbitrary provider messages.
     pub fn from_provider_error(code: &str, message: &str) -> Self {
+        if let Some(failure) = Self::from_volcano_error(code) {
+            return failure;
+        }
         match code {
             "translation_rate_limited"
             | "translation_temporarily_unavailable"
@@ -762,6 +853,198 @@ mod tests {
         });
         assert!(report.contains("BAIDU_UNEXPECTED_SESSION_END"));
         assert!(!report.contains(marker));
+    }
+
+    #[test]
+    fn volcano_provider_status_survives_last_error_and_journal_without_raw_message() {
+        let marker = "synthetic-secret /Users/private caption-words https://private.invalid";
+        // Published AST error codes, plus numeric boundaries and an undocumented code.
+        for status in [
+            0,
+            45000001,
+            45000002,
+            45000081,
+            45000151,
+            55000031,
+            55000999,
+            i32::MAX,
+        ] {
+            let label = format!("volcano_provider_error.{status}");
+            let failure = SafeFailure::from_provider_error(&label, marker);
+            assert_eq!(failure.phase, "websocket_connection");
+            assert_eq!(failure.category, "service_error");
+            assert_eq!(failure.code, "VOLCANO_PROVIDER_ERROR");
+            assert_eq!(failure.provider_status_code, Some(status as u32));
+            assert_eq!(SafeFailure::from_error(&label), failure);
+            let mut journal = DiagnosticJournal::default();
+            journal.record(
+                DiagnosticEvent::Failure {
+                    classification: failure,
+                },
+                20,
+            );
+            let report = render(DiagnosticFacts {
+                last_error: Some((failure, 0)),
+                journal: journal.snapshot(),
+                ..Default::default()
+            });
+            let value: serde_json::Value = serde_json::from_str(&report).unwrap();
+            let last = &value["last_error"]["classification"];
+            let recent = &value["journal"]["recent_events"][0]["classification"];
+            assert_eq!(last["provider_status_code"], status);
+            assert_eq!(recent["provider_status_code"], status);
+            assert_eq!(last["code"], "VOLCANO_PROVIDER_ERROR");
+            for excluded in [
+                "synthetic-secret",
+                "/Users/private",
+                "caption-words",
+                "private.invalid",
+            ] {
+                assert!(!report.contains(excluded));
+            }
+        }
+    }
+
+    #[test]
+    fn volcano_terminal_labels_are_exact_and_distinct_from_normal_finish() {
+        for (label, message, phase, category, code) in [
+            (
+                "volcano_provider_error",
+                "Volcano Engine rejected the translation session.",
+                "websocket_connection",
+                "service_error",
+                "VOLCANO_PROVIDER_ERROR",
+            ),
+            (
+                "volcano_unexpected_session_finished",
+                "Volcano Engine ended the translation session unexpectedly.",
+                "websocket_connection",
+                "service_error",
+                "VOLCANO_UNEXPECTED_SESSION_FINISHED",
+            ),
+            (
+                "volcano_protocol_error",
+                "Volcano Engine returned an invalid response.",
+                "websocket_connection",
+                "service_error",
+                "VOLCANO_PROTOCOL_ERROR",
+            ),
+            (
+                "volcano_close_timeout",
+                "Volcano Engine did not finish closing in time.",
+                "session_close",
+                "timeout",
+                "VOLCANO_CLOSE_TIMEOUT",
+            ),
+        ] {
+            let failure = SafeFailure::from_provider_error(label, "private response body");
+            assert_eq!(
+                (failure.phase, failure.category, failure.code),
+                (phase, category, code)
+            );
+            assert_eq!(SafeFailure::from_error(label), failure);
+            assert_eq!(SafeFailure::from_error(message), failure);
+            assert_eq!(
+                SafeFailure::from_provider_error("unknown", message),
+                failure
+            );
+            // Existing reports keep their old shape when no numeric code was observed.
+            assert!(serde_json::to_value(failure)
+                .unwrap()
+                .get("provider_status_code")
+                .is_none());
+            for unknown in [format!("{label}: private"), format!("{message} private")] {
+                assert_eq!(
+                    SafeFailure::from_provider_error(&unknown, "private").code,
+                    "OTHER"
+                );
+            }
+        }
+        assert_eq!(SafeFailure::from_error("session_finished").code, "OTHER");
+        assert_eq!(
+            SafeFailure::from_provider_error("volcano_session_close_failed", "private").code,
+            "VOLCANO_SESSION_CLOSE_FAILED"
+        );
+        // Prefer the close-specific code even though its fixed message is shared with transport errors.
+        assert_eq!(
+            SafeFailure::from_provider_error(
+                "volcano_session_close_failed",
+                "The Volcano Engine connection failed."
+            )
+            .code,
+            "VOLCANO_SESSION_CLOSE_FAILED"
+        );
+    }
+
+    #[test]
+    fn volcano_malformed_status_codes_do_not_become_diagnostic_content() {
+        for suffix in [
+            "",
+            "-1",
+            "+1",
+            "01",
+            "2147483648",
+            "99999999999999999999",
+            "45000081.private",
+            "45000081\n",
+            " 45000081",
+            "４５００００８１",
+            "private-token",
+        ] {
+            let label = format!("volcano_provider_error.{suffix}");
+            for failure in [
+                SafeFailure::from_error(&label),
+                SafeFailure::from_provider_error(&label, "private-message"),
+            ] {
+                assert_eq!(failure.code, "OTHER", "{suffix:?}");
+                assert_eq!(failure.provider_status_code, None);
+                let json = serde_json::to_string(&failure).unwrap();
+                assert!(!json.contains("private"));
+                assert!(!json.contains("provider_status_code"));
+            }
+        }
+    }
+
+    #[test]
+    fn volcano_fixed_connection_errors_separate_setup_health_and_transport() {
+        for (message, code) in [
+            (
+                "The Volcano Engine connection failed.",
+                "VOLCANO_TRANSPORT_ERROR",
+            ),
+            (
+                "The Volcano Engine transport failed.",
+                "VOLCANO_TRANSPORT_ERROR",
+            ),
+            (
+                "The Volcano Engine translation session is not connected.",
+                "VOLCANO_NOT_CONNECTED",
+            ),
+            (
+                "The Volcano Engine connection stopped responding.",
+                "VOLCANO_HEALTH_TIMEOUT",
+            ),
+            (
+                "The Volcano Engine connection could not be established in time.",
+                "VOLCANO_CONNECTION_TIMEOUT",
+            ),
+            (
+                "Volcano Engine did not confirm the session configuration in time.",
+                "VOLCANO_SETUP_TIMEOUT",
+            ),
+            (
+                "Volcano Engine rejected the session configuration.",
+                "VOLCANO_SETUP_REJECTED",
+            ),
+        ] {
+            let failure = SafeFailure::from_error(message);
+            assert_eq!(failure.code, code);
+            assert_eq!(failure.provider_status_code, None);
+            assert_eq!(
+                SafeFailure::from_error(&format!("{message} private-detail")).code,
+                "OTHER"
+            );
+        }
     }
 
     #[test]

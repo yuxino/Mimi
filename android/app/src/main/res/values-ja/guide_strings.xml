@@ -57,7 +57,10 @@
     <string name="guide_help_gemini">Google AI Studio で Gemini API Key を作成し、プロジェクトが Live API を使用できるか確認してください。</string>
     <string name="guide_help_azure">Realtime 対応の Azure OpenAI リソースにリアルタイムモデルと文字起こしモデルをデプロイしてください。デプロイ名は自分で設定した名前を入力します。</string>
     <string name="guide_help_volcano">新版の Doubao Voice コンソールで本人確認と同時通訳 2.0 の有効化を行い、API Key を作成してください。旧 AppID と Access Token は使用しません。</string>
-    <string name="guide_help_tencent">Tencent Cloud ASR のリアルタイム音声翻訳を有効にし、AppID と API シークレットを取得してください。従量課金は自分で有効化する必要があります。</string>
+    <string name="guide_help_tencent">リアルタイム音声翻訳には、アカウントの AppID と同じアカウントの SecretID・SecretKey が必要です。AppID はアカウント情報ページで確認できます（UIN とは別です）。キーのペアは CAM の API キーページで取得し、ASR コンソールでサービスを有効にしてください。Hunyuan モデルの単一 API キーはこの API では使えません。従量課金は自分で有効化する必要があります。</string>
+    <string name="guide_tencent_app_id">AppID を取得（アカウント情報）</string>
+    <string name="guide_tencent_secret_pair">SecretID / SecretKey を取得（API キー）</string>
+    <string name="guide_tencent_asr">ASR を有効化</string>
     <string name="guide_help_baidu">Baidu AI Cloud の機械翻訳でアプリを作成し、リアルタイム音声翻訳を許可してください。AppKey はアプリの API Key で、Secret Key ではありません。</string>
     <string name="guide_help_xai">xAI コンソールで API Key を作成し、リアルタイム音声へのアクセスと残高を確認してください。</string>
     <string name="guide_projection_revoked">今回の許可は終了・取り消し済み · 再度許可してください</string>

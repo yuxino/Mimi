@@ -28,6 +28,13 @@ internal interface ServiceProtocol {
     fun finish(): WireFrame?
 }
 
+/** Flush one residual PCM frame without dropping its samples or violating fixed-frame adapters. */
+internal fun ServiceProtocol.finalAudio(data: ByteArray): WireFrame? {
+    if (data.isEmpty()) return null
+    require(data.size <= frameBytes)
+    return audio(data.copyOf(frameBytes))
+}
+
 /** One adapter instance per session. All callbacks and audio writes share a bounded state lock. */
 class StreamingServiceEngine(private val config: ServiceConfiguration, private val listener: EngineListener) : ProviderEngine {
     override val sampleRateHz = config.provider.sampleRate
@@ -99,7 +106,8 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
                     }
                 }
             }
-        } catch (_: Exception) { fail("invalid_server_event") }
+        } catch (error: TencentProviderException) { fail(error.errorCode) }
+        catch (_: Exception) { fail("invalid_server_event") }
     }
     override fun sendAudio(pcm16Mono: ByteArray) = synchronized(lock) {
         val adapter = protocol ?: return@synchronized
@@ -136,8 +144,10 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
         val adapter = protocol ?: run { finishGate.complete(); return@synchronized }
         val tail = pending.toByteArray()
         pending.reset()
-        if (tail.isNotEmpty() && !send(adapter.audio(tail))) { finishGate.complete(); return@synchronized }
-        adapter.finish()?.let { if (!send(it)) finishGate.complete() }
+        try {
+            adapter.finalAudio(tail)?.let { if (!send(it)) { finishGate.complete(); return@synchronized } }
+            adapter.finish()?.let { if (!send(it)) finishGate.complete() }
+        } catch (_: Exception) { finishGate.complete() }
         Unit
     }
     override fun stop() = synchronized(lock) {

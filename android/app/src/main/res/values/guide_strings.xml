@@ -57,7 +57,10 @@
     <string name="guide_help_gemini">在 Google AI Studio 的项目里创建 Gemini API Key，确认项目可使用 Live API。</string>
     <string name="guide_help_azure">创建支持 Realtime 的 Azure OpenAI 资源，部署实时模型与转写模型。部署名称由你设置。</string>
     <string name="guide_help_volcano">在新版豆包语音控制台实名认证、开通同声传译 2.0，再创建 API Key。mimi 使用新版 API Key，不使用旧版 AppID / Access Token。</string>
-    <string name="guide_help_tencent">开通腾讯云 ASR 的实时语音翻译，获取账号 AppID 与 API 密钥。后付费需自行开通。</string>
+    <string name="guide_help_tencent">实时语音翻译需要账号 AppID 和同一账号的 SecretID、SecretKey。AppID 在账号信息页，注意不是 UIN；密钥对在访问管理的 API 密钥页。还需在 ASR 控制台开通服务。混元大模型的单个 API Key 不能用于此接口。后付费需自行开通。</string>
+    <string name="guide_tencent_app_id">获取 AppID（账号信息）</string>
+    <string name="guide_tencent_secret_pair">获取 SecretID / SecretKey（API 密钥）</string>
+    <string name="guide_tencent_asr">开通 ASR 服务</string>
     <string name="guide_help_baidu">在百度智能云机器翻译中创建应用，勾选实时语音翻译权限。AppKey 填应用的 API Key，不是 Secret Key。</string>
     <string name="guide_help_xai">在 xAI 控制台创建 API Key，并确认账号有实时语音服务额度与访问权限。</string>
     <string name="guide_projection_revoked">本次授权已结束 / 撤销 · 需重新允许</string>

@@ -45,6 +45,9 @@ const copy = {
       unsupportedLanguage: "This speech service does not support the selected source language. Change the language or speech service.",
       authenticationRejected: "Check your credentials and account access.",
       serviceRejected: "The service rejected the request.",
+      serviceNotActivated: "Enable realtime speech translation in the Tencent Cloud ASR console.",
+      quotaExhausted: "The service quota or balance is exhausted. Check your Tencent Cloud ASR billing and usage.",
+      concurrencyLimited: "Too many concurrent sessions. Stop another session and try again.",
       localRecognitionOverloaded: "Local recognition is overloaded. Stop other local models or choose a smaller model, then retry.",
       localRecognitionTimeout: "Local recognition timed out. Wait for the service to be ready, then retry.",
       timeout: "Connection timed out.",
@@ -92,6 +95,9 @@ const copy = {
       unsupportedLanguage: "当前语音服务不支持所选源语言。请更换源语言或语音服务。",
       authenticationRejected: "请检查凭据和账号权限。",
       serviceRejected: "服务拒绝了请求。",
+      serviceNotActivated: "请在腾讯云 ASR 控制台开通实时语音翻译服务。",
+      quotaExhausted: "服务额度或余额不足，请检查腾讯云 ASR 的计费和用量。",
+      concurrencyLimited: "并发会话已达上限，请停止其他会话后重试。",
       localRecognitionOverloaded: "本地识别积压。请停止其他本地模型或选择更小的模型后重试。",
       localRecognitionTimeout: "本地识别超时。请等待服务就绪后重试。",
       timeout: "连接超时。",
@@ -139,6 +145,9 @@ const copy = {
       unsupportedLanguage: "選択した入力言語に対応していません。入力言語または音声認識サービスを変更してください。",
       authenticationRejected: "認証情報とアカウントの権限を確認してください。",
       serviceRejected: "サービスがリクエストを拒否しました。",
+      serviceNotActivated: "Tencent Cloud ASR コンソールでリアルタイム音声翻訳を有効にしてください。",
+      quotaExhausted: "サービスの利用枠または残高が不足しています。Tencent Cloud ASR の料金と使用量を確認してください。",
+      concurrencyLimited: "同時セッション数の上限です。他のセッションを停止して再試行してください。",
       localRecognitionOverloaded: "ローカル認識の処理が追いつきません。他のモデルを停止するか、小さいモデルで再試行してください。",
       localRecognitionTimeout: "ローカル認識がタイムアウトしました。サービスの準備ができてから再試行してください。",
       timeout: "接続がタイムアウトしました。",
@@ -329,8 +338,17 @@ const builtinServiceErrors = {
   ]),
 };
 
+const tencentErrorReasons = {
+  tencent_configuration_rejected: "invalidConfiguration",
+  tencent_service_activation_required: "serviceNotActivated",
+  tencent_quota_exhausted: "quotaExhausted",
+  tencent_capacity_exceeded: "concurrencyLimited",
+  tencent_provider_rejected: "serviceRejected",
+} as const;
+
 function builtinServiceErrorMessage(error: string): string | null {
   const labels = diagnosticCopy();
+  if (Object.hasOwn(tencentErrorReasons, error)) return labels.reasons[tencentErrorReasons[error as keyof typeof tencentErrorReasons]];
   if (builtinServiceErrors.unreachable.has(error)) return labels.unreachable;
   if (builtinServiceErrors.timeout.has(error)) return labels.timeout;
   if (builtinServiceErrors.missing.has(error)) return labels.missing;
@@ -435,6 +453,9 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
     "custom_speech_endpoint_invalid",
     "custom_speech_model_invalid",
     "text_translation_credentials_missing",
+    "tencent_configuration_rejected",
+    "tencent_service_activation_required",
+    "tencent_quota_exhausted",
   ].includes(label) || builtinServiceErrors.missing.has(label) ||
     builtinServiceErrors.invalidConfiguration.has(label) || builtinServiceErrors.unsupportedLanguage.has(label)) return "service";
   return audio3ErrorRequiresConfiguration(label) ? "service" : null;

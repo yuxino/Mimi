@@ -382,3 +382,20 @@ it.each(["connecting", "stopping"] as const)("rejects preview profile selection 
     expect(useStore.getState().settings).toBe(original.settings);
   } finally { useStore.setState(original, true); }
 });
+
+
+it("explicitly selects an Apple language even when its profile is already active", async () => {
+  const original = useStore.getState();
+  const apple = { ...original.settings.profiles[0], id: "apple", provider: "appleSpeech" as const };
+  try {
+    useStore.setState({ session: original.session, settings: { ...original.settings, profiles: [apple], activeProfileId: apple.id, sourceLanguage: "en", targetLanguage: "original" } });
+    await useStore.getState().selectProfile(apple.id, "ja");
+    expect(useStore.getState().settings).toMatchObject({ activeProfileId: apple.id, sourceLanguage: "ja" });
+    const saved = useStore.getState().settings;
+    await expect(useStore.getState().selectProfile(apple.id, "auto")).rejects.toThrow("apple_speech_language_unsupported");
+    expect(useStore.getState().settings).toBe(saved);
+    useStore.setState({ session: { ...original.session, isActive: true, status: { kind: "listening" } } });
+    await expect(useStore.getState().selectProfile(apple.id, "en")).rejects.toThrow("session-active");
+    expect(useStore.getState().settings).toBe(saved);
+  } finally { useStore.setState(original, true); }
+});

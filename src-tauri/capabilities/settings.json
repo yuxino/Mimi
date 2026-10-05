@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings-window",
-  "description": "The settings window may manage preferences and profiles, inspect the running version, and use the fixed release actions.",
+  "description": "The settings window may manage preferences and profiles, inspect the running version, and open fixed release and provider setup pages.",
   "windows": ["settings"],
   "permissions": [
     "core:app:allow-version",

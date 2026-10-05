@@ -55,6 +55,11 @@ export function sessionStart(): Promise<void> {
   return invoke("session_start");
 }
 
+export type TencentSetupPage = "account" | "apiKey" | "asr";
+export function openTencentSetupPage(page: TencentSetupPage): Promise<void> {
+  return invoke("open_tencent_setup_page", { page });
+}
+
 export function sessionStop(): Promise<void> {
   return invoke("session_stop");
 }
@@ -143,8 +148,8 @@ export function profileUpdate(
   });
 }
 
-export function profileSelect(profileId: string): Promise<SettingsSnapshot> {
-  return invoke<SettingsSnapshot>("profile_select", { profileId });
+export function profileSelect(profileId: string, sourceLanguage?: SourceLanguage): Promise<SettingsSnapshot> {
+  return invoke<SettingsSnapshot>("profile_select", { profileId, ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
 
 export function profileDelete(profileId: string): Promise<SettingsSnapshot> {
@@ -367,10 +372,10 @@ export function appDesktopShortcutCommands(): Promise<DesktopShortcutCommands | 
 export interface ConnectionDiagnostic {
   credential: "present" | "missing" | "unavailable" | "localDevUnavailable" | "serviceUnavailable" | "accessDenied" | "invalid";
   service: "available" | "unavailable" | "notTested";
-  reason: null | "credentialsMissing" | "credentialsUnavailable" | "localDevCredentialsUnavailable" | "credentialsServiceUnavailable" | "credentialsAccessDenied" | "invalidConfiguration" | "unsupportedLanguage" | "localRecognitionOverloaded" | "localRecognitionTimeout" | "authenticationRejected" | "serviceRejected" | "timeout" | "unreachable" | "textTranslationNotConfigured" | "appleSpeechAssetsMissing" | "appleSpeechLanguageUnsupported" | "appleSpeechUnavailable" | "appleSpeechRecognitionFailed";
+  reason: null | "credentialsMissing" | "credentialsUnavailable" | "localDevCredentialsUnavailable" | "credentialsServiceUnavailable" | "credentialsAccessDenied" | "invalidConfiguration" | "unsupportedLanguage" | "localRecognitionOverloaded" | "localRecognitionTimeout" | "authenticationRejected" | "serviceNotActivated" | "quotaExhausted" | "concurrencyLimited" | "serviceRejected" | "timeout" | "unreachable" | "textTranslationNotConfigured" | "appleSpeechAssetsMissing" | "appleSpeechLanguageUnsupported" | "appleSpeechUnavailable" | "appleSpeechRecognitionFailed";
   elapsedMs?: number | null;
 }
 export type ConnectionCheckStage = "speech" | "text";
-export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput): Promise<ConnectionDiagnostic> {
-  return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}) });
+export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput, sourceLanguage?: SourceLanguage): Promise<ConnectionDiagnostic> {
+  return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}), ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
