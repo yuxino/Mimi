@@ -35,7 +35,7 @@
 
 ## Get started
 
-For your first setup, **we recommend starting with Alibaba Cloud**. We’ve done more real-world testing with it. We’re still improving support for other services, so results and reliability may vary.
+For your first setup, **we recommend starting with Alibaba Cloud or Volcano Engine**. We’ve done more real-world testing with Alibaba Cloud and have also had good results with Volcano Engine. We’re still improving support for other services, so results and reliability may vary.
 
 You can also try Google Gemini; it works well with a stable connection. It currently offers a free tier. Check your quota and billing in [Google AI Studio](https://aistudio.google.com/), where you can also get an API key.
 
