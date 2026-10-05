@@ -662,3 +662,13 @@ it("checks DeepL and built-in translation drafts using only the relevant key", a
   expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
   expect(props.onSave).not.toHaveBeenCalled();
 });
+
+it.each(["appleSpeech", "customDashScopeASR", "customOpenAIASR"] as const)("does not present a translation error or check for original-only %s", async provider => {
+  const textConnectionCheck = vi.fn().mockReturnValue(<span>unavailable-translation</span>);
+  await render({ ...props, profile: { ...profile, provider, textTranslation: "followService", speechCredentialState: "present", textCredentialState: "missing" }, textOnly: true, textConnectionCheck });
+  expect(picker().textContent).toBe(I18N.settings.customSpeechNoTranslation);
+  expect(textConnectionCheck).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain("unavailable-translation");
+  await chooseTranslation("deepL");
+  expect(textConnectionCheck).toHaveBeenCalled();
+});

@@ -1209,6 +1209,16 @@ impl SettingsStore {
     }
 
     pub fn select_profile(&self, profile_id: &str) -> Result<(), String> {
+        self.select_profile_with_source(profile_id, None)
+    }
+
+    /// Commit profile and an explicitly selected Apple language together. Runtime
+    /// language-resource validation belongs to the guarded session mutation.
+    pub fn select_profile_with_source(
+        &self,
+        profile_id: &str,
+        source_language: Option<SourceLanguage>,
+    ) -> Result<(), String> {
         if self.catalog_write_blocked {
             return Err(PROFILE_CATALOG_UNAVAILABLE.to_string());
         }
@@ -1229,8 +1239,8 @@ impl SettingsStore {
 
         let mut prefs = self.prefs.lock().unwrap();
         let previous_prefs = prefs.clone();
-        let mut next_prefs = previous_prefs.clone();
-        normalize_preferences_value(&mut next_prefs, &profile);
+        let next_prefs =
+            profile_selection_preferences(previous_prefs.clone(), &profile, source_language)?;
 
         self.persist_preferences_value(&next_prefs)?;
         if let Err(error) = self.persist_catalog_value(&next_catalog) {
@@ -2420,8 +2430,23 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<LiveTranslationConfiguration, String> {
-        let mut prefs = self.preferences();
-        normalize_preferences_value(&mut prefs, profile);
+        self.configuration_for_profile_selection_with_source(profile, None)
+    }
+
+    pub fn preferences_for_profile_selection(
+        &self,
+        profile: &ServiceProfile,
+        source_language: Option<SourceLanguage>,
+    ) -> Result<Preferences, String> {
+        profile_selection_preferences(self.preferences(), profile, source_language)
+    }
+
+    pub fn configuration_for_profile_selection_with_source(
+        &self,
+        profile: &ServiceProfile,
+        source_language: Option<SourceLanguage>,
+    ) -> Result<LiveTranslationConfiguration, String> {
+        let prefs = self.preferences_for_profile_selection(profile, source_language)?;
         self.configuration_with_profile_preferences(profile, prefs)
     }
 
@@ -2634,7 +2659,23 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<LiveTranslationConfiguration, String> {
+        self.configuration_for_speech_probe_with_source(profile, None)
+    }
+
+    /// The language visible in the Apple editor can differ from the active
+    /// profile. Apply it before validation, without changing either profile.
+    pub fn configuration_for_speech_probe_with_source(
+        &self,
+        profile: &ServiceProfile,
+        source_language: Option<SourceLanguage>,
+    ) -> Result<LiveTranslationConfiguration, String> {
+        if source_language.is_some() && profile.provider != ProviderKind::AppleSpeech {
+            return Err("apple_speech_source_override_invalid".into());
+        }
         if profile.provider == ProviderKind::AppleSpeech {
+            if source_language == Some(SourceLanguage::Automatic) {
+                return Err("apple_speech_language_unsupported".into());
+            }
             let prefs = self.preferences();
             let normalized =
                 profile
@@ -2647,7 +2688,7 @@ impl SettingsStore {
             return LiveTranslationConfiguration::with_credentials(
                 ProviderKind::AppleSpeech,
                 ProviderCredentials::AppleSpeech,
-                normalized.source_language,
+                source_language.unwrap_or(normalized.source_language),
                 TargetLanguage::Original,
                 normalized.translation_mode,
             )
@@ -3258,6 +3299,33 @@ fn is_default_alibaba(profile: &ServiceProfile) -> bool {
     profile.id == DEFAULT_ALIBABA_PROFILE_ID && profile.provider == ProviderKind::AlibabaCloud
 }
 
+/// Normalize the destination target first, then validate an explicit Apple
+/// source without letting generic normalization silently choose another locale.
+fn profile_selection_preferences(
+    mut prefs: Preferences,
+    profile: &ServiceProfile,
+    source_language: Option<SourceLanguage>,
+) -> Result<Preferences, String> {
+    if source_language.is_some() && profile.provider != ProviderKind::AppleSpeech {
+        return Err("apple_speech_source_override_invalid".into());
+    }
+    normalize_preferences_value(&mut prefs, profile);
+    if let Some(source) = source_language {
+        if source == SourceLanguage::Automatic {
+            return Err("apple_speech_language_unsupported".into());
+        }
+        if !profile
+            .capabilities(prefs.target_language)
+            .source_languages
+            .contains(&source)
+        {
+            return Err("apple_speech_translation_language_unsupported".into());
+        }
+        prefs.source_language = source;
+    }
+    Ok(prefs)
+}
+
 fn normalize_preferences_value(prefs: &mut Preferences, profile: &ServiceProfile) {
     let normalized = profile.normalize_preferences(ProviderPreferences {
         source_language: prefs.source_language,
@@ -3426,6 +3494,222 @@ mod tests {
         assert!(fake
             .value(PROFILE_KEYCHAIN_SERVICE, &speech_account)
             .is_none());
+    }
+
+    #[test]
+    fn apple_profile_selection_saves_the_chosen_source_with_the_profile() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let apple = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple")
+            .unwrap();
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Automatic;
+                prefs.target_language = TargetLanguage::Original;
+                prefs.audio_input = AudioInput::Both;
+                prefs.retain_session_history = true;
+                prefs.record_session_audio = true;
+            })
+            .unwrap();
+        let before = store.preferences();
+        let catalog = std::fs::read(&store.catalog_path).unwrap();
+        let persisted = std::fs::read(&store.prefs_path).unwrap();
+        let proposed = store
+            .configuration_for_profile_selection_with_source(&apple, Some(SourceLanguage::English))
+            .unwrap();
+        assert_eq!(proposed.source_language, SourceLanguage::English);
+        assert_eq!(proposed.target_language, TargetLanguage::Original);
+        assert_eq!(store.preferences(), before);
+        assert_eq!(std::fs::read(&store.catalog_path).unwrap(), catalog);
+        assert_eq!(std::fs::read(&store.prefs_path).unwrap(), persisted);
+
+        store
+            .select_profile_with_source(&apple.id, Some(SourceLanguage::English))
+            .unwrap();
+        assert_eq!(store.configuration().unwrap(), proposed);
+        assert_eq!(store.active_profile().unwrap().id, apple.id);
+        let selected = store.preferences();
+        assert_eq!(selected.audio_input, AudioInput::Both);
+        assert!(selected.retain_session_history);
+        assert!(selected.record_session_audio);
+        // Reusing the active profile must still apply the requested language.
+        store
+            .select_profile_with_source(&apple.id, Some(SourceLanguage::Japanese))
+            .unwrap();
+        assert_eq!(
+            store.preferences().source_language,
+            SourceLanguage::Japanese
+        );
+        let reopened = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        assert_eq!(reopened.active_profile().unwrap().id, apple.id);
+        assert_eq!(
+            reopened.preferences().source_language,
+            SourceLanguage::Japanese
+        );
+        assert_eq!(
+            fake.load_count(PROFILE_KEYCHAIN_SERVICE, &credential_account(&apple)),
+            0
+        );
+    }
+
+    #[test]
+    fn apple_explicit_profile_source_rejects_incompatible_routes_without_normalizing_it() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let apple = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple")
+            .unwrap();
+        store
+            .save_credentials(
+                &apple.id,
+                &translation_request(TextTranslation::DeepL, "", "", "synthetic-text:fx"),
+            )
+            .unwrap();
+        let apple = store.profile(&apple.id).unwrap();
+        store
+            .save_preferences(|prefs| prefs.target_language = TargetLanguage::English)
+            .unwrap();
+        let before = store.preferences();
+        let active = store.active_profile().unwrap();
+        for (profile, source, expected) in [
+            (
+                &apple,
+                SourceLanguage::Automatic,
+                "apple_speech_language_unsupported",
+            ),
+            (
+                &apple,
+                SourceLanguage::French,
+                "apple_speech_translation_language_unsupported",
+            ),
+            (
+                &active,
+                SourceLanguage::English,
+                "apple_speech_source_override_invalid",
+            ),
+        ] {
+            assert_eq!(
+                store
+                    .configuration_for_profile_selection_with_source(profile, Some(source))
+                    .unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                store
+                    .select_profile_with_source(&profile.id, Some(source))
+                    .unwrap_err(),
+                expected
+            );
+            assert_eq!(store.preferences(), before);
+            assert_eq!(store.active_profile().unwrap(), active);
+        }
+        // A recognition-only target does not impose the text provider's limits.
+        store
+            .save_preferences(|prefs| prefs.target_language = TargetLanguage::Original)
+            .unwrap();
+        store
+            .select_profile_with_source(&apple.id, Some(SourceLanguage::French))
+            .unwrap();
+        assert_eq!(store.preferences().source_language, SourceLanguage::French);
+    }
+
+    #[test]
+    fn apple_profile_source_selection_rolls_back_if_catalog_persistence_fails() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(FakeSecretStore::default()),
+        );
+        let apple = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple")
+            .unwrap();
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Automatic;
+                prefs.target_language = TargetLanguage::Original;
+            })
+            .unwrap();
+        let before = store.preferences();
+        let persisted = std::fs::read(&store.prefs_path).unwrap();
+        std::fs::remove_file(&store.catalog_path).unwrap();
+        std::fs::create_dir(&store.catalog_path).unwrap();
+        assert_eq!(
+            store
+                .select_profile_with_source(&apple.id, Some(SourceLanguage::Japanese))
+                .unwrap_err(),
+            PROFILE_CATALOG_UNAVAILABLE
+        );
+        assert_eq!(store.preferences(), before);
+        assert_eq!(std::fs::read(&store.prefs_path).unwrap(), persisted);
+        assert_eq!(
+            store.active_profile().unwrap().id,
+            DEFAULT_ALIBABA_PROFILE_ID
+        );
+    }
+
+    #[test]
+    fn apple_speech_probe_checks_the_visible_language_without_mutation_or_text_credentials() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let apple = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple")
+            .unwrap();
+        store
+            .save_credentials(
+                &apple.id,
+                &translation_request(TextTranslation::DeepL, "", "", "synthetic-text:fx"),
+            )
+            .unwrap();
+        let apple = store.profile(&apple.id).unwrap();
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Automatic;
+                prefs.target_language = TargetLanguage::English;
+            })
+            .unwrap();
+        let before = store.preferences();
+        let active = store.active_profile().unwrap();
+        let catalog = std::fs::read(&store.catalog_path).unwrap();
+        let persisted = std::fs::read(&store.prefs_path).unwrap();
+        store.secret_cache.lock().unwrap().clear();
+        fake.state.lock().unwrap().loads.clear();
+        fake.make_unavailable(
+            PROFILE_KEYCHAIN_SERVICE,
+            &SettingsStore::destination_account(&apple),
+        );
+        for source in [
+            SourceLanguage::English,
+            SourceLanguage::Japanese,
+            SourceLanguage::French,
+        ] {
+            let probe = store
+                .configuration_for_speech_probe_with_source(&apple, Some(source))
+                .unwrap();
+            assert_eq!(probe.source_language, source);
+            assert_eq!(probe.target_language, TargetLanguage::Original);
+            assert_eq!(probe.credentials, ProviderCredentials::AppleSpeech);
+            assert_eq!(probe.text_credentials, None);
+        }
+        assert_eq!(
+            store
+                .configuration_for_speech_probe_with_source(&apple, Some(SourceLanguage::Automatic))
+                .unwrap_err(),
+            "apple_speech_language_unsupported"
+        );
+        assert_eq!(
+            store
+                .configuration_for_speech_probe_with_source(&active, Some(SourceLanguage::English))
+                .unwrap_err(),
+            "apple_speech_source_override_invalid"
+        );
+        assert_eq!(store.preferences(), before);
+        assert_eq!(store.active_profile().unwrap(), active);
+        assert_eq!(std::fs::read(&store.catalog_path).unwrap(), catalog);
+        assert_eq!(std::fs::read(&store.prefs_path).unwrap(), persisted);
+        assert!(fake.state.lock().unwrap().loads.is_empty());
     }
 
     #[test]

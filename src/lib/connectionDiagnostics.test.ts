@@ -28,7 +28,7 @@ it.each(["zh", "en", "ja"] as const)("gives Apple resource and language recovery
   expect(credentialErrorMessage("apple_speech_assets_missing")).toBe(I18N.settings.appleSpeechAssetsMissing);
   expect(profileErrorMessage("apple_speech_language_unsupported")).toBe(I18N.settings.appleSpeechLanguageUnsupported);
   expect(profileErrorMessage("apple_speech_translation_language_unsupported")).toBe(I18N.settings.appleSpeechTranslationLanguageUnsupported);
-  expect(I18N.settings.appleSpeechAssetsMissing).toContain(I18N.settings.appleSpeechResources);
+  expect(I18N.settings.appleSpeechAssetsMissing).toContain(I18N.settings.appleSpeechAddLanguagePack);
   expect(credentialErrorMessage("apple_speech_unavailable")).toBe(I18N.settings.appleSpeechUnavailable);
   for (const suffix of ["setup_timeout", "start_failed", "recognition_failed", "audio_failed", "not_connected", "result_backlog", "invalid_result", "finalize_timeout"]) {
     expect(credentialErrorMessage(`apple_speech_${suffix}`)).toBe(I18N.settings.appleSpeechRecognitionFailed);
@@ -64,11 +64,14 @@ it.each(["zh", "en", "ja"] as const)("keeps every Apple readiness failure specif
     }
   }
   for (const message of [I18N.settings.appleSpeechLanguageUnsupported,
-    I18N.settings.appleSpeechTranslationLanguageUnsupported, I18N.settings.appleSpeechUnavailable,
-    I18N.settings.appleSpeechPrepareFailed, I18N.settings.appleSpeechPreparationInProgress]) {
+    I18N.settings.appleSpeechTranslationLanguageUnsupported, I18N.settings.appleSpeechUnavailable]) {
     expect(message).toContain(I18N.settings.serviceProfilesTitle);
     expect(message).not.toBe(I18N.overlay.controlActionFailed);
   }
+  // Download failures keep their retry/wait instruction beside the action;
+  // they must not tell a user already in this editor to find it again.
+  expect(I18N.settings.appleSpeechPrepareFailed).not.toBe(I18N.overlay.controlActionFailed);
+  expect(I18N.settings.appleSpeechPreparationInProgress).not.toBe(I18N.overlay.controlActionFailed);
   expect(sessionActionErrorMessage({ message: "apple_speech_assets_missing" }, "fallback")).toBe("fallback");
 });
 

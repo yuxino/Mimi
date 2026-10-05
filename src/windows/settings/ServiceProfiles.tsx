@@ -405,7 +405,7 @@ export function ServiceProfiles({
     setShowsEditor(true);
   };
 
-  const handleConnectionCheck = (input: symbol, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput) => {
+  const handleConnectionCheck = (input: symbol, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput, sourceLanguage?: SourceLanguage) => {
     if (!selectedProfile || pendingAction !== null || checkInFlight.current) return;
     checkInFlight.current = true;
     const profileId = selectedProfile.id;
@@ -431,7 +431,7 @@ export function ServiceProfiles({
       setPendingCheckStage(null);
       setPendingAction(null);
     }, CONNECTION_CHECK_TIMEOUT_MS);
-    void (credentials ? testProfileConnection(profileId, stage, credentials) : stage ? testProfileConnection(profileId, stage) : testProfileConnection(profileId))
+    void (sourceLanguage ? testProfileConnection(profileId, stage, credentials, sourceLanguage) : credentials ? testProfileConnection(profileId, stage, credentials) : stage ? testProfileConnection(profileId, stage) : testProfileConnection(profileId))
       .then((result) => {
         if (canPublish()) publish(result, null);
       })
@@ -449,13 +449,16 @@ export function ServiceProfiles({
       });
   };
 
-  const renderConnectionCheck = (profile: ServiceProfile, stage?: ConnectionCheckStage, draft?: ProviderCredentialsInput | null) => {
+  const renderConnectionCheck = (profile: ServiceProfile, stage?: ConnectionCheckStage, draft?: ProviderCredentialsInput | null, sourceLanguage?: SourceLanguage) => {
     const key = stage ?? "combined";
     const outcome = diagnostics[key];
-    return <DraftConnectionCheck key={`${profile.id}:${key}`} draft={draft}
+    const context = JSON.stringify([profile.provider, textTranslationForProfile(profile), sourceLanguage ?? settings.sourceLanguage,
+      stage === "speech" ? null : settings.targetLanguage,
+      profile.provider === "appleSpeech" && stage === "speech" ? apple.support : null]);
+    return <DraftConnectionCheck key={`${profile.id}:${key}`} draft={draft} context={context}
       outcome={outcome?.profileId === profile.id ? outcome : undefined}
       pending={pendingCheckStage === key} disabled={mutationsDisabled}
-      onCheck={input => { if (draft !== null) handleConnectionCheck(input, stage, draft); }}
+      onCheck={input => { if (draft !== null) handleConnectionCheck(input, stage, draft, sourceLanguage); }}
       label={stage === "text" ? I18N.settings.checkTextTranslation : stage === "speech" ? I18N.settings.checkSpeechRecognition : undefined} />;
   };
 
@@ -522,7 +525,15 @@ export function ServiceProfiles({
             <SelectedCredentialEditor
               support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage}
               onRetry={apple.refresh} onPrepared={apple.update} onBusyChange={busy => setPendingAction(busy ? "prepare-resource" : null)}
-              connectionCheck={(draft: ProviderCredentialsInput | null | undefined) => renderConnectionCheck(selectedProfile, isStandaloneAsrProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined, draft)}
+              onSelectProfile={async (profileId: string, sourceLanguage: SourceLanguage) => {
+                if (selectionDisabled || mutationInFlight.current) throw new Error("profile_switch_busy");
+                mutationInFlight.current = true;
+                try {
+                  await selectProfile(profileId, sourceLanguage);
+                  invalidateProfileCheck(profileId);
+                } finally { mutationInFlight.current = false; }
+              }}
+              connectionCheck={(draft: ProviderCredentialsInput | null | undefined, sourceLanguage?: SourceLanguage) => renderConnectionCheck(selectedProfile, isStandaloneAsrProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined, draft, sourceLanguage)}
               textConnectionCheck={(draft) => renderConnectionCheck(selectedProfile, "text", draft)}
               readOnly={selectedProfileReadOnly}
               key={selectedProfile.id}
@@ -560,7 +571,7 @@ export function ServiceProfiles({
               onSave={config => handleSaveProxy(selectedProfile, "text", config)} />}
           </section>
           {selectedProfile.id === settings.activeProfileId
-            ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} onOpenAppleResources={focusAppleSpeechResources} />
+            ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} onOpenAppleResources={focusAppleSpeechResources} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} />
             : null}
           <div className="service-detail__actions">
             {canUseProfile(selectedProfile) &&

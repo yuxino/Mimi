@@ -1,19 +1,27 @@
 // Browser geometry regression. Serve the repository with npm run dev, then
 // import this function from an ego-browser nodejs round with its managed Page.
 // Platform bridges and device state are fixtures, not native-device evidence.
-export default async function verifySettingsLayout(page, baseUrl = "http://127.0.0.1:1420") {
+export default async function verifySettingsLayout(page, baseUrl = "http://127.0.0.1:1420", { widths = [520, 680, 760, 952, 1920], appleOnly = false } = {}) {
   await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);
   await page.waitForFunction(() => getComputedStyle(document.querySelector("#audio-input .settings-row + .settings-row")).marginTop === "16px");
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   const failures = [];
   let checked = 0;
-  for (const width of [520, 680, 760, 952, 1920]) {
+  for (const width of widths) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     for (const language of ["en", "zh", "ja"]) for (const theme of ["light", "dark"]) {
-      for (const platform of ["windows", "macos", "linux"]) {
-        const cases = (platform === "windows" ? ["idle", "receiving", "silent", "noData", "paused", "missing", "empty", "failed"] : ["idle"])
+      for (const platform of (appleOnly ? ["macos"] : ["windows", "macos", "linux"])) {
+        const cases = (appleOnly ? [] : platform === "windows" ? ["idle", "receiving", "silent", "noData", "paused", "missing", "empty", "failed"] : ["idle"])
           .map(state => ({ width, language, theme, platform, state, deviceName: "FixtureHeadphones音声出力 / ".repeat(24) }));
+        if (platform === "macos") {
+          for (const state of ["idle", "paused"]) cases.push({ width, language, theme, platform, state, editor: true, provider: "appleSpeech", appleExpanded: true,
+            profileName: "Apple Speech", sourceLanguage: "en", targetLanguage: "original", appleSupport: { available: true, languages: [
+              { sourceLanguage: "en", locale: "en-US", installed: true },
+              { sourceLanguage: "ja", locale: "ja-JP", installed: false },
+              { sourceLanguage: "fr", locale: "fr-FR", installed: false },
+            ] } });
+        }
         if (platform === "windows") {
           for (const provider of ["alibabaCloud", "customDashScopeASR", "openAIRealtime"]) {
             cases.push({ width, language, theme, platform, state: "idle", editor: true, provider, deviceName: "Fixture headphones" });
@@ -84,9 +92,22 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
               if (feedback && rect(feedback).top < cr.bottom - 1) issues.push("feedback beside control");
               if (row.querySelector('.settings-row__control [role="status"]')) issues.push("status inside control");
             }
+            if (next.appleExpanded) {
+              const apple = document.querySelector(".apple-speech-settings");
+              if (!apple?.querySelector(".apple-speech-tutorial") || !apple?.querySelector(".apple-speech-pack-manager")) issues.push("Apple disclosures missing");
+              for (const group of apple?.querySelectorAll(".apple-speech-resource-actions, .apple-speech-pack-manager, .apple-speech-tutorial") ?? []) {
+                if (group.scrollWidth > group.clientWidth + 1 || rect(group).right > rect(apple).right + 1) issues.push("Apple resource overflow");
+              }
+              for (const button of apple?.querySelectorAll("button[aria-expanded]") ?? []) {
+                if (!button.disabled && getComputedStyle(button).cursor !== "pointer") issues.push("Apple disclosure cursor");
+              }
+              const tutorial = apple?.querySelector(".apple-speech-tutorial");
+              if (tutorial && parseFloat(getComputedStyle(tutorial).fontSize) < 14) issues.push("Apple tutorial small print");
+              if (tutorial && getComputedStyle(tutorial.querySelector("ol")).listStyleType !== "decimal") issues.push("Apple tutorial missing step numbers");
+            }
             const output = [...document.querySelectorAll(".settings-row")].find(row => row.querySelector(".settings-row__feedback") || row.querySelector('[role="combobox"]')?.getAttribute("aria-label") === ({ en: "Output device", zh: "输出设备", ja: "出力デバイス" })[next.language]);
             if (!next.category && !next.editor && !next.providerPicker && !next.providerConfirmation && (next.platform === "windows") !== Boolean(output)) issues.push("platform output visibility");
-            if (output && ["idle", "paused"].includes(next.state) && output.querySelector('[role="status"]')) issues.push("persistent idle guidance");
+            if (!next.editor && output && ["idle", "paused"].includes(next.state) && output.querySelector('[role="status"]')) issues.push("persistent idle guidance");
             if (!document.querySelector(".settings-console").classList.contains(`settings-console--${next.theme}`)) issues.push("wrong fixture theme");
             results.push(issues);
           }

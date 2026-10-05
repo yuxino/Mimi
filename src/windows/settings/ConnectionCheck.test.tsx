@@ -210,3 +210,16 @@ it("blocks disabled and pending draft checks without starting another request", 
   expect(host.querySelector('[data-tone="success"]')).not.toBeNull();
   expect(host.querySelector<HTMLButtonElement>(".connection-check > button")!.disabled).toBe(false);
 });
+
+it("invalidates saved results when the checked language or resource state changes, including a late result", async () => {
+  const check = vi.fn<(input: symbol) => void>();
+  await renderDraft({ onCheck: check, context: "en:missing" });
+  await act(() => host.querySelector<HTMLButtonElement>(".connection-check > button")!.click());
+  const outcome: DraftCheckOutcome = { input: check.mock.calls[0][0], result: available, error: diagnosticCopy().checkFailed };
+  await renderDraft({ onCheck: check, context: "en:missing", outcome });
+  expect(host.querySelector(".settings-feedback")).not.toBeNull();
+  for (const context of ["ja:ready", "en:ready", "en:missing"]) {
+    await renderDraft({ onCheck: check, context, outcome });
+    expect(host.querySelector(".settings-feedback, .connection-check__elapsed")).toBeNull();
+  }
+});

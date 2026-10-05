@@ -3008,6 +3008,56 @@
 /* User-declared custom ASR languages are expanded only while editing. */
 .custom-speech-languages .settings-row__control { flex-wrap: wrap; gap: 8px; }
 .custom-speech-languages .settings-row__control > .settings-button { margin-inline-start: auto; }
+
+.apple-speech-resource-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.apple-speech-resource-status {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  color: var(--settings-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.apple-speech-resource-status svg { flex: 0 0 auto; }
+.apple-speech-tutorial-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+  font-size: 14px;
+}
+.apple-speech-tutorial {
+  color: var(--settings-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.apple-speech-tutorial p { margin: 0 0 8px; }
+.apple-speech-tutorial ol { margin: 0; padding-inline-start: 22px; list-style: decimal; }
+.apple-speech-tutorial li + li { margin-top: 4px; }
+.apple-speech-pack-manager {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding-block: 12px;
+  border-block: 1px solid var(--settings-border);
+}
+.apple-speech-pack-manager .settings-row { margin: 0; }
+.apple-speech-connection-check:empty { display: none; }
+.apple-speech-connection-check .connection-check {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.apple-speech-connection-check .settings-feedback {
+  flex: 1 1 240px;
+  text-align: left;
+}
 .custom-speech-languages__summary { color: var(--settings-text-muted); font-size: 13px; line-height: 1.5; }
 .custom-speech-languages__expanded,
 .custom-speech-languages__editor { display: grid; min-width: 0; gap: 12px; }
