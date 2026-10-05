@@ -1,4 +1,4 @@
-//! Desktop event adapter for the shared append-only transcript aligner.
+//! Desktop event adapter for shared OpenAI alignment and Gemini caption assembly.
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use mimi_core::openai_transcript_committer::{
     OpenAITranscriptPairCommitter as SharedCommitter, TranscriptEvent,

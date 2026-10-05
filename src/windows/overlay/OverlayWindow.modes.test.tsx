@@ -635,3 +635,188 @@ it.each([false, true])("keeps resume errors safe and ignores a newer successful 
   expect(host.querySelector(".overlay-action-feedback")?.textContent ?? null).toBe(superseded ? null : audio3ErrorMessage(error));
   expect(host.textContent).not.toContain(error);
 });
+
+const geminiSettings: Partial<SettingsSnapshot> = {
+  profiles: [{ id: "gemini", name: "Synthetic Gemini", provider: "googleGeminiLive", credentialState: "present" }],
+  activeProfileId: "gemini", showIntermediateSubtitles: true,
+};
+const geminiConfirmed: SubtitleSnapshot = { ...empty,
+  source: { text: confirmed.source, isFinal: true }, translation: { text: confirmed.translation, isFinal: true },
+  displayPair: confirmed, displayPairFinal: true, history: [confirmed] };
+
+it.each(["translation", "bilingual"] as const)("advances continuous Gemini %s output by 250ms while keeping history durable", async displayMode => {
+  await mount(geminiConfirmed, displayMode, geminiSettings);
+  const historyRow = host.querySelector('[data-utterance-id="history-10"]');
+  const draft = { ...geminiConfirmed, source: { text: "Synthetic continuous source.", isFinal: false },
+    translation: { text: "A", isFinal: false } };
+  await publish(draft);
+  for (const text of ["AB", "ABC", "ABCD", "ABCDE"]) {
+    await act(() => vi.advanceTimersByTime(50));
+    await publish({ ...draft, translation: { text, isFinal: false } });
+  }
+  await act(() => vi.advanceTimersByTime(49));
+  expect(visibleLanes()).not.toContain("ABCDE");
+  await act(() => vi.advanceTimersByTime(1));
+  expect(visibleLanes()).toContain("ABCDE");
+  expect(host.querySelector('[data-utterance-id="history-10"]')).toBe(historyRow);
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed]);
+  for (let revision = 1; revision <= 4; revision++) {
+    await publish({ ...draft, source: { text: `Synthetic source revision ${revision}.`, isFinal: false },
+      translation: { text: "ABCDE", isFinal: false } });
+    expect(visibleLanes()).toContain("ABCDE");
+    await act(() => vi.advanceTimersByTime(50));
+  }
+  const next = { source: "Synthetic final source.", translation: "Synthetic final translation.", createdAt: 11 };
+  await publish({ ...empty, source: { text: next.source, isFinal: true }, translation: { text: next.translation, isFinal: true },
+    displayPair: next, displayPairFinal: true, history: [confirmed, next] });
+  expect(visibleLanes()).toContain(next.translation);
+  expect(host.querySelector('[data-utterance-id^="live"]')).toBeNull();
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed, next]);
+});
+
+it("settles Gemini output after 100ms and keeps an earlier final source out of the new bilingual line", async () => {
+  await mount({ ...geminiConfirmed, history: [] }, "bilingual", geminiSettings);
+  await publish({ ...geminiConfirmed, history: [], translation: { text: "Synthetic early output.", isFinal: false } });
+  await act(() => vi.advanceTimersByTime(99));
+  expect(visibleLanes()).not.toContain("Synthetic early output.");
+  await act(() => vi.advanceTimersByTime(1));
+  expect(visibleLanes()).toEqual(["Synthetic early output."]);
+  expect(useStore.getState().session.subtitles.source.text).toBe(confirmed.source);
+  expect(useStore.getState().session.subtitles.history).toEqual([]);
+});
+
+it("cancels pending Gemini preview work when previews are hidden or the session is cleared", async () => {
+  const draft = { ...geminiConfirmed, source: { text: "Synthetic current source.", isFinal: false },
+    translation: { text: "Synthetic preview A.", isFinal: false } };
+  await mount(draft, "translation", geminiSettings);
+  await publish({ ...draft, translation: { text: "Synthetic preview B.", isFinal: false } });
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, showIntermediateSubtitles: false } })));
+  await act(() => vi.advanceTimersByTime(1_000));
+  expect(visibleLanes()).toEqual([confirmed.translation]);
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed]);
+  await act(() => useStore.setState(state => ({ settings: { ...state.settings, showIntermediateSubtitles: true } })));
+  await act(() => vi.advanceTimersByTime(100));
+  expect(visibleLanes()).toContain("Synthetic preview B.");
+  await publish({ ...draft, translation: { text: "Synthetic preview C.", isFinal: false } });
+  await publish(empty);
+  await act(() => vi.advanceTimersByTime(1_000));
+  expect(visibleLanes()).toEqual([]);
+  await publish(geminiConfirmed, { status: { kind: "connecting" } });
+  expect(visibleLanes()).toEqual([confirmed.translation]);
+});
+
+it("keeps Alibaba's complete-pair priority under the same post-confirmation draft sequence", async () => {
+  await mount(geminiConfirmed);
+  const draft = { ...geminiConfirmed, source: { text: "Synthetic new Alibaba source.", isFinal: false },
+    translation: { text: "Synthetic partial.", isFinal: false } };
+  await publish(draft);
+  await act(() => vi.advanceTimersByTime(250));
+  expect(visibleLanes()).toEqual([confirmed.source, confirmed.translation]);
+  const pair = { source: draft.source.text, translation: "Synthetic complete Alibaba translation." };
+  await publish({ ...draft, previewPair: pair, displayPair: pair, displayPairFinal: false });
+  expect(visibleLanes()).toEqual([confirmed.source, confirmed.translation, pair.source, pair.translation]);
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed]);
+});
+
+it("updates Gemini system and microphone drafts independently after their confirmed pairs", async () => {
+  const tracks = dualSnapshot().tracks!.map((track, index) => {
+    const pair = { source: `Synthetic prior ${track.audioSource} source.`, translation: `Synthetic prior ${track.audioSource} translation.`,
+      createdAt: 20 + index, audioSource: track.audioSource };
+    return { ...track, source: { text: pair.source, isFinal: true }, translation: { text: pair.translation, isFinal: true },
+      displayPair: pair, displayPairFinal: true, previewPair: null, history: [pair] };
+  });
+  const state = { ...empty, history: tracks.flatMap(track => track.history), tracks };
+  await mount(state, "bilingual", { ...geminiSettings, audioInput: "both" });
+  const drafts = tracks.map(track => ({ ...track,
+    source: { text: `Synthetic current ${track.audioSource} source.`, isFinal: false },
+    translation: { text: `Synthetic current ${track.audioSource} translation.`, isFinal: false } }));
+  await publish({ ...state, tracks: drafts });
+  await act(() => vi.advanceTimersByTime(250));
+  for (const track of drafts) expect(visibleLanes()).toContain(track.translation.text);
+  await publish({ ...state, tracks: drafts.map(track => track.audioSource === "system"
+    ? { ...track, translation: { text: "Synthetic revised system translation.", isFinal: false } } : track) });
+  await act(() => vi.advanceTimersByTime(100));
+  expect(visibleLanes()).toContain("Synthetic revised system translation.");
+  expect(visibleLanes()).toContain("Synthetic current microphone translation.");
+  expect(useStore.getState().session.subtitles.history).toEqual(state.history);
+});
+
+it("breaks Gemini live display lines without changing raw drafts or committed history", async () => {
+  const raw = "这是足够长的合成字幕用于验证实时显示换行行为。下一段仍然属于同一个实时草稿。";
+  const draft = { ...geminiConfirmed, source: { text: "Synthetic current source", isFinal: false },
+    translation: { text: raw, isFinal: false } };
+  await mount(draft, "translation", geminiSettings);
+  await act(() => vi.advanceTimersByTime(250));
+  expect(visibleLanes()).toEqual([confirmed.translation,
+    "这是足够长的合成字幕用于验证实时显示换行行为。\n下一段仍然属于同一个实时草稿。"]);
+  expect(useStore.getState().session.subtitles.translation.text).toBe(raw);
+  expect(useStore.getState().session.subtitles.history).toEqual([confirmed]);
+  const liveLane = Array.from(host.querySelectorAll<HTMLElement>('[data-utterance-id] [aria-label]'))
+    .find(lane => lane.getAttribute("aria-label")?.includes("\n"));
+  expect((liveLane?.firstElementChild as HTMLElement | null)?.style.whiteSpace).toBe("pre-line");
+  const historyLane = host.querySelector<HTMLElement>('[data-utterance-id="history-10"] [aria-label] > span');
+  expect(historyLane?.style.whiteSpace).not.toBe("pre-line");
+});
+
+it.each([true, false])("keeps 445 Gemini drafts visible across 18 confirmations with history retained=%s", async retainHistory => {
+  await mount(empty, "translation", geminiSettings);
+  let drafts = 0;
+  let liveUpdates = 0;
+  const finals: SubtitleSnapshot["history"] = [];
+  for (let block = 0; block < 18; block++) {
+    const count = block === 17 ? 20 : 25;
+    const source = `Synthetic source block ${block}`;
+    const history = retainHistory ? [...finals] : [];
+    let previousLive = "";
+    let lastSeenAt = Date.now();
+    let translation = "";
+    for (let index = 0; index < count; index++) {
+      translation = `合成字幕${block}：${"字".repeat(index + 1)}`;
+      const priorPair = finals.at(-1);
+      await publish({ ...empty, history,
+        ...(priorPair ? { displayPair: priorPair, displayPairFinal: true } : {}),
+        source: { text: source, isFinal: false }, translation: { text: translation, isFinal: false } });
+      drafts++;
+      await act(() => vi.advanceTimersByTime(50));
+      const live = visibleLanes().find(text => text.startsWith(`合成字幕${block}：`)) ?? "";
+      if (live && live !== previousLive) {
+        liveUpdates++;
+        previousLive = live;
+        lastSeenAt = Date.now();
+      }
+      expect(Date.now() - lastSeenAt).toBeLessThanOrEqual(250);
+      expect(useStore.getState().session.subtitles.history).toEqual(history);
+    }
+    await act(() => vi.advanceTimersByTime(100));
+    expect(visibleLanes()).toContain(translation);
+    // No confirmation has been published yet: all counted changes are drafts.
+    const pair = { source, translation, createdAt: 1_000 + block };
+    finals.push(pair);
+    await publish({ ...empty, history: retainHistory ? [...finals] : [],
+      displayPair: pair, displayPairFinal: true,
+      source: { text: source, isFinal: true }, translation: { text: translation, isFinal: true } });
+    expect(visibleLanes()).toContain(translation);
+    expect(useStore.getState().session.subtitles.history).toHaveLength(retainHistory ? block + 1 : 0);
+  }
+  expect(drafts).toBe(445);
+  expect(finals).toHaveLength(18);
+  expect(liveUpdates).toBeGreaterThanOrEqual(89);
+  await publish(empty);
+  await act(() => vi.advanceTimersByTime(2_000));
+  expect(visibleLanes()).toEqual([]);
+});
+
+
+it.each(["alibabaCloud", "openAIRealtime"] as const)("preserves existing %s whitespace presentation", async provider => {
+  const raw = "Synthetic provider sentence.\nAnother sentence.";
+  await mount({ history: [],
+    source: { text: "Synthetic source", isFinal: false },
+    translation: { text: raw, isFinal: false } }, "translation", {
+    profiles: [{ id: "other", name: "Synthetic other provider", provider, credentialState: "present" }],
+    activeProfileId: "other", showIntermediateSubtitles: true,
+  });
+  await act(() => vi.advanceTimersByTime(1_500));
+  expect(visibleLanes()).toEqual([raw]);
+  const liveLane = host.querySelector<HTMLElement>('[data-utterance-id] [aria-label] > span');
+  expect(liveLane?.style.whiteSpace).not.toBe("pre-line");
+});

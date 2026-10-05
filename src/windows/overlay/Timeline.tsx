@@ -48,6 +48,8 @@ interface TimelineProps {
   /** Fixed-opacity debugger replay; not a persisted product setting. */
   keepTextOpaque?: boolean;
   microphoneColor?: SubtitleColor;
+  /** Display-only sentence breaks belong to the Gemini live tail. */
+  preserveLiveLineBreaks?: boolean;
   blendsWithBackground?: boolean;
   /** Resolved motion setting: gates the roll-up glide. */
   motionEnabled?: boolean;
@@ -74,6 +76,7 @@ export const Timeline = memo(function Timeline({
   showSubtitleDividers = false,
   keepTextOpaque = false,
   microphoneColor = "yellow",
+  preserveLiveLineBreaks = false,
   followTailRequest = 0,
   onReadingHistoryChange,
 }: TimelineProps) {
@@ -332,6 +335,7 @@ export const Timeline = memo(function Timeline({
                   motionEnabled={motionEnabled}
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
+                  preserveLineBreaks={preserveLiveLineBreaks && block.presentation === "live"}
                   sourceScale={sourceScale}
                   onMeasure={height => measureLane("source", height)}
                 />
@@ -351,6 +355,7 @@ export const Timeline = memo(function Timeline({
                   motionEnabled={motionEnabled}
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
+                  preserveLineBreaks={preserveLiveLineBreaks && block.presentation === "live"}
                   onMeasure={height => measureLane("translation", height)}
                 />
               ) : null}
@@ -396,6 +401,7 @@ interface LaneProps {
   sourceScale?: number;
   tintReference?: boolean;
   keepTextOpaque?: boolean;
+  preserveLineBreaks?: boolean;
 }
 
 function Lane({
@@ -415,6 +421,7 @@ function Lane({
   sourceScale = SUBTITLE_SOURCE_SCALE,
   tintReference = false,
   keepTextOpaque = false,
+  preserveLineBreaks = false,
 }: LaneProps) {
   const isSource = kind === "source";
   // In bilingual mode the recognized original is the reference lane: neutral
@@ -430,6 +437,7 @@ function Lane({
     color: hexToRgba(isReference && !tintReference ? "#FFFFFF" : subtitleColorHex(color), isReference && !keepTextOpaque ? 0.86 : 1),
     lineHeight: `${lineHeightPx}px`,
     overflowWrap: "break-word" as const,
+    whiteSpace: preserveLineBreaks ? "pre-line" as const : undefined,
     textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
   };
 
@@ -480,6 +488,7 @@ interface CompactLaneProps {
     lineHeight: string;
     overflowWrap: "break-word";
     textShadow: string | undefined;
+    whiteSpace: "pre-line" | undefined;
   };
 }
 

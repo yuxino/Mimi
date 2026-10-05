@@ -4,6 +4,41 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-05：Gemini 连续字幕与计划换连接移植
+
+- 基线 `219c4b0` 加本轮修改（验证时 dirty）。保留上游非 atomic 草稿投影
+  与认证分类；新增共享 fragment/cumulative 合并、无标点静默 checkpoint、
+  Gemini 100/250 ms 译文展示和桌面 GoAway 计划切换。只有 Gemini live 块
+  启用显示断行，原始缓冲与确认历史不被修改。
+- macOS Intel 目标在本机 Rosetta 下通过 fmt、严格 clippy 和全量桌面 Rust
+  测试：1168 passed／2 ignored，其中 Gemini 客户端 23 项通过；额外
+  local-dev-credentials feature 的严格 clippy 通过。共享 Rust 79 项及
+  Android debug/release JVM 各 129 项通过，实际加载 host JNI。
+- 前端全量 120 文件／1744 项通过，lint、类型检查、生产构建与生产调试器
+  排除检查通过。覆盖 445 draft／18 confirmation、两音源、关闭中间字幕、
+  Clear、原始缓冲／历史不写回和其他服务保持原换行行为。
+- 移植后复用此前获授权日语视频的前 30 秒，16 kHz mono PCM16，原速经
+  Gemini 客户端发送：setup 1089 ms，首条译文 4717 ms，原文／译文草稿
+  16／15 次，1 个本地确认，报告错误为 0。短测不触发 GoAway；结束等待
+  12006 ms，沿用既有关闭上限。不是原生浮窗或旧新版端到端比较。
+- 移植前 `a0ac37f` 加同一 Gemini 修复的 600 秒日语实测，经实际
+  AudioSendPipeline 的 30000 个 20 ms buffer 送完 19200000 原始 PCM
+  字节，错误为 0；GoAway 后切换完成 1564 ms，新译文随后等待 6951 ms，
+  相邻译文间隔 10852 ms，切换后继续 40 次 draft。该历史证据未在本次
+  移植后重跑，也不能证明边界翻译完整或无感接续。
+- 公开提交前再同步到 `962c248`，保留上游腾讯／火山错误处理及重连背景
+  修复。`CARGO_BUILD_TARGET=x86_64-apple-darwin ./scripts/check.sh` 完整
+  通过：桌面 1177 passed／2 ignored、共享 79 项、前端 122 文件／1763
+  项；fmt、严格 clippy、lint、类型／生产构建通过。Android 实际 host JNI
+  debug/release 重新验证，各 135 项通过。30 秒服务探测仍属于前述
+  `219c4b0` 移植阶段；本次同步没有重跑服务探测或 ARM64 原生验收。
+- 用户试用移植前已签名 macOS 开发修复版，报告明显改善且仍有错漏；这是
+  未计时体验反馈，不是准确率评估。该 app 本轮未替换。
+- `./scripts/check.sh` 已尝试，但 ARM64 构建在 Apple Speech build.rs
+  因本机 macOS SDK 15.4（要求 26+）失败；未修改／绕过 Apple adapter。
+  当前 ARM64 签名包、原生 UI、Windows/Linux、Android 实机及多次真实
+  GoAway 尚待验证。下一项是用 Xcode 26+ 复跑 ARM64 完整检查和原生字幕。
+
 ## 2026-10-05：腾讯云凭据指引与协议修复
 
 - 基线 `219c4b0f` 加本轮修复（验证时 dirty）。核对官方实时语音翻译

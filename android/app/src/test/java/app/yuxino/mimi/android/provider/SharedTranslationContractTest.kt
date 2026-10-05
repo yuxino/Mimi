@@ -70,6 +70,7 @@ class SharedTranslationContractTest {
         var now = 0L
         val protocol = GeminiProtocol(ServiceConfiguration(ServiceProvider.GEMINI, emptyMap()), "ja") { now }
         val pairs = org.json.JSONArray()
+        val drafts = org.json.JSONArray()
         val actual = runCatching {
             val frames = case.getJSONArray("frames")
             repeat(frames.length()) { index ->
@@ -83,12 +84,20 @@ class SharedTranslationContractTest {
                 events.filterIsInstance<ServiceEvent.FinalPair>().forEach {
                     pairs.put(JSONObject().put("source", it.source).put("translation", it.translation).put("language", it.language ?: JSONObject.NULL))
                 }
+                events.forEach { event ->
+                    when (event) {
+                        is ServiceEvent.Source -> drafts.put(JSONObject().put("kind", "source").put("text", event.text))
+                        is ServiceEvent.Translation -> drafts.put(JSONObject().put("kind", "translation").put("text", event.text))
+                        else -> Unit
+                    }
+                }
             }
         }
         if (case.isNull("expected")) assertTrue(case.getString("id"), actual.isFailure)
         else {
             assertTrue(case.getString("id"), actual.isSuccess)
             assertTrue(case.getString("id"), case.getJSONArray("expected").similar(pairs))
+            if (case.has("expectedDrafts")) assertTrue(case.getString("id"), case.getJSONArray("expectedDrafts").similar(drafts))
         }
     }
 

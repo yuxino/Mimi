@@ -1,7 +1,8 @@
 # PC and Android maintenance
 
-Subtitle state, complete current pairs, DashScope item-identity pairing, append-only
-OpenAI/Gemini transcript alignment and final translation policy now have one implementation
+Subtitle state, complete current pairs, DashScope item-identity pairing, OpenAI
+delta alignment, Gemini continuous transcript assembly and final translation
+policy now have one implementation
 in `shared/mimi-core`. Desktop
 imports the Rust crate; Android's Kotlin adapters call that same crate through JNI.
 Provider transports and OS integration remain native. Their wire behavior is a shared
@@ -49,8 +50,10 @@ update both implementations and their platform-specific tests in the same change
   OpenAI append-only streams share timing/punctuation alignment and safe tail flush.
   Gemini transcription options belong to setup, and language-only text updates
   are empty deltas. Its ID-less continuous transcript uses the shared complete-
-  block checkpoint after 2 seconds without nonempty text, regardless of unequal
-  sentence counts. This heuristic can delay confirmation during continuous speech;
+  block checkpoint after 2 seconds without changing text, including unpunctuated
+  paired text and unequal sentence counts. Fragments append verbatim; strict
+  cumulative extensions replace the current lane, with drafts published first.
+  This heuristic can delay confirmation during continuous speech;
   drafts stay bounded at 5,120 characters. Both platforms retain explicit turn
   boundaries with a shared 500 ms late-tail grace; interruptions discard buffers.
 - Configuration changes are drafts until the explicit save action. Field labels and
@@ -81,6 +84,7 @@ counterpart. Shared subtitle and independent text-translation policy are unchang
 | Audio capture | System audio by default; explicitly selected microphone or both sources with independent lanes. OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | Android playback-capture consent and foreground service; no selected-app picker |
 | Saved service selection | Settings, tray and subtitle controls can switch during listening via reconnect; pause and confirmed subtitles persist. A recording cannot switch PCM sample rate | Existing Android selection flow; no live-switch parity claimed |
 | Proxy preferences | Per-profile independent recognition/text routes; integrated realtime uses one route | Platform network defaults; no per-stage proxy controls |
+| Gemini planned connection rotation | Prepare one replacement after GoAway, bounded old-tail drain and up to two seconds of PCM staging; shorter Gemini live preview cadence | Shared continuous text rules; native replacement-socket handoff and desktop preview cadence are not implemented |
 | Secret storage | Private local credential file; one-time OS-store migration | Android Keystore-backed encrypted preferences |
 | Local HTTP | Existing loopback endpoint validation | Explicit per-config opt-in and Android network allowlist; includes emulator host |
 | History/recording | Optional bounded local session files and selected-input recordings; confirmed panel rows survive stop/start within the app process and keep the existing display bound | Existing optional bounded subtitle history; capture starts clear its overlay; no desktop recording/export parity claimed |
