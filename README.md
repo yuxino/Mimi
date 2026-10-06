@@ -35,9 +35,9 @@
 
 ## Get started
 
-For your first setup, **we recommend starting with Alibaba Cloud or Volcano Engine**. We’ve done more real-world testing with Alibaba Cloud and have also had good results with Volcano Engine. We’re still improving support for other services, so results and reliability may vary.
+For your first setup, **we recommend starting with Alibaba Cloud or Google Gemini**. We’ve done more real-world testing with Alibaba Cloud; in my experience so far, Gemini has delivered the most consistent subtitle output.
 
-You can also try Google Gemini; it works well with a stable connection. It currently offers a free tier. Check your quota and billing in [Google AI Studio](https://aistudio.google.com/), where you can also get an API key.
+For Google Gemini, use a stable network connection. Check your available quota, billing, and API keys in [Google AI Studio](https://aistudio.google.com/).
 
 For activation links, credential instructions, and the models Mimi currently uses, see the **[provider setup guide](docs/provider-setup.md)**.
 
@@ -49,7 +49,9 @@ Cloud speech services require your own credentials and receive your audio; usage
 
 [Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](CONTRIBUTING.md)
 
-### Apple local recognition
+<a id="apple-local-recognition"></a>
+
+### Apple local recognition (Some bugs remain; I’m out of tokens to fix them for now QAQ)
 
 **Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. Stop subtitles, click **Add language pack** in its Mimi configuration, select a language, and click **Download language pack**. Once ready, click **Set recognition language** and start subtitles. Automatic language detection is not offered. See [Apple Speech setup](docs/provider-setup.md#apple-speech).
 
@@ -57,9 +59,11 @@ Use **Skip translation** for recognition only, or configure a separate text tran
 
 ### Try Index-Translate
 
-Bilibili's [Index-Translate](https://github.com/bilibili/Index-Translate#inference) currently offers a free public translation API (as of October 5, 2026). You can try it in Mimi and compare the subtitle translations with your usual service.
+Bilibili's [Index-Translate](https://github.com/bilibili/Index-Translate#inference) currently offers a free public translation API (as of October 5, 2026). It can provide text translation for Alibaba Cloud or Apple Speech recognition.
 
-In **Settings → Speech & Translation**, open an **Alibaba Cloud** configuration and select **OpenAI-compatible API** under **Text translation**. Use the values from the [official example](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41):
+I got halfway through integrating Apple’s own translation before running out of tokens. For now, Apple recognition needs a third-party service for translated subtitles. Sorry about that QAQ.
+
+In **Settings → Speech & Translation**, open an **Alibaba Cloud** or **Apple Speech** configuration and select **OpenAI-compatible API** under **Text translation**. Use the values from the [official example](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41):
 
 | Field | Value |
 | --- | --- |
@@ -69,7 +73,7 @@ In **Settings → Speech & Translation**, open an **Alibaba Cloud** configuratio
 
 Save, then run the connection check beside **Text translation**. If this address already has a saved key, remove it with **Remove translation key** and save again.
 
-Index-Translate handles text translation only: keep your Alibaba Cloud speech-recognition credentials configured; recognition may still incur charges. Free API availability is subject to the upstream service.
+Index-Translate handles text translation only. When using Alibaba Cloud, keep its speech-recognition credentials configured; recognition may still incur charges. Apple Speech recognition needs no key. Free API availability is subject to the upstream service.
 
 ## FAQ
 

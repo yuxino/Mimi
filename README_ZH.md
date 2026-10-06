@@ -35,9 +35,9 @@
 
 ## 开始使用
 
-初次使用，**推荐先用阿里云或火山引擎**。我们对阿里云做了更多实际测试，火山引擎用下来效果也不错。其他服务还在继续完善，使用效果和稳定性可能有差异。
+初次使用，**推荐先用阿里云或 Google Gemini**。我们对阿里云做了更多实际测试；目前个人用下来，Gemini 的字幕输出最稳定。
 
-也可以试试 Google Gemini，网络连接稳定时体验不错。目前提供免费额度，额度和计费以 [Google AI Studio](https://aistudio.google.com/) 显示为准；也可以在那里获取 API Key。
+使用 Google Gemini 时，请保持网络连接稳定，并在 [Google AI Studio](https://aistudio.google.com/) 查看可用额度、计费和获取 API Key。
 
 各家服务的开通入口、凭证获取步骤，以及 Mimi 当前使用的模型，见**[服务开通指南](docs/provider-setup.zh-CN.md)**。
 
@@ -49,7 +49,9 @@
 
 [使用与常见问题](docs/usage.zh-CN.md) · [Android](android/README.md) · [反馈问题](https://github.com/yuxino/mimi/issues) · [贡献指南](CONTRIBUTING.md)
 
-### Apple 本地识别
+<a id="apple-本地识别"></a>
+
+### Apple 本地识别 (目前还有一些 Bug，暂时没 Token 修复了 QAQ)
 
 **Apple Speech** 只在系统支持时出现：Apple 芯片、macOS 26 或更新版本，且系统识别引擎可用。识别不需要 API Key。先停止字幕，在 Mimi 的配置中点击「添加语言包」，选择语言并点击「下载语言包」；准备好后点击「设为识别语言」，再启动字幕。不提供自动识别语言。详见 [Apple Speech 配置步骤](docs/provider-setup.zh-CN.md#apple-speech)。
 
@@ -57,9 +59,11 @@
 
 ### 试试 Index-Translate
 
-B 站的 [Index-Translate](https://github.com/bilibili/Index-Translate#inference) 目前提供免费的公开翻译 API（截至 2026 年 10 月 5 日）。可以接到 Mimi 里试试，对比一下和常用服务的字幕翻译效果。
+B 站的 [Index-Translate](https://github.com/bilibili/Index-Translate#inference) 目前提供免费的公开翻译 API（截至 2026 年 10 月 5 日）。可以作为文字翻译服务，搭配阿里云或 Apple 本地识别使用。
 
-在「**设置 → 语音与翻译**」中打开「**Alibaba Cloud**」配置，将「**文字翻译**」的服务切换为「**OpenAI 兼容接口**」，按[官方示例](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41)填写：
+Apple 自带翻译的接入做了一半，暂时没 Token 继续了。目前只能先搭配第三方翻译服务，非常抱歉 QAQ。
+
+在「**设置 → 语音与翻译**」中打开「**Alibaba Cloud**」或「**Apple Speech**」配置，将「**文字翻译**」的服务切换为「**OpenAI 兼容接口**」，按[官方示例](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41)填写：
 
 | 字段 | 填写内容 |
 | --- | --- |
@@ -69,7 +73,7 @@ B 站的 [Index-Translate](https://github.com/bilibili/Index-Translate#inference
 
 保存后，点击「文字翻译」旁的连接检查。如果这个地址之前保存过 Key，选择「移除翻译密钥」后再保存。
 
-Index-Translate 只负责文字翻译，仍需配置阿里云语音识别凭证，识别服务可能产生费用。免费接口的后续可用性以上游为准。
+Index-Translate 只负责文字翻译。搭配阿里云时，仍需配置语音识别凭证，识别服务可能产生费用；搭配 Apple Speech 时，本地识别不需要 Key。免费接口的后续可用性以上游为准。
 
 ## 常见问题
 

@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) · [简体中文](provider-setup.zh-CN.md) · [Usage & FAQ](usage.md)
 
-This guide explains where to enable each service, where to get its credentials, and what to enter in Mimi. Configure only the services you plan to use. For a first setup, you can start with Alibaba Cloud or Volcano Engine, as recommended in the README.
+This guide explains where to enable each service, where to get its credentials, and what to enter in Mimi. Configure only the services you plan to use. For a first setup, you can start with Alibaba Cloud or Google Gemini, as recommended in the README.
 
 Last checked: **2026-10-06**. The instructions primarily cover the current desktop app, with Android differences noted separately. Console menus, model access, trial allowances, and billing rules can change. Check the linked official documentation and your own account status.
 
