@@ -2,6 +2,8 @@
 
 [Back to README](../README.md) · [简体中文](usage.zh-CN.md)
 
+Provider activation links, credential fields, and current models are in the [provider setup guide](provider-setup.md).
+
 ## Install and update
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.

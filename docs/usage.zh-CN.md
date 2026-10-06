@@ -2,6 +2,8 @@
 
 [返回 README](../README_ZH.md) · [English](usage.md)
 
+各家服务的开通入口、凭证字段和当前模型，见[服务开通指南](provider-setup.zh-CN.md)。
+
 ## 安装与更新
 
 1. 从 [Latest Release](https://github.com/yuxino/mimi/releases/latest) 下载 macOS Apple Silicon 或 Intel DMG，Windows x64 EXE、MSI、绿色版 ZIP，或 Linux x86_64 .deb / AppImage；也可以从源码构建。
