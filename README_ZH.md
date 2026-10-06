@@ -39,7 +39,7 @@
 
 使用 Google Gemini 时，请保持网络连接稳定，并在 [Google AI Studio](https://aistudio.google.com/) 查看可用额度、计费和获取 API Key。
 
-各家服务的开通入口、凭证获取步骤，以及 Mimi 当前使用的模型，见**[服务开通指南](docs/provider-setup.zh-CN.md)**。
+各家服务的开通入口、凭证获取步骤，以及 Mimi 当前使用的模型，见[**服务开通指南**](docs/provider-setup.zh-CN.md)。
 
 1. 打开「设置 → 语音与翻译」，添加配置，按提示填入服务商凭证并保存。
 2. 选择识别和翻译语言。
@@ -51,17 +51,19 @@
 
 <a id="apple-本地识别"></a>
 
-### Apple 本地识别 (目前还有一些 Bug，暂时没 Token 修复了 QAQ)
+### Apple 本地识别
+
+目前还有一些 Bug，暂时没 Token 修复了 QAQ。
 
 **Apple Speech** 只在系统支持时出现：Apple 芯片、macOS 26 或更新版本，且系统识别引擎可用。识别不需要 API Key。先停止字幕，在 Mimi 的配置中点击「添加语言包」，选择语言并点击「下载语言包」；准备好后点击「设为识别语言」，再启动字幕。不提供自动识别语言。详见 [Apple Speech 配置步骤](docs/provider-setup.zh-CN.md#apple-speech)。
 
-可以开启「跳过翻译」只做识别，也可单独配置 Index-Translate 等文字翻译服务。Apple 识别本身不提供翻译模型；选择远程翻译服务时，识别文字仍会发送至该服务。
+Apple 自带翻译的接入做了一半，暂时没 Token 继续了。如果你在用 Apple Speech，可以先搭配 [Index-Translate](#试试-index-translate) 做文字翻译，非常抱歉 QAQ。
+
+只看原文时，开启「跳过翻译」即可。使用远程文字翻译服务时，识别文字仍会发送至该服务。
 
 ### 试试 Index-Translate
 
 B 站的 [Index-Translate](https://github.com/bilibili/Index-Translate#inference) 目前提供免费的公开翻译 API（截至 2026 年 10 月 5 日）。可以作为文字翻译服务，搭配阿里云或 Apple 本地识别使用。
-
-Apple 自带翻译的接入做了一半，暂时没 Token 继续了。目前只能先搭配第三方翻译服务，非常抱歉 QAQ。
 
 在「**设置 → 语音与翻译**」中打开「**Alibaba Cloud**」或「**Apple Speech**」配置，将「**文字翻译**」的服务切换为「**OpenAI 兼容接口**」，按[官方示例](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41)填写：
 

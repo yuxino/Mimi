@@ -51,17 +51,19 @@ Cloud speech services require your own credentials and receive your audio; usage
 
 <a id="apple-local-recognition"></a>
 
-### Apple local recognition (Some bugs remain; I’m out of tokens to fix them for now QAQ)
+### Apple local recognition
+
+Some bugs remain, and I’m out of tokens to fix them for now QAQ.
 
 **Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. Stop subtitles, click **Add language pack** in its Mimi configuration, select a language, and click **Download language pack**. Once ready, click **Set recognition language** and start subtitles. Automatic language detection is not offered. See [Apple Speech setup](docs/provider-setup.md#apple-speech).
 
-Use **Skip translation** for recognition only, or configure a separate text translator such as Index-Translate. Apple recognition does not supply the translation model, and a remote text translator still receives recognized text.
+I’m halfway through integrating Apple’s own translation, but I’ve run out of tokens to continue for now. If you use Apple Speech, you can pair it with [Index-Translate](#try-index-translate) for text translation in the meantime. Sorry about that QAQ.
+
+To show only the original text, enable **Skip translation**. If you use a remote text translator, it still receives the recognized text.
 
 ### Try Index-Translate
 
 Bilibili's [Index-Translate](https://github.com/bilibili/Index-Translate#inference) currently offers a free public translation API (as of October 5, 2026). It can provide text translation for Alibaba Cloud or Apple Speech recognition.
-
-I got halfway through integrating Apple’s own translation before running out of tokens. For now, Apple recognition needs a third-party service for translated subtitles. Sorry about that QAQ.
 
 In **Settings → Speech & Translation**, open an **Alibaba Cloud** or **Apple Speech** configuration and select **OpenAI-compatible API** under **Text translation**. Use the values from the [official example](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41):
 
