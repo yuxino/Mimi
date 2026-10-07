@@ -1,36 +1,34 @@
 # Optional profile language combinations
 
-**Goal:** Let saved service profiles optionally restore a recognition/translation
-language pair without changing existing global language controls.
+Service profiles currently share global recognition/translation languages. Separate
+Apple Speech or cloud profiles cannot retain independent language combinations;
+profile names and credential identities are not the cause of this behavior.
 
-**Architecture:** Store an optional nonsecret `languagePreset` on each desktop
-profile. Missing/null means keep current language normalization. Ordinary profile
-selection applies the exact saved pair through the existing guarded lifecycle;
-explicit Apple resource language selection takes precedence and uses the current
-target. Live/paused switches validate before persistence, preserve pause/history
-and reconnect as before. Temporary language changes never write profile metadata.
+Each desktop profile can now store an optional nonsecret `languagePreset` containing
+source and target languages. Missing/null preserves current language normalization.
+Temporary language changes never write profile metadata.
 
-**Tech stack:** Rust/Tauri settings and lifecycle; React/TypeScript settings controls.
+The active configuration offers one “Remember current languages” action using the
+existing language controls. A saved pair is shown with explicit Update/Remove
+actions. Saving does not change current languages. Inactive profiles can remove a
+pair but cannot capture another profile's current languages. Local development
+credential presets remain read-only. Configuration lists and tray/overlay pickers
+show saved pairs alongside the existing names and provider icons.
 
-1. Add typed metadata and explicit nullable IPC patch. Preserve legacy catalogs,
-   names, credentials and proxies. Validate a requested pair against its route;
-   retain stale presets when a route later changes, rejecting selection instead
-   of silently changing the saved pair or making the whole catalog unreadable.
-2. Apply presets on profile selection (including using the current profile again from Settings
-   after a temporary language change). Require Apple resources before switching;
-   never download automatically. Failed validation/write leaves the old selection.
-3. Add one compact “Remember current languages” action beside a saved-pair
-   summary, with explicit Update/Remove actions. Reuse existing current-language
-   controls; do not add a second pair of pickers or a switching dialog. Saving
-   does not change current languages. Show saved pairs in the configuration list.
-   Capture is available for the active profile; inactive profiles can clear a pair. Local development
-   credential presets remain read-only.
-4. Cover independent Apple/Alibaba profiles, legacy behavior, restart persistence,
-   temporary changes, same-profile reapplication, route incompatibility, explicit
-   Apple overrides and save failure rollback. Check IPC patch omission vs clearing,
-   save acknowledgment, errors, busy/unmount and Chinese/English/Japanese layout.
-5. Run `./scripts/check.sh`, inspect the signed canonical UI-only development app,
-   review the diff, then open a PR. Do not merge or reply to issue #183.
+Ordinary profile selection applies the exact saved pair through the guarded
+lifecycle. Settings can also reapply the active configuration after a temporary
+language change. Explicit Apple resource language selection takes precedence and
+uses the current target without rewriting the saved pair. Live/paused switches
+preserve the existing pause/history and reconnect behavior.
 
-This is desktop configuration metadata, not a provider protocol or shared
-subtitle-policy change. Android does not yet have this profile-language editor.
+A requested pair is validated against its route before saving. Later route edits
+retain stale pairs; activation rejects an incompatible pair instead of silently
+changing it or making the whole catalog unreadable. Apple resource readiness is
+validated before activation and never triggers automatic downloads. Failed
+validation or persistence leaves the previous selection intact. Nullable IPC
+patches distinguish an omitted update from explicit removal.
+
+This is desktop profile metadata, not a provider protocol or shared subtitle-policy
+change. Android does not yet have a saved profile-language pair editor. Regression
+coverage and native/browser verification limits are recorded in the
+[integration ledger](../development/integration-runs.md).
