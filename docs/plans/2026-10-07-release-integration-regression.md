@@ -1,7 +1,8 @@
 # v1.5.15 unified integration regression
 
 The user requested that the three independent changes be integrated here and
-tested together before merging main. Publication remains paused.
+tested together before merging main. The user's latest authorization allows
+publication after both work streams and the unified regression are complete.
 
 ## Inputs
 
@@ -41,4 +42,11 @@ native build establishes acceptance of the combined revision.
 
 The existing v1.5.15 tag and prepared macOS assets refer to the earlier main.
 They must be reconciled and rebuilt before any later authorized publication.
-This integration does not resume tag workflows or publish the draft release.
+Resume publication only after those gates pass, using assets rebuilt from the
+final merged revision.
+
+The combined seven-language review found that German saved language pairs
+were truncated in both configuration menus. Keep the configuration name on
+one line, allow the description beneath it to wrap, and reserve room for the
+additional line when positioning the bounded menu. Rerun the same 112-case
+menu matrix before accepting this repair.

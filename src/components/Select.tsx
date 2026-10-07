@@ -91,7 +91,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     const above = rect.top - 12;
     // Search results may arrive asynchronously. Reserve enough room for them
     // when opening; a short list still sizes naturally below this maximum.
-    const desired = searchable ? 280 : Math.min(options.reduce((height, option) => height + (option.description ? 56 : 38), 10), 280);
+    const desired = searchable ? 280 : Math.min(options.reduce((height, option) => height + (option.description ? 74 : 38), 10), 280);
     const upwards = below < desired && above > below;
     // In short windows, allow the searchable menu to overlap the trigger so
     // the input and at least one result remain usable within the viewport.
