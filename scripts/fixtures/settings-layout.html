@@ -160,6 +160,7 @@ window.applyLayoutCase = async next => {
     settings: { ...initial.settings, uiLanguage: next.language, microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
       sourceLanguage, targetLanguage,
       ...(next.editor || next.surface ? { profiles: [profile], activeProfileId: profile.id } : {}),
+      ...(next.emptyProfiles ? { profiles: [], activeProfileId: "" } : {}),
       ...(appleProfile || next.textTranslation === "apple" ? { languageCapabilities: { profileId: profile.id, provider: profile.provider, textTranslation: profile.textTranslation, targetLanguage,
         sourceLanguages: next.sourceLanguages ?? next.appleSupport?.languages.filter(language => language.installed).map(language => language.sourceLanguage) ?? next.appleTranslationSupport?.sourceLanguages ?? [],
         targetLanguages: next.targetLanguages ?? (next.textTranslation === "apple" ? ["original", ...next.appleTranslationSupport?.targetLanguages ?? []] : ["original"]),

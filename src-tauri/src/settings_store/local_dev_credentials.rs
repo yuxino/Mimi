@@ -536,7 +536,7 @@ mod tests {
             reopened.active_profile().unwrap().id,
             LOCAL_DEV_GEMINI_PROFILE_ID
         );
-        for _ in 1..MAXIMUM_PROFILE_COUNT {
+        for _ in 0..MAXIMUM_PROFILE_COUNT {
             reopened
                 .create_profile(ProviderKind::GoogleGeminiLive, "Regular")
                 .unwrap();
@@ -560,7 +560,7 @@ mod tests {
             .1
             .iter()
             .any(|p| p.id == LOCAL_DEV_GEMINI_PROFILE_ID));
-        assert!(removed
+        assert!(!removed
             .profile_catalog()
             .unwrap()
             .1

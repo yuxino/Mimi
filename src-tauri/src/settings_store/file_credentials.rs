@@ -61,7 +61,7 @@ impl FileCredentialStore {
             },
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => (
                 if directory.join("preferences.json").is_file() {
-                    ProfileCatalog::default().profiles
+                    ProfileCatalog::legacy_alibaba().profiles
                 } else {
                     Vec::new()
                 },
@@ -948,7 +948,7 @@ mod tests {
     fn real_settings_snapshot_uses_file_metadata_and_import_clears_stale_errors() {
         let directory = tempfile::tempdir().unwrap();
         let legacy = Legacy::default();
-        let profile = ProfileCatalog::default().profiles.remove(0);
+        let profile = ProfileCatalog::legacy_alibaba().profiles.remove(0);
         let account = credential_account(&profile);
         legacy.0.lock().unwrap().values.insert(
             (
@@ -1033,7 +1033,7 @@ mod tests {
         assert!(!store.complete_path.exists());
         fs::write(
             directory.path().join(PROFILE_CATALOG_FILE),
-            serde_json::to_vec(&ProfileCatalog::default()).unwrap(),
+            serde_json::to_vec(&ProfileCatalog::legacy_alibaba()).unwrap(),
         )
         .unwrap();
         let store = FileCredentialStore::for_app(

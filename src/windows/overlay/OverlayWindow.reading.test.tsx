@@ -46,7 +46,7 @@ beforeEach(() => {
   useStore.setState({ ...original,
     session: { ...original.session, subtitles, status: { kind: "listening" }, isActive: true, isPaused: false,
       isOverlayCollapsed: false, isTranslationPending: false, detectedLanguage: "en" },
-    settings: { ...original.settings, subtitleDisplayMode: "bilingual", sourceLanguage: "en", targetLanguage: "zh",
+    settings: { ...original.settings, activeProfileId: "configured", profiles: [{ id: "configured", provider: "alibabaCloud", name: "Configured service", credentialState: "present" }], subtitleDisplayMode: "bilingual", sourceLanguage: "en", targetLanguage: "zh",
       subtitleBlendsWithBackground: false, isOverlayLocked: false, pulseAnimation: false, subtitleAnimation: false },
     clearSubtitles: async () => useStore.setState(state => ({ session: { ...state.session, subtitles: empty } })),
   }, true);

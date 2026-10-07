@@ -53,7 +53,7 @@ beforeEach(() => {
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => host });
   setStoredUiLanguage("en");
   useStore.setState({ ...initial,
-    settings: { ...initial.settings, isOverlayLocked: false, subtitleBlendsWithBackground: false,
+    settings: { ...initial.settings, activeProfileId: "configured", profiles: [{ id: "configured", provider: "alibabaCloud", name: "Configured service", credentialState: "present" }], isOverlayLocked: false, subtitleBlendsWithBackground: false,
       subtitleBackgroundOpacity: 75, pulseAnimation: false, subtitleAnimation: false },
     session: { ...initial.session, status: { kind: "error", message: failure },
       isActive: false, isPaused: false, isOverlayCollapsed: false },

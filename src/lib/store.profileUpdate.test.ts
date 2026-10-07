@@ -11,7 +11,7 @@ vi.mock("./ipc", async original => ({ ...await original<typeof import("./ipc")>(
 
 const initial = useStore.getState();
 let emitSettings: (snapshot: SettingsSnapshot) => void;
-const settings: SettingsSnapshot = { ...initial.settings, profiles: [{ ...initial.settings.profiles[0], name: "Original name", credentialState: "present" }] };
+const settings: SettingsSnapshot = { ...initial.settings, activeProfileId: "existing", profiles: [{ id: "existing", provider: "alibabaCloud", name: "Original name", credentialState: "present" }] };
 const profileId = settings.profiles[0].id;
 const renamed = (name: string): SettingsSnapshot => ({ ...settings, profiles: [{ ...settings.profiles[0], name }] });
 

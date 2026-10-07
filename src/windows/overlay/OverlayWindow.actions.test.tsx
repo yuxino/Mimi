@@ -28,7 +28,7 @@ beforeEach(() => {
   useStore.setState({ ...initial,
     session: { ...initial.session, isActive: true, status: { kind: "listening" },
       subtitles: { ...initial.session.subtitles, source: { text: "Synthetic clearable draft.", isFinal: false } } },
-    settings: { ...initial.settings, isOverlayLocked: false, subtitleBlendsWithBackground: false, pulseAnimation: false, subtitleAnimation: false },
+    settings: { ...initial.settings, activeProfileId: "configured", profiles: [{ id: "configured", provider: "alibabaCloud", name: "Configured service", credentialState: "present" }], isOverlayLocked: false, subtitleBlendsWithBackground: false, pulseAnimation: false, subtitleAnimation: false },
   }, true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
