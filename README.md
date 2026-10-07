@@ -15,7 +15,7 @@
     <a href="android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
   </p>
   <p>
-    <a href="README.md">English</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_KO.md">한국어</a> · <a href="README_FR.md">Français</a> · <a href="README_DE.md">Deutsch</a>
+    <a href="README.md">English</a> · <a href="docs/readme/zh-CN.md">简体中文</a> · <a href="docs/readme/zh-TW.md">繁體中文</a> · <a href="docs/readme/ko.md">한국어</a> · <a href="docs/readme/fr.md">Français</a> · <a href="docs/readme/de.md">Deutsch</a>
   </p>
 </div>
 
@@ -49,7 +49,7 @@ For activation links, credential instructions, and the models Mimi currently use
 
 Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Remote text translation sends recognized text to your chosen service; Apple Translation keeps text on the Mac.
 
-[Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](CONTRIBUTING.md)
+[Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](.github/CONTRIBUTING.md)
 
 <a id="apple-local-recognition"></a>
 

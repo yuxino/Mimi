@@ -1,27 +1,27 @@
 <div align="center">
-  <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
+  <img src="../../src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>Mimi</h1>
   <p>Sous-titres et traduction en direct pour l’audio du système ou le microphone sur macOS 13+ (puces Apple et Intel), Windows et Linux x86_64.</p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="Dernière version"></a>
     <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="Nombre total de téléchargements"></a>
     <a href="https://github.com/yuxino/mimi/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/yuxino/mimi/ci.yml?style=flat&amp;logo=githubactions&amp;logoColor=white&amp;branch=main&amp;event=push&amp;label=CI" alt="État de la CI sur main"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="Licence MIT"></a>
+    <a href="../../LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="Licence MIT"></a>
   </p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/macOS-13%2B-555?style=flat&amp;logo=apple&amp;logoColor=white" alt="macOS 13+"></a>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-0078D4?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTF2MTFIMHptMTMgMGgxMXYxMUgxM3pNMCAxM2gxMXYxMUgwem0xMyAwaDExdjExSDEzeiIvPjwvc3ZnPg%3D%3D&amp;logoColor=white" alt="Windows x64"></a>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat&amp;logo=linux&amp;logoColor=white" alt="Linux"></a>
-    <a href="android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
+    <a href="../../android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
   </p>
   <p>
-    <a href="README.md">English</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_KO.md">한국어</a> · <a href="README_FR.md">Français</a> · <a href="README_DE.md">Deutsch</a>
+    <a href="../../README.md">English</a> · <a href="zh-CN.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a>
   </p>
 </div>
 
 <p align="center">Mimi transforme les paroles provenant de votre ordinateur ou de votre microphone en sous-titres traduits en direct. Regardez des films, suivez des streams ou des cours avec les sous-titres flottant au-dessus de votre écran.</p>
 
-![Fenêtre de sous-titres bilingues de Mimi sur une illustration originale](docs/assets/readme-preview.png)
+![Fenêtre de sous-titres bilingues de Mimi sur une illustration originale](../assets/readme-preview.png)
 
 ## Fonctionnalités
 
@@ -41,7 +41,7 @@ Pour votre première configuration, **nous recommandons Alibaba Cloud ou Google 
 
 Pour Google Gemini, utilisez une connexion réseau stable. Consultez votre quota disponible, la facturation et vos clés API dans [Google AI Studio](https://aistudio.google.com/).
 
-Pour les liens d’activation, les instructions concernant les identifiants et les modèles actuellement utilisés par Mimi, consultez le **[guide de configuration des fournisseurs](docs/provider-setup.md)**.
+Pour les liens d’activation, les instructions concernant les identifiants et les modèles actuellement utilisés par Mimi, consultez le **[guide de configuration des fournisseurs](../provider-setup.md)**.
 
 1. Ouvrez Réglages → Parole et traduction, ajoutez une configuration, saisissez les identifiants demandés par le fournisseur et enregistrez.
 2. Choisissez les langues de reconnaissance et de traduction.
@@ -49,13 +49,13 @@ Pour les liens d’activation, les instructions concernant les identifiants et l
 
 Les services vocaux cloud nécessitent vos propres identifiants et reçoivent votre audio ; des frais d’utilisation peuvent s’appliquer. Apple Speech reconnaît l’audio localement sur les Mac compatibles. La traduction du texte à distance envoie le texte reconnu au service de votre choix ; Apple Translation garde le texte sur le Mac.
 
-[Configuration et aide](docs/usage.md) · [Android](android/README.md) · [Signaler un bug](https://github.com/yuxino/mimi/issues) · [Contribuer](CONTRIBUTING.md)
+[Configuration et aide](../usage.md) · [Android](../../android/README.md) · [Signaler un bug](https://github.com/yuxino/mimi/issues) · [Contribuer](../../.github/CONTRIBUTING.md)
 
 <a id="apple-local-recognition"></a>
 
 ### Reconnaissance locale Apple
 
-**Apple Speech** apparaît lorsque le système le permet : puce Apple, macOS 26 ou version ultérieure et moteur de transcription système disponible. Aucune clé API de reconnaissance vocale n’est nécessaire. Arrêtez les sous-titres et choisissez la langue dans **Langue de reconnaissance**. Si elle est manquante, cliquez sur **Télécharger et utiliser** ; Mimi télécharge les ressources Apple et sélectionne cette langue une fois prête. Pour une langue déjà téléchargée, cliquez sur **Définir la langue de reconnaissance**, puis démarrez les sous-titres. Inutile d’ouvrir les Réglages Système. La détection automatique de la langue n’est pas proposée. Consultez la [configuration d’Apple Speech](docs/provider-setup.md#apple-speech).
+**Apple Speech** apparaît lorsque le système le permet : puce Apple, macOS 26 ou version ultérieure et moteur de transcription système disponible. Aucune clé API de reconnaissance vocale n’est nécessaire. Arrêtez les sous-titres et choisissez la langue dans **Langue de reconnaissance**. Si elle est manquante, cliquez sur **Télécharger et utiliser** ; Mimi télécharge les ressources Apple et sélectionne cette langue une fois prête. Pour une langue déjà téléchargée, cliquez sur **Définir la langue de reconnaissance**, puis démarrez les sous-titres. Inutile d’ouvrir les Réglages Système. La détection automatique de la langue n’est pas proposée. Consultez la [configuration d’Apple Speech](../provider-setup.md#apple-speech).
 
 **Apple Translation** est un service distinct de traduction du texte sur l’appareil, disponible sur les Mac compatibles avec puce Apple sous macOS 26 ou version ultérieure. Sélectionnez-le dans **Traduction du texte**, enregistrez la configuration, puis choisissez une langue source et une langue cible précises. Mimi indique si la paire est prête ; **Télécharger ou activer les langues** ouvre la confirmation de configuration d’Apple. Les modèles de traduction sont séparés des modèles de reconnaissance vocale. Les modèles existants sont réutilisés ; Apple télécharge les modèles manquants après votre confirmation. Les vérifications et les sessions de sous-titres ne demandent jamais de téléchargement. Aucune clé API ni aucun proxy de traduction du texte n’est nécessaire.
 
@@ -81,7 +81,7 @@ Index-Translate assure uniquement la traduction du texte. Avec Alibaba Cloud, co
 
 ## Questions fréquentes
 
-**macOS redemande l’autorisation d’enregistrement alors qu’elle est activée ?** Quittez Mimi, puis supprimez et ajoutez de nouveau uniquement son entrée dans Réglages Système → Confidentialité et sécurité → Enregistrement de l’écran et de l’audio du système. Utilisez `/Applications/mimi.app` pour la version publique ou `/Applications/mimi-dev.app` pour le développement, activez l’autorisation et rouvrez la même application. Consultez la [récupération des autorisations](docs/usage.md#macos-permissions-after-an-update).
+**macOS redemande l’autorisation d’enregistrement alors qu’elle est activée ?** Quittez Mimi, puis supprimez et ajoutez de nouveau uniquement son entrée dans Réglages Système → Confidentialité et sécurité → Enregistrement de l’écran et de l’audio du système. Utilisez `/Applications/mimi.app` pour la version publique ou `/Applications/mimi-dev.app` pour le développement, activez l’autorisation et rouvrez la même application. Consultez la [récupération des autorisations](../usage.md#macos-permissions-after-an-update).
 
 ## Contributeurs
 
@@ -92,11 +92,11 @@ Un grand merci à [@yebuwudong](https://github.com/yebuwudong) pour l’[applica
 Merci aussi à [@Chtholly000](https://github.com/Chtholly000) pour les améliorations des [sous-titres continus de Gemini et du renouvellement planifié des connexions](https://github.com/yuxino/Mimi/pull/176).
 
 <p>
-  <a href="https://github.com/yuxino"><img src="docs/assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
-  <a href="https://github.com/LLLin000"><img src="docs/assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
-  <a href="https://github.com/yebuwudong"><img src="docs/assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
-  <a href="https://github.com/Chtholly000"><img src="docs/assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
-  <a href="https://github.com/inhome"><img src="docs/assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
+  <a href="https://github.com/yuxino"><img src="../assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
+  <a href="https://github.com/LLLin000"><img src="../assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
+  <a href="https://github.com/yebuwudong"><img src="../assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
+  <a href="https://github.com/Chtholly000"><img src="../assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
+  <a href="https://github.com/inhome"><img src="../assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
 </p>
 
 [Tous les contributeurs](https://github.com/yuxino/mimi/graphs/contributors)
@@ -105,4 +105,4 @@ Merci aussi à [@Chtholly000](https://github.com/Chtholly000) pour les améliora
 
 Merci aux membres de [V2EX](https://www.v2ex.com/), [LINUX DO](https://linux.do/), [Appinn](https://meta.appinn.net/), [NodeLoc](https://www.nodeloc.com/), [Solo](https://solo.xin/), [Xinquji](https://xinquji.com/posts/859305) et [Eleduck](https://eleduck.com/) d’avoir essayé Mimi, partagé leurs retours et fait connaître le projet.
 
-[MIT](LICENSE) © 2026 yuxino
+[MIT](../../LICENSE) © 2026 yuxino

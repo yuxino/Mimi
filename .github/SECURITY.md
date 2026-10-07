@@ -18,9 +18,9 @@ Do not open a public issue for vulnerabilities that may expose credentials, bypa
 - Settings snapshots and broadcasts contain only credential states such as `present`, `missing`, or `unavailable`. An explicit saved-credential reveal uses a dedicated IPC command restricted to the settings window; the displayed value is cleared on blur or hide.
 - Never include API keys in issues, pull requests, logs, or screenshots. Reset or disable a key in its provider console immediately if it was exposed.
 
-macOS 本机开发可明确启用默认关闭的 `local-dev-credentials`，仅固定 dev 应用在非 UI-only 模式读取经过验证的私有只读文件；不回退或迁移凭证。详见[本机开发凭证](docs/development/local-dev-credentials.md)。
+macOS 本机开发可明确启用默认关闭的 `local-dev-credentials`，仅固定 dev 应用在非 UI-only 模式读取经过验证的私有只读文件；不回退或迁移凭证。详见[本机开发凭证](../docs/development/local-dev-credentials.md)。
 
-Local macOS development may explicitly enable the default-off `local-dev-credentials` feature. Only the fixed dev app outside UI-only mode reads a validated private, read-only file, without credential fallback or migration. See [local development credentials](docs/development/local-dev-credentials.md).
+Local macOS development may explicitly enable the default-off `local-dev-credentials` feature. Only the fixed dev app outside UI-only mode reads a validated private, read-only file, without credential fallback or migration. See [local development credentials](../docs/development/local-dev-credentials.md).
 
 ## 数据与权限 / Data and permissions
 

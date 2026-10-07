@@ -1,6 +1,6 @@
 # Mimi 使用说明
 
-[返回 README](../README_ZH.md) · [English](usage.md)
+[返回 README](readme/zh-CN.md) · [English](usage.md)
 
 各家服务的开通入口、凭证字段和当前模型，见[服务开通指南](provider-setup.zh-CN.md)。
 
@@ -81,4 +81,4 @@ macOS 使用 ⌘⇧B，Windows/Linux X11 使用 Ctrl+Shift+B 快速切换，不�
 
 ## 更多文档
 
-[贡献指南](../CONTRIBUTING.md) · [安全与隐私](../SECURITY.md) · [平台差异与验证范围](development/platform-parity.md)
+[贡献指南](../.github/CONTRIBUTING.md) · [安全与隐私](../.github/SECURITY.md) · [平台差异与验证范围](development/platform-parity.md)

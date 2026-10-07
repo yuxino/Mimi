@@ -87,4 +87,4 @@ Start Live Subtitles again when ready.
 
 ## More docs
 
-[Contributing](../CONTRIBUTING.md) · [Security & privacy](../SECURITY.md) · [Platform differences and verification](development/platform-parity.md)
+[Contributing](../.github/CONTRIBUTING.md) · [Security & privacy](../.github/SECURITY.md) · [Platform differences and verification](development/platform-parity.md)
