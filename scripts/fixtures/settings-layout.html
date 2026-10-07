@@ -4,12 +4,35 @@
 <body><main id="root"></main><script type="module">
 // Local UI fixtures only: no native bridge, credentials, provider or capture.
 let fixture = {};
+window.layoutFixtureRequests = { translationStatus: 0, translationPrepare: 0, speechPrepare: 0, speechSave: 0 };
 window.__TAURI_INTERNALS__ = {
   metadata: { currentWindow: { label: "settings" }, currentWebview: { label: "settings" } },
   transformCallback: () => 0,
   unregisterCallback: () => {},
   invoke: async (command, args) => {
     if (command === "get_apple_speech_support") return fixture.appleSupport ?? { available: false, languages: [] };
+    if (command === "prepare_apple_speech_language") {
+      window.layoutFixtureRequests.speechPrepare += 1;
+      if (fixture.appleSpeechPrepareError) throw new Error(fixture.appleSpeechPrepareError);
+      fixture.appleSupport = { ...fixture.appleSupport, languages: fixture.appleSupport.languages.map(language => ({ ...language,
+        installed: language.installed || language.sourceLanguage === args.sourceLanguage })) };
+      const current = useStore.getState().settings;
+      useStore.setState({ settings: { ...current, languageCapabilities: current.languageCapabilities && { ...current.languageCapabilities,
+        sourceLanguages: fixture.appleSupport.languages.filter(language => language.installed).map(language => language.sourceLanguage) } } });
+      return fixture.appleSupport;
+    }
+    if (command === "get_apple_translation_support") return fixture.appleTranslationSupport ?? { available: false, sourceLanguages: [], targetLanguages: [] };
+    if (command === "get_apple_translation_status") {
+      window.layoutFixtureRequests.translationStatus += 1;
+      if (fixture.appleTranslationStatusError) throw new Error("apple_translation_failed");
+      return fixture.appleTranslationStatus ?? "supported";
+    }
+    if (command === "prepare_apple_translation_languages") {
+      window.layoutFixtureRequests.translationPrepare += 1;
+      if (fixture.appleTranslationPrepareError) throw new Error(fixture.appleTranslationPrepareError);
+      fixture.appleTranslationStatus = "installed";
+      return "installed";
+    }
     if (command === "windows_audio_status") {
       if (fixture.platform !== "windows") return null;
       if (fixture.state === "failed") throw new Error("fixture_unavailable");
@@ -21,6 +44,31 @@ window.__TAURI_INTERNALS__ = {
       };
     }
     if (command === "app_desktop_shortcut_commands") return null;
+    if (["overlay_control_set_panel_height", "plugin:window|set_size", "plugin:window|set_position"].includes(command)) return;
+    if (command === "session_switch_source_language") {
+      const current = useStore.getState().settings;
+      const sourceLanguage = args.language;
+      const targetLanguage = targetLanguageAfterSourceSwitch(current, sourceLanguage);
+      useStore.setState({ settings: { ...current, sourceLanguage, targetLanguage, languageCapabilities: undefined } });
+      return;
+    }
+    if (command === "session_switch_target_language") {
+      const current = useStore.getState().settings;
+      useStore.setState({ settings: { ...current, targetLanguage: args.language, languageCapabilities: undefined } });
+      return;
+    }
+    if (command === "settings_save") {
+      if (fixture.provider === "appleSpeech" && args.draft.sourceLanguage) window.layoutFixtureRequests.speechSave += 1;
+      const current = useStore.getState().settings;
+      const targetLanguage = args.draft.targetLanguage ?? (args.draft.sourceLanguage === undefined
+        ? current.targetLanguage : targetLanguageAfterSourceSwitch(current, args.draft.sourceLanguage));
+      const snapshot = { ...current, ...args.draft,
+        targetLanguage,
+        languageCapabilities: current.languageCapabilities && { ...current.languageCapabilities, targetLanguage },
+      };
+      useStore.setState({ settings: snapshot });
+      return snapshot;
+    }
     if (command === "profile_update") {
       if (fixture.nameSaveDelay) await new Promise(resolve => setTimeout(resolve, fixture.nameSaveDelay));
       if (fixture.failNameSave) throw new Error("fixture_name_save_failed");
@@ -56,8 +104,30 @@ const React = (await import("react")).default;
 const { createRoot } = (await import("react-dom/client")).default;
 const { flushSync } = (await import("react-dom")).default;
 const { useStore } = await import("/src/lib/store.ts");
-const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
+const { SOURCE_LANGUAGE_DISPLAY_NAMES } = await import("/src/lib/types.ts");
+const { setStoredUiLanguage, I18N } = await import("/src/lib/i18n.ts");
 const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
+const { TrayPanel } = await import("/src/windows/tray-panel/TrayPanel.tsx");
+const { OverlayControlPanel } = await import("/src/windows/overlay-control/OverlayControlPanel.tsx");
+const { overlayControlPanelModel } = await import("/src/windows/overlay-control/overlayControlModel.ts");
+const { languageStatus } = await import("/src/windows/overlay/overlayModel.ts");
+const { targetLanguageAfterSourceSwitch } = await import("/src/lib/providerCapabilities.ts");
+await import("/src/windows/overlay-control/overlay-control.css");
+await import("/src/windows/tray-panel/tray-panel.css");
+function FixtureOverlayControl() {
+  const settings = useStore(state => state.settings);
+  const noop = async () => {};
+  return React.createElement(OverlayControlPanel, {
+    settings, model: overlayControlPanelModel(settings), status: languageStatus(settings, null),
+    phase: "listening", isPaused: fixture.state === "paused", canPauseSession: false,
+    isWaitingForFinalTranslation: false, isChangingSession: false, onDismiss: noop,
+    onSwitchSourceLanguage: useStore.getState().switchSourceLanguage,
+    onSwitchTargetLanguage: useStore.getState().switchTargetLanguage,
+    onSetSkipTranslation: noop, onTogglePaused: noop, onSelectProfile: noop,
+    onSetIntermediateSubtitles: noop, onSetSubtitleDividers: noop, onSetSubtitleTimestamps: noop,
+    onSetSubtitleDisplayMode: noop, onSetImmersiveMode: noop, onSetOverlayLocked: noop, onShowSettings: noop,
+  });
+}
 await import("/src/index.css");
 await import("/src/linux.css");
 const initial = useStore.getState();
@@ -65,14 +135,17 @@ const root = createRoot(document.getElementById("root"));
 const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 let generation = 0;
 window.applyLayoutCase = async next => {
-  fixture = next;
+  fixture = { ...next };
+  window.layoutFixtureRequests = { translationStatus: 0, translationPrepare: 0, speechPrepare: 0, speechSave: 0 };
   Object.defineProperty(navigator, "userAgent", { configurable: true, value: next.platform === "windows" ? "Windows NT 10.0" : next.platform === "macos" ? "Macintosh" : "Linux x86_64" });
   const active = ["receiving", "silent", "noData"].includes(next.state);
+  document.body.dataset.window = next.surface === "overlay" ? "overlay-control" : next.surface === "tray" ? "tray-panel" : "settings";
   document.documentElement.dataset.platform = next.platform;
   document.documentElement.lang = next.language === "zh" ? "zh-CN" : next.language;
   location.hash = next.category ?? "service-profiles";
   localStorage.setItem("mimi.settings-theme", next.theme);
   setStoredUiLanguage(next.language);
+  window.layoutFixtureLabels = { source: I18N.settings.sourceLanguage, target: I18N.settings.translateTo, traySource: I18N.tray.sourceLanguage, overlaySource: I18N.overlay.sourceLanguage };
   const appleProfile = next.editor && next.provider === "appleSpeech";
   const sourceLanguage = next.sourceLanguage ?? (appleProfile ? "en" : initial.settings.sourceLanguage);
   const targetLanguage = next.targetLanguage ?? (appleProfile ? "original" : initial.settings.targetLanguage);
@@ -81,16 +154,17 @@ window.applyLayoutCase = async next => {
     initializationStatus: "ready",
     settings: { ...initial.settings, uiLanguage: next.language, microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
       sourceLanguage, targetLanguage,
-      ...(next.editor ? { profiles: [profile], activeProfileId: profile.id } : {}),
-      ...(appleProfile ? { languageCapabilities: { profileId: profile.id, provider: "appleSpeech", textTranslation: profile.textTranslation, targetLanguage,
-        sourceLanguages: next.sourceLanguages ?? next.appleSupport?.languages.filter(language => language.installed).map(language => language.sourceLanguage) ?? [],
-        targetLanguages: next.targetLanguages ?? ["original"], appleSpeechSupportRevision: 1 } } : {}),
+      ...(next.editor || next.surface ? { profiles: [profile], activeProfileId: profile.id } : {}),
+      ...(appleProfile || next.textTranslation === "apple" ? { languageCapabilities: { profileId: profile.id, provider: profile.provider, textTranslation: profile.textTranslation, targetLanguage,
+        sourceLanguages: next.sourceLanguages ?? next.appleSupport?.languages.filter(language => language.installed).map(language => language.sourceLanguage) ?? next.appleTranslationSupport?.sourceLanguages ?? [],
+        targetLanguages: next.targetLanguages ?? (next.textTranslation === "apple" ? ["original", ...next.appleTranslationSupport?.targetLanguages ?? []] : ["original"]),
+        appleSpeechSupportRevision: 1, customSpeechSourceLanguages: profile.customSpeechSourceLanguages } } : {}),
     },
     session: { ...initial.session, isActive: active || next.state === "paused", isPaused: next.state === "paused", status: { kind: active ? "listening" : next.state === "paused" ? "paused" : "idle" } },
   });
-  flushSync(() => root.render(React.createElement(SettingsView, { key: ++generation })));
+  flushSync(() => root.render(React.createElement(next.surface === "tray" ? TrayPanel : next.surface === "overlay" ? FixtureOverlayControl : SettingsView, { key: ++generation })));
   await settle();
-  if (next.editor) {
+  if (next.editor && !next.surface) {
     document.querySelector(".service-row__edit").click();
     await settle();
     if (next.reveal) {
@@ -101,7 +175,38 @@ window.applyLayoutCase = async next => {
     }
     if (next.appleExpanded) {
       document.querySelector(".apple-speech-tutorial-toggle")?.click();
-      document.querySelector('.apple-speech-resource-actions button[aria-controls$="-apple-packs"]')?.click();
+      await settle();
+    }
+    if (next.appleSpeechSelection) {
+      const source = [...document.querySelectorAll('.apple-speech-settings #apple-speech-resources button[role="combobox"]')][0];
+      source.scrollIntoView({ block: "nearest" });
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      source.click();
+      await settle();
+      const option = [...document.querySelectorAll('[role="option"]')].find(node => node.textContent.startsWith(SOURCE_LANGUAGE_DISPLAY_NAMES[next.appleSpeechSelection]));
+      if (!option) throw new Error("fixture_speech_option_unavailable");
+      option.click();
+      await settle();
+    }
+    if (next.appleSpeechApply) {
+      const action = document.querySelector("#apple-speech-resources .apple-speech-resource-actions button");
+      if (!action || action.disabled) throw new Error("fixture_speech_action_unavailable");
+      action.click();
+      for (let attempt = 0; attempt < 10; attempt += 1) await settle();
+    }
+    if (next.appleTranslationExpanded) {
+      document.querySelector(".service-stage--translation .apple-speech-tutorial-toggle")?.click();
+      await settle();
+    }
+    if (next.appleTranslationPrepare) {
+      // Exercise the actual product action; these IPC stubs never download models.
+      let action;
+      for (let attempt = 0; attempt < 20 && !action; attempt += 1) {
+        await settle();
+        action = document.querySelector(".apple-translation-settings .apple-speech-resource-actions button");
+      }
+      if (!action) throw new Error("fixture_translation_action_unavailable");
+      action.click();
       await settle();
     }
   }

@@ -58,7 +58,7 @@ import { TencentSetupHelp } from "./TencentSetupHelp";
 const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
-type PendingAction = "create" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "prepare-resource" | null;
+type PendingAction = "create" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "prepare-resource" | "prepare-apple-translation" | null;
 type CheckStage = ConnectionCheckStage | "combined";
 type CheckOutcome = { profileId: string; input: symbol; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
@@ -214,6 +214,7 @@ export function ServiceProfiles({
     selectedProfile?.provider, settings.activeProfileId, showsEditor, visible]);
 
   const hasIndependentTextProxy = !!selectedProfile && (isStandaloneAsrProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider));
+  const hasRemoteTextProxy = hasIndependentTextProxy && selectedProfile && textTranslationForProfile(selectedProfile) !== "apple";
 
   const SelectedCredentialEditor = selectedProfile?.provider === "appleSpeech" ? AppleSpeechSettings : selectedProfile && isCustomSpeechProvider(selectedProfile.provider) ? CustomSpeechCredentialEditor : selectedProfile && ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? AlibabaCredentialEditor : CredentialEditor;
 
@@ -378,6 +379,8 @@ export function ServiceProfiles({
         tone: subtitlePreferencesChanged(settings, snapshot) ? "info" : "success",
         message: subtitlePreferencesChanged(settings, snapshot)
           ? I18N.settings.profileSelectedWithAdjustments
+          : credentials.kind === "alibabaTranslation" && credentials.textTranslation === "apple" && !credentials.apiKey.trim()
+          ? I18N.settings.translationConfigurationSaved
           : I18N.settings.credentialsSaved,
       }),
     );
@@ -523,8 +526,13 @@ export function ServiceProfiles({
           </div>
           <div className="service-detail__connection">
             <SelectedCredentialEditor
-              support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage}
+              support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage}
+              resourceRefreshDisabled={pendingAction !== null}
               onRetry={apple.refresh} onPrepared={apple.update} onBusyChange={busy => setPendingAction(busy ? "prepare-resource" : null)}
+              onNativeTranslationBusyChange={busy => setPendingAction(busy ? "prepare-apple-translation" : null)}
+              onNativeTranslationPrepared={() => invalidateProfileCheck(selectedProfile.id, "text")}
+              translationLanguageControls={route => route === "apple" && textTranslationForProfile(selectedProfile) === "apple" && selectedProfile.id === settings.activeProfileId
+                ? <ProfileLanguageSettings settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} embedded /> : null}
               onSelectProfile={async (profileId: string, sourceLanguage: SourceLanguage) => {
                 if (selectionDisabled || mutationInFlight.current) throw new Error("profile_switch_busy");
                 mutationInFlight.current = true;
@@ -558,19 +566,19 @@ export function ServiceProfiles({
           {isCustomSpeechProvider(selectedProfile.provider) && <CustomSpeechLanguageSettings key={`${selectedProfile.id}-languages`}
             profile={selectedProfile} disabled={mutationsDisabled || selectedProfileReadOnly}
             onSave={languages => handleSaveSpeechLanguages(selectedProfile, languages)} />}
-          <section className="service-proxies" aria-label={I18N.settings.networkProxyTitle}>
+          {(selectedProfile.provider !== "appleSpeech" || hasRemoteTextProxy) && <section className="service-proxies" aria-label={I18N.settings.networkProxyTitle}>
             <h3>{I18N.settings.networkProxyTitle}</h3>
             {selectedProfile.provider !== "appleSpeech" && <NetworkProxySettings key={`${selectedProfile.id}-speech-proxy`} embedded
               label={hasIndependentTextProxy ? I18N.settings.speechRecognition : I18N.settings.voiceTranslation}
               scope={hasIndependentTextProxy ? I18N.settings.networkProxySpeechScope : I18N.settings.networkProxyIntegratedScope}
               value={selectedProfile.speechNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY} disabled={mutationsDisabled}
               onSave={config => handleSaveProxy(selectedProfile, "speech", config)} />}
-            {hasIndependentTextProxy && <NetworkProxySettings key={`${selectedProfile.id}-text-proxy`} embedded
+            {hasRemoteTextProxy && <NetworkProxySettings key={`${selectedProfile.id}-text-proxy`} embedded
               label={I18N.settings.textTranslationLabel} scope={I18N.settings.networkProxyTextScope}
               value={selectedProfile.textNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY} disabled={mutationsDisabled}
               onSave={config => handleSaveProxy(selectedProfile, "text", config)} />}
-          </section>
-          {selectedProfile.id === settings.activeProfileId
+          </section>}
+          {selectedProfile.id === settings.activeProfileId && textTranslationForProfile(selectedProfile) !== "apple"
             ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} onOpenAppleResources={focusAppleSpeechResources} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} />
             : null}
           <div className="service-detail__actions">
@@ -649,7 +657,7 @@ export function ServiceProfiles({
                   <span className="service-row__copy">
                     <strong key={profile.name}>{profileTitle(profile)}</strong>
                     {profileSecondaryLabel(profile) && <span className="service-row__provider">{profileSecondaryLabel(profile)}</span>}
-                    {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
+                    {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock" | "apple"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
                   </span>
                   <span className="service-row__state">
                     <CredentialBadge state={credentialStateForTarget(profile, settings.targetLanguage)} nativeSpeech={profile.provider === "appleSpeech"} />

@@ -45,7 +45,7 @@ const BASE_SETTINGS: SettingsSnapshot = {
 describe("overlay control panel model", () => {
   it.each([
     { ready: [], current: "fr", expected: [] },
-    { ready: ["en"], current: "en", expected: [] },
+    { ready: ["en"], current: "en", expected: ["en"] },
     { ready: ["en"], current: "fr", expected: ["en"] },
     { ready: ["en", "ja"], current: "fr", expected: ["en", "ja"] },
   ] satisfies { ready: SourceLanguage[]; current: SourceLanguage; expected: SourceLanguage[] }[])("keeps only ready Apple options and permits recovery from $current to $ready", ({ ready, current, expected }) => {
@@ -94,10 +94,10 @@ describe("overlay control panel model", () => {
     const settings = { ...BASE_SETTINGS,
       profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: route }],
     };
-    expect(overlayControlPanelModel(settings).sourceOptions).toEqual(["auto", "ja", "en", "ko", "zh"]);
-    expect(overlayControlPanelModel(settings).sourceOptions).not.toContain("fr");
+    expect(overlayControlPanelModel(settings).sourceOptions).toEqual(sourceLanguagesForSettings(settings));
+    expect(overlayControlPanelModel(settings).sourceOptions).toContain("fr");
     expect(overlayControlPanelModel({ ...settings, targetLanguage: "original" }).sourceOptions)
-      .toEqual(["auto", "ja", "en", "ko", "zh"]);
+      .toEqual(sourceLanguagesForSettings({ ...settings, targetLanguage: "original" }));
   });
 
   it.each(["openAICompatible", "chatMock"] as const)("keeps all 31 recognition choices with the %s text route", route => {
@@ -151,7 +151,7 @@ describe("overlay control panel model", () => {
     const changedRoute = { ...BASE_SETTINGS, languageCapabilities: native,
       profiles: [{ ...BASE_SETTINGS.profiles[0], textTranslation: "deepLX" as const }],
     };
-    expect(overlayControlPanelModel(changedRoute).sourceOptions).toEqual(["auto", "ja", "en", "ko", "zh"]);
+    expect(overlayControlPanelModel(changedRoute).sourceOptions).toEqual(sourceLanguagesForSettings(changedRoute));
   });
 
   it("omits translation modes when only original subtitles are requested", () => {
@@ -162,12 +162,12 @@ describe("overlay control panel model", () => {
     expect(model.translationModeOptions).toEqual([]);
   });
 
-  it("omits single-option OpenAI groups", () => {
+  it("retains the automatic source alongside OpenAI target choices", () => {
     const model = overlayControlPanelModel({
       ...BASE_SETTINGS,
       activeProfileId: "openai",
     });
-    expect(model.sourceOptions).toEqual([]);
+    expect(model.sourceOptions).toEqual(["auto"]);
     expect(model.translationModeOptions).toEqual([]);
     expect(model.effectiveTranslationMode).toBe("turbo");
   });

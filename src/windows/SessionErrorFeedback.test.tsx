@@ -314,7 +314,7 @@ it.each(["control", "tray"] as const)("keeps Apple resources discoverable with z
     const button = host.querySelector<HTMLButtonElement>(".speech-resources-link")!;
     expect(button.textContent).toBe(I18N.settings.appleSpeechResources);
     expect(button.disabled).toBe(false);
-    if (surface === "control") expect(host.querySelector(`[role="combobox"][aria-label="${I18N.overlay.sourceLanguage}"]`)).toBeNull();
+    if (surface === "control") expect(host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.overlay.sourceLanguage}"]`)?.disabled).toBe(true);
     await act(async () => button.click());
     expect(showSettings).toHaveBeenCalledExactlyOnceWith("appleSpeechResources");
     expect(start).not.toHaveBeenCalled();

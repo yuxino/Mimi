@@ -8,6 +8,19 @@
 use crate::core::models::{SourceLanguage, TargetLanguage};
 use thiserror::Error;
 
+pub const SOURCE_LANGUAGE_CODES: &[&str] = &[
+    "zh", "en", "pt", "es", "ja", "id", "de", "fr", "ru", "it", "ko", "ar", "tr", "ms", "vi", "th",
+    "nl", "ro", "pl", "cs", "yue", "wuu", "zh_en",
+];
+pub const TARGET_LANGUAGE_CODES: &[&str] = &[
+    "zh", "en", "pt", "es", "ja", "id", "de", "fr", "ru", "it", "ko", "ar", "tr", "ms", "vi", "th",
+    "nl", "ro", "pl", "cs", "zh_en",
+];
+const S2T_LANGUAGE_CODES: &[&str] = &[
+    "zh", "en", "pt", "es", "ja", "id", "de", "fr", "ru", "it", "ko", "ar", "tr", "ms", "vi", "th",
+    "nl", "ro", "pl", "cs",
+];
+
 const EVENT_START_SESSION: u32 = 100;
 const EVENT_FINISH_SESSION: u32 = 102;
 const EVENT_SESSION_STARTED: u32 = 150;
@@ -35,9 +48,9 @@ pub enum VolcanoEngineProtocolError {
     InvalidEndpoint,
     #[error("Volcano Engine requires a non-empty session identifier.")]
     InvalidSessionID,
-    #[error("Volcano Engine requires an explicit Chinese, English, or Japanese source language.")]
+    #[error("Volcano Engine requires an explicit supported source language.")]
     UnsupportedSourceLanguage,
-    #[error("Volcano Engine requires a Chinese, English, or Japanese translation language.")]
+    #[error("Volcano Engine does not support this translation direction.")]
     UnsupportedTargetLanguage,
     #[error("Volcano Engine expected {expected_bytes} audio bytes, got {actual_bytes}.")]
     InvalidAudioFrame {
@@ -92,6 +105,11 @@ impl VolcanoEngineRequestEncoder {
     ) -> Result<(), VolcanoEngineProtocolError> {
         source_language_code(source_language)?;
         target_language_code(target_language)?;
+        if !supported_target_codes(source_language.raw_value())
+            .contains(&target_language.raw_value())
+        {
+            return Err(VolcanoEngineProtocolError::UnsupportedTargetLanguage);
+        }
         Ok(())
     }
 
@@ -103,6 +121,7 @@ impl VolcanoEngineRequestEncoder {
         target_language: TargetLanguage,
     ) -> Result<Vec<u8>, VolcanoEngineProtocolError> {
         validate_session_id(session_id)?;
+        Self::validate_languages(source_language, target_language)?;
         let source_language = source_language_code(source_language)?;
         let target_language = target_language_code(target_language)?;
 
@@ -176,25 +195,44 @@ fn validate_session_id(session_id: &str) -> Result<(), VolcanoEngineProtocolErro
     }
 }
 
+/// S2T requires Chinese or English on one side, except explicit bilingual reversal.
+pub fn supported_target_codes(source: &str) -> &'static [&'static str] {
+    match source {
+        "zh" | "en" => S2T_LANGUAGE_CODES,
+        "zh_en" => &["zh_en"],
+        _ if SOURCE_LANGUAGE_CODES.contains(&source) => &["zh", "en"],
+        _ => &[],
+    }
+}
+
+fn wire_language_code(code: &'static str) -> &'static str {
+    match code {
+        "yue" => "yue-CN",
+        "wuu" => "sh-CN",
+        "zh_en" => "zhen",
+        _ => code,
+    }
+}
+
 fn source_language_code(
     source_language: SourceLanguage,
 ) -> Result<&'static str, VolcanoEngineProtocolError> {
-    match source_language {
-        SourceLanguage::Chinese => Ok("zh"),
-        SourceLanguage::English => Ok("en"),
-        SourceLanguage::Japanese => Ok("ja"),
-        _ => Err(VolcanoEngineProtocolError::UnsupportedSourceLanguage),
+    let code = source_language.raw_value();
+    if SOURCE_LANGUAGE_CODES.contains(&code) {
+        Ok(wire_language_code(code))
+    } else {
+        Err(VolcanoEngineProtocolError::UnsupportedSourceLanguage)
     }
 }
 
 fn target_language_code(
     target_language: TargetLanguage,
 ) -> Result<&'static str, VolcanoEngineProtocolError> {
-    match target_language {
-        TargetLanguage::SimplifiedChinese => Ok("zh"),
-        TargetLanguage::English => Ok("en"),
-        TargetLanguage::Japanese => Ok("ja"),
-        _ => Err(VolcanoEngineProtocolError::UnsupportedTargetLanguage),
+    let code = target_language.raw_value();
+    if TARGET_LANGUAGE_CODES.contains(&code) {
+        Ok(wire_language_code(code))
+    } else {
+        Err(VolcanoEngineProtocolError::UnsupportedTargetLanguage)
     }
 }
 
@@ -482,38 +520,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expanded_app_sources_do_not_expand_this_wire_contract() {
-        for source in SourceLanguage::ALL.into_iter().filter(|source| {
-            !matches!(
-                source,
-                SourceLanguage::Automatic
-                    | SourceLanguage::Chinese
-                    | SourceLanguage::English
-                    | SourceLanguage::Japanese
-                    | SourceLanguage::Korean
-            )
-        }) {
-            assert_eq!(
-                source_language_code(source).unwrap_err(),
-                VolcanoEngineProtocolError::UnsupportedSourceLanguage
-            );
+    fn shared_s2t_catalog_validates_all_directions_and_serializes_every_legal_setup() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../shared/translation-contracts.json"
+        ))
+        .unwrap();
+        let catalog = &contract["providerLanguageCatalogs"]["volcanoEngine"];
+        let pairs = catalog["targetsBySource"].as_object().unwrap();
+        assert_eq!(
+            serde_json::to_value(SOURCE_LANGUAGE_CODES).unwrap(),
+            catalog["sourceLanguages"]
+        );
+        assert_eq!(
+            serde_json::to_value(TARGET_LANGUAGE_CODES).unwrap(),
+            catalog["targetLanguages"]
+        );
+        for source in SourceLanguage::ALL {
+            for target in TargetLanguage::ALL {
+                let allowed = pairs
+                    .get(source.raw_value())
+                    .and_then(|targets| targets.as_array())
+                    .is_some_and(|targets| {
+                        targets
+                            .iter()
+                            .any(|code| code.as_str() == Some(target.raw_value()))
+                    });
+                assert_eq!(
+                    VolcanoEngineRequestEncoder::validate_languages(source, target).is_ok(),
+                    allowed,
+                    "{} -> {}",
+                    source.raw_value(),
+                    target.raw_value()
+                );
+            }
         }
-    }
-
-    #[test]
-    fn expanded_app_targets_do_not_expand_this_wire_contract() {
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            !matches!(
-                target,
-                TargetLanguage::SimplifiedChinese
-                    | TargetLanguage::English
-                    | TargetLanguage::Japanese
-            )
-        }) {
-            assert_eq!(
-                target_language_code(target).unwrap_err(),
-                VolcanoEngineProtocolError::UnsupportedTargetLanguage
-            );
+        for case in catalog["setups"].as_array().unwrap() {
+            let source = serde_json::from_value(case["source"].clone()).unwrap();
+            let target = serde_json::from_value(case["target"].clone()).unwrap();
+            let bytes =
+                VolcanoEngineRequestEncoder::start_session("catalog-session", source, target)
+                    .unwrap();
+            let hex = bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            assert_eq!(hex, case["expectedHex"].as_str().unwrap());
         }
     }
 
@@ -625,7 +676,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_chinese_english_and_japanese_are_the_only_supported_languages() {
+    fn automatic_source_and_original_output_remain_unsupported() {
         for source in [
             SourceLanguage::Chinese,
             SourceLanguage::English,

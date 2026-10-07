@@ -45,7 +45,7 @@
 2. 选择识别和翻译语言。
 3. 播放内容，在「字幕」页开启「实时字幕」。macOS 提示时，允许「屏幕与系统音频录制」。
 
-云端识别需要自备服务商凭证，并将音频发送至该服务，调用可能产生费用。符合条件的 Mac 可用 Apple Speech 在本地识别；独立文字翻译会将识别文字发送至你选择的翻译服务。
+云端识别需要自备服务商凭证，并将音频发送至该服务，调用可能产生费用。符合条件的 Mac 可用 Apple Speech 在本地识别；远程文字翻译会将识别文字发送至你选择的服务；Apple 翻译在 Mac 本地处理文字。
 
 [使用与常见问题](docs/usage.zh-CN.md) · [Android](android/README.md) · [反馈问题](https://github.com/yuxino/mimi/issues) · [贡献指南](CONTRIBUTING.md)
 
@@ -53,13 +53,11 @@
 
 ### Apple 本地识别
 
-目前还有一些 Bug，暂时没 Token 修复了 QAQ。
+**Apple Speech** 只在系统支持时出现：Apple 芯片、macOS 26 或更新版本，且系统识别引擎可用。识别不需要 API Key。先停止字幕，在「识别语言」中选好语言；未下载时点击「下载并使用」，Mimi 会下载 Apple 资源，并在就绪后将它设为识别语言。已下载时点击「设为识别语言」，再启动字幕。无需前往系统设置。不提供自动识别语言。详见 [Apple Speech 配置步骤](docs/provider-setup.zh-CN.md#apple-speech)。
 
-**Apple Speech** 只在系统支持时出现：Apple 芯片、macOS 26 或更新版本，且系统识别引擎可用。识别不需要 API Key。先停止字幕，在 Mimi 的配置中点击「添加语言包」，选择语言并点击「下载语言包」；准备好后点击「设为识别语言」，再启动字幕。不提供自动识别语言。详见 [Apple Speech 配置步骤](docs/provider-setup.zh-CN.md#apple-speech)。
+**Apple 翻译**是独立的本地文字翻译服务，当前支持 Apple 芯片、macOS 26 或更新版本。在「文字翻译」中选择它并保存配置，再选择明确的识别语言和翻译语言。Mimi 会显示语言对是否就绪；点击「下载或启用语言包」，即可打开 Apple 的确认界面。翻译语言包和语音识别语言包分开；已有的会复用，缺少的由 Apple 在你确认后下载。检查连接、启动字幕不会触发下载。不需要文字翻译 API Key 或文字代理。
 
-Apple 自带翻译的接入做了一半，暂时没 Token 继续了。如果你在用 Apple Speech，可以先搭配 [Index-Translate](#试试-index-translate) 做文字翻译，非常抱歉 QAQ。
-
-只看原文时，开启「跳过翻译」即可。使用远程文字翻译服务时，识别文字仍会发送至该服务。
+Apple Speech 只看原文时，选择「不翻译（仅原文）」。也可搭配 [Index-Translate](#试试-index-translate) 等远程文字翻译服务；远程服务会收到识别文字。
 
 ### 试试 Index-Translate
 

@@ -66,7 +66,7 @@ import {
   SnapshotBootstrapTimeoutError,
   SnapshotResponseGate,
 } from "./settingsState";
-import { AUDIO3_RECOGNITION_LANGUAGE_CODES } from "./types";
+import { SOURCE_LANGUAGE_CODES } from "./types";
 import type {
   ProfileOptionsDraft,
   AudioInput,
@@ -411,14 +411,14 @@ export const useStore = create<StoreState>()((set, get) => ({
     const current = get();
     if (sessionSettingsAreChanging(current.session)) throw new Error("target_switch_busy");
     const targets = targetLanguagesForSettings(current.settings);
-    if (!targets.includes("original") || !targets.includes(language)) throw new Error("target_switch_unsupported");
+    if (!targets.includes(language)) throw new Error("target_switch_unsupported");
     if (isTauri) {
       await sessionSwitchTargetLanguage(language);
       return;
     }
     const settings = { ...current.settings, targetLanguage: language, languageCapabilities: undefined };
     const sources = sourceLanguagesForSettings(settings);
-    if (!sources.includes(settings.sourceLanguage)) settings.sourceLanguage = sources[0]!;
+    if (!sources.includes(settings.sourceLanguage)) settings.sourceLanguage = sources[0] ?? settings.sourceLanguage;
     set({ settings });
   },
 
@@ -542,7 +542,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     if (hasDeclaration) {
       const profile = current.profiles.find(profile => profile.id === profileId);
       if (!profile || !isCustomSpeechProvider(profile.provider)) throw new Error("provider-mismatch");
-      if (declaration !== null && (declaration.length > 30 || declaration.includes("auto"))) throw new Error("custom-speech-languages-invalid");
+      if (declaration !== null && (declaration.length > SOURCE_LANGUAGE_CODES.length || declaration.includes("auto"))) throw new Error("custom-speech-languages-invalid");
     }
     const snapshot: SettingsSnapshot = {
       ...current,
@@ -556,7 +556,7 @@ export const useStore = create<StoreState>()((set, get) => ({
             else delete textTranslationNames[textTranslationName.route];
           }
           return { ...profile, ...(name === undefined ? {} : { name: name.trim() }), ...proxies, textTranslationNames,
-            ...(hasDeclaration ? { customSpeechSourceLanguages: declaration === null ? null : AUDIO3_RECOGNITION_LANGUAGE_CODES.filter(code => declaration.includes(code)) } : {}),
+            ...(hasDeclaration ? { customSpeechSourceLanguages: declaration === null ? null : SOURCE_LANGUAGE_CODES.filter(code => declaration.includes(code)) } : {}),
             ...(speechRecognitionName === undefined ? {} : { speechRecognitionName: speechRecognitionName.trim() || undefined }) };
         })() : profile,
       ),
@@ -643,7 +643,8 @@ export const useStore = create<StoreState>()((set, get) => ({
     if (credentials.kind === "alibabaTranslation") {
       const profile = current.profiles.find((profile) => profile.id === profileId);
       if (!profile || (!isStandaloneAsrProvider(profile.provider) && !["alibabaCloud", "deepLX"].includes(profile.provider))) throw new Error("provider-mismatch");
-      if (isStandaloneAsrProvider(profile.provider) ? credentials.apiKey.trim() : !credentials.apiKey.trim() && profile.credentialState !== "present") throw new Error("credential-empty");
+      if (isStandaloneAsrProvider(profile.provider) ? credentials.apiKey.trim() : !credentials.apiKey.trim() && (profile.speechCredentialState ?? profile.credentialState) !== "present") throw new Error("credential-empty");
+      if (credentials.textTranslation === "apple" && (credentials.endpoint.trim() || credentials.token.trim() || credentials.model.trim())) throw new Error("provider-mismatch");
       if (credentials.textTranslation === "deepLX" && !credentials.endpoint.trim() && textTranslationForProfile(profile) !== "deepLX") throw new Error("credential-empty");
       if (credentials.textTranslation === "deepL" && !credentials.token.trim() && textTranslationForProfile(profile) !== "deepL") throw new Error("credential-empty");
       if (isChatCompletionsTranslation(credentials.textTranslation) && textTranslationForProfile(profile) !== credentials.textTranslation && (!credentials.endpoint.trim() || !credentials.model.trim())) throw new Error("credential-empty");

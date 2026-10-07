@@ -68,7 +68,10 @@ impl CredentialRevealField {
             }
             Self::Token => {
                 profile.provider.supports_text_translation()
-                    && profile.text_translation() != TextTranslation::FollowService
+                    && !matches!(
+                        profile.text_translation(),
+                        TextTranslation::FollowService | TextTranslation::Apple
+                    )
                     && expected_text_translation == Some(profile.text_translation())
             }
             Self::SecretId | Self::SecretKey => profile.provider == ProviderKind::TencentCloud,
@@ -151,6 +154,8 @@ pub enum ProviderCredentials {
 /// Independent text-destination credentials. They never contain a speech key.
 #[derive(Clone, PartialEq, Eq)]
 pub enum TextTranslationCredentials {
+    /// Local translation stores no private destination or credential.
+    Apple,
     DeepL {
         api_key: String,
     },
@@ -206,7 +211,7 @@ impl TextTranslationCredentials {
                     api_key,
                 },
             ) => (endpoint.as_str(), model.as_str(), api_key.as_str()),
-            None => ("", "", ""),
+            Some(Self::Apple) | None => ("", "", ""),
         };
         let endpoint = if endpoint.trim().is_empty() {
             old_endpoint.to_string()
@@ -232,6 +237,7 @@ impl TextTranslationCredentials {
             model
         };
         match route {
+            TextTranslation::Apple => Self::Apple,
             TextTranslation::DeepL => Self::DeepL {
                 api_key: key.into(),
             },
@@ -258,6 +264,7 @@ impl TextTranslationCredentials {
 
     pub const fn translation(&self) -> TextTranslation {
         match self {
+            Self::Apple => TextTranslation::Apple,
             Self::DeepL { .. } => TextTranslation::DeepL,
             Self::DeepLX { .. } => TextTranslation::DeepLX,
             Self::OpenAICompatible { .. } => TextTranslation::OpenAICompatible,
@@ -279,6 +286,7 @@ impl TextTranslationCredentials {
             Ok(value.to_owned())
         };
         match self {
+            Self::Apple => Ok(Self::Apple),
             Self::DeepL { api_key } => Ok(Self::DeepL {
                 api_key: required(api_key)?,
             }),

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
+import languageCatalogs from "../../../shared/provider-language-catalogs.json";
 import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
-import { SOURCE_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
+import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
 
 const initial = useStore.getState();
@@ -32,14 +33,55 @@ async function render(disabled = false, requiresStop = false) {
 async function choose(label: string, code: string) {
   const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
   await act(() => trigger.click());
-  const search = document.querySelector<HTMLInputElement>('input.mimi-select__search')!;
-  await act(() => {
+  const search = document.querySelector<HTMLInputElement>('input.mimi-select__search');
+  if (search) await act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, code);
     search.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  const option = document.querySelector<HTMLElement>('[role="option"]')!;
+  const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  const option = options.find(node => node.textContent === TARGET_LANGUAGE_DISPLAY_NAMES[code as keyof typeof TARGET_LANGUAGE_DISPLAY_NAMES]) ?? options[0];
   await act(async () => option.click());
 }
+
+it("keeps saved Apple text languages visible when the runtime catalog is unavailable", async () => {
+  settings = { ...settings, sourceLanguage: "fr", targetLanguage: "ja", profiles: [{ ...settings.profiles[0], textTranslation: "apple" }] };
+  await render();
+  const source = host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!;
+  const target = host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!;
+  expect(source.textContent).toBe(SOURCE_LANGUAGE_DISPLAY_NAMES.fr);
+  expect(source.disabled).toBe(true);
+  expect(target.textContent).toBe(SOURCE_LANGUAGE_DISPLAY_NAMES.ja);
+  expect(target.disabled).toBe(false);
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("keeps one embedded target picker usable from original-only without a duplicate skip control", async () => {
+  settings = { ...settings, sourceLanguage: "en", targetLanguage: "original", profiles: [{ ...settings.profiles[0], textTranslation: "apple" }],
+    languageCapabilities: { profileId: "test", provider: "alibabaCloud", textTranslation: "apple", targetLanguage: "original", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "ja"] } };
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} embedded hideSourceLanguage />));
+  expect(host.querySelector("section, h3, [role=switch]")).toBeNull();
+  expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(1);
+  expect(host.querySelector<HTMLButtonElement>('[role="combobox"]')!.disabled).toBe(false);
+  await choose(I18N.settings.translateTo, "ja");
+  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "ja" });
+});
+
+it("lets the embedded Apple target recover to original-only when the native catalog disappears", async () => {
+  settings = { ...settings, sourceLanguage: "en", targetLanguage: "ja", profiles: [{ ...settings.profiles[0], textTranslation: "apple" }] };
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} embedded hideSourceLanguage />));
+  await choose(I18N.settings.translateTo, "original");
+  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "original" });
+});
+
+it("lets Apple Speech fall back to original-only when Apple translation is unavailable", async () => {
+  settings = { ...settings, sourceLanguage: "en", targetLanguage: "ja", profiles: [{ ...settings.profiles[0], provider: "appleSpeech", textTranslation: "apple" }] };
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
+  const skip = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.skipTranslation}"]`)!;
+  expect(skip).not.toBeNull();
+  expect(skip.disabled).toBe(false);
+  await act(async () => skip.click());
+  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "original" });
+});
 
 it("saves an explicit Chinese source without replacing the translation target", async () => {
   await render();
@@ -58,8 +100,8 @@ it.each(["zh", "en", "ja"] as const)("keeps Apple source choices and explicit-la
   const help = host.querySelector('.settings-row .settings-help-control__description')!;
   expect(help.textContent).toBe(I18N.settings.appleSpeechLanguageHelp);
   expect(help.textContent).not.toBe(I18N.settings.recognitionHintHelp);
-  const group = host.querySelector(`[role="group"][aria-label="${I18N.settings.sourceLanguage}"]`)!;
-  const choices = [...group.querySelectorAll<HTMLButtonElement>('button')];
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.click());
+  const choices = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')];
   expect(choices.map(choice => choice.textContent)).toEqual([SOURCE_LANGUAGE_DISPLAY_NAMES.en, SOURCE_LANGUAGE_DISPLAY_NAMES.fr]);
   await act(async () => choices[1].click());
   expect(save).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "fr" });
@@ -102,9 +144,8 @@ it.each(["zh", "en", "ja"] as const)("preserves an unready Apple choice and lets
 
   settings = { ...settings, sourceLanguage: "en" };
   await render();
-  const selected = host.querySelector<HTMLButtonElement>(`[role="group"][aria-label="${I18N.settings.sourceLanguage}"] button`)!;
+  const selected = picker();
   expect(selected.textContent).toBe(SOURCE_LANGUAGE_DISPLAY_NAMES.en);
-  expect(selected.getAttribute("aria-pressed")).toBe("true");
   expect(selected.disabled).toBe(true);
 });
 
@@ -118,18 +159,20 @@ it("uses the broader recognition list only for an original-only route", async ()
 it("guards duplicate saves and reports a safe failure without pretending the choice was saved", async () => {
   let fail!: (reason: Error) => void;
   save.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
-  settings = { ...settings, profiles: [{ ...settings.profiles[0], provider: "azureOpenAIRealtime" }] };
+  settings = { ...settings, sourceLanguage: "ja", profiles: [{ ...settings.profiles[0], provider: "volcanoEngine" }] };
   await render();
-  const button = [...host.querySelectorAll<HTMLButtonElement>('[role="group"] button')].find(node => node.textContent === "Japanese")!;
+  const targetPicker = host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!;
+  await act(async () => targetPicker.click());
+  const button = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.zh)!;
   await act(() => { button.click(); button.click(); });
-  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "ja" });
+  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "zh" });
   expect(host.querySelector("section")?.getAttribute("aria-busy")).toBe("true");
-  expect(button.disabled).toBe(true);
+  expect(targetPicker.disabled).toBe(true);
   await act(async () => fail(new Error("synthetic-private-provider-body")));
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.languageSaveFailed);
   expect(host.textContent).not.toContain("synthetic-private-provider-body");
-  expect(button.getAttribute("aria-pressed")).toBe("false");
-  expect(button.disabled).toBe(false);
+  expect(targetPicker.textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.en);
+  expect(targetPicker.disabled).toBe(false);
 });
 
 it("explains a session lock separately from a transient connection check", async () => {
@@ -172,12 +215,12 @@ it("saves a newly supported official output language through the searchable pick
 });
 
 it("explains when enabling text translation actually resets a custom source", async () => {
-  settings = { ...settings, sourceLanguage: "fr", targetLanguage: "original", profiles: [{ ...settings.profiles[0], provider: "customDashScopeASR", textTranslation: "deepL" }] };
-  save.mockImplementation(async () => { settings = { ...settings, sourceLanguage: "auto", targetLanguage: "zh" }; });
+  settings = { ...settings, sourceLanguage: "ak", targetLanguage: "original", profiles: [{ ...settings.profiles[0], provider: "customDashScopeASR", textTranslation: "deepL" }] };
+  save.mockImplementation(async draft => { settings = { ...settings, sourceLanguage: "auto", targetLanguage: draft.targetLanguage }; });
   await render();
   await act(async () => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.skipTranslation}"]`)!.click());
   await render();
-  expect(host.textContent).toContain(I18N.settings.recognitionLanguageAdjusted("French", I18N.settings.recognitionServiceDefault));
+  expect(host.textContent).toContain(I18N.settings.recognitionLanguageAdjusted("Akan", I18N.settings.recognitionServiceDefault));
 });
 
 it("shows the configured services in compact help and filters declared custom languages", async () => {
@@ -185,19 +228,19 @@ it("shows the configured services in compact help and filters declared custom la
   await render();
   expect(host.querySelector(".profile-language-settings__heading .settings-help-control__description")?.textContent).toContain("Local MT");
   expect(host.querySelector(".recognition-language-notice")?.textContent).toBe(I18N.settings.recognitionDeclaredNotice);
-  const sources = host.querySelector('[role="group"][aria-label="' + I18N.settings.sourceLanguage + '"]')!;
-  expect([...sources.querySelectorAll("button")].map(button => button.textContent)).toEqual([I18N.settings.recognitionServiceDefault, "English", "French"]);
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.click());
+  expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual([I18N.settings.recognitionServiceDefault, "English", "French"]);
 });
 
-it("updates explicit selected classes with the actual saved language", async () => {
-  settings = { ...settings, profiles: [{ ...settings.profiles[0], provider: "azureOpenAIRealtime" }] };
+it("shows the actual saved target in the aligned picker", async () => {
+  settings = { ...settings, sourceLanguage: "ja", profiles: [{ ...settings.profiles[0], provider: "volcanoEngine" }] };
   await render();
-  const choice = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".profile-language-choice")].find(button => button.textContent === name)!;
-  expect(choice("English").classList.contains("is-selected")).toBe(true);
-  settings = { ...settings, targetLanguage: "ja" }; await render();
-  expect(choice("English").classList.contains("is-selected")).toBe(false);
-  expect(choice("Japanese").classList.contains("is-selected")).toBe(true);
-  expect(choice("Japanese").getAttribute("aria-pressed")).toBe("true");
+  const picker = () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!;
+  expect(picker().textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.en);
+  settings = { ...settings, targetLanguage: "zh" }; await render();
+  expect(picker().textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
+  await act(async () => picker().click());
+  expect(document.querySelector('[role="option"][aria-selected="true"]')?.textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
 });
 
 
@@ -232,4 +275,30 @@ it("omits a duplicate Apple source control while retaining independently configu
   settings = { ...settings, targetLanguage: "original", profiles: [{ ...settings.profiles[0], textTranslation: "followService" }], languageCapabilities: undefined };
   await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
   expect(host.querySelector("section")).toBeNull();
+});
+
+
+it.each(["zh", "en", "ja"] as const)("shows every Gemini target and saves the exact regional code in %s", async locale => {
+  setStoredUiLanguage(locale);
+  settings = { ...settings, profiles: [{ ...settings.profiles[0], provider: "googleGeminiLive" }] };
+  await render();
+  const automatic = host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!;
+  expect(automatic.textContent).toBe(SOURCE_LANGUAGE_DISPLAY_NAMES.auto);
+  expect(automatic.disabled).toBe(true);
+  await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${I18N.settings.translateTo}"]`)!.click());
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent))
+    .toEqual(languageCatalogs.googleGeminiLive.targetLanguages.map(code => TARGET_LANGUAGE_DISPLAY_NAMES[code as keyof typeof TARGET_LANGUAGE_DISPLAY_NAMES]));
+  await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${I18N.settings.translateTo}"]`)!.click());
+  await choose(I18N.settings.translateTo, "pt-BR");
+  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "pt-BR" });
+});
+
+it("keeps Tencent targets valid for the current source and labels mixed input explicitly", async () => {
+  settings = { ...settings, sourceLanguage: "ru", targetLanguage: "en", profiles: [{ ...settings.profiles[0], provider: "tencentCloud" }] };
+  await render();
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual([TARGET_LANGUAGE_DISPLAY_NAMES.zh, TARGET_LANGUAGE_DISPLAY_NAMES.en, TARGET_LANGUAGE_DISPLAY_NAMES.ru]);
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());
+  await choose(I18N.settings.sourceLanguage, "zh_en");
+  expect(save).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "zh_en" });
 });

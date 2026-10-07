@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
-import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, type ServiceProfile, type SourceLanguage } from "../../lib/types";
+import { SOURCE_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, type ServiceProfile, type SourceLanguage } from "../../lib/types";
 import { SettingsHelp } from "./SettingsHelp";
 import { InlineFeedback, SettingsRow, SettingsSelect } from "./SettingsPrimitives";
 
 type Declaration = SourceLanguage[] | null;
-const canonical = (value: Declaration): Declaration => value === null ? null : AUDIO3_RECOGNITION_LANGUAGE_CODES.filter(code => value.includes(code));
+const canonical = (value: Declaration): Declaration => value === null ? null : SOURCE_LANGUAGE_CODES.filter(code => value.includes(code));
 
 /** A user declaration narrows selectors without probing an endpoint or changing its model. */
 export function CustomSpeechLanguageSettings({ profile, disabled, onSave }: {
@@ -28,7 +28,7 @@ export function CustomSpeechLanguageSettings({ profile, disabled, onSave }: {
   const dirty = JSON.stringify(value) !== JSON.stringify(saved);
   const locked = disabled || saving;
   const search = query.trim().toLocaleLowerCase();
-  const options = AUDIO3_RECOGNITION_LANGUAGE_CODES.filter(code => !search || code.includes(search) || SOURCE_LANGUAGE_DISPLAY_NAMES[code].toLocaleLowerCase().includes(search));
+  const options = SOURCE_LANGUAGE_CODES.filter(code => !search || code.toLocaleLowerCase().includes(search) || SOURCE_LANGUAGE_DISPLAY_NAMES[code].toLocaleLowerCase().includes(search));
   const change = (next: Declaration) => { if (!locked) { setDraft({ value: canonical(next) }); setError(false); } };
   const save = async () => {
     if (locked || pending.current || !dirty) return;

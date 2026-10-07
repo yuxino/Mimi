@@ -14,7 +14,9 @@ use crate::clients::tencent_cloud_client::{TencentCloudClient, TencentCloudClien
 use crate::clients::volcano_engine_client::{VolcanoEngineClient, VolcanoEngineClientError};
 use crate::clients::xai_realtime_client::{XAIRealtimeClient, XAIRealtimeClientError};
 use crate::core::configuration::LiveTranslationConfiguration;
-use crate::core::credentials::{ProviderCredentials, ProviderCredentialsError};
+use crate::core::credentials::{
+    ProviderCredentials, ProviderCredentialsError, TextTranslationCredentials,
+};
 use crate::core::diagnostics::TranslationLatency;
 use crate::core::models::TranslationMode;
 use crate::core::preview_pacing::MTRequestBudget;
@@ -61,8 +63,11 @@ impl TranslationClient {
         let mut client = Self::new_without_network(configuration, events)?;
         if let Self::HighQuality(pipeline) = &mut client {
             let text = ProviderNetwork::resolve(
-                if configuration.provider == ProviderKind::AppleSpeech
-                    && !configuration.target_language.translates_audio()
+                if matches!(
+                    configuration.text_credentials,
+                    Some(TextTranslationCredentials::Apple)
+                ) || (configuration.provider == ProviderKind::AppleSpeech
+                    && !configuration.target_language.translates_audio())
                 {
                     &direct
                 } else {
@@ -209,6 +214,21 @@ impl TranslationClient {
                 .map_err(TranslationClientError::MT);
             }
             ProviderKind::AlibabaCloud => {
+                if matches!(
+                    configuration.text_credentials,
+                    Some(TextTranslationCredentials::Apple)
+                ) {
+                    return HighQualityTranslationClient::new_apple(
+                        credentials
+                            .alibaba_key()
+                            .ok_or(ProviderCredentialsError::ProviderMismatch)?,
+                        configuration.source_language,
+                        configuration.target_language,
+                        events,
+                    )
+                    .map(Self::HighQuality)
+                    .map_err(TranslationClientError::MT);
+                }
                 if let ProviderCredentials::OpenAICompatible {
                     asr_api_key,
                     endpoint,
@@ -570,6 +590,40 @@ mod tests {
     use crate::core::models::{SourceLanguage, TargetLanguage};
 
     #[test]
+    fn apple_text_override_selects_bounded_pipeline_without_text_network_credentials() {
+        for provider in [
+            ProviderKind::AlibabaCloud,
+            ProviderKind::CustomOpenAIASR,
+            ProviderKind::AppleSpeech,
+        ] {
+            let credentials = match provider {
+                ProviderKind::AppleSpeech => ProviderCredentials::AppleSpeech,
+                ProviderKind::CustomOpenAIASR => ProviderCredentials::CustomSpeech {
+                    endpoint: "wss://speech.example/realtime".into(),
+                    model: "synthetic".into(),
+                    api_key: "synthetic-speech".into(),
+                },
+                _ => ProviderCredentials::api_key("synthetic-speech"),
+            };
+            for target in [TargetLanguage::Japanese, TargetLanguage::Original] {
+                let configuration = LiveTranslationConfiguration::with_credentials(
+                    provider,
+                    credentials.clone(),
+                    SourceLanguage::English,
+                    target,
+                    TranslationMode::Turbo,
+                )
+                .with_text_credentials(TextTranslationCredentials::Apple);
+                let (events, _receiver) = provider_event_channel();
+                assert!(matches!(
+                    TranslationClient::new(&configuration, events).unwrap(),
+                    TranslationClient::HighQuality(_)
+                ));
+            }
+        }
+    }
+
+    #[test]
     fn invalid_proxy_is_rejected_before_provider_client_construction() {
         let configuration = LiveTranslationConfiguration::for_provider(
             ProviderKind::AlibabaCloud,
@@ -733,8 +787,19 @@ mod tests {
             .validated()
             .unwrap();
             assert_eq!(
-                configuration.capabilities().source_languages,
-                SourceLanguage::ALL
+                configuration
+                    .capabilities()
+                    .source_languages
+                    .iter()
+                    .map(|source| source.raw_value())
+                    .collect::<Vec<_>>(),
+                std::iter::once("auto")
+                    .chain(
+                        crate::core::protocols::audio3::LANGUAGE_CODES
+                            .iter()
+                            .copied()
+                    )
+                    .collect::<Vec<_>>()
             );
             assert_eq!(
                 configuration.capabilities().target_languages,

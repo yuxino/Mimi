@@ -194,7 +194,9 @@ class MainActivity : AppCompatActivity() {
         val previousTarget = SettingsStore.targetLang(this)
         val selected = if (source) SettingsStore.sourceLang(this) else SettingsStore.targetLang(this)
         val provider = app.yuxino.mimi.android.provider.ServiceProvider.fromId(SettingsStore.provider(this))
-        val choices = if (source) provider.sources else provider.targetsForTranslation(SettingsStore.textTranslationProvider(this)).filter { it != SettingsStore.sourceLang(this) }
+        val translation = SettingsStore.textTranslationProvider(this)
+        val choices = if (source) provider.sourcesForTranslation(translation)
+            else provider.targetsForTranslation(translation).filter { provider.supportsPair(previousSource, it, translation) }
         val dialog = BottomSheetDialog(this)
         val content = layoutInflater.inflate(R.layout.language_sheet, FrameLayout(this), false)
         content.findViewById<TextView>(R.id.language_heading).setText(

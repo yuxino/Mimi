@@ -29,6 +29,7 @@ const PROVIDER_ASSETS: Record<Exclude<IconProvider, "openAICompatible" | "chatMo
   deepL,
   deepLX,
   appleSpeech: apple,
+  apple,
 };
 
 interface ProviderIconProps {
@@ -39,7 +40,7 @@ interface ProviderIconProps {
 
 /** Decorative service marks; adjacent text labels the actual provider or route. */
 export function ProviderIcon({ provider, size = 36, className }: ProviderIconProps) {
-  const darkAsset = provider === "openAIRealtime" ? openAIDark : provider === "deepL" ? deepLDark : provider === "appleSpeech" ? appleDark : null;
+  const darkAsset = provider === "openAIRealtime" ? openAIDark : provider === "deepL" ? deepLDark : provider === "appleSpeech" || provider === "apple" ? appleDark : null;
   return (
     <span
       className={["provider-icon", className].filter(Boolean).join(" ")}

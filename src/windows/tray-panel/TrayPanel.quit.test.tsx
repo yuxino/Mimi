@@ -2,11 +2,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import languageCatalogs from "../../../shared/provider-language-catalogs.json";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { sessionActionErrorMessage, profileErrorMessage } from "../../lib/connectionDiagnostics";
 import { useStore } from "../../lib/store";
 import { TrayPanel } from "./TrayPanel";
-import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
+import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
 import { sourceLanguagesForSettings } from "../../lib/providerCapabilities";
 import permissions from "../../../src-tauri/permissions/app.toml?raw";
 
@@ -190,18 +191,18 @@ it("offers 31 Original-mode sources and selects Norwegian after Chinese", async 
   expect(switchSourceLanguage).toHaveBeenCalledExactlyOnceWith("no");
 });
 
-it.each(["deepL", "deepLX"] as const)("keeps %s route limits and uses a non-searchable five-language tray picker", async route => {
+it.each(["deepL", "deepLX"] as const)("keeps the complete %s route intersection searchable in the tray", async route => {
   const settings = languageSettings();
   settings.profiles = [{ ...settings.profiles[0], textTranslation: route }];
   useStore.setState({ ...initial, settings }, true);
   await act(async () => root.render(<TrayPanel />));
   await act(async () => sourcePicker().click());
   const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
-  expect(options).toHaveLength(5);
+  expect(options.length).toBeGreaterThan(6);
   expect(options.map(option => option.textContent)).toEqual(sourceLanguagesForSettings(settings)
     .map(language => SOURCE_LANGUAGE_DISPLAY_NAMES[language]));
-  expect(document.querySelector("input.mimi-select__search")).toBeNull();
-  expect(options.map(option => option.textContent)).not.toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.fr);
+  expect(document.querySelector("input.mimi-select__search")).not.toBeNull();
+  expect(options.map(option => option.textContent)).toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.fr);
 });
 
 it.each(["openAICompatible", "chatMock"] as const)("searches all 31 sources with the %s text route and sends the selected code from the tray", async route => {
@@ -368,6 +369,7 @@ it("grants saved-profile selection to both panels without exposing credential or
   for (const identifier of ["app-tray-panel", "app-overlay-control"]) {
     const scope = permissions.split("[[permission]]").find(entry => entry.includes(`identifier = "${identifier}"`))!;
     expect(scope).toContain('"profile_select"');
+    expect(scope).toContain('"session_switch_target_language"');
     for (const command of ["profile_create", "profile_update", "profile_delete", "profile_save_credentials", "profile_reveal_credential"]) {
       expect(scope).not.toContain(`"${command}"`);
     }
@@ -406,4 +408,69 @@ it.each([false, true])("keeps tray resume feedback safe and ignores a later succ
   await act(async () => reject(error));
   expect(host.querySelector('[role="alert"]')?.textContent ?? null).toBe(superseded ? null : sessionActionErrorMessage(error, "fallback"));
   expect(host.textContent).not.toContain(error);
+});
+
+
+it.each(["zh", "en", "ja"] as const)("uses the expanded xAI sources and current target label in the %s tray", async locale => {
+  setStoredUiLanguage(locale);
+  const switchSourceLanguage = vi.fn().mockResolvedValue(undefined);
+  const settings = languageSettings({ targetLanguage: "pt-PT", profiles: [{ id: "ali", name: "xAI", provider: "xAIRealtime", credentialState: "present" }] });
+  useStore.setState({ ...initial, settings, switchSourceLanguage }, true);
+  await act(async () => root.render(<TrayPanel />));
+  expect(host.querySelector('.tray-setting-row--target [role="combobox"]')?.textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES["pt-PT"]);
+  await act(async () => sourcePicker().click());
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent))
+    .toEqual(languageCatalogs.xAIRealtime.sourceLanguages.map(code => SOURCE_LANGUAGE_DISPLAY_NAMES[code as keyof typeof SOURCE_LANGUAGE_DISPLAY_NAMES]));
+  await filter("pt-BR");
+  const choice = document.querySelector<HTMLElement>('[role="option"]')!;
+  expect(choice.textContent).toBe(SOURCE_LANGUAGE_DISPLAY_NAMES["pt-BR"]);
+  await act(async () => choice.click());
+  expect(switchSourceLanguage).toHaveBeenCalledExactlyOnceWith("pt-BR");
+});
+
+it("keeps Gemini automatic recognition disabled while displaying an expanded target", async () => {
+  const settings = languageSettings({ targetLanguage: "uk", profiles: [{ id: "ali", name: "Google", provider: "googleGeminiLive", credentialState: "present" }] });
+  useStore.setState({ ...initial, settings }, true);
+  await act(async () => root.render(<TrayPanel />));
+  expect(sourcePicker().textContent).toContain(SOURCE_LANGUAGE_DISPLAY_NAMES.auto);
+  expect(sourcePicker().disabled).toBe(true);
+  expect(host.querySelector('.tray-setting-row--target [role="combobox"]')?.textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES.uk);
+});
+
+it.each(["zh", "en", "ja"] as const)("keeps the complete Gemini target menu beside automatic recognition in the %s tray", async locale => {
+  setStoredUiLanguage(locale);
+  const switchTargetLanguage = vi.fn().mockResolvedValue(undefined);
+  const settings = languageSettings({ sourceLanguage: "auto", targetLanguage: "zh" });
+  settings.profiles = [{ ...settings.profiles[0], provider: "googleGeminiLive" }];
+  useStore.setState({ ...initial, settings, switchTargetLanguage }, true);
+  await act(async () => root.render(<TrayPanel />));
+  expect(sourcePicker().disabled).toBe(true);
+  const target = host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!;
+  await act(async () => target.click());
+  const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  expect(options.map(option => option.textContent)).toEqual(languageCatalogs.googleGeminiLive.targetLanguages.map(code => TARGET_LANGUAGE_DISPLAY_NAMES[code as keyof typeof TARGET_LANGUAGE_DISPLAY_NAMES]));
+  await act(async () => options.find(option => option.textContent === TARGET_LANGUAGE_DISPLAY_NAMES["pt-BR"])!.click());
+  expect(switchTargetLanguage).toHaveBeenCalledExactlyOnceWith("pt-BR");
+});
+
+it("disables tray target changes in transitions and preserves the saved target after failure", async () => {
+  const settings = languageSettings({ sourceLanguage: "auto", targetLanguage: "zh" });
+  settings.profiles = [{ ...settings.profiles[0], provider: "googleGeminiLive" }];
+  const switchTargetLanguage = vi.fn().mockRejectedValue("target_switch_unsupported");
+  useStore.setState({ ...initial, settings, switchTargetLanguage }, true);
+  await act(async () => root.render(<TrayPanel />));
+  const target = () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!;
+  for (const kind of ["connecting", "stopping"] as const) {
+    await act(async () => useStore.setState({ session: { ...initial.session, status: { kind } } }));
+    expect(target().disabled).toBe(true);
+    await act(async () => target().click());
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+  }
+  await act(async () => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, isActive: true } }));
+  await act(async () => target().click());
+  await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.fr)!.click());
+  expect(switchTargetLanguage).toHaveBeenCalledExactlyOnceWith("fr");
+  expect(target().textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
+  expect(target().disabled).toBe(false);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.languageSwitchUnsupported);
 });

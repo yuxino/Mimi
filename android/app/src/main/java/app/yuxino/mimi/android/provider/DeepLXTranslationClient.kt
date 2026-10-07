@@ -8,6 +8,9 @@ class DeepLXTranslationClient(
     private val configuration: TranslationConfiguration,
     client: OkHttpClient = defaultTranslationHttpClient(),
 ) : TranslationClient {
+    override fun resolveSourceLanguage(configured: String, reported: String?): String =
+        translationSourceLanguage(configured, reported, DEEPLX_SOURCE_CODES)
+
     private val transport = BoundedTranslationHttpClient(client)
 
     override fun translate(text: String, sourceLanguage: String, targetLanguage: String, callback: (TranslationResult) -> Unit): TranslationCall =
@@ -22,8 +25,8 @@ class DeepLXTranslationClient(
 
 internal fun deepLXRequest(text: String, source: String, target: String): JSONObject =
     JSONObject().put("text", boundedTranslationInput(text))
-        .put("source_lang", if (source == "auto") "auto" else deepLLanguage(source, source = true))
-        .put("target_lang", deepLLanguage(target, source = false))
+        .put("source_lang", if (source == "auto") "auto" else deepLLanguage(source, source = true, compatible = true))
+        .put("target_lang", deepLLanguage(target, source = false, compatible = true))
 
 internal fun decodeDeepLXResponse(body: String): String {
     val response = JSONObject(body)

@@ -1,6 +1,6 @@
 import { SettingsToastRegion } from "../settings/SettingsToast";
 import { activeServiceProfile } from "../../lib/providerCapabilities";
-import { speechLanguageGuidance } from "../../lib/speechLanguageGuidance";
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
@@ -21,6 +21,7 @@ import {
   type OverlayActivityPhaseKind,
   type SettingsSnapshot,
   type SourceLanguage,
+  type TargetLanguage,
 } from "../../lib/types";
 import {
   type LanguageStatus,
@@ -34,6 +35,7 @@ type PendingAction =
   | "profile"
   | "display"
   | "source"
+  | "target"
   | "translation"
   | "intermediate"
   | "dividers"
@@ -59,6 +61,7 @@ interface OverlayControlPanelProps {
   onTogglePaused: () => Promise<void>;
   onSelectProfile: (profileId: string) => Promise<void>;
   onSwitchSourceLanguage: (language: SourceLanguage) => Promise<void>;
+  onSwitchTargetLanguage: (language: TargetLanguage) => Promise<void>;
   onSetSkipTranslation: (enabled: boolean) => Promise<void>;
   onSetIntermediateSubtitles: (enabled: boolean) => Promise<void>;
   onSetSubtitleDividers: (enabled: boolean) => Promise<void>;
@@ -86,6 +89,7 @@ export function OverlayControlPanel({
   onTogglePaused,
   onSelectProfile,
   onSwitchSourceLanguage,
+  onSwitchTargetLanguage,
   onSetSkipTranslation,
   onSetIntermediateSubtitles,
   onSetSubtitleDividers,
@@ -99,6 +103,7 @@ export function OverlayControlPanel({
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const sourceControlRef = useRef<HTMLDivElement>(null);
+  const targetControlRef = useRef<HTMLDivElement>(null);
   const displayControlRef = useRef<HTMLDivElement>(null);
   const immersiveRef = useRef<HTMLButtonElement>(null);
   const lockRef = useRef<HTMLButtonElement>(null);
@@ -146,6 +151,7 @@ export function OverlayControlPanel({
   useEffect(() => {
     const target = [
       sourceControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
+      targetControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       displayControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       immersiveRef.current,
       lockRef.current,
@@ -173,7 +179,7 @@ export function OverlayControlPanel({
         if (resuming && (!latestSession.current.isPaused || !latestSession.current.canPauseSession)) return;
         setOperationError(
           name === "profile" ? profileErrorMessage(error)
-            : name === "source" || name === "translation" ? languageActionErrorMessage(error, failureMessage)
+            : name === "source" || name === "target" || name === "translation" ? languageActionErrorMessage(error, failureMessage)
               : name === "pause" ? sessionActionErrorMessage(error, failureMessage) : failureMessage,
         );
       })
@@ -244,22 +250,32 @@ export function OverlayControlPanel({
             onChange={(value) => performAction("display", () => onSetSubtitleDisplayMode(value as SubtitleDisplayMode), false)} />
         </div>
 
-        {model.sourceOptions.length > 0 && (
-          <div ref={sourceControlRef} className="overlay-control-picker">
-            <span>{I18N.overlay.sourceLanguage} <SettingsHelp text={speechLanguageGuidance(settings).help} label={I18N.settings.helpLabel} /></span>
-            <LanguageSelect
-              label={I18N.overlay.sourceLanguage}
-              value={settings.sourceLanguage}
-              valueLabel={speechLanguageGuidance(settings).optionLabel(settings.sourceLanguage)}
-              options={model.sourceOptions.map((language) => ({
-                value: language,
-                label: speechLanguageGuidance(settings).optionLabel(language),
-              }))}
-              disabled={!canChangeSessionSettings}
-              onChange={(value) => performAction("source", () => onSwitchSourceLanguage(value as SourceLanguage))}
-            />
-          </div>
-        )}
+        <div ref={sourceControlRef} className="overlay-control-picker">
+          <span>{I18N.overlay.sourceLanguage} <SettingsHelp text={speechLanguageGuidance(settings).help} label={I18N.settings.helpLabel} /></span>
+          <LanguageSelect
+            label={I18N.overlay.sourceLanguage}
+            value={settings.sourceLanguage}
+            valueLabel={speechLanguageGuidance(settings).optionLabel(settings.sourceLanguage)}
+            options={model.sourceOptions.map((language) => ({
+              value: language,
+              label: speechLanguageGuidance(settings).optionLabel(language),
+            }))}
+            disabled={!canChangeSessionSettings || model.sourceOptions.length === 0 || (model.sourceOptions.length === 1 && model.sourceOptions[0] === settings.sourceLanguage)}
+            onChange={(value) => performAction("source", () => onSwitchSourceLanguage(value as SourceLanguage), false)}
+          />
+        </div>
+
+        <div ref={targetControlRef} className="overlay-control-picker">
+          <span>{I18N.settings.translateTo} <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} /></span>
+          <LanguageSelect
+            label={I18N.settings.translateTo}
+            value={settings.targetLanguage}
+            valueLabel={targetLanguageOptionLabel(settings, settings.targetLanguage)}
+            options={model.targetOptions.map(language => ({ value: language, label: targetLanguageOptionLabel(settings, language) }))}
+            disabled={!canChangeSessionSettings || model.targetOptions.length === 0 || (model.targetOptions.length === 1 && model.targetOptions[0] === settings.targetLanguage)}
+            onChange={value => performAction("target", () => onSwitchTargetLanguage(value as TargetLanguage), false)}
+          />
+        </div>
 
         {activeServiceProfile(settings)?.provider === "appleSpeech" && <div className="speech-resources-actions">
           <button type="button" className="speech-resources-link" disabled={pendingAction !== null}

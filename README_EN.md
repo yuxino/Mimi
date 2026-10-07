@@ -43,7 +43,7 @@ For activation links, credential instructions, and the models Mimi currently use
 2. Choose the recognition and translation languages.
 3. Play something and turn on Live Subtitles under Subtitles. On macOS, allow Screen & System Audio Recording when asked.
 
-Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Independent text translation sends recognized text to your chosen translation service.
+Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Remote text translation sends recognized text to your chosen service; Apple Translation keeps text on the Mac.
 
 [Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](CONTRIBUTING.md)
 
@@ -51,13 +51,11 @@ Cloud speech services require your own credentials and receive your audio; usage
 
 ### Apple local recognition
 
-Some bugs remain, and I’m out of tokens to fix them for now QAQ.
+**Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. Stop subtitles and choose the language under **Recognition Language**. If it is missing, click **Download and use**; Mimi downloads its Apple resources and selects that language when ready. For an already downloaded language, click **Set recognition language**, then start subtitles. No System Settings detour is needed. Automatic language detection is not offered. See [Apple Speech setup](docs/provider-setup.md#apple-speech).
 
-**Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. Stop subtitles, click **Add language pack** in its Mimi configuration, select a language, and click **Download language pack**. Once ready, click **Set recognition language** and start subtitles. Automatic language detection is not offered. See [Apple Speech setup](docs/provider-setup.md#apple-speech).
+**Apple Translation** is a separate on-device text service on supported Apple silicon Macs running macOS 26 or later. Select it under **Text Translation**, save the configuration, and choose an explicit source and target language. Mimi shows whether the pair is ready; use **Download or enable languages** to open Apple’s setup confirmation. Translation models are separate from speech models. Existing models are reused; Apple downloads missing models when you confirm. Checks and subtitle sessions never request a download. No text API key or text proxy is needed.
 
-I’m halfway through integrating Apple’s own translation, but I’ve run out of tokens to continue for now. If you use Apple Speech, you can pair it with [Index-Translate](#try-index-translate) for text translation in the meantime. Sorry about that QAQ.
-
-To show only the original text, enable **Skip translation**. If you use a remote text translator, it still receives the recognized text.
+To show only the original text with Apple Speech, select **No translation (original only)**. You can also use a remote text translator such as [Index-Translate](#try-index-translate); that service receives recognized text.
 
 ### Try Index-Translate
 

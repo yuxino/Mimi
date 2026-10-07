@@ -399,3 +399,34 @@ it("explicitly selects an Apple language even when its profile is already active
     expect(useStore.getState().settings).toBe(saved);
   } finally { useStore.setState(original, true); }
 });
+
+it.each([false, true])("switches an integrated provider target while preserving the session and pause=%s", async isPaused => {
+  const original = useStore.getState();
+  const session = { ...original.session, status: { kind: "listening" as const }, isActive: true, isPaused };
+  try {
+    useStore.setState({ session, settings: { ...original.settings, activeProfileId: "google", sourceLanguage: "auto", targetLanguage: "zh", languageCapabilities: undefined,
+      profiles: [{ id: "google", name: "Google", provider: "googleGeminiLive", credentialState: "present" }] } });
+    await useStore.getState().switchTargetLanguage("pt-BR");
+    expect(useStore.getState().settings).toMatchObject({ sourceLanguage: "auto", targetLanguage: "pt-BR" });
+    expect(useStore.getState().session).toBe(session);
+    await expect(useStore.getState().switchTargetLanguage("original")).rejects.toThrow("target_switch_unsupported");
+    expect(useStore.getState().settings.targetLanguage).toBe("pt-BR");
+    for (const kind of ["connecting", "stopping"] as const) {
+      useStore.setState({ session: { ...session, status: { kind } } });
+      await expect(useStore.getState().switchTargetLanguage("fr")).rejects.toThrow("target_switch_busy");
+      expect(useStore.getState().settings.targetLanguage).toBe("pt-BR");
+    }
+  } finally { useStore.setState(original, true); }
+});
+
+it("uses Tencent's current source pair constraints for quick target changes", async () => {
+  const original = useStore.getState();
+  try {
+    useStore.setState({ settings: { ...original.settings, activeProfileId: "tencent", sourceLanguage: "ru", targetLanguage: "en", languageCapabilities: undefined,
+      profiles: [{ id: "tencent", name: "Tencent", provider: "tencentCloud", credentialState: "present" }] } });
+    await expect(useStore.getState().switchTargetLanguage("ja")).rejects.toThrow("target_switch_unsupported");
+    expect(useStore.getState().settings.targetLanguage).toBe("en");
+    await useStore.getState().switchTargetLanguage("zh");
+    expect(useStore.getState().settings.targetLanguage).toBe("zh");
+  } finally { useStore.setState(original, true); }
+});

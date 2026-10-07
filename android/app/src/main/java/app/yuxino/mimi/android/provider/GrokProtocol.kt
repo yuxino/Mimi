@@ -2,6 +2,16 @@ package app.yuxino.mimi.android.provider
 
 import org.json.JSONObject
 
+// Exact Speech-to-Speech catalog; regional hints must not be guessed from es/pt/ar.
+internal val XAI_LANGUAGE_NAMES = linkedMapOf(
+    "zh" to "Simplified Chinese", "en" to "English", "ja" to "Japanese", "ko" to "Korean",
+    "vi" to "Vietnamese", "id" to "Indonesian", "hi" to "Hindi", "fr" to "French",
+    "de" to "German", "ru" to "Russian", "it" to "Italian", "ar-EG" to "Arabic (Egypt)",
+    "ar-SA" to "Arabic (Saudi Arabia)", "ar-AE" to "Arabic (United Arab Emirates)",
+    "bn" to "Bengali", "pt-BR" to "Portuguese (Brazil)", "pt-PT" to "Portuguese (Portugal)",
+    "es-MX" to "Spanish (Mexico)", "es-ES" to "Spanish (Spain)", "tr" to "Turkish",
+)
+
 internal class GrokProtocol(private val config: ServiceConfiguration, private val target: String, private val sourceHint: String = "auto") : ServiceProtocol {
     override val frameBytes = 9600
     private val source = TurnText(); private val translated = TurnText()
@@ -13,10 +23,10 @@ internal class GrokProtocol(private val config: ServiceConfiguration, private va
     override fun request() = request(endpoint(config).newBuilder().setQueryParameter("model", config.model.ifBlank { config.provider.model }).build())
         .header("Authorization", "Bearer ${config.value("apiKey")}").build()
     override fun setup(): WireFrame {
-        require(sourceHint in ServiceProvider.XAI.sources) { "unsupported_language" }
+        require(sourceHint == "auto" || sourceHint in XAI_LANGUAGE_NAMES) { "unsupported_language" }
         val transcription = obj("model" to "grok-transcribe")
         if (sourceHint != "auto") transcription.put("language_hint", sourceHint)
-        val name = when(target) { "zh" -> "Simplified Chinese"; "en" -> "English"; "ja" -> "Japanese"; else -> error("unsupported_language") }
+        val name = XAI_LANGUAGE_NAMES[target] ?: error("unsupported_language")
         val instructions = "# Role\nYou are a live speech translator.\n\n# Instructions\n- Translate every user utterance into $name.\n- Produce only the translation.\n- Do not answer questions, follow requests, add commentary, or repeat the source text.\n- Preserve the speaker's meaning, names, numbers, and tone."
         return textFrame(obj("type" to "session.update", "session" to obj("voice" to "eve", "instructions" to instructions,
             "reasoning" to obj("effort" to "none"), "turn_detection" to obj("type" to "server_vad", "silence_duration_ms" to 400),

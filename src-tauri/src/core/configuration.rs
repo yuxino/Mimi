@@ -19,6 +19,7 @@ pub enum TextTranslationProbeCredentials {
 #[derive(Clone)]
 pub struct TextTranslationProbeConfiguration {
     pub credentials: TextTranslationProbeCredentials,
+    pub source_language: SourceLanguage,
     pub target_language: TargetLanguage,
     pub network_proxy: ProxyConfig,
 }
@@ -154,6 +155,7 @@ impl LiveTranslationConfiguration {
         );
         self.provider
             .capabilities_for_route(route, self.target_language)
+            .for_source(self.source_language)
     }
 
     /// Returns a trimmed, validated copy of the configuration.
@@ -166,10 +168,16 @@ impl LiveTranslationConfiguration {
         } else {
             self.network_proxy.validate()?
         };
-        let text_network_proxy = if self.provider == ProviderKind::AppleSpeech
-            && !self.target_language.translates_audio()
+        let text_network_proxy = if matches!(
+            self.text_credentials,
+            Some(TextTranslationCredentials::Apple)
+        ) || (self.provider == ProviderKind::AppleSpeech
+            && !self.target_language.translates_audio())
         {
-            network_proxy.clone()
+            ProxyConfig {
+                mode: crate::core::network_proxy::ProxyMode::Direct,
+                url: None,
+            }
         } else {
             self.text_network_proxy.validate()?
         };
@@ -222,6 +230,43 @@ impl LiveTranslationConfiguration {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apple_text_credentials_are_local_and_keep_speech_network_independent() {
+        use crate::core::network_proxy::ProxyMode;
+        let speech = ProxyConfig {
+            mode: ProxyMode::Custom,
+            url: Some("http://localhost:7890".into()),
+        };
+        let config = LiveTranslationConfiguration::with_credentials(
+            ProviderKind::AlibabaCloud,
+            ProviderCredentials::api_key("synthetic-asr"),
+            SourceLanguage::English,
+            TargetLanguage::Japanese,
+            TranslationMode::Turbo,
+        )
+        .with_text_credentials(TextTranslationCredentials::Apple)
+        .with_stage_network_proxies(
+            speech.clone(),
+            ProxyConfig {
+                mode: ProxyMode::Custom,
+                url: Some("invalid".into()),
+            },
+        );
+        let validated = config.validated().unwrap();
+        assert_eq!(validated.network_proxy, speech.validate().unwrap());
+        assert_eq!(validated.text_network_proxy.mode, ProxyMode::Direct);
+        assert_eq!(
+            validated.text_credentials,
+            Some(TextTranslationCredentials::Apple)
+        );
+        let mut invalid = config.clone();
+        invalid.source_language = SourceLanguage::Automatic;
+        assert_eq!(
+            invalid.validated().unwrap_err(),
+            LiveTranslationConfigurationError::UnsupportedSourceLanguage
+        );
+    }
+
     #[test]
     fn apple_configuration_has_no_speech_secret_no_auto_and_only_text_network() {
         use crate::core::network_proxy::ProxyMode;
@@ -347,7 +392,7 @@ mod tests {
                 Some(TextTranslationCredentials::DeepL { api_key: "".into() });
             assert_eq!(configuration.validated().unwrap().text_credentials, None);
             assert!(!format!("{configuration:?}").contains("synthetic-speech"));
-            configuration.source_language = SourceLanguage::French;
+            configuration.source_language = SourceLanguage::Khmer;
             assert!(configuration.validated().is_ok());
             configuration.target_language = TargetLanguage::English;
             configuration.text_credentials = Some(TextTranslationCredentials::DeepL {
@@ -362,27 +407,27 @@ mod tests {
 
     #[test]
     fn default_alibaba_validates_every_lite_target_and_the_full_original_catalog() {
+        use crate::core::protocols::{audio3, qwen_mt};
         for source in SourceLanguage::ALL {
             let mut configuration = config("synthetic", source);
             configuration.target_language = TargetLanguage::Original;
-            assert_eq!(configuration.validated().unwrap().source_language, source);
+            let is_audio3_source = source == SourceLanguage::Automatic
+                || audio3::LANGUAGE_CODES.contains(&source.raw_value());
+            assert_eq!(configuration.validated().is_ok(), is_audio3_source);
             for target in TargetLanguage::ALL
                 .into_iter()
                 .filter(|target| target.translates_audio())
             {
                 configuration.target_language = target;
-                if configuration
-                    .capabilities()
-                    .source_languages
-                    .contains(&source)
-                {
-                    assert_eq!(configuration.validated().unwrap().target_language, target);
-                } else {
-                    assert_eq!(
-                        configuration.validated().unwrap_err(),
-                        LiveTranslationConfigurationError::UnsupportedSourceLanguage
-                    );
-                }
+                let supported = is_audio3_source
+                    && (source == SourceLanguage::Automatic
+                        || qwen_mt::QWEN_MT_LITE_LANGUAGE_CODES.contains(&source.raw_value()))
+                    && qwen_mt::QWEN_MT_LITE_LANGUAGE_CODES.contains(&target.raw_value());
+                assert_eq!(
+                    configuration.validated().is_ok(),
+                    supported,
+                    "source={source:?} target={target:?}"
+                );
             }
         }
     }
@@ -399,12 +444,14 @@ mod tests {
             TargetLanguage::French,
             TranslationMode::Turbo,
         );
+        assert!(configuration.validated().is_ok());
+        configuration.target_language = TargetLanguage::Khmer;
         assert_eq!(
             configuration.validated().unwrap_err(),
             LiveTranslationConfigurationError::UnsupportedTargetLanguage
         );
         configuration.target_language = TargetLanguage::English;
-        configuration.source_language = SourceLanguage::French;
+        configuration.source_language = SourceLanguage::Khmer;
         assert_eq!(
             configuration.validated().unwrap_err(),
             LiveTranslationConfigurationError::UnsupportedSourceLanguage
@@ -417,6 +464,8 @@ mod tests {
         };
         configuration.source_language = SourceLanguage::Automatic;
         configuration.target_language = TargetLanguage::French;
+        assert!(configuration.validated().is_ok());
+        configuration.target_language = TargetLanguage::Khmer;
         assert_eq!(
             configuration.validated().unwrap_err(),
             LiveTranslationConfigurationError::UnsupportedTargetLanguage

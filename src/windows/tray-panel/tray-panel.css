@@ -291,6 +291,10 @@
   padding: 7px 10px;
 }
 
+.tray-setting-row--language {
+  grid-template-columns: 27px minmax(0, 1fr) 112px;
+}
+
 .tray-setting-row--alignment {
   display: grid;
 }

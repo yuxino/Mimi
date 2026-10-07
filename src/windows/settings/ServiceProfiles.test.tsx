@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { diagnosticCopy, profileErrorMessage } from "../../lib/connectionDiagnostics";
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { I18N, providerDisplayName, setStoredUiLanguage } from "../../lib/i18n";
 import { getAppleSpeechSupport, prepareAppleSpeechLanguage, profileCredentialEditorState, profileRevealCredential, testProfileConnection } from "../../lib/ipc";
 import { SERVICE_PROVIDERS, sourceLanguagesForSettings, targetLanguagesForSettings } from "../../lib/providerCapabilities";
@@ -58,6 +59,40 @@ function appleSettings(): SettingsSnapshot {
   return { ...settings, profiles: [appleProfile], activeProfileId: appleProfile.id, sourceLanguage: "en", targetLanguage: "original", languageCapabilities: { profileId: appleProfile.id, provider: "appleSpeech", textTranslation: "followService", targetLanguage: "original", sourceLanguages: ["en", "ja"], targetLanguages: ["original"] } };
 }
 
+it("shows no network proxy or credential form for Apple recognition plus Apple translation", async () => {
+  vi.mocked(getAppleSpeechSupport).mockResolvedValue(appleSupport);
+  const native = { ...appleProfile, textTranslation: "apple" as const, credentialState: "present" as const, textCredentialState: "present" as const };
+  await render({ ...appleSettings(), targetLanguage: "zh", profiles: [native], languageCapabilities: { profileId: native.id, provider: native.provider, textTranslation: "apple", targetLanguage: "zh", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "en"] } });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.querySelector(".service-proxies")).toBeNull();
+  expect(host.querySelector('input[type="password"]')).toBeNull();
+  expect(profileCredentialEditorState).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it("retains only the recognition proxy when Alibaba uses local Apple translation", async () => {
+  await render({ ...settings, sourceLanguage: "en", profiles: [{ ...profile, credentialState: "present", speechCredentialState: "present", textCredentialState: "present", textTranslation: "apple" }] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.querySelectorAll(".service-proxies .network-proxy-form")).toHaveLength(1);
+  expect(host.querySelector(".service-proxies")?.textContent).toContain(I18N.settings.speechRecognition);
+  expect(host.querySelector(".service-proxies")?.textContent).not.toContain(I18N.settings.textTranslationLabel);
+});
+
+it("announces a local Apple route save without claiming credentials were stored", async () => {
+  const native = { ...profile, credentialState: "missing" as const, speechCredentialState: "present" as const, textTranslation: "apple" as const };
+  const snapshot = { ...settings, sourceLanguage: "en" as const, profiles: [native] };
+  actions.saveProfileCredentials.mockResolvedValue(snapshot);
+  actions.selectProfile.mockResolvedValue(snapshot);
+  await render(snapshot);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.saveAndUse);
+  expect(actions.saveProfileCredentials).toHaveBeenCalledExactlyOnceWith(native.id, {
+    kind: "alibabaTranslation", apiKey: "", textTranslation: "apple", endpoint: "", token: "", model: "",
+  });
+  expect(document.body.textContent).toContain(I18N.settings.translationConfigurationSaved);
+  expect(document.body.textContent).not.toContain(I18N.settings.credentialsSaved);
+});
+
 it("offers Apple only after this Mac reports availability and does not create it on preview", async () => {
   let resolve!: (value: typeof appleSupport) => void;
   vi.mocked(getAppleSpeechSupport).mockReturnValue(new Promise(done => { resolve = done; }));
@@ -104,10 +139,10 @@ it.each(["zh", "en", "ja"] as const)("shows local Apple resources and independen
   expect(host.textContent).toContain(I18N.settings.appleSpeechNotInstalled);
   expect(host.textContent).toContain(I18N.settings.checkSpeechRecognition);
   expect(host.textContent).not.toContain(I18N.settings.checkTextTranslation);
-  expect(host.querySelectorAll(".service-proxies .network-proxy-settings").length).toBeLessThanOrEqual(1);
+  expect(host.querySelectorAll(".service-proxies .network-proxy-form").length).toBeLessThanOrEqual(1);
   expect(host.querySelector("#translation-languages")).toBeNull();
   expect(host.querySelectorAll(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)).toHaveLength(1);
-  expect(host.textContent).toContain(I18N.settings.appleSpeechAddLanguagePack);
+  expect(host.textContent).toContain(I18N.settings.appleSpeechDownloadAndUse);
   expect(profileRevealCredential).not.toHaveBeenCalled();
   expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
   expect(actions.saveSettings).not.toHaveBeenCalled();
@@ -119,19 +154,18 @@ it("prepares only the explicitly chosen Apple language and blocks duplicate prep
   vi.mocked(prepareAppleSpeechLanguage).mockReturnValue(new Promise(done => { resolve = done; }));
   await render(appleSettings());
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  await click(I18N.settings.appleSpeechAddLanguagePack);
-  await click(I18N.settings.appleSpeechPrepare);
+  await click(I18N.settings.appleSpeechDownloadAndUse);
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("en");
   expect(host.textContent).toContain(I18N.settings.appleSpeechPreparing);
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(true);
-  const prepareButton = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechPrepare)!;
+  const prepareButton = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechDownloadAndUse)!;
   expect(prepareButton.disabled).toBe(true);
   await act(async () => prepareButton.click());
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledOnce();
   await act(async () => resolve({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true })) }));
   expect(host.textContent).toContain(I18N.settings.appleSpeechLanguageInUse);
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(false);
-  expect(actions.saveSettings).not.toHaveBeenCalled();
+  expect(actions.saveSettings).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "en" });
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
 });
 
@@ -140,25 +174,26 @@ it("retains a failed Apple preparation as retryable feedback without exposing na
   vi.mocked(prepareAppleSpeechLanguage).mockRejectedValue(new Error("private-native-path"));
   await render(appleSettings());
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  await click(I18N.settings.appleSpeechAddLanguagePack);
-  await click(I18N.settings.appleSpeechPrepare);
+  await click(I18N.settings.appleSpeechDownloadAndUse);
   expect(host.textContent).toContain(I18N.settings.appleSpeechPrepareFailed);
   expect(document.body.textContent).not.toContain("private-native-path");
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(false);
   expect([...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechRetryDownload)?.disabled).toBe(false);
 });
 
-it("lets a user prepare another supported language without changing the active recognition language", async () => {
+it("downloads and applies the language chosen in the single recognition selector", async () => {
   vi.mocked(getAppleSpeechSupport).mockResolvedValue(appleSupport);
   vi.mocked(prepareAppleSpeechLanguage).mockResolvedValue({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true })) });
   await render({ ...appleSettings(), sourceLanguage: "ja" });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.textContent).toContain("ja-JP");
-  await click(I18N.settings.appleSpeechAddLanguagePack);
+  await act(async () => host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.click());
+  await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.startsWith(SOURCE_LANGUAGE_DISPLAY_NAMES.en))!.click());
   expect(host.textContent).toContain("en-US");
-  await click(I18N.settings.appleSpeechPrepare);
-  expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("en");
   expect(actions.saveSettings).not.toHaveBeenCalled();
+  await click(I18N.settings.appleSpeechDownloadAndUse);
+  expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("en");
+  expect(actions.saveSettings).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "en" });
 });
 
 it("discards late Apple support failures after leaving the service surface", async () => {
@@ -678,16 +713,19 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
   const snapshot = { ...settings, profiles: [{ ...profile, provider }] };
   await render(snapshot);
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  const groups = [...host.querySelectorAll("#translation-languages [role=group]")];
-  expect([...groups[0].querySelectorAll("button span")].map(node => node.textContent)).toEqual(
-    sourceLanguagesForSettings(snapshot).map(language => SOURCE_LANGUAGE_DISPLAY_NAMES[language]),
-  );
-  const targets = targetLanguagesForSettings(snapshot).map(language => TARGET_LANGUAGE_DISPLAY_NAMES[language]);
-  if (targets.length > 6) {
-    await act(async () => host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());
-    expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(targets);
-  } else {
-    expect([...groups[1].querySelectorAll("button span")].map(node => node.textContent)).toEqual(targets);
+  for (const [label, names] of [
+    [I18N.settings.sourceLanguage, sourceLanguagesForSettings(snapshot).map(speechLanguageGuidance(snapshot).optionLabel)],
+    [I18N.settings.translateTo, targetLanguagesForSettings(snapshot).map(language => targetLanguageOptionLabel(snapshot, language))],
+  ] as const) {
+    const picker = host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${label}"]`)!;
+    if (names.length === 1) {
+      expect(picker.textContent).toBe(names[0]);
+      expect(picker.disabled).toBe(true);
+    } else {
+      await act(async () => picker.click());
+      expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(names);
+      await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    }
   }
   expect(host.querySelector(".service-language-more")).toBeNull();
   expect(testProfileConnection).not.toHaveBeenCalled();
@@ -698,16 +736,11 @@ it.each(["deepL", "deepLX", "openAICompatible", "chatMock"] as const)("keeps %s 
   const snapshot = { ...settings, profiles: [{ ...profile, textTranslation }] };
   await render(snapshot);
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  const targets = targetLanguagesForSettings(snapshot).map(language => TARGET_LANGUAGE_DISPLAY_NAMES[language]);
-  if (textTranslation === "openAICompatible" || textTranslation === "chatMock") {
-    expect(host.querySelectorAll("#translation-languages [role=combobox]")).toHaveLength(2);
-    await act(async () => host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());
-    expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(targets);
-  } else {
-    expect(host.querySelectorAll("#translation-languages [role=combobox]")).toHaveLength(0);
-    const groups = [...host.querySelectorAll("#translation-languages [role=group]")];
-    expect(groups[1].textContent).toBe(targets.join(""));
-  }
+  const targets = targetLanguagesForSettings(snapshot).map(language => targetLanguageOptionLabel(snapshot, language));
+  expect(host.querySelectorAll("#translation-languages [role=combobox]")).toHaveLength(2);
+  await act(async () => host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());
+  expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(targets);
+  expect(targets).toContain(TARGET_LANGUAGE_DISPLAY_NAMES.fr);
   expect(testProfileConnection).not.toHaveBeenCalled();
 });
 
@@ -1477,8 +1510,7 @@ it.each([false, true])("waits for preparation without reviving a cancelled resou
   vi.mocked(prepareAppleSpeechLanguage).mockReturnValue(new Promise(resolve => { prepared = resolve; }));
   await show(0);
   await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
-  await click(I18N.settings.appleSpeechAddLanguagePack);
-  await click(I18N.settings.appleSpeechPrepare);
+  await click(I18N.settings.appleSpeechDownloadAndUse);
   await show(1);
   expect(host.querySelector(".service-detail__title")?.textContent).toContain(otherApple.name);
   if (cancelled) await show(0);

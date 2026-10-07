@@ -8,7 +8,7 @@ enum class ServiceProvider(
     val sources: List<String>, val fields: List<CredentialField>,
     val endpoint: String = "", val model: String = "",
 ) {
-    DASHSCOPE("dashscope", "阿里云", "通义实时翻译", 16000, listOf("auto", "zh", "en", "ja", "ko"),
+    DASHSCOPE("dashscope", "阿里云", "通义实时翻译", 16000, listOf("auto") + DASHSCOPE_LIVE_LANGUAGE_CODES,
         listOf(CredentialField("apiKey", "API Key")), DashScopeEngine.DASHSCOPE_REALTIME_WS, DashScopeEngine.MODEL),
     OPENAI("openai", "OpenAI", "Realtime Translation", 24000, listOf("auto"),
         listOf(CredentialField("apiKey", "API Key")), OpenAIRealtimeEngine.ENDPOINT, OpenAIRealtimeEngine.MODEL),
@@ -18,33 +18,62 @@ enum class ServiceProvider(
     AZURE("azure", "Azure OpenAI", "使用自己的 Azure 部署", 24000, listOf("auto"),
         listOf(CredentialField("endpoint", "资源地址", false), CredentialField("deployment", "翻译部署名称", false),
             CredentialField("transcriptionDeployment", "转写部署名称", false), CredentialField("apiKey", "API Key"))),
-    VOLCANO("volcano", "火山引擎", "豆包同声传译 2.0", 16000, listOf("ja", "en", "zh"),
+    VOLCANO("volcano", "火山引擎", "豆包同声传译 2.0", 16000, VOLCANO_SOURCE_CODES,
         listOf(CredentialField("apiKey", "API Key"))),
-    TENCENT("tencent", "腾讯云", "实时语音翻译", 16000, listOf("ja", "en", "ko", "zh"),
+    TENCENT("tencent", "腾讯云", "实时语音翻译", 16000, TENCENT_LANGUAGE_PAIRS.keys.toList(),
         listOf(CredentialField("appId", "AppID", false), CredentialField("secretId", "SecretID"), CredentialField("secretKey", "SecretKey"))),
-    BAIDU("baidu", "百度翻译", "实时语音翻译", 16000, listOf("ja", "en", "ko", "zh"),
+    BAIDU("baidu", "百度翻译", "实时语音翻译", 16000, BAIDU_LANGUAGE_CODES.keys.toList(),
         listOf(CredentialField("appId", "AppID", false), CredentialField("appKey", "AppKey"))),
-    XAI("xai", "xAI Grok", "Grok Voice · 按语音轮次翻译", 24000, listOf("auto", "zh", "en", "ja", "ko", "vi", "id", "hi", "fr", "de", "ru", "it"),
+    XAI("xai", "xAI Grok", "Grok Voice · 按语音轮次翻译", 24000, listOf("auto") + XAI_LANGUAGE_NAMES.keys,
         listOf(CredentialField("apiKey", "API Key")), "wss://api.x.ai/v1/realtime", "grok-voice-latest");
 
     val targets: List<String> get() = when (this) {
-        OPENAI -> listOf("zh", "en", "ja", "ko", "ru", "es", "fr", "pt", "de", "it", "vi", "id", "hi")
-        GEMINI -> listOf("zh", "en", "ja", "zh_tw", "ko", "ru", "es", "fr", "de", "it", "th", "vi", "id", "ms", "ar", "hi", "he", "ur", "bn", "pl", "nl", "tr", "km", "cs", "sv", "hu", "da", "fi", "tl", "fa")
-        else -> listOf("zh", "en", "ja")
+        DASHSCOPE -> DASHSCOPE_LIVE_LANGUAGE_CODES
+        OPENAI, AZURE -> listOf("zh", "en", "ja", "ko", "ru", "es", "fr", "pt", "de", "it", "vi", "id", "hi")
+        GEMINI -> GEMINI_TRANSLATION_LANGUAGE_CODES
+        TENCENT -> TENCENT_LANGUAGE_PAIRS.keys.toList()
+        BAIDU -> BAIDU_LANGUAGE_CODES.keys.toList()
+        XAI -> XAI_LANGUAGE_NAMES.keys.toList()
+        VOLCANO -> VOLCANO_TARGET_CODES
     }
     val hasAdvanced: Boolean get() = endpoint.isNotEmpty()
-    // Independent text translation is currently available only with DashScope ASR.
-    // Other speech providers keep their own model's translation catalog.
+
+    fun sourcesForTranslation(translation: TextTranslationProvider): List<String> {
+        if (this != DASHSCOPE || translation == TextTranslationProvider.BUILTIN) return sources
+        val recognition = listOf("auto") + DASHSCOPE_ASR_LANGUAGE_CODES
+        val translationSources = when (translation) {
+            TextTranslationProvider.DEEPL -> DEEPL_SOURCE_CODES
+            TextTranslationProvider.DEEPLX -> DEEPLX_SOURCE_CODES
+            else -> return recognition
+        }
+        return recognition.filter { it == "auto" || it in translationSources }
+    }
+
+    // Independent text routes use the ASR-only model and their own text catalogs.
     fun targetsForTranslation(translation: TextTranslationProvider): List<String> =
-        if (this == DASHSCOPE && translation.usesOpenAIProtocol) OPENAI_COMPATIBLE_TARGET_LANGUAGE_NAMES.keys.toList()
-        else targets
+        if (this != DASHSCOPE) targets else when (translation) {
+            TextTranslationProvider.CHAT_MOCK, TextTranslationProvider.OPENAI_COMPATIBLE -> OPENAI_COMPATIBLE_TARGET_LANGUAGE_NAMES.keys.toList()
+            TextTranslationProvider.DEEPL -> DEEPL_TARGET_CODES
+            TextTranslationProvider.DEEPLX -> DEEPLX_TARGET_CODES
+            else -> targets
+        }
+
+    fun supportsPair(source: String, target: String, translation: TextTranslationProvider = TextTranslationProvider.BUILTIN): Boolean {
+        if (source !in sourcesForTranslation(translation)) return false
+        if (this == DASHSCOPE && translation == TextTranslationProvider.NONE) return true
+        if (target !in targetsForTranslation(translation)) return false
+        if (this == TENCENT) return target in TENCENT_LANGUAGE_PAIRS[source].orEmpty()
+        if (this == VOLCANO) return target in VOLCANO_LANGUAGE_PAIRS[source].orEmpty()
+        return source != target || (this == DASHSCOPE && translation != TextTranslationProvider.BUILTIN)
+    }
 
     fun normalize(source: String, target: String, translation: TextTranslationProvider = TextTranslationProvider.BUILTIN): Pair<String, String> {
+        val sources = sourcesForTranslation(translation)
         val targets = targetsForTranslation(translation)
         val normalizedSource = source.takeIf { it in sources }
-            ?: sources.firstOrNull { it != target } ?: sources.first()
-        val normalizedTarget = target.takeIf { it in targets && it != normalizedSource }
-            ?: targets.first { it != normalizedSource }
+            ?: sources.firstOrNull { supportsPair(it, target, translation) } ?: sources.first()
+        val normalizedTarget = target.takeIf { supportsPair(normalizedSource, it, translation) }
+            ?: targets.first { supportsPair(normalizedSource, it, translation) }
         return normalizedSource to normalizedTarget
     }
     fun configured(values: Map<String, String>): Boolean = fields.all { !values[it.id].isNullOrBlank() }

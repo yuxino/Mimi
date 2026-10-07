@@ -98,28 +98,73 @@ impl BaiduTranslateRequestEncoder {
     }
 }
 
+// Exact realtime speech-translation catalog, not Baidu's separate text API.
+pub const LANGUAGE_CODES: &[(&str, &str)] = &[
+    ("zh", "zh"),
+    ("en", "en"),
+    ("yue", "yue"),
+    ("ja", "jp"),
+    ("ko", "kor"),
+    ("fr", "fra"),
+    ("es", "spa"),
+    ("th", "th"),
+    ("ar", "ara"),
+    ("ru", "ru"),
+    ("pt", "pt"),
+    ("de", "de"),
+    ("it", "it"),
+    ("el", "el"),
+    ("nl", "nl"),
+    ("pl", "pl"),
+    ("bg", "bul"),
+    ("da", "dan"),
+    ("fi", "fin"),
+    ("cs", "cs"),
+    ("ro", "rom"),
+    ("sv", "swe"),
+    ("hu", "hu"),
+    ("vi", "vie"),
+    ("id", "id"),
+    ("ca", "cat"),
+    ("he", "heb"),
+    ("hi", "hi"),
+    ("ms", "may"),
+    ("no", "nor"),
+    ("is", "ice"),
+    ("tl", "fil"),
+    ("km", "hkm"),
+    ("hr", "hrv"),
+    ("lv", "lav"),
+    ("bn", "ben"),
+    ("ne", "nep"),
+    ("af", "afr"),
+    ("sk", "sk"),
+    ("si", "sin"),
+    ("sr", "srp"),
+    ("sw", "swa"),
+    ("tr", "tr"),
+    ("uk", "ukr"),
+    ("hy", "arm"),
+];
+
+fn language_code(code: &str) -> Option<&'static str> {
+    LANGUAGE_CODES
+        .iter()
+        .find_map(|(app, wire)| (*app == code).then_some(*wire))
+}
+
 fn source_language_code(
     source_language: SourceLanguage,
 ) -> Result<&'static str, BaiduTranslateProtocolError> {
-    match source_language {
-        // Baidu's official 45-language table has no automatic-source code.
-        SourceLanguage::Chinese => Ok("zh"),
-        SourceLanguage::English => Ok("en"),
-        SourceLanguage::Japanese => Ok("jp"),
-        SourceLanguage::Korean => Ok("kor"),
-        _ => Err(BaiduTranslateProtocolError::InvalidSourceLanguage),
-    }
+    language_code(source_language.raw_value())
+        .ok_or(BaiduTranslateProtocolError::InvalidSourceLanguage)
 }
 
 fn target_language_code(
     target_language: TargetLanguage,
 ) -> Result<&'static str, BaiduTranslateProtocolError> {
-    match target_language {
-        TargetLanguage::SimplifiedChinese => Ok("zh"),
-        TargetLanguage::English => Ok("en"),
-        TargetLanguage::Japanese => Ok("jp"),
-        _ => Err(BaiduTranslateProtocolError::InvalidTargetLanguage),
-    }
+    language_code(target_language.raw_value())
+        .ok_or(BaiduTranslateProtocolError::InvalidTargetLanguage)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -241,37 +286,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expanded_app_sources_do_not_expand_this_wire_contract() {
-        for source in SourceLanguage::ALL.into_iter().filter(|source| {
-            !matches!(
-                source,
-                SourceLanguage::Automatic
-                    | SourceLanguage::Chinese
-                    | SourceLanguage::English
-                    | SourceLanguage::Japanese
-                    | SourceLanguage::Korean
-            )
-        }) {
+    fn shared_catalog_maps_every_supported_language_and_rejects_other_app_languages() {
+        let contract: Value = serde_json::from_str(include_str!(
+            "../../../../shared/translation-contracts.json"
+        ))
+        .unwrap();
+        let codes = contract["providerLanguageCatalogs"]["baidu"]["wireByCode"]
+            .as_object()
+            .unwrap();
+        assert_eq!(codes.len(), LANGUAGE_CODES.len());
+        for (code, wire) in codes {
+            let source: SourceLanguage = serde_json::from_value(json!(code)).unwrap();
+            let target: TargetLanguage = serde_json::from_value(json!(code)).unwrap();
             assert_eq!(
-                source_language_code(source).unwrap_err(),
-                BaiduTranslateProtocolError::InvalidSourceLanguage
+                source_language_code(source).unwrap(),
+                wire.as_str().unwrap()
+            );
+            assert_eq!(
+                target_language_code(target).unwrap(),
+                wire.as_str().unwrap()
             );
         }
-    }
-
-    #[test]
-    fn expanded_app_targets_do_not_expand_this_wire_contract() {
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            !matches!(
-                target,
-                TargetLanguage::SimplifiedChinese
-                    | TargetLanguage::English
-                    | TargetLanguage::Japanese
-            )
-        }) {
+        for source in SourceLanguage::ALL {
             assert_eq!(
-                target_language_code(target).unwrap_err(),
-                BaiduTranslateProtocolError::InvalidTargetLanguage
+                source_language_code(source).is_ok(),
+                codes.contains_key(source.raw_value())
+            );
+        }
+        for target in TargetLanguage::ALL {
+            assert_eq!(
+                target_language_code(target).is_ok(),
+                codes.contains_key(target.raw_value())
             );
         }
     }

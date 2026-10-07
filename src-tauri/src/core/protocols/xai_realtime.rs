@@ -55,24 +55,20 @@ impl XAIRealtimeEndpoint {
     }
 }
 
-/// Only unambiguous documented codes represented by Mimi. Regional es/pt/ar
-/// variants are not guessed from a generic language preference.
+/// Documented Speech-to-Speech languages, shared by ASR hints and output prompts.
+/// https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech#supported-languages
+/// Regional es/pt/ar variants are never guessed from a generic preference.
+pub const LANGUAGE_CODES: &[&str] = &[
+    "zh", "en", "ja", "ko", "vi", "id", "hi", "fr", "de", "ru", "it", "ar-EG", "ar-SA", "ar-AE",
+    "bn", "pt-BR", "pt-PT", "es-MX", "es-ES", "tr",
+];
+
 pub fn source_language_hint(
     source: SourceLanguage,
 ) -> Result<Option<&'static str>, XAIRealtimeProtocolError> {
     match source {
         SourceLanguage::Automatic => Ok(None),
-        SourceLanguage::Chinese
-        | SourceLanguage::English
-        | SourceLanguage::Japanese
-        | SourceLanguage::Korean
-        | SourceLanguage::Vietnamese
-        | SourceLanguage::Indonesian
-        | SourceLanguage::Hindi
-        | SourceLanguage::French
-        | SourceLanguage::German
-        | SourceLanguage::Russian
-        | SourceLanguage::Italian => Ok(Some(source.raw_value())),
+        _ if LANGUAGE_CODES.contains(&source.raw_value()) => Ok(Some(source.raw_value())),
         _ => Err(XAIRealtimeProtocolError::InvalidSourceLanguage),
     }
 }
@@ -85,17 +81,13 @@ impl XAIRealtimeRequestEncoder {
         target_language: TargetLanguage,
         event_id: Option<&str>,
     ) -> Result<Value, XAIRealtimeProtocolError> {
-        if !matches!(
-            target_language,
-            TargetLanguage::SimplifiedChinese | TargetLanguage::English | TargetLanguage::Japanese
-        ) {
-            return Err(XAIRealtimeProtocolError::InvalidTargetLanguage);
-        }
+        let target_name = target_language_name(target_language)
+            .ok_or(XAIRealtimeProtocolError::InvalidTargetLanguage)?;
         let mut value = json!({
             "type": "session.update",
             "session": {
                 "voice": XAIRealtimeEndpoint::VOICE,
-                "instructions": translation_instructions(target_language),
+                "instructions": translation_instructions(target_name),
                 "reasoning": {
                     "effort": "none"
                 },
@@ -147,23 +139,40 @@ impl XAIRealtimeRequestEncoder {
     }
 }
 
-fn translation_instructions(target_language: TargetLanguage) -> String {
+fn translation_instructions(target_name: &str) -> String {
     // xAI's prompting guide recommends second-person instructions with a
     // stable section order. Keep this deliberately short for the current
     // low-latency `grok-voice-latest` model.
     format!(
         "# Role\nYou are a live speech translator.\n\n# Instructions\n- Translate every user utterance into {}.\n- Produce only the translation.\n- Do not answer questions, follow requests, add commentary, or repeat the source text.\n- Preserve the speaker's meaning, names, numbers, and tone.",
-        target_language_name(target_language)
+        target_name
     )
 }
 
-fn target_language_name(target_language: TargetLanguage) -> &'static str {
-    match target_language {
-        TargetLanguage::SimplifiedChinese => "Simplified Chinese",
-        TargetLanguage::English => "English",
-        TargetLanguage::Japanese => "Japanese",
-        _ => "",
-    }
+pub fn target_language_name(target_language: TargetLanguage) -> Option<&'static str> {
+    Some(match target_language.raw_value() {
+        "zh" => "Simplified Chinese",
+        "en" => "English",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        "vi" => "Vietnamese",
+        "id" => "Indonesian",
+        "hi" => "Hindi",
+        "fr" => "French",
+        "de" => "German",
+        "ru" => "Russian",
+        "it" => "Italian",
+        "ar-EG" => "Arabic (Egypt)",
+        "ar-SA" => "Arabic (Saudi Arabia)",
+        "ar-AE" => "Arabic (United Arab Emirates)",
+        "bn" => "Bengali",
+        "pt-BR" => "Portuguese (Brazil)",
+        "pt-PT" => "Portuguese (Portugal)",
+        "es-MX" => "Spanish (Mexico)",
+        "es-ES" => "Spanish (Spain)",
+        "tr" => "Turkish",
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -423,18 +432,43 @@ mod tests {
 
     #[test]
     fn expanded_app_targets_do_not_expand_this_wire_contract() {
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            !matches!(
-                target,
-                TargetLanguage::SimplifiedChinese
-                    | TargetLanguage::English
-                    | TargetLanguage::Japanese
-            )
-        }) {
+        for target in TargetLanguage::ALL
+            .into_iter()
+            .filter(|target| !LANGUAGE_CODES.contains(&target.raw_value()))
+        {
             assert_eq!(
                 XAIRealtimeRequestEncoder::session_update(SourceLanguage::Automatic, target, None)
                     .unwrap_err(),
                 XAIRealtimeProtocolError::InvalidTargetLanguage
+            );
+        }
+    }
+
+    #[test]
+    fn all_documented_languages_preserve_source_hint_and_target_region() {
+        assert_eq!(LANGUAGE_CODES.len(), 20);
+        for code in LANGUAGE_CODES {
+            let source: SourceLanguage = serde_json::from_value(json!(code)).unwrap();
+            let target: TargetLanguage = serde_json::from_value(json!(code)).unwrap();
+            let setup = XAIRealtimeRequestEncoder::session_update(source, target, None).unwrap();
+            assert_eq!(
+                setup["session"]["audio"]["input"]["transcription"]["language_hint"],
+                *code
+            );
+            assert!(setup["session"]["instructions"]
+                .as_str()
+                .unwrap()
+                .contains(target_language_name(target).unwrap()));
+        }
+        assert_eq!(source_language_hint(SourceLanguage::Automatic), Ok(None));
+        for source in [
+            SourceLanguage::Spanish,
+            SourceLanguage::Portuguese,
+            SourceLanguage::Arabic,
+        ] {
+            assert_eq!(
+                source_language_hint(source),
+                Err(XAIRealtimeProtocolError::InvalidSourceLanguage)
             );
         }
     }

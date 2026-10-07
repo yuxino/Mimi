@@ -18,11 +18,11 @@ Last checked: **2026-10-06**. The instructions primarily cover the current deskt
 | [OpenAI Realtime](#openai-realtime) | [OpenAI API Keys](https://platform.openai.com/api-keys) | An API key for your OpenAI project |
 | [Azure OpenAI](#azure-openai) | [Azure Portal](https://portal.azure.com/) / [Microsoft Foundry](https://ai.azure.com/) | Resource endpoint, translation deployment name, transcription deployment name, and API key |
 | [xAI Grok](#xai-grok) | [xAI Console](https://console.x.ai/) | An xAI API key for the selected team |
-| [Apple Speech](#apple-speech) | Add a language pack inside Mimi | A supported Mac; no key is needed for recognition |
+| [Apple Speech](#apple-speech) | Choose and download a language inside Mimi | A supported Mac; no key is needed for recognition |
 | [Custom Recognition (DashScope Compatible)](#custom-recognition) | Your DashScope-compatible service | Full WebSocket URL, recognition model, and API key |
 | [Custom Recognition (OpenAI Realtime Compatible)](#custom-recognition) | Your Realtime-compatible service | Full WebSocket URL, recognition model, and API key |
 
-Only setting up text translation? Go to [DeepL](#deepl), [DeepLX](#deeplx), [ChatMock](#chatmock), [OpenAI-compatible API / Index-Translate](#openai-compatible), or [Original text only](#original-only). To check which models Mimi calls, see [Current models and request paths](#current-models).
+Only setting up text translation? Go to [Apple Translation](#apple-translation), [DeepL](#deepl), [DeepLX](#deeplx), [ChatMock](#chatmock), [OpenAI-compatible API / Index-Translate](#openai-compatible), or [Original text only](#original-only). To check which models Mimi calls, see [Current models and request paths](#current-models).
 
 <a id="current-models"></a>
 
@@ -43,7 +43,7 @@ This table describes the desktop app's configured requests on the main branch as
 | Apple Speech | macOS `SpeechTranscriber` with downloaded language packs; text translation is configured separately | Select a local language pack; there is no cloud model ID |
 | Custom DashScope / OpenAI Realtime recognition | Recognition uses the model ID you enter; text translation is configured separately | Enter the endpoint, model, and recognition key yourself |
 
-Alibaba Cloud on desktop currently uses `qwen-mt-lite` by default. It does not automatically switch to `qwen-mt-flash` or `qwen-mt-plus` for different recognition languages. The default recognition service receives a continuous audio stream over WebSocket, while independent text translation sends recognized text over HTTP. Changing text translation does not change the recognition model.
+Alibaba Cloud on desktop currently uses `qwen-mt-lite` by default. It does not automatically switch to `qwen-mt-flash` or `qwen-mt-plus` for different recognition languages. The default recognition service receives a continuous audio stream over WebSocket, while remote independent text translation sends recognized text over HTTP. Apple Translation runs locally. Changing text translation does not change the recognition model.
 
 Model and routing references: [Desktop service selection](../src-tauri/src/clients/translation_client.rs) · [Current translation modes](../src-tauri/src/core/configuration.rs) · [Provider protocols](../src-tauri/src/core/protocols/) · [Default Qwen-MT model](../src-tauri/src/core/protocols/qwen_mt.rs)
 
@@ -61,6 +61,7 @@ This differs from the desktop Audio 3.0 + Qwen-MT setup. Some Android services a
 | Text translation service | What Mimi selects |
 | --- | --- |
 | Alibaba Cloud (desktop default) | `qwen-mt-lite` |
+| Apple Translation | macOS Translation framework and downloaded system resources; no cloud model ID |
 | DeepL | Official text translation API; Mimi does not specify `model_type` or a model ID |
 | DeepLX | The `/translate` service at the configured address; Mimi does not select its upstream model |
 | ChatMock / OpenAI-compatible API | The model ID you enter; there is no shared built-in default model |
@@ -220,11 +221,11 @@ Mimi currently uses `grok-voice-latest` with `grok-transcribe` for original text
 Apple Speech is available only on a Mac with **Apple silicon, macOS 26 or later, and an available system recognition engine**. Recognition requires no cloud service account or API key.
 
 1. Stop subtitles and add an **Apple Speech** configuration.
-2. In Mimi, choose **Add language pack**, select the language you want to recognize, and choose **Download language pack**. Apple provides the packs, and this step may require an internet connection.
-3. After the download finishes, choose **Set recognition language**, then start subtitles. You do not need to find a language-pack setting in macOS System Settings.
-4. Enable **Skip translation** if you only need the original text. To get translated text, configure one of the text translation services below separately.
+2. Choose a language under **Recognition Language**. If it is missing, choose **Download and use** beside its status. Apple provides the packs, so this step may need an internet connection; Mimi selects the language when the download finishes.
+3. For an already downloaded language, choose **Set recognition language**, then start subtitles. You do not need to find a language-pack setting in macOS System Settings. Download or save failures keep their error and retry action beside the selected language.
+4. Select **No translation (original only)** if you only need the original text. To get translated text, configure one of the text translation services below separately.
 
-Automatic language detection is not supported. The list shows only languages that are ready on this Mac and compatible with the current translation configuration. Apple Speech does not provide text translation itself; using a remote translator still sends text to that service. See [platform parity](development/platform-parity.md) for platform requirements and [language setup](speech-language-setup.md#english) for language parameters.
+Automatic language detection is not supported. The settings list shows this Mac’s supported languages and download status; a language can be applied only when its resources are ready and the translation configuration supports it. Tray and floating controls use that saved source and offer only ready, compatible choices. Apple Speech does not provide text translation itself; it can use the separate Apple Translation service. Using a remote translator still sends text to that service. See [platform parity](development/platform-parity.md) for platform requirements and [language setup](speech-language-setup.md#english) for language parameters.
 
 <a id="custom-recognition"></a>
 
@@ -246,6 +247,18 @@ A normal webpage URL, HTTP file-transcription endpoint, or Chat Completions endp
 On desktop, **Alibaba Cloud, Apple Speech, and both custom recognition options** support independent text translation. Other built-in speech services use their own translation pipelines. Android currently offers independent text translation only within Alibaba Cloud configurations.
 
 Complete the **Speech recognition** section first, then choose a service under **Text translation**. When you select DeepL, DeepLX, ChatMock, or an OpenAI-compatible API, Mimi does not use the recognition key in place of translation credentials. Default Alibaba Cloud translation is covered in the [Alibaba Cloud section](#alibaba-cloud).
+
+<a id="apple-translation"></a>
+
+### Apple Translation
+
+No service account, API key or text proxy is needed. This service requires a supported Apple silicon Mac running macOS 26 or later; the system supplies the actual supported languages.
+
+1. Select **Apple Translation** under **Text translation** and save the configuration.
+2. Choose an explicit recognition language and translation target. If the pair is not ready, click **Download or enable languages**, confirm in Apple’s interface, and wait for completion.
+3. Once Mimi shows **Ready**, run the text translation check or start subtitles. Leaving Apple’s interface before downloading keeps the pair unready and allows retry.
+
+Translation resources are separate from Apple Speech recognition resources; existing resources are reused. Selecting the service, checking connections and starting subtitles never initiate hidden downloads. Text translation stays on the Mac; cloud recognition still sends audio to the selected recognition service. Apple Translation is not available on Android.
 
 <a id="deepl"></a>
 

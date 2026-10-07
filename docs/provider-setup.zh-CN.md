@@ -18,11 +18,11 @@
 | [OpenAI Realtime](#openai-realtime) | [OpenAI API Keys](https://platform.openai.com/api-keys) | OpenAI 项目的 API Key |
 | [Azure OpenAI](#azure-openai) | [Azure Portal](https://portal.azure.com/) / [Microsoft Foundry](https://ai.azure.com/) | 资源端点、翻译部署名、转写部署名、API Key |
 | [xAI Grok](#xai-grok) | [xAI Console](https://console.x.ai/) | 所选团队的 xAI API Key |
-| [Apple Speech](#apple-speech) | 在 Mimi 内添加语言包 | 符合条件的 Mac；识别无需 Key |
+| [Apple Speech](#apple-speech) | 在 Mimi 内选择语言并下载 | 符合条件的 Mac；识别无需 Key |
 | [自定义识别（阿里云兼容）](#custom-recognition) | 你使用的 DashScope 兼容服务 | 完整 WebSocket URL、识别模型、API Key |
 | [自定义识别（OpenAI 实时兼容）](#custom-recognition) | 你使用的 Realtime 兼容服务 | 完整 WebSocket URL、识别模型、API Key |
 
-只想配置文字翻译？跳到 [DeepL](#deepl)、[DeepLX](#deeplx)、[ChatMock](#chatmock)、[OpenAI 兼容接口 / Index-Translate](#openai-compatible)，或[仅显示原文](#original-only)。想确认具体调用哪个模型，见[当前模型与调用方式](#current-models)。
+只想配置文字翻译？跳到 [Apple 翻译](#apple-translation)、[DeepL](#deepl)、[DeepLX](#deeplx)、[ChatMock](#chatmock)、[OpenAI 兼容接口 / Index-Translate](#openai-compatible)，或[仅显示原文](#original-only)。想确认具体调用哪个模型，见[当前模型与调用方式](#current-models)。
 
 <a id="current-models"></a>
 
@@ -43,7 +43,7 @@
 | Apple Speech | macOS `SpeechTranscriber` 与已下载语言包；文字翻译单独配置 | 选择本机语言包；无云端模型 ID |
 | 自定义 DashScope / OpenAI Realtime 识别 | 识别使用用户填入的模型 ID；文字翻译单独配置 | 端点、模型与识别 Key 均由用户填写 |
 
-桌面阿里当前默认使用 `qwen-mt-lite`，不会因识别语言不同自动切换到 `qwen-mt-flash` 或 `qwen-mt-plus`。默认识别经 WebSocket 持续送入音频，独立文字翻译通过 HTTP 发送识别文字；更换文字翻译不会更换识别模型。
+桌面阿里当前默认使用 `qwen-mt-lite`，不会因识别语言不同自动切换到 `qwen-mt-flash` 或 `qwen-mt-plus`。默认识别经 WebSocket 持续送入音频，远程独立文字翻译通过 HTTP 发送识别文字，Apple 翻译则在本地执行；更换文字翻译不会更换识别模型。
 
 模型与路由依据：[桌面服务选择](../src-tauri/src/clients/translation_client.rs) · [当前翻译模式](../src-tauri/src/core/configuration.rs) · [各家协议实现](../src-tauri/src/core/protocols/) · [Qwen-MT 默认模型](../src-tauri/src/core/protocols/qwen_mt.rs)
 
@@ -61,6 +61,7 @@
 | 文字翻译服务 | Mimi 实际选择 |
 | --- | --- |
 | Alibaba Cloud（桌面默认） | `qwen-mt-lite` |
+| Apple 翻译 | macOS Translation 框架与已下载的系统资源；无云端模型 ID |
 | DeepL | 官方文本翻译 API；Mimi 不指定 `model_type` 或模型 ID |
 | DeepLX | 配置地址提供的 `/translate` 服务；Mimi 不选择其上游模型 |
 | ChatMock / OpenAI 兼容接口 | 使用用户填写的模型 ID，没有统一内置默认模型 |
@@ -220,11 +221,11 @@ Mimi 当前使用 `grok-voice-latest`，配合 `grok-transcribe` 获取原文，
 Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引擎可用**的 Mac 上提供，识别无需云服务账号或 API Key。
 
 1. 停止字幕，添加 **Apple Speech** 配置。
-2. 在 Mimi 中点击「**添加语言包**」，选择要识别的语言，点击「**下载语言包**」。语言包由 Apple 提供，这一步可能需要联网。
-3. 下载完成后点击「**设为识别语言**」，再开始字幕。无需到 macOS 系统设置中寻找语言包入口。
-4. 只看原文可开启「跳过翻译」；需要译文时，单独配置下方文字翻译服务。
+2. 在「**识别语言**」中选择要使用的语言。未下载时点击旁边的「**下载并使用**」；语言包由 Apple 提供，这一步可能需要联网，下载完成后会自动设为识别语言。
+3. 已下载的语言点击「**设为识别语言**」，再开始字幕。无需到 macOS 系统设置中寻找语言包入口；下载或保存失败时，错误与重试操作会留在当前语言旁。
+4. 只看原文可选择「不翻译（仅原文）」；需要译文时，单独配置下方文字翻译服务。
 
-不支持自动识别语言，列表只显示本机已准备好且与当前翻译配置兼容的语言。Apple Speech 本身不提供文字翻译；使用远程翻译服务时，文字仍会发到该服务。平台条件见[平台差异](development/platform-parity.md)，语言参数见[语言设置](speech-language-setup.md#中文)。
+不支持自动识别语言。设置中的语言列表显示本机支持的语种及下载状态；只有资源就绪且与当前翻译配置兼容的语言才能应用。托盘和悬浮窗使用同一已保存的识别语言，只提供已就绪且兼容的选项。Apple Speech 本身不提供文字翻译，可搭配独立的 Apple 翻译；使用远程翻译服务时，文字仍会发到该服务。平台条件见[平台差异](development/platform-parity.md)，语言参数见[语言设置](speech-language-setup.md#中文)。
 
 <a id="custom-recognition"></a>
 
@@ -246,6 +247,18 @@ Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引�
 桌面端的 **Alibaba Cloud、Apple Speech、两种自定义识别**支持独立文字翻译。其他内置语音服务使用各自的翻译链路。Android 目前只在 Alibaba Cloud 配置中提供独立文字翻译。
 
 先在「语音识别」部分完成配置，再在「文字翻译」选择服务。选择 DeepL、DeepLX、ChatMock 或 OpenAI 兼容接口时，Mimi 不会拿识别 Key 代替翻译凭证。默认 Alibaba Cloud 翻译已在[阿里云章节](#alibaba-cloud)说明。
+
+<a id="apple-translation"></a>
+
+### Apple 翻译
+
+无需服务账号、API Key 或文字代理。仅支持符合条件、运行 macOS 26 或更新版本的 Apple 芯片 Mac；实际语言支持由系统返回。
+
+1. 在「文字翻译」中选择 **Apple Translation** 并保存配置。
+2. 选择明确的识别语言及翻译目标。若当前语言对未就绪，点击「**下载或启用语言包**」，在 Apple 界面中确认并等待完成。
+3. Mimi 显示「已就绪」后，运行文字翻译检查或开始字幕。下载前退出 Apple 界面会保留未就绪状态，可以重试。
+
+翻译资源与 Apple Speech 的识别资源分开；已有资源会复用。选择服务、检查连接和启动字幕都不会暗中下载。文字翻译在 Mac 本地执行；若识别选择的是云端服务，音频仍会发送给该服务。Android 不提供 Apple 翻译。
 
 <a id="deepl"></a>
 

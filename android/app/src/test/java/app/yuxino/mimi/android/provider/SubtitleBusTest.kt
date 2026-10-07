@@ -94,6 +94,15 @@ class SubtitleBusTest {
         assertNotEquals(first, second)
         assertEquals(2, SubtitleBus.historySnapshot().size)
     }
+    @Test fun mixedBilingualTranslationRetainsTranslationAcrossActualJni() {
+        SubtitleBus.setHistoryLimit(2)
+        SubtitleBus.onFinalPair("Synthetic English.", "合成中文。", "zh_en")
+        assertEquals("Synthetic English.", SubtitleBus.displaySource)
+        assertEquals("合成中文。", SubtitleBus.displayTranslation)
+        assertEquals(listOf(SubtitleBus.Pair("Synthetic English.", "合成中文。")), SubtitleBus.historySnapshot())
+        SubtitleBus.onFinalPair("合成中文。", "Synthetic English.", "zh_en")
+        assertEquals("Synthetic English.", SubtitleBus.displayTranslation)
+    }
     @Test fun originalOnlyUsesCompleteConfirmationWithoutDuplicatingItsDisplay() {
         val text = "新しい字幕。まだ続いています。"
         SubtitleBus.onOriginalSource(text, "ja")

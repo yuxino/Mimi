@@ -209,7 +209,7 @@ class TranslationPipeline(
         val started = synchronized(lock) {
             if (stopped || active !== entry || activeAttempt !== attempt) return
             if (remainingNanos(entry) <= 0) false else {
-                activeCall = client.translate(entry.text, translationSourceLanguage(sourceLanguage, entry.language), targetLanguage) { result ->
+                activeCall = client.translate(entry.text, client.resolveSourceLanguage(sourceLanguage, entry.language), targetLanguage) { result ->
                     val deferred = synchronized(lock) {
                         if (stopped || active !== entry || activeAttempt !== attempt || attempt.claimed) return@translate
                         attempt.claimed = true
@@ -360,15 +360,21 @@ private fun scheduleTranslationDeadline(delayNanos: Long, action: () -> Unit): T
 }
 
 /** Explicit user choices are authoritative; ASR aliases only refine automatic recognition. */
-internal fun translationSourceLanguage(configured: String, reported: String?): String {
+internal fun translationSourceLanguage(configured: String, reported: String?, supportedSources: Collection<String>? = null): String {
     if (configured != "auto") return configured
     val normalized = reported?.takeIf { it.length <= 64 }?.trim()?.lowercase() ?: return "auto"
     val code = when (normalized) {
-        "chinese", "mandarin" -> "zh"
+        "chinese", "mandarin", "zh-hans", "zh-cn" -> "zh"
         "english" -> "en"
         "japanese" -> "ja"
         "korean" -> "ko"
-        else -> normalized.substringBefore('-')
+        "fil", "filipino", "tagalog" -> "tl"
+        "zh-hant", "zh-tw" -> "zh_tw"
+        "nb" -> "no"
+        else -> normalized
     }
-    return code.takeIf { it in setOf("zh", "en", "ja", "ko") } ?: "auto"
+    val registry = OPENAI_COMPATIBLE_TARGET_LANGUAGE_NAMES.keys
+    val detected = registry.firstOrNull { it.equals(code, ignoreCase = true) }
+        ?: code.substringBefore('-').takeIf { it in registry } ?: return "auto"
+    return detected.takeIf { supportedSources == null || it in supportedSources } ?: "auto"
 }

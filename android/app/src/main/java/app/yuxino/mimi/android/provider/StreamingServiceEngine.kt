@@ -53,7 +53,7 @@ class StreamingServiceEngine(private val config: ServiceConfiguration, private v
             if (stopped || protocol != null) return
             try {
                 require(config.provider.configured(config.credentials))
-                require(sourceLang in config.provider.sources && targetLang in config.provider.targets && sourceLang != targetLang)
+                require(config.provider.supportsPair(sourceLang, targetLang)) { "unsupported_language" }
                 val adapter = createProtocol(config, sourceLang, targetLang)
                 protocol = adapter
                 socket = CLIENT.newWebSocket(adapter.request(), object : WebSocketListener() {

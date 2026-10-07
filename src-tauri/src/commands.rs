@@ -132,6 +132,8 @@ pub struct LanguageCapabilitiesPayload {
     pub target_languages: Vec<TargetLanguage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub apple_speech_support_revision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_speech_source_languages: Option<Option<Vec<SourceLanguage>>>,
 }
 
 impl LanguageCapabilitiesPayload {
@@ -163,6 +165,18 @@ impl LanguageCapabilitiesPayload {
                 })
             });
         }
+        if profile.text_translation() == TextTranslation::Apple {
+            let text_support = crate::apple_translation_support::cached();
+            capabilities.target_languages.retain(|target| {
+                *target == TargetLanguage::Original
+                    || text_support.target_languages.contains(target)
+            });
+            if target.translates_audio() {
+                capabilities
+                    .source_languages
+                    .retain(|source| text_support.source_languages.contains(source));
+            }
+        }
         Self {
             profile_id: profile.id.clone(),
             provider: profile.provider,
@@ -172,6 +186,10 @@ impl LanguageCapabilitiesPayload {
             target_languages: capabilities.target_languages,
             apple_speech_support_revision: (profile.provider == ProviderKind::AppleSpeech)
                 .then(|| support.map_or(0, |(_, revision)| revision)),
+            custom_speech_source_languages: profile
+                .provider
+                .is_custom_speech()
+                .then(|| profile.custom_speech_source_languages.clone()),
         }
     }
 }
@@ -312,16 +330,19 @@ mod tests {
                     source_language: SourceLanguage::English,
                     locale: "en-US".into(),
                     installed: true,
+                    downloading: false,
                 },
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::Japanese,
                     locale: "ja-JP".into(),
                     installed: false,
+                    downloading: false,
                 },
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::French,
                     locale: "fr-FR".into(),
                     installed: false,
+                    downloading: false,
                 },
             ],
         }
@@ -365,7 +386,14 @@ mod tests {
                 TargetLanguage::English,
                 Some((&support, 1)),
             );
-            assert_eq!(translated.source_languages, vec![SourceLanguage::English]);
+            assert_eq!(
+                translated
+                    .source_languages
+                    .iter()
+                    .map(|source| source.raw_value())
+                    .collect::<std::collections::BTreeSet<_>>(),
+                ["en", "fr"].into_iter().collect()
+            );
             let original = LanguageCapabilitiesPayload::from_profile_with_apple_support(
                 &profile,
                 TargetLanguage::Original,
@@ -463,11 +491,27 @@ mod tests {
         profile.text_translation = Some(TextTranslation::DeepL);
         let deep_l = LanguageCapabilitiesPayload::from_profile(&profile, TargetLanguage::Original);
         assert_eq!(deep_l.text_translation, TextTranslation::DeepL);
-        assert_eq!(deep_l.source_languages.len(), 5);
-        assert_eq!(deep_l.target_languages.len(), 4);
+        assert_eq!(deep_l.source_languages.len(), 31);
+        assert_eq!(
+            deep_l.target_languages.len(),
+            crate::core::protocols::deepl_languages::DEEPL_TARGET_CODES.len() + 1
+        );
         profile.text_translation = Some(TextTranslation::OpenAICompatible);
         let custom = LanguageCapabilitiesPayload::from_profile(&profile, TargetLanguage::Original);
-        assert_eq!(custom.source_languages, SourceLanguage::ALL);
+        assert_eq!(
+            custom
+                .source_languages
+                .iter()
+                .map(|source| source.raw_value())
+                .collect::<Vec<_>>(),
+            std::iter::once("auto")
+                .chain(
+                    crate::core::protocols::audio3::LANGUAGE_CODES
+                        .iter()
+                        .copied()
+                )
+                .collect::<Vec<_>>()
+        );
         assert_eq!(custom.target_languages, TargetLanguage::ALL);
         let custom = serde_json::to_value(custom).unwrap();
         assert_eq!(custom["provider"], "alibabaCloud");
@@ -742,14 +786,18 @@ mod tests {
     }
 
     #[test]
-    fn target_switch_is_scoped_to_the_control_window() {
+    fn target_switch_is_scoped_to_control_and_tray_windows() {
         let permissions = include_str!("../permissions/app.toml");
         let permitted: Vec<_> = permissions
             .split("[[permission]]")
             .filter(|entry| entry.contains("\"session_switch_target_language\""))
             .collect();
-        assert_eq!(permitted.len(), 1);
-        assert!(permitted[0].contains("identifier = \"app-overlay-control\""));
+        assert_eq!(permitted.len(), 2);
+        for identifier in ["app-overlay-control", "app-tray-panel"] {
+            assert!(permitted
+                .iter()
+                .any(|entry| entry.contains(&format!("identifier = \"{identifier}\""))));
+        }
         assert!(include_str!("lib.rs").contains("commands::session_switch_target_language,"));
     }
 
@@ -1340,6 +1388,15 @@ pub async fn settings_get(state: State<'_, AppState>) -> Result<SettingsSnapshot
         // Failure leaves an empty language list and is surfaced by its editor.
         let _ = crate::apple_speech_support::refresh().await;
     }
+    if !app_is_ui_test()
+        && !crate::apple_translation_support::is_loaded()
+        && state
+            .settings
+            .active_profile()
+            .is_ok_and(|profile| profile.text_translation() == TextTranslation::Apple)
+    {
+        let _ = crate::apple_translation_support::refresh().await;
+    }
     Ok(SettingsSnapshotPayload::from_store(&state.settings))
 }
 
@@ -1373,6 +1430,66 @@ pub async fn prepare_apple_speech_language(
     let result = crate::apple_speech_support::prepare_source(source_language).await;
     emit_settings_snapshot(&app, &state.settings)?;
     result
+}
+
+#[tauri::command]
+pub async fn get_apple_translation_support(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::apple_translation_support::AppleTranslationSupport, String> {
+    if app_is_ui_test() {
+        return Ok(Default::default());
+    }
+    let result = crate::apple_translation_support::refresh().await;
+    emit_settings_snapshot(&app, &state.settings)?;
+    result
+}
+
+#[tauri::command]
+pub async fn get_apple_translation_status(
+    source_language: SourceLanguage,
+    target_language: TargetLanguage,
+) -> Result<crate::apple_translation::AppleTranslationStatus, String> {
+    if app_is_ui_test() {
+        return Ok(crate::apple_translation::AppleTranslationStatus::Unavailable);
+    }
+    crate::apple_translation_support::status(source_language, target_language).await
+}
+
+#[tauri::command]
+pub async fn prepare_apple_translation_languages(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source_language: SourceLanguage,
+    target_language: TargetLanguage,
+    ui_language: String,
+) -> Result<crate::apple_translation::AppleTranslationStatus, String> {
+    if app_is_ui_test() {
+        return Err("apple_translation_unavailable".into());
+    }
+    let _lifecycle = state.session.settings_mutation_guard(true).await?;
+    ensure_profile_mutation_allowed(state.session.has_active_session())?;
+    let prefs = state.settings.preferences();
+    let repairs_current_pair = state
+        .settings
+        .active_profile()
+        .is_ok_and(|profile| profile.text_translation() == TextTranslation::Apple)
+        && prefs.source_language == source_language
+        && prefs.target_language == target_language;
+    let configuration_failure = repairs_current_pair
+        .then(|| state.session.configuration_failure_snapshot())
+        .flatten();
+    let result =
+        crate::apple_translation_support::prepare(source_language, target_language, &ui_language)
+            .await;
+    let _ = crate::apple_translation_support::refresh().await;
+    if result.is_ok() {
+        state
+            .session
+            .configuration_saved(configuration_failure, true);
+    }
+    emit_settings_snapshot(&app, &state.settings)?;
+    result.map(|()| crate::apple_translation::AppleTranslationStatus::Installed)
 }
 
 async fn ensure_apple_provider_available(provider: ProviderKind) -> Result<(), String> {
@@ -1545,7 +1662,27 @@ async fn apply_settings_draft(
         })?;
     if draft.source_language.is_some() || draft.target_language.is_some() {
         let profile = state.settings.active_profile()?;
+        if profile.text_translation() == TextTranslation::Apple {
+            let prefs = state.settings.preferences();
+            if app_is_ui_test()
+                && draft
+                    .target_language
+                    .unwrap_or(prefs.target_language)
+                    .translates_audio()
+            {
+                return Err("apple_translation_unavailable".into());
+            }
+            crate::apple_translation_support::validate_pair(
+                draft.source_language.unwrap_or(prefs.source_language),
+                draft.target_language.unwrap_or(prefs.target_language),
+                false,
+            )
+            .await?;
+        }
         if profile.provider == ProviderKind::AppleSpeech {
+            if app_is_ui_test() {
+                return Err("apple_speech_ui_test_unavailable".into());
+            }
             let prefs = state.settings.preferences();
             crate::apple_speech_support::validate_refreshed_profile_source(
                 crate::apple_speech_support::refresh().await,
@@ -1995,6 +2132,16 @@ pub async fn profile_save_credentials(
                 return Err("apple_speech_translation_language_unsupported".into());
             }
         }
+    }
+    if matches!(
+        &credentials,
+        ProviderCredentials::AlibabaTranslation {
+            text_translation: TextTranslation::Apple,
+            ..
+        }
+    ) && (app_is_ui_test() || !crate::apple_translation_support::refresh().await?.available)
+    {
+        return Err("apple_translation_unavailable".into());
     }
     state.settings.save_credentials(&profile_id, &credentials)?;
     // An explicit successful service save is a repair action; do not read

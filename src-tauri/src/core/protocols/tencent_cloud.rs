@@ -114,6 +114,9 @@ impl TencentCloudEndpoint {
 
         let source = source_language_code(source_language)?;
         let target = target_language_code(target_language)?;
+        if !supported_target_codes(source).contains(&target) {
+            return Err(TencentCloudProtocolError::InvalidTargetLanguage);
+        }
         let parameters = canonical_parameters(
             secret_id, source, target, timestamp, expired, nonce, voice_id,
         );
@@ -190,29 +193,46 @@ fn percent_encode(value: &str) -> String {
     encoded
 }
 
+/// Exact source-dependent directions documented for hunyuan-translation-lite.
+pub fn supported_target_codes(source: &str) -> &'static [&'static str] {
+    match source {
+        "zh" => &["zh", "en", "ja", "ko", "yue", "id", "th"],
+        "en" => &["zh", "en", "ja", "ko", "yue", "id", "th"],
+        "zh_en" => &["zh_en", "zh", "en", "ja", "ko", "yue", "id", "th"],
+        "ja" => &["zh", "en", "ja", "ko", "yue"],
+        "ko" => &["zh", "en", "ja", "ko", "yue"],
+        "yue" => &["zh", "en", "ja", "ko", "yue"],
+        "id" => &["zh", "en", "id"],
+        "th" => &["zh", "en", "th"],
+        "ru" => &["zh", "en", "ru"],
+        _ => &[],
+    }
+}
+
 fn source_language_code(
     source_language: SourceLanguage,
 ) -> Result<&'static str, TencentCloudProtocolError> {
-    match source_language {
-        // Tencent documents `zh_en` as mixed Chinese/English recognition. It
-        // is the only provider-defined automatic source mode.
-        SourceLanguage::Automatic => Ok("zh_en"),
-        SourceLanguage::Chinese => Ok("zh"),
-        SourceLanguage::English => Ok("en"),
-        SourceLanguage::Japanese => Ok("ja"),
-        SourceLanguage::Korean => Ok("ko"),
-        _ => Err(TencentCloudProtocolError::InvalidSourceLanguage),
+    // Compatibility for saved configurations predating the explicit mixed-language choice.
+    let code = if source_language == SourceLanguage::Automatic {
+        "zh_en"
+    } else {
+        source_language.raw_value()
+    };
+    if supported_target_codes(code).is_empty() {
+        Err(TencentCloudProtocolError::InvalidSourceLanguage)
+    } else {
+        Ok(code)
     }
 }
 
 fn target_language_code(
     target_language: TargetLanguage,
 ) -> Result<&'static str, TencentCloudProtocolError> {
-    match target_language {
-        TargetLanguage::SimplifiedChinese => Ok("zh"),
-        TargetLanguage::English => Ok("en"),
-        TargetLanguage::Japanese => Ok("ja"),
-        _ => Err(TencentCloudProtocolError::InvalidTargetLanguage),
+    let code = target_language.raw_value();
+    if supported_target_codes(code).is_empty() {
+        Err(TencentCloudProtocolError::InvalidTargetLanguage)
+    } else {
+        Ok(code)
     }
 }
 
@@ -430,37 +450,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expanded_app_sources_do_not_expand_this_wire_contract() {
-        for source in SourceLanguage::ALL.into_iter().filter(|source| {
-            !matches!(
-                source,
-                SourceLanguage::Automatic
-                    | SourceLanguage::Chinese
-                    | SourceLanguage::English
-                    | SourceLanguage::Japanese
-                    | SourceLanguage::Korean
-            )
-        }) {
-            assert_eq!(
-                source_language_code(source).unwrap_err(),
-                TencentCloudProtocolError::InvalidSourceLanguage
-            );
+    fn shared_catalog_validates_every_pair_before_signing() {
+        let contract: Value = serde_json::from_str(include_str!(
+            "../../../../shared/translation-contracts.json"
+        ))
+        .unwrap();
+        let pairs = contract["providerLanguageCatalogs"]["tencent"]["pairs"]
+            .as_object()
+            .unwrap();
+        for (source, targets) in pairs {
+            let expected: Vec<&str> = targets
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect();
+            assert_eq!(supported_target_codes(source), expected);
+            for target in TargetLanguage::ALL {
+                let from = serde_json::from_value(json!(source)).unwrap();
+                let endpoint = TencentCloudEndpoint::new(
+                    "1250000000",
+                    "test-id",
+                    "test-key",
+                    from,
+                    target,
+                    100,
+                    3700,
+                    1,
+                    "test-voice",
+                );
+                assert_eq!(
+                    endpoint.is_ok(),
+                    expected.contains(&target.raw_value()),
+                    "{source} -> {}",
+                    target.raw_value()
+                );
+            }
         }
-    }
-
-    #[test]
-    fn expanded_app_targets_do_not_expand_this_wire_contract() {
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            !matches!(
-                target,
-                TargetLanguage::SimplifiedChinese
-                    | TargetLanguage::English
-                    | TargetLanguage::Japanese
-            )
-        }) {
+        assert_eq!(
+            source_language_code(SourceLanguage::Automatic).unwrap(),
+            "zh_en"
+        );
+        for source in SourceLanguage::ALL {
             assert_eq!(
-                target_language_code(target).unwrap_err(),
-                TencentCloudProtocolError::InvalidTargetLanguage
+                source_language_code(source).is_ok(),
+                source == SourceLanguage::Automatic || pairs.contains_key(source.raw_value())
             );
         }
     }

@@ -2,10 +2,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import type { SettingsDraft } from "../../lib/types";
-import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
+import { TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
 import { sourceLanguagesForSettings, targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import { profileCredentialEditorState, profileRevealCredential } from "../../lib/ipc";
 import { SettingsView } from "./SettingsView";
@@ -93,16 +94,19 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
   await mount(); await select("service");
   expect(host.querySelector("#translation-languages")).toBeNull();
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
-  const groups = [...host.querySelectorAll(".service-detail #translation-languages [role=group]")];
-  expect([...groups[0].querySelectorAll("button span")].map(node => node.textContent)).toEqual(
-    sourceLanguagesForSettings(settings).map(language => SOURCE_LANGUAGE_DISPLAY_NAMES[language]),
-  );
-  const targets = targetLanguagesForSettings(settings).map(language => TARGET_LANGUAGE_DISPLAY_NAMES[language]);
-  if (targets.length > 6) {
-    await act(async () => host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());
-    expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(targets);
-  } else {
-    expect([...groups[1].querySelectorAll("button span")].map(node => node.textContent)).toEqual(targets);
+  for (const [label, names] of [
+    [I18N.settings.sourceLanguage, sourceLanguagesForSettings(settings).map(speechLanguageGuidance(settings).optionLabel)],
+    [I18N.settings.translateTo, targetLanguagesForSettings(settings).map(language => targetLanguageOptionLabel(settings, language))],
+  ] as const) {
+    const picker = host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${label}"]`)!;
+    if (names.length === 1) {
+      expect(picker.textContent).toBe(names[0]);
+      expect(picker.disabled).toBe(true);
+    } else {
+      await act(async () => picker.click());
+      expect([...document.querySelectorAll('[role="option"]')].map(option => option.textContent)).toEqual(names);
+      await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    }
   }
   expect(saveSettings).not.toHaveBeenCalled();
 });

@@ -246,6 +246,7 @@ impl Inner {
 
 #[derive(Clone)]
 enum TextTranslationClient {
+    Apple(crate::clients::apple_translation_client::AppleTranslationClient),
     Disabled,
     Qwen(QwenMTClient, QwenMTModel),
     DeepLX(crate::clients::deeplx_client::DeepLXClient),
@@ -255,7 +256,7 @@ enum TextTranslationClient {
 impl TextTranslationClient {
     fn set_network(&mut self, network: ProviderNetwork) -> Result<(), ProviderNetworkError> {
         match self {
-            Self::Disabled => Ok(()),
+            Self::Disabled | Self::Apple(_) => Ok(()),
             Self::Qwen(client, _) => client.set_network(network),
             Self::DeepL(client) => client.set_network(network),
             Self::DeepLX(client) => client.set_network(network),
@@ -265,6 +266,8 @@ impl TextTranslationClient {
     fn supports_reported_source(&self, language: Option<&str>) -> bool {
         match self {
             Self::Disabled => true,
+            Self::Apple(_) => language
+                .is_none_or(|reported| SourceLanguage::from_detected(Some(reported)).is_some()),
             Self::Qwen(_, model) => model.supports_reported_source(language),
             Self::DeepLX(_) | Self::DeepL(_) | Self::OpenAICompatible(_) => true,
         }
@@ -276,6 +279,7 @@ impl TextTranslationClient {
     ) -> Result<String, QwenMTClientError> {
         match self {
             Self::Disabled => Err(QwenMTClientError::MissingTextTranslation),
+            Self::Apple(client) => client.translate(text, source).await,
             Self::Qwen(client, _) => client.translate(text, source, &[]).await,
             Self::DeepL(client) => client
                 .translate(text, source)
@@ -299,6 +303,7 @@ impl TextTranslationClient {
     ) -> Result<String, QwenMTClientError> {
         match self {
             Self::Disabled => Err(QwenMTClientError::MissingTextTranslation),
+            Self::Apple(client) => client.translate(text, source).await,
             Self::Qwen(client, _) => {
                 client
                     .translate_streaming(text, source, &[], on_partial)
@@ -544,6 +549,36 @@ impl HighQualityTranslationClient {
         ))
     }
 
+    pub fn new_apple(
+        asr_key: &str,
+        source: SourceLanguage,
+        target: TargetLanguage,
+        events: ProviderEventSender,
+    ) -> Result<Self, QwenMTClientError> {
+        let asr = RecognitionClient::alibaba(asr_key, source)
+            .map_err(|_| QwenMTClientError::MissingAPIKey)?;
+        let mt = if target.translates_audio() {
+            TextTranslationClient::Apple(
+                crate::clients::apple_translation_client::AppleTranslationClient::new(
+                    source, target,
+                )?,
+            )
+        } else {
+            TextTranslationClient::Disabled
+        };
+        Ok(Self::from_components(
+            asr,
+            mt,
+            source,
+            target,
+            Duration::from_millis(250),
+            Duration::from_millis(1_000),
+            12,
+            false,
+            events,
+        ))
+    }
+
     /// Custom recognition never supplies a key to a built-in translation service.
     pub fn new_custom(
         configuration: &LiveTranslationConfiguration,
@@ -560,6 +595,11 @@ impl HighQualityTranslationClient {
                 .as_ref()
                 .ok_or(QwenMTClientError::MissingTextTranslation)?
             {
+                TextTranslationCredentials::Apple => TextTranslationClient::Apple(
+                    crate::clients::apple_translation_client::AppleTranslationClient::new(
+                        source, target,
+                    )?,
+                ),
                 TextTranslationCredentials::DeepL { api_key } => TextTranslationClient::DeepL(
                     crate::clients::deepl_client::DeepLClient::new(api_key, source, target)
                         .map_err(QwenMTClientError::DeepL)?,
@@ -616,6 +656,10 @@ impl HighQualityTranslationClient {
         self.restore_request_budget(budget).await;
         self.disconnect_asr_bridge().await;
 
+        // Fail before opening recognition or capture. Readiness never downloads.
+        if let TextTranslationClient::Apple(client) = self.mt.as_ref() {
+            client.check_ready().await?;
+        }
         let task_id = Uuid::new_v4().simple().to_string();
         let (asr_tx, asr_rx) = provider_event_channel();
         if let Some((source, generation)) = self.events.debug_context() {
@@ -2031,7 +2075,12 @@ impl HighQualityTranslationClient {
         // prefix can bias the model toward that example's old full output.
         // The live path has no explicitly curated translation memory.
         let candidate = PreviewCandidate::new(text, language, 0);
-        let source_override = if self.source_language == SourceLanguage::Automatic {
+        // Apple also needs the recognizer's actual source for explicit routes:
+        // otherwise a configured same-language pair can bypass translation of
+        // an utterance that the recognizer reported in a different language.
+        let source_override = if self.source_language == SourceLanguage::Automatic
+            || matches!(self.mt.as_ref(), TextTranslationClient::Apple(_))
+        {
             language.and_then(|value| SourceLanguage::from_detected(Some(value)))
         } else {
             None
@@ -4776,6 +4825,176 @@ mod tests {
         assert!(client.inner.lock().await.mt_cooldown.is_none());
         client.disconnect().await;
         server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn apple_final_uses_reported_source_before_deciding_passthrough() {
+        use crate::clients::apple_translation_client::AppleTranslationClient;
+
+        for (target, reported, expected_request_source) in [
+            (
+                TargetLanguage::English,
+                Some("ja"),
+                Some(SourceLanguage::Japanese),
+            ),
+            (
+                TargetLanguage::Japanese,
+                Some("fr"),
+                Some(SourceLanguage::French),
+            ),
+            (TargetLanguage::English, Some("en"), None),
+            (TargetLanguage::English, None, None),
+        ] {
+            let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let observed = requests.clone();
+            let (sender, mut events) = provider_event_channel();
+            let mut client = HighQualityTranslationClient::new_apple(
+                "synthetic-asr",
+                SourceLanguage::English,
+                target,
+                sender,
+            )
+            .unwrap();
+            client.mt = Arc::new(TextTranslationClient::Apple(
+                AppleTranslationClient::new(SourceLanguage::English, target)
+                    .unwrap()
+                    .with_synthetic_translation(move |_, source, target| {
+                        observed.lock().unwrap().push((source, target));
+                        Ok("Synthetic translated final.".into())
+                    }),
+            ));
+            client
+                .handle_asr_event(LiveTranslateServerEvent::SourceFinal {
+                    text: "Synthetic source final.".into(),
+                    language: reported.map(str::to_owned),
+                })
+                .await;
+            let translation = tokio::time::timeout(Duration::from_secs(1), async {
+                loop {
+                    match events.recv().await.unwrap() {
+                        LiveTranslateServerEvent::SubtitleConfirmedPair { translation, .. } => {
+                            break translation;
+                        }
+                        LiveTranslateServerEvent::Error { code, .. } => panic!("{code}"),
+                        _ => {}
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                *requests.lock().unwrap(),
+                expected_request_source
+                    .map(|source| vec![(source, target)])
+                    .unwrap_or_default()
+            );
+            assert_eq!(
+                translation,
+                if expected_request_source.is_some() {
+                    "Synthetic translated final."
+                } else {
+                    "Synthetic source final."
+                }
+            );
+            client.disconnect().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn explicit_cloud_text_source_is_not_replaced_by_recognizer_report() {
+        use tokio::io::AsyncWriteExt;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_synthetic_request(&mut socket).await;
+            let body_start = request
+                .windows(4)
+                .position(|part| part == b"\r\n\r\n")
+                .unwrap()
+                + 4;
+            let body: serde_json::Value = serde_json::from_slice(&request[body_start..]).unwrap();
+            assert_eq!(body["source_lang"], "EN");
+            let response = r#"{"code":200,"data":"Synthetic translation"}"#;
+            socket
+                .write_all(
+                    format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
+                response.len()
+            )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        });
+        let (sender, mut events) = provider_event_channel();
+        let client = HighQualityTranslationClient::new_deeplx(
+            "synthetic-asr",
+            &endpoint,
+            "",
+            SourceLanguage::English,
+            TargetLanguage::Japanese,
+            sender,
+        )
+        .unwrap();
+        client
+            .handle_asr_event(LiveTranslateServerEvent::SourceFinal {
+                text: "Synthetic explicit-source final.".into(),
+                language: Some("fr".into()),
+            })
+            .await;
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match events.recv().await.unwrap() {
+                    LiveTranslateServerEvent::SubtitleConfirmedPair { translation, .. } => {
+                        assert_eq!(translation, "Synthetic translation");
+                        break;
+                    }
+                    LiveTranslateServerEvent::Error { code, .. } => panic!("{code}"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        server.await.unwrap();
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn apple_unknown_report_cannot_fall_back_to_same_language_passthrough() {
+        let (sender, mut events) = provider_event_channel();
+        let client = HighQualityTranslationClient::new_apple(
+            "synthetic-asr",
+            SourceLanguage::English,
+            TargetLanguage::English,
+            sender,
+        )
+        .unwrap();
+        client
+            .handle_asr_event(LiveTranslateServerEvent::SourceFinal {
+                text: "Synthetic unknown-language final.".into(),
+                language: Some("unknown-report".into()),
+            })
+            .await;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                match events.recv().await.unwrap() {
+                    LiveTranslateServerEvent::Error { code, .. } => {
+                        assert_eq!(code, "translation_source_unsupported");
+                        break;
+                    }
+                    LiveTranslateServerEvent::SubtitleConfirmedPair { .. } => {
+                        panic!("unknown source must not be committed as translated")
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        client.disconnect().await;
     }
 
     #[tokio::test]

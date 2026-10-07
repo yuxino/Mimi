@@ -309,6 +309,14 @@ fn safe_attempt_error(error: &QwenMTClientError) -> (&'static str, Option<u16>, 
         deepl::DeepLError, deeplx::DeepLXError, openai_compatible::OpenAICompatibleError,
     };
     match error {
+        QwenMTClientError::Apple("apple_translation_timeout") => ("request_timeout", None, true),
+        QwenMTClientError::Apple(
+            "apple_translation_assets_missing"
+            | "apple_translation_unavailable"
+            | "apple_translation_language_unsupported"
+            | "apple_translation_invalid_input",
+        ) => ("configuration_invalid", None, false),
+        QwenMTClientError::Apple(_) => ("local_translation_failed", None, false),
         QwenMTClientError::RequestTimedOut
         | QwenMTClientError::DeepL(DeepLError::Timeout)
         | QwenMTClientError::DeepLX(DeepLXError::Timeout)

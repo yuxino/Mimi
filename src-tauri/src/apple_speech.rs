@@ -17,6 +17,9 @@ pub struct AppleSpeechLocale {
     /// Ready for Mimi's actual module configuration and app identity. The OS's
     /// broader installedLocales list alone does not establish this readiness.
     pub installed: bool,
+    /// Apple may continue a failed initial download later in the background.
+    #[serde(default)]
+    pub downloading: bool,
 }
 
 #[derive(Clone)]
@@ -64,6 +67,20 @@ pub enum AppleSpeechError {
     InvalidResult,
     #[error("Apple Speech operation timed out")]
     Timeout,
+    #[error("Apple Speech language reservations are full")]
+    ReservationLimit,
+    #[error("Apple Speech system resources are unavailable")]
+    ResourcesUnavailable,
+    #[error("Apple Speech system service could not be reached")]
+    ServiceUnavailable,
+    #[error("Apple Speech language download was cancelled")]
+    DownloadCancelled,
+    #[error("Apple Speech language download could not reach the server")]
+    DownloadNetwork,
+    #[error("Apple Speech language download needs more disk space")]
+    DownloadStorage,
+    #[error("Apple Speech could not confirm the installed language state")]
+    StatusUnavailable,
     #[error("Apple Speech failed ({domain}, {code})")]
     Native { domain: String, code: i64 },
 }
@@ -74,16 +91,14 @@ pub fn preferred_locale<'a>(
     language_code: &str,
     locales: &'a [AppleSpeechLocale],
 ) -> Option<&'a str> {
-    let requested = language_code.replace('_', "-").to_ascii_lowercase();
+    let requested = canonical_speech_locale(language_code);
     if requested.is_empty() || requested == "auto" {
         return None;
     }
-    if let Some(exact) = locales.iter().find(|locale| {
-        locale
-            .identifier
-            .replace('_', "-")
-            .eq_ignore_ascii_case(&requested)
-    }) {
+    if let Some(exact) = locales
+        .iter()
+        .find(|locale| canonical_speech_locale(&locale.identifier) == requested)
+    {
         return Some(&exact.identifier);
     }
     let preferred = match requested.as_str() {
@@ -114,14 +129,40 @@ pub fn preferred_locale<'a>(
     locales
         .iter()
         .filter(|locale| {
-            locale
-                .identifier
-                .split(['-', '_'])
+            let normalized = canonical_speech_locale(&locale.identifier);
+            // The selected `zh` code is emitted to the translation pipeline as
+            // Simplified Chinese. A Hant locale would make its text skip needed
+            // script conversion through the same-language passthrough path.
+            if requested == "zh"
+                && (normalized.split('-').any(|part| part == "hant")
+                    || ["-tw", "-hk", "-mo"]
+                        .iter()
+                        .any(|suffix| normalized.ends_with(suffix)))
+            {
+                return false;
+            }
+            normalized
+                .split('-')
                 .next()
                 .is_some_and(|language| language.eq_ignore_ascii_case(&requested))
         })
         .min_by(|a, b| a.identifier.cmp(&b.identifier))
         .map(|locale| locale.identifier.as_str())
+}
+
+fn canonical_speech_locale(code: &str) -> String {
+    let normalized = code.replace('_', "-").to_ascii_lowercase();
+    let (base, region) = normalized.split_once('-').unwrap_or((&normalized, ""));
+    let base = match base {
+        "nb" => "no",
+        "fil" => "tl",
+        base => base,
+    };
+    if region.is_empty() {
+        base.into()
+    } else {
+        format!("{base}-{region}")
+    }
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -174,6 +215,7 @@ mod tests {
             .map(|name| AppleSpeechLocale {
                 identifier: (*name).to_owned(),
                 installed: false,
+                downloading: false,
             })
             .collect()
     }
@@ -183,7 +225,7 @@ mod tests {
         let available = locales(&["en-GB", "en-US", "zh-TW", "ja-JP"]);
         assert_eq!(preferred_locale("en", &available), Some("en-US"));
         assert_eq!(preferred_locale("EN_gb", &available), Some("en-GB"));
-        assert_eq!(preferred_locale("zh", &available), Some("zh-TW"));
+        assert_eq!(preferred_locale("zh", &available), None);
         assert_eq!(preferred_locale("zh-CN", &available), None);
         assert_eq!(preferred_locale("auto", &available), None);
         assert_eq!(preferred_locale("ko", &available), None);
@@ -207,5 +249,39 @@ mod tests {
         assert_eq!(preferred_locale("EN_gb", &available), Some("en_GB"));
         assert_eq!(preferred_locale("zh-CN", &available), Some("zh_CN"));
         assert_eq!(preferred_locale("en-CA", &available), None);
+    }
+
+    #[test]
+    fn language_aliases_preserve_explicit_regions_and_runtime_inventory() {
+        let available = locales(&["nb-NO", "fil_PH"]);
+        assert_eq!(preferred_locale("no", &available), Some("nb-NO"));
+        assert_eq!(preferred_locale("no-NO", &available), Some("nb-NO"));
+        assert_eq!(preferred_locale("tl", &available), Some("fil_PH"));
+        assert_eq!(preferred_locale("tl-PH", &available), Some("fil_PH"));
+        assert_eq!(preferred_locale("no-SE", &available), None);
+        assert_eq!(preferred_locale("tl-US", &available), None);
+        let aliases = locales(&["no_NO", "tl-PH"]);
+        assert_eq!(preferred_locale("nb-NO", &aliases), Some("no_NO"));
+        assert_eq!(preferred_locale("fil-PH", &aliases), Some("tl-PH"));
+        assert_eq!(preferred_locale("no", &locales(&["en-US"])), None);
+    }
+
+    #[test]
+    fn simplified_chinese_never_uses_a_traditional_recognition_locale() {
+        for name in ["zh-TW", "zh_HK", "zh-MO", "zh-Hant", "zh-Hant-CN"] {
+            assert_eq!(preferred_locale("zh", &locales(&[name])), None, "{name}");
+        }
+        assert_eq!(
+            preferred_locale("zh", &locales(&["zh-TW", "zh-SG"])),
+            Some("zh-SG")
+        );
+        assert_eq!(
+            preferred_locale("zh", &locales(&["zh-TW", "zh-CN"])),
+            Some("zh-CN")
+        );
+        assert_eq!(
+            preferred_locale("zh_tw", &locales(&["zh-TW"])),
+            Some("zh-TW")
+        );
     }
 }

@@ -125,6 +125,14 @@ fn native_error(domain: String, code: i64) -> AppleSpeechError {
             5 => AppleSpeechError::InvalidPcm,
             6 => AppleSpeechError::QueueOverflow,
             7 => AppleSpeechError::Closed,
+            10 => AppleSpeechError::ReservationLimit,
+            11 => AppleSpeechError::ResourcesUnavailable,
+            12 => AppleSpeechError::ServiceUnavailable,
+            13 => AppleSpeechError::DownloadCancelled,
+            14 => AppleSpeechError::DownloadNetwork,
+            15 => AppleSpeechError::DownloadStorage,
+            16 => AppleSpeechError::StatusUnavailable,
+            17 => AppleSpeechError::Timeout,
             _ => AppleSpeechError::InvalidResult,
         };
     }
@@ -132,7 +140,8 @@ fn native_error(domain: String, code: i64) -> AppleSpeechError {
         "SFSpeechErrorDomain"
         | "NSOSStatusErrorDomain"
         | "NSCocoaErrorDomain"
-        | "NSPOSIXErrorDomain" => domain,
+        | "NSPOSIXErrorDomain"
+        | "NSURLErrorDomain" => domain,
         _ => "SpeechFrameworkError".to_owned(),
     };
     AppleSpeechError::Native { domain, code }

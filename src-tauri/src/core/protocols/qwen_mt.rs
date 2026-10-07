@@ -91,6 +91,7 @@ pub enum QwenMTProtocolError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QwenMTClientError {
+    Apple(&'static str),
     DeepLX(super::deeplx::DeepLXError),
     DeepL(super::deepl::DeepLError),
     OpenAICompatible(super::openai_compatible::OpenAICompatibleError),
@@ -106,6 +107,7 @@ pub enum QwenMTClientError {
 impl std::fmt::Display for QwenMTClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Apple(label) => write!(f, "{label}"),
             Self::DeepLX(error) => write!(f, "{error}"),
             Self::DeepL(error) => write!(f, "{error}"),
             Self::OpenAICompatible(error) => write!(f, "{error}"),
@@ -140,6 +142,9 @@ impl QwenMTClientError {
         use mimi_core::translation_policy::{classify_http, RetryClass};
         match self {
             Self::RequestTimedOut | Self::InvalidHTTPResponse => RetryClass::Temporary,
+            Self::Apple("apple_translation_busy" | "apple_translation_timeout") => {
+                RetryClass::Temporary
+            }
             Self::RequestFailed { status_code, .. } => classify_http(*status_code),
             Self::DeepL(error) if error.retryable() => match error {
                 super::deepl::DeepLError::Rejected(code) => classify_http(*code),
@@ -176,7 +181,8 @@ impl QwenMTClientError {
             Self::OpenAICompatible(error) => error.authentication_failure(),
             Self::RequestFailed { status_code, .. } => *status_code == 401 || *status_code == 403,
             Self::MissingAPIKey => true,
-            Self::MissingTextTranslation
+            Self::Apple(_)
+            | Self::MissingTextTranslation
             | Self::UnsupportedSource
             | Self::InvalidHTTPResponse
             | Self::ResponseTooLarge
@@ -187,6 +193,7 @@ impl QwenMTClientError {
     /// Content-free diagnostic label (never includes the server message).
     pub fn diagnostic_label(&self) -> String {
         match self {
+            Self::Apple(label) => (*label).into(),
             Self::DeepLX(error) => error.diagnostic_label(),
             Self::DeepL(error) => error.diagnostic_label(),
             Self::OpenAICompatible(error) => error.diagnostic_label(),
@@ -341,6 +348,11 @@ fn source_lang_name(language: SourceLanguage) -> &'static str {
         SourceLanguage::Bulgarian => "Bulgarian",
         SourceLanguage::Croatian => "Croatian",
         SourceLanguage::Slovak => "Slovak",
+        _ => TargetLanguage::ALL
+            .into_iter()
+            .find(|target| target.raw_value() == language.raw_value())
+            .map(TargetLanguage::qwen_mt_name)
+            .unwrap_or(language.raw_value()),
     }
 }
 
@@ -383,7 +395,12 @@ impl QwenMTRequestEncoder {
             .supported_language_codes()
             .contains(&target_language.raw_value())
             || (source_language != SourceLanguage::Automatic
-                && !model.supports_reported_source(Some(source_language.raw_value())))
+                && !model
+                    .supported_language_codes()
+                    .contains(&match source_language {
+                        SourceLanguage::Norwegian => "nb",
+                        _ => source_language.raw_value(),
+                    }))
         {
             return Err(QwenMTProtocolError::UnsupportedLanguage);
         }
@@ -665,6 +682,30 @@ fn source_guidance(source: SourceLanguage, target: TargetLanguage) -> &'static s
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apple_local_failures_retry_only_transient_request_failures() {
+        use mimi_core::translation_policy::RetryClass;
+        for label in [
+            "apple_translation_assets_missing",
+            "apple_translation_language_unsupported",
+            "apple_translation_unavailable",
+            "apple_translation_cancelled",
+        ] {
+            let error = QwenMTClientError::Apple(label);
+            assert_eq!(error.retry_class(), RetryClass::Permanent);
+            assert!(!error.is_authentication_failure());
+            assert_eq!(error.diagnostic_label(), label);
+        }
+        assert_eq!(
+            QwenMTClientError::Apple("apple_translation_timeout").retry_class(),
+            RetryClass::Temporary
+        );
+        assert_eq!(
+            QwenMTClientError::Apple("apple_translation_busy").retry_class(),
+            RetryClass::Temporary
+        );
+    }
 
     #[test]
     fn all_lite_targets_and_explicit_intersection_sources_encode_without_model_or_prompt_changes() {
@@ -1028,6 +1069,39 @@ mod tests {
             ),
             Err(QwenMTProtocolError::UnsupportedLanguage)
         );
+    }
+
+    #[test]
+    fn expanded_explicit_source_registry_respects_model_languages_and_names() {
+        let bengali = serde_json::from_value(json!("bn")).unwrap();
+        let body = QwenMTRequestEncoder::request(
+            "Synthetic fixture.",
+            bengali,
+            TargetLanguage::English,
+            QwenMTModel::Lite,
+            false,
+            None,
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(body["translation_options"]["source_lang"], "Bengali");
+        for code in ["ast", "ar-EG", "pt-BR", "zh_en"] {
+            let source = serde_json::from_value(json!(code)).unwrap();
+            assert_eq!(
+                QwenMTRequestEncoder::request(
+                    "Synthetic fixture.",
+                    source,
+                    TargetLanguage::English,
+                    QwenMTModel::Lite,
+                    false,
+                    None,
+                    &[],
+                    &[],
+                ),
+                Err(QwenMTProtocolError::UnsupportedLanguage)
+            );
+        }
     }
 
     #[test]

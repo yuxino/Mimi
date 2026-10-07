@@ -65,9 +65,9 @@ internal class VolcanoProtocol(private val config: ServiceConfiguration, private
     override fun request() = Request.Builder().url("wss://openspeech.bytedance.com/api/v4/ast/v2/translate")
         .header("X-Api-Key", config.value("apiKey")).header("X-Api-Resource-Id", "volc.service_type.10053").build()
     override fun setup(): WireFrame {
-        require(source in listOf("zh", "en", "ja") && target in listOf("zh", "en", "ja"))
+        require(target in VOLCANO_LANGUAGE_PAIRS[source].orEmpty()) { "unsupported_language" }
         val audio = VolcanoWire.string(4,"wav") + VolcanoWire.string(5,"raw") + VolcanoWire.number(7,16000) + VolcanoWire.number(8,16) + VolcanoWire.number(9,1)
-        val translation = VolcanoWire.string(1,"s2t") + VolcanoWire.string(2,source) + VolcanoWire.string(3,target)
+        val translation = VolcanoWire.string(1,"s2t") + VolcanoWire.string(2,volcanoWireLanguage(source)) + VolcanoWire.string(3,volcanoWireLanguage(target))
         return WireFrame.Binary(VolcanoWire.envelope(session,100) + VolcanoWire.bytes(4,audio) + VolcanoWire.bytes(6,translation))
     }
     override fun audio(data: ByteArray): WireFrame {

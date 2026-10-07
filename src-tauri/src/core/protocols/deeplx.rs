@@ -1,4 +1,5 @@
 //! DeepLX-compatible text-only JSON API; not the official DeepL API.
+use super::deepl_languages::{wire_code, DEEPLX_SOURCE_CODES, DEEPLX_TARGET_CODES};
 use crate::core::models::{SourceLanguage, TargetLanguage};
 use serde_json::{json, Value};
 
@@ -69,15 +70,21 @@ pub fn endpoint(value: &str) -> Result<url::Url, DeepLXError> {
     Ok(url)
 }
 
-fn source_code(source: SourceLanguage) -> Result<&'static str, DeepLXError> {
-    match source {
-        SourceLanguage::Automatic => Ok("auto"),
-        SourceLanguage::Chinese => Ok("ZH"),
-        SourceLanguage::English => Ok("EN"),
-        SourceLanguage::Japanese => Ok("JA"),
-        SourceLanguage::Korean => Ok("KO"),
-        _ => Err(DeepLXError::Response),
+pub fn source_code(source: SourceLanguage) -> Result<String, DeepLXError> {
+    if source == SourceLanguage::Automatic {
+        return Ok("auto".into());
     }
+    if !DEEPLX_SOURCE_CODES.contains(&source.raw_value()) {
+        return Err(DeepLXError::Response);
+    }
+    Ok(wire_code(source.raw_value()))
+}
+
+pub fn target_code(target: TargetLanguage) -> Result<String, DeepLXError> {
+    if !DEEPLX_TARGET_CODES.contains(&target.raw_value()) {
+        return Err(DeepLXError::Response);
+    }
+    Ok(wire_code(target.raw_value()))
 }
 
 /// A detected language only refines automatic mode when this adapter can encode
@@ -104,12 +111,7 @@ pub fn request(
     target: TargetLanguage,
 ) -> Result<Value, DeepLXError> {
     let source = source_code(source)?;
-    let target = match target {
-        TargetLanguage::SimplifiedChinese => "ZH",
-        TargetLanguage::English => "EN",
-        TargetLanguage::Japanese => "JA",
-        _ => return Err(DeepLXError::Response),
-    };
+    let target = target_code(target)?;
     if text.trim().is_empty() {
         return Err(DeepLXError::Response);
     }
@@ -146,33 +148,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expanded_app_languages_do_not_expand_the_independent_text_route() {
-        for source in SourceLanguage::ALL.into_iter().filter(|source| {
-            !matches!(
-                source,
-                SourceLanguage::Automatic
-                    | SourceLanguage::Chinese
-                    | SourceLanguage::English
-                    | SourceLanguage::Japanese
-                    | SourceLanguage::Korean
-            )
-        }) {
+    fn only_documented_languages_reach_the_independent_text_route() {
+        for source in SourceLanguage::ALL {
             assert_eq!(
-                request("Synthetic.", source, TargetLanguage::English).unwrap_err(),
-                DeepLXError::Response
+                request("Synthetic.", source, TargetLanguage::English).is_ok(),
+                source == SourceLanguage::Automatic
+                    || DEEPLX_SOURCE_CODES.contains(&source.raw_value())
             );
         }
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            !matches!(
-                target,
-                TargetLanguage::SimplifiedChinese
-                    | TargetLanguage::English
-                    | TargetLanguage::Japanese
-            )
-        }) {
+        for target in TargetLanguage::ALL {
             assert_eq!(
-                request("Synthetic.", SourceLanguage::Automatic, target).unwrap_err(),
-                DeepLXError::Response
+                request("Synthetic.", SourceLanguage::Automatic, target).is_ok(),
+                DEEPLX_TARGET_CODES.contains(&target.raw_value())
             );
         }
     }

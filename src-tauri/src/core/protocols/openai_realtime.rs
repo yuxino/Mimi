@@ -28,7 +28,7 @@ pub enum OpenAIRealtimeProtocolError {
 
 /// Dedicated realtime translation outputs; do not borrow ordinary transcription languages.
 pub const TRANSLATION_LANGUAGE_CODES: &[&str] = &[
-    "en", "zh", "es", "pt", "fr", "ja", "ru", "de", "ko", "hi", "id", "vi", "it",
+    "zh", "en", "ja", "ko", "ru", "es", "fr", "pt", "de", "it", "vi", "id", "hi",
 ];
 
 pub struct OpenAIRealtimeEndpoint;
