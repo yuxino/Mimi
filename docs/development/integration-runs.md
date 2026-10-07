@@ -1387,9 +1387,9 @@
   cause of this intercepted hover.
 - Both Android variants passed 148 JVM tests each, actual JNI, lint and APK
   ABI/alignment/license checks after the wording and review-cleanup changes.
-  Canonical `scripts/check.sh` passed on `a6ae4417`: Rust 1,257 / 2 ignored,
+  Canonical `scripts/check.sh` passed again on `18a19885`, after the final
+  wording, review cleanup and current-main merge: Rust 1,257 / 2 ignored,
   shared core 81 plus JNI, frontend 2,010 across 129 files and strict checks.
-  Later changes affect Android copy, UI-only test cleanup and this ledger.
 - Comparable images and native touch recordings are attached directly to
   [PR #211](https://github.com/yuxino/Mimi/pull/211), outside the repository.
   UI-only recordings use a blank emulator and no provider/capture; the manual
