@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_description">mimi 官方角色圖標</string>
+    <string name="home_kicker">即時字幕與翻譯</string>
+    <string name="home_title">跟上每一句。</string>
+    <string name="home_description">給正在播放的影片、直播和遊戲加上字幕。</string>
+    <string name="home_source">原聲語言</string>
+    <string name="home_target">翻譯為</string>
+    <string name="home_service">翻譯服務</string>
+    <string name="home_service_unset">%1$s · 待設定</string>
+    <string name="home_service_ready">%1$s · 已設定</string>
+    <string name="home_setup_action">設定翻譯服務</string>
+    <string name="home_setup_status">首次使用</string>
+    <string name="home_setup_hint">先選擇翻譯服務，填入你自己的服務商憑證。</string>
+    <string name="home_ready_status">準備就緒</string>
+    <string name="home_ready_hint">開啟後，字幕會顯示在其他應用上方。</string>
+    <string name="home_overlay_hint">下一步將開啟懸浮窗權限。</string>
+    <string name="home_starting_status">等待授權</string>
+    <string name="home_privacy">僅捕獲系統播放聲音 · 不採集麥克風</string>
+    <string name="preview_label">字幕預覽</string>
+    <string name="preview_example">示例內容</string>
+    <string name="preview_source">A little closer to the world.</string>
+    <string name="preview_zh">離世界，再近一點。</string>
+    <string name="preview_en">A little closer to the world.</string>
+    <string name="preview_ja">世界に、もう少し近づく。</string>
+    <string name="home_edit_appearance">調整字幕外觀</string>
+    <string name="preview_edit">示例 · 調整外觀 ›</string>
+    <string name="language_source_title">原聲是什麼語言？</string>
+    <string name="language_target_title">想看哪種語言的字幕？</string>
+    <string name="language_sheet_hint">選擇後自動儲存，下次開始字幕時使用。</string>
+    <string name="language_saved">已設為 %1$s</string>
+    <string name="language_saved_next_session">下次開始字幕時將使用 %1$s</string>
+    <string name="undo">撤銷</string>
+    <string name="capture_audio_detected">已檢測到播放聲音</string>
+    <string name="capture_waiting">正在等待播放聲音</string>
+    <string name="capture_no_pcm">暫未收到音訊資料</string>
+    <string name="capture_silent">未檢測到可用聲音</string>
+    <string name="capture_no_sound_hint">未檢測到可用聲音。請確認正在播放；來源應用可能限制採音。</string>
+    <string name="capture_source_hint">來源：應用內部播放流 · 不採集麥克風。檢測到聲音不代表已辨識到語音。</string>
+    <string name="copy_capture_diagnostics">複製採音診斷</string>
+    <string name="capture_diagnostics_copied">已複製，不含音訊、字幕或憑證</string>
+    <string name="capture_diagnostics_copy_failed">無法複製診斷，請重試。</string>
+</resources>

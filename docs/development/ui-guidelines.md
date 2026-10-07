@@ -139,3 +139,14 @@ pause, expand and close buttons uncovered at the minimum width in every UI
 language. Use a short gesture hint when the expanded instructions do not fit;
 retain a complete accessible action. Verify geometry with the actual overlay
 components and confirm the affected gesture in the signed native app.
+
+For Android, appearance preferences must refresh the existing service-owned
+subtitle views. Verify actual native text size after slider input; a changed
+saved integer or preview alone does not establish a live update. Preserve
+subtitle history and the reader's position for ordinary appearance changes.
+An empty live-caption flag is insufficient to show a padded overlay: require a
+nonblank displayed caption or actionable status, while retaining expanded
+controls and the immersive exit during silence. Check all seven interface
+languages at normal and large font scales; fixed-height labels and a nominal
+two-row toolbar can still clip long translations. Language resources, picker
+and system locale configuration must match the owning desktop language catalog.

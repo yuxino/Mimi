@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">mimi</string>
+    <string name="settings_title">mimi 設定</string>
+    <string name="start_capture">開始字幕</string>
+    <string name="stop_capture">停止字幕</string>
+    <string name="open_settings">設定</string>
+    <string name="need_overlay_permission">需要懸浮窗權限，請在系統設定中允許「顯示在其他應用上層」。</string>
+    <string name="need_audio_permission">Android 需要錄音權限才能捕獲其他應用播放的聲音；mimi 不採集麥克風。</string>
+    <string name="capture_failed">字幕會話已停止，請檢查權限、服務設定或網路後重試。</string>
+    <string name="service_authentication_failed">服務認證失敗。請在設定中檢查當前服務的憑證和訪問權限，再開始字幕。</string>
+    <string name="need_api_key">請先在設定中填寫 API Key。</string>
+    <string name="notification_channel">字幕服務</string>
+    <string name="notification_title">mimi 正在捕獲系統音訊</string>
+    <string name="notification_text">即時字幕與翻譯運行中</string>
+    <string name="stop_action">停止</string>
+    <string name="overlay_collapse">收起</string>
+    <string name="overlay_collapse_description">收起字幕浮窗</string>
+    <string name="overlay_font_description">調整字幕字號</string>
+    <string name="overlay_language_description">打開語言設定</string>
+    <string name="overlay_enter_immersive">沉浸</string>
+    <string name="overlay_exit_immersive">退出沉浸</string>
+    <string name="overlay_exit_short">退出</string>
+    <string name="lang_auto">自動檢測</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ja">日本語</string>
+    <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">騰訊雲拒絕了會話設定。請檢查 AppID 和所選語言。</string>
+    <string name="tencent_service_activation_required">請在騰訊雲語音辨識控制台開通即時語音翻譯服務。</string>
+    <string name="tencent_quota_exhausted">騰訊雲額度不足或帳號欠費。請在控制台檢查資源包、餘額和計費狀態。</string>
+    <string name="tencent_capacity_exceeded">騰訊雲併發會話已達上限。請關閉其他會話後重試，或在控制台調整併發額度。</string>
+    <string name="tencent_provider_rejected">騰訊雲拒絕了會話。請在控制台檢查服務狀態後重試。</string>
+    <string name="overlay_font_size">字級 %1$d</string>
+    <string name="overlay_font_failed">無法開啟字級設定，請重試。</string>
+    <string name="lang_shanghainese">上海話</string>
+    <string name="lang_chinese_english">中文與英語（混合）</string>
+</resources>

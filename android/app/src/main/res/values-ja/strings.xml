@@ -30,4 +30,8 @@
     <string name="tencent_quota_exhausted">Tencent Cloud の利用枠不足または料金未払いです。コンソールでリソースパック、残高、課金状況を確認してください。</string>
     <string name="tencent_capacity_exceeded">Tencent Cloud の同時接続数が上限に達しました。他のセッションを終了して再試行するか、コンソールで同時接続枠を調整してください。</string>
     <string name="tencent_provider_rejected">Tencent Cloud がセッションを拒否しました。コンソールでサービスの状態を確認し、再試行してください。</string>
+    <string name="overlay_font_size">文字 %1$d</string>
+    <string name="overlay_font_failed">字幕サイズの設定を開けませんでした。もう一度お試しください。</string>
+    <string name="lang_shanghainese">上海語</string>
+    <string name="lang_chinese_english">中国語と英語（混在）</string>
 </resources>

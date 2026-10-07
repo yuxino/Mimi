@@ -52,6 +52,18 @@ object SettingsStore {
     /** Instrumentation terminates the process immediately; wait for its restore writes first. */
     internal fun flushPendingWritesForTests(context: Context): Boolean = get(context).edit().commit()
 
+    /** Observe only appearance; never read credential values in UI refresh callbacks. */
+    internal fun observeAppearance(context: Context, onChange: () -> Unit): () -> Unit {
+        val preferences = get(context)
+        val keys = setOf(KEY_FONT_SIZE, KEY_OVERLAY_OPACITY, KEY_OVERLAY_BG_ALPHA,
+            KEY_IMMERSIVE_SUBTITLES, KEY_HISTORY_LINES, KEY_TRANSLATION_COLOR, KEY_OVERLAY_Y)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key in keys) onChange()
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        return { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     fun provider(context: Context): String =
         get(context).getString(KEY_PROVIDER, PROVIDER_DASHSCOPE) ?: PROVIDER_DASHSCOPE
 
@@ -282,8 +294,8 @@ object SettingsStore {
         get(context).edit().putString(KEY_TARGET_LANG, value).apply()
 
     fun fontSize(context: Context): Int =
-        get(context).getInt(KEY_FONT_SIZE, 16)
+        get(context).getInt(KEY_FONT_SIZE, 16).coerceIn(12, 24)
 
     fun setFontSize(context: Context, value: Int) =
-        get(context).edit().putInt(KEY_FONT_SIZE, value).apply()
+        get(context).edit().putInt(KEY_FONT_SIZE, value.coerceIn(12, 24)).apply()
 }

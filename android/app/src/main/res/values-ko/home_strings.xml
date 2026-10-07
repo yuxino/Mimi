@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="brand_description">mimi 캐릭터 아이콘</string>
+    <string name="home_kicker">실시간 자막 및 번역</string>
+    <string name="home_title">한 마디도 놓치지 마세요.</string>
+    <string name="home_description">재생 중인 영상, 방송, 게임에 자막을 더하세요.</string>
+    <string name="home_source">음성 언어</string>
+    <string name="home_target">번역 언어</string>
+    <string name="home_service">번역 서비스</string>
+    <string name="home_service_unset">%1$s · 설정 필요</string>
+    <string name="home_service_ready">%1$s · 설정됨</string>
+    <string name="home_setup_action">번역 서비스 설정</string>
+    <string name="home_setup_status">처음 사용하시나요?</string>
+    <string name="home_setup_hint">서비스를 선택하고 본인의 인증 정보를 추가하세요.</string>
+    <string name="home_ready_status">시작 준비 완료</string>
+    <string name="home_ready_hint">시작하면 다른 앱 위에 자막이 표시됩니다.</string>
+    <string name="home_overlay_hint">다음으로 시스템 설정에서 다른 앱 위에 표시를 허용하세요.</string>
+    <string name="home_starting_status">권한 승인 대기 중</string>
+    <string name="home_privacy">재생 소리만 캡처 · 마이크 사용 안 함</string>
+    <string name="preview_label">자막 미리보기</string>
+    <string name="preview_example">예시 내용</string>
+    <string name="preview_source">A little closer to the world.</string>
+    <string name="preview_zh">离世界，再近一点。</string>
+    <string name="preview_en">A little closer to the world.</string>
+    <string name="preview_ja">世界に、もう少し近づく。</string>
+    <string name="home_edit_appearance">자막 모양 조정</string>
+    <string name="preview_edit">예시 · 모양 조정 ›</string>
+    <string name="language_source_title">어떤 언어로 말하고 있나요?</string>
+    <string name="language_target_title">어떤 언어로 자막을 볼까요?</string>
+    <string name="language_sheet_hint">자동으로 저장되며 다음 자막 시작 시 적용됩니다.</string>
+    <string name="language_saved">%1$s(으)로 설정됨</string>
+    <string name="language_saved_next_session">다음 세션부터 %1$s 사용</string>
+    <string name="undo">실행 취소</string>
+    <string name="capture_audio_detected">재생 소리 감지됨</string>
+    <string name="capture_waiting">재생 소리 대기 중</string>
+    <string name="capture_no_pcm">아직 오디오 프레임을 받지 못했습니다</string>
+    <string name="capture_silent">사용 가능한 소리가 감지되지 않았습니다</string>
+    <string name="capture_no_sound_hint">사용 가능한 소리가 없습니다. 재생 상태를 확인하세요. 재생 앱에서 캡처를 제한할 수 있습니다.</string>
+    <string name="capture_source_hint">소스: 앱 재생 소리 · 마이크 미사용. 소리 감지가 음성 인식 성공을 의미하지는 않습니다.</string>
+    <string name="copy_capture_diagnostics">캡처 진단 복사</string>
+    <string name="capture_diagnostics_copied">오디오, 자막, 인증 정보 없이 복사됨</string>
+    <string name="capture_diagnostics_copy_failed">진단을 복사하지 못했습니다. 다시 시도하세요.</string>
+</resources>

@@ -31,5 +31,4 @@
     <string name="settings_advanced_collapse">詳細設定を閉じる</string>
     <string name="settings_more">その他の設定</string>
     <string name="settings_more_collapse">その他の設定を閉じる</string>
-    <string name="settings_autosave">自動保存 · 次のセッションから適用</string>
 </resources>

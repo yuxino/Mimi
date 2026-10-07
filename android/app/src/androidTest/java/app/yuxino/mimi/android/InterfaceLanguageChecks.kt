@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inspector.WindowInspector
 import android.widget.RadioGroup
+import android.widget.ListView
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
@@ -66,14 +67,19 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                 assertLanguage(expected)
                 capture("persisted-$expected-$theme")
             } else {
-                // Open the actual dropdown and verify every language can be recognized by its self-name.
+                // Check every self-name, including rows below a narrow popup's viewport.
+                val names = listOf("简体中文", "繁體中文", "English", "日本語", "Deutsch", "한국어", "Français")
+                onUi { check((1 until picker().adapter.count).map { picker().adapter.getItem(it).toString() } == names) }
                 onUi { picker().performClick() }
                 instrumentation.waitForIdleSync()
                 onUi {
-                    for (name in listOf("简体中文", "English", "日本語")) {
-                        check(WindowInspector.getGlobalWindowViews().any { containsText(it, name) })
-                    }
+                    val list = WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull(::dropdown)
+                        ?: error("Language dropdown missing")
+                    list.setSelection(list.adapter.count - 1)
                 }
+                instrumentation.waitForIdleSync()
+                onUi { check(WindowInspector.getGlobalWindowViews().any { containsText(it, "Français") }) }
+                capture("picker-$theme")
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 onUi { settings!!.findViewById<View>(R.id.tab_appearance).performClick() }
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW))
@@ -81,7 +87,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW_HISTORY))
                 await { SubtitleBus.historySnapshot().isNotEmpty() }
                 val history = SubtitleBus.historySnapshot()
-                for (tag in listOf("en", "zh-Hans", "ja", "")) {
+                for (tag in InterfaceLanguage.tags.filter { it.isNotEmpty() } + "") {
                     select(tag)
                     assertLanguage(tag)
                     onUi {
@@ -94,15 +100,9 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                     check(SubtitleBus.historySnapshot() == history) { "Language change lost subtitle history" }
                     check(SettingsStore.sourceLang(context) == source && SettingsStore.targetLang(context) == target)
                     capture("${tag.ifEmpty { "system" }}-$theme")
+                    assertControlBounds()
+                    checkServiceEditor(tag, theme)
                 }
-                onUi { settings!!.findViewById<View>(R.id.tab_service).performClick() }
-                val monitor = instrumentation.addMonitor(ServiceSettingsActivity::class.java.name, null, false)
-                onUi { settings!!.findViewById<View>(R.id.service_panel).findViewWithTag<View>("configure-azure").performClick() }
-                val editor = instrumentation.waitForMonitorWithTimeout(monitor, 5000) as? ServiceSettingsActivity
-                    ?: error("Service editor did not open")
-                instrumentation.removeMonitor(monitor)
-                onUi { check(containsText(editor.window.decorView, editor.getString(R.string.guide_field_endpoint))); editor.finish() }
-                await { settings?.hasWindowFocus() == true }
                 val leave = arguments?.getString("leave_language")
                 if (leave != null) { select(leave); assertLanguage(leave) }
             }
@@ -131,6 +131,53 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
 
     private fun picker() = checkNotNull(settings).findViewById<Spinner>(R.id.interface_language)
 
+    private fun assertControlBounds() = onUi {
+        for (id in listOf(R.id.tab_service, R.id.tab_appearance)) {
+            val tab = settings!!.findViewById<TextView>(id)
+            check(tab.layout.height <= tab.height - tab.paddingTop - tab.paddingBottom) { "Settings tab clips vertically" }
+        }
+        val panel = WindowInspector.getGlobalWindowViews().firstNotNullOf {
+            it.findViewWithTag<View>("expanded-subtitles")
+        }
+        val origin = IntArray(2)
+        panel.getLocationOnScreen(origin)
+        check(origin[0] >= 0 && origin[0] + panel.width <= settings!!.resources.displayMetrics.widthPixels)
+        for (tag in listOf("collapse-overlay", "overlay-font", "enter-immersive")) {
+            val control = panel.findViewWithTag<TextView>(tag)
+            val position = IntArray(2)
+            control.getLocationOnScreen(position)
+            check(position[0] >= origin[0] && position[0] + control.width <= origin[0] + panel.width)
+            check(control.paint.measureText(control.text.toString()) <= control.width - control.paddingLeft - control.paddingRight + 1) {
+                "Overlay action clips: $tag"
+            }
+        }
+    }
+
+    private fun checkServiceEditor(tag: String, theme: String) {
+        val overlay = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+        onUi { overlay.visibility = View.GONE }
+        capture("${tag.ifEmpty { "system" }}-settings-$theme")
+        onUi { settings!!.findViewById<View>(R.id.tab_service).performClick() }
+        val monitor = instrumentation.addMonitor(ServiceSettingsActivity::class.java.name, null, false)
+        onUi { settings!!.findViewById<View>(R.id.service_panel).findViewWithTag<View>("configure-azure").performClick() }
+        val editor = instrumentation.waitForMonitorWithTimeout(monitor, 5000) as? ServiceSettingsActivity
+            ?: error("Service editor did not open")
+        instrumentation.removeMonitor(monitor)
+        onUi { check(containsText(editor.window.decorView, editor.getString(R.string.guide_field_endpoint))) }
+        capture("${tag.ifEmpty { "system" }}-editor-$theme")
+        onUi { editor.window.decorView.findViewWithTag<View>("speech-help").performClick() }
+        instrumentation.waitForIdleSync()
+        onUi { check(WindowInspector.getGlobalWindowViews().any {
+            it.findViewById<TextView>(android.R.id.message)?.text?.contains(editor.getString(R.string.guide_help_azure)) == true
+        }) }
+        capture("${tag.ifEmpty { "system" }}-help-$theme")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        onUi { editor.finish() }
+        await { settings?.hasWindowFocus() == true }
+        onUi { settings!!.findViewById<View>(R.id.tab_appearance).performClick() }
+        onUi { overlay.visibility = View.VISIBLE }
+    }
+
     private fun select(tag: String) {
         val previous = settings
         var changed = false
@@ -146,11 +193,21 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
 
     private fun assertLanguage(tag: String) {
         onUi {
-            val language = if (tag.isEmpty()) LocaleManagerCompat.getSystemLocales(context)[0]?.language
-                else java.util.Locale.forLanguageTag(tag).language
+            val locale = if (tag.isEmpty()) LocaleManagerCompat.getSystemLocales(context)[0]
+                else java.util.Locale.forLanguageTag(tag)
+            val language = locale?.language
             check(settings!!.resources.configuration.locales[0].language == language)
-            check(picker().selectedItemPosition == when (language.takeUnless { tag.isEmpty() }) { "zh" -> 1; "en" -> 2; "ja" -> 3; else -> 0 })
-            val label = when (language) { "zh" -> "界面语言"; "ja" -> "表示言語"; else -> "Interface language" }
+            val index = if (tag.isEmpty()) 0 else InterfaceLanguage.indexOf(locale)
+            check(picker().selectedItemPosition == index)
+            val label = when (InterfaceLanguage.tags[InterfaceLanguage.indexOf(locale)]) {
+                "zh-Hans" -> "界面语言"
+                "zh-Hant" -> "介面語言"
+                "ja" -> "表示言語"
+                "de" -> "Oberflächensprache"
+                "ko" -> "화면 언어"
+                "fr" -> "Langue de l’interface"
+                else -> "Interface language"
+            }
             check(containsText(settings!!.window.decorView, label)) { "Interface copy did not follow the chosen language" }
         }
     }
@@ -159,6 +216,12 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
         (view is TextView && view.text.toString() == text) ||
             (view is TextInputLayout && view.hint?.toString() == text) ||
             (view is ViewGroup && (0 until view.childCount).any { containsText(view.getChildAt(it), text) })
+
+    private fun dropdown(view: View): ListView? = when (view) {
+        is ListView -> view
+        is ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { dropdown(view.getChildAt(it)) }
+        else -> null
+    }
 
     private fun await(predicate: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + 6000
@@ -173,6 +236,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
 
     private fun capture(name: String) {
         instrumentation.waitForIdleSync()
+        SystemClock.sleep(250)
         val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
         val dir = checkNotNull(context.getExternalFilesDir("ui-preview"))
         File(dir, "interface-language-api${Build.VERSION.SDK_INT}-$name.png").outputStream().use {

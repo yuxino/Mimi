@@ -24,6 +24,9 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var historySeek: SeekBar
     private lateinit var colorSpinner: Spinner
     private val immersiveHelp = ImmersiveModeHelp(this)
+    private var stopObservingAppearance: (() -> Unit)? = null
+    private var lastColorPosition = 0
+    private var syncImmersiveSelection: (() -> Unit)? = null
 
     // Display the neutral default first without changing persisted preset indices.
     private val colorIndices = listOf(1, 0, 2, 3, 4)
@@ -40,11 +43,18 @@ class SettingsActivity : AppCompatActivity() {
         InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
         findViewById<View>(R.id.back).setOnClickListener { finish() }
         val tabs = findViewById<RadioGroup>(R.id.settings_tabs)
+        val stackedTabs = resources.configuration.fontScale >= 1.5f
+        tabs.orientation = if (stackedTabs) RadioGroup.VERTICAL else RadioGroup.HORIZONTAL
+        for (index in 0 until tabs.childCount) {
+            tabs.getChildAt(index).layoutParams = RadioGroup.LayoutParams(
+                if (stackedTabs) -1 else 0, if (stackedTabs) -2 else -1,
+                if (stackedTabs) 0f else 1f,
+            )
+        }
         fun showTab() {
             val appearance = tabs.checkedRadioButtonId == R.id.tab_appearance
             findViewById<View>(R.id.service_panel).visibility = if (appearance) View.GONE else View.VISIBLE
             findViewById<View>(R.id.appearance_panel).visibility = if (appearance) View.VISIBLE else View.GONE
-            findViewById<View>(R.id.appearance_autosave).visibility = if (appearance) View.VISIBLE else View.GONE
             findViewById<ScrollView>(R.id.settings_scroll).scrollTo(0, 0)
         }
         tabs.setOnCheckedChangeListener { _, _ -> showTab() }
@@ -84,6 +94,7 @@ class SettingsActivity : AppCompatActivity() {
             }
             refreshPreview()
         }
+        syncImmersiveSelection = ::syncImmersiveSwitch
         immersiveSwitch.setOnCheckedChangeListener { _, enabled ->
             if (updatingImmersiveSwitch) return@setOnCheckedChangeListener
             if (enabled) {
@@ -124,7 +135,7 @@ class SettingsActivity : AppCompatActivity() {
             it.setOnSeekBarChangeListener(sliderListener)
         }
         // Spinner reports its initial selection too; only a changed user selection saves.
-        var lastColorPosition = colorIndices.indexOf(SettingsStore.translationColorIndex(this)).coerceAtLeast(0)
+        lastColorPosition = colorIndices.indexOf(SettingsStore.translationColorIndex(this)).coerceAtLeast(0)
         colorSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 refreshPreview()
@@ -135,6 +146,7 @@ class SettingsActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         refreshPreview()
+        stopObservingAppearance = SettingsStore.observeAppearance(this) { runOnUiThread { syncAppearance() } }
 
         findViewById<MaterialButton>(R.id.reset_position).setOnClickListener {
             SettingsStore.clearOverlayPosition(this)
@@ -146,11 +158,13 @@ class SettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ServiceSettingsUi.renderList(this, findViewById(R.id.service_panel))
-        refreshPreview()
+        syncAppearance()
     }
 
     override fun onDestroy() {
         immersiveHelp.dismiss()
+        stopObservingAppearance?.invoke()
+        stopObservingAppearance = null
         super.onDestroy()
     }
 
@@ -176,6 +190,17 @@ class SettingsActivity : AppCompatActivity() {
             opacitySeek.progress, bgAlphaSeek.progress,
             SettingsStore.targetLang(this), immersive, SettingsStore.originalTextOnly(this),
         )
+    }
+
+    private fun syncAppearance() {
+        syncImmersiveSelection?.invoke()
+        fontSeek.progress = SettingsStore.fontSize(this)
+        opacitySeek.progress = SettingsStore.overlayOpacity(this)
+        bgAlphaSeek.progress = SettingsStore.overlayBgAlpha(this)
+        historySeek.progress = SettingsStore.historyLines(this)
+        lastColorPosition = colorIndices.indexOf(SettingsStore.translationColorIndex(this)).coerceAtLeast(0)
+        colorSpinner.setSelection(lastColorPosition)
+        refreshPreview()
     }
 
     private fun arrayAdapter(items: List<String>): ArrayAdapter<String> {

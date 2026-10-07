@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="settings_heading">Einstellungen</string>
+    <string name="settings_interface_language">Oberflächensprache</string>
+    <string name="settings_language_system">Systemsprache</string>
+    <string name="settings_language_failed">Oberflächensprache konnte nicht geändert werden. Erneut versuchen.</string>
+    <string name="settings_back">Zurück</string>
+    <string name="settings_tab_service">Dienste</string>
+    <string name="settings_tab_appearance">Untertitel</string>
+    <string name="settings_advanced">Erweiterte Einstellungen</string>
+    <string name="settings_font">Untertitelgröße</string>
+    <string name="settings_color">Untertitelfarbe</string>
+    <string name="settings_opacity">Untertiteldeckkraft</string>
+    <string name="settings_background">Hintergrunddeckkraft</string>
+    <string name="settings_immersive">Immersive Untertitel</string>
+    <string name="settings_immersive_help">Nur Text; Videosteuerung bleibt bedienbar. Änderungen gelten sofort. Rechts geht es zurück.</string>
+    <string name="settings_history">Untertitelverlauf behalten</string>
+    <string name="settings_history_help">Standardmäßig aus. Verlauf nur für diese Sitzung; beim Abschalten oder Stoppen wird er gelöscht.</string>
+    <string name="settings_reset">Untertitelposition zurücksetzen</string>
+    <string name="settings_reset_done">Unten mittig wiederhergestellt</string>
+    <string name="settings_save">Diensteinstellungen speichern</string>
+    <string name="settings_saved">Gespeichert</string>
+    <string name="settings_font_value">%1$d sp</string>
+    <string name="settings_percent_value">%1$d%%</string>
+    <string name="settings_history_off">Aus</string>
+    <string name="settings_history_value">%1$d Zeilen</string>
+    <string name="settings_color_white">Weiß (Standard)</string>
+    <string name="settings_color_teal">Türkis</string>
+    <string name="settings_color_yellow">Gelb</string>
+    <string name="settings_color_green">Grün</string>
+    <string name="settings_color_pink">Rosa</string>
+    <string name="settings_advanced_collapse">Erweiterte Einstellungen einklappen</string>
+    <string name="settings_more">Weitere Optionen</string>
+    <string name="settings_more_collapse">Weniger Optionen</string>
+</resources>

@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="services_heading">Services de traduction</string>
+    <string name="services_hint">Touchez un service configuré pour l’utiliser.</string>
+    <string name="services_key_note">Utilisez vos propres identifiants. Le fournisseur facture l’utilisation. Les identifiants restent chiffrés sur cet appareil.</string>
+    <string name="service_active">Actif</string>
+    <string name="service_configured">Configuré · toucher pour utiliser</string>
+    <string name="service_missing">À configurer</string>
+    <string name="service_edit">Réglages</string>
+    <string name="service_configure">Configurer</string>
+    <string name="service_edit_named">Configurer %1$s</string>
+    <string name="service_stop_first">Arrêtez les sous-titres avant de changer de service ou d’identifiants.</string>
+    <string name="service_secret_saved">Enregistré · laisser vide pour conserver la valeur</string>
+    <string name="service_endpoint">Point d’accès personnalisé (facultatif)</string>
+    <string name="service_model">Modèle personnalisé (facultatif)</string>
+    <string name="service_glossary">Glossaire (facultatif)</string>
+    <string name="service_save_use">Enregistrer et sélectionner</string>
+    <string name="service_required">Obligatoire</string>
+    <string name="service_invalid">Configuration incorrecte. Vérifiez le point d’accès et les identifiants.</string>
+    <string name="service_save_failed">Impossible d’enregistrer. Réessayez.</string>
+</resources>

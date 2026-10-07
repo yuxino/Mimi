@@ -72,6 +72,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("overlay_interaction") == "true") {
+            OverlayInteractionChecks(this).run(captureArguments)
+            return
+        }
         if (interfaceLanguage) {
             InterfaceLanguageChecks(this).run(captureArguments)
             return

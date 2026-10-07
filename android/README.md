@@ -33,8 +33,10 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   (position persists). Tap it to open a translucent reading panel with the
   current source and translation; confirmed lines appear there only when
   bounded history is enabled in settings. The panel has a language shortcut,
-  font-size control, collapse action, and immersive toggle. Its compact card has adjustable background alpha
-  (0–90 %), text color presets, font size, and whole-window opacity. An optional
+  a labeled font-size slider, collapse action, and immersive toggle. Its compact card has adjustable background alpha
+  (0–90 %), text color presets, font size, and whole-window opacity.
+  Appearance changes apply immediately to an existing overlay; empty live captions
+  do not leave a background-only floating window. An optional
   immersive mode shows plain text with a contrast shadow and passes touches
   through to the app below. A small control on the right edge can be moved
   vertically and exits immersive
@@ -53,9 +55,14 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   scoped by provider.
 - **History privacy** — disabled by default; opting into history retains only a bounded
   in-memory list. Disabling it or stopping the session clears retained subtitles.
-- **Interface language** — Settings offers Follow system, 简体中文, English and 日本語.
+- **Interface language** — Settings offers Follow system and the same seven interface
+  languages as desktop: 简体中文, 繁體中文, English, 日本語, Deutsch, 한국어 and Français.
   Changes apply immediately and persist after restart, independently of subtitle
   source and target languages. Android 13+ also exposes this choice in system App languages.
+  Unsupported system languages fall back to English.
+
+See the [native Before/After comparison](../docs/qa/android-language-and-overlay.md)
+for the empty-overlay and live font-size repairs.
 
 ## Requirements
 

@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="services_heading">Übersetzungsdienste</string>
+    <string name="services_hint">Einen eingerichteten Dienst antippen, um zu wechseln.</string>
+    <string name="services_key_note">Eigene Zugangsdaten verwenden. Der Anbieter berechnet die Nutzung. Zugangsdaten bleiben verschlüsselt auf diesem Gerät.</string>
+    <string name="service_active">Aktiv</string>
+    <string name="service_configured">Eingerichtet · zum Wechseln antippen</string>
+    <string name="service_missing">Einrichtung nötig</string>
+    <string name="service_edit">Einstellungen</string>
+    <string name="service_configure">Einrichten</string>
+    <string name="service_edit_named">%1$s einrichten</string>
+    <string name="service_stop_first">Vor dem Ändern von Diensten oder Zugangsdaten die Untertitel stoppen.</string>
+    <string name="service_secret_saved">Gespeichert · leer lassen, um den Wert zu behalten</string>
+    <string name="service_endpoint">Eigener Endpunkt (optional)</string>
+    <string name="service_model">Eigenes Modell (optional)</string>
+    <string name="service_glossary">Begriffsglossar (optional)</string>
+    <string name="service_save_use">Speichern und auswählen</string>
+    <string name="service_required">Erforderlich</string>
+    <string name="service_invalid">Ungültige Konfiguration. Endpunkt und Zugangsdaten prüfen.</string>
+    <string name="service_save_failed">Speichern fehlgeschlagen. Erneut versuchen.</string>
+</resources>

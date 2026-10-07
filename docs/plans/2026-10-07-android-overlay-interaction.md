@@ -1,0 +1,30 @@
+# Android overlay interaction repair
+
+The native compact overlay currently becomes visible before any displayed line
+exists, leaving only its padded background. The font action silently cycles
+sizes, and settings sliders update preferences without refreshing the service.
+These are rendering and interaction defects; shared subtitle/provider rules stay
+in their existing owners.
+
+Hide the compact window unless a visible, nonblank caption or actionable capture
+status exists. Expanded reading controls remain available while the panel is
+open, and immersive exit remains available during silence. Do not substitute
+source text for a missing translation or discard confirmed history.
+
+Replace the ambiguous Aa action with a localized size label and current value.
+Open a native size slider with the current value and apply changes immediately.
+Observe appearance preferences while the overlay exists, refreshing font, color,
+opacity, background, history retention and position in place. Mode changes may
+rebuild native views, preserving session ownership and bounded subtitle state.
+Unregister observers and dismiss dialogs when the service ends.
+
+Settings tabs stack at large system font scales. Overlay actions reflow into a
+third row when even two translated actions exceed the available width; check
+native bounds rather than assuming two rows are sufficient.
+
+Use a blank emulator and the same synthetic captions for Before/After captures:
+empty initial state, font control, settings slider and compact/expanded captions.
+Assert actual native text size, visibility, current numeric label and history
+preservation, then exercise long captions, silence, immersive exit, narrow screens,
+large fonts and seven interface languages. These UI fixtures do not establish
+real-provider recognition or translation quality.
