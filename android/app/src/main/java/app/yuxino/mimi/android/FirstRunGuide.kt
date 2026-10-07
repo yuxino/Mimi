@@ -7,7 +7,6 @@ import android.provider.Settings
 import android.view.Gravity
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import app.yuxino.mimi.android.capture.MimiService
@@ -41,7 +40,7 @@ internal class FirstRunGuide(private val activity: AppCompatActivity, private va
                     cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
                 }
             }
-            setContentView(ScrollView(activity).apply { addView(body) })
+            setContentView(ControlScrollView(activity).apply { addView(body) })
             setOnDismissListener { if (dialog === this) dialog = null }
             show()
             behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED

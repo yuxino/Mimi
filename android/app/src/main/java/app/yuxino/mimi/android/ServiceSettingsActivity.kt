@@ -7,7 +7,6 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -68,7 +67,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         }
         header.addView(helpHeading, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(header,LinearLayout.LayoutParams(-1,-2))
-        val scroll=ScrollView(this).apply { isFillViewport=true }
+        val scroll=ControlScrollView(this).apply { isFillViewport=true }
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(24),dp(12),dp(24),dp(24)) }
         status=ServiceSettingsUi.label(this,"",16f).apply {
             visibility=View.GONE; accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE

@@ -175,3 +175,11 @@ Before/After screenshots must show stable native frames: wait for the owning
 activity to regain focus and for modal exit/entry animations before capturing.
 Inspect every saved image against its scenario; a successful file write or test
 result does not prove that a screenshot shows the intended page.
+
+Android expands the native scrollbar's mouse hit area beyond its painted track.
+At narrow widths and large fonts this can intercept hover over a visible help
+button. Use `ControlScrollView` for native product scroll containers: controls
+receive hover within their clipped visible bounds, while the scrollbar keeps
+its handling elsewhere. Account for the root window offset in dialogs. Verify
+actual system-injected mouse movement across the icon, keyboard focus, touch,
+popup dismissal and popup/anchor separation; label geometry alone misses this.

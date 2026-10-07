@@ -7,7 +7,6 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.ScrollView
 import android.graphics.drawable.GradientDrawable
 import android.text.method.LinkMovementMethod
 import com.google.android.material.textfield.TextInputLayout
@@ -67,7 +66,7 @@ internal object ServiceSettingsUi {
         val surface = GradientDrawable().apply { cornerRadius = dp(activity, 28).toFloat() }
         val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
             .setBackground(surface).setTitle(title)
-            .setView(ScrollView(activity).apply { addView(body) })
+            .setView(ControlScrollView(activity).apply { addView(body) })
             .setPositiveButton(android.R.string.ok, null).show()
         surface.setColor(ContextCompat.getColor(dialog.context, R.color.mimi_surface))
         host.setTag(R.id.active_help_dialog, dialog)
@@ -89,12 +88,15 @@ internal object ServiceSettingsUi {
         val heading = HelpUi.heading(activity, activity.getString(R.string.services_heading),
             activity.getString(R.string.services_hint) + "\n\n" + activity.getString(R.string.services_key_note), 25f, "services-help")
         container.addView(heading, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(activity,16) })
+        val stacked = activity.resources.configuration.fontScale >= 1.5f
         for(provider in ServiceProvider.entries) {
             val active = SettingsStore.provider(activity) == provider.id
             val configured = SettingsStore.isConfigured(activity,provider)
             val row = LinearLayout(activity).apply {
-                orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
+                orientation=if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                gravity=Gravity.CENTER_VERTICAL
                 minimumHeight=dp(activity,78); tag="service-${provider.id}"
+                if (stacked) setPadding(0, dp(activity, 8), 0, dp(activity, 8))
             }
             val select = LinearLayout(activity).apply {
                 orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
@@ -121,15 +123,15 @@ internal object ServiceSettingsUi {
                     else -> edit()
                 }
             }
-            row.addView(select,LinearLayout.LayoutParams(0,-2,1f))
+            row.addView(select, if (stacked) LinearLayout.LayoutParams(-1,-2) else LinearLayout.LayoutParams(0,-2,1f))
             val edit=MaterialButton(activity,null,com.google.android.material.R.attr.borderlessButtonStyle).apply {
                 text=activity.getString(if(configured) R.string.service_edit else R.string.service_configure)
-                textSize=16f; isAllCaps=false; minWidth=dp(activity,72); minimumWidth=dp(activity,72); minimumHeight=dp(activity,48); tag="configure-${provider.id}"
+                textSize=16f; isAllCaps=false; isSingleLine=false; minWidth=dp(activity,72); minimumWidth=dp(activity,72); minimumHeight=dp(activity,48); tag="configure-${provider.id}"
                 contentDescription=activity.getString(R.string.service_edit_named,providerTitle(activity, provider))
                 setTextColor(ContextCompat.getColor(activity,R.color.mimi_text))
                 setOnClickListener { if(MimiService.isRunning) Toast.makeText(activity,R.string.service_stop_first,Toast.LENGTH_SHORT).show() else edit() }
             }
-            row.addView(edit,LinearLayout.LayoutParams(-2,-2))
+            row.addView(edit,LinearLayout.LayoutParams(-2,-2).apply { if (stacked) gravity=Gravity.END })
             container.addView(row)
             container.addView(View(activity).apply { setBackgroundColor(ContextCompat.getColor(activity,R.color.mimi_border)) },LinearLayout.LayoutParams(-1,dp(activity,1)))
         }

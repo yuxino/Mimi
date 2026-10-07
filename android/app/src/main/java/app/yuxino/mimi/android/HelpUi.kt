@@ -4,10 +4,8 @@ import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.widget.PopupWindow
-import android.widget.ScrollView
 import android.view.PointerIcon
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -69,11 +67,7 @@ internal object HelpUi {
         (button.getTag(R.id.help_hover) as? HoverHelp)?.apply { dismiss(); this.message = message }
     }
     fun dismiss(activity: AppCompatActivity) {
-        fun visit(view: View) {
-            (view.getTag(R.id.help_hover) as? HoverHelp)?.dismiss()
-            if (view is ViewGroup) for (index in 0 until view.childCount) visit(view.getChildAt(index))
-        }
-        visit(activity.window.decorView)
+        (activity.window.decorView.getTag(R.id.active_help_hover) as? HoverHelp)?.dismiss()
     }
 
     /** Native tooltips truncate at three lines. This bounded scrollable popup preserves the full explanation. */
@@ -90,6 +84,8 @@ internal object HelpUi {
         fun scheduleShow() {
             button.removeCallbacks(hide)
             if (popup == null && !pending) {
+                HelpUi.dismiss(activity)
+                activity.window.decorView.setTag(R.id.active_help_hover, this)
                 pending = true; button.postDelayed(show, ViewConfiguration.getLongPressTimeout().toLong())
             }
         }
@@ -100,13 +96,14 @@ internal object HelpUi {
         fun dismiss() {
             pending = false; button.removeCallbacks(show); button.removeCallbacks(hide)
             popup?.dismiss(); popup = null
+            val host = activity.window.decorView
+            if (host.getTag(R.id.active_help_hover) === this) host.setTag(R.id.active_help_hover, null)
         }
         fun dispose() { dismiss(); button.removeOnAttachStateChangeListener(this); activity.lifecycle.removeObserver(lifecycle) }
         override fun onViewAttachedToWindow(view: View) = Unit
         override fun onViewDetachedFromWindow(view: View) = dispose()
         private fun show() {
-            if (!button.isShown || !button.isEnabled || activity.isFinishing || activity.isDestroyed) return
-            HelpUi.dismiss(activity)
+            if (!button.isShown || !button.isEnabled || activity.isFinishing || activity.isDestroyed) { dismiss(); return }
             val frame = Rect().also(button::getWindowVisibleDisplayFrame)
             val point = IntArray(2).also(button::getLocationOnScreen)
             val gap = ServiceSettingsUi.dp(activity, 8)
@@ -121,7 +118,7 @@ internal object HelpUi {
                 tag = "help-tooltip-message"
                 setPadding(inset, gap, inset, gap)
             }
-            val scroll = ScrollView(activity).apply {
+            val scroll = ControlScrollView(activity).apply {
                 addView(text)
                 setOnHoverListener { _, event ->
                     if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT) scheduleHide()

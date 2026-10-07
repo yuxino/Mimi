@@ -50,7 +50,8 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
         MimiService::class.java.getDeclaredField(name).apply { isAccessible = true; set(null, value) }
     }
     private fun help(host: Activity, tag: String, expected: String, screenshot: String, hover: Boolean = false) {
-        val button = checkNotNull(host.findViewById<View>(android.R.id.content).findViewWithTag<ImageButton>(tag))
+        val button = checkNotNull(host.findViewById<View>(android.R.id.content).findViewWithTag<ImageButton>(tag)
+            ?: windows().firstNotNullOfOrNull { it.findViewWithTag<ImageButton>(tag) })
         ui {
             button.requestRectangleOnScreen(android.graphics.Rect(0, 0, button.width, button.height), true)
             check(button.contentDescription.isNotBlank())
@@ -66,6 +67,20 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
         }
         SystemClock.sleep(300) // ScrollView must finish layout before system pointer coordinates are read.
         if (hover) {
+            test.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_TAB)
+            test.waitForIdleSync()
+            ui { check(button.requestFocus()) { "Keyboard help target cannot receive focus: $tag" } }
+            SystemClock.sleep(650)
+            ui {
+                val popup = windows().firstNotNullOf { it.findViewWithTag<TextView>("help-tooltip-message") }.rootView
+                val origin = IntArray(2).also(popup::getLocationOnScreen)
+                val anchor = IntArray(2).also(button::getLocationOnScreen)
+                val bounds = android.graphics.Rect(origin[0], origin[1], origin[0] + popup.width, origin[1] + popup.height)
+                val anchorBounds = android.graphics.Rect(anchor[0], anchor[1], anchor[0] + button.width, anchor[1] + button.height)
+                check(!android.graphics.Rect.intersects(bounds, anchorBounds)) { "Help popup covers its anchor: popup=$bounds anchor=$anchorBounds" }
+                button.clearFocus()
+            }
+            SystemClock.sleep(250)
             val point = IntArray(2)
             ui {
                 button.getLocationOnScreen(point)
@@ -83,21 +98,24 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             }
             val x = point[0] + button.width / 2f
             val y = point[1] + button.height / 2f
-            pointer(x - 8, y); pointer(x, y)
+            pointer(1f, 1f); SystemClock.sleep(250)
+            pointer(x - 8 * context.resources.displayMetrics.density, y); pointer(x, y)
+            pointer(x + 8 * context.resources.displayMetrics.density, y)
             SystemClock.sleep(900)
+            capture("$screenshot-hover")
             ui {
-                check(contains(expected)) { "Native hover explanation missing: $tag" }
+                check(contains(expected)) { "Native hover explanation missing: $tag; hovered=${button.isHovered}; anchor=${point[0]},${point[1]}; windows=${windows().size}" }
                 check(windows().flatMap(::views).count { it is TextView && it.isShown && it.text.toString() == expected } == 1) { "Duplicate hover explanations" }
                 val tooltip = windows().firstNotNullOf { it.findViewWithTag<TextView>("help-tooltip-message") }
                 check((0 until tooltip.layout.lineCount).all { tooltip.layout.getEllipsisCount(it) == 0 }) { "Hover explanation was truncated" }
             }
-            capture("$screenshot-hover")
             pointer(1f, 1f)
             SystemClock.sleep(250)
             ui { check(!contains(expected)) { "Hover tooltip did not dismiss" } }
         }
         ui { button.performClick(); button.performClick() }
         ui {
+            check(windows().none { it.findViewWithTag<View>("help-tooltip-message") != null }) { "Hover popup survived opening details: $tag" }
             val dialogs = windows().filter { it.findViewWithTag<View>("help-message") != null }
             check(dialogs.size == 1) { "Duplicate help dialogs: $tag" }
             check(dialogs.single().findViewWithTag<TextView>("help-message").text.toString() == expected)
@@ -160,16 +178,22 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             ui { currentHome.findViewById<View>(R.id.source_language_action).performClick() }
             capture("$prefix-language")
             if (!baseline) {
-                val button = windows().firstNotNullOf { it.findViewWithTag<ImageButton>("language-help") }
-                ui { check(button.tooltipText == null); button.performClick() }
-                capture("$prefix-language-detail")
-                back()
+                help(currentHome, "language-help", currentHome.getString(R.string.language_sheet_hint), "$prefix-language", hover = true)
             }
             back()
             ui { check(windows().none { it.findViewWithTag<View>("language-help") != null }) { "Language sheet still open" } }
             val currentSettings = test.startActivitySync(Intent(context, SettingsActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
             settings = currentSettings
+            if (!baseline && currentSettings.resources.configuration.fontScale >= 1.5f) ui {
+                for (provider in app.yuxino.mimi.android.provider.ServiceProvider.entries) {
+                    val row = currentSettings.findViewById<View>(R.id.service_panel).findViewWithTag<ViewGroup>("service-${provider.id}")
+                    val select = row.getChildAt(0) as ViewGroup
+                    val copy = select.getChildAt(1) as ViewGroup
+                    check(row.getChildAt(1).top >= select.bottom) { "Configure action squeezes service name: ${provider.id}" }
+                    check(copy.width >= ServiceSettingsUi.dp(currentSettings, 150)) { "Service name column too narrow: ${provider.id}" }
+                }
+            }
             capture("$prefix-services")
             if (!baseline) help(currentSettings, "services-help", currentSettings.getString(R.string.services_hint) + "\n\n" +
                 currentSettings.getString(R.string.services_key_note), "$prefix-services", hover = true)

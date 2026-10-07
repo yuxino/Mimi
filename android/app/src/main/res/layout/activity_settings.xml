@@ -69,20 +69,20 @@
             android:textSize="14sp"
             android:fontFamily="sans-serif-medium"/>
     </RadioGroup>
-    <ScrollView
+    <app.yuxino.mimi.android.ControlScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:fillViewport="true"
         android:clipToPadding="false"
-        android:paddingHorizontal="24dp"
-        android:paddingTop="20dp"
-        android:paddingBottom="20dp"
         android:id="@+id/settings_scroll">
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="20dp">
             <TextView
                 style="@style/TextAppearance.Mimi.Label"
                 android:layout_width="match_parent"
@@ -285,6 +285,6 @@
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
-    </ScrollView>
+    </app.yuxino.mimi.android.ControlScrollView>
 
 </LinearLayout>

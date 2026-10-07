@@ -1355,7 +1355,7 @@
   Rust 1,257 / 2 ignored, shared core 81 plus JNI, frontend 2,010 across 129 files,
   formatting, Clippy, typecheck, lint, production build and diff checks. Subsequent
   source changes affect Android UI and native UI checks only.
-- Comparable native [Before/After screenshots](../qa/android-language-and-overlay.md)
+- Comparable native [Before/After screenshots](https://github.com/yuxino/Mimi/pull/211)
   show the empty background, font control and live settings. API 35 screenshots
   use the same synthetic captions, locale, width and font scale. An earlier
   simulator run also hit an activity ANR; retries completed with software GPU

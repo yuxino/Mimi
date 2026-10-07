@@ -59,6 +59,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
     }
 
     fun run(arguments: Bundle?) {
+        val reviewSeconds = arguments?.getString("review_hold_seconds")?.toLongOrNull()?.takeIf { it in 1..180 }
         val baseline = arguments?.getString("baseline") == "true"
         val prefix = if (baseline) "before" else "after"
         val font = SettingsStore.fontSize(context)
@@ -92,43 +93,48 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 SubtitleBus.onTranslationDraft("再往前走一会儿吧。")
             }
             waitFor { root().isShown }
-            capture("$prefix-compact")
-            onUi { root().findViewWithTag<View>("compact-subtitle").performClick() }
-            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
-            val history = SubtitleBus.historySnapshot()
-            check(history.isNotEmpty())
-            capture("$prefix-expanded")
-            onUi { root().findViewWithTag<View>("overlay-font").performClick() }
-            if (baseline) {
-                check(SettingsStore.fontSize(context) == 18)
+            if (reviewSeconds != null) {
+                test.sendStatus(0, Bundle().apply { putString("stream", "READY_FOR_MANUAL_OVERLAY_REVIEW: synthetic subtitles; no capture, credentials or provider.\n") })
+                SystemClock.sleep(reviewSeconds * 1000)
             } else {
-                waitFor { WindowInspector.getGlobalWindowViews().any { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } }
-                capture("$prefix-font-control")
+                capture("$prefix-compact")
+                onUi { root().findViewWithTag<View>("compact-subtitle").performClick() }
+                waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+                val history = SubtitleBus.historySnapshot()
+                check(history.isNotEmpty())
+                capture("$prefix-expanded")
                 onUi { root().findViewWithTag<View>("overlay-font").performClick() }
-                check(WindowInspector.getGlobalWindowViews().count { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } == 1)
-                val slider = WindowInspector.getGlobalWindowViews().firstNotNullOf { it.findViewWithTag<SeekBar>("overlay-font-slider") }
-                drag(slider, 18)
-                waitFor { SettingsStore.fontSize(context) == 18 && abs(caption().textSize - 21 * context.resources.displayMetrics.scaledDensity) < 1 }
-                onUi { check(root().findViewWithTag<TextView>("overlay-font").text.toString().endsWith("18")) }
-                onUi { WindowInspector.getGlobalWindowViews().first { it.findViewWithTag<SeekBar>("overlay-font-slider") != null }.findViewById<View>(android.R.id.button1).performClick() }
-            }
-            settings = test.startActivitySync(Intent(context, SettingsActivity::class.java)
-                .putExtra("settings_section", "appearance").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
-            val seek = settings.findViewById<SeekBar>(R.id.font_size)
-            drag(seek, 22)
-            waitFor { SettingsStore.fontSize(context) == 22 }
-            if (!baseline) waitFor { abs(caption().textSize - 25 * context.resources.displayMetrics.scaledDensity) < 1 }
-            onUi {
-                val currentSize = caption().textSize / context.resources.displayMetrics.scaledDensity
-                check(abs(currentSize - (if (baseline) 21 else 25)) < 1) { "Unexpected native caption size" }
-                check(SubtitleBus.historySnapshot() == history)
-            }
-            capture("$prefix-settings-size")
-            onUi { settings.finish() }
-            if (!baseline) {
-                // Confirmed pairs intentionally remain readable. Test the genuinely empty state.
-                onUi { root().findViewWithTag<View>("collapse-overlay").performClick(); SubtitleBus.clear(); SubtitleBus.hideLive() }
-                waitFor { !root().isShown }
+                if (baseline) {
+                    check(SettingsStore.fontSize(context) == 18)
+                } else {
+                    waitFor { WindowInspector.getGlobalWindowViews().any { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } }
+                    capture("$prefix-font-control")
+                    onUi { root().findViewWithTag<View>("overlay-font").performClick() }
+                    check(WindowInspector.getGlobalWindowViews().count { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } == 1)
+                    val slider = WindowInspector.getGlobalWindowViews().firstNotNullOf { it.findViewWithTag<SeekBar>("overlay-font-slider") }
+                    drag(slider, 18)
+                    waitFor { SettingsStore.fontSize(context) == 18 && abs(caption().textSize - 21 * context.resources.displayMetrics.scaledDensity) < 1 }
+                    onUi { check(root().findViewWithTag<TextView>("overlay-font").text.toString().endsWith("18")) }
+                    onUi { WindowInspector.getGlobalWindowViews().first { it.findViewWithTag<SeekBar>("overlay-font-slider") != null }.findViewById<View>(android.R.id.button1).performClick() }
+                }
+                settings = test.startActivitySync(Intent(context, SettingsActivity::class.java)
+                    .putExtra("settings_section", "appearance").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
+                val seek = settings.findViewById<SeekBar>(R.id.font_size)
+                drag(seek, 22)
+                waitFor { SettingsStore.fontSize(context) == 22 }
+                if (!baseline) waitFor { abs(caption().textSize - 25 * context.resources.displayMetrics.scaledDensity) < 1 }
+                onUi {
+                    val currentSize = caption().textSize / context.resources.displayMetrics.scaledDensity
+                    check(abs(currentSize - (if (baseline) 21 else 25)) < 1) { "Unexpected native caption size" }
+                    check(SubtitleBus.historySnapshot() == history)
+                }
+                capture("$prefix-settings-size")
+                onUi { settings.finish() }
+                if (!baseline) {
+                    // Confirmed pairs intentionally remain readable. Test the genuinely empty state.
+                    onUi { root().findViewWithTag<View>("collapse-overlay").performClick(); SubtitleBus.clear(); SubtitleBus.hideLive() }
+                    waitFor { !root().isShown }
+                }
             }
             check(!MimiService.isRunning)
         } catch (error: Throwable) { failure = error }
@@ -144,7 +150,8 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             check(SettingsStore.flushPendingWritesForTests(context))
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
-            putString("stream", if (failure == null) "Overlay $prefix checks passed: empty window, font action, live settings, history and silence; synthetic captions, no capture or provider.\n"
+            putString("stream", if (failure == null && reviewSeconds != null) "Manual overlay review fixture closed; preferences restored; no capture or provider.\n"
+                else if (failure == null) "Overlay $prefix checks passed: empty window, font action, live settings, history and silence; synthetic captions, no capture or provider.\n"
                 else "Overlay $prefix failed: ${failure.javaClass.simpleName}: ${failure.message}\n")
         })
     }

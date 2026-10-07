@@ -38,7 +38,7 @@ real-provider recognition or translation quality.
 Optional explanations live beside their owning title/control in a help icon.
 Native pointer hover and long press reveal the explanation; tapping opens the
 same readable scrollable help, including for touch and accessibility users.
-Keep one help dialog per activity. Home introduction/privacy details, ordinary
+Keep one help dialog per activity. Home introduction details, ordinary
 ready/running hints, appearance hints, language-save rules and guide storage/
 capture-limit details follow this rule. Keep setup, permission, silent-capture
 and storage recovery visible at normal size, along with first-run audio-sending
@@ -51,3 +51,24 @@ space above/below its anchor. Hover can move into the popup for scrolling;
 focus, long press and tap keep help reachable without a mouse. Dismiss on
 pointer/focus exit, navigation and host destruction. Do not classify a stored
 full tooltip string as proof that the explanation is visibly complete.
+
+Use plain function and state names in all seven languages. Replace home/preview
+slogans and personified service names with “Live captions” and ordinary sample
+subtitles. Omit unsupported Android features from product copy. Explain the
+required Android audio-recording permission in terms of app playback capture.
+
+At large system font scales, service rows put the provider name/state above a
+right-aligned configure action. Do not let the action squeeze provider names
+into a column only a few letters wide. Before/After media belongs directly in
+the pull request body, outside the source repository.
+
+Native scrollbar hover interception must yield to visible interactive controls.
+Use the shared native scroll adapter rather than suppressing scrollbars or
+changing help text. Keep hit testing relative to the owning root window for
+activity, dialog and popup hosts. Large-font regression checks move a real
+mouse across the help artwork and verify complete, non-overlapping help.
+
+The blank-emulator overlay fixture accepts a bounded manual-review hold, so
+recorded touch interactions use the real floating views with ordinary synthetic
+subtitles. It restores preferences and stops its UI-only service when finished;
+it starts no capture or provider request. Keep review videos in the PR too.

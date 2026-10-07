@@ -61,7 +61,7 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   source and target languages. Android 13+ also exposes this choice in system App languages.
   Unsupported system languages fall back to English.
 
-See the [native Before/After comparison](../docs/qa/android-language-and-overlay.md)
+See the [native Before/After comparison](https://github.com/yuxino/Mimi/pull/211)
 for the empty-overlay, live font-size and help-icon repairs. Optional explanations
 appear on mouse hover/long press; tap a help icon to read scrollable details.
 Setup, permission and audio-recovery instructions remain visible.
