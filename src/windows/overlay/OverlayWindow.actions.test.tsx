@@ -94,6 +94,7 @@ it.each([
   ["saveSettings", () => I18N.overlay.enterImmersiveMode],
   ["setOverlayLocked", () => I18N.overlay.lockPosition],
   ["showSettings", () => I18N.overlay.openSettings],
+  ["stop", () => I18N.overlay.closeSubtitles],
 ] as const)("guards %s until settled, shows a safe failure and permits a manual retry", async (action, label) => {
   let reject!: (error: Error) => void;
   const operation = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; })).mockResolvedValue(undefined);
@@ -143,4 +144,38 @@ it("keeps a failed pause action visible and retryable in the collapsed surface",
   await act(async () => pause.click());
   expect(togglePaused).toHaveBeenCalledTimes(2);
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each(["listening", "paused", "connecting", "error", "collapsed"])("can close the %s surface through the existing stop action", async mode => {
+  const stop = vi.fn().mockResolvedValue(undefined);
+  useStore.setState(state => ({ stop, session: { ...state.session,
+    isPaused: mode === "paused", isOverlayCollapsed: mode === "collapsed",
+    isActive: mode !== "error",
+    status: mode === "error" ? { kind: "error", message: "unavailable" }
+      : mode === "connecting" ? { kind: "connecting" } : { kind: "listening" },
+  } }));
+  await act(async () => root.render(<OverlayWindow />));
+  await act(async () => button(I18N.overlay.closeSubtitles).click());
+  expect(stop).toHaveBeenCalledOnce();
+});
+
+it("keeps a collapsed close failure visible and disables close while stopping", async () => {
+  const stop = vi.fn().mockRejectedValueOnce(new Error("private stop failure")).mockResolvedValue(undefined);
+  useStore.setState(state => ({ stop, session: { ...state.session, isOverlayCollapsed: true } }));
+  await act(async () => root.render(<OverlayWindow />));
+  await act(async () => button(I18N.overlay.closeSubtitles).click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
+  expect(host.textContent).not.toContain("private stop failure");
+  await act(async () => button(I18N.overlay.closeSubtitles).click());
+  expect(stop).toHaveBeenCalledTimes(2);
+  await act(async () => useStore.setState(state => ({ session: { ...state.session, status: { kind: "stopping" } } })));
+  expect(button(I18N.overlay.closeSubtitles).disabled).toBe(true);
+});
+
+it("retains direct close at the minimum width without overlapping the capsule", async () => {
+  vi.stubGlobal("innerWidth", 360);
+  await act(async () => root.render(<OverlayWindow />));
+  expect(button(I18N.overlay.closeSubtitles)).not.toBeNull();
+  expect(button(I18N.overlay.pause)).toBeNull();
+  expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(1);
 });

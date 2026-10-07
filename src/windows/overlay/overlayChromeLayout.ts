@@ -12,7 +12,7 @@ const CONTROL_ISLAND_RIGHT = 18 + 280;
 const ACTION_ROW_RIGHT_MARGIN = 10;
 const ACTION_BUTTON_WIDTH = 24;
 const ACTION_BUTTON_GAP = 4;
-const MAXIMUM_ACTION_COUNT = 6;
+const MAXIMUM_ACTION_COUNT = 7;
 const CHROME_GAP = 6;
 
 /** Error states retain their native language capsule and recovery actions. */
@@ -24,9 +24,10 @@ export function overlaySessionChromeLayout(
   return {
     ...overlayTopChromeLayout(width, showControls),
     showControls,
-    // The native capsule plus one primary action fit at the native minimum
-    // width. Secondary actions remain available through the capsule panel.
+    // Prioritize close at the native minimum width; pause/retry joins it
+    // when both buttons fit beside the capsule.
     showPrimaryAction: showControls && width >= CONTROL_ISLAND_RIGHT + CHROME_GAP + ACTION_BUTTON_WIDTH + ACTION_ROW_RIGHT_MARGIN,
+    showSessionAction: showControls && width >= CONTROL_ISLAND_RIGHT + CHROME_GAP + ACTION_BUTTON_WIDTH * 2 + ACTION_BUTTON_GAP + ACTION_ROW_RIGHT_MARGIN,
     topBandHeight: showControls ? 61 : 37,
   };
 }

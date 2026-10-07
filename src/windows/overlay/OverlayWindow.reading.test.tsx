@@ -137,7 +137,7 @@ it("opens an unconfirmed long pair through pause and mode changes and returns it
 
 it.each(["zh", "en", "ja"] as const)("keeps the return action beside timings and actionable errors at 360×136 in %s", async language => {
   vi.stubGlobal("innerWidth", 360); setStoredUiLanguage(language);
-  useStore.setState({ togglePaused: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")) });
+  useStore.setState({ stop: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")) });
   await mount(); await readHistory();
   const row = host.querySelector<HTMLElement>(".overlay-status-row")!;
   expect(row.style.top).toBe("67px");
@@ -145,7 +145,7 @@ it.each(["zh", "en", "ja"] as const)("keeps the return action beside timings and
   expect(row.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
   expect(returnButton()?.closest(".overlay-status-row")).toBe(row);
   expect(timeline().contains(returnButton())).toBe(false);
-  await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)!.click());
   expect(row.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
   expect(returnButton()).not.toBeNull();
   await act(async () => returnButton()!.click());

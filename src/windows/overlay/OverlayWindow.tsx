@@ -44,7 +44,7 @@ const EMPTY_MICROPHONE: SourceSubtitleSnapshot = {
   history: [], detectedLanguage: null, isTranslationPending: false, isTranslationTimedOut: false,
 };
 const EMPTY_SYSTEM: SourceSubtitleSnapshot = { ...EMPTY_MICROPHONE, audioSource: "system" };
-type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings";
+type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | "close";
 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
@@ -59,6 +59,7 @@ export function OverlayWindow() {
   const settings = useStore((state) => state.settings);
   const togglePaused = useStore((state) => state.togglePaused);
   const start = useStore((state) => state.start);
+  const stop = useStore((state) => state.stop);
   const clearSubtitles = useStore((state) => state.clearSubtitles);
   const setOverlayCollapsed = useStore((state) => state.setOverlayCollapsed);
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
@@ -420,13 +421,13 @@ export function OverlayWindow() {
                 transition: "opacity 120ms ease",
               }}
             >
-              <ControlButton
+              {topChromeLayout.showSessionAction && <ControlButton
                 icon={errorRequiresConfiguration ? "gear" : hasSessionError || session.isPaused ? "play" : "pause"}
                 label={sessionActionLabel}
                 onClick={runSessionAction}
                 busy={sessionActionBusy || (errorRequiresConfiguration && controlAction.pending)}
-                disabled={sessionActionBusy || (errorRequiresConfiguration && controlAction.pending)}
-              />
+                disabled={sessionActionBusy || controlAction.pending}
+              />}
               {topChromeLayout.showActions && <>
               <ControlButton
                 icon="chevron-up"
@@ -469,6 +470,13 @@ export function OverlayWindow() {
                 disabled={controlAction.pending}
               />
               </>}
+              <ControlButton
+                icon="close"
+                label={I18N.overlay.closeSubtitles}
+                onClick={() => runControlAction("close", stop)}
+                busy={pendingControl === "close"}
+                disabled={controlAction.pending || sessionAction.pending || session.status.kind === "stopping"}
+              />
             </div>
           )}
 
@@ -593,7 +601,7 @@ export function OverlayWindow() {
             label={sessionActionLabel}
             onClick={runSessionAction}
             busy={sessionActionBusy}
-            disabled={sessionActionBusy}
+            disabled={sessionActionBusy || controlAction.pending}
           />
           <ControlButton
             icon="chevron-down"
@@ -602,6 +610,13 @@ export function OverlayWindow() {
             busy={pendingControl === "collapse"}
             disabled={controlAction.pending}
             data-testid="expand-subtitles"
+          />
+          <ControlButton
+            icon="close"
+            label={I18N.overlay.closeSubtitles}
+            onClick={() => runControlAction("close", stop)}
+            busy={pendingControl === "close"}
+            disabled={controlAction.pending || sessionAction.pending || session.status.kind === "stopping"}
           />
         </div>
       </div>

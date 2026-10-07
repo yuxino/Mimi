@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import languageCatalogs from "../../../shared/provider-language-catalogs.json";
 import { languageStatus } from "../overlay/overlayModel";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { sessionActionErrorMessage, profileErrorMessage } from "../../lib/connectionDiagnostics";
+import { profileErrorMessage } from "../../lib/connectionDiagnostics";
 import { useStore } from "../../lib/store";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
@@ -30,10 +30,9 @@ beforeEach(() => {
   props = {
     settings, model: overlayControlPanelModel(settings), phase: "listening",
     status: { source: "Automatic", separator: "→", target: "Chinese" },
-    isPaused: false, canPauseSession: true, isWaitingForFinalTranslation: false, isChangingSession: false,
+    isPaused: false, isWaitingForFinalTranslation: false, isChangingSession: false,
     onDismiss: vi.fn(), onSwitchSourceLanguage: vi.fn().mockResolvedValue(undefined),
     onSwitchTargetLanguage: vi.fn().mockResolvedValue(undefined),
-    onTogglePaused: vi.fn().mockResolvedValue(undefined),
     onSelectProfile: vi.fn().mockResolvedValue(undefined),
     onSetSkipTranslation: vi.fn().mockResolvedValue(undefined),
     onSetIntermediateSubtitles: vi.fn().mockResolvedValue(undefined),
@@ -163,45 +162,7 @@ it("keeps recognition locked during transitions while independent display remain
   await mount();
   expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
   expect(picker(I18N.settings.subtitleDisplay).disabled).toBe(false);
-  expect(host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!.disabled).toBe(true);
-});
-
-it("keeps pause unavailable after the session has stopped", async () => {
-  props.canPauseSession = false;
-  await mount();
-  const pause = host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!;
-  expect(pause.disabled).toBe(true);
-  await act(async () => pause.click());
-  expect(props.onTogglePaused).not.toHaveBeenCalled();
-});
-
-it("keeps pause and resume in the immersive panel, blocks duplicate actions, and reports a failed retry", async () => {
-  configure({ subtitleBlendsWithBackground: true, audioInput: "microphone" });
-  let resolve!: () => void;
-  props.onTogglePaused = vi.fn(() => new Promise<void>(done => { resolve = done; }));
-  await mount();
-  const action = () => host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!;
-  expect(action().textContent).toBe(I18N.overlay.pause);
-  await act(async () => action().click());
-  expect(action().disabled).toBe(true);
-  expect(host.querySelector('[role="dialog"]')?.getAttribute("aria-busy")).toBe("true");
-  await act(async () => action().click());
-  expect(props.onTogglePaused).toHaveBeenCalledTimes(1);
-  await act(async () => resolve());
-  props.isPaused = true;
-  await mount();
-  expect(action().textContent).toBe(I18N.overlay.resume);
-  expect(props.onDismiss).not.toHaveBeenCalled();
-  props.onTogglePaused = vi.fn().mockRejectedValueOnce(new Error("synthetic-private-resume-error")).mockResolvedValue(undefined);
-  await mount();
-  await act(async () => action().click());
-  expect(host.querySelector('.overlay-control-alert[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
-  expect(host.textContent).not.toContain("synthetic-private-resume-error");
-  expect(action().textContent).toBe(I18N.overlay.resume);
-  await act(async () => action().click());
-  expect(host.querySelector('.overlay-control-alert')).toBeNull();
-  expect(props.onTogglePaused).toHaveBeenCalledTimes(2);
-  expect(props.onDismiss).not.toHaveBeenCalled();
+  expect(host.querySelector(".overlay-control-session-action")).toBeNull();
 });
 
 it.each(["zh", "en", "ja"] as const)("offers the same full source list as settings and searches French in %s", async locale => {
@@ -431,7 +392,6 @@ it.each([false, true])("switches saved profiles in the floating panel with pause
   await chooseProfile("My recognition model");
   expect(props.onSelectProfile).toHaveBeenCalledExactlyOnceWith("custom");
   expect(props.onDismiss).not.toHaveBeenCalled();
-  expect(props.onTogglePaused).not.toHaveBeenCalled();
   configure({ activeProfileId: "custom" });
   await mount();
   expect(picker(I18N.settings.currentProfile).textContent).toBe("My recognition model");
@@ -501,21 +461,6 @@ it("keeps the persisted profile visible when its reconnect fails", async () => {
 });
 
 
-it.each([false, true])("keeps a failed panel resume actionable unless a newer resume won=%s", async superseded => {
-  const error = "audio3_error.setup.unsupported_language.UNSUPPORTED_LANGUAGE";
-  let reject!: (reason: string) => void;
-  props.isPaused = true;
-  props.onTogglePaused = vi.fn(() => new Promise<void>((_resolve, failure) => { reject = failure; }));
-  await mount();
-  await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.resume}"]`)!.click());
-  if (superseded) { props.isPaused = false; await mount(); }
-  await act(async () => reject(error));
-  expect(host.querySelector('[role="alert"]')?.textContent ?? null).toBe(superseded ? null : sessionActionErrorMessage(error, "fallback"));
-  expect(host.textContent).not.toContain(error);
-  expect(props.onDismiss).not.toHaveBeenCalled();
-});
-
-
 it.each(["zh", "en", "ja"] as const)("uses the expanded xAI sources and current target label in the %s floating controller", async locale => {
   setStoredUiLanguage(locale);
   configure({ sourceLanguage: "auto", targetLanguage: "pt-PT", profiles: [{ ...props.settings.profiles[0], provider: "xAIRealtime" }] });
@@ -573,4 +518,12 @@ it("keeps the saved target after a failed switch and permits retry without dismi
   expect(props.onSwitchTargetLanguage).toHaveBeenCalledTimes(2);
   expect(props.onDismiss).not.toHaveBeenCalled();
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each(["zh", "en", "ja"] as const)("keeps duplicate pause/close actions out of the %s configuration panel", async language => {
+  setStoredUiLanguage(language);
+  await mount();
+  expect(host.querySelector(".overlay-control-session-action")).toBeNull();
+  expect(host.querySelector(`button[aria-label="${I18N.overlay.pause}"]`)).toBeNull();
+  expect(host.querySelector(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)).toBeNull();
 });

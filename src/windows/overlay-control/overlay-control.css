@@ -276,8 +276,7 @@
 }
 
 .overlay-control-setting,
-.overlay-control-settings-link,
-.overlay-control-session-action {
+.overlay-control-settings-link {
   border: 0;
   color: var(--control-text);
   background: transparent;
@@ -286,20 +285,17 @@
 }
 
 .overlay-control-setting:hover:not(:disabled),
-.overlay-control-settings-link:hover:not(:disabled),
-.overlay-control-session-action:hover:not(:disabled) {
+.overlay-control-settings-link:hover:not(:disabled) {
   background: var(--control-surface-hover);
 }
 
 .overlay-control-setting:active:not(:disabled),
-.overlay-control-settings-link:active:not(:disabled),
-.overlay-control-session-action:active:not(:disabled) {
+.overlay-control-settings-link:active:not(:disabled) {
   background: var(--control-surface-pressed);
 }
 
 .overlay-control-setting:disabled,
-.overlay-control-settings-link:disabled,
-.overlay-control-session-action:disabled {
+.overlay-control-settings-link:disabled {
   cursor: default;
   opacity: 0.5;
 }
@@ -389,8 +385,7 @@
   transform: translateX(14px);
 }
 
-.overlay-control-settings-link,
-.overlay-control-session-action {
+.overlay-control-settings-link {
   display: flex;
   min-height: 31px;
   align-items: center;
@@ -401,15 +396,8 @@
   font-size: 12px;
 }
 
-.overlay-control-settings-link > svg,
-.overlay-control-session-action > svg {
+.overlay-control-settings-link > svg {
   font-size: 11px;
-}
-
-.overlay-control-session-action {
-  align-self: flex-end;
-  min-height: 26px;
-  padding: 0 8px;
 }
 
 .overlay-control-alert {
@@ -471,7 +459,6 @@
 
   .overlay-control-setting:hover:not(:disabled),
   .overlay-control-settings-link:hover:not(:disabled),
-  .overlay-control-session-action:hover:not(:disabled),
   .overlay-control-capture__toggle:hover:not(:disabled) {
     color: HighlightText;
     background: Highlight;

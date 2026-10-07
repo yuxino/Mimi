@@ -18,11 +18,12 @@ describe("overlay top chrome layout", () => {
     expect(error.showControls).toBe(true);
     expect(error.showPrimaryAction).toBe(true);
   });
-  it("retains the pause or retry action at the native minimum width", () => {
+  it("prioritizes close at the native minimum width", () => {
     for (const status of [{ kind: "listening" } as const, { kind: "error", message: "unavailable" } as const]) {
       const layout = overlaySessionChromeLayout(348, { isActive: status.kind === "listening", status });
       expect(layout.showActions).toBe(false);
       expect(layout.showPrimaryAction).toBe(true);
+      expect(layout.showSessionAction).toBe(false);
       expect(layout.topBandHeight).toBe(61);
     }
   });
@@ -56,7 +57,7 @@ describe("overlay top chrome layout", () => {
 
     expect(layout.showActions).toBe(true);
     expect(layout.dragHandleCenterX).toBe(276);
-    expect(layout.dragHandleWidth).toBe(68);
+    expect(layout.dragHandleWidth).toBe(40);
   });
 
   it("preserves the centered 120px handle and all actions at 640px", () => {
