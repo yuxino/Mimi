@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { SubtitleSessionControls } from "./SubtitleSessionControls";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
-import { I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
+import { UI_LANGUAGE_OPTIONS, I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
 import { announceSettingsNavigationReady, isTauri, listenSettingsNavigation, type SettingsNavigationTarget } from "../../lib/ipc";
 import { selectSessionStatusKind, useStore } from "../../lib/store";
 import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
@@ -489,9 +489,7 @@ export function SettingsView() {
                         value: "system",
                         label: I18N.settings.systemLanguage,
                       },
-                      { value: "zh", label: I18N.settings.chinese },
-                      { value: "en", label: I18N.settings.english },
-                      { value: "ja", label: I18N.settings.japanese },
+                      ...UI_LANGUAGE_OPTIONS,
                     ]}
                   />
                 </SettingsRow>

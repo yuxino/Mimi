@@ -1,29 +1,9 @@
+import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
+import { supplemental } from "./locales/supplemental";
 import { effectiveUiLanguage } from "./i18n";
 
 const copy = {
-  en: {
-    summary: {
-      timeout: "Speech recognition timed out.",
-      authentication: "Speech recognition access was denied.",
-      local_overload: "Local speech recognition could not keep up.",
-      local_timeout: "Local speech recognition timed out.",
-      unsupported_language: "The speech service does not support this source language.",
-      request: "The speech service rejected the request.",
-      service: "The speech service reported an error.",
-      rate_limit: "Speech recognition requests are being limited.",
-      task_failed: "Speech recognition stopped unexpectedly.",
-    },
-    setup: "While starting speech recognition: ", recognition: "While recognizing audio: ", connection: "While connecting: ",
-    timeout: "the service timed out. Check the sound status and your connection, then restart subtitles.",
-    authentication: "the service rejected access. Check the API key and permissions in Settings.",
-    local_overload: "local speech recognition could not keep up. Stop other local models or choose a smaller model, then retry.",
-    local_timeout: "local speech recognition timed out. Wait for the local service to be ready, then retry; use a smaller model if it keeps happening.",
-    unsupported_language: "this speech recognition service does not support the selected source language. Choose another source language or speech service.",
-    request: "the service rejected this request. Check the service settings, then try again.",
-    service: "the service reported an error. Try again later.",
-    rate_limit: "the service is limiting requests. Wait a little before restarting subtitles.",
-    task_failed: "the service ended the task without a recognized cause. Check the sound status, then try again.",
-  },
+  en: SUPPLEMENTAL_EN.audio3Errors_copy,
   zh: {
     summary: {
       timeout: "语音识别服务超时。",
@@ -70,6 +50,7 @@ const copy = {
     rate_limit: "サービスがリクエストを制限しています。少し待ってから字幕を再開してください。",
     task_failed: "サービスがタスクを終了しましたが、原因はまだ不明です。音声の状態を確認して再試行してください。",
   },
+  ...supplemental.audio3Errors_copy,
 };
 
 const audio3ErrorPattern = /^audio3_error\.(setup|recognition|connection)\.(timeout|authentication|request|service|rate_limit|task_failed|unsupported_language|local_overload|local_timeout)\.(CLIENT_ERROR|SERVER_ERROR|INVALID_API_KEY|UNAUTHORIZED|REQUEST_TIMEOUT|THROTTLED|OTHER|LOCAL_TIMEOUT|HTTP_AUTH|UNSUPPORTED_LANGUAGE|LOCAL_ASR_OVERLOADED|LOCAL_ASR_TIMEOUT)$/;

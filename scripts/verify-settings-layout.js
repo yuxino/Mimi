@@ -10,7 +10,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
   let checked = 0;
   for (const width of widths) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-    for (const language of ["en", "zh", "ja"]) for (const theme of ["light", "dark"]) {
+    for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"]) for (const theme of ["light", "dark"]) {
       await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
       for (const platform of (appleOnly || appleTranslationOnly ? ["macos"] : ["windows", "macos", "linux"])) {
         const cases = (appleOnly || appleTranslationOnly ? [] : platform === "windows" ? ["idle", "receiving", "silent", "noData", "paused", "missing", "empty", "failed"] : ["idle"])
@@ -59,6 +59,8 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
             const rect = node => node.getBoundingClientRect();
             const frame = document.querySelector(".settings-console__frame");
             if (frame.scrollWidth > frame.clientWidth + 1) issues.push("frame overflow");
+            const brand = document.querySelector(".settings-brand");
+            if (brand.scrollWidth > brand.clientWidth + 1) issues.push("sidebar title overflow");
             if (document.querySelector(".services-hint, .settings-diagnostic-privacy")) issues.push("detached help footer");
             for (const group of document.querySelectorAll(".credential-storage-help, .service-detail__name-help, .provider-picker__name-help, .service-stage__name-help")) {
               const context = group.firstElementChild, help = group.querySelector(".settings-help-control__button");
@@ -157,8 +159,8 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
               if (window.layoutFixtureRequests.translationPrepare !== attempts) issues.push("Unexpected native preparation count");
               if (variant !== "sameLanguage") {
                 const expected = ["ready", "prepared"].includes(variant)
-                  ? { en: "Ready", zh: "已就绪", ja: "準備完了" }[next.language]
-                  : { en: "Download or permission needed", zh: "需要下载或启用", ja: "ダウンロードまたは有効化が必要" }[next.language];
+                  ? window.layoutFixtureLabels.appleReady
+                  : window.layoutFixtureLabels.appleNeedsSetup;
                 if (!translation?.querySelector(".apple-speech-resource-status")?.textContent.includes(expected)) issues.push("Apple translation readiness label");
               }
               if (["missing", "cancelled", "failed", "paused"].includes(variant) !== Boolean(download)) issues.push("Apple translation download visibility");
@@ -166,7 +168,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
               if (variant === "sameLanguage" && window.layoutFixtureRequests.translationStatus !== 0) issues.push("Same-language resource query");
               if (["cancelled", "failed"].includes(variant) && !translation?.querySelector(".settings-feedback")) issues.push("Apple translation preparation feedback missing");
             }
-            const output = [...document.querySelectorAll(".settings-row")].find(row => row.querySelector(".settings-row__feedback") || row.querySelector('[role="combobox"]')?.getAttribute("aria-label") === ({ en: "Output device", zh: "输出设备", ja: "出力デバイス" })[next.language]);
+            const output = [...document.querySelectorAll(".settings-row")].find(row => row.querySelector('[role="combobox"]')?.getAttribute("aria-label") === window.layoutFixtureLabels.output);
             if (!next.category && !next.editor && !next.providerPicker && !next.providerConfirmation && (next.platform === "windows") !== Boolean(output)) issues.push("platform output visibility");
             if (!next.editor && output && ["idle", "paused"].includes(next.state) && output.querySelector('[role="status"]')) issues.push("persistent idle guidance");
             if (!document.querySelector(".settings-console").classList.contains(`settings-console--${next.theme}`)) issues.push("wrong fixture theme");
@@ -185,7 +187,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
   await page.cdp("Emulation.clearDeviceMetricsOverride");
   await page.cdp("Emulation.setEmulatedMedia", { features: [] });
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
-  if (failures.length) throw new Error(JSON.stringify({ checked, failureCount: failures.length, failures: failures.slice(0, 12) }));
+  if (failures.length) throw new Error(JSON.stringify({ checked, failureCount: failures.length, issueCounts: Object.fromEntries([...new Set(failures.flatMap(f => f.issues))].map(issue => [issue, failures.filter(f => f.issues.includes(issue)).length])), failures: failures.slice(0, 12) }));
   return { checked, failures };
 }
 
@@ -198,7 +200,7 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
   for (const surface of ["settings", "overlay", "tray"]) {
     for (const width of surface === "settings" ? [520, 952] : surface === "tray" ? [320, 420] : [360, 420]) {
       await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-      for (const language of ["zh", "en", "ja"]) for (const theme of ["light", "dark"]) {
+      for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko"]) for (const theme of ["light", "dark"]) {
         await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
         const cases = surface === "settings"
           ? [{ provider: "googleGeminiLive", sourceLanguage: "auto", targetLanguage: "pt-BR", count: 78, targetMenu: true },

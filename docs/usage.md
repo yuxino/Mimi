@@ -4,6 +4,8 @@
 
 Provider activation links, credential fields, and current models are in the [provider setup guide](provider-setup.md).
 
+Choose the desktop interface language in Settings → General: Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean or French. The system option follows your system language; changing the interface language keeps current edits and subtitle state. Recognition and translation languages are separate choices.
+
 ## Install and update
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.

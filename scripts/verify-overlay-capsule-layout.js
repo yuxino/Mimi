@@ -14,7 +14,7 @@ async (page) => {
     const root = createRoot(host);
     const failures = [];
     let checked = 0;
-    for (const language of ['en', 'zh', 'ja']) {
+    for (const language of ['en', 'zh', 'zh-TW', 'ja', 'de', 'fr', 'ko']) {
       setStoredUiLanguage(language);
       const fixtures = [];
       for (const zoom of [1, 1.25, 1.5]) for (const phase of ['error', 'idle', 'paused', 'translating', 'listening']) for (const mode of ['lowLatency', 'highQuality', 'turbo']) for (const pair of ['auto','zh','en','ja','ko'].flatMap(source=>['zh','en','ja','original'].map(target=>[source,target]))) {

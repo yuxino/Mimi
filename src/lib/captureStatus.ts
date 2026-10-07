@@ -1,3 +1,5 @@
+import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
+import { supplemental } from "./locales/supplemental";
 import { applicationAudioCopy } from "./applicationAudio";
 import { effectiveUiLanguage } from "./i18n";
 import type { AudioInput, AudioSource, SessionStateEvent } from "./types";
@@ -15,20 +17,7 @@ export interface CaptureStatus extends CaptureStatusFields { sources?: CaptureSo
 export type CaptureLifecycle = Pick<SessionStateEvent, "status" | "isActive" | "isPaused">;
 
 const copy = {
-  en: {
-    title: "Audio input", system: "System audio", microphone: "Microphone", output: "System output", device: "Capture device",
-    idle: "Not capturing", paused: "Paused", connecting: "Connecting", stopping: "Stopping", error: "Error",
-    unobserved: "Waiting for audio", sound: "Receiving sound", silent: "No sound", noData: "No audio data",
-    systemHelp: "Captures sound played by applications.", microphoneHelp: "Uses the system’s default microphone.",
-    silentHelp: "Audio data is arriving, but no clear sound is detected.",
-    systemNoData: "Play sound and check the application’s audio output.", microphoneNoData: "Check the system’s default microphone and its input level.",
-    errorHelp: "Check the error in the subtitle window, then try again.",
-    autoOutput: "Follows the default system output.", manualOutput: "Captures the selected output.", linuxOutput: "Uses the output monitor selected when subtitles started.",
-    off: "Off", minimum: "Keep at least one input on. Enable the other first to switch sources.",
-    switchFailed: "Could not switch audio inputs. Check the subtitle status, then try again.",
-    switchHelp: "Switching turns recording off. Paused subtitles stay paused.",
-    dualHelp: "Both inputs have separate recognition and usage. Echo cancellation runs when both are on. Use headphones if speaker audio is still picked up.",
-  },
+  en: SUPPLEMENTAL_EN.captureStatus_copy,
   zh: {
     title: "音频输入", system: "系统声音", microphone: "麦克风", output: "系统输出", device: "采集设备",
     idle: "尚未采音", paused: "已暂停", connecting: "连接中", stopping: "停止中", error: "出错",
@@ -57,6 +46,7 @@ const copy = {
     switchHelp: "切替で録音はオフになります。一時停止は維持します。",
     dualHelp: "両方を個別に認識し、利用量も個別に発生します。同時にオンのときは自動でエコーを低減します。スピーカーの音が残る場合は、ヘッドホンを使用してください。",
   },
+  ...supplemental.captureStatus_copy,
 };
 
 /** Legacy single-source snapshots are safe to reuse; an aggregate is never

@@ -4,6 +4,8 @@
 
 各家服务的开通入口、凭证字段和当前模型，见[服务开通指南](provider-setup.zh-CN.md)。
 
+在「设置 → 通用」选择桌面界面语言：简体中文、繁体中文、英语、日语、德语、韩语或法语。「跟随系统」会使用对应系统语言；切换界面语言会保留当前编辑内容和字幕状态。识别和翻译语言需分别选择。
+
 ## 安装与更新
 
 1. 从 [Latest Release](https://github.com/yuxino/mimi/releases/latest) 下载 macOS Apple Silicon 或 Intel DMG，Windows x64 EXE、MSI、绿色版 ZIP，或 Linux x86_64 .deb / AppImage；也可以从源码构建。

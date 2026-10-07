@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) const MAX_TEXT_BYTES: usize = 65_536;
 
+pub(crate) fn supports_preparation_ui_language(language: &str) -> bool {
+    matches!(language, "en" | "zh" | "zh-TW" | "ja" | "de" | "fr" | "ko")
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppleTranslationCapabilities {
@@ -258,7 +262,7 @@ mod native {
         target: &str,
         ui_language: &str,
     ) -> Result<(), AppleTranslationError> {
-        if !matches!(ui_language, "en" | "zh" | "ja") {
+        if !supports_preparation_ui_language(ui_language) {
             return Err(AppleTranslationError::InvalidInput);
         }
         let source = language(source)?;
@@ -415,6 +419,16 @@ pub use unsupported::{capabilities, prepare, status, translate};
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preparation_accepts_resolved_interface_languages_only() {
+        for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"] {
+            assert!(supports_preparation_ui_language(language), "{language}");
+        }
+        for language in ["system", "zh-Hant", "zh_tw", "fr-CA", "", "invalid"] {
+            assert!(!supports_preparation_ui_language(language), "{language}");
+        }
+    }
 
     #[test]
     fn native_error_codes_have_stable_content_free_labels() {
