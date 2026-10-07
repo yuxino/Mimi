@@ -42,6 +42,7 @@ import {
   sessionTogglePaused,
   settingsGet,
   settingsSave,
+  setWindowsLiveCaptionsConsent,
   trayPanelHide,
   type SettingsNavigationTarget,
 } from "./ipc";
@@ -177,6 +178,7 @@ interface StoreState {
     credentials: ProviderCredentialsInput,
   ) => Promise<SettingsSnapshot>;
   deleteProfileAPIKey: (profileId: string) => Promise<SettingsSnapshot>;
+  setWindowsLiveCaptionsConsent: (profileId: string, consent: boolean) => Promise<SettingsSnapshot>;
   setOverlayCollapsed: (collapsed: boolean) => Promise<void>;
   setOverlayLocked: (locked: boolean) => Promise<void>;
   showOverlay: () => Promise<void>;
@@ -498,6 +500,26 @@ export const useStore = create<StoreState>()((set, get) => ({
     );
   },
 
+  setWindowsLiveCaptionsConsent: async (profileId, consent) => {
+    ensureProfileMutationsAllowed(get().session);
+    if (isTauri) {
+      const revision = settingsResponseGate.capture();
+      const snapshot = await setWindowsLiveCaptionsConsent(profileId, consent);
+      if (settingsResponseGate.applyIfCurrent(revision)) {
+        settingsSaveCoordinator.invalidate();
+        set({ settings: snapshot });
+      }
+      return snapshot;
+    }
+    const current = get().settings;
+    if (current.profiles.find(profile => profile.id === profileId)?.provider !== "windowsLiveCaptions") throw new Error("provider-mismatch");
+    const snapshot = { ...current, profiles: current.profiles.map(profile => profile.id === profileId
+      ? { ...profile, windowsLiveCaptionsConsent: consent, speechCredentialState: consent ? "present" as const : "missing" as const,
+        credentialState: consent && (current.targetLanguage === "original" || profile.textCredentialState === "present") ? "present" as const : "missing" as const } : profile) };
+    set({ settings: snapshot });
+    return snapshot;
+  },
+
   createProfile: async (provider, name) => {
     ensureProfileMutationsAllowed(get().session);
     if (isTauri) {
@@ -518,7 +540,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       activeProfileId: current.profiles.length ? current.activeProfileId : id,
       profiles: [
         ...current.profiles,
-        { id, name, provider, credentialState: "missing", ...(isCustomSpeechProvider(provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : {}) },
+        { id, name, provider, credentialState: "missing", ...(isStandaloneAsrProvider(provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : {}) },
       ],
     };
     set({ settings: snapshot });
@@ -624,6 +646,11 @@ export const useStore = create<StoreState>()((set, get) => ({
     if (sourceLanguage) snapshot.sourceLanguage = sourceLanguage;
     if (preset) Object.assign(snapshot, preset);
     snapshot.activeProfileId = profileId;
+    if (selected.provider === "windowsLiveCaptions") {
+      snapshot.audioInput = "system";
+      snapshot.systemAudioTarget = { kind: "system" };
+      snapshot.recordSessionAudio = false;
+    }
     set({ settings: snapshot });
     return snapshot;
   },
@@ -709,7 +736,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       ...current,
       profiles: current.profiles.map((profile) =>
         profile.id === profileId
-          ? { ...profile, credentialState: "missing", ...(isCustomSpeechProvider(profile.provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : profile.provider === "appleSpeech" ? { textCredentialState: "missing" as const } : {}) }
+          ? { ...profile, credentialState: "missing", ...(isCustomSpeechProvider(profile.provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : (profile.provider === "appleSpeech" || profile.provider === "windowsLiveCaptions") ? { textCredentialState: "missing" as const } : {}) }
           : profile,
       ),
     };

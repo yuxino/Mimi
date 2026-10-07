@@ -481,6 +481,7 @@ fn apply_establish_failure_state(
 /// Starting again is an explicit user action after authorization or system stop.
 fn configuration_failure_requires_repair(error: &str) -> bool {
     crate::core::protocols::audio3::failure_requires_configuration(error)
+        || error.starts_with("windows_live_captions_")
         || matches!(
             error,
             "apple_translation_unavailable"
@@ -1766,6 +1767,13 @@ impl SessionManager {
             );
             return Ok(());
         }
+        if !self.is_ui_test() {
+            if let Err(error) = self.settings.validate_windows_live_captions_session() {
+                self.controller.lock().unwrap().did_fail(error.clone());
+                self.publish_state();
+                return Err(error);
+            }
+        }
         // A manual start is a new session; server quota can still be exhausted,
         // but no old client accounting may be restored into this new intent.
         for lane in &self.lanes {
@@ -1957,6 +1965,9 @@ impl SessionManager {
         generation: u64,
     ) -> std::pin::Pin<Box<dyn Future<Output = Result<(), String>> + Send>> {
         Box::pin(async move {
+            if configuration.provider == ProviderKind::WindowsLiveCaptions {
+                self.settings.validate_windows_live_captions_session()?;
+            }
             let attempt = self.next_background_task_id();
             {
                 let _transition = self.generation_transition.lock().unwrap();
@@ -2078,6 +2089,12 @@ impl SessionManager {
                 return Err(error);
             }
             pipeline_log!("asr websocket connected");
+
+            if configuration.provider == ProviderKind::WindowsLiveCaptions {
+                // Windows owns recognition. No PCM queue, capture authorization,
+                // microphone lane, recording ingress, or cloud ASR fallback.
+                return Ok(());
+            }
 
             // Create the sole bounded audio queue before capture starts. The
             // native callback writes directly to this synchronous ingress;
@@ -2470,6 +2487,16 @@ impl SessionManager {
         if preferences.audio_input == input && preferences.system_audio_target == target {
             return Ok(());
         }
+        if self.settings.active_profile()?.provider == ProviderKind::WindowsLiveCaptions {
+            let mut selected = preferences.clone();
+            selected.audio_input = input;
+            selected.system_audio_target = target.clone();
+            crate::settings_store::validate_windows_live_captions_preferences(
+                &self.settings.active_profile()?,
+                &selected,
+                false,
+            )?;
+        }
         let persist = || {
             self.settings
                 .save_preferences(|prefs| {
@@ -2639,6 +2666,11 @@ impl SessionManager {
             None
         };
         let live = action != ProfileSwitchAction::SelectOnly;
+        if profile.provider == ProviderKind::WindowsLiveCaptions && (live || self.is_paused()) {
+            crate::settings_store::validate_windows_live_captions_preferences(
+                profile, &selection, true,
+            )?;
+        }
         if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
             if self.is_ui_test() && selection.target_language.translates_audio() {
                 return Err("apple_translation_unavailable".into());
@@ -2703,7 +2735,8 @@ impl SessionManager {
             // existing bytes and consent intact rather than dropping a track
             // or silently ceasing recording after a 16/24 kHz switch.
             ensure_profile_switch_audio_format(
-                self.history_pending_audio.load(Ordering::SeqCst),
+                profile.provider != ProviderKind::WindowsLiveCaptions
+                    && self.history_pending_audio.load(Ordering::SeqCst),
                 current_rate,
                 next_rate,
             )?;
@@ -2725,6 +2758,16 @@ impl SessionManager {
                     .map_err(|_| "profile_switch_save_failed".to_string())
                 },
             )?;
+            if profile.provider == ProviderKind::WindowsLiveCaptions {
+                *self.active_audio_input.lock().unwrap() = AudioInput::System;
+                self.controller
+                    .lock()
+                    .unwrap()
+                    .set_audio_input(AudioInput::System);
+            }
+        }
+        if profile.provider == ProviderKind::WindowsLiveCaptions {
+            self.apply_archive_opt_out(None, Some(false));
         }
         // The persisted selection repairs only the failure observed under
         // this lifecycle guard. Keep subtitles and never start an idle session.
@@ -3881,7 +3924,7 @@ impl SessionManager {
             .lock()
             .unwrap()
             .as_ref()
-            .is_none_or(|configuration| configuration.provider != ProviderKind::AppleSpeech);
+            .is_none_or(|configuration| !configuration.provider.is_local_speech());
         let mut maximum_latency_ms = 0;
         for &source in self.sources() {
             let Some(client) = self.client_for_generation(source, generation) else {
@@ -7029,6 +7072,9 @@ mod lifecycle_tests {
     #[test]
     fn recovery_configuration_and_permission_failures_keep_the_actual_error() {
         for error in [
+            "windows_live_captions_closed",
+            "windows_live_captions_consent_required",
+            "windows_live_captions_unreadable",
             "System audio capture permission was denied.",
             "Microphone capture permission was denied.",
             "System audio capture was stopped by the user.",

@@ -5,6 +5,7 @@ use super::audio3_client::{Audio3ASRClient, Audio3ASRClientError};
 use super::custom_speech_client::{CustomSpeechClient, CustomSpeechClientError};
 use super::provider_events::ProviderEventSender;
 use super::provider_network::{ProviderNetwork, ProviderNetworkError};
+use super::windows_live_captions_client::WindowsLiveCaptionsClient;
 use crate::core::models::SourceLanguage;
 use crate::core::pending_pcm::PendingPcmGate;
 use crate::core::provider::ProviderKind;
@@ -15,6 +16,8 @@ use thiserror::Error;
 pub enum RecognitionClientError {
     #[error("{0}")]
     Apple(String),
+    #[error("{0}")]
+    Windows(String),
     #[error("{0}")]
     Alibaba(#[from] Audio3ASRClientError),
     #[error("{0}")]
@@ -30,7 +33,9 @@ impl RecognitionClientError {
     }
 
     pub fn is_timeout(&self) -> bool {
-        if matches!(self, Self::Apple(label) if label == "apple_speech_setup_timeout") {
+        if matches!(self, Self::Apple(label) if label == "apple_speech_setup_timeout")
+            || matches!(self, Self::Windows(label) if label == "windows_live_captions_setup_timeout")
+        {
             return true;
         }
         matches!(
@@ -46,6 +51,9 @@ impl RecognitionClientError {
     }
 
     pub fn is_invalid_configuration(&self) -> bool {
+        if matches!(self, Self::Windows(_)) {
+            return true;
+        }
         if matches!(self, Self::Apple(label) if matches!(label.as_str(), "apple_speech_unavailable" | "apple_speech_language_unsupported" | "apple_speech_assets_missing" | "apple_speech_status_failed"))
         {
             return true;
@@ -82,6 +90,7 @@ impl RecognitionClientError {
 #[derive(Clone)]
 pub enum RecognitionClient {
     Apple(AppleSpeechClient),
+    Windows(WindowsLiveCaptionsClient),
     Audio3(Audio3ASRClient),
     OpenAI(CustomSpeechClient),
 }
@@ -91,6 +100,10 @@ impl RecognitionClient {
         configuration: &crate::core::configuration::LiveTranslationConfiguration,
     ) -> Result<Self, RecognitionClientError> {
         match (&configuration.provider, &configuration.credentials) {
+            (
+                ProviderKind::WindowsLiveCaptions,
+                crate::core::credentials::ProviderCredentials::WindowsLiveCaptions,
+            ) => Ok(Self::Windows(WindowsLiveCaptionsClient::new())),
             (
                 ProviderKind::AppleSpeech,
                 crate::core::credentials::ProviderCredentials::AppleSpeech,
@@ -139,7 +152,7 @@ impl RecognitionClient {
 
     pub fn set_network(&mut self, network: ProviderNetwork) -> Result<(), ProviderNetworkError> {
         match self {
-            Self::Apple(_) => Ok(()),
+            Self::Apple(_) | Self::Windows(_) => Ok(()),
             Self::Audio3(client) => client.set_network(network),
             Self::OpenAI(client) => client.set_network(network),
         }
@@ -147,7 +160,7 @@ impl RecognitionClient {
 
     pub fn set_audio_pending_gate(&self, gate: PendingPcmGate) {
         match self {
-            Self::Apple(_) => {}
+            Self::Apple(_) | Self::Windows(_) => {}
             Self::Audio3(client) => client.set_audio_pending_gate(gate),
             Self::OpenAI(client) => client.set_audio_pending_gate(gate),
         }
@@ -156,6 +169,7 @@ impl RecognitionClient {
     pub async fn set_event_sender(&self, events: ProviderEventSender) {
         match self {
             Self::Apple(client) => client.set_event_sender(events),
+            Self::Windows(client) => client.set_event_sender(events),
             Self::Audio3(client) => client.set_event_sender(events).await,
             Self::OpenAI(client) => client.set_event_sender(events).await,
         }
@@ -164,6 +178,7 @@ impl RecognitionClient {
     pub async fn connect(&self, task_id: &str) -> Result<(), RecognitionClientError> {
         match self {
             Self::Apple(client) => client.connect().await,
+            Self::Windows(client) => client.connect().await,
             Self::Audio3(client) => client.connect(task_id).await.map_err(Into::into),
             Self::OpenAI(client) => client.connect(task_id).await.map_err(Into::into),
         }
@@ -172,6 +187,7 @@ impl RecognitionClient {
     pub async fn connect_for_probe(&self, task_id: &str) -> Result<(), RecognitionClientError> {
         match self {
             Self::Apple(client) => client.connect().await,
+            Self::Windows(client) => client.probe().await,
             Self::Audio3(client) => client.connect_for_probe(task_id).await.map_err(Into::into),
             Self::OpenAI(client) => client.connect_for_probe(task_id).await.map_err(Into::into),
         }
@@ -180,6 +196,9 @@ impl RecognitionClient {
     pub async fn send_audio(&self, pcm: &[u8]) -> Result<(), RecognitionClientError> {
         match self {
             Self::Apple(client) => client.send_audio(pcm).await,
+            Self::Windows(_) => Err(RecognitionClientError::Windows(
+                "windows_live_captions_audio_input_unsupported".into(),
+            )),
             Self::Audio3(client) => client.send_audio(pcm).await.map_err(Into::into),
             Self::OpenAI(client) => client.send_audio(pcm).await.map_err(Into::into),
         }
@@ -188,6 +207,7 @@ impl RecognitionClient {
     pub async fn ping(&self, timeout: Duration) -> Result<(), RecognitionClientError> {
         match self {
             Self::Apple(client) => client.ping(),
+            Self::Windows(client) => client.ping(),
             Self::Audio3(client) => client.ping(timeout).await.map_err(Into::into),
             Self::OpenAI(client) => client.ping(timeout).await.map_err(Into::into),
         }
@@ -196,6 +216,7 @@ impl RecognitionClient {
     pub async fn finish(&self, timeout: Duration) {
         match self {
             Self::Apple(client) => client.finish(timeout).await,
+            Self::Windows(client) => client.finish(timeout).await,
             Self::Audio3(client) => client.finish(timeout).await,
             Self::OpenAI(client) => client.finish(timeout).await,
         }
@@ -204,6 +225,7 @@ impl RecognitionClient {
     pub async fn disconnect(&self) {
         match self {
             Self::Apple(client) => client.disconnect().await,
+            Self::Windows(client) => client.disconnect().await,
             Self::Audio3(client) => client.disconnect().await,
             Self::OpenAI(client) => client.disconnect().await,
         }
@@ -212,6 +234,7 @@ impl RecognitionClient {
     pub async fn clear_content(&self) -> u64 {
         match self {
             Self::Apple(client) => client.clear_content(),
+            Self::Windows(client) => client.clear_content().await,
             Self::Audio3(client) => client.clear_content().await,
             Self::OpenAI(client) => client.clear_content().await,
         }
@@ -220,6 +243,7 @@ impl RecognitionClient {
     pub fn content_revision(&self) -> u64 {
         match self {
             Self::Apple(client) => client.content_revision(),
+            Self::Windows(client) => client.content_revision(),
             Self::Audio3(client) => client.content_revision(),
             Self::OpenAI(client) => client.content_revision(),
         }

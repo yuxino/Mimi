@@ -3106,3 +3106,12 @@
 .profile-language-preset { margin-top: 16px; }
 .profile-language-preset__controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; min-width: 0; }
 .profile-language-preset__controls > span { overflow-wrap: anywhere; }
+
+.windows-live-captions-note { margin: 0; color: var(--settings-text-muted); font-size: 14px; line-height: 1.6; }
+.windows-live-captions-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.windows-live-captions-consent { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; gap: 12px; }
+.windows-live-captions-consent label { display: flex; align-items: flex-start; gap: 10px; color: var(--settings-text); font-size: 14px; line-height: 1.6; cursor: pointer; }
+.windows-live-captions-consent input { flex: 0 0 auto; width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--settings-ink); }
+.windows-live-captions-consent input:focus-visible { outline: 2px solid var(--settings-ink); outline-offset: 3px; }
+.windows-live-captions-consent:disabled label { color: var(--settings-text-muted); cursor: default; }
+.windows-live-captions-consent > button { justify-self: start; }

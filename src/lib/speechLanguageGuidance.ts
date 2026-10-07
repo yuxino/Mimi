@@ -12,7 +12,7 @@ export function speechLanguageGuidance(settings: LanguageSettings) {
   const custom = isCustomSpeechProvider(provider);
   const appleTranslation = profile && textTranslationForProfile(profile) === "apple" && settings.targetLanguage !== "original";
   const sources = sourceLanguagesForSettings(settings);
-  const meaning = provider === "appleSpeech" ? I18N.settings.appleSpeechLanguageHelp : provider === "googleGeminiLive" ? I18N.settings.recognitionGeminiAutomaticHelp : provider === "volcanoEngine" ? I18N.settings.recognitionVolcanoHelp : custom ? I18N.settings.recognitionCustomHelp
+  const meaning = provider === "windowsLiveCaptions" ? I18N.settings.windowsLiveCaptionsLanguageHelp : provider === "appleSpeech" ? I18N.settings.appleSpeechLanguageHelp : provider === "googleGeminiLive" ? I18N.settings.recognitionGeminiAutomaticHelp : provider === "volcanoEngine" ? I18N.settings.recognitionVolcanoHelp : custom ? I18N.settings.recognitionCustomHelp
     : provider === "alibabaCloud" || provider === "deepLX" || provider === "xAIRealtime"
       ? I18N.settings.recognitionHintHelp
       : sources.length === 1 && sources[0] === "auto"
@@ -22,7 +22,7 @@ export function speechLanguageGuidance(settings: LanguageSettings) {
   return {
     help: [meaning, parameter, appleTranslation ? I18N.settings.appleTranslationChooseSource : ""].filter(Boolean).join("\n"),
     notice: custom ? profile?.customSpeechSourceLanguages == null ? I18N.settings.recognitionCustomNotice : I18N.settings.recognitionDeclaredNotice : null,
-    catalogHelp: provider === "appleSpeech" ? I18N.settings.appleSpeechLanguageHelp : I18N.settings.languageConfigurationHelp(providerDisplayName(provider), settings.targetLanguage === "original" ? I18N.settings.skipTranslation : profile ? textTranslationDisplayName(profile) : providerDisplayName(provider)),
+    catalogHelp: provider === "windowsLiveCaptions" ? I18N.settings.windowsLiveCaptionsLanguageHelp : provider === "appleSpeech" ? I18N.settings.appleSpeechLanguageHelp : I18N.settings.languageConfigurationHelp(providerDisplayName(provider), settings.targetLanguage === "original" ? I18N.settings.skipTranslation : profile ? textTranslationDisplayName(profile) : providerDisplayName(provider)),
     optionLabel: (source: SourceLanguage) => provider === "volcanoEngine" && source === "zh_en" ? I18N.settings.recognitionVolcanoBilingual : custom && source === "auto" ? I18N.settings.recognitionServiceDefault : SOURCE_LANGUAGE_DISPLAY_NAMES[source],
   };
 }

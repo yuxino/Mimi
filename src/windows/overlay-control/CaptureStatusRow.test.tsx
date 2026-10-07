@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { setStoredUiLanguage } from "../../lib/i18n";
+import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { captureSwitchCopy, type CaptureStatus } from "../../lib/captureStatus";
 import { applicationAudioCopy } from "../../lib/applicationAudio";
@@ -337,4 +337,13 @@ it.each([false, undefined])("keeps only the system row and application picker wh
   expect(host.querySelector('button[role="combobox"]')).not.toBeNull();
   expect(description("system")).not.toContain(captureSwitchCopy().minimum);
   expect(mocks.switchAudioInput).not.toHaveBeenCalled();
+});
+
+it("does not poll audio or expose source switches and app selection for Windows captions", async () => {
+  useStore.setState(state => ({ settings: { ...state.settings, activeProfileId: "windows", audioInput: "both",
+    profiles: [{ id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", credentialState: "present" }] } }));
+  await mount();
+  expect(host.textContent).toContain(I18N.settings.windowsLiveCaptions);
+  expect(host.querySelector('[role="switch"], [role="combobox"]')).toBeNull();
+  expect(mocks.invoke).not.toHaveBeenCalled();
 });

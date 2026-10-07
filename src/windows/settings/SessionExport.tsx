@@ -1,3 +1,4 @@
+import { usesWindowsLiveCaptions } from "../../lib/windowsLiveCaptions";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
@@ -26,6 +27,7 @@ import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { useSettingsToast } from "./useSettingsToast";
 
 export function SessionExport({ visible }: { visible: boolean }) {
+  const captionReader = useStore(state => usesWindowsLiveCaptions(state.settings));
   const active = useStore((state) => state.session.isActive);
   const retainHistory = useStore(
     (state) => state.settings.retainSessionHistory,
@@ -249,12 +251,12 @@ export function SessionExport({ visible }: { visible: boolean }) {
       <div className="settings-divider" />
       <SettingsRow
         label={I18N.settings.recordSessionAudio}
-        description={I18N.settings.recordSessionAudioHelp}
+        description={captionReader ? I18N.settings.windowsLiveCaptionsAudioUnavailable : I18N.settings.recordSessionAudioHelp}
         align="start"
       >
         <Switch
-          checked={recordAudio}
-          disabled={disabled}
+          checked={captionReader ? false : recordAudio}
+          disabled={disabled || captionReader}
           aria-label={I18N.settings.recordSessionAudio}
           onChange={(recordSessionAudio) =>
             changeSetting({ recordSessionAudio })

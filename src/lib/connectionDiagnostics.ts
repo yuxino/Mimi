@@ -1,3 +1,4 @@
+import { windowsLiveCaptionsErrorMessage } from "./windowsLiveCaptions";
 import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
 import { supplemental } from "./locales/supplemental";
 import { audio3ErrorMessage, audio3ErrorRequiresConfiguration } from "./audio3Errors";
@@ -322,6 +323,8 @@ function builtinServiceErrorMessage(error: string): string | null {
 /** Match only sanitized backend labels; never interpolate arbitrary native errors. */
 export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlatform): string | null {
   if (typeof error !== "string") return null;
+  const windowsCaptionsMessage = windowsLiveCaptionsErrorMessage(error);
+  if (windowsCaptionsMessage) return windowsCaptionsMessage;
   if (error === "apple_translation_assets_missing") return I18N.settings.appleTranslationAssetsMissing;
   if (error === "apple_translation_source_required") return I18N.settings.appleTranslationChooseSource;
   if (error === "apple_translation_language_unsupported") return I18N.settings.appleTranslationUnsupported;
@@ -420,6 +423,7 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
     return "appleSpeechResources";
   }
   if (typeof label !== "string") return null;
+  if (windowsLiveCaptionsErrorMessage(label)) return "activeProfile";
   if ([
     "apple_translation_assets_missing",
     "apple_translation_source_required",
