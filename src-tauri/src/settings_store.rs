@@ -2548,6 +2548,28 @@ impl SettingsStore {
         self.configuration_for_profile_options(profile, true)
     }
 
+    /// Validates a language switch without saving it or reloading speech credentials.
+    /// A recognition-only configuration omits independent text credentials, so
+    /// restore the selected route directly rather than probing the old target.
+    pub fn configuration_for_target_switch(
+        &self,
+        profile: &ServiceProfile,
+        mut configuration: LiveTranslationConfiguration,
+        selection: ProviderPreferences,
+    ) -> Result<LiveTranslationConfiguration, String> {
+        configuration.source_language = selection.source_language;
+        configuration.target_language = selection.target_language;
+        configuration.translation_mode = selection.translation_mode;
+        if (configuration.provider.is_standalone_asr()
+            || profile.text_translation() == TextTranslation::Apple)
+            && selection.target_language.translates_audio()
+            && configuration.text_credentials.is_none()
+        {
+            configuration.text_credentials = self.text_credentials_for_profile(profile)?;
+        }
+        configuration.validated().map_err(|error| error.to_string())
+    }
+
     /// Resolves the exact listening configuration that selecting this profile
     /// would save, without selecting it. Unlike a connection probe, Original
     /// remains recognition-only and does not require text credentials.
@@ -3797,6 +3819,110 @@ mod tests {
                 0
             );
         }
+    }
+
+    #[test]
+    fn apple_target_switch_restores_translation_after_original_without_credentials() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple speech and translation")
+            .unwrap();
+        store
+            .save_credentials(
+                &profile.id,
+                &translation_request(TextTranslation::Apple, "", "", ""),
+            )
+            .unwrap();
+        store.select_profile(&profile.id).unwrap();
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Japanese;
+                prefs.target_language = TargetLanguage::SimplifiedChinese;
+            })
+            .unwrap();
+        let profile = store.active_profile().unwrap();
+        let translated = store.configuration().unwrap();
+        let selection = ProviderPreferences {
+            source_language: SourceLanguage::Japanese,
+            target_language: TargetLanguage::Original,
+            translation_mode: TranslationMode::Turbo,
+        };
+        let original = store
+            .configuration_for_target_switch(&profile, translated, selection)
+            .unwrap();
+        assert_eq!(original.text_credentials, None);
+        store
+            .save_preferences_for_active_profile(|prefs| {
+                prefs.target_language = TargetLanguage::Original
+            })
+            .unwrap();
+        let before = store.preferences();
+        fake.make_unavailable(
+            PROFILE_KEYCHAIN_SERVICE,
+            &SettingsStore::destination_account(&profile),
+        );
+        fake.state.lock().unwrap().loads.clear();
+
+        let restored = store
+            .configuration_for_target_switch(
+                &profile,
+                original,
+                ProviderPreferences {
+                    target_language: TargetLanguage::SimplifiedChinese,
+                    ..selection
+                },
+            )
+            .unwrap();
+
+        assert_eq!(restored.source_language, SourceLanguage::Japanese);
+        assert_eq!(restored.target_language, TargetLanguage::SimplifiedChinese);
+        assert_eq!(restored.credentials, ProviderCredentials::AppleSpeech);
+        assert_eq!(
+            restored.text_credentials,
+            Some(TextTranslationCredentials::Apple)
+        );
+        assert!(fake.state.lock().unwrap().loads.is_empty());
+        assert_eq!(store.preferences(), before);
+        assert_eq!(store.active_profile().unwrap(), profile);
+    }
+
+    #[test]
+    fn target_switch_still_rejects_a_missing_independent_text_key_before_saving() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let mut profile = store
+            .create_profile(ProviderKind::AppleSpeech, "Unconfigured text service")
+            .unwrap();
+        profile.text_translation = Some(TextTranslation::DeepL);
+        let original = LiveTranslationConfiguration::with_credentials(
+            ProviderKind::AppleSpeech,
+            ProviderCredentials::AppleSpeech,
+            SourceLanguage::Japanese,
+            TargetLanguage::Original,
+            TranslationMode::Turbo,
+        )
+        .validated()
+        .unwrap();
+        let before = store.preferences();
+
+        assert_eq!(
+            store
+                .configuration_for_target_switch(
+                    &profile,
+                    original.clone(),
+                    ProviderPreferences {
+                        source_language: SourceLanguage::Japanese,
+                        target_language: TargetLanguage::SimplifiedChinese,
+                        translation_mode: TranslationMode::Turbo,
+                    },
+                )
+                .unwrap_err(),
+            crate::core::credentials::ProviderCredentialsError::MissingTextTranslation.to_string()
+        );
+        assert_eq!(store.preferences(), before);
+        assert_eq!(original.target_language, TargetLanguage::Original);
+        assert_eq!(original.text_credentials, None);
     }
 
     #[test]

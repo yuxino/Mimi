@@ -18,6 +18,12 @@ therefore contradicted the other surfaces.
 - Apple Translation keeps its installed-resource preflight. A rejected language
   pair leaves the previous selection intact and reports the existing localized
   error, without silently downloading or modifying credentials.
+- Re-enabling translation from Original must resolve the selected text route
+  before validating the proposed live configuration. Do not use a connection
+  probe of the old target: Apple probes preserve Original and validation removes
+  its text-translation marker, incorrectly reporting missing credentials when
+  the proposed target translates. Resolve Apple's keyless marker directly and
+  validate before saving, using the same boundary for other independent routes.
 - Display localized language names in resource status text, using the same name
   table as the picker. Locale identifiers remain native protocol data.
 
