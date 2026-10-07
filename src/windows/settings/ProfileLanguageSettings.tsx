@@ -17,7 +17,7 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
   const saveSettings = useStore(state => state.saveSettings);
   const switchSourceLanguage = useStore(state => state.switchSourceLanguage);
   const switchTargetLanguage = useStore(state => state.switchTargetLanguage);
-  const session = useStore(state => state.session);
+  const sessionIsActive = useStore(state => state.session.isActive || state.session.isPaused);
   const [busy, setBusy] = useState(false);
   const { beginToast } = useSettingsToast();
   const trackLanguageChange = useLanguageNormalizationToast(settings);
@@ -45,7 +45,7 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
     const notify = beginToast();
     const finishLanguageChange = trackLanguageChange(draft.targetLanguage, notify);
     try {
-      if (session.isActive || session.isPaused) {
+      if (sessionIsActive) {
         if (draft.sourceLanguage !== undefined) await switchSourceLanguage(draft.sourceLanguage);
         else if (draft.targetLanguage !== undefined) await switchTargetLanguage(draft.targetLanguage);
       } else {
