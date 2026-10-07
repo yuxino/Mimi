@@ -99,11 +99,11 @@ fn map_capabilities(native: AppleTranslationCapabilities) -> AppleTranslationSup
     };
     let source_languages = SourceLanguage::ALL
         .into_iter()
-        .filter(|source| source_code(*source).is_ok_and(&available))
+        .filter(|source| source_code(*source).is_ok_and(available))
         .collect::<Vec<_>>();
     let target_languages = TargetLanguage::ALL
         .into_iter()
-        .filter(|target| target_code(*target).is_ok_and(&available))
+        .filter(|target| target_code(*target).is_ok_and(available))
         .collect::<Vec<_>>();
     AppleTranslationSupport {
         available: !source_languages.is_empty() && !target_languages.is_empty(),

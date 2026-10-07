@@ -136,6 +136,14 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
               if (stage?.lastElementChild?.className !== "apple-speech-connection-check") issues.push("Apple translation detached check");
               const languages = stage?.querySelector(".apple-translation-language-controls");
               if (!languages?.querySelector('[role="combobox"]') || languages.nextElementSibling !== translation) issues.push("Apple translation detached target");
+              const languagePickers = [...(languages?.querySelectorAll('[role="combobox"]') ?? [])];
+              const speechPicker = document.querySelector('#apple-speech-resources [role="combobox"]');
+              const servicePicker = stage?.querySelector('.settings-field [role="combobox"]');
+              for (const picker of languagePickers) {
+                for (const reference of [speechPicker, servicePicker].filter(Boolean)) {
+                  if (Math.abs(rect(picker).left - rect(reference).left) > 1 || Math.abs(rect(picker).right - rect(reference).right) > 1) issues.push("Apple translation language column misaligned");
+                }
+              }
               if ([...document.querySelectorAll('#translation-languages, [role="switch"]')].some(node => rect(node).width > 0)) issues.push("Apple translation duplicate language section");
               for (const group of stage?.querySelectorAll(".apple-speech-resource-actions, .apple-speech-tutorial, .settings-feedback") ?? []) {
                 if (group.scrollWidth > group.clientWidth + 1 || rect(group).right > rect(translation).right + 1) issues.push("Apple translation overflow");

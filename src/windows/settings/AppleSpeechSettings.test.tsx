@@ -16,7 +16,8 @@ vi.mock("../../lib/ipc", async importOriginal => ({
   getAppleTranslationSupport: vi.fn(),
 }));
 vi.mock("./AlibabaCredentialEditor", () => ({
-  AlibabaCredentialEditor: ({ disabled }: { disabled: boolean }) => <div data-testid="translation-editor" aria-disabled={disabled} />,
+  AlibabaCredentialEditor: ({ disabled, sourceLanguage, textConnectionCheck }: { disabled: boolean; sourceLanguage: SourceLanguage; textConnectionCheck?: unknown }) =>
+    <div data-testid="translation-editor" aria-disabled={disabled} data-source-language={sourceLanguage} data-text-check={textConnectionCheck ? "available" : "unavailable"} />,
 }));
 
 const initial = useStore.getState();
@@ -324,6 +325,40 @@ it("checks the same language displayed by the selector and resource status", asy
   expect(save).not.toHaveBeenCalled();
 
 
+});
+
+it("previews the selected Speech draft in translation without changing saved preferences", async () => {
+  const textConnectionCheck = vi.fn();
+  await render({ textConnectionCheck });
+  const translation = host.querySelector('[data-testid="translation-editor"]')!;
+  expect(translation.getAttribute("data-source-language")).toBe("en");
+  expect(translation.getAttribute("data-text-check")).toBe("available");
+  await choose("ja");
+  expect(translation.getAttribute("data-source-language")).toBe("ja");
+  // Native text checks use saved preferences and cannot yet override the source.
+  expect(translation.getAttribute("data-text-check")).toBe("unavailable");
+  expect(useStore.getState().settings.sourceLanguage).toBe("en");
+  expect(save).not.toHaveBeenCalled();
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+  await render({ settings: { ...props.settings, sourceLanguage: "ja" } });
+  expect(translation.getAttribute("data-source-language")).toBe("ja");
+  expect(translation.getAttribute("data-text-check")).toBe("available");
+});
+
+it("uses the visible Speech language instead of another active provider's Auto source for translation", async () => {
+  const google: ServiceProfile = { id: "google", name: "Google", provider: "googleGeminiLive", credentialState: "present" };
+  const snapshot = { ...settings(), profiles: [profile, google], activeProfileId: google.id, sourceLanguage: "auto" as const, languageCapabilities: undefined };
+  useStore.setState({ settings: snapshot });
+  await render({ settings: snapshot, sourceLanguage: "auto", textConnectionCheck: vi.fn() });
+  const translation = host.querySelector('[data-testid="translation-editor"]')!;
+  expect(host.querySelector('.apple-speech-resource-status')?.textContent).toContain("en-US");
+  expect(translation.getAttribute("data-source-language")).toBe("en");
+  expect(translation.getAttribute("data-text-check")).toBe("unavailable");
+  await choose("ja");
+  expect(translation.getAttribute("data-source-language")).toBe("ja");
+  expect(useStore.getState().settings.sourceLanguage).toBe("auto");
+  expect(save).not.toHaveBeenCalled();
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
 });
 
 

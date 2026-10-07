@@ -170,6 +170,8 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, l
           <div className="apple-speech-connection-check">{typeof editor.connectionCheck === "function" ? editor.connectionCheck(undefined, language.sourceLanguage) : editor.connectionCheck}</div>
         </>}
     </section>
-    <AlibabaCredentialEditor {...editor} textOnly connectionCheck={undefined} disabled={disabled} sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} requiresStop={requiresStop} />
+    <AlibabaCredentialEditor {...editor} textOnly connectionCheck={undefined}
+      textConnectionCheck={language?.sourceLanguage === settings.sourceLanguage ? editor.textConnectionCheck : undefined}
+      disabled={disabled} sourceLanguage={language?.sourceLanguage ?? sourceLanguage} targetLanguage={settings.targetLanguage} requiresStop={requiresStop} />
   </div>;
 }

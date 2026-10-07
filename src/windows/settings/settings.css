@@ -3042,19 +3042,23 @@
 .apple-speech-tutorial ol { margin: 0; padding-inline-start: 22px; list-style: decimal; }
 .apple-speech-tutorial li + li { margin-top: 4px; }
 /* Keep the language, its resource state and its action in one flow. */
-.apple-speech-settings > .service-stage > .settings-row {
+.apple-speech-settings > .service-stage > .settings-row,
+.apple-translation-language-controls .settings-row {
   grid-template-columns: 160px minmax(0, 1fr);
   column-gap: 12px;
 }
-.apple-speech-settings > .service-stage > .settings-row .mimi-select { width: 100%; }
+.apple-speech-settings > .service-stage > .settings-row .mimi-select,
+.apple-translation-language-controls .mimi-select { width: 100%; }
+.apple-translation-language-controls { display: grid; min-width: 0; gap: 16px; }
 .apple-speech-resource-note {
   color: var(--settings-text-muted);
   font-size: 14px;
   line-height: 1.5;
   text-align: right;
 }
-@media (max-width: 700px) {
-  .apple-speech-settings > .service-stage > .settings-row { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 680px) {
+  .apple-speech-settings > .service-stage > .settings-row,
+  .apple-translation-language-controls .settings-row { grid-template-columns: minmax(0, 1fr); }
 }
 .apple-translation-settings { display: grid; min-width: 0; gap: 12px; }
 .apple-translation-settings .settings-feedback { margin: 0; font-size: 14px; }
