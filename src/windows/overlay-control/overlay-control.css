@@ -18,6 +18,9 @@
   --control-text-muted: rgba(255, 255, 255, 0.9);
   --control-text-faint: rgba(255, 255, 255, 0.72);
   --control-focus: #ffffff;
+  --provider-light-display: none;
+  --provider-dark-display: block;
+  --provider-backing-background: #fff;
   width: 100%;
   color: var(--control-text);
   font-family: var(--mimi-ui-font);
