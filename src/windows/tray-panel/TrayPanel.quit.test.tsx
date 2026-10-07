@@ -387,8 +387,10 @@ it("keeps a persisted tray profile selected when its reconnect fails", async () 
   useStore.setState({ ...initial, settings, selectProfile }, true);
   await act(async () => root.render(<TrayPanel />));
   const next = await profileOption("My recognition model");
+  expect(next.querySelector(".provider-icon")?.getAttribute("data-provider")).toBe("openAIRealtime");
   await act(async () => next.click());
   expect(profilePicker().textContent).toBe("My recognition model");
+  expect(profilePicker().querySelector(".provider-icon")?.getAttribute("data-provider")).toBe("openAIRealtime");
   expect(profilePicker().disabled).toBe(false);
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(profileErrorMessage(error));
   expect(host.textContent).not.toContain(error);

@@ -425,6 +425,7 @@ it.each([false, true])("switches saved profiles in the floating panel with pause
   props.isPaused = isPaused;
   await mount();
   expect(picker(I18N.settings.currentProfile).disabled).toBe(false);
+  expect(picker(I18N.settings.currentProfile).querySelector(".provider-icon")?.getAttribute("data-provider")).toBe("alibabaCloud");
   await chooseProfile("Alibaba Cloud");
   expect(props.onSelectProfile).not.toHaveBeenCalled();
   await chooseProfile("My recognition model");
@@ -434,6 +435,7 @@ it.each([false, true])("switches saved profiles in the floating panel with pause
   configure({ activeProfileId: "custom" });
   await mount();
   expect(picker(I18N.settings.currentProfile).textContent).toBe("My recognition model");
+  expect(picker(I18N.settings.currentProfile).querySelector(".provider-icon")?.getAttribute("data-provider")).toBe("openAIRealtime");
 });
 
 it("blocks profile changes during transitions, retains the saved profile on failure and supports sanitized retry", async () => {

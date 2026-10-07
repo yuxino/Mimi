@@ -3,6 +3,7 @@ import { SettingsHelp } from "../settings/SettingsHelp";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { Select } from "../../components/Select";
+import { ProviderIcon } from "../../components/ProviderIcon";
 import { LanguageSelect } from "../../components/LanguageSelect";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -291,7 +292,8 @@ export function TrayPanel() {
           <span className="tray-select-wrap" title={activeProfile?.name}>
             <Select label={I18N.settings.currentProfile} value={settings.activeProfileId ?? ""}
               valueLabel={I18N.settings.noActiveProfile}
-              options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+              options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name,
+                icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} /> }))}
               disabled={anyActionPending || sessionStatusKind === "connecting" || sessionStatusKind === "stopping"}
               onChange={(profileId) => {
                 if (profileId !== settings.activeProfileId) {
