@@ -713,8 +713,15 @@ export function ServiceProfiles({
         </div>
       ) : (
         <div className="services-home">
-          <div className="services-toolbar">
-            <span className="services-toolbar__count">{I18N.settings.profileCount(settings.profiles.length)}<SettingsHelp label={I18N.settings.helpLabel} text={`${settings.profiles.some(profile => profile.credentialStorage === "localDevFile") ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint}\n${I18N.settings.profileSwitchHelp}`} /></span>
+          <div className={`services-toolbar${settings.profiles.length === 0 ? " services-toolbar--empty" : ""}`}>
+            {settings.profiles.length === 0 ? (
+              <div className="services-empty-copy">
+                <h2>{I18N.settings.firstProfileTitle}</h2>
+                <p>{I18N.settings.firstProfileHint}</p>
+              </div>
+            ) : (
+              <span className="services-toolbar__count">{I18N.settings.profileCount(settings.profiles.length)}<SettingsHelp label={I18N.settings.helpLabel} text={`${settings.profiles.some(profile => profile.credentialStorage === "localDevFile") ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint}\n${I18N.settings.profileSwitchHelp}`} /></span>
+            )}
             <button
               type="button"
               className="settings-button settings-button--compact settings-button--quiet"
@@ -725,7 +732,7 @@ export function ServiceProfiles({
               {I18N.settings.addProfile}
             </button>
           </div>
-          <div className="service-rows" aria-label={I18N.settings.serviceProfilesTitle}>
+          {settings.profiles.length > 0 && <div className="service-rows" aria-label={I18N.settings.serviceProfilesTitle}>
             {settings.profiles.map((profile) => (
               <div
                 className="service-row"
@@ -773,7 +780,7 @@ export function ServiceProfiles({
                 </button>
               </div>
             ))}
-          </div>
+          </div>}
           {atProfileLimit && (
             <InlineFeedback tone="info">{I18N.settings.profileLimitReached}</InlineFeedback>
           )}

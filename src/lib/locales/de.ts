@@ -447,6 +447,8 @@ export const SETTINGS = {
   serviceProfilesDescription: "Wähle einen Dienst und speichere seine Zugangsdaten sicher auf diesem Gerät.",
   manageServiceProfiles: "Konfigurationen verwalten",
   addProfile: "Konfiguration hinzufügen",
+  firstProfileTitle: "Ersten Sprachdienst hinzufügen",
+  firstProfileHint: "Klicke auf „Konfiguration hinzufügen“, um einen Dienst auszuwählen.",
   chooseProvider: "Sprachdienst hinzufügen",
   chooseProviderDescription: "Wähle Spracherkennung oder Live-Übersetzung.",
   confirmAddProfile: "Hinzufügen bestätigen",
