@@ -5,6 +5,8 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
 
 [Download Android](https://github.com/yuxino/mimi/releases/latest)
 
+[Provider setup and current models](../docs/provider-setup.md) · [服务开通与模型指南](../docs/provider-setup.zh-CN.md)
+
 > Android is packaged separately from mimi desktop releases. It reads the
 > same provider wire protocols as the desktop app (`src-tauri/src/core/protocols`)
 > with provider-specific credentials configured on Android. Live verification is
