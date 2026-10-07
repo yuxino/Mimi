@@ -423,29 +423,20 @@ export function SettingsView() {
                           onChange={(subtitleAlignment) => void savePreference({ subtitleAlignment }, I18N.settings.subtitleAlignment)}
                         />
                       </SettingsRow>
+                      <SettingsRow
+                        label={I18N.settings.lockPosition}
+                        description={I18N.settings.lockHelp}
+                      >
+                        <Switch
+                          checked={settings.isOverlayLocked}
+                          aria-label={I18N.settings.lockPosition}
+                          onChange={(checked) => {
+                            void runWithToast(() => setOverlayLocked(checked), I18N.settings.settingSaveFailed(I18N.settings.lockPosition));
+                          }}
+                        />
+                      </SettingsRow>
                     </div>
                   </div>
-                  <div className="settings-divider" />
-
-                  <details className="subtitle-placement">
-                    <summary>
-                      {I18N.settings.lockPosition}
-                      <Icon name="chevron-down" />
-                    </summary>
-                    <SettingsRow
-                      label={I18N.settings.lockPosition}
-                      description={I18N.settings.lockHelp}
-                      align="start"
-                    >
-                      <Switch
-                        checked={settings.isOverlayLocked}
-                        aria-label={I18N.settings.lockPosition}
-                        onChange={(checked) => {
-                          void runWithToast(() => setOverlayLocked(checked), I18N.settings.settingSaveFailed(I18N.settings.lockPosition));
-                        }}
-                      />
-                    </SettingsRow>
-                  </details>
                 </SettingsSection>
               </div>
             )}
