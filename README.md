@@ -31,10 +31,6 @@
 - Adjust subtitle position, size, and color, or let mouse clicks pass through the window.
 - Save subtitles or audio locally and export TXT / WAV when needed. Saving and recording are off by default.
 
-The desktop interface supports **简体中文 · 繁體中文 · English · 日本語 · Deutsch · 한국어 · Français**. Change it in **Settings → General**. Interface, recognition and translation languages are separate choices.
-
-On desktop, each service configuration can remember a recognition/translation language pair. Save, update or remove it explicitly in the configuration details. Switching to or reapplying the configuration restores its saved pair; temporary language changes do not overwrite it. Tray and floating menus show the pair below the configuration name. Click the service information in the subtitle header to open the current configuration details.
-
 ## Get started
 
 For your first setup, **we recommend starting with Alibaba Cloud or Google Gemini**. We’ve done more real-world testing with Alibaba Cloud; in my experience so far, Gemini has delivered the most consistent subtitle output.

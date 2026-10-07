@@ -31,10 +31,6 @@
 - Ajustez la position, la taille et la couleur des sous-titres, ou laissez les clics de souris traverser la fenêtre.
 - Sauvegardez les sous-titres ou l’audio localement et exportez-les en TXT / WAV au besoin. La sauvegarde et l’enregistrement sont désactivés par défaut.
 
-L’interface de bureau est disponible en **简体中文 · 繁體中文 · English · 日本語 · Deutsch · 한국어 · Français**. Changez-la dans **Réglages → Général**. Les langues de l’interface, de reconnaissance et de traduction se choisissent séparément.
-
-Sur ordinateur, vous pouvez enregistrer, mettre à jour ou supprimer une paire de langues de reconnaissance et de traduction pour chaque configuration. Sélectionner ou réappliquer cette configuration rétablit la paire enregistrée ; les changements temporaires de langue ne la remplacent pas. La paire apparaît sous le nom de la configuration dans les menus de la zone de notification et de la fenêtre flottante. Cliquez sur les informations du service dans l’en-tête des sous-titres pour ouvrir les détails de la configuration actuelle.
-
 ## Premiers pas
 
 Pour votre première configuration, **nous recommandons Alibaba Cloud ou Google Gemini**. Nous avons davantage testé Alibaba Cloud en conditions réelles ; dans mon expérience jusqu’ici, Gemini a fourni les sous-titres les plus réguliers.
