@@ -49,4 +49,4 @@ The combined seven-language review found that German saved language pairs
 were truncated in both configuration menus. Keep the configuration name on
 one line, allow the description beneath it to wrap, and reserve room for the
 additional line when positioning the bounded menu. Rerun the same 112-case
-menu matrix before accepting this repair.
+menu matrix in `scripts/verify-profile-menu-layout.js` before accepting this repair.
