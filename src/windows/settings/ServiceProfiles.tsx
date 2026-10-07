@@ -58,7 +58,7 @@ import { TencentSetupHelp } from "./TencentSetupHelp";
 const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
-type PendingAction = "create" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "prepare-resource" | "prepare-apple-translation" | null;
+type PendingAction = "create" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "switch-language" | "prepare-resource" | "prepare-apple-translation" | null;
 type CheckStage = ConnectionCheckStage | "combined";
 type CheckOutcome = { profileId: string; input: symbol; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
@@ -527,6 +527,7 @@ export function ServiceProfiles({
             <SelectedCredentialEditor
               support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage}
               resourceRefreshDisabled={pendingAction !== null}
+              languageChangesDisabled={selectionDisabled}
               onRetry={apple.refresh} onPrepared={apple.update} onBusyChange={busy => {
                 if (busy) invalidateProfileCheck(selectedProfile.id, "speech");
                 setPendingAction(busy ? "prepare-resource" : null);
@@ -534,7 +535,7 @@ export function ServiceProfiles({
               onNativeTranslationBusyChange={busy => setPendingAction(busy ? "prepare-apple-translation" : null)}
               onNativeTranslationPrepared={() => invalidateProfileCheck(selectedProfile.id, "text")}
               translationLanguageControls={route => route === "apple" && textTranslationForProfile(selectedProfile) === "apple" && selectedProfile.id === settings.activeProfileId
-                ? <ProfileLanguageSettings settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} embedded /> : null}
+                ? <ProfileLanguageSettings settings={settings} disabled={selectionDisabled} onBusyChange={busy => setPendingAction(busy ? "switch-language" : null)} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} embedded /> : null}
               onSelectProfile={async (profileId: string, sourceLanguage: SourceLanguage) => {
                 if (selectionDisabled || mutationInFlight.current) throw new Error("profile_switch_busy");
                 mutationInFlight.current = true;
@@ -581,7 +582,7 @@ export function ServiceProfiles({
               onSave={config => handleSaveProxy(selectedProfile, "text", config)} />}
           </section>}
           {selectedProfile.id === settings.activeProfileId && textTranslationForProfile(selectedProfile) !== "apple"
-            ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={mutationsDisabled} requiresStop={requiresStop} onOpenAppleResources={focusAppleSpeechResources} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} />
+            ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={selectionDisabled} onBusyChange={busy => setPendingAction(busy ? "switch-language" : null)} onOpenAppleResources={focusAppleSpeechResources} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} />
             : null}
           <div className="service-detail__actions">
             {canUseProfile(selectedProfile) &&

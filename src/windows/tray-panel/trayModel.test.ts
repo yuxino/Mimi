@@ -33,6 +33,7 @@ describe("deriveTrayPresentation", () => {
     expect(model.primaryAction).toEqual({ action: "start", disabled: false });
     expect(model.secondaryAction).toBeNull();
     expect(model.canShowOverlay).toBe(false);
+    expect(model.canChangeSourceLanguage).toBe(true);
   });
 
   it.each(["missing", "unavailable", undefined] as const)(
@@ -65,7 +66,7 @@ describe("deriveTrayPresentation", () => {
     expect(model.canChangeSourceLanguage).toBe(true);
   });
 
-  it("offers resume and stop while paused", () => {
+  it("allows language changes while keeping the paused session's resume and stop actions", () => {
     const model = presentation(
       { kind: "listening" },
       { paused: true },
@@ -75,7 +76,7 @@ describe("deriveTrayPresentation", () => {
     expect(model.primaryAction.action).toBe("resume");
     expect(model.secondaryAction?.action).toBe("stop");
     expect(model.canShowOverlay).toBe(true);
-    expect(model.canChangeSourceLanguage).toBe(false);
+    expect(model.canChangeSourceLanguage).toBe(true);
   });
 
   it.each([
@@ -96,6 +97,7 @@ describe("deriveTrayPresentation", () => {
     expect(model.visualState).toBe("error");
     expect(model.statusKind).toBe("error");
     expect(model.primaryAction.action).toBe("start");
+    expect(model.canChangeSourceLanguage).toBe(true);
   });
 
   it("offers subtitle tools after a stopped session leaves content", () => {

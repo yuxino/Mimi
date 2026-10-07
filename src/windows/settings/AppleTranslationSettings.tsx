@@ -90,6 +90,6 @@ export function AppleTranslationSettings({ profileId, sourceLanguage, targetLang
         {pair.status === "supported" && <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={stopped} onClick={() => void prepare()}><Icon name="download" />{I18N.settings.appleTranslationPrepare}</button>}
       </div>}
     {prepareError?.key === key && <InlineFeedback tone={prepareError.message === I18N.settings.appleTranslationCancelled ? "info" : "error"}>{prepareError.message}</InlineFeedback>}
-    {requiresStop && <InlineFeedback tone="info">{I18N.settings.languageChangeRequiresStop}</InlineFeedback>}
+    {requiresStop && !loading && !pair.loading && !problem && pair.status === "supported" && <InlineFeedback tone="info">{I18N.settings.appleLanguagePreparationRequiresStop}</InlineFeedback>}
   </div>;
 }

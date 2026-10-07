@@ -790,14 +790,14 @@ mod tests {
     }
 
     #[test]
-    fn target_switch_is_scoped_to_control_and_tray_windows() {
+    fn target_switch_is_scoped_to_settings_control_and_tray_windows() {
         let permissions = include_str!("../permissions/app.toml");
         let permitted: Vec<_> = permissions
             .split("[[permission]]")
             .filter(|entry| entry.contains("\"session_switch_target_language\""))
             .collect();
-        assert_eq!(permitted.len(), 2);
-        for identifier in ["app-overlay-control", "app-tray-panel"] {
+        assert_eq!(permitted.len(), 3);
+        for identifier in ["app-settings", "app-overlay-control", "app-tray-panel"] {
             assert!(permitted
                 .iter()
                 .any(|entry| entry.contains(&format!("identifier = \"{identifier}\""))));

@@ -66,6 +66,8 @@ export function deriveTrayPresentation({
 }: TrayPresentationInput): TrayPresentation {
   const shared = {
     canClearSubtitles: hasSubtitleContent,
+    // Source and target switches can update a paused session without resuming it.
+    canChangeSourceLanguage: statusKind !== "connecting" && statusKind !== "stopping",
   };
 
   // Transitional states take priority over a briefly stale pause flag.
@@ -76,7 +78,6 @@ export function deriveTrayPresentation({
       statusKind: "connecting",
       primaryAction: { action: "connecting", disabled: true },
       secondaryAction: null,
-      canChangeSourceLanguage: false,
       canShowOverlay: false,
     };
   }
@@ -88,7 +89,6 @@ export function deriveTrayPresentation({
       statusKind: "stopping",
       primaryAction: { action: "stopping", disabled: true },
       secondaryAction: null,
-      canChangeSourceLanguage: false,
       canShowOverlay: false,
     };
   }
@@ -100,7 +100,6 @@ export function deriveTrayPresentation({
       statusKind: "paused",
       primaryAction: { action: "resume", disabled: false },
       secondaryAction: { action: "stop", disabled: false },
-      canChangeSourceLanguage: false,
       canShowOverlay: statusKind === "listening",
     };
   }
@@ -112,7 +111,6 @@ export function deriveTrayPresentation({
       statusKind: "listening",
       primaryAction: { action: "pause", disabled: false },
       secondaryAction: { action: "stop", disabled: false },
-      canChangeSourceLanguage: true,
       canShowOverlay: true,
     };
   }
@@ -129,7 +127,6 @@ export function deriveTrayPresentation({
       statusKind: "error",
       primaryAction,
       secondaryAction: null,
-      canChangeSourceLanguage: true,
       canShowOverlay: hasSubtitleContent,
     };
   }
@@ -140,7 +137,6 @@ export function deriveTrayPresentation({
     statusKind: hasCredential ? "ready" : "setupRequired",
     primaryAction,
     secondaryAction: null,
-    canChangeSourceLanguage: true,
     canShowOverlay: hasSubtitleContent,
   };
 }

@@ -18,6 +18,7 @@ type Props = ComponentProps<typeof AlibabaCredentialEditor> & {
   support: AppleSpeechSupport | null;
   settings: SettingsSnapshot;
   requiresStop?: boolean;
+  languageChangesDisabled?: boolean;
   resourceRefreshDisabled?: boolean;
   loading: boolean;
   failed: boolean;
@@ -29,7 +30,7 @@ type Props = ComponentProps<typeof AlibabaCredentialEditor> & {
 };
 type LanguageActionStage = "translation-check" | "download" | "save" | "refresh";
 
-export function AppleSpeechSettings({ support, settings, requiresStop = false, resourceRefreshDisabled, loading, failed, sourceLanguage, onRetry, onPrepared, onBusyChange, onSelectProfile, ...editor }: Props) {
+export function AppleSpeechSettings({ support, settings, requiresStop = false, languageChangesDisabled, resourceRefreshDisabled, loading, failed, sourceLanguage, onRetry, onPrepared, onBusyChange, onSelectProfile, ...editor }: Props) {
   const [selected, setSelected] = useState<{ language: string; context: symbol } | null>(null);
   const selectionKey = `${settings.activeProfileId}:${settings.sourceLanguage}`;
   const selectionContext = useMemo(() => Symbol(selectionKey), [selectionKey]);
@@ -37,13 +38,16 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
   const [languageAction, setLanguageAction] = useState<{ context: symbol; stage: LanguageActionStage } | null>(null);
   const currentSettings = useRef(settings);
   const currentSupport = useRef(support);
+  const currentRequiresStop = useRef(requiresStop);
   const currentSelectionContext = useRef(selectionContext);
   useEffect(() => {
     currentSettings.current = settings;
     currentSupport.current = support;
+    currentRequiresStop.current = requiresStop;
     currentSelectionContext.current = selectionContext;
-  }, [settings, support, selectionContext]);
+  }, [settings, support, requiresStop, selectionContext]);
   const saveSettings = useStore(state => state.saveSettings);
+  const switchSourceLanguage = useStore(state => state.switchSourceLanguage);
   const [languageError, setLanguageError] = useState<{ context: symbol; message: string; retryDownload: boolean; uncertain?: boolean } | null>(null);
   const selectionError = languageError?.context === selectionContext ? languageError : null;
   const inFlight = useRef(false);
@@ -80,6 +84,8 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
   const refreshing = currentStage === "refresh";
   const busy = languageAction !== null;
   const disabled = editor.disabled || editor.busy || busy || requiresStop || loading;
+  const pickerDisabled = (active ? languageChangesDisabled ?? (editor.disabled || requiresStop) : editor.disabled || requiresStop) || editor.busy || busy || loading;
+  const applyDisabled = pickerDisabled || (!languageInstalled && requiresStop);
   const refreshDisabled = (resourceRefreshDisabled ?? editor.disabled) || editor.busy || busy || loading;
   const refreshStatus = async () => {
     if (refreshDisabled || inFlight.current) return;
@@ -102,7 +108,7 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
     }
   };
   const applyLanguage = async () => {
-    if (!language || !canUseLanguage || disabled || inFlight.current) return;
+    if (!language || !canUseLanguage || applyDisabled || inFlight.current) return;
     const chosen = language;
     const activeProfileId = settings.activeProfileId;
     let downloaded = languageInstalled;
@@ -130,6 +136,7 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
         if (!mounted.current) return;
         const current = currentSettings.current;
         if (current.activeProfileId !== activeProfileId) throw new Error("source_switch_profile");
+        if (currentSelectionContext.current !== selectionContext) throw new Error("language_switch_superseded");
         const currentProfile = current.profiles.find(profile => profile.id === editor.profile.id);
         if (current.targetLanguage !== settings.targetLanguage || !currentProfile
           || textTranslationForProfile(currentProfile) !== route) throw new Error("language_switch_superseded");
@@ -137,6 +144,7 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
       stage = downloaded ? "save" : "download";
       setLanguageAction({ context: selectionContext, stage });
       if (!downloaded) {
+        if (currentRequiresStop.current) throw new Error("source_switch_busy");
         const result = await prepareAppleSpeechLanguage(chosen.sourceLanguage);
         if (!mounted.current) return;
         onPrepared(result);
@@ -153,14 +161,21 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
       }
       const current = currentSettings.current;
       if (current.activeProfileId !== activeProfileId) throw new Error("source_switch_profile");
+      if (currentSelectionContext.current !== selectionContext) throw new Error("language_switch_superseded");
+      if (!languageInstalled && currentRequiresStop.current) throw new Error("language_switch_superseded");
       if (!active && onSelectProfile) {
         await onSelectProfile(editor.profile.id, chosen.sourceLanguage);
       } else {
         const profile = activeServiceProfile(current);
         if (profile?.id !== editor.profile.id || profile.provider !== "appleSpeech") throw new Error("source_switch_profile");
-        // Preparation refreshes native capabilities before returning. The save
-        // validates that fresh route even if its broadcast has not rendered yet.
-        await saveSettings({ sourceLanguage: chosen.sourceLanguage });
+        if (languageInstalled) {
+          // Match floating controls: the session owns live/paused source changes.
+          await switchSourceLanguage(chosen.sourceLanguage);
+        } else {
+          // An idle download may finish before its capability broadcast renders.
+          // The save validates the freshly prepared native route in that case.
+          await saveSettings({ sourceLanguage: chosen.sourceLanguage });
+        }
       }
       if (mounted.current) { setSelected(null); notify(I18N.settings.appleSpeechLanguageSelected); }
     } catch (error) {
@@ -198,7 +213,7 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
         : <>
           <SettingsRow label={I18N.settings.sourceLanguage} description={I18N.settings.appleSpeechResourcesHelp}>
             <LanguageSelect label={I18N.settings.sourceLanguage} value={language.sourceLanguage}
-              disabled={disabled}
+              disabled={pickerDisabled}
               options={languages.map(item => {
                 const status = item.sourceLanguage === language.sourceLanguage ? resourceStatus : appleSpeechLanguageStatus(item);
                 const label = status === "downloading" ? I18N.settings.appleSpeechDownloadPending : status === "supported" ? I18N.settings.appleSpeechNotInstalled : I18N.settings.appleSpeechStatusUnknown;
@@ -209,18 +224,18 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
           <div className="apple-speech-resource-actions">
             <span className="apple-speech-resource-status" role="status">
               {preparing || checkingTranslation || refreshing || downloadPending ? <span className="settings-spinner" aria-hidden="true" /> : <Icon name={resourceUnknown ? "help" : languageInstalled ? "checkmark-circle" : "download"} />}
-              {language.locale} · {refreshing ? I18N.settings.appleSpeechLoading : checkingTranslation ? I18N.settings.appleTranslationChecking : preparing ? I18N.settings.appleSpeechPreparing : downloadPending ? I18N.settings.appleSpeechDownloadPending : resourceUnknown ? I18N.settings.appleSpeechStatusUnknown : languageInUse && languageInstalled ? I18N.settings.appleSpeechLanguageInUse
+              {SOURCE_LANGUAGE_DISPLAY_NAMES[language.sourceLanguage]} · {refreshing ? I18N.settings.appleSpeechLoading : checkingTranslation ? I18N.settings.appleTranslationChecking : preparing ? I18N.settings.appleSpeechPreparing : downloadPending ? I18N.settings.appleSpeechDownloadPending : resourceUnknown ? I18N.settings.appleSpeechStatusUnknown : languageInUse && languageInstalled ? I18N.settings.appleSpeechLanguageInUse
                 : languageInstalled ? I18N.settings.appleSpeechInstalled : I18N.settings.appleSpeechNotInstalled}
             </span>
             {downloadPending || resourceUnknown ? <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={refreshDisabled} onClick={() => void refreshStatus()}>
               <RotateCw size={14} aria-hidden="true" />{I18N.settings.appleSpeechRefreshStatus}
-            </button> : canUseLanguage && <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled} onClick={() => void applyLanguage()}>
+            </button> : canUseLanguage && <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={applyDisabled} onClick={() => void applyLanguage()}>
               <Icon name={languageInstalled ? "checkmark" : "download"} />
               {languageInstalled ? I18N.settings.appleSpeechUseLanguage : currentError?.retryDownload ? I18N.settings.appleSpeechRetryDownload : I18N.settings.appleSpeechDownloadAndUse}
             </button>}
           </div>
-          {requiresStop && <span className="apple-speech-resource-note">{I18N.settings.languageChangeRequiresStop}</span>}
-          {!requiresStop && (!textAllowsLanguage || (languageInstalled && !routeAllowsLanguage)) && <InlineFeedback tone="info">{I18N.settings.appleSpeechLanguageRouteUnsupported}</InlineFeedback>}
+          {requiresStop && resourceStatus === "supported" && canUseLanguage && <span className="apple-speech-resource-note">{I18N.settings.appleLanguagePreparationRequiresStop}</span>}
+          {(!textAllowsLanguage || (languageInstalled && !routeAllowsLanguage)) && <InlineFeedback tone="info">{I18N.settings.appleSpeechLanguageRouteUnsupported}</InlineFeedback>}
           {(currentError || resourceUnknown) && <InlineFeedback tone="error">{currentError?.message ?? I18N.settings.appleSpeechLoadFailed}</InlineFeedback>}
           <div className="apple-speech-connection-check">{typeof editor.connectionCheck === "function" ? editor.connectionCheck(languageInstalled ? undefined : null, language.sourceLanguage) : languageInstalled ? editor.connectionCheck : undefined}</div>
         </>}

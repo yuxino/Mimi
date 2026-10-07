@@ -2950,21 +2950,9 @@ impl SessionManager {
         // leave the preference and running session on different selections.
         let proposed_configuration = self.active_settings.lock().unwrap().clone();
         let proposed_configuration = proposed_configuration
-            .map(|mut configuration| {
-                configuration.source_language = selection.source_language;
-                configuration.target_language = selection.target_language;
-                configuration.translation_mode = selection.translation_mode;
-                if (configuration.provider.is_standalone_asr()
-                    || profile.text_translation() == crate::core::provider::TextTranslation::Apple)
-                    && target.translates_audio()
-                    && configuration.text_credentials.is_none()
-                {
-                    configuration.text_credentials = self
-                        .settings
-                        .configuration_for_profile_probe(&profile)?
-                        .text_credentials;
-                }
-                configuration.validated().map_err(|error| error.to_string())
+            .map(|configuration| {
+                self.settings
+                    .configuration_for_target_switch(&profile, configuration, selection)
             })
             .transpose()?;
         self.settings
