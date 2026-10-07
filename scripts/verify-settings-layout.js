@@ -1,6 +1,47 @@
 // Browser geometry regression. Serve the repository with npm run dev, then
 // import this function from an ego-browser nodejs round with its managed Page.
 // Platform bridges and device state are fixtures, not native-device evidence.
+export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:1420", { readOnlyModes = [false, true] } = {}) {
+  await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
+  await page.waitForFunction(() => window.layoutReady === true);
+  await page.cdp("Page.bringToFront", {});
+  await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
+  const failures = [];
+  let checked = 0;
+  for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"]) for (const theme of ["light", "dark"]) {
+    await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
+    for (const readOnly of readOnlyModes) for (const model of ["lite", "flash", "plus"]) {
+      const issues = await page.evaluate(async next => {
+        await window.applyLayoutCase({ ...next, editor: true, platform: "macos", state: "idle", provider: "alibabaCloud", textTranslation: "followService",
+          profileOverrides: { qwenMtModel: next.model, ...(next.readOnly ? { credentialStorage: "localDevFile" } : {}) } });
+        // Let pending viewport-resize handlers settle before opening the popup.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const issues = [];
+        const picker = [...document.querySelectorAll('.service-stage--translation [role="combobox"]')].find(node => node.textContent.startsWith("Qwen-MT"));
+        if (!picker) return ["model picker missing"];
+        const row = picker.closest(".settings-field");
+        const rect = node => node.getBoundingClientRect();
+        if (row.scrollWidth > row.clientWidth + 1 || rect(picker).right > rect(row).right + 1) issues.push("model row overflow");
+        const labelBounds = rect(row.firstElementChild), pickerBounds = rect(picker);
+        if (labelBounds.bottom > pickerBounds.top + 1 && labelBounds.right > pickerBounds.left + 1) issues.push("model label overlaps picker");
+        const help = row.querySelector(".settings-help-control__button");
+        if (!help || getComputedStyle(help).cursor !== "pointer") issues.push("model help missing or wrong cursor");
+        if (getComputedStyle(picker).cursor !== "pointer") issues.push("model picker cursor");
+        picker.click();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const options = [...document.querySelectorAll('[role="option"]')];
+        if (options.map(node => node.textContent.split("（")[0]).join("|") !== "Qwen-MT Lite|Qwen-MT Flash|Qwen-MT Plus") issues.push("model choices missing");
+        for (const option of options) if (option.scrollWidth > option.clientWidth + 1 || rect(option).left < 0 || rect(option).right > innerWidth + 1) issues.push("model option clipped");
+        return issues;
+      }, { width, language, theme, readOnly, model });
+      checked += 1;
+      if (issues.length) failures.push({ width, language, theme, readOnly, model, issues });
+    }
+  }
+  return { checked, failures };
+}
+
 export default async function verifySettingsLayout(page, baseUrl = "http://127.0.0.1:1420", { widths = [520, 680, 760, 952, 1920], appleOnly = false, appleTranslationOnly = false } = {}) {
   await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);

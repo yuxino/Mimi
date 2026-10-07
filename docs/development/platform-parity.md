@@ -13,6 +13,13 @@ update both implementations and their platform-specific tests in the same change
 
 ## Shared behavior
 
+Desktop Alibaba configurations can select Qwen-MT Lite, Flash or Plus for text
+translation, including the development preset. Android retains Lite and has no
+model picker. Desktop keeps the existing Lite language range across these choices
+for comparable trials; recognition remains Audio 3.0. Plus returns complete
+translations, while Lite and Flash stream text. Provider wire formats and shared
+subtitle rules are unchanged.
+
 - DeepL, DeepLX, ChatMock and OpenAI-compatible services are text translators, separate from speech
   recognition. They receive confirmed recognized text and their own credentials.
 - DeepL uses a required API key and the official Free/Pro origin. DeepLX uses its own JSON

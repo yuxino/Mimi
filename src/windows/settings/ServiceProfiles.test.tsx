@@ -54,6 +54,44 @@ afterEach(async () => {
 });
 async function render(snapshot = settings, sessionStatusKind: "idle" | "error" = "idle") { await act(async () => root.render(<><ServiceProfiles settings={snapshot} sessionIsActive={false} sessionStatusKind={sessionStatusKind} /><SettingsToastRegion /></>)); }
 
+it.each([undefined, "localDevFile"] as const)("saves the Alibaba text model for %s profiles without changing credentials", async credentialStorage => {
+  const ready = { ...profile, credentialState: "present" as const, credentialStorage };
+  const initial = { ...settings, profiles: [ready] };
+  const changed = { ...initial, profiles: [{ ...ready, qwenMtModel: "flash" as const }] };
+  actions.updateProfile.mockResolvedValue(changed);
+  await render(initial);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  const picker = host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Translation model"]')!;
+  expect(picker.textContent).toBe("Qwen-MT Lite（fast · streaming）");
+  await act(async () => picker.click());
+  const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  expect(options.map(option => option.textContent)).toEqual(["Qwen-MT Lite（fast · streaming）", "Qwen-MT Flash（balanced · streaming）", "Qwen-MT Plus（quality · full text）"]);
+  await act(async () => options[1].click());
+  expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(ready.id, undefined, { qwenMtModel: "flash" });
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  await render(changed);
+  expect(host.querySelector('[role="combobox"][aria-label="Translation model"]')!.textContent).toBe("Qwen-MT Flash（balanced · streaming）");
+  expect(document.querySelector('.settings-toast')).toBeNull();
+});
+
+it("keeps the saved model and reports a failed model save through the toast", async () => {
+  actions.updateProfile.mockRejectedValue(new Error("synthetic-private-error"));
+  await render({ ...settings, profiles: [{ ...profile, credentialState: "present" }] });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Translation model"]')!.click());
+  const plus = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === "Qwen-MT Plus（quality · full text）")!;
+  await act(async () => plus.click());
+  expect(host.querySelector('[role="combobox"][aria-label="Translation model"]')!.textContent).toBe("Qwen-MT Lite（fast · streaming）");
+  expect(document.body.textContent).toContain("Could not save the translation model. Try again.");
+  expect(document.body.textContent).not.toContain("synthetic-private-error");
+});
+
+it.each([false, true])("disables the model picker while subtitles are active (paused=%s)", async paused => {
+  await act(async () => root.render(<ServiceProfiles settings={settings} sessionIsActive={!paused} sessionIsPaused={paused} profileEditorRequest={1} />));
+  expect(host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Translation model"]')!.disabled).toBe(true);
+});
+
 const appleSupport: AppleSpeechSupport = { available: true, languages: [{ sourceLanguage: "en" as const, locale: "en-US", installed: false, status: "supported" }, { sourceLanguage: "ja" as const, locale: "ja-JP", installed: true }] };
 const appleProfile: ServiceProfile = { id: "apple", name: "Apple Speech", provider: "appleSpeech", credentialState: "missing", speechCredentialState: "missing", textCredentialState: "missing", textTranslation: "followService" };
 it("remembers current languages without switching and lets the active configuration restore them later", async () => {
@@ -279,7 +317,7 @@ it.each(["en", "zh", "ja"].flatMap(language => ["alibabaCloud", "googleGeminiLiv
   expect(host.querySelector('input[type="password"]')).toBeNull();
   expect(host.querySelector(".credential-form")).toBeNull();
   expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual(provider === "alibabaCloud" ? [I18N.settings.speechRecognition, I18N.settings.textTranslationLabel] : [I18N.settings.voiceTranslation]);
-  expect(host.querySelector('.service-stage--translation [role="combobox"]')).toBeNull();
+  expect(host.querySelector(`.service-stage--translation [role="combobox"][aria-label="${I18N.settings.textTranslationLabel}"]`)).toBeNull();
   if (provider === "alibabaCloud") {
     expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
     expect(host.querySelector('.service-stage__restriction .settings-help-control__description')?.textContent).toBe(diagnosticCopy().localDevTranslationHelp);

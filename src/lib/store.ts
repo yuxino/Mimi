@@ -538,6 +538,10 @@ export const useStore = create<StoreState>()((set, get) => ({
     }
     const current = get().settings;
     const hasDeclaration = options !== undefined && Object.hasOwn(options, "customSpeechSourceLanguages");
+    if (options?.qwenMtModel !== undefined) {
+      const profile = current.profiles.find(profile => profile.id === profileId);
+      if (profile?.provider !== "alibabaCloud" || !["lite", "flash", "plus"].includes(options.qwenMtModel)) throw new Error("provider-mismatch");
+    }
     const declaration = options?.customSpeechSourceLanguages ?? null;
     if (hasDeclaration) {
       const profile = current.profiles.find(profile => profile.id === profileId);

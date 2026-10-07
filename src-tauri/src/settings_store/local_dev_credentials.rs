@@ -14,6 +14,8 @@ use std::path::Path;
 
 #[cfg(all(test, feature = "local-dev-credentials", target_os = "macos"))]
 mod live_tests;
+#[cfg(all(test, feature = "local-dev-credentials", target_os = "macos"))]
+mod qwen_comparison;
 
 #[cfg(unix)]
 const MAX_FILE_BYTES: u64 = 16 * 1024;
@@ -337,6 +339,63 @@ mod tests {
 
     const PRESET_ACCOUNT: &str = "provider-profile:alibaba-local-dev:alibabaCloud:api-key";
     const GEMINI_ACCOUNT: &str = "provider-profile:gemini-local-dev:googleGeminiLive:api-key";
+
+    #[test]
+    fn local_dev_qwen_model_survives_catalog_reload_without_editing_credentials() {
+        use super::super::{ProfileCatalog, SettingsStore};
+        use crate::core::protocols::qwen_mt::QwenMTModel;
+        let store = SettingsStore::in_memory_with_scope(
+            Box::new(FileSecretStore {
+                key: Ok(Some("synthetic-alibaba".into())),
+                gemini_key: Ok(None),
+                gemini_configured: false,
+                os: Box::new(TestOsStore::default()),
+            }),
+            false,
+            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            false,
+        );
+        let updated = store
+            .update_profile_options_with_model(
+                LOCAL_DEV_ALIBABA_PROFILE_ID,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(QwenMTModel::Plus),
+            )
+            .unwrap();
+        store.select_profile(&updated.id).unwrap();
+        assert_eq!(
+            store.configuration().unwrap().qwen_mt_model,
+            QwenMTModel::Plus
+        );
+        assert_eq!(
+            store
+                .configuration_for_text_probe(&updated)
+                .unwrap()
+                .qwen_mt_model,
+            QwenMTModel::Plus
+        );
+        let persisted = serde_json::to_string(&*store.catalog.lock().unwrap()).unwrap();
+        let reloaded: ProfileCatalog = serde_json::from_str(&persisted).unwrap();
+        let refreshed = reloaded.with_local_dev_profiles(&[LOCAL_DEV_ALIBABA_PROFILE_ID]);
+        assert_eq!(
+            refreshed
+                .profiles
+                .iter()
+                .find(|p| p.id == updated.id)
+                .unwrap()
+                .qwen_mt_model,
+            QwenMTModel::Plus
+        );
+        assert!(store
+            .save_api_key(&updated.id, "synthetic-replacement")
+            .is_err());
+    }
 
     #[test]
     fn local_dev_credentials_gemini_is_independent_read_only_and_never_falls_back() {

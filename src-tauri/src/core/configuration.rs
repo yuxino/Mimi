@@ -5,6 +5,7 @@ use crate::core::credentials::{
 };
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode};
 use crate::core::network_proxy::{ProxyConfig, ProxyConfigError};
+use crate::core::protocols::qwen_mt::QwenMTModel;
 use crate::core::provider::{ProviderCapabilities, ProviderKind, TextTranslation};
 use std::fmt;
 use thiserror::Error;
@@ -19,6 +20,7 @@ pub enum TextTranslationProbeCredentials {
 #[derive(Clone)]
 pub struct TextTranslationProbeConfiguration {
     pub credentials: TextTranslationProbeCredentials,
+    pub qwen_mt_model: QwenMTModel,
     pub source_language: SourceLanguage,
     pub target_language: TargetLanguage,
     pub network_proxy: ProxyConfig,
@@ -52,6 +54,7 @@ pub enum LiveTranslationConfigurationError {
 #[derive(Clone, PartialEq, Eq)]
 pub struct LiveTranslationConfiguration {
     pub provider: ProviderKind,
+    pub qwen_mt_model: QwenMTModel,
     pub credentials: ProviderCredentials,
     pub text_credentials: Option<TextTranslationCredentials>,
     pub source_language: SourceLanguage,
@@ -67,6 +70,7 @@ impl fmt::Debug for LiveTranslationConfiguration {
         formatter
             .debug_struct("LiveTranslationConfiguration")
             .field("provider", &self.provider)
+            .field("qwen_mt_model", &self.qwen_mt_model)
             .field("credentials", &"[REDACTED]")
             .field("text_credentials", &"[REDACTED]")
             .field("source_language", &self.source_language)
@@ -89,6 +93,7 @@ impl LiveTranslationConfiguration {
     ) -> Self {
         Self {
             provider,
+            qwen_mt_model: Default::default(),
             credentials: ProviderCredentials::api_key(api_key),
             text_credentials: None,
             source_language,
@@ -108,6 +113,7 @@ impl LiveTranslationConfiguration {
     ) -> Self {
         Self {
             provider,
+            qwen_mt_model: Default::default(),
             credentials,
             text_credentials: None,
             source_language,
@@ -127,6 +133,11 @@ impl LiveTranslationConfiguration {
     pub fn with_stage_network_proxies(mut self, speech: ProxyConfig, text: ProxyConfig) -> Self {
         self.network_proxy = speech;
         self.text_network_proxy = text;
+        self
+    }
+
+    pub fn with_qwen_mt_model(mut self, model: QwenMTModel) -> Self {
+        self.qwen_mt_model = model;
         self
     }
 
@@ -217,6 +228,7 @@ impl LiveTranslationConfiguration {
 
         Ok(Self {
             provider: self.provider,
+            qwen_mt_model: self.qwen_mt_model,
             credentials,
             text_credentials,
             source_language: self.source_language,

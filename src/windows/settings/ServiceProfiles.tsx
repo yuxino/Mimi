@@ -58,11 +58,12 @@ import { AutoSaveNameField } from "./AutoSaveNameField";
 import { AppleSpeechSettings } from "./AppleSpeechSettings";
 import { useAppleSpeechSupport } from "./useAppleSpeechSupport";
 import { TencentSetupHelp } from "./TencentSetupHelp";
+import { QwenMTModelSettings } from "./QwenMTModelSettings";
 
 const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
-type PendingAction = "create" | "select" | "delete" | "save-key" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "switch-language" | "prepare-resource" | "prepare-apple-translation" | null;
+type PendingAction = "create" | "select" | "delete" | "save-key" | "save-model" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "switch-language" | "prepare-resource" | "prepare-apple-translation" | null;
 type CheckStage = ConnectionCheckStage | "combined";
 type CheckOutcome = { profileId: string; input: symbol; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
@@ -607,7 +608,21 @@ export function ServiceProfiles({
               }}
               onNativeTranslationBusyChange={busy => setPendingAction(busy ? "prepare-apple-translation" : null)}
               onNativeTranslationPrepared={() => invalidateProfileCheck(selectedProfile.id, "text")}
-              translationLanguageControls={route => route === "apple" && textTranslationForProfile(selectedProfile) === "apple" && selectedProfile.id === settings.activeProfileId
+              translationLanguageControls={route => route === "followService" && selectedProfile.provider === "alibabaCloud"
+                ? <QwenMTModelSettings profile={selectedProfile} disabled={mutationsDisabled}
+                  onSave={async model => {
+                    if (mutationInFlight.current || mutationsDisabled) throw new Error("profile-change-requires-stop");
+                    mutationInFlight.current = true;
+                    setPendingAction("save-model");
+                    try {
+                      await trackProfileOperation(() => updateProfile(selectedProfile.id, undefined, { qwenMtModel: model }));
+                      invalidateProfileCheck(selectedProfile.id, "text");
+                    } finally {
+                      mutationInFlight.current = false;
+                      setPendingAction(null);
+                    }
+                  }} />
+                : route === "apple" && textTranslationForProfile(selectedProfile) === "apple" && selectedProfile.id === settings.activeProfileId
                 ? <ProfileLanguageSettings settings={settings} disabled={selectionDisabled} onBusyChange={busy => setPendingAction(busy ? "switch-language" : null)} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} embedded /> : null}
               onSelectProfile={async (profileId: string, sourceLanguage: SourceLanguage) => {
                 if (selectionDisabled || mutationInFlight.current) throw new Error("profile_switch_busy");

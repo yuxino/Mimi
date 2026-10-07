@@ -75,7 +75,11 @@ launching shell. No polling or automatic Keychain retry occurs.
 
 The built-in development presets are read-only: Settings cannot update, remove or
 reveal their keys, change their recognition/translation services, or delete them.
-Their language and proxy preferences remain editable. Ordinary profiles keep their
+Their language and proxy preferences remain editable.
+The Alibaba preset also allows a saved Qwen-MT Lite / Flash / Plus text-model
+choice after subtitles stop. This edits non-secret profile metadata; it does not
+edit, reveal or copy the preset key, change recognition, or unlock other services.
+Ordinary profiles keep their
 normal add/edit/delete, independent translation, credential reveal and switching
 behavior, with at most 20 user configurations in addition to the presets.
 
@@ -120,3 +124,21 @@ This invokes the same native speech-service check as Settings, loads only the
 Gemini preset key, and reports credential/service status and elapsed time. It
 does not capture audio or change the saved profile selection. It is ignored by
 default because it contacts Google using the private local key.
+
+An explicitly authorized, bounded Alibaba text comparison is also available:
+
+```bash
+MIMI_QWEN_COMPARISON_MANIFEST=/private/tmp/mimi-debug-benchmark/your-case/manifest.json \
+  cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials --lib \
+  manual_qwen_model_comparison -- --ignored --nocapture
+```
+
+The manifest has `output_directory` and up to six `samples`, each containing a
+unique safe `id`, `source` (`en` or `ja`) and synthetic `text` (at most 4096 bytes).
+Create a fresh 0700 output directory under the private benchmark root; outputs
+are create-only 0600 files. The comparison runs two rounds of three models,
+at most 36 serial paid requests, using the read-only Alibaba dev key and the
+production text client with its existing hints, terms and system proxy. Console
+output contains only timing/count/status metadata. Input and translation content
+stay in the explicitly selected private evidence files. Normal tests skip it;
+normal app builds exclude it. It does not capture audio or edit preferences.

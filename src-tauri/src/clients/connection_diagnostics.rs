@@ -18,7 +18,9 @@ use crate::core::models::{SourceLanguage, TargetLanguage};
 use crate::core::protocols::deepl::DeepLError;
 use crate::core::protocols::deeplx::DeepLXError;
 use crate::core::protocols::openai_compatible::OpenAICompatibleError;
-use crate::core::protocols::qwen_mt::{QwenMTClientError, REALTIME_MT_MODEL};
+#[cfg(test)]
+use crate::core::protocols::qwen_mt::REALTIME_MT_MODEL;
+use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTModel};
 use crate::core::provider::ProviderKind;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -239,7 +241,15 @@ pub async fn check_text_service(
     let result = tokio::time::timeout(PROBE_TIMEOUT, async {
         let translation = match &configuration.credentials {
             TextTranslationProbeCredentials::Qwen { api_key } => {
-                probe_qwen(api_key, &network, source, target, phrase).await?
+                probe_qwen(
+                    api_key,
+                    &network,
+                    source,
+                    target,
+                    phrase,
+                    configuration.qwen_mt_model,
+                )
+                .await?
             }
             TextTranslationProbeCredentials::Independent(credentials) => {
                 probe_independent_text_translation(credentials, &network, source, target, phrase)
@@ -346,7 +356,15 @@ async fn probe_text_translation(
     let (source, phrase) = fixed_test_phrase(target);
     let translation = match &configuration.credentials {
         ProviderCredentials::ApiKey { api_key } => {
-            probe_qwen(api_key, network, source, target, phrase).await?
+            probe_qwen(
+                api_key,
+                network,
+                source,
+                target,
+                phrase,
+                configuration.qwen_mt_model,
+            )
+            .await?
         }
         ProviderCredentials::DeepLX {
             endpoint, token, ..
@@ -464,12 +482,13 @@ async fn probe_qwen(
     source: SourceLanguage,
     target: TargetLanguage,
     phrase: &str,
+    model: QwenMTModel,
 ) -> Result<String, ConnectionCheckReason> {
     let mut client = QwenMTClient::new(
         api_key,
         source,
         target,
-        REALTIME_MT_MODEL,
+        model,
         Some(crate::core::protocols::qwen_mt::QwenMTDomainHint::spoken_dialogue(source, target)),
         crate::core::protocols::qwen_mt::QwenMTDomainHint::filler_terms(source, target),
         Duration::from_secs(8),
@@ -478,10 +497,14 @@ async fn probe_qwen(
     client
         .set_network(network.clone())
         .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
-    client
-        .translate_streaming(phrase, Some(source), &[], |_| {})
-        .await
-        .map_err(|error| qwen_reason(&error))
+    let result = if model == QwenMTModel::Plus {
+        client.translate(phrase, Some(source), &[]).await
+    } else {
+        client
+            .translate_streaming(phrase, Some(source), &[], |_| {})
+            .await
+    };
+    result.map_err(|error| qwen_reason(&error))
 }
 
 async fn probe_independent_text_translation(
@@ -1120,6 +1143,7 @@ mod tests {
                 socket.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
             });
             let configuration = TextTranslationProbeConfiguration {
+                qwen_mt_model: Default::default(),
                 source_language: SourceLanguage::English,
                 credentials: TextTranslationProbeCredentials::Independent(
                     TextTranslationCredentials::OpenAICompatible {

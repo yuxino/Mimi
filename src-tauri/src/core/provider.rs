@@ -596,6 +596,9 @@ pub struct ServiceProfile {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
+    /// Built-in Alibaba text translation only; historical profiles retain Lite.
+    #[serde(default)]
+    pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language_preset: Option<ProfileLanguagePreset>,
     /// User-declared explicit ASR languages, not server discovery. None means
@@ -647,6 +650,7 @@ impl ServiceProfile {
             id,
             name,
             provider,
+            qwen_mt_model: Default::default(),
             language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
@@ -662,6 +666,7 @@ impl ServiceProfile {
             id: DEFAULT_ALIBABA_PROFILE_ID.to_string(),
             name: ProviderKind::AlibabaCloud.display_name().to_string(),
             provider: ProviderKind::AlibabaCloud,
+            qwen_mt_model: Default::default(),
             language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
@@ -677,6 +682,7 @@ impl ServiceProfile {
         // A later route edit can make a saved pair unavailable. Preserve it and
         // reject activation, rather than rejecting the whole profile catalog.
         profile.language_preset = self.language_preset;
+        profile.qwen_mt_model = self.qwen_mt_model;
         if matches!(
             self.text_translation,
             Some(
@@ -874,6 +880,25 @@ impl Default for ServiceProfile {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn qwen_model_metadata_defaults_for_legacy_profiles_and_round_trips() {
+        use crate::core::protocols::qwen_mt::QwenMTModel;
+        let legacy = r#"{"id":"legacy","name":"Alibaba","provider":"alibabaCloud"}"#;
+        let mut profile: ServiceProfile = serde_json::from_str(legacy).unwrap();
+        assert_eq!(profile.qwen_mt_model, QwenMTModel::Lite);
+        for model in [QwenMTModel::Lite, QwenMTModel::Flash, QwenMTModel::Plus] {
+            profile.qwen_mt_model = model;
+            let validated = profile.validated().unwrap();
+            let restored: ServiceProfile =
+                serde_json::from_str(&serde_json::to_string(&validated).unwrap()).unwrap();
+            assert_eq!(restored.qwen_mt_model, model);
+        }
+        assert!(serde_json::from_str::<ServiceProfile>(
+            &legacy.replace("\"provider\"", "\"qwenMtModel\":\"unknown\",\"provider\"")
+        )
+        .is_err());
+    }
+
     #[test]
     fn language_presets_survive_validation_but_reject_incompatible_activation() {
         let baidu = ServiceProfile::new("baidu", "Baidu", ProviderKind::BaiduTranslate).unwrap();

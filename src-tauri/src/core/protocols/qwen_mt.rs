@@ -241,16 +241,11 @@ impl QwenMTEndpoint {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum QwenMTModel {
+    #[default]
     Lite,
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Retained for upstream capability comparisons and Flash wire-compatibility fixtures."
-        )
-    )]
     Flash,
     Plus,
 }

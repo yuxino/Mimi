@@ -345,6 +345,13 @@ pub struct HighQualityTranslationClient {
 }
 
 impl HighQualityTranslationClient {
+    #[cfg(test)]
+    pub(super) fn qwen_model_for_test(&self) -> Option<(QwenMTModel, bool)> {
+        match self.mt.as_ref() {
+            TextTranslationClient::Qwen(_, model) => Some((*model, self.streams_finals)),
+            _ => None,
+        }
+    }
     pub fn set_audio_pending_gate(&self, gate: crate::core::pending_pcm::PendingPcmGate) {
         self.asr_client.set_audio_pending_gate(gate);
     }
