@@ -2038,25 +2038,6 @@
 .provider-option:hover {
   background: var(--settings-selection-soft);
 }
-.subtitle-placement summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  list-style: none;
-  color: var(--settings-text-muted);
-  cursor: pointer;
-  font-size: 12px;
-}
-.subtitle-placement summary::-webkit-details-marker {
-  display: none;
-}
-.subtitle-placement[open] summary {
-  margin-bottom: 18px;
-}
-
-#subtitle-settings .settings-divider {
-  margin: 12px 0;
-}
 .subtitle-preview__controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
