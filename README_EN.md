@@ -1,6 +1,6 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h3>Mimi (みみ)</h3>
+  <h1>Mimi</h1>
   <p>Live subtitles and translation for system audio or your microphone on macOS 13+ (Apple silicon and Intel) and Windows / Linux x86_64.</p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="Latest release"></a>
