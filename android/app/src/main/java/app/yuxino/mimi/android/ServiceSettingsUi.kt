@@ -29,6 +29,7 @@ internal object ServiceSettingsUi {
             visibility = if (large) View.VISIBLE else View.GONE
         }, LinearLayout.LayoutParams(-1, -2).apply { this.bottomMargin = dp(activity, 8) })
         box.isHintEnabled = !large
+        if (large) edit.hint = null // TextInputLayout moves its disabled hint into the input.
         group.addView(box, LinearLayout.LayoutParams(-1, -2))
         container.addView(group, LinearLayout.LayoutParams(-1, -2).apply { this.bottomMargin = bottomMargin })
     }
