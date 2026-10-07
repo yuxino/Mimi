@@ -1,6 +1,6 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h1>Mimi</h1>
+  <h3>Mimi</h3>
   <p><sub>みみ</sub></p>
   <p>系統聲音或麥克風即時字幕與翻譯，支援 Apple 晶片和 Intel Mac（macOS 13+），以及 Windows / Linux x86_64。</p>
   <p>

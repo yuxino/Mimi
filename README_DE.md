@@ -1,6 +1,6 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h1>Mimi</h1>
+  <h3>Mimi</h3>
   <p><sub>みみ</sub></p>
   <p>Live-Untertitel und Übersetzung für Systemaudio oder dein Mikrofon unter macOS 13+ (Apple-Chip und Intel) und Windows / Linux x86_64.</p>
   <p>

@@ -1,6 +1,6 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h1>Mimi</h1>
+  <h3>Mimi</h3>
   <p><sub>みみ</sub></p>
   <p>Live subtitles and translation for system audio or your microphone on macOS 13+ (Apple silicon and Intel) and Windows / Linux x86_64.</p>
   <p>

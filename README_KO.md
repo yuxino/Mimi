@@ -1,6 +1,6 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h1>Mimi</h1>
+  <h3>Mimi</h3>
   <p><sub>みみ</sub></p>
   <p>macOS 13 이상(Apple silicon 및 Intel)과 Windows / Linux x86_64에서 시스템 오디오 또는 마이크를 실시간 자막으로 보고 번역하세요.</p>
   <p>
