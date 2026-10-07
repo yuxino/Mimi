@@ -12,6 +12,11 @@ therefore contradicted the other surfaces.
   sessions. They validate native resources before saving, publish the selection
   to all windows, reconnect live sessions and keep paused sessions paused.
   Do not bypass this lifecycle by writing listening preferences directly.
+- Subscribe language controls only to whether an active or paused session owns
+  language changes. Replacing subtitle drafts or latency samples must not render
+  settings again. Preserve the high-frequency snapshot/credential-draft regression
+  for both active and paused sessions, and verify command routing after a mounted
+  control enters and leaves those states.
 - Apple Speech can preview uninstalled languages, but downloads remain explicit
   and require a stopped session. Only show that restriction beside an actual
   resource preparation action; installed languages must not carry it.
