@@ -159,9 +159,11 @@ export function profileUpdate(
   name: string | undefined,
   options?: ProfileOptionsDraft,
 ): Promise<SettingsSnapshot> {
-  const { customSpeechSourceLanguages, ...otherOptions } = options ?? {};
+  const { customSpeechSourceLanguages, languagePreset, ...otherOptions } = options ?? {};
   return invoke<SettingsSnapshot>("profile_update", {
     profileId, name, ...otherOptions,
+    ...(options && Object.hasOwn(options, "languagePreset")
+      ? { languagePresetPatch: { preset: languagePreset ?? null } } : {}),
     ...(options && Object.hasOwn(options, "customSpeechSourceLanguages")
       ? { customSpeechLanguagesPatch: { languages: customSpeechSourceLanguages ?? null } } : {}),
   });

@@ -430,3 +430,48 @@ it("uses Tencent's current source pair constraints for quick target changes", as
     expect(useStore.getState().settings.targetLanguage).toBe("zh");
   } finally { useStore.setState(original, true); }
 });
+
+it.each([false, true])("restores saved pairs across profiles and temporary changes while preserving pause=%s", async isPaused => {
+  const original = useStore.getState();
+  const japanese = { ...original.settings.profiles[0], id: "japanese", name: "Japanese", provider: "alibabaCloud" as const, languagePreset: { sourceLanguage: "ja" as const, targetLanguage: "zh" as const } };
+  const english = { ...japanese, id: "english", name: "English", languagePreset: { sourceLanguage: "en" as const, targetLanguage: "zh" as const } };
+  const session = { ...original.session, isActive: !isPaused, isPaused, status: { kind: "listening" as const } };
+  try {
+    useStore.setState({ session, settings: { ...original.settings, profiles: [japanese, english], activeProfileId: japanese.id, sourceLanguage: "ja", targetLanguage: "zh", languageCapabilities: undefined } });
+    await useStore.getState().selectProfile(english.id);
+    expect(useStore.getState().settings).toMatchObject({ sourceLanguage: "en", targetLanguage: "zh" });
+    await useStore.getState().switchSourceLanguage("fr");
+    expect(useStore.getState().settings.profiles[1].languagePreset).toEqual(english.languagePreset);
+    await useStore.getState().selectProfile(english.id);
+    expect(useStore.getState().settings.sourceLanguage).toBe("en");
+    await useStore.getState().selectProfile(japanese.id);
+    expect(useStore.getState().settings.sourceLanguage).toBe("ja");
+    expect(useStore.getState().session).toBe(session);
+  } finally { useStore.setState(original, true); }
+});
+
+it("saves and clears activation languages without changing the current languages", async () => {
+  const original = useStore.getState();
+  const profile = { ...original.settings.profiles[0], provider: "alibabaCloud" as const, credentialStorage: "localFile" as const };
+  try {
+    useStore.setState({ session: { ...original.session, isActive: false, isPaused: false, status: { kind: "idle" } }, settings: { ...original.settings, profiles: [profile], activeProfileId: profile.id, sourceLanguage: "en", targetLanguage: "zh", languageCapabilities: undefined } });
+    await useStore.getState().updateProfile(profile.id, undefined, { languagePreset: { sourceLanguage: "ja", targetLanguage: "zh" } });
+    expect(useStore.getState().settings.sourceLanguage).toBe("en");
+    await useStore.getState().updateProfile(profile.id, "Renamed");
+    expect(useStore.getState().settings.profiles[0].languagePreset?.sourceLanguage).toBe("ja");
+    await useStore.getState().updateProfile(profile.id, undefined, { languagePreset: null });
+    await useStore.getState().selectProfile(profile.id);
+    expect(useStore.getState().settings.sourceLanguage).toBe("en");
+  } finally { useStore.setState(original, true); }
+});
+
+it("rejects an incompatible saved pair without changing the active profile", async () => {
+  const original = useStore.getState();
+  const invalid = { ...original.settings.profiles[0], id: "invalid", provider: "openAIRealtime" as const, languagePreset: { sourceLanguage: "ja" as const, targetLanguage: "zh" as const } };
+  try {
+    useStore.setState({ settings: { ...original.settings, profiles: [...original.settings.profiles, invalid] } });
+    const before = useStore.getState().settings;
+    await expect(useStore.getState().selectProfile(invalid.id)).rejects.toThrow("profile_language_preset_unsupported");
+    expect(useStore.getState().settings).toBe(before);
+  } finally { useStore.setState(original, true); }
+});

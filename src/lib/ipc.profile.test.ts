@@ -29,3 +29,8 @@ it("checks a displayed Apple language without submitting a settings mutation", a
   await testProfileConnection("apple", "speech", undefined, "ja");
   expect(invoke).toHaveBeenCalledExactlyOnceWith("profile_test_connection", { profileId: "apple", stage: "speech", sourceLanguage: "ja" });
 });
+
+it.each([null, { sourceLanguage: "ja", targetLanguage: "zh" }] as const)("sends an explicit activation-language patch %j", async preset => {
+  await profileUpdate("p", undefined, { languagePreset: preset });
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("profile_update", { profileId: "p", name: undefined, languagePresetPatch: { preset } });
+});

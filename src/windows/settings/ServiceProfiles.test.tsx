@@ -56,6 +56,26 @@ async function render(snapshot = settings, sessionStatusKind: "idle" | "error" =
 
 const appleSupport: AppleSpeechSupport = { available: true, languages: [{ sourceLanguage: "en" as const, locale: "en-US", installed: false, status: "supported" }, { sourceLanguage: "ja" as const, locale: "ja-JP", installed: true }] };
 const appleProfile: ServiceProfile = { id: "apple", name: "Apple Speech", provider: "appleSpeech", credentialState: "missing", speechCredentialState: "missing", textCredentialState: "missing", textTranslation: "followService" };
+it("remembers current languages without switching and lets the active configuration restore them later", async () => {
+  const ready = { ...profile, credentialState: "present" as const };
+  const pair = { sourceLanguage: "ja" as const, targetLanguage: "zh" as const };
+  const saved = { ...ready, languagePreset: pair };
+  const initial = { ...settings, ...pair, profiles: [ready] };
+  actions.updateProfile.mockResolvedValue({ ...initial, profiles: [saved] });
+  await render(initial);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.profileLanguagesRemember);
+  expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(ready.id, undefined, { languagePreset: pair });
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  expect(actions.saveSettings).not.toHaveBeenCalled();
+  const temporary = { ...initial, sourceLanguage: "en" as const, profiles: [saved] };
+  actions.selectProfile.mockResolvedValue({ ...initial, profiles: [saved] });
+  await render(temporary);
+  await click(I18N.settings.useProfile);
+  expect(actions.selectProfile).toHaveBeenCalledExactlyOnceWith(ready.id);
+  expect(actions.updateProfile).toHaveBeenCalledTimes(1);
+});
+
 function appleSettings(): SettingsSnapshot {
   return { ...settings, profiles: [appleProfile], activeProfileId: appleProfile.id, sourceLanguage: "en", targetLanguage: "original", languageCapabilities: { profileId: appleProfile.id, provider: "appleSpeech", textTranslation: "followService", targetLanguage: "original", sourceLanguages: ["en", "ja"], targetLanguages: ["original"] } };
 }

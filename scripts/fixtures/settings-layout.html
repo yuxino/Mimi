@@ -83,6 +83,7 @@ window.__TAURI_INTERNALS__ = {
           if (name.trim()) next.textTranslationNames[route] = name.trim();
           else delete next.textTranslationNames[route];
         }
+        if (args.languagePresetPatch) next.languagePreset = args.languagePresetPatch.preset;
         if (args.speechRecognitionName !== undefined) {
           next.speechRecognitionName = args.speechRecognitionName.trim() || undefined;
         }

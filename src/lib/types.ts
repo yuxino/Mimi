@@ -238,7 +238,9 @@ export type CredentialState = "present" | "missing" | "unavailable";
 
 export type ProfileNetworkProxyDraft = Partial<Pick<ServiceProfile, "speechNetworkProxy" | "textNetworkProxy">>;
 export type TextTranslationNameDraft = { route: Exclude<TextTranslation, "followService">; name: string };
+export type ProfileLanguagePreset = { sourceLanguage: SourceLanguage; targetLanguage: TargetLanguage };
 export type ProfileOptionsDraft = ProfileNetworkProxyDraft & {
+  languagePreset?: ProfileLanguagePreset | null;
   speechRecognitionName?: string;
   textTranslationName?: TextTranslationNameDraft;
   customSpeechSourceLanguages?: SourceLanguage[] | null;
@@ -248,6 +250,8 @@ export interface ServiceProfile {
   id: string;
   name: string;
   provider: ServiceProvider;
+  /** Applied on activation only; temporary session changes leave it intact. */
+  languagePreset?: ProfileLanguagePreset | null;
   credentialState: CredentialState;
   /** Storage kind only; credential values remain in the backend. */
   credentialStorage?: "keychain" | "localDevFile" | "localFile";

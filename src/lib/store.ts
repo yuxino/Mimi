@@ -544,6 +544,16 @@ export const useStore = create<StoreState>()((set, get) => ({
       if (!profile || !isCustomSpeechProvider(profile.provider)) throw new Error("provider-mismatch");
       if (declaration !== null && (declaration.length > SOURCE_LANGUAGE_CODES.length || declaration.includes("auto"))) throw new Error("custom-speech-languages-invalid");
     }
+    if (options && Object.hasOwn(options, "languagePreset")) {
+      const profile = current.profiles.find(profile => profile.id === profileId);
+      if (!profile || profile.credentialStorage === "localDevFile") throw new Error("profile-read-only");
+      const preset = options.languagePreset;
+      if (preset && profile.provider !== "appleSpeech" && textTranslationForProfile(profile) !== "apple") {
+        const proposed = { ...current, ...preset, activeProfileId: profileId, languageCapabilities: undefined };
+        if (!sourceLanguagesForSettings(proposed).includes(preset.sourceLanguage)
+          || !targetLanguagesForSettings(proposed).includes(preset.targetLanguage)) throw new Error("profile_language_preset_unsupported");
+      }
+    }
     const snapshot: SettingsSnapshot = {
       ...current,
       profiles: current.profiles.map((profile) =>
@@ -570,7 +580,8 @@ export const useStore = create<StoreState>()((set, get) => ({
   },
 
   selectProfile: async (profileId, sourceLanguage) => {
-    if (profileId === get().settings.activeProfileId && !sourceLanguage) return get().settings;
+    if (profileId === get().settings.activeProfileId && !sourceLanguage
+      && !get().settings.profiles.find(profile => profile.id === profileId)?.languagePreset) return get().settings;
     if (sessionSettingsAreChanging(get().session)) throw new Error("profile_switch_busy");
     if (sourceLanguage) {
       ensureProfileMutationsAllowed(get().session);
@@ -591,6 +602,12 @@ export const useStore = create<StoreState>()((set, get) => ({
     const current = get().settings;
     const selected = current.profiles.find((profile) => profile.id === profileId);
     if (!selected) throw new Error("profile-not-found");
+    const preset = sourceLanguage ? null : selected.languagePreset;
+    if (preset) {
+      const proposed = { ...current, ...preset, activeProfileId: profileId, languageCapabilities: undefined };
+      if (!sourceLanguagesForSettings(proposed).includes(preset.sourceLanguage)
+        || !targetLanguagesForSettings(proposed).includes(preset.targetLanguage)) throw new Error("profile_language_preset_unsupported");
+    }
     const snapshot = settingsAfterMockProfileSelection(current, effectiveProviderForProfile(selected));
     if (isStandaloneAsrProvider(selected.provider)) {
       const capabilities = capabilitiesForProfile(selected, current.targetLanguage);
@@ -598,6 +615,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       snapshot.targetLanguage = capabilities.targetLanguages.includes(current.targetLanguage) ? current.targetLanguage : capabilities.targetLanguages[0]!;
     }
     if (sourceLanguage) snapshot.sourceLanguage = sourceLanguage;
+    if (preset) Object.assign(snapshot, preset);
     snapshot.activeProfileId = profileId;
     set({ settings: snapshot });
     return snapshot;

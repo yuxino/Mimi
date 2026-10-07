@@ -54,6 +54,7 @@ pub struct ServiceProfilePayload {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
+    pub language_preset: Option<crate::core::provider::ProfileLanguagePreset>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speech_recognition_name: Option<String>,
     pub credential_state: CredentialState,
@@ -85,6 +86,7 @@ impl ServiceProfilePayload {
             id: profile.id,
             name: profile.name,
             provider: profile.provider,
+            language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
             credential_state,
             credential_storage,
@@ -104,6 +106,7 @@ impl ServiceProfilePayload {
             id: profile.id,
             name: profile.name,
             provider: profile.provider,
+            language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
             credential_state: CredentialState::Unavailable,
             credential_storage: "keychain",
@@ -934,6 +937,7 @@ mod tests {
         let payload = SettingsSnapshotPayload {
             credential_storage: "keychain",
             profiles: vec![ServiceProfilePayload {
+                language_preset: None,
                 speech_network_proxy: None,
                 text_network_proxy: None,
                 custom_speech_source_languages: None,
@@ -2050,6 +2054,7 @@ pub async fn profile_update(
     text_translation_name: Option<TextTranslationName>,
     speech_recognition_name: Option<String>,
     custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
+    language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
 ) -> Result<SettingsSnapshotPayload, String> {
     let _lifecycle = state.session.settings_mutation_guard(true).await?;
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
@@ -2067,6 +2072,7 @@ pub async fn profile_update(
         text_translation_name,
         speech_recognition_name.as_deref(),
         custom_speech_languages_patch,
+        language_preset_patch,
     )?;
     state
         .session
