@@ -35,4 +35,5 @@
     <string name="overlay_font_failed">无法打开字号设置，请重试。</string>
     <string name="lang_shanghainese">上海话</string>
     <string name="lang_chinese_english">中文与英语（混合）</string>
+    <string name="help_description">%1$s：帮助</string>
 </resources>

@@ -35,4 +35,5 @@
     <string name="overlay_font_failed">Impossible d’ouvrir le réglage de taille. Réessayez.</string>
     <string name="lang_shanghainese">Shanghaïen</string>
     <string name="lang_chinese_english">Chinois et anglais (mixte)</string>
+    <string name="help_description">Aide : %1$s</string>
 </resources>

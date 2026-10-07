@@ -35,4 +35,5 @@
     <string name="overlay_font_failed">無法開啟字級設定，請重試。</string>
     <string name="lang_shanghainese">上海話</string>
     <string name="lang_chinese_english">中文與英語（混合）</string>
+    <string name="help_description">%1$s：說明</string>
 </resources>

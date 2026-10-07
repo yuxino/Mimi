@@ -62,7 +62,9 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   Unsupported system languages fall back to English.
 
 See the [native Before/After comparison](../docs/qa/android-language-and-overlay.md)
-for the empty-overlay and live font-size repairs.
+for the empty-overlay, live font-size and help-icon repairs. Optional explanations
+appear on mouse hover/long press; tap a help icon to read scrollable details.
+Setup, permission and audio-recovery instructions remain visible.
 
 ## Requirements
 

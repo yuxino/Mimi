@@ -11,6 +11,7 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.Toast
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -78,6 +79,12 @@ class SettingsActivity : AppCompatActivity() {
         historySeek = findViewById(R.id.history_lines)
         colorSpinner = findViewById(R.id.translation_color)
         val immersiveSwitch = findViewById<MaterialSwitch>(R.id.immersive_subtitles)
+        findViewById<LinearLayout>(R.id.immersive_heading).addView(HelpUi.heading(this,
+            getString(R.string.settings_immersive), getString(R.string.settings_immersive_help), 16f, "immersive-help").apply {
+            setOnClickListener { immersiveSwitch.performClick() }
+        })
+        findViewById<LinearLayout>(R.id.history_heading).addView(HelpUi.heading(this,
+            getString(R.string.settings_history), getString(R.string.settings_history_help), 16f, "history-help"))
         immersiveSwitch.isChecked = SettingsStore.immersiveSubtitles(this)
         var updatingImmersiveSwitch = false
         fun syncImmersiveSwitch() {

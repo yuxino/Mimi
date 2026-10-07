@@ -34,4 +34,5 @@
     <string name="overlay_font_failed">字幕サイズの設定を開けませんでした。もう一度お試しください。</string>
     <string name="lang_shanghainese">上海語</string>
     <string name="lang_chinese_english">中国語と英語（混在）</string>
+    <string name="help_description">%1$sのヘルプ</string>
 </resources>

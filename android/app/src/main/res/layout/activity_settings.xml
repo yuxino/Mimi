@@ -114,26 +114,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"/>
                 <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:orientation="vertical">
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp" android:gravity="center_vertical" android:orientation="horizontal">
+                    <LinearLayout android:id="@+id/immersive_heading" android:layout_width="0dp"
+                        android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" />
                     <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/immersive_subtitles"
-                        android:layout_width="match_parent"
-                        android:layout_height="48dp"
-                        android:text="@string/settings_immersive"
-                        android:textColor="@color/mimi_text"
-                        android:textSize="14sp"
-                        app:trackTint="@color/mimi_switch_track"
-                        app:thumbTint="@color/mimi_switch_thumb" />
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/settings_immersive_help"
-                        android:textColor="@color/mimi_muted"
-                        android:textSize="12sp"
-                        android:lineSpacingExtra="3dp" />
+                        android:id="@+id/immersive_subtitles" android:layout_width="wrap_content"
+                        android:layout_height="wrap_content" android:minHeight="48dp"
+                        android:contentDescription="@string/settings_immersive"
+                        app:trackTint="@color/mimi_switch_track" app:thumbTint="@color/mimi_switch_thumb" />
                 </LinearLayout>
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -267,7 +256,9 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
                         android:baselineAligned="false">
-                        <TextView
+                        <LinearLayout android:id="@+id/history_heading" android:layout_width="0dp"
+                            android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" />
+                    <TextView
                             style="@style/TextAppearance.Mimi.Label"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
@@ -291,15 +282,6 @@
                         android:progressTint="@color/mimi_text"
                         android:progressBackgroundTint="@color/mimi_border"
                         android:thumbTint="@color/mimi_text"/>
-                    <TextView
-                        style="@style/TextAppearance.Mimi.Body"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="0dp"
-                        android:text="@string/settings_history_help"
-                        android:textSize="12sp"
-                        android:lineSpacingExtra="3dp"
-                        android:textColor="@color/mimi_muted"/>
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/reset_position"
                         style="@style/Widget.Mimi.Button.Secondary"

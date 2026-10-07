@@ -33,6 +33,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
     private val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val fields = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val mode = Spinner(activity).apply { tag = "translation-mode"; background = null; setPadding(0, 0, 0, 0) }
+    private val help: ImageButton
     private val inputLayouts = mutableMapOf<TextInputEditText, TextInputLayout>()
     private val endpoint = field(R.string.translation_endpoint, "translation-endpoint")
     private val model = field(R.string.translation_model, "translation-model")
@@ -57,11 +58,10 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
     val view: View get() = root
 
     init {
-        val header = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(ServiceSettingsUi.label(activity, activity.getString(R.string.translation_title), 18f), LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(helpButton(activity, R.string.translation_help_title, R.string.translation_help_builtin, "translation-help").apply {
-            setOnClickListener { showHelp() }
-        }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        val header = HelpUi.heading(activity, activity.getString(R.string.translation_title),
+            activity.getString(R.string.translation_help_builtin), 18f, "translation-help")
+        help = header.findViewWithTag("translation-help")
+        help.setOnClickListener { showHelp() }
         root.addView(header)
         mode.adapter = TranslationProviderAdapter(activity, providers)
         mode.contentDescription = activity.getString(R.string.translation_title)
@@ -112,6 +112,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
 
     private fun renderDraft() {
         invalidateCheck(); rendering = true
+        help.tooltipText = activity.getString(helpResource()).substringBefore("\n\n")
         val state = drafts.getValue(selected)
         endpoint.setText(state.endpoint); model.setText(state.model); key.setText(state.key)
         localHttp.isChecked = state.localHttp
@@ -190,6 +191,15 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         ServiceSettingsUi.showHelp(activity, activity.getString(translationProviderLabel(selected)), body)
     }
 
+    private fun helpResource() = when (selected) {
+        TextTranslationProvider.BUILTIN -> R.string.translation_help_builtin
+        TextTranslationProvider.NONE -> R.string.translation_help_none
+        TextTranslationProvider.DEEPL -> R.string.translation_help_deepl
+        TextTranslationProvider.DEEPLX -> R.string.translation_help_deeplx
+        TextTranslationProvider.CHAT_MOCK -> R.string.translation_help_chatmock
+        else -> R.string.translation_help
+    }
+
     private fun checkConnection() {
         val config = draft() ?: return
         if (!hasNetworkProvider()) return
@@ -255,14 +265,4 @@ internal fun translationProviderLabel(provider: TextTranslationProvider): Int = 
     TextTranslationProvider.OPENAI_COMPATIBLE -> R.string.translation_openai_compatible
     TextTranslationProvider.DEEPL -> R.string.translation_deepl
     TextTranslationProvider.DEEPLX -> R.string.translation_deeplx
-}
-
-internal fun helpButton(activity: AppCompatActivity, title: Int, body: Int, tag: String): ImageButton = ImageButton(activity).apply {
-    this.tag = tag; setImageResource(R.drawable.ic_help)
-    setBackgroundColor(android.graphics.Color.TRANSPARENT)
-    imageTintList = ContextCompat.getColorStateList(activity, R.color.mimi_muted)
-    contentDescription = activity.getString(title); tooltipText = activity.getString(title)
-    setOnClickListener {
-        ServiceSettingsUi.showHelp(activity, activity.getString(title), activity.getString(body))
-    }
 }

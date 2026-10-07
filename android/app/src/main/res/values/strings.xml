@@ -34,4 +34,5 @@
     <string name="overlay_font_failed">Could not open subtitle size controls. Try again.</string>
     <string name="lang_shanghainese">Shanghainese</string>
     <string name="lang_chinese_english">Chinese and English (mixed)</string>
+    <string name="help_description">Help: %1$s</string>
 </resources>

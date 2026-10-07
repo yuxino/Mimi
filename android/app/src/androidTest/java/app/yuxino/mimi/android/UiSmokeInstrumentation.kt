@@ -72,6 +72,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("help_interaction") == "true") {
+            HelpInteractionChecks(this).run(captureArguments)
+            return
+        }
         if (captureArguments?.getString("overlay_interaction") == "true") {
             OverlayInteractionChecks(this).run(captureArguments)
             return

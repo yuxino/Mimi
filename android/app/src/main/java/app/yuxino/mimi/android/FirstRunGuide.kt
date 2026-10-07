@@ -61,8 +61,12 @@ internal class FirstRunGuide(private val activity: AppCompatActivity, private va
         if (state != lastState) { lastState = state; render() }
     }
     private fun dp(value: Int) = ServiceSettingsUi.dp(activity, value)
-    private fun label(text: String, size: Float = 14f, muted: Boolean = false) {
+    private fun label(text: String, size: Float = 16f, muted: Boolean = false) {
         body.addView(ServiceSettingsUi.label(activity, text, size, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
+    }
+    private fun heading(title: String, help: String, tag: String) {
+        body.addView(HelpUi.heading(activity, title, help, 24f, tag),
             LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
     }
     private fun button(text: String, tag: String, secondary: Boolean = false, action: () -> Unit) {
@@ -110,8 +114,8 @@ internal class FirstRunGuide(private val activity: AppCompatActivity, private va
                 button(activity.getString(R.string.guide_continue_provider, providerTitle(activity, selected)), "guide-next") { step = 1; render() }
             }
             1 -> {
-                label(activity.getString(R.string.guide_connect, providerTitle(activity, selected)), 24f)
-                label(activity.getString(R.string.guide_saved_hint), muted = true)
+                heading(activity.getString(R.string.guide_connect, providerTitle(activity, selected)),
+                    activity.getString(R.string.guide_saved_hint), "guide-storage-help")
                 label(if (configured()) activity.getString(R.string.guide_saved) else activity.getString(R.string.guide_missing))
                 button(activity.getString(R.string.guide_credentials), "guide-credentials") {
                     activity.startActivity(Intent(activity, ServiceSettingsActivity::class.java).putExtra("provider", selected.id))
@@ -138,7 +142,7 @@ internal class FirstRunGuide(private val activity: AppCompatActivity, private va
                 if (Settings.canDrawOverlays(activity) && audioPermission()) button(activity.getString(R.string.guide_trial_next), "guide-next") { step = 3; render() }
             }
             3 -> {
-                label(activity.getString(R.string.guide_play_title), 24f)
+                heading(activity.getString(R.string.guide_play_title), activity.getString(R.string.guide_capture_limits), "guide-capture-help")
                 label(activity.getString(R.string.guide_trial_hint, providerTitle(activity, selected)), muted = true)
                 label(when {
                     !MimiService.isRunning -> activity.getString(R.string.guide_not_started)
@@ -147,7 +151,6 @@ internal class FirstRunGuide(private val activity: AppCompatActivity, private va
                     MimiService.captureObservation?.state == app.yuxino.mimi.android.capture.CaptureHealth.State.AUDIO -> activity.getString(R.string.guide_audio)
                     else -> activity.getString(R.string.guide_wait_audio)
                 })
-                label(activity.getString(R.string.guide_capture_limits), muted = true)
                 button(if (MimiService.isRunning) activity.getString(R.string.guide_see_caption) else activity.getString(R.string.guide_start_trial), "guide-test") {
                     if (MimiService.isRunning) { step = 4; render() } else start()
                 }

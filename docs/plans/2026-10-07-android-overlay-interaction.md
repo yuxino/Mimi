@@ -34,3 +34,13 @@ Assert actual native text size, visibility, current numeric label and history
 preservation, then exercise long captions, silence, immersive exit, narrow screens,
 large fonts and seven interface languages. These UI fixtures do not establish
 real-provider recognition or translation quality.
+
+Optional explanations live beside their owning title/control in a help icon.
+Native pointer hover and long press reveal the explanation; tapping opens the
+same readable scrollable help, including for touch and accessibility users.
+Keep one help dialog per activity. Home introduction/privacy details, ordinary
+ready/running hints, appearance hints, language-save rules and guide storage/
+capture-limit details follow this rule. Keep setup, permission, silent-capture
+and storage recovery visible at normal size, along with first-run audio-sending
+and service-charge disclosures. Verify native hover and tap separately, all
+seven languages, narrow/large-font layouts and comparable Before/After captures.

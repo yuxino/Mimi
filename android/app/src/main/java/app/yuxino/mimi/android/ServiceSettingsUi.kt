@@ -14,6 +14,8 @@ import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.textfield.TextInputEditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.capture.MimiService
 import com.google.android.material.button.MaterialButton
@@ -43,6 +45,9 @@ internal object ServiceSettingsUi {
     }
     fun showHelp(activity: AppCompatActivity, title: String, message: CharSequence,
         links: List<Pair<Int, () -> Unit>> = emptyList()) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val host = activity.window.decorView
+        if ((host.getTag(R.id.active_help_dialog) as? androidx.appcompat.app.AlertDialog)?.isShowing == true) return
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(activity, 24), dp(activity, 12), dp(activity, 24), dp(activity, 8))
@@ -64,6 +69,13 @@ internal object ServiceSettingsUi {
             .setView(ScrollView(activity).apply { addView(body) })
             .setPositiveButton(android.R.string.ok, null).show()
         surface.setColor(ContextCompat.getColor(dialog.context, R.color.mimi_surface))
+        host.setTag(R.id.active_help_dialog, dialog)
+        val lifecycle = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) dialog.dismiss() }
+        activity.lifecycle.addObserver(lifecycle)
+        dialog.setOnDismissListener {
+            host.setTag(R.id.active_help_dialog, null)
+            activity.lifecycle.removeObserver(lifecycle)
+        }
     }
     fun dp(activity: AppCompatActivity, value: Int) = (value * activity.resources.displayMetrics.density).toInt()
     fun label(activity: AppCompatActivity, text: String, size: Float = 14f, secondary: Boolean = false) = TextView(activity).apply {
@@ -73,14 +85,8 @@ internal object ServiceSettingsUi {
     }
     fun renderList(activity: AppCompatActivity, container: LinearLayout) {
         container.removeAllViews()
-        val heading = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL }
-        heading.addView(label(activity, activity.getString(R.string.services_heading), 25f).apply { setTypeface(typeface,Typeface.BOLD) }, LinearLayout.LayoutParams(0,-2,1f))
-        heading.addView(helpButton(activity, R.string.services_heading, R.string.services_hint, "services-help").apply {
-            setOnClickListener {
-                showHelp(activity, activity.getString(R.string.services_heading),
-                    activity.getString(R.string.services_hint) + "\n\n" + activity.getString(R.string.services_key_note))
-            }
-        }, LinearLayout.LayoutParams(dp(activity,48),dp(activity,48)))
+        val heading = HelpUi.heading(activity, activity.getString(R.string.services_heading),
+            activity.getString(R.string.services_hint) + "\n\n" + activity.getString(R.string.services_key_note), 25f, "services-help")
         container.addView(heading, LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(activity,16) })
         for(provider in ServiceProvider.entries) {
             val active = SettingsStore.provider(activity) == provider.id

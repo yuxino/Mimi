@@ -150,3 +150,11 @@ controls and the immersive exit during silence. Check all seven interface
 languages at normal and large font scales; fixed-height labels and a nominal
 two-row toolbar can still clip long translations. Language resources, picker
 and system locale configuration must match the owning desktop language catalog.
+
+Android help icons show explanatory copy on native pointer hover/long press and
+open the same scrollable details on tap or keyboard activation. Keep a labeled
+48dp touch target beside the heading, and one help dialog per activity. Check
+actual hover dismissal and icon/label geometry at large font scales. Optional
+ready/running explanations stay in help; setup, permission, silent-capture and
+storage recovery stay visible. First-run audio-sending and charge disclosures
+remain visible before the user starts a session.

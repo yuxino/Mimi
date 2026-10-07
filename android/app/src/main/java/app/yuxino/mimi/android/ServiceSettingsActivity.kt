@@ -47,8 +47,8 @@ class ServiceSettingsActivity : AppCompatActivity() {
             scaleType=android.widget.ImageView.ScaleType.FIT_CENTER
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, LinearLayout.LayoutParams(dp(28),dp(28)).apply { marginEnd=dp(10) })
-        header.addView(ServiceSettingsUi.label(this,providerTitle(this, provider),21f).apply { maxLines=2; ellipsize=android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0,-2,1f))
-        header.addView(helpButton(this, R.string.translation_speech_help_title, providerHelp(provider).setup, "speech-help").apply {
+        val helpHeading = HelpUi.heading(this, providerTitle(this, provider), getString(providerHelp(provider).setup), 21f, "speech-help")
+        helpHeading.findViewWithTag<ImageButton>("speech-help").apply {
             setOnClickListener {
                 val help = providerHelp(provider)
                 val message = android.text.SpannableStringBuilder(getString(help.setup))
@@ -65,7 +65,8 @@ class ServiceSettingsActivity : AppCompatActivity() {
                     listOf(R.string.guide_official to { openHelp(help.documentation) },
                         R.string.guide_billing to { openHelp(help.billing) }))
             }
-        }, LinearLayout.LayoutParams(dp(48),dp(48)))
+        }
+        header.addView(helpHeading, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(header,LinearLayout.LayoutParams(-1,-2))
         val scroll=ScrollView(this).apply { isFillViewport=true }
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(24),dp(12),dp(24),dp(24)) }

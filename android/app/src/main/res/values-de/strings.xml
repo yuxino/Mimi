@@ -35,4 +35,5 @@
     <string name="overlay_font_failed">Untertitelgröße konnte nicht geöffnet werden. Erneut versuchen.</string>
     <string name="lang_shanghainese">Shanghainesisch</string>
     <string name="lang_chinese_english">Chinesisch und Englisch (gemischt)</string>
+    <string name="help_description">Hilfe: %1$s</string>
 </resources>
