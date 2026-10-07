@@ -1,7 +1,6 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h3>Mimi</h3>
-  <p><sub>みみ</sub></p>
+  <h3>Mimi (みみ)</h3>
   <p>系統聲音或麥克風即時字幕與翻譯，支援 Apple 晶片和 Intel Mac（macOS 13+），以及 Windows / Linux x86_64。</p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="最新版本"></a>
