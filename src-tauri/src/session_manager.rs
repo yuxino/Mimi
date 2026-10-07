@@ -2600,7 +2600,10 @@ impl SessionManager {
         )
         .map_err(str::to_owned)?;
         let current_profile = self.settings.active_profile()?;
-        if current_profile.id == profile_id && source_language.is_none() {
+        if current_profile.id == profile_id
+            && source_language.is_none()
+            && current_profile.language_preset.is_none()
+        {
             return Ok(());
         }
         let configuration_failure = self.configuration_failure_snapshot();
@@ -2651,7 +2654,7 @@ impl SessionManager {
                 crate::apple_translation_support::validate_pair(
                     selection.source_language,
                     selection.target_language,
-                    live,
+                    live || (source_language.is_none() && profile.language_preset.is_some()),
                 )
                 .await?;
             }
@@ -2677,7 +2680,7 @@ impl SessionManager {
                 profile,
                 selection.source_language,
                 selection.target_language,
-                live || source_language.is_some(),
+                live || source_language.is_some() || profile.language_preset.is_some(),
                 || self.publish_settings(),
             )?;
         }

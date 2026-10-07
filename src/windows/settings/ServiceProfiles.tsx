@@ -1,3 +1,4 @@
+import { profileSelectionChangesSettings } from "../../lib/profileLanguagePreset";
 import { testProfileConnection, type ConnectionCheckStage, type ConnectionDiagnostic, type StoredCredentialField } from "../../lib/ipc";
 import { credentialErrorMessage, profileErrorMessage, diagnosticCopy } from "../../lib/connectionDiagnostics";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -24,6 +25,7 @@ import type {
   ProviderCredentialsInput,
   ServiceProfile,
   SourceLanguage,
+  ProfileLanguagePreset,
   ServiceProvider,
   SessionStateEvent,
   SettingsSnapshot,
@@ -47,6 +49,8 @@ import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
 import { textTranslationDisplayName } from "../../lib/textTranslationName";
 import { speechRecognitionDisplayName } from "../../lib/speechRecognitionName";
 import { NetworkProxySettings } from "./NetworkProxySettings";
+import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
+import { ProfileLanguagePresetSettings } from "./ProfileLanguagePresetSettings";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
 import { CustomSpeechLanguageSettings } from "./CustomSpeechLanguageSettings";
 import { speechLanguageGuidance } from "../../lib/speechLanguageGuidance";
@@ -95,7 +99,7 @@ export function ServiceProfiles({
   const apple = useAppleSpeechSupport(visible);
   const canUseProfile = (profile: ServiceProfile) => profile.provider === "appleSpeech"
     ? apple.support?.available === true
-    : credentialStateForTarget(profile, settings.targetLanguage) === "present";
+    : credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage) === "present";
 
   const activeProfile =
     settings.profiles.find((profile) => profile.id === settings.activeProfileId) ??
@@ -296,6 +300,18 @@ export function ServiceProfiles({
     }
   };
 
+  const handleSaveLanguagePreset = async (preset: ProfileLanguagePreset | null) => {
+    if (!selectedProfile || mutationInFlight.current || mutationsDisabled || selectedProfileReadOnly) throw new Error("profile-change-requires-stop");
+    mutationInFlight.current = true;
+    setPendingAction("save-languages");
+    try {
+      return await updateProfile(selectedProfile.id, undefined, { languagePreset: preset });
+    } finally {
+      mutationInFlight.current = false;
+      if (mounted.current) setPendingAction(null);
+    }
+  };
+
   const handleSaveSpeechLanguages = async (profile: ServiceProfile, languages: SourceLanguage[] | null) => {
     if (mutationInFlight.current || mutationsDisabled || selectedProfileReadOnly) throw new Error("profile-change-requires-stop");
     mutationInFlight.current = true;
@@ -320,14 +336,16 @@ export function ServiceProfiles({
   };
 
   const handleSelect = async (profileId: string) => {
-    if (selectionDisabled || mutationInFlight.current || profileId === settings.activeProfileId) return;
+    if (selectionDisabled || mutationInFlight.current || !settings.profiles.some(profile => profile.id === profileId && profileSelectionChangesSettings(profile, settings))) return;
     setPendingConfirmation(null);
     setSelectedProfileId(profileId);
     await perform(
       "select",
       () => selectProfile(profileId),
       (snapshot) =>
-        subtitlePreferencesChanged(settings, snapshot)
+        settings.profiles.find(profile => profile.id === profileId)?.languagePreset
+          ? { tone: "success", message: I18N.settings.profileLanguagesApplied }
+          : subtitlePreferencesChanged(settings, snapshot)
           ? {
               tone: "info",
               message: I18N.settings.profileSelectedWithAdjustments,
@@ -584,9 +602,11 @@ export function ServiceProfiles({
           {selectedProfile.id === settings.activeProfileId && textTranslationForProfile(selectedProfile) !== "apple"
             ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={selectionDisabled} onBusyChange={busy => setPendingAction(busy ? "switch-language" : null)} onOpenAppleResources={focusAppleSpeechResources} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} />
             : null}
+          <ProfileLanguagePresetSettings key={`${selectedProfile.id}-language-preset`} profile={selectedProfile} settings={settings}
+            disabled={mutationsDisabled || selectedProfileReadOnly} onSave={handleSaveLanguagePreset} />
           <div className="service-detail__actions">
             {canUseProfile(selectedProfile) &&
-              selectedProfile.id !== settings.activeProfileId && (
+              profileSelectionChangesSettings(selectedProfile, settings) && (
                 <span className="service-detail__use">
                 <button
                   type="button"
@@ -649,21 +669,22 @@ export function ServiceProfiles({
                   onClick={() => {
                     if (
                       canUseProfile(profile) &&
-                      profile.id !== settings.activeProfileId
+                      profileSelectionChangesSettings(profile, settings)
                     )
                       void handleSelect(profile.id);
                     else openEditor(profile.id);
                   }}
-                  aria-label={`${profile.name}${isCustomSpeechProvider(profile.provider) && profile.speechRecognitionName?.trim() ? `, ${I18N.settings.speechRecognition}: ${speechRecognitionDisplayName(profile)}` : ""}, ${credentialStateText(credentialStateForTarget(profile, settings.targetLanguage), profile.provider === "appleSpeech")}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}: ${canUseProfile(profile) && profile.id !== settings.activeProfileId ? I18N.settings.useProfile : I18N.settings.editProfile}`}
+                  aria-label={`${profile.name}${isCustomSpeechProvider(profile.provider) && profile.speechRecognitionName?.trim() ? `, ${I18N.settings.speechRecognition}: ${speechRecognitionDisplayName(profile)}` : ""}, ${credentialStateText(credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage), profile.provider === "appleSpeech")}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}: ${canUseProfile(profile) && profileSelectionChangesSettings(profile, settings) ? I18N.settings.useProfile : I18N.settings.editProfile}`}
                 >
                   <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
                     <strong key={profile.name}>{profileTitle(profile)}</strong>
+                    {profile.languagePreset && <span className="service-row__provider">{SOURCE_LANGUAGE_DISPLAY_NAMES[profile.languagePreset.sourceLanguage]} → {TARGET_LANGUAGE_DISPLAY_NAMES[profile.languagePreset.targetLanguage]}</span>}
                     {profileSecondaryLabel(profile) && <span className="service-row__provider">{profileSecondaryLabel(profile)}</span>}
                     {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock" | "apple"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
                   </span>
                   <span className="service-row__state">
-                    <CredentialBadge state={credentialStateForTarget(profile, settings.targetLanguage)} nativeSpeech={profile.provider === "appleSpeech"} />
+                    <CredentialBadge state={credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage)} nativeSpeech={profile.provider === "appleSpeech"} />
                     {profile.id === settings.activeProfileId && (
                       <span className="profile-active-badge">
                         {I18N.settings.activeProfile}

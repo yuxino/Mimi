@@ -3087,3 +3087,7 @@
 .custom-speech-languages__choices .profile-language-choice { justify-content: flex-start; }
 .custom-speech-languages__code { margin-inline-start: auto; opacity: .75; font-size: 11px; }
 .custom-speech-languages__choices .profile-language-choice > svg { flex: 0 0 auto; }
+
+.profile-language-preset { margin-top: 16px; }
+.profile-language-preset__controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; min-width: 0; }
+.profile-language-preset__controls > span { overflow-wrap: anywhere; }

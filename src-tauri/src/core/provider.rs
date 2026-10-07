@@ -493,6 +493,31 @@ pub struct ProviderPreferences {
     pub translation_mode: TranslationMode,
 }
 
+/// Optional languages restored on profile activation, independent of temporary
+/// session language changes. Native resource readiness is checked by adapters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProfileLanguagePreset {
+    pub source_language: SourceLanguage,
+    pub target_language: TargetLanguage,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileLanguagePresetPatch {
+    #[serde(deserialize_with = "deserialize_language_preset")]
+    pub preset: Option<ProfileLanguagePreset>,
+}
+
+fn deserialize_language_preset<'de, D>(
+    deserializer: D,
+) -> Result<Option<ProfileLanguagePreset>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<ProfileLanguagePreset>::deserialize(deserializer)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ServiceProfileError {
     #[error("{0}")]
@@ -571,6 +596,8 @@ pub struct ServiceProfile {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_preset: Option<ProfileLanguagePreset>,
     /// User-declared explicit ASR languages, not server discovery. None means
     /// unknown; an empty list leaves only the protocol's default behavior.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -620,6 +647,7 @@ impl ServiceProfile {
             id,
             name,
             provider,
+            language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
             text_translation: None,
@@ -634,6 +662,7 @@ impl ServiceProfile {
             id: DEFAULT_ALIBABA_PROFILE_ID.to_string(),
             name: ProviderKind::AlibabaCloud.display_name().to_string(),
             provider: ProviderKind::AlibabaCloud,
+            language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
             text_translation: None,
@@ -645,6 +674,9 @@ impl ServiceProfile {
 
     pub fn validated(&self) -> Result<Self, ServiceProfileError> {
         let mut profile = Self::new(self.id.clone(), self.name.clone(), self.provider)?;
+        // A later route edit can make a saved pair unavailable. Preserve it and
+        // reject activation, rather than rejecting the whole profile catalog.
+        profile.language_preset = self.language_preset;
         if matches!(
             self.text_translation,
             Some(
@@ -760,6 +792,32 @@ impl ServiceProfile {
         }
     }
 
+    pub fn validate_language_preset(&self, preset: ProfileLanguagePreset) -> Result<(), String> {
+        let normalized = self.normalize_preferences(ProviderPreferences {
+            source_language: preset.source_language,
+            target_language: preset.target_language,
+            translation_mode: TranslationMode::Turbo,
+        });
+        let capabilities = self
+            .capabilities(preset.target_language)
+            .for_source(preset.source_language);
+        if !capabilities
+            .source_languages
+            .contains(&preset.source_language)
+            || !capabilities
+                .target_languages
+                .contains(&preset.target_language)
+            || normalized.source_language != preset.source_language
+            || normalized.target_language != preset.target_language
+            || (self.text_translation() == TextTranslation::Apple
+                && preset.target_language.translates_audio()
+                && preset.source_language == SourceLanguage::Automatic)
+        {
+            return Err("profile_language_preset_unsupported".into());
+        }
+        Ok(())
+    }
+
     /// Normalize the target first, then resolve its source catalog. Switching
     /// away from Original must not keep an Audio3-only hint on the Lite route.
     pub fn normalize_preferences(&self, prefs: ProviderPreferences) -> ProviderPreferences {
@@ -816,6 +874,49 @@ impl Default for ServiceProfile {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn language_presets_survive_validation_but_reject_incompatible_activation() {
+        let baidu = ServiceProfile::new("baidu", "Baidu", ProviderKind::BaiduTranslate).unwrap();
+        assert!(baidu
+            .validate_language_preset(ProfileLanguagePreset {
+                source_language: SourceLanguage::Chinese,
+                target_language: TargetLanguage::SimplifiedChinese,
+            })
+            .is_err());
+        let mut profile = ServiceProfile::new("apple", "Apple", ProviderKind::AppleSpeech).unwrap();
+        let pair = ProfileLanguagePreset {
+            source_language: SourceLanguage::Japanese,
+            target_language: TargetLanguage::SimplifiedChinese,
+        };
+        profile.text_translation = Some(TextTranslation::Apple);
+        profile.validate_language_preset(pair).unwrap();
+        profile.language_preset = Some(pair);
+        profile.text_translation = None;
+        let restored = profile.validated().unwrap();
+        assert_eq!(restored.language_preset, Some(pair));
+        assert_eq!(
+            restored.validate_language_preset(pair).unwrap_err(),
+            "profile_language_preset_unsupported"
+        );
+        let legacy = serde_json::to_value(ServiceProfile::alibaba_default()).unwrap();
+        assert!(legacy.get("languagePreset").is_none());
+        assert!(serde_json::from_value::<ServiceProfile>(legacy)
+            .unwrap()
+            .language_preset
+            .is_none());
+        assert!(serde_json::from_str::<ProfileLanguagePresetPatch>("{}").is_err());
+        assert!(
+            serde_json::from_str::<ProfileLanguagePresetPatch>(r#"{"preset": null}"#)
+                .unwrap()
+                .preset
+                .is_none()
+        );
+        assert!(serde_json::from_str::<ProfileLanguagePresetPatch>(
+            r#"{"preset": {"sourceLanguage": "bad", "targetLanguage": "zh"}}"#
+        )
+        .is_err());
+    }
+
     #[test]
     fn explicit_target_switches_work_for_translation_only_services() {
         for provider in [

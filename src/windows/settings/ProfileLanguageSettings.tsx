@@ -88,7 +88,7 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
   </>;
   if (embedded) return <div className="apple-translation-language-controls" aria-busy={busy}>{controls}</div>;
   return <section id="translation-languages" className="profile-language-settings" aria-labelledby="translation-languages-title" aria-busy={busy}>
-    <header className="profile-language-settings__heading"><h3 id="translation-languages-title">{I18N.settings.subtitleLanguages}</h3><SettingsHelp text={guidance.catalogHelp} label={I18N.settings.helpLabel} /></header>
+    <header className="profile-language-settings__heading"><h3 id="translation-languages-title">{I18N.settings.currentLanguagesTitle}</h3><SettingsHelp text={guidance.catalogHelp} label={I18N.settings.helpLabel} /></header>
     {controls}
   </section>;
 }

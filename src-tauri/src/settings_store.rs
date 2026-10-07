@@ -1155,7 +1155,7 @@ impl SettingsStore {
 
     #[cfg(test)]
     pub fn update_profile(&self, profile_id: &str, name: &str) -> Result<ServiceProfile, String> {
-        self.update_profile_options(profile_id, Some(name), None, None, None, None, None)
+        self.update_profile_options(profile_id, Some(name), None, None, None, None, None, None)
     }
 
     #[allow(clippy::too_many_arguments)] // Keep independent metadata patches explicit.
@@ -1168,8 +1168,12 @@ impl SettingsStore {
         text_translation_name: Option<TextTranslationName>,
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
+        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
     ) -> Result<ServiceProfile, String> {
-        if text_translation_name.is_some() || speech_recognition_name.is_some() {
+        if text_translation_name.is_some()
+            || speech_recognition_name.is_some()
+            || language_preset_patch.is_some()
+        {
             self.require_writable_credentials(profile_id)?;
         }
         let normalize_profile = custom_speech_languages_patch.as_ref().map(|_| profile_id);
@@ -1203,6 +1207,12 @@ impl SettingsStore {
                 updated
                     .set_speech_recognition_name(name)
                     .map_err(|error| error.to_string())?;
+            }
+            if let Some(patch) = language_preset_patch {
+                if let Some(preset) = patch.preset {
+                    updated.validate_language_preset(preset)?;
+                }
+                updated.language_preset = patch.preset;
             }
             let updated = updated.validated().map_err(|error| error.to_string())?;
             *current = updated.clone();
@@ -3503,6 +3513,15 @@ fn profile_selection_preferences(
     if source_language.is_some() && profile.provider != ProviderKind::AppleSpeech {
         return Err("apple_speech_source_override_invalid".into());
     }
+    if source_language.is_none() {
+        if let Some(preset) = profile.language_preset {
+            profile.validate_language_preset(preset)?;
+            prefs.source_language = preset.source_language;
+            prefs.target_language = preset.target_language;
+            prefs.translation_mode = TranslationMode::Turbo;
+            return Ok(prefs);
+        }
+    }
     normalize_preferences_value(&mut prefs, profile);
     if let Some(source) = source_language {
         if source == SourceLanguage::Automatic {
@@ -4119,6 +4138,185 @@ mod tests {
         assert!(fake
             .value(PROFILE_KEYCHAIN_SERVICE, &speech_account)
             .is_none());
+    }
+
+    fn save_language_preset(
+        store: &SettingsStore,
+        id: &str,
+        source: SourceLanguage,
+        target: TargetLanguage,
+    ) {
+        store
+            .update_profile_options(
+                id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(crate::core::provider::ProfileLanguagePresetPatch {
+                    preset: Some(crate::core::provider::ProfileLanguagePreset {
+                        source_language: source,
+                        target_language: target,
+                    }),
+                }),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn profile_language_presets_restore_independent_pairs_without_tracking_temporary_changes() {
+        for provider in [ProviderKind::AppleSpeech, ProviderKind::AlibabaCloud] {
+            let directory = tempfile::tempdir().unwrap();
+            let fake = FakeSecretStore::default();
+            let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            let japanese = store.create_profile(provider, "Same name").unwrap();
+            let english = store.create_profile(provider, "Same name").unwrap();
+            let target = if provider == ProviderKind::AppleSpeech {
+                TargetLanguage::Original
+            } else {
+                TargetLanguage::SimplifiedChinese
+            };
+            let before = store.preferences();
+            save_language_preset(&store, &japanese.id, SourceLanguage::Japanese, target);
+            save_language_preset(&store, &english.id, SourceLanguage::English, target);
+            assert_eq!(store.preferences(), before); // Saving is not activation.
+            store.select_profile(&japanese.id).unwrap();
+            assert_eq!(
+                store.preferences().source_language,
+                SourceLanguage::Japanese
+            );
+            store.select_profile(&english.id).unwrap();
+            assert_eq!(store.preferences().source_language, SourceLanguage::English);
+            store
+                .save_preferences_for_active_profile(|prefs| {
+                    prefs.source_language = SourceLanguage::French
+                })
+                .unwrap();
+            store.select_profile(&english.id).unwrap(); // Reselect restores the preset.
+            assert_eq!(store.preferences().source_language, SourceLanguage::English);
+            store.update_profile(&japanese.id, "Renamed").unwrap();
+            let reopened = SettingsStore::at_path(directory.path().into(), Box::new(fake));
+            reopened.select_profile(&japanese.id).unwrap();
+            assert_eq!(
+                reopened.preferences().source_language,
+                SourceLanguage::Japanese
+            );
+            assert_eq!(reopened.preferences().target_language, target);
+            reopened
+                .update_profile_options(
+                    &japanese.id,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(crate::core::provider::ProfileLanguagePresetPatch { preset: None }),
+                )
+                .unwrap();
+            reopened
+                .save_preferences_for_active_profile(|prefs| {
+                    prefs.source_language = SourceLanguage::English
+                })
+                .unwrap();
+            reopened.select_profile(&japanese.id).unwrap();
+            assert_eq!(
+                reopened.preferences().source_language,
+                SourceLanguage::English
+            );
+        }
+    }
+
+    #[test]
+    fn profile_language_preset_failures_leave_metadata_and_selection_unchanged() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(FakeSecretStore::default()),
+        );
+        let apple = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple")
+            .unwrap();
+        save_language_preset(
+            &store,
+            &apple.id,
+            SourceLanguage::Japanese,
+            TargetLanguage::Original,
+        );
+        let before = store.preferences();
+        let catalog = store.profile_catalog().unwrap();
+        let invalid = crate::core::provider::ProfileLanguagePreset {
+            source_language: SourceLanguage::Automatic,
+            target_language: TargetLanguage::Original,
+        };
+        assert_eq!(
+            store
+                .update_profile_options(
+                    &apple.id,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(crate::core::provider::ProfileLanguagePresetPatch {
+                        preset: Some(invalid)
+                    })
+                )
+                .unwrap_err(),
+            "profile_language_preset_unsupported"
+        );
+        let blocked = directory.path().join("blocked-write");
+        std::fs::create_dir(&blocked).unwrap();
+        store.catalog_path = blocked;
+        assert!(store.select_profile(&apple.id).is_err());
+        assert_eq!(store.preferences(), before);
+        assert_eq!(store.profile_catalog().unwrap(), catalog);
+        assert!(store
+            .update_profile_options(
+                &apple.id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(crate::core::provider::ProfileLanguagePresetPatch { preset: None })
+            )
+            .is_err());
+        assert_eq!(store.profile_catalog().unwrap(), catalog);
+    }
+
+    #[test]
+    fn explicit_apple_source_selection_overrides_a_preset_without_rewriting_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(FakeSecretStore::default()),
+        );
+        let apple = store
+            .create_profile(ProviderKind::AppleSpeech, "Apple")
+            .unwrap();
+        save_language_preset(
+            &store,
+            &apple.id,
+            SourceLanguage::Japanese,
+            TargetLanguage::Original,
+        );
+        store
+            .save_preferences(|prefs| prefs.target_language = TargetLanguage::Original)
+            .unwrap();
+        store
+            .select_profile_with_source(&apple.id, Some(SourceLanguage::English))
+            .unwrap();
+        assert_eq!(store.preferences().source_language, SourceLanguage::English);
+        store.select_profile(&apple.id).unwrap();
+        assert_eq!(
+            store.preferences().source_language,
+            SourceLanguage::Japanese
+        );
     }
 
     #[test]
@@ -4766,6 +4964,7 @@ mod tests {
                         SourceLanguage::German,
                     ]),
                 }),
+                None,
             )
             .unwrap();
         assert_eq!(
@@ -4810,6 +5009,7 @@ mod tests {
                 Some(CustomSpeechLanguagesPatch {
                     languages: Some(vec![]),
                 }),
+                None,
             )
             .unwrap();
         assert_eq!(
@@ -4825,6 +5025,7 @@ mod tests {
                 None,
                 None,
                 Some(CustomSpeechLanguagesPatch { languages: None }),
+                None,
             )
             .unwrap();
         store
@@ -4868,6 +5069,7 @@ mod tests {
                 Some(CustomSpeechLanguagesPatch {
                     languages: Some(vec![SourceLanguage::English]),
                 }),
+                None,
             )
             .unwrap();
         assert_eq!(store.preferences(), before);
@@ -4880,7 +5082,8 @@ mod tests {
                 None,
                 None,
                 None,
-                Some(CustomSpeechLanguagesPatch { languages: None })
+                Some(CustomSpeechLanguagesPatch { languages: None }),
+                None
             )
             .is_err());
         assert_eq!(store.preferences(), before);
@@ -4926,7 +5129,8 @@ mod tests {
                     None,
                     Some(CustomSpeechLanguagesPatch {
                         languages: Some(vec![SourceLanguage::English])
-                    })
+                    }),
+                    None
                 )
                 .is_err());
             assert_eq!(store.preferences(), before);
@@ -4961,6 +5165,7 @@ mod tests {
                 Some(CustomSpeechLanguagesPatch {
                     languages: Some(vec![SourceLanguage::French, SourceLanguage::German]),
                 }),
+                None,
             )
             .unwrap();
         // Current preferences belong to another profile; a probe may normalize
@@ -5052,6 +5257,7 @@ mod tests {
                 }),
                 None,
                 None,
+                None,
             )
             .unwrap();
         // An independently saved alias or proxy must not replay a name copied
@@ -5064,6 +5270,7 @@ mod tests {
                 &profile.id,
                 None,
                 Some(ProxyConfig::default()),
+                None,
                 None,
                 None,
                 None,
@@ -5105,6 +5312,7 @@ mod tests {
                 }),
                 None,
                 None,
+                None,
             )
             .unwrap();
         assert_eq!(saved.name, name);
@@ -5122,6 +5330,7 @@ mod tests {
                     route: TextTranslation::OpenAICompatible,
                     name: "😀".repeat(65),
                 }),
+                None,
                 None,
                 None,
             )
@@ -5153,6 +5362,7 @@ mod tests {
                     }),
                     None,
                     None,
+                    None,
                 )
                 .unwrap();
             store
@@ -5166,6 +5376,7 @@ mod tests {
                     None,
                     None,
                     Some("  Whisper · 本地  "),
+                    None,
                     None,
                 )
                 .unwrap();
@@ -5184,7 +5395,7 @@ mod tests {
             let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
             assert_eq!(reloaded.profile(&profile.id).unwrap(), named);
             let cleared = reloaded
-                .update_profile_options(&profile.id, None, None, None, None, Some("  "), None)
+                .update_profile_options(&profile.id, None, None, None, None, Some("  "), None, None)
                 .unwrap();
             assert!(cleared.speech_recognition_name.is_none());
             assert_eq!(cleared.name, named.name);
@@ -5212,6 +5423,7 @@ mod tests {
                 None,
                 None,
                 Some("Unsupported"),
+                None,
                 None
             )
             .is_err());
@@ -5233,6 +5445,7 @@ mod tests {
                     None,
                     Some(&invalid),
                     None,
+                    None,
                 )
                 .is_err());
             assert_eq!(store.profile(&profile.id).unwrap(), profile);
@@ -5247,6 +5460,7 @@ mod tests {
                 None,
                 None,
                 Some("Unpersisted recognition"),
+                None,
                 None,
             )
             .is_err());
@@ -5275,6 +5489,7 @@ mod tests {
                         route,
                         name: name.into(),
                     }),
+                    None,
                     None,
                     None,
                 )
@@ -5311,6 +5526,7 @@ mod tests {
                 }),
                 None,
                 None,
+                None,
             )
             .unwrap();
         let reopened = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
@@ -5344,6 +5560,7 @@ mod tests {
                     Some(TextTranslationName { route, name }),
                     None,
                     None,
+                    None,
                 )
                 .is_err());
             assert_eq!(store.active_profile().unwrap(), profile);
@@ -5360,6 +5577,7 @@ mod tests {
                     route: TextTranslation::OpenAICompatible,
                     name: "Unpersisted translator".into(),
                 }),
+                None,
                 None,
                 None,
             )
@@ -5405,6 +5623,7 @@ mod tests {
                         name: "Work translator".into(),
                     }),
                     provider.is_custom_speech().then_some("My recognition"),
+                    None,
                     None,
                 )
                 .unwrap();
@@ -5461,6 +5680,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .unwrap();
         let updated = store.active_profile().unwrap();
@@ -5501,6 +5721,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .unwrap();
         store.select_profile(&profile.id).unwrap();
@@ -5529,6 +5750,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .is_err());
         assert_eq!(store.active_profile().unwrap(), before);
@@ -5540,6 +5762,7 @@ mod tests {
                 &profile.id,
                 Some("Unpersisted"),
                 Some(ProxyConfig::default()),
+                None,
                 None,
                 None,
                 None,
@@ -7396,6 +7619,7 @@ mod tests {
                 }),
                 None,
                 None,
+                None,
             ),
             Err("local_dev_credentials_read_only".into())
         );
@@ -7412,6 +7636,7 @@ mod tests {
                 None,
                 None,
                 Some("Read-only recognition"),
+                None,
                 None,
             ),
             Err("local_dev_credentials_read_only".into())
