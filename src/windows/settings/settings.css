@@ -1699,6 +1699,34 @@
   color: var(--settings-text-faint);
   font-size: 12px;
 }
+.services-toolbar--empty {
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  margin-bottom: 0;
+  padding: 8px 0;
+}
+.services-empty-copy {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.services-empty-copy h2 {
+  margin: 0 0 6px;
+  color: var(--settings-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.services-empty-copy p {
+  margin: 0;
+  color: var(--settings-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.services-toolbar--empty > button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 .services-toolbar__count,
 .service-detail__name-help,
 .provider-picker__name-help,

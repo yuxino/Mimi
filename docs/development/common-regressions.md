@@ -67,6 +67,11 @@ Rules:
   the prepared macOS assets and publishes only after both platforms pass.
 - Keep only one live mimi copy while testing. Confirm its executable path, not
   just the process name, before diagnosing shortcuts, windows, or permissions.
+- With CUA, do not query the app after clicking Quit: an app-state query can
+  relaunch it in ordinary mode. Quit without a follow-up app observation, then
+  verify that the exact executable's process exited with a read-only process
+  check; a successful AX click alone does not prove shutdown. Use the explicit
+  launcher mode before querying the next test instance.
 - All worktrees install to the same development path. A later launch from
   another worktree can replace the package, including with an older UI-only
   build, even when the application name, version and signing identity match.

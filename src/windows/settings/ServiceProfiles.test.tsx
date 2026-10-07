@@ -423,14 +423,17 @@ it.each(["zh", "en", "ja"] as const)("keeps credential states as accessible icon
 });
 
 it("shows loading or a retryable initialization timeout without claiming credentials are unavailable", async () => {
+  const empty = { ...settings, profiles: [], activeProfileId: "" };
   boot.initializationStatus = "loading";
-  await render();
+  await render(empty);
   expect(host.textContent).toContain(I18N.settings.settingsSnapshotLoading);
   expect(host.textContent).not.toContain(I18N.settings.credentialUnavailable);
+  expect(host.textContent).not.toContain(I18N.settings.firstProfileTitle);
   expect(host.querySelector(".service-rows")).toBeNull();
   boot.initializationStatus = "error"; boot.initializationError = "timeout";
-  await render();
+  await render(empty);
   expect(host.textContent).toContain(I18N.settings.settingsSnapshotTimeout);
+  expect(host.textContent).not.toContain(I18N.settings.firstProfileTitle);
   await click(I18N.settings.retryLoadingSettings);
   expect(boot.init).toHaveBeenCalledOnce();
   expect(testProfileConnection).not.toHaveBeenCalled();
@@ -553,6 +556,8 @@ it("starts with no service and creates the first chosen provider only after conf
   actions.createProfile.mockResolvedValue(next);
   await render(empty);
   expect(host.querySelector(".service-row")).toBeNull();
+  expect(host.textContent).toContain(I18N.settings.firstProfileTitle);
+  expect(host.textContent).toContain(I18N.settings.firstProfileHint);
   await click(I18N.settings.addProfile);
   await previewProvider(created.provider);
   expect(actions.createProfile).not.toHaveBeenCalled();
@@ -564,6 +569,9 @@ it("starts with no service and creates the first chosen provider only after conf
   expect(actions.createProfile).toHaveBeenCalledExactlyOnceWith(created.provider, created.name);
   expect(host.querySelector(".service-detail__identity h2")?.textContent).toBe(created.name);
   expect(actions.selectProfile).not.toHaveBeenCalled();
+  await click(I18N.settings.backToServices);
+  expect(host.textContent).not.toContain(I18N.settings.firstProfileTitle);
+  expect(host.textContent).toContain(I18N.settings.profileCount(1));
 });
 
 it("guards duplicate confirmation synchronously and keeps a failed provider preview available for retry", async () => {
