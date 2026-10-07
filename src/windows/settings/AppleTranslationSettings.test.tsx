@@ -127,6 +127,31 @@ it.each(["disabled", "requiresStop"] as const)("honors the %s preparation guard"
   expect(prepareAppleTranslationLanguages).not.toHaveBeenCalled();
 });
 
+it.each(["zh", "en", "ja"] as const)("does not ask to stop an active session for ready translation packs in %s", async language => {
+  setStoredUiLanguage(language);
+  vi.mocked(getAppleTranslationStatus).mockResolvedValue("installed");
+  await render({ requiresStop: true });
+  expect(host.querySelector(".apple-speech-resource-status")?.textContent).toContain(I18N.settings.appleTranslationReady);
+  expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
+  expect(host.textContent).not.toContain(I18N.settings.appleLanguagePreparationRequiresStop);
+  expect(button(I18N.settings.appleTranslationPrepare)).toBeUndefined();
+  expect(prepareAppleTranslationLanguages).not.toHaveBeenCalled();
+});
+
+it.each(["zh", "en", "ja"] as const)("explains only the preparation stop requirement for missing packs in an active session in %s", async language => {
+  setStoredUiLanguage(language);
+  await render({ requiresStop: true });
+  const download = button(I18N.settings.appleTranslationPrepare)!;
+  expect(download.disabled).toBe(true);
+  expect(host.querySelector(".settings-feedback")?.textContent).toBe(I18N.settings.appleLanguagePreparationRequiresStop);
+  expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
+  await act(async () => download.click());
+  expect(prepareAppleTranslationLanguages).not.toHaveBeenCalled();
+  await render({ requiresStop: false });
+  expect(button(I18N.settings.appleTranslationPrepare)?.disabled).toBe(false);
+  expect(host.textContent).not.toContain(I18N.settings.appleLanguagePreparationRequiresStop);
+});
+
 it("releases the parent busy guard after unmount without showing late success", async () => {
   const request = deferred();
   vi.mocked(prepareAppleTranslationLanguages).mockReturnValueOnce(request.promise);

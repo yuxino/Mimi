@@ -12,6 +12,7 @@ import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;
 let save: ReturnType<typeof vi.fn>;
+let switchSource: ReturnType<typeof vi.fn>, switchTarget: ReturnType<typeof vi.fn>;
 let settings: SettingsSnapshot;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -20,15 +21,16 @@ beforeEach(() => {
   settings = { ...initial.settings, sourceLanguage: "auto", targetLanguage: "en", languageCapabilities: undefined,
     profiles: [{ id: "test", name: "Test", provider: "alibabaCloud", credentialState: "present" }], activeProfileId: "test" };
   save = vi.fn().mockResolvedValue(undefined);
-  useStore.setState({ ...initial, settings, saveSettings: save }, true);
+  switchSource = vi.fn().mockResolvedValue(undefined); switchTarget = vi.fn().mockResolvedValue(undefined);
+  useStore.setState({ ...initial, settings, saveSettings: save, switchSourceLanguage: switchSource, switchTargetLanguage: switchTarget }, true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => {
   await act(async () => root.unmount()); host.remove();
   useStore.setState(initial, true); setStoredUiLanguage("system"); vi.unstubAllGlobals();
 });
-async function render(disabled = false, requiresStop = false) {
-  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} disabled={disabled} requiresStop={requiresStop} /><SettingsToastRegion /></>));
+async function render(disabled = false) {
+  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} disabled={disabled} /><SettingsToastRegion /></>));
 }
 async function choose(label: string, code: string) {
   const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
@@ -175,13 +177,38 @@ it("guards duplicate saves and reports a safe failure without pretending the cho
   expect(targetPicker.disabled).toBe(false);
 });
 
-it("explains a session lock separately from a transient connection check", async () => {
+it("disables language controls during a transition without asking to stop an already transitioning session", async () => {
   await render(true);
   expect(host.querySelectorAll('button:disabled')).toHaveLength(3);
   expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
-  await render(true, true);
-  expect(host.textContent).toContain(I18N.settings.languageChangeRequiresStop);
   expect(save).not.toHaveBeenCalled();
+});
+
+it.each([false, true])("uses the session switch commands while active or paused (paused=%s)", async isPaused => {
+  useStore.setState({ session: { ...initial.session, isActive: !isPaused, isPaused, status: { kind: "listening" } } });
+  await render();
+  await choose(I18N.settings.sourceLanguage, "fr");
+  await choose(I18N.settings.translateTo, "ja");
+  expect(switchSource).toHaveBeenCalledExactlyOnceWith("fr");
+  expect(switchTarget).toHaveBeenCalledExactlyOnceWith("ja");
+  expect(save).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
+});
+
+it("retains the target and reports preparation failure when an active Apple target is not ready", async () => {
+  settings = { ...settings, sourceLanguage: "en", targetLanguage: "zh", profiles: [{ ...settings.profiles[0], textTranslation: "apple" }],
+    languageCapabilities: { profileId: "test", provider: "alibabaCloud", textTranslation: "apple", targetLanguage: "zh", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "ja"] } };
+  useStore.setState({ session: { ...initial.session, isActive: true, status: { kind: "listening" } } });
+  switchTarget.mockRejectedValueOnce(new Error("apple_translation_assets_missing"));
+  const onBusy = vi.fn();
+  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} disabled={false} embedded onBusyChange={onBusy} /><SettingsToastRegion /></>));
+  await choose(I18N.settings.translateTo, "ja");
+  expect(switchTarget).toHaveBeenCalledExactlyOnceWith("ja");
+  expect(save).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.appleTranslationAssetsMissing);
+  expect(host.textContent).not.toContain("apple_translation_assets_missing");
+  expect(host.querySelector('[aria-label="' + I18N.settings.translateTo + '"]')?.textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
+  expect(onBusy.mock.calls).toEqual([[true], [false]]);
 });
 
 it("persists skipping translation as Original, restores the previous target, and keeps source-language help compact", async () => {
@@ -257,7 +284,7 @@ it("keeps Apple resource navigation reachable when no language is ready or the s
     profiles: [{ id: "apple", name: "Apple", provider: "appleSpeech", credentialState: "present" }],
     languageCapabilities: { profileId: "apple", provider: "appleSpeech", textTranslation: "followService", targetLanguage: "original", sourceLanguages: [], targetLanguages: ["original"] } };
   const open = vi.fn();
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled requiresStop onOpenAppleResources={open} />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled onOpenAppleResources={open} />));
   const resources = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechOpenResources)!;
   expect(resources.disabled).toBe(false);
   await act(async () => resources.click());

@@ -111,7 +111,7 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
   expect(saveSettings).not.toHaveBeenCalled();
 });
 
-it("saves language choices and blocks them for active and paused subtitle sessions", async () => {
+it("keeps language choices available for active and paused sessions but blocks connection transitions", async () => {
   useStore.setState({ settings: { ...useStore.getState().settings, profiles: useStore.getState().settings.profiles.map(profile => ({ ...profile, provider: "openAIRealtime" })) } });
   await mount(); await select("service");
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
@@ -122,8 +122,13 @@ it("saves language choices and blocks them for active and paused subtitle sessio
   expect(document.activeElement).toBe(target);
   for (const state of [{ isActive: true, isPaused: false }, { isActive: false, isPaused: true }]) {
     await act(() => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, ...state } }));
-    expect([...host.querySelectorAll<HTMLButtonElement>("#translation-languages [role=group] button, #translation-languages [role=combobox]")].every(button => button.disabled)).toBe(true);
-    expect(host.querySelector("#translation-languages")?.textContent).toContain(I18N.settings.languageChangeRequiresStop);
+    expect(target.disabled).toBe(false);
+    expect(host.querySelector("#translation-languages")?.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
+    expect(host.querySelector<HTMLInputElement>(".service-detail__name input")?.disabled).toBe(true);
+  }
+  for (const kind of ["connecting", "stopping"] as const) {
+    await act(() => useStore.setState({ session: { ...initial.session, status: { kind }, isActive: false, isPaused: false } }));
+    expect(target.disabled).toBe(true);
   }
 });
 
