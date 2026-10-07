@@ -78,6 +78,7 @@ window.__TAURI_INTERNALS__ = {
       const snapshot = { ...current, profiles: current.profiles.map(profile => {
         if (profile.id !== args.profileId) return profile;
         const next = { ...profile, ...(args.name === undefined ? {} : { name: args.name.trim() }) };
+        if (args.qwenMtModel !== undefined) next.qwenMtModel = args.qwenMtModel;
         if (args.textTranslationName) {
           next.textTranslationNames = { ...profile.textTranslationNames };
           const { route, name } = args.textTranslationName;

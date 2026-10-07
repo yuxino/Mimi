@@ -216,6 +216,7 @@ export function AlibabaCredentialEditor({ profile, inputId, disabled, busy, visi
           : <SettingsSelect label={I18N.settings.textTranslationLabel} disabled={disabled} value={translation} options={translationOptions}
             onChange={(value) => { setTranslationDraft(value as TextTranslation); setEndpointInvalid(false); }} />}
       </div>
+      {translation === "followService" && translationLanguageControls?.(translation)}
       {!readOnly && translation !== "followService" && onSaveTranslationName && <TextTranslationName
         key={`${profile.id}:${translation}`} profile={profile} route={translation} inputId={`${inputId}-name`}
         disabled={disabled} onSave={onSaveTranslationName} />}

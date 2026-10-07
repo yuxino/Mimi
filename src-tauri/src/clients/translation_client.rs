@@ -20,7 +20,7 @@ use crate::core::credentials::{
 use crate::core::diagnostics::TranslationLatency;
 use crate::core::models::TranslationMode;
 use crate::core::preview_pacing::MTRequestBudget;
-use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTModel, REALTIME_MT_MODEL};
+use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTModel};
 use crate::core::provider::ProviderKind;
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -306,7 +306,7 @@ impl TranslationClient {
                     direct_api_key(&credentials)?,
                     configuration.source_language,
                     configuration.target_language,
-                    REALTIME_MT_MODEL,
+                    configuration.qwen_mt_model,
                     Duration::from_millis(250),
                     Duration::from_millis(1_000),
                     12,
@@ -840,6 +840,32 @@ mod tests {
                 TranslationClient::new(&configuration, events).unwrap(),
                 TranslationClient::HighQuality(_)
             ));
+        }
+    }
+
+    #[test]
+    fn alibaba_model_selection_preserves_model_and_stream_behavior_in_factory() {
+        for model in [QwenMTModel::Lite, QwenMTModel::Flash, QwenMTModel::Plus] {
+            let configuration = LiveTranslationConfiguration::for_provider(
+                ProviderKind::AlibabaCloud,
+                "synthetic-key",
+                SourceLanguage::English,
+                TargetLanguage::SimplifiedChinese,
+                TranslationMode::Turbo,
+            )
+            .with_qwen_mt_model(model)
+            .validated()
+            .unwrap();
+            let (events, _receiver) = provider_event_channel();
+            let TranslationClient::HighQuality(client) =
+                TranslationClient::new(&configuration, events).unwrap()
+            else {
+                panic!("expected recognition and text translation pipeline");
+            };
+            assert_eq!(
+                client.qwen_model_for_test(),
+                Some((model, model != QwenMTModel::Plus))
+            );
         }
     }
 

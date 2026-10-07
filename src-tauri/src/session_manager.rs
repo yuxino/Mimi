@@ -20,7 +20,9 @@ use crate::core::diagnostics::{
 use crate::core::models::{SessionStatus, SourceLanguage, TranslationMode, UtteranceRole};
 use crate::core::preview_pacing::MTRequestBudget;
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::protocols::qwen_mt::{QwenMTModel, REALTIME_MT_MODEL};
+use crate::core::protocols::qwen_mt::QwenMTModel;
+#[cfg(test)]
+use crate::core::protocols::qwen_mt::REALTIME_MT_MODEL;
 use crate::core::provider::ProviderKind;
 use crate::core::session::{TranslationSessionController, TranslationSessionState};
 use crate::core::support_diagnostics::{
@@ -188,7 +190,7 @@ impl MTBudgetScope {
                     if configuration.provider == ProviderKind::AlibabaCloud =>
                 {
                     let model = match configuration.effective_translation_mode() {
-                        TranslationMode::Turbo => REALTIME_MT_MODEL,
+                        TranslationMode::Turbo => configuration.qwen_mt_model,
                         TranslationMode::HighQuality => QwenMTModel::Plus,
                         TranslationMode::LowLatency => return None,
                     };

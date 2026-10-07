@@ -1158,7 +1158,8 @@ impl SettingsStore {
         self.update_profile_options(profile_id, Some(name), None, None, None, None, None, None)
     }
 
-    #[allow(clippy::too_many_arguments)] // Keep independent metadata patches explicit.
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)] // Test helper for existing metadata patches.
     pub fn update_profile_options(
         &self,
         profile_id: &str,
@@ -1169,6 +1170,32 @@ impl SettingsStore {
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
         language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
+    ) -> Result<ServiceProfile, String> {
+        self.update_profile_options_with_model(
+            profile_id,
+            name,
+            speech_network_proxy,
+            text_network_proxy,
+            text_translation_name,
+            speech_recognition_name,
+            custom_speech_languages_patch,
+            language_preset_patch,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_profile_options_with_model(
+        &self,
+        profile_id: &str,
+        name: Option<&str>,
+        speech_network_proxy: Option<ProxyConfig>,
+        text_network_proxy: Option<ProxyConfig>,
+        text_translation_name: Option<TextTranslationName>,
+        speech_recognition_name: Option<&str>,
+        custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
+        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
+        qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
     ) -> Result<ServiceProfile, String> {
         if text_translation_name.is_some()
             || speech_recognition_name.is_some()
@@ -1184,6 +1211,12 @@ impl SettingsStore {
                 .find(|profile| profile.id == profile_id)
                 .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
             let mut updated = current.clone();
+            if let Some(model) = qwen_mt_model {
+                if current.provider != ProviderKind::AlibabaCloud {
+                    return Err("provider-mismatch".into());
+                }
+                updated.qwen_mt_model = model;
+            }
             if let Some(name) = name {
                 updated.name = name.trim().to_string();
             }
@@ -3002,6 +3035,7 @@ impl SettingsStore {
         };
         Ok(TextTranslationProbeConfiguration {
             credentials,
+            qwen_mt_model: profile.qwen_mt_model,
             source_language: prefs.source_language,
             target_language,
             network_proxy: if native {
@@ -3096,6 +3130,7 @@ impl SettingsStore {
             prefs.target_language,
             prefs.translation_mode,
         )
+        .with_qwen_mt_model(profile.qwen_mt_model)
         .with_stage_network_proxies(
             profile
                 .speech_network_proxy
@@ -3669,6 +3704,111 @@ mod animation_switch_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn qwen_model_metadata_survives_reopening_settings_without_reading_credentials() {
+        use crate::core::protocols::qwen_mt::QwenMTModel;
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let open = || {
+            SettingsStore::load_with_secret(
+                directory.path().into(),
+                false,
+                Box::new(fake.clone()),
+                PROFILE_KEYCHAIN_SERVICE,
+                false,
+            )
+        };
+        let store = open();
+        store
+            .update_profile_options_with_model(
+                DEFAULT_ALIBABA_PROFILE_ID,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(QwenMTModel::Flash),
+            )
+            .unwrap();
+        drop(store);
+        assert_eq!(
+            open().active_profile().unwrap().qwen_mt_model,
+            QwenMTModel::Flash
+        );
+        assert_eq!(
+            fake.load_count(
+                PROFILE_KEYCHAIN_SERVICE,
+                "provider-profile:alibaba-default:alibabaCloud:api-key"
+            ),
+            0
+        );
+    }
+
+    #[test]
+    fn qwen_model_selection_is_scoped_and_reaches_both_session_and_text_probe() {
+        use crate::core::protocols::qwen_mt::QwenMTModel;
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        store
+            .save_api_key(DEFAULT_ALIBABA_PROFILE_ID, "synthetic-asr")
+            .unwrap();
+        let second = store
+            .create_profile(ProviderKind::AlibabaCloud, "Second")
+            .unwrap();
+        for model in [QwenMTModel::Flash, QwenMTModel::Plus, QwenMTModel::Lite] {
+            let profile = store
+                .update_profile_options_with_model(
+                    DEFAULT_ALIBABA_PROFILE_ID,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(model),
+                )
+                .unwrap();
+            assert_eq!(store.configuration().unwrap().qwen_mt_model, model);
+            assert_eq!(
+                store
+                    .configuration_for_text_probe(&profile)
+                    .unwrap()
+                    .qwen_mt_model,
+                model
+            );
+            assert_eq!(
+                store
+                    .profile_catalog()
+                    .unwrap()
+                    .1
+                    .iter()
+                    .find(|p| p.id == second.id)
+                    .unwrap()
+                    .qwen_mt_model,
+                QwenMTModel::Lite
+            );
+        }
+        let other = store
+            .create_profile(ProviderKind::GoogleGeminiLive, "Other")
+            .unwrap();
+        assert!(store
+            .update_profile_options_with_model(
+                &other.id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(QwenMTModel::Flash)
+            )
+            .is_err());
+    }
+
     #[test]
     fn apple_text_route_is_metadata_only_preserves_auto_and_ignores_broken_text_storage() {
         let fake = FakeSecretStore::default();

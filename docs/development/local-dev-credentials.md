@@ -75,7 +75,11 @@ launching shell. No polling or automatic Keychain retry occurs.
 
 The built-in development presets are read-only: Settings cannot update, remove or
 reveal their keys, change their recognition/translation services, or delete them.
-Their language and proxy preferences remain editable. Ordinary profiles keep their
+Their language and proxy preferences remain editable.
+The Alibaba preset also allows a saved Qwen-MT Lite / Flash / Plus text-model
+choice after subtitles stop. This edits non-secret profile metadata; it does not
+edit, reveal or copy the preset key, change recognition, or unlock other services.
+Ordinary profiles keep their
 normal add/edit/delete, independent translation, credential reveal and switching
 behavior, with at most 20 user configurations in addition to the presets.
 
