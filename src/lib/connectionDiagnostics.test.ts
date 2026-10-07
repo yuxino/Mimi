@@ -166,7 +166,7 @@ it("shows a short unavailable reason instead of a reachability disclaimer", () =
   expect(message).not.toContain("认证成功");
 });
 it("localizes every service failure reason and explains skipped preview-mode checks", () => {
-  const reasons = ["credentialsMissing", "credentialsUnavailable", "credentialsServiceUnavailable", "credentialsAccessDenied", "textTranslationNotConfigured", "invalidConfiguration", "unsupportedLanguage", "localRecognitionOverloaded", "localRecognitionTimeout", "authenticationRejected", "serviceRejected", "timeout", "unreachable", "appleSpeechAssetsMissing", "appleSpeechLanguageUnsupported", "appleSpeechUnavailable", "appleSpeechRecognitionFailed"] as const;
+  const reasons = ["credentialsMissing", "credentialsUnavailable", "credentialsServiceUnavailable", "credentialsAccessDenied", "textTranslationNotConfigured", "invalidConfiguration", "unsupportedLanguage", "localRecognitionOverloaded", "localRecognitionTimeout", "authenticationRejected", "serviceRejected", "timeout", "unreachable", "appleSpeechAssetsMissing", "appleSpeechPreparing", "appleSpeechStatusFailed", "appleSpeechLanguageUnsupported", "appleSpeechUnavailable", "appleSpeechRecognitionFailed"] as const;
   for (const language of ["zh", "en", "ja"] as const) {
     setStoredUiLanguage(language);
     for (const reason of reasons) {

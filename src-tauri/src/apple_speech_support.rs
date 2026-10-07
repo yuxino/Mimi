@@ -1,7 +1,9 @@
 //! Runtime Apple capabilities mapped to Mimi's existing language choices.
 //! Queries are read-only; only `prepare_source` can request language assets.
 
-use crate::apple_speech::{self, AppleSpeechCapabilities, AppleSpeechError};
+use crate::apple_speech::{
+    self, AppleSpeechCapabilities, AppleSpeechError, AppleSpeechResourceStatus,
+};
 use crate::core::models::{SourceLanguage, TargetLanguage};
 use crate::core::provider::ServiceProfile;
 use serde::Serialize;
@@ -12,8 +14,17 @@ use std::sync::{Mutex, OnceLock};
 pub struct AppleSpeechLanguage {
     pub source_language: SourceLanguage,
     pub locale: String,
+    pub status: AppleSpeechResourceStatus,
     pub installed: bool,
     pub downloading: bool,
+}
+
+impl AppleSpeechLanguage {
+    pub(crate) fn set_status(&mut self, status: AppleSpeechResourceStatus) {
+        self.status = status;
+        self.installed = status == AppleSpeechResourceStatus::Installed;
+        self.downloading = status == AppleSpeechResourceStatus::Downloading;
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -50,8 +61,7 @@ impl SupportCache {
             .into_iter()
             .filter(|item| item.locale == locale)
         {
-            prepared.installed = true;
-            prepared.downloading = false;
+            prepared.set_status(AppleSpeechResourceStatus::Installed);
             if let Some(language) = support
                 .languages
                 .iter_mut()
@@ -60,6 +70,35 @@ impl SupportCache {
                 *language = prepared;
             } else {
                 support.languages.push(prepared);
+            }
+        }
+        support.available = !support.languages.is_empty();
+        self.replace(support.clone());
+        support
+    }
+
+    fn unconfirmed_locale(
+        &mut self,
+        locale: &str,
+        before: &AppleSpeechSupport,
+    ) -> AppleSpeechSupport {
+        let mut support = self.support.clone().unwrap_or_default();
+        for previous in before.languages.iter().filter(|item| item.locale == locale) {
+            if let Some(language) = support
+                .languages
+                .iter_mut()
+                .find(|item| item.source_language == previous.source_language)
+            {
+                if !matches!(
+                    language.status,
+                    AppleSpeechResourceStatus::Installed | AppleSpeechResourceStatus::Downloading
+                ) {
+                    language.set_status(AppleSpeechResourceStatus::Unknown);
+                }
+            } else {
+                let mut language = previous.clone();
+                language.set_status(AppleSpeechResourceStatus::Unknown);
+                support.languages.push(language);
             }
         }
         support.available = !support.languages.is_empty();
@@ -118,8 +157,14 @@ pub async fn prepare_source(source: SourceLanguage) -> Result<AppleSpeechSupport
         .map_err(|_| "apple_speech_preparing".to_string())?;
     let before = refresh().await?;
     let language = require_language(&before, source)?;
-    if language.installed || language.downloading {
-        return Ok(before);
+    match language.status {
+        AppleSpeechResourceStatus::Installed | AppleSpeechResourceStatus::Downloading => {
+            return Ok(before)
+        }
+        AppleSpeechResourceStatus::Supported => {}
+        AppleSpeechResourceStatus::Unsupported | AppleSpeechResourceStatus::Unknown => {
+            return Err("apple_speech_status_failed".into())
+        }
     }
     let locale = language.locale.clone();
     match apple_speech::prepare(&locale).await {
@@ -142,10 +187,37 @@ pub async fn prepare_source(source: SourceLanguage) -> Result<AppleSpeechSupport
             // on failure, rather than keeping an old "not downloaded" snapshot.
             let after = refresh().await;
             if after.as_ref().is_ok_and(|support| {
-                require_language(support, source)
-                    .is_ok_and(|language| language.installed || language.downloading)
+                require_language(support, source).is_ok_and(|language| {
+                    matches!(
+                        language.status,
+                        AppleSpeechResourceStatus::Installed
+                            | AppleSpeechResourceStatus::Downloading
+                    )
+                })
             }) {
                 return after;
+            }
+            if matches!(
+                error,
+                AppleSpeechError::StatusUnavailable | AppleSpeechError::ServiceUnavailable
+            ) {
+                // A failed module/service check is not proof of missing assets,
+                // even if the immediate inventory query falls back to supported.
+                let _refreshing = REFRESHING.lock().await;
+                let latest = SUPPORT
+                    .get_or_init(Default::default)
+                    .lock()
+                    .unwrap()
+                    .unconfirmed_locale(&locale, &before);
+                if require_language(&latest, source).is_ok_and(|language| {
+                    matches!(
+                        language.status,
+                        AppleSpeechResourceStatus::Installed
+                            | AppleSpeechResourceStatus::Downloading
+                    )
+                }) {
+                    return Ok(latest);
+                }
             }
             tracing::warn!(locale = %locale, error = %error, "Apple Speech language preparation failed");
             Err(prepare_error_label(&error).into())
@@ -158,6 +230,7 @@ fn prepare_error_label(error: &AppleSpeechError) -> &'static str {
         AppleSpeechError::Unavailable => "apple_speech_unavailable",
         AppleSpeechError::InvalidLocale => "apple_speech_language_unsupported",
         AppleSpeechError::AssetsNotInstalled => "apple_speech_assets_missing",
+        AppleSpeechError::AssetsDownloading => "apple_speech_preparing",
         AppleSpeechError::ReservationLimit => "apple_speech_reservation_limit",
         AppleSpeechError::ResourcesUnavailable => "apple_speech_resources_unavailable",
         AppleSpeechError::ServiceUnavailable => "apple_speech_service_unavailable",
@@ -178,11 +251,17 @@ pub fn validate_source(
     installed_required: bool,
 ) -> Result<&AppleSpeechLanguage, String> {
     let language = require_language(support, source)?;
-    if installed_required && !language.installed {
-        if language.downloading {
-            return Err("apple_speech_preparing".into());
+    match language.status {
+        AppleSpeechResourceStatus::Unsupported | AppleSpeechResourceStatus::Unknown => {
+            return Err("apple_speech_status_failed".into())
         }
-        return Err("apple_speech_assets_missing".into());
+        AppleSpeechResourceStatus::Downloading if installed_required => {
+            return Err("apple_speech_preparing".into())
+        }
+        AppleSpeechResourceStatus::Supported if installed_required => {
+            return Err("apple_speech_assets_missing".into())
+        }
+        _ => {}
     }
     Ok(language)
 }
@@ -262,8 +341,9 @@ fn map_capabilities(native: AppleSpeechCapabilities) -> AppleSpeechSupport {
             languages.push(AppleSpeechLanguage {
                 source_language: source,
                 locale: locale.identifier.clone(),
-                installed: locale.installed,
-                downloading: locale.downloading && !locale.installed,
+                status: locale.status,
+                installed: locale.status == AppleSpeechResourceStatus::Installed,
+                downloading: locale.status == AppleSpeechResourceStatus::Downloading,
             });
         }
     }
@@ -281,8 +361,105 @@ mod tests {
     fn locale(identifier: &str, installed: bool) -> AppleSpeechLocale {
         AppleSpeechLocale {
             identifier: identifier.into(),
-            installed,
-            downloading: false,
+            status: if installed {
+                AppleSpeechResourceStatus::Installed
+            } else {
+                AppleSpeechResourceStatus::Supported
+            },
+        }
+    }
+
+    #[test]
+    fn only_supported_status_is_a_missing_resource() {
+        for status in [
+            AppleSpeechResourceStatus::Unsupported,
+            AppleSpeechResourceStatus::Unknown,
+        ] {
+            let support = map_capabilities(AppleSpeechCapabilities {
+                available: true,
+                locales: vec![AppleSpeechLocale {
+                    identifier: "ja-JP".into(),
+                    status,
+                }],
+            });
+            let language = require_language(&support, SourceLanguage::Japanese).unwrap();
+            assert_eq!(language.status, status);
+            assert!(!language.installed);
+            assert!(!language.downloading);
+            for installed_required in [false, true] {
+                assert_eq!(
+                    validate_source(&support, SourceLanguage::Japanese, installed_required)
+                        .unwrap_err(),
+                    "apple_speech_status_failed"
+                );
+            }
+        }
+        let support = map_capabilities(AppleSpeechCapabilities {
+            available: true,
+            locales: vec![locale("ja-JP", false)],
+        });
+        assert!(validate_source(&support, SourceLanguage::Japanese, false).is_ok());
+        assert_eq!(
+            validate_source(&support, SourceLanguage::Japanese, true).unwrap_err(),
+            "apple_speech_assets_missing"
+        );
+    }
+
+    #[test]
+    fn failed_readiness_invalidates_missing_claim_and_publishes_a_revision() {
+        let before = map_capabilities(AppleSpeechCapabilities {
+            available: true,
+            locales: vec![locale("en-US", true), locale("ja-JP", false)],
+        });
+        let mut cache = SupportCache::default();
+        cache.replace(before.clone());
+        let revision = cache.snapshot().1;
+        let after = cache.unconfirmed_locale("ja-JP", &before);
+        assert_eq!(cache.snapshot().1, revision + 1);
+        assert!(
+            require_language(&after, SourceLanguage::English)
+                .unwrap()
+                .installed
+        );
+        let uncertain = require_language(&after, SourceLanguage::Japanese).unwrap();
+        assert_eq!(uncertain.status, AppleSpeechResourceStatus::Unknown);
+        assert!(!uncertain.installed);
+        assert!(!uncertain.downloading);
+        assert_eq!(
+            validate_source(&after, SourceLanguage::Japanese, true).unwrap_err(),
+            "apple_speech_status_failed"
+        );
+        cache.unconfirmed_locale("ja-JP", &before);
+        assert_eq!(cache.snapshot().1, revision + 1);
+    }
+
+    #[test]
+    fn failed_readiness_preserves_newer_download_or_install_confirmation() {
+        let before = map_capabilities(AppleSpeechCapabilities {
+            available: true,
+            locales: vec![locale("ja-JP", false)],
+        });
+        for status in [
+            AppleSpeechResourceStatus::Installed,
+            AppleSpeechResourceStatus::Downloading,
+        ] {
+            let mut cache = SupportCache::default();
+            cache.replace(map_capabilities(AppleSpeechCapabilities {
+                available: true,
+                locales: vec![AppleSpeechLocale {
+                    identifier: "ja-JP".into(),
+                    status,
+                }],
+            }));
+            let revision = cache.snapshot().1;
+            let after = cache.unconfirmed_locale("ja-JP", &before);
+            assert_eq!(
+                require_language(&after, SourceLanguage::Japanese)
+                    .unwrap()
+                    .status,
+                status
+            );
+            assert_eq!(cache.snapshot().1, revision);
         }
     }
 
@@ -341,7 +518,7 @@ mod tests {
     #[test]
     fn background_download_is_distinct_from_missing_or_installed_assets() {
         let mut pending = locale("ja-JP", false);
-        pending.downloading = true;
+        pending.status = AppleSpeechResourceStatus::Downloading;
         let support = map_capabilities(AppleSpeechCapabilities {
             available: true,
             locales: vec![pending],
@@ -366,6 +543,10 @@ mod tests {
     #[test]
     fn preparation_failures_keep_actionable_safe_categories() {
         for (error, expected) in [
+            (
+                AppleSpeechError::AssetsDownloading,
+                "apple_speech_preparing",
+            ),
             (
                 AppleSpeechError::ServiceUnavailable,
                 "apple_speech_service_unavailable",
@@ -458,7 +639,7 @@ mod tests {
             .iter_mut()
             .find(|language| language.source_language == SourceLanguage::Khmer)
             .unwrap()
-            .installed = false;
+            .set_status(AppleSpeechResourceStatus::Supported);
         cache.replace(support.clone());
         let after = cache.snapshot();
         assert_eq!(ready_sources(&after.0), ready_sources(&before.0));
@@ -467,7 +648,7 @@ mod tests {
         support
             .languages
             .iter_mut()
-            .for_each(|language| language.installed = false);
+            .for_each(|language| language.set_status(AppleSpeechResourceStatus::Supported));
         cache.replace(support);
         let available_without_ready_assets = cache.snapshot();
         assert!(available_without_ready_assets.0.available);

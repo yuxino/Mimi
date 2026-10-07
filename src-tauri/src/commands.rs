@@ -237,6 +237,7 @@ pub struct SettingsSnapshotPayload {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::apple_speech::AppleSpeechResourceStatus;
 
     #[test]
     fn profile_snapshots_keep_speech_names_when_credentials_are_unavailable() {
@@ -329,18 +330,21 @@ mod tests {
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::English,
                     locale: "en-US".into(),
+                    status: AppleSpeechResourceStatus::Installed,
                     installed: true,
                     downloading: false,
                 },
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::Japanese,
                     locale: "ja-JP".into(),
+                    status: AppleSpeechResourceStatus::Supported,
                     installed: false,
                     downloading: false,
                 },
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::French,
                     locale: "fr-FR".into(),
+                    status: AppleSpeechResourceStatus::Supported,
                     installed: false,
                     downloading: false,
                 },
@@ -378,7 +382,7 @@ mod tests {
     fn apple_language_snapshot_keeps_ready_sources_within_the_text_route() {
         let mut profile = ServiceProfile::new("apple", "Apple", ProviderKind::AppleSpeech).unwrap();
         let mut support = apple_language_support();
-        support.languages[2].installed = true;
+        support.languages[2].set_status(AppleSpeechResourceStatus::Installed);
         for route in [TextTranslation::DeepL, TextTranslation::DeepLX] {
             profile.text_translation = Some(route);
             let translated = LanguageCapabilitiesPayload::from_profile_with_apple_support(
@@ -426,7 +430,7 @@ mod tests {
             Some((&support, 1)),
         );
         assert_eq!(before.source_languages, vec![SourceLanguage::English]);
-        support.languages[1].installed = true;
+        support.languages[1].set_status(AppleSpeechResourceStatus::Installed);
         let after = LanguageCapabilitiesPayload::from_profile_with_apple_support(
             &profile,
             TargetLanguage::Original,
@@ -445,7 +449,7 @@ mod tests {
         support
             .languages
             .iter_mut()
-            .for_each(|language| language.installed = false);
+            .for_each(|language| language.set_status(AppleSpeechResourceStatus::Supported));
         let empty = LanguageCapabilitiesPayload::from_profile_with_apple_support(
             &profile,
             TargetLanguage::Original,
@@ -2660,7 +2664,7 @@ pub async fn profile_test_connection(
     if let Some(stage) = stage {
         // Stage checks deliberately avoid an aggregate credential snapshot: a
         // text-only check must not prompt for or require the recognizer's key.
-        return Ok(match stage {
+        let diagnostic = match stage {
             ConnectionCheckStage::Speech => {
                 let configuration = match source_language {
                     Some(source) => state
@@ -2681,7 +2685,13 @@ pub async fn profile_test_connection(
                     Ok(configuration) => check_text_service(&configuration).await,
                 }
             }
-        });
+        };
+        if stage == ConnectionCheckStage::Speech && profile.provider == ProviderKind::AppleSpeech {
+            // The native check refreshes resource status even on failure. Keep
+            // its ready/unknown result in sync with the settings resource row.
+            emit_settings_snapshot(&app, &state.settings)?;
+        }
+        return Ok(diagnostic);
     }
     let storage = state.settings.credential_diagnostic(profile);
     emit_settings_snapshot(&app, &state.settings)?;
@@ -2700,7 +2710,11 @@ pub async fn profile_test_connection(
             ));
         }
     };
-    Ok(check_service(&configuration).await)
+    let diagnostic = check_service(&configuration).await;
+    if profile.provider == ProviderKind::AppleSpeech {
+        emit_settings_snapshot(&app, &state.settings)?;
+    }
+    Ok(diagnostic)
 }
 
 #[tauri::command]

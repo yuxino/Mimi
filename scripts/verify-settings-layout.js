@@ -21,7 +21,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
             appleSpeechApply: ["prepared", "failed", "installed"].includes(variant), appleSpeechPrepareError: variant === "failed" ? "fixture_prepare_failed" : undefined,
             profileName: "Apple Speech", sourceLanguage: "en", targetLanguage: "original", appleSupport: { available: true, languages: [
               { sourceLanguage: "en", locale: "en-US", installed: true },
-              { sourceLanguage: "ja", locale: "ja-JP", installed: false },
+              { sourceLanguage: "ja", locale: "ja-JP", installed: false, status: "supported" },
               { sourceLanguage: "fr", locale: "fr-FR", installed: true },
             ] } });
         }
@@ -34,7 +34,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
               appleTranslationPrepare: ["prepared", "cancelled", "failed"].includes(variant),
               appleTranslationPrepareError: variant === "cancelled" ? "apple_translation_cancelled" : variant === "failed" ? "apple_translation_failed" : undefined,
               appleTranslationSupport: { available: true, sourceLanguages: ["en", "zh", "ja"], targetLanguages: ["en", "zh", "ja"] },
-              appleSupport: { available: true, languages: [{ sourceLanguage: "en", locale: "en-US", installed: true }, { sourceLanguage: "zh", locale: "zh-CN", installed: false }] } });
+              appleSupport: { available: true, languages: [{ sourceLanguage: "en", locale: "en-US", installed: true }, { sourceLanguage: "zh", locale: "zh-CN", installed: false, status: "supported" }] } });
           }
         }
         if (platform === "windows") {

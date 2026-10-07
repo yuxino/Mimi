@@ -4,7 +4,7 @@
 
 use super::provider_events::ProviderEventSender;
 use super::recognition_client::RecognitionClientError;
-use crate::apple_speech::{self, AppleSpeechEvent, AppleSpeechSession};
+use crate::apple_speech::{self, AppleSpeechError, AppleSpeechEvent, AppleSpeechSession};
 use crate::core::models::SourceLanguage;
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use std::collections::BTreeMap;
@@ -141,9 +141,7 @@ impl AppleSpeechClient {
             let locale = crate::apple_speech_support::locale_for_source(self.inner.source)
                 .await
                 .map_err(RecognitionClientError::Apple)?;
-            apple_speech::start(&locale)
-                .await
-                .map_err(|_| local_error("apple_speech_start_failed"))
+            apple_speech::start(&locale).await.map_err(start_error)
         })
         .await
     }
@@ -356,6 +354,18 @@ fn local_error(label: &str) -> RecognitionClientError {
     RecognitionClientError::Apple(label.to_owned())
 }
 
+fn start_error(error: AppleSpeechError) -> RecognitionClientError {
+    local_error(match error {
+        AppleSpeechError::Unavailable => "apple_speech_unavailable",
+        AppleSpeechError::InvalidLocale => "apple_speech_language_unsupported",
+        AppleSpeechError::AssetsNotInstalled => "apple_speech_assets_missing",
+        AppleSpeechError::AssetsDownloading => "apple_speech_preparing",
+        AppleSpeechError::StatusUnavailable => "apple_speech_status_failed",
+        AppleSpeechError::ServiceUnavailable => "apple_speech_service_unavailable",
+        _ => "apple_speech_start_failed",
+    })
+}
+
 fn error_event(label: &str) -> LiveTranslateServerEvent {
     LiveTranslateServerEvent::Error {
         code: label.to_owned(),
@@ -366,6 +376,39 @@ fn error_event(label: &str) -> LiveTranslateServerEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn startup_readiness_races_keep_actionable_resource_errors() {
+        for (error, expected) in [
+            (
+                AppleSpeechError::AssetsNotInstalled,
+                "apple_speech_assets_missing",
+            ),
+            (
+                AppleSpeechError::AssetsDownloading,
+                "apple_speech_preparing",
+            ),
+            (
+                AppleSpeechError::StatusUnavailable,
+                "apple_speech_status_failed",
+            ),
+            (
+                AppleSpeechError::ServiceUnavailable,
+                "apple_speech_service_unavailable",
+            ),
+            (
+                AppleSpeechError::Native {
+                    domain: "private/context".into(),
+                    code: 9,
+                },
+                "apple_speech_start_failed",
+            ),
+        ] {
+            assert!(
+                matches!(start_error(error), RecognitionClientError::Apple(label) if label == expected)
+            );
+        }
+    }
 
     fn result(start_ms: f64, text: &str, is_final: bool) -> AppleSpeechEvent {
         AppleSpeechEvent {

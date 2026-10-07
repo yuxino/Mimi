@@ -15,7 +15,8 @@ window.__TAURI_INTERNALS__ = {
       window.layoutFixtureRequests.speechPrepare += 1;
       if (fixture.appleSpeechPrepareError) throw new Error(fixture.appleSpeechPrepareError);
       fixture.appleSupport = { ...fixture.appleSupport, languages: fixture.appleSupport.languages.map(language => ({ ...language,
-        installed: language.installed || language.sourceLanguage === args.sourceLanguage })) };
+        installed: language.installed || language.sourceLanguage === args.sourceLanguage,
+        downloading: false, status: language.installed || language.sourceLanguage === args.sourceLanguage ? "installed" : language.status })) };
       const current = useStore.getState().settings;
       useStore.setState({ settings: { ...current, languageCapabilities: current.languageCapabilities && { ...current.languageCapabilities,
         sourceLanguages: fixture.appleSupport.languages.filter(language => language.installed).map(language => language.sourceLanguage) } } });

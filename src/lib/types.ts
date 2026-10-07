@@ -273,9 +273,11 @@ export interface ProviderCapabilities {
   translationModes: readonly TranslationMode[];
 }
 
+export type AppleSpeechResourceStatus = "unsupported" | "supported" | "downloading" | "installed" | "unknown";
+
 export interface AppleSpeechSupport {
   available: boolean;
-  languages: { sourceLanguage: Exclude<SourceLanguage, "auto">; locale: string; installed: boolean; downloading?: boolean }[];
+  languages: { sourceLanguage: Exclude<SourceLanguage, "auto">; locale: string; installed: boolean; downloading?: boolean; status?: AppleSpeechResourceStatus }[];
 }
 
 export interface AppleTranslationSupport {

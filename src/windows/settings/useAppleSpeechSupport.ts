@@ -3,8 +3,17 @@ import { getAppleSpeechSupport } from "../../lib/ipc";
 import { I18N } from "../../lib/i18n";
 import { activeServiceProfile, textTranslationForProfile } from "../../lib/providerCapabilities";
 import { useStore } from "../../lib/store";
-import type { AppleSpeechSupport, SettingsSnapshot } from "../../lib/types";
+import type { AppleSpeechResourceStatus, AppleSpeechSupport, SettingsSnapshot } from "../../lib/types";
 import { useSettingsToast } from "./useSettingsToast";
+
+export function appleSpeechLanguageStatus(language: AppleSpeechSupport["languages"][number] | undefined): AppleSpeechResourceStatus {
+  if (language?.status) return language.status;
+  // Legacy booleans can establish readiness or an ongoing download, but false
+  // never distinguishes a missing pack from an unconfirmed native module.
+  if (language?.installed) return "installed";
+  if (language?.downloading) return "downloading";
+  return "unknown";
+}
 
 function readyLanguagesSignature(settings: SettingsSnapshot): string | null {
   const native = settings.languageCapabilities;

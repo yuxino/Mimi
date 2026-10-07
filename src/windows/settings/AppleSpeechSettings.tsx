@@ -12,6 +12,7 @@ import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 import { InlineFeedback, SettingsRow } from "./SettingsPrimitives";
 import { SettingsHelp } from "./SettingsHelp";
 import { useSettingsToast } from "./useSettingsToast";
+import { appleSpeechLanguageStatus } from "./useAppleSpeechSupport";
 
 type Props = ComponentProps<typeof AlibabaCredentialEditor> & {
   support: AppleSpeechSupport | null;
@@ -35,17 +36,22 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
   const [helpOpen, setHelpOpen] = useState(false);
   const [languageAction, setLanguageAction] = useState<{ context: symbol; stage: LanguageActionStage } | null>(null);
   const currentSettings = useRef(settings);
+  const currentSupport = useRef(support);
   const currentSelectionContext = useRef(selectionContext);
-  useEffect(() => { currentSettings.current = settings; currentSelectionContext.current = selectionContext; }, [settings, selectionContext]);
+  useEffect(() => {
+    currentSettings.current = settings;
+    currentSupport.current = support;
+    currentSelectionContext.current = selectionContext;
+  }, [settings, support, selectionContext]);
   const saveSettings = useStore(state => state.saveSettings);
-  const [languageError, setLanguageError] = useState<{ context: symbol; message: string; retryDownload: boolean } | null>(null);
-  const currentError = languageError?.context === selectionContext ? languageError : null;
+  const [languageError, setLanguageError] = useState<{ context: symbol; message: string; retryDownload: boolean; uncertain?: boolean } | null>(null);
+  const selectionError = languageError?.context === selectionContext ? languageError : null;
   const inFlight = useRef(false);
   const mounted = useRef(false);
   const { beginToast } = useSettingsToast();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const languages = support?.languages ?? [];
-  const installedLanguages = languages.filter(item => item.installed);
+  const installedLanguages = languages.filter(item => appleSpeechLanguageStatus(item) === "installed");
   const active = settings.activeProfileId === editor.profile.id && editor.profile.provider === "appleSpeech";
   const route = textTranslationForProfile(editor.profile);
   const routeSources = active ? sourceLanguagesForSettings(settings) : installedLanguages.filter(item =>
@@ -54,19 +60,26 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
   const recognitionLanguages = installedLanguages.filter(item => routeSources.includes(item.sourceLanguage));
   const currentSource = active ? settings.sourceLanguage : sourceLanguage;
   const language = languages.find(item => item.sourceLanguage === (selected?.context === selectionContext ? selected.language : currentSource)) ?? recognitionLanguages[0] ?? languages[0];
-  const downloadPending = language?.downloading === true && !language.installed;
+  const nativeResourceStatus = appleSpeechLanguageStatus(language);
+  const confirmedProgress = nativeResourceStatus === "installed" || nativeResourceStatus === "downloading";
+  const currentError = selectionError?.uncertain && confirmedProgress ? null : selectionError;
+  if (selectionError?.uncertain && confirmedProgress) setLanguageError(null);
+  const resourceStatus = currentError?.uncertain ? "unknown" : nativeResourceStatus;
+  const languageInstalled = resourceStatus === "installed";
+  const downloadPending = resourceStatus === "downloading";
+  const resourceUnknown = resourceStatus === "unknown" || resourceStatus === "unsupported";
   const routeAllowsLanguage = !!language && routeSources.includes(language.sourceLanguage);
   const languageInUse = active && routeAllowsLanguage && language?.sourceLanguage === currentSource;
   const textAllowsLanguage = !!language && (settings.targetLanguage === "original" || (route !== "deepL" && route !== "deepLX")
     || textTranslationSourceLanguages(route).includes(language.sourceLanguage));
-  const canUseLanguage = support?.available && language && !downloadPending && textAllowsLanguage
-    && (!language.installed || routeAllowsLanguage) && (!languageInUse || !language.installed) && (active || !!onSelectProfile);
+  const canUseLanguage = support?.available && language && !downloadPending && !resourceUnknown && textAllowsLanguage
+    && (!languageInstalled || routeAllowsLanguage) && (!languageInUse || !languageInstalled) && (active || !!onSelectProfile);
   const currentStage = languageAction?.context === selectionContext ? languageAction.stage : null;
   const preparing = currentStage === "download";
   const checkingTranslation = currentStage === "translation-check";
   const refreshing = currentStage === "refresh";
   const busy = languageAction !== null;
-  const disabled = editor.disabled || editor.busy || busy || requiresStop;
+  const disabled = editor.disabled || editor.busy || busy || requiresStop || loading;
   const refreshDisabled = (resourceRefreshDisabled ?? editor.disabled) || editor.busy || busy || loading;
   const refreshStatus = async () => {
     if (refreshDisabled || inFlight.current) return;
@@ -92,7 +105,7 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
     if (!language || !canUseLanguage || disabled || inFlight.current) return;
     const chosen = language;
     const activeProfileId = settings.activeProfileId;
-    let downloaded = chosen.installed;
+    let downloaded = languageInstalled;
     const needsTranslationCheck = route === "apple" && settings.targetLanguage !== "original";
     let stage: LanguageActionStage = needsTranslationCheck ? "translation-check" : downloaded ? "save" : "download";
     inFlight.current = true;
@@ -130,8 +143,10 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
         const preparedLanguage = result.languages.find(item => item.sourceLanguage === chosen.sourceLanguage);
         // Apple can continue a deferred download after the first attempt returns.
         // Refresh only reads its status; applying a ready language stays explicit.
-        if (preparedLanguage?.downloading && !preparedLanguage.installed) return;
-        if (!preparedLanguage?.installed) throw new Error("resources-not-installed");
+        const preparedStatus = appleSpeechLanguageStatus(preparedLanguage);
+        if (preparedStatus === "downloading") return;
+        if (preparedStatus === "unknown" || preparedStatus === "unsupported") throw new Error("apple_speech_status_failed");
+        if (preparedStatus !== "installed") throw new Error("resources-not-installed");
         downloaded = true;
         stage = "save";
         setLanguageAction({ context: selectionContext, stage });
@@ -150,9 +165,13 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
       if (mounted.current) { setSelected(null); notify(I18N.settings.appleSpeechLanguageSelected); }
     } catch (error) {
       if (mounted.current && currentSelectionContext.current === selectionContext) {
+        const label = error instanceof Error ? error.message : error;
+        const uncertain = stage === "download" && (label === "apple_speech_status_failed" || label === "apple_speech_service_unavailable");
+        const latestStatus = appleSpeechLanguageStatus(currentSupport.current?.languages.find(item => item.sourceLanguage === chosen.sourceLanguage));
+        if (uncertain && (latestStatus === "installed" || latestStatus === "downloading")) return;
         const message = stage === "translation-check" ? languageActionErrorMessage(error, I18N.settings.appleTranslationStatusFailed)
           : languageActionErrorMessage(error, downloaded ? I18N.settings.languageSaveFailed : I18N.settings.appleSpeechPrepareFailed);
-        setLanguageError({ context: selectionContext, message, retryDownload: stage === "download" });
+        setLanguageError({ context: selectionContext, message, retryDownload: stage === "download" && !uncertain, uncertain });
         notify(message, true);
       }
     } finally {
@@ -173,33 +192,37 @@ export function AppleSpeechSettings({ support, settings, requiresStop = false, r
         <p>{I18N.settings.appleSpeechDownloadLocation}</p>
         <ol><li>{I18N.settings.appleSpeechInstallStepChoose}</li><li>{I18N.settings.appleSpeechInstallStepDownload}</li><li>{I18N.settings.appleSpeechInstallStepUse}</li></ol>
       </div>}
-      {loading ? <InlineFeedback tone="info">{I18N.settings.appleSpeechLoading}</InlineFeedback>
+      {loading && !support ? <InlineFeedback tone="info">{I18N.settings.appleSpeechLoading}</InlineFeedback>
         : failed ? <InlineFeedback tone="error">{I18N.settings.appleSpeechLoadFailed} <button type="button" className="settings-link" disabled={refreshDisabled} onClick={() => void refreshStatus()}>{I18N.settings.retryLoadingSettings}</button></InlineFeedback>
         : !support?.available || !language ? <InlineFeedback tone="info">{I18N.settings.appleSpeechUnavailable}</InlineFeedback>
         : <>
           <SettingsRow label={I18N.settings.sourceLanguage} description={I18N.settings.appleSpeechResourcesHelp}>
             <LanguageSelect label={I18N.settings.sourceLanguage} value={language.sourceLanguage}
               disabled={disabled}
-              options={languages.map(item => ({ value: item.sourceLanguage, label: `${SOURCE_LANGUAGE_DISPLAY_NAMES[item.sourceLanguage]}${item.installed ? "" : ` · ${item.downloading ? I18N.settings.appleSpeechDownloadPending : I18N.settings.appleSpeechNotInstalled}`}` }))}
+              options={languages.map(item => {
+                const status = item.sourceLanguage === language.sourceLanguage ? resourceStatus : appleSpeechLanguageStatus(item);
+                const label = status === "downloading" ? I18N.settings.appleSpeechDownloadPending : status === "supported" ? I18N.settings.appleSpeechNotInstalled : I18N.settings.appleSpeechStatusUnknown;
+                return { value: item.sourceLanguage, label: `${SOURCE_LANGUAGE_DISPLAY_NAMES[item.sourceLanguage]}${status === "installed" ? "" : ` · ${label}`}` };
+              })}
               onChange={value => { setSelected({ language: value, context: selectionContext }); setLanguageError(null); }} />
           </SettingsRow>
           <div className="apple-speech-resource-actions">
             <span className="apple-speech-resource-status" role="status">
-              {preparing || checkingTranslation || refreshing || downloadPending ? <span className="settings-spinner" aria-hidden="true" /> : <Icon name={language.installed ? "checkmark-circle" : "download"} />}
-              {language.locale} · {refreshing ? I18N.settings.appleSpeechLoading : checkingTranslation ? I18N.settings.appleTranslationChecking : preparing ? I18N.settings.appleSpeechPreparing : downloadPending ? I18N.settings.appleSpeechDownloadPending : languageInUse && language.installed ? I18N.settings.appleSpeechLanguageInUse
-                : language.installed ? I18N.settings.appleSpeechInstalled : I18N.settings.appleSpeechNotInstalled}
+              {preparing || checkingTranslation || refreshing || downloadPending ? <span className="settings-spinner" aria-hidden="true" /> : <Icon name={resourceUnknown ? "help" : languageInstalled ? "checkmark-circle" : "download"} />}
+              {language.locale} · {refreshing ? I18N.settings.appleSpeechLoading : checkingTranslation ? I18N.settings.appleTranslationChecking : preparing ? I18N.settings.appleSpeechPreparing : downloadPending ? I18N.settings.appleSpeechDownloadPending : resourceUnknown ? I18N.settings.appleSpeechStatusUnknown : languageInUse && languageInstalled ? I18N.settings.appleSpeechLanguageInUse
+                : languageInstalled ? I18N.settings.appleSpeechInstalled : I18N.settings.appleSpeechNotInstalled}
             </span>
-            {downloadPending ? <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={refreshDisabled} onClick={() => void refreshStatus()}>
+            {downloadPending || resourceUnknown ? <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={refreshDisabled} onClick={() => void refreshStatus()}>
               <RotateCw size={14} aria-hidden="true" />{I18N.settings.appleSpeechRefreshStatus}
             </button> : canUseLanguage && <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled} onClick={() => void applyLanguage()}>
-              <Icon name={language.installed ? "checkmark" : "download"} />
-              {language.installed ? I18N.settings.appleSpeechUseLanguage : currentError?.retryDownload ? I18N.settings.appleSpeechRetryDownload : I18N.settings.appleSpeechDownloadAndUse}
+              <Icon name={languageInstalled ? "checkmark" : "download"} />
+              {languageInstalled ? I18N.settings.appleSpeechUseLanguage : currentError?.retryDownload ? I18N.settings.appleSpeechRetryDownload : I18N.settings.appleSpeechDownloadAndUse}
             </button>}
           </div>
           {requiresStop && <span className="apple-speech-resource-note">{I18N.settings.languageChangeRequiresStop}</span>}
-          {!requiresStop && (!textAllowsLanguage || (language.installed && !routeAllowsLanguage)) && <InlineFeedback tone="info">{I18N.settings.appleSpeechLanguageRouteUnsupported}</InlineFeedback>}
-          {currentError && <InlineFeedback tone="error">{currentError.message}</InlineFeedback>}
-          <div className="apple-speech-connection-check">{typeof editor.connectionCheck === "function" ? editor.connectionCheck(undefined, language.sourceLanguage) : editor.connectionCheck}</div>
+          {!requiresStop && (!textAllowsLanguage || (languageInstalled && !routeAllowsLanguage)) && <InlineFeedback tone="info">{I18N.settings.appleSpeechLanguageRouteUnsupported}</InlineFeedback>}
+          {(currentError || resourceUnknown) && <InlineFeedback tone="error">{currentError?.message ?? I18N.settings.appleSpeechLoadFailed}</InlineFeedback>}
+          <div className="apple-speech-connection-check">{typeof editor.connectionCheck === "function" ? editor.connectionCheck(languageInstalled ? undefined : null, language.sourceLanguage) : languageInstalled ? editor.connectionCheck : undefined}</div>
         </>}
     </section>
     <AlibabaCredentialEditor {...editor} textOnly connectionCheck={undefined}
