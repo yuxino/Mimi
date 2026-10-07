@@ -96,13 +96,25 @@ impl GeminiLiveRequestEncoder {
     }
 }
 
+/// Exact gemini-3.5-live-translate-preview catalog, expressed in Mimi codes.
+/// https://ai.google.dev/gemini-api/docs/live-api/live-translate#supported-languages
+/// Norwegian uses the documented `no` alias; `nb` is not a separate language.
+pub const LANGUAGE_CODES: &[&str] = &[
+    "zh", "en", "ja", "zh_tw", "ko", "ru", "es", "fr", "de", "it", "th", "vi", "id", "ms", "ar",
+    "hi", "he", "ur", "bn", "pl", "nl", "tr", "km", "cs", "sv", "hu", "da", "fi", "tl", "fa", "af",
+    "ak", "sq", "am", "hy", "az", "eu", "be", "bg", "my", "ca", "hr", "et", "gl", "ka", "el", "gu",
+    "ha", "is", "jv", "kn", "kk", "rw", "lo", "lv", "lt", "mk", "ml", "mr", "mn", "ne", "no",
+    "pt-BR", "pt-PT", "pa", "ro", "sr", "sd", "si", "sk", "sl", "su", "sw", "ta", "te", "uk", "uz",
+    "zu",
+];
+
 pub fn target_language_code(
     target_language: TargetLanguage,
 ) -> Result<&'static str, GeminiLiveProtocolError> {
+    if !LANGUAGE_CODES.contains(&target_language.raw_value()) {
+        return Err(GeminiLiveProtocolError::InvalidTargetLanguage);
+    }
     match target_language {
-        TargetLanguage::Original | TargetLanguage::Portuguese => {
-            Err(GeminiLiveProtocolError::InvalidTargetLanguage)
-        }
         TargetLanguage::SimplifiedChinese => Ok("zh-Hans"),
         TargetLanguage::TraditionalChinese => Ok("zh-Hant"),
         TargetLanguage::Tagalog => Ok("fil"),
@@ -304,16 +316,35 @@ mod tests {
 
     #[test]
     fn expanded_app_targets_do_not_expand_this_wire_contract() {
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            matches!(
-                target,
-                TargetLanguage::Original | TargetLanguage::Portuguese
-            )
-        }) {
+        for target in TargetLanguage::ALL
+            .into_iter()
+            .filter(|target| !LANGUAGE_CODES.contains(&target.raw_value()))
+        {
             assert_eq!(
                 target_language_code(target).unwrap_err(),
                 GeminiLiveProtocolError::InvalidTargetLanguage
             );
+        }
+    }
+
+    #[test]
+    fn every_documented_live_translation_target_has_an_exact_wire_code() {
+        assert_eq!(LANGUAGE_CODES.len(), 78);
+        for code in LANGUAGE_CODES {
+            let target = serde_json::from_value(json!(code)).unwrap();
+            let expected = match *code {
+                "zh" => "zh-Hans",
+                "zh_tw" => "zh-Hant",
+                "tl" => "fil",
+                _ => code,
+            };
+            assert_eq!(target_language_code(target).unwrap(), expected);
+            let setup = GeminiLiveRequestEncoder::setup(target).unwrap();
+            assert_eq!(
+                setup["setup"]["generationConfig"]["translationConfig"]["targetLanguageCode"],
+                expected
+            );
+            assert_eq!(setup["setup"]["inputAudioTranscription"], json!({}));
         }
     }
 

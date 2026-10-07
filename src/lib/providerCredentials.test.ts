@@ -12,6 +12,14 @@ import {
   openAICompatibleModelIsValid,
 } from "./providerCredentials";
 
+it("switches to Apple without leaking old text fields or requiring a missing cloud text key", () => {
+  const profile = { id: "ali", name: "Alibaba", provider: "alibabaCloud", credentialState: "missing", speechCredentialState: "present", textCredentialState: "missing", textTranslation: "deepL" } as const;
+  const draft = { ...emptyCredentialDraft(), endpoint: "https://example.com", token: "synthetic-old-text-token", model: "old-model" };
+  expect(buildAlibabaTranslationCredentials(profile, draft, "apple")).toEqual({ kind: "alibabaTranslation", apiKey: "", textTranslation: "apple", endpoint: "", token: "", model: "" });
+  expect(buildAlibabaTranslationCredentials(profile, { ...draft, apiKey: "new-speech-key" }, "apple")).toMatchObject({ apiKey: "new-speech-key", token: "" });
+  expect(buildAlibabaTranslationCredentials({ ...profile, provider: "appleSpeech" }, { ...draft, apiKey: "never-text" }, "apple")).toMatchObject({ apiKey: "", token: "" });
+});
+
 it("has no Apple speech credentials while preserving independent optional-auth text translation", () => {
   const profile = { id: "apple", name: "Apple Speech", provider: "appleSpeech", credentialState: "missing", textCredentialState: "missing" } as const;
   expect(credentialFieldsForProvider("appleSpeech")).toEqual([]);

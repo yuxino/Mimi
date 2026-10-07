@@ -3,7 +3,7 @@ import { textTranslationForProfile } from "./providerCapabilities";
 import type { ServiceProfile, TextTranslation } from "./types";
 
 export function defaultTextTranslationName(route: Exclude<TextTranslation, "followService">): string {
-  return route === "deepL" ? "DeepL" : route === "deepLX" ? "DeepLX"
+  return route === "apple" ? I18N.settings.textTranslationApple : route === "deepL" ? "DeepL" : route === "deepLX" ? "DeepLX"
     : route === "chatMock" ? "ChatMock" : I18N.settings.textTranslationOpenAICompatible;
 }
 

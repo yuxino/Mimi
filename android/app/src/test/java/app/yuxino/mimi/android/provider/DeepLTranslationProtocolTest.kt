@@ -34,7 +34,7 @@ class DeepLTranslationProtocolTest {
             }
         }
         rejects("translation_language") { deepLRequest("synthetic", "unknown", "zh") }
-        rejects("translation_language") { deepLXRequest("synthetic", "en", "ko") }
+        rejects("translation_language") { deepLXRequest("synthetic", "en", "bn") }
         rejects("translation_empty_source") { deepLRequest(" ", "en", "zh") }
         rejects("translation_too_large") { deepLXRequest("x".repeat(MAX_TRANSLATION_TEXT_CHARS + 1), "en", "zh") }
     }

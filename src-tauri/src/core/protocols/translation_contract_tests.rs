@@ -264,6 +264,7 @@ fn shared_live_setup_contracts() {
 #[test]
 fn shared_speech_language_setups_and_catalogs() {
     use super::{
+        azure_openai_realtime::AzureOpenAIRealtimeRequestEncoder,
         openai_realtime::OpenAIRealtimeRequestEncoder, xai_realtime::XAIRealtimeRequestEncoder,
     };
     use crate::core::provider::ProviderKind;
@@ -272,8 +273,15 @@ fn shared_speech_language_setups_and_catalogs() {
         let source = serde_json::from_value(case["source"].clone()).unwrap();
         let actual = match case["provider"].as_str().unwrap() {
             "openAIRealtime" => OpenAIRealtimeRequestEncoder::session_update(target, None).map(|value| serde_json::json!({"targetCode": value["session"]["audio"]["output"]["language"]})).map_err(|_| ()),
+            "azureOpenAIRealtime" => AzureOpenAIRealtimeRequestEncoder::session_update(target, "synthetic-transcription", None).map(|value| serde_json::json!({"targetCode": value["session"]["audio"]["output"]["language"]})).map_err(|_| ()),
             "googleGeminiLive" => GeminiLiveRequestEncoder::setup(target).map(|value| serde_json::json!({"targetCode": value["setup"]["generationConfig"]["translationConfig"]["targetLanguageCode"]})).map_err(|_| ()),
-            "xAIRealtime" => XAIRealtimeRequestEncoder::session_update(source, target, None).map(|value| serde_json::json!({"sourceHint": value["session"]["audio"]["input"]["transcription"]["language_hint"]})).map_err(|_| ()),
+            "xAIRealtime" => XAIRealtimeRequestEncoder::session_update(source, target, None).map(|value| {
+                let mut actual = serde_json::json!({"sourceHint": value["session"]["audio"]["input"]["transcription"]["language_hint"]});
+                if case["expected"].get("instructions").is_some() {
+                    actual["instructions"] = value["session"]["instructions"].clone();
+                }
+                actual
+            }).map_err(|_| ()),
             _ => panic!("unknown provider"),
         };
         if case["expected"].is_null() {
@@ -296,6 +304,62 @@ fn shared_speech_language_setups_and_catalogs() {
             case["expected"]["targetLanguages"],
             "{}",
             case["id"]
+        );
+    }
+}
+
+#[test]
+fn shared_text_language_catalogs_cover_every_supported_wire_code() {
+    use super::deepl_languages;
+    use std::collections::BTreeSet;
+    let fixtures = contract();
+    for (provider, sources, targets) in [
+        (
+            "deepL",
+            deepl_languages::DEEPL_SOURCE_CODES,
+            deepl_languages::DEEPL_TARGET_CODES,
+        ),
+        (
+            "deepLX",
+            deepl_languages::DEEPLX_SOURCE_CODES,
+            deepl_languages::DEEPLX_TARGET_CODES,
+        ),
+    ] {
+        let catalog = &fixtures["textLanguageCatalogs"][provider];
+        assert_eq!(
+            catalog["sourceLanguages"],
+            serde_json::json!(sources),
+            "{provider}"
+        );
+        assert_eq!(
+            catalog["targetLanguages"],
+            serde_json::json!(targets),
+            "{provider}"
+        );
+        let successful = fixtures["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["provider"] == provider && !case["expected"].is_null())
+            .collect::<Vec<_>>();
+        let actual_sources: BTreeSet<_> = successful
+            .iter()
+            .map(|case| case["source"].as_str().unwrap())
+            .filter(|code| *code != "auto")
+            .collect();
+        let actual_targets: BTreeSet<_> = successful
+            .iter()
+            .map(|case| case["target"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            actual_sources,
+            sources.iter().copied().collect(),
+            "{provider} source fixture coverage"
+        );
+        assert_eq!(
+            actual_targets,
+            targets.iter().copied().collect(),
+            "{provider} target fixture coverage"
         );
     }
 }

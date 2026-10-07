@@ -29,3 +29,10 @@ it("does not claim automatic language detection for an arbitrary custom endpoint
   const settings = { sourceLanguage: "auto", targetLanguage: "original", activeProfileId: "custom", profiles: [{ id: "custom", name: "Custom", provider: "customOpenAIASR", credentialState: "present" }] } as const;
   expect(capsuleLabels({ ...settings, profiles: [...settings.profiles] }, null, "zh").source).toBe("服务默认");
 });
+
+
+it.each([["zh", "中英互译"], ["en", "Chinese ↔ English"], ["ja", "中国語 ↔ 英語"]] as const)("keeps %s bilingual reversal distinct from mixed recognition in the visible island", (language, label) => {
+  const settings = { sourceLanguage: "zh_en", targetLanguage: "zh_en", activeProfileId: "test", profiles: [{ id: "test", name: "Volcano", provider: "volcanoEngine", credentialState: "present" }] } as const;
+  expect(capsuleLabels({ ...settings, profiles: [...settings.profiles] }, null, language)).toEqual({ source: label, target: label, phase: null });
+  expect(capsuleLabels({ ...settings, profiles: [{ ...settings.profiles[0], provider: "tencentCloud" }] }, null, language).source).not.toBe(label);
+});

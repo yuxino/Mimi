@@ -66,3 +66,23 @@ it("keeps Simplified-to-Traditional Chinese as MT instead of treating Chinese sc
     ]);
   expect(isWaitingForFinalTranslation({ ...settings, sourceLanguage: "auto" }, null, true)).toBe(true);
 });
+
+
+it("shows the translated lane and keeps pending feedback for bilingual direction mode", () => {
+  const settings = { sourceLanguage: "zh_en", targetLanguage: "zh_en", subtitleDisplayMode: "translation" } as const;
+  const current: SubtitleSnapshot = { source: { text: "Synthetic source.", isFinal: false }, translation: { text: "Synthetic translated text.", isFinal: false }, history: [] };
+  expect(isWaitingForFinalTranslation(settings, null, true)).toBe(true);
+  expect(isWaitingForFinalTranslation(settings, "zh_en", true)).toBe(true);
+  expect(visibleLiveSubtitles(current, settings, null, false, false)).toEqual([
+    { text: current.translation.text, kind: "translation", isFinal: false },
+  ]);
+});
+
+it.each(["zh", "en", "ja"] as const)("uses the same bilingual direction labels for the %s overlay as settings", language => {
+  setStoredUiLanguage(language);
+  try {
+    const settings = { ...useStore.getState().settings, activeProfileId: "volcano", sourceLanguage: "zh_en", targetLanguage: "zh_en",
+      profiles: [{ id: "volcano", name: "Volcano", provider: "volcanoEngine", credentialState: "present" }] } as const;
+    expect(languageStatus({ ...settings, profiles: [...settings.profiles] }, null)).toEqual({ source: I18N.settings.recognitionVolcanoBilingual, separator: I18N.overlay.separator, target: I18N.settings.recognitionVolcanoBilingual });
+  } finally { setStoredUiLanguage("system"); }
+});

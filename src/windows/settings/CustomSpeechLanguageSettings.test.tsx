@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { SOURCE_LANGUAGE_DISPLAY_NAMES, type ServiceProfile } from "../../lib/types";
+import { SOURCE_LANGUAGE_DISPLAY_NAMES, SOURCE_LANGUAGE_CODES, type ServiceProfile, type SourceLanguage } from "../../lib/types";
 import { CustomSpeechLanguageSettings } from "./CustomSpeechLanguageSettings";
 
 let host: HTMLDivElement, root: Root, profile: ServiceProfile;
@@ -19,7 +19,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setStoredUiLanguage("system"); vi.unstubAllGlobals(); });
 const render = async (disabled = false) => { await act(async () => root.render(<CustomSpeechLanguageSettings profile={profile} disabled={disabled} onSave={save} />)); };
 const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === label)!;
-const language = (code: "en" | "fr") => button(SOURCE_LANGUAGE_DISPLAY_NAMES[code] + code);
+const language = (code: SourceLanguage) => button(SOURCE_LANGUAGE_DISPLAY_NAMES[code] + code);
 async function click(label: string) { await act(async () => button(label).click()); }
 async function mode(label: string) {
   await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"]')!.click());
@@ -36,10 +36,10 @@ it.each(["zh", "en", "ja"] as const)("keeps choices collapsed until editing and 
   expect(host.textContent).toContain(I18N.settings.customSpeechLanguagesUnknown);
   await click(I18N.settings.customSpeechLanguagesEdit);
   await mode(I18N.settings.customSpeechLanguagesManual);
-  expect(host.querySelectorAll(".custom-speech-languages__choices button")).toHaveLength(30);
+  expect(host.querySelectorAll(".custom-speech-languages__choices button")).toHaveLength(SOURCE_LANGUAGE_CODES.length);
   expect(host.querySelector('[aria-pressed="true"]')).toBeNull();
   await search("fr");
-  expect(host.querySelectorAll(".custom-speech-languages__choices button")).toHaveLength(1);
+  expect(language("fr")).toBeDefined();
   await act(async () => language("fr").click());
   expect(language("fr").classList.contains("is-selected")).toBe(true);
   expect(language("fr").getAttribute("aria-pressed")).toBe("true");
@@ -92,4 +92,16 @@ it("disables editing while a session is active", async () => {
   await click(I18N.settings.customSpeechLanguagesEdit);
   expect(host.querySelector(".custom-speech-languages__expanded")).toBeNull();
   expect(save).not.toHaveBeenCalled();
+});
+
+it("retains explicitly declared non-Alibaba languages and regional variants", async () => {
+  profile.customSpeechSourceLanguages = ["uk"];
+  await render(); await click(I18N.settings.customSpeechLanguagesEdit);
+  expect(language("uk").getAttribute("aria-pressed")).toBe("true");
+  expect(language("pt-BR").getAttribute("aria-pressed")).toBe("false");
+  await search("pt-br");
+  expect(language("pt-BR")).toBeDefined();
+  await act(async () => language("pt-BR").click());
+  await click(I18N.settings.customSpeechLanguagesSave);
+  expect(save).toHaveBeenCalledExactlyOnceWith(["pt-BR", "uk"]);
 });

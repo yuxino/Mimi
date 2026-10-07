@@ -148,6 +148,11 @@ export function OverlayControlWindow() {
           onTogglePaused={togglePaused}
           onSelectProfile={async (profileId) => { await selectProfile(profileId); }}
           onSwitchSourceLanguage={switchSourceLanguage}
+          onSwitchTargetLanguage={async target => {
+            const finishLanguageChange = trackLanguageChange(target);
+            try { await switchTargetLanguage(target); finishLanguageChange(true); }
+            catch (error) { finishLanguageChange(false); throw error; }
+          }}
           onSetSkipTranslation={setSkipTranslation}
           onSetIntermediateSubtitles={(showIntermediateSubtitles) => saveSettings({ showIntermediateSubtitles })}
           onSetSubtitleDividers={(showSubtitleDividers) => saveSettings({ showSubtitleDividers })}

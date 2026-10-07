@@ -82,6 +82,7 @@ impl CredentialEditorState {
     fn from_text_credentials(credentials: TextTranslationCredentials) -> Self {
         let mut state = Self::default();
         let token = match credentials {
+            TextTranslationCredentials::Apple => return state,
             TextTranslationCredentials::DeepL { api_key } => api_key,
             TextTranslationCredentials::DeepLX { endpoint, token } => {
                 state.endpoint = Some(endpoint);
@@ -133,7 +134,7 @@ struct OpenAICompatibleDestination {
 impl TextTranslationDestination {
     fn credentials(&self, route: TextTranslation) -> Option<TextTranslationCredentials> {
         match route {
-            TextTranslation::FollowService => None,
+            TextTranslation::FollowService | TextTranslation::Apple => None,
             TextTranslation::DeepL => Some(TextTranslationCredentials::DeepL {
                 api_key: self.deep_l_api_key.clone().unwrap_or_default(),
             }),
@@ -162,6 +163,7 @@ impl TextTranslationDestination {
 
     fn set_credentials(&mut self, credentials: TextTranslationCredentials) {
         match credentials {
+            TextTranslationCredentials::Apple => {}
             TextTranslationCredentials::DeepL { api_key } => self.deep_l_api_key = Some(api_key),
             TextTranslationCredentials::DeepLX { endpoint, token } => {
                 self.endpoint = endpoint;
@@ -1072,7 +1074,7 @@ impl SettingsStore {
     ) -> Result<(), String> {
         let profile = self.active_profile()?;
         self.save_preferences_validated(update, |previous, next| {
-            let capabilities = profile.capabilities(next.target_language);
+            let capabilities = profile.capabilities(next.target_language).for_source(next.source_language);
             if next.target_language != previous.target_language
                 && !capabilities.target_languages.contains(&next.target_language) {
                 return Err(crate::core::configuration::LiveTranslationConfigurationError::UnsupportedTargetLanguage.to_string());
@@ -1445,7 +1447,10 @@ impl SettingsStore {
             return self.custom_credential_states(profile);
         }
         let speech = self.speech_presence_for_snapshot(profile);
-        let text = if profile.text_translation() == TextTranslation::FollowService {
+        let text = if matches!(
+            profile.text_translation(),
+            TextTranslation::FollowService | TextTranslation::Apple
+        ) {
             CredentialState::Present
         } else if self.secret.is_read_only() {
             CredentialState::Missing
@@ -1518,7 +1523,10 @@ impl SettingsStore {
             Ok(None) => CredentialState::Missing,
             Err(_) => CredentialState::Unavailable,
         };
-        let text = if profile.text_translation() == TextTranslation::FollowService {
+        let text = if matches!(
+            profile.text_translation(),
+            TextTranslation::FollowService | TextTranslation::Apple
+        ) {
             CredentialState::Present
         } else if self.secret.is_read_only() {
             CredentialState::Missing
@@ -1580,6 +1588,9 @@ impl SettingsStore {
     ) -> Result<CredentialEditorState, String> {
         self.require_writable_credentials(profile_id)?;
         let profile = self.profile(profile_id)?;
+        if text_translation == Some(TextTranslation::Apple) {
+            return Ok(CredentialEditorState::default());
+        }
         if let Some(route) = text_translation {
             if !CredentialRevealField::Token.allowed_for(&profile, Some(route)) {
                 return Err("credential_reveal_field_mismatch".into());
@@ -1716,7 +1727,7 @@ impl SettingsStore {
                             model: destination.model,
                         }
                     }
-                    TextTranslation::FollowService => unreachable!(),
+                    TextTranslation::FollowService | TextTranslation::Apple => unreachable!(),
                 };
                 return credentials
                     .revealed_field(&profile, field, text_translation)
@@ -1915,8 +1926,10 @@ impl SettingsStore {
         if matches!(
             profile.provider,
             ProviderKind::AlibabaCloud | ProviderKind::DeepLX
-        ) && profile.text_translation() != TextTranslation::FollowService
-        {
+        ) && !matches!(
+            profile.text_translation(),
+            TextTranslation::FollowService | TextTranslation::Apple
+        ) {
             let Some(destination) = self.destination_value(profile)? else {
                 if profile.provider == ProviderKind::DeepLX
                     && matches!(
@@ -1966,7 +1979,7 @@ impl SettingsStore {
                         model: destination.model,
                     }
                 }
-                TextTranslation::FollowService => unreachable!(),
+                TextTranslation::FollowService | TextTranslation::Apple => unreachable!(),
             };
             return credentials
                 .validated_for(profile.effective_provider())
@@ -1980,6 +1993,9 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<Option<TextTranslationCredentials>, String> {
+        if profile.text_translation() == TextTranslation::Apple {
+            return Ok(Some(TextTranslationCredentials::Apple));
+        }
         if self.secret.is_read_only()
             || profile.text_translation() == TextTranslation::FollowService
         {
@@ -2167,6 +2183,104 @@ impl SettingsStore {
         Ok(())
     }
 
+    /// Apple has no text secret. Only an explicitly supplied speech key may
+    /// access its own slot; switching text routes leaves all other slots intact.
+    fn save_apple_text_translation(
+        &self,
+        profile: &ServiceProfile,
+        api_key: &str,
+    ) -> Result<(), String> {
+        use crate::core::credentials::ProviderCredentialsError as Error;
+        if !profile.provider.supports_text_translation()
+            || (profile.provider.is_standalone_asr() && !api_key.trim().is_empty())
+        {
+            return Err(Error::ProviderMismatch.to_string());
+        }
+        if self.catalog_write_blocked {
+            return Err(PROFILE_CATALOG_UNAVAILABLE.into());
+        }
+        let speech_update = if api_key.trim().is_empty() {
+            None
+        } else {
+            self.retry_profile_credential_errors(profile, true, false);
+            let previous = self
+                .load_api_key_for_profile(profile)
+                .map_err(SecretStoreError::public_error)?;
+            let key = ProviderCredentials::api_key(api_key)
+                .encode_for_keychain(ProviderKind::AlibabaCloud)
+                .map_err(|error| error.to_string())?;
+            // Legacy DeepLX profiles may hold either historical combined
+            // destination. Change only their speech key; Alibaba uses a raw key.
+            let updated = match previous
+                .as_deref()
+                .map(|value| ProviderCredentials::decode_for_profile(profile, value))
+                .transpose()
+                .map_err(|error| error.to_string())?
+            {
+                Some(ProviderCredentials::DeepLX {
+                    endpoint, token, ..
+                }) => ProviderCredentials::DeepLX {
+                    asr_api_key: key,
+                    endpoint,
+                    token,
+                }
+                .encode_for_keychain(ProviderKind::DeepLX),
+                Some(ProviderCredentials::DeepL { api_key, .. }) => ProviderCredentials::DeepL {
+                    asr_api_key: key,
+                    api_key,
+                }
+                .encode_for_keychain(ProviderKind::AlibabaCloud),
+                _ => Ok(key),
+            }
+            .map_err(|error| error.to_string())?;
+            Some((previous, updated))
+        };
+        let mut catalog = self.catalog.lock().unwrap();
+        let mut next = catalog.clone();
+        let updated = next
+            .profiles
+            .iter_mut()
+            .find(|candidate| candidate.id == profile.id)
+            .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
+        updated.text_translation = Some(TextTranslation::Apple);
+        let mut prefs = self.prefs.lock().unwrap();
+        let previous_prefs = prefs.clone();
+        let mut next_prefs = previous_prefs.clone();
+        if next.active_profile_id == profile.id {
+            normalize_preferences_value(&mut next_prefs, updated);
+        }
+        let prefs_changed = next_prefs != previous_prefs;
+        let result = (|| {
+            if prefs_changed {
+                self.persist_preferences_value(&next_prefs)?;
+            }
+            if let Some((previous, value)) = &speech_update {
+                if previous.as_deref() != Some(value) {
+                    self.save_api_key_for_profile(profile, value, true)?;
+                }
+            }
+            self.persist_catalog_value(&next)
+        })();
+        if let Err(error) = result {
+            if prefs_changed && self.persist_preferences_value(&previous_prefs).is_err() {
+                tracing::warn!("preferences unavailable label=apple_text_route_rollback_failed");
+            }
+            if let Some((previous, _)) = &speech_update {
+                let restored = match previous {
+                    Some(previous) => self.save_api_key_for_profile(profile, previous, false),
+                    None => self.delete_api_key_for_profile(profile),
+                };
+                if restored.is_err() {
+                    tracing::warn!("credential rollback failed label=apple_text_speech");
+                }
+            }
+            return Err(error);
+        }
+        *prefs = next_prefs;
+        *catalog = next;
+        Ok(())
+    }
+
     fn save_text_translation(
         &self,
         profile: &ServiceProfile,
@@ -2176,6 +2290,17 @@ impl SettingsStore {
         token_update: Option<&str>,
         model: &str,
     ) -> Result<(), String> {
+        if translation == TextTranslation::Apple {
+            if !endpoint.trim().is_empty()
+                || token_update.is_some_and(|token| !token.trim().is_empty())
+                || !model.trim().is_empty()
+            {
+                return Err(
+                    crate::core::credentials::ProviderCredentialsError::InvalidField.to_string(),
+                );
+            }
+            return self.save_apple_text_translation(profile, api_key);
+        }
         if profile.provider.is_standalone_asr() {
             if !api_key.is_empty() {
                 return Err("custom_speech_text_update_contains_speech_key".into());
@@ -2590,7 +2715,15 @@ impl SettingsStore {
             ),
             _ => return Err(Error::ProviderMismatch.to_string()),
         };
-        let credentials = if route == TextTranslation::FollowService {
+        let credentials = if route == TextTranslation::Apple {
+            if !endpoint.trim().is_empty()
+                || token_update.is_some_and(|token| !token.trim().is_empty())
+                || !model.trim().is_empty()
+            {
+                return Err(Error::InvalidField.to_string());
+            }
+            TextTranslationProbeCredentials::Independent(TextTranslationCredentials::Apple)
+        } else if route == TextTranslation::FollowService {
             if profile.provider.is_standalone_asr() {
                 return Err("text_translation_not_configured".into());
             }
@@ -2759,6 +2892,12 @@ impl SettingsStore {
         {
             return Err("text_translation_not_configured".into());
         }
+        if profile.text_translation() == TextTranslation::Apple {
+            return self.text_probe_with_credentials(
+                profile,
+                TextTranslationProbeCredentials::Independent(TextTranslationCredentials::Apple),
+            );
+        }
         self.retry_profile_credential_errors(
             profile,
             profile.text_translation() == TextTranslation::FollowService,
@@ -2805,6 +2944,18 @@ impl SettingsStore {
     ) -> Result<crate::core::configuration::TextTranslationProbeConfiguration, String> {
         use crate::core::configuration::TextTranslationProbeConfiguration;
         let prefs = self.preferences();
+        let native = matches!(
+            credentials,
+            crate::core::configuration::TextTranslationProbeCredentials::Independent(
+                TextTranslationCredentials::Apple
+            )
+        );
+        if native
+            && (prefs.source_language == SourceLanguage::Automatic
+                || prefs.target_language == TargetLanguage::Original)
+        {
+            return Err("apple_translation_language_unsupported".into());
+        }
         let target_language = if prefs.target_language == TargetLanguage::Original {
             TargetLanguage::SimplifiedChinese
         } else {
@@ -2819,13 +2970,21 @@ impl SettingsStore {
         };
         Ok(TextTranslationProbeConfiguration {
             credentials,
+            source_language: prefs.source_language,
             target_language,
-            network_proxy: profile
-                .text_network_proxy
-                .as_ref()
-                .unwrap_or(&prefs.network_proxy)
-                .validate()
-                .map_err(|error| error.to_string())?,
+            network_proxy: if native {
+                ProxyConfig {
+                    mode: crate::core::network_proxy::ProxyMode::Direct,
+                    url: None,
+                }
+            } else {
+                profile
+                    .text_network_proxy
+                    .as_ref()
+                    .unwrap_or(&prefs.network_proxy)
+                    .validate()
+                    .map_err(|error| error.to_string())?
+            },
         })
     }
 
@@ -2839,7 +2998,10 @@ impl SettingsStore {
             // Explicit checks verify a configured text destination even when
             // listening is recognition-only. This local choice never persists.
             if profile.provider.is_standalone_asr()
-                && profile.text_translation() != TextTranslation::FollowService
+                && !matches!(
+                    profile.text_translation(),
+                    TextTranslation::FollowService | TextTranslation::Apple
+                )
                 && prefs.target_language == TargetLanguage::Original
             {
                 prefs.target_language = TargetLanguage::English;
@@ -2849,7 +3011,9 @@ impl SettingsStore {
                 target_language: prefs.target_language,
                 translation_mode: prefs.translation_mode,
             });
-            prefs.source_language = normalized.source_language;
+            if profile.text_translation() != TextTranslation::Apple {
+                prefs.source_language = normalized.source_language;
+            }
             prefs.target_language = normalized.target_language;
             prefs.translation_mode = normalized.translation_mode;
         }
@@ -2861,6 +3025,12 @@ impl SettingsStore {
         profile: &ServiceProfile,
         prefs: Preferences,
     ) -> Result<LiveTranslationConfiguration, String> {
+        if profile.text_translation() == TextTranslation::Apple
+            && prefs.target_language.translates_audio()
+            && prefs.source_language == SourceLanguage::Automatic
+        {
+            return Err("apple_translation_language_unsupported".into());
+        }
         if profile.custom_speech_source_languages.is_some()
             && !profile
                 .capabilities(prefs.target_language)
@@ -2904,7 +3074,9 @@ impl SettingsStore {
                 .clone()
                 .unwrap_or(prefs.network_proxy),
         );
-        if provider.is_standalone_asr() && prefs.target_language.translates_audio() {
+        if profile.text_translation() == TextTranslation::Apple
+            || (provider.is_standalone_asr() && prefs.target_language.translates_audio())
+        {
             let text_credentials =
                 self.text_credentials_for_profile(profile)?.ok_or_else(|| {
                     crate::core::credentials::ProviderCredentialsError::MissingTextTranslation
@@ -3327,12 +3499,20 @@ fn profile_selection_preferences(
 }
 
 fn normalize_preferences_value(prefs: &mut Preferences, profile: &ServiceProfile) {
+    let original_source = prefs.source_language;
     let normalized = profile.normalize_preferences(ProviderPreferences {
         source_language: prefs.source_language,
         target_language: prefs.target_language,
         translation_mode: prefs.translation_mode,
     });
-    prefs.source_language = normalized.source_language;
+    prefs.source_language = if profile.text_translation() == TextTranslation::Apple
+        && normalized.target_language.translates_audio()
+        && original_source == SourceLanguage::Automatic
+    {
+        SourceLanguage::Automatic
+    } else {
+        normalized.source_language
+    };
     prefs.target_language = normalized.target_language;
     prefs.translation_mode = normalized.translation_mode;
 }
@@ -3448,6 +3628,325 @@ mod animation_switch_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn apple_text_route_is_metadata_only_preserves_auto_and_ignores_broken_text_storage() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        store
+            .save_api_key(DEFAULT_ALIBABA_PROFILE_ID, "synthetic-asr")
+            .unwrap();
+        let profile = store.active_profile().unwrap();
+        let destination = SettingsStore::destination_account(&profile);
+        fake.put(
+            PROFILE_KEYCHAIN_SERVICE,
+            &destination,
+            "corrupt legacy destination",
+        );
+        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &destination);
+        store.secret_cache.lock().unwrap().clear();
+        fake.state.lock().unwrap().loads.clear();
+        store
+            .save_credentials(
+                &profile.id,
+                &translation_request(TextTranslation::Apple, "", "", ""),
+            )
+            .unwrap();
+        let profile = store.active_profile().unwrap();
+        assert_eq!(profile.text_translation(), TextTranslation::Apple);
+        assert_eq!(
+            store.preferences().source_language,
+            SourceLanguage::Automatic
+        );
+        store.prepare_for_listening().unwrap();
+        assert_eq!(
+            store.preferences().source_language,
+            SourceLanguage::Automatic
+        );
+        assert_eq!(fake.load_count(PROFILE_KEYCHAIN_SERVICE, &destination), 0);
+        assert_eq!(store.credential_state(&profile), CredentialState::Present);
+        assert!(store
+            .credential_editor_state(&profile.id, Some(TextTranslation::Apple))
+            .unwrap()
+            .saved_fields
+            .is_empty());
+        assert!(!CredentialRevealField::Token.allowed_for(&profile, Some(TextTranslation::Apple)));
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Japanese;
+                prefs.target_language = TargetLanguage::English;
+                prefs.network_proxy = ProxyConfig {
+                    mode: crate::core::network_proxy::ProxyMode::Direct,
+                    url: None,
+                };
+            })
+            .unwrap();
+        let config = store.configuration().unwrap();
+        assert_eq!(config.credentials.alibaba_key(), Some("synthetic-asr"));
+        assert_eq!(
+            config.text_credentials,
+            Some(TextTranslationCredentials::Apple)
+        );
+        let probe = store.configuration_for_text_probe(&profile).unwrap();
+        assert_eq!(probe.source_language, SourceLanguage::Japanese);
+        assert_eq!(probe.target_language, TargetLanguage::English);
+        assert_eq!(fake.load_count(PROFILE_KEYCHAIN_SERVICE, &destination), 0);
+    }
+
+    #[test]
+    fn apple_idle_profile_selection_preserves_auto_until_an_explicit_source_is_chosen() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store
+            .create_profile(ProviderKind::AlibabaCloud, "Apple text")
+            .unwrap();
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Automatic;
+                prefs.target_language = TargetLanguage::English;
+            })
+            .unwrap();
+        store
+            .save_credentials(
+                &profile.id,
+                &translation_request(TextTranslation::Apple, "synthetic-asr", "", ""),
+            )
+            .unwrap();
+        let profile = store.profile(&profile.id).unwrap();
+        assert_eq!(
+            store
+                .preferences_for_profile_selection(&profile, None)
+                .unwrap()
+                .source_language,
+            SourceLanguage::Automatic
+        );
+        store.select_profile(&profile.id).unwrap();
+        assert_eq!(
+            store.preferences().source_language,
+            SourceLanguage::Automatic
+        );
+        assert_eq!(
+            store.configuration().unwrap_err(),
+            "apple_translation_language_unsupported"
+        );
+        store
+            .save_preferences_for_active_profile(|prefs| {
+                prefs.source_language = SourceLanguage::Japanese
+            })
+            .unwrap();
+        assert_eq!(
+            store.configuration().unwrap().source_language,
+            SourceLanguage::Japanese
+        );
+    }
+
+    #[test]
+    fn apple_text_route_keeps_custom_recognition_credentials_and_original_bypasses_it() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        for provider in [ProviderKind::AppleSpeech, ProviderKind::CustomOpenAIASR] {
+            let profile = store.create_profile(provider, "Local MT").unwrap();
+            if provider.is_custom_speech() {
+                store
+                    .save_credentials(
+                        &profile.id,
+                        &custom_speech_request(
+                            "wss://speech.example/realtime",
+                            "synthetic",
+                            "synthetic-speech",
+                        ),
+                    )
+                    .unwrap();
+            }
+            store
+                .save_credentials(
+                    &profile.id,
+                    &translation_request(TextTranslation::Apple, "", "", ""),
+                )
+                .unwrap();
+            store.select_profile(&profile.id).unwrap();
+            store
+                .save_preferences(|prefs| {
+                    prefs.source_language = SourceLanguage::English;
+                    prefs.target_language = TargetLanguage::Japanese;
+                })
+                .unwrap();
+            let config = store.configuration().unwrap();
+            assert_eq!(config.provider, provider);
+            assert_eq!(
+                config.text_credentials,
+                Some(TextTranslationCredentials::Apple)
+            );
+            store
+                .save_preferences(|prefs| {
+                    prefs.target_language = TargetLanguage::Original;
+                    if provider.is_custom_speech() {
+                        prefs.source_language = SourceLanguage::Automatic;
+                    }
+                })
+                .unwrap();
+            assert_eq!(
+                store.configuration().unwrap().text_network_proxy.mode,
+                crate::core::network_proxy::ProxyMode::Direct
+            );
+            assert_eq!(store.configuration().unwrap().text_credentials, None);
+            assert_eq!(
+                fake.load_count(
+                    PROFILE_KEYCHAIN_SERVICE,
+                    &SettingsStore::destination_account(&profile)
+                ),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn apple_text_route_explicit_speech_update_preserves_historical_translator_and_rolls_back() {
+        for previous in [
+            ProviderCredentials::DeepLX {
+                asr_api_key: "old-asr".into(),
+                endpoint: "https://example.com/translate".into(),
+                token: "old-text".into(),
+            },
+            ProviderCredentials::DeepL {
+                asr_api_key: "old-asr".into(),
+                api_key: "old-text:fx".into(),
+            },
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let fake = FakeSecretStore::default();
+            let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            let profile = store
+                .create_profile(ProviderKind::DeepLX, "Historical")
+                .unwrap();
+            let account = credential_account(&profile);
+            let previous_value = previous
+                .encode_for_keychain(match previous {
+                    ProviderCredentials::DeepL { .. } => ProviderKind::AlibabaCloud,
+                    _ => ProviderKind::DeepLX,
+                })
+                .unwrap();
+            fake.put(PROFILE_KEYCHAIN_SERVICE, &account, &previous_value);
+            store.secret_cache.lock().unwrap().clear();
+            store
+                .save_credentials(
+                    &profile.id,
+                    &translation_request(TextTranslation::Apple, "new-asr", "", ""),
+                )
+                .unwrap();
+            let updated_value = fake.value(PROFILE_KEYCHAIN_SERVICE, &account).unwrap();
+            let updated =
+                ProviderCredentials::decode_for_profile(&profile, &updated_value).unwrap();
+            assert_eq!(updated.alibaba_key(), Some("new-asr"));
+            assert!(updated_value.contains("old-text"));
+            let selected = store.profile(&profile.id).unwrap();
+            assert_eq!(selected.effective_provider(), ProviderKind::AlibabaCloud);
+            assert_eq!(selected.text_translation(), TextTranslation::Apple);
+            let old_route = match previous {
+                ProviderCredentials::DeepLX { .. } => TextTranslation::DeepLX,
+                ProviderCredentials::DeepL { .. } => TextTranslation::DeepL,
+                _ => unreachable!(),
+            };
+            store
+                .save_credentials(&profile.id, &translation_request(old_route, "", "", ""))
+                .unwrap();
+            assert!(store
+                .text_credentials_for_profile(&store.profile(&profile.id).unwrap())
+                .unwrap()
+                .is_some());
+            store
+                .save_credentials(
+                    &profile.id,
+                    &translation_request(TextTranslation::Apple, "", "", ""),
+                )
+                .unwrap();
+            let updated_value = fake.value(PROFILE_KEYCHAIN_SERVICE, &account).unwrap();
+            std::fs::remove_file(&store.catalog_path).unwrap();
+            std::fs::create_dir(&store.catalog_path).unwrap();
+            assert!(store
+                .save_credentials(
+                    &profile.id,
+                    &translation_request(TextTranslation::Apple, "failed-asr", "", "")
+                )
+                .is_err());
+            assert_eq!(
+                fake.value(PROFILE_KEYCHAIN_SERVICE, &account).as_deref(),
+                Some(updated_value.as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn apple_text_route_updates_alibaba_key_without_accessing_separate_text_destinations() {
+        for (route, request) in [
+            (
+                TextTranslation::DeepLX,
+                translation_request(
+                    TextTranslation::DeepLX,
+                    "",
+                    "https://example.com/translate",
+                    "synthetic-text",
+                ),
+            ),
+            (
+                TextTranslation::DeepL,
+                translation_request(TextTranslation::DeepL, "", "", "synthetic-text:fx"),
+            ),
+            (
+                TextTranslation::OpenAICompatible,
+                openai_compatible_request(
+                    "",
+                    "https://example.com/v1",
+                    "synthetic-text",
+                    "synthetic-model",
+                ),
+            ),
+            (
+                TextTranslation::ChatMock,
+                chatmock_request(
+                    "http://localhost:8000/v1",
+                    "synthetic-text",
+                    "synthetic-model",
+                ),
+            ),
+        ] {
+            let fake = FakeSecretStore::default();
+            let store = settings(&fake);
+            let profile = store.active_profile().unwrap();
+            store.save_api_key(&profile.id, "old-asr").unwrap();
+            store.save_credentials(&profile.id, &request).unwrap();
+            let destination = SettingsStore::destination_account(&profile);
+            let previous = fake.value(PROFILE_KEYCHAIN_SERVICE, &destination).unwrap();
+            let reads = fake.load_count(PROFILE_KEYCHAIN_SERVICE, &destination);
+            store
+                .save_credentials(
+                    &profile.id,
+                    &translation_request(TextTranslation::Apple, "new-asr", "", ""),
+                )
+                .unwrap();
+            assert_eq!(
+                fake.value(PROFILE_KEYCHAIN_SERVICE, &credential_account(&profile))
+                    .as_deref(),
+                Some("new-asr")
+            );
+            assert_eq!(
+                fake.value(PROFILE_KEYCHAIN_SERVICE, &destination)
+                    .as_deref(),
+                Some(previous.as_str())
+            );
+            assert_eq!(
+                fake.load_count(PROFILE_KEYCHAIN_SERVICE, &destination),
+                reads
+            );
+            store
+                .save_credentials(&profile.id, &translation_request(route, "", "", ""))
+                .unwrap();
+            assert!(store
+                .text_credentials_for_profile(&store.profile(&profile.id).unwrap())
+                .unwrap()
+                .is_some());
+        }
+    }
+
     #[test]
     fn apple_profile_lifecycle_never_reads_or_writes_a_speech_credential() {
         let fake = FakeSecretStore::default();
@@ -3581,7 +4080,7 @@ mod tests {
             ),
             (
                 &apple,
-                SourceLanguage::French,
+                SourceLanguage::Khmer,
                 "apple_speech_translation_language_unsupported",
             ),
             (
@@ -3610,9 +4109,9 @@ mod tests {
             .save_preferences(|prefs| prefs.target_language = TargetLanguage::Original)
             .unwrap();
         store
-            .select_profile_with_source(&apple.id, Some(SourceLanguage::French))
+            .select_profile_with_source(&apple.id, Some(SourceLanguage::Khmer))
             .unwrap();
-        assert_eq!(store.preferences().source_language, SourceLanguage::French);
+        assert_eq!(store.preferences().source_language, SourceLanguage::Khmer);
     }
 
     #[test]
@@ -5360,7 +5859,7 @@ mod tests {
         store
             .save_preferences_for_active_profile(|prefs| {
                 prefs.source_language = SourceLanguage::French;
-                prefs.target_language = TargetLanguage::TraditionalChinese;
+                prefs.target_language = TargetLanguage::Khmer;
             })
             .unwrap();
         let expanded = store.preferences();
@@ -5376,7 +5875,7 @@ mod tests {
         assert_eq!(store.preferences(), expanded);
         let updated = store.profile(&other.id).unwrap();
         let probe = store.configuration_for_profile_probe(&updated).unwrap();
-        assert_eq!(probe.source_language, SourceLanguage::Automatic);
+        assert_eq!(probe.source_language, SourceLanguage::French);
         assert_eq!(probe.target_language, TargetLanguage::Original);
         assert_eq!(store.preferences(), expanded);
         store
@@ -5385,10 +5884,7 @@ mod tests {
                 &translation_request(TextTranslation::DeepL, "", "", "synthetic:fx"),
             )
             .unwrap();
-        assert_eq!(
-            store.preferences().source_language,
-            SourceLanguage::Automatic
-        );
+        assert_eq!(store.preferences().source_language, SourceLanguage::French);
         assert_eq!(
             store.preferences().target_language,
             TargetLanguage::Original
@@ -5401,7 +5897,7 @@ mod tests {
             .unwrap();
         assert!(store
             .save_preferences_for_active_profile(
-                |prefs| prefs.target_language = TargetLanguage::French
+                |prefs| prefs.target_language = TargetLanguage::Khmer
             )
             .is_err());
         store
@@ -5426,7 +5922,7 @@ mod tests {
         store
             .save_preferences_for_active_profile(|prefs| {
                 prefs.source_language = SourceLanguage::French;
-                prefs.target_language = TargetLanguage::TraditionalChinese;
+                prefs.target_language = TargetLanguage::Khmer;
             })
             .unwrap();
         assert!(store.configuration().is_ok());
@@ -6348,8 +6844,8 @@ mod tests {
                     TextTranslation::OpenAICompatible => assert!(
                         matches!(config.text_credentials, Some(TextTranslationCredentials::OpenAICompatible { api_key, model, .. }) if api_key == "synthetic-chat-key" && model == "chat-model")
                     ),
-                    TextTranslation::ChatMock => {
-                        unreachable!("covered by independent ChatMock persistence tests")
+                    TextTranslation::ChatMock | TextTranslation::Apple => {
+                        unreachable!("covered by independent local and ChatMock persistence tests")
                     }
                     TextTranslation::FollowService => {
                         assert_eq!(config.target_language, TargetLanguage::Original);
@@ -7887,8 +8383,8 @@ mod tests {
                     TextTranslation::DeepLX => assert!(
                         matches!(credentials, ProviderCredentials::DeepLX { token, endpoint, .. } if token == "synthetic-deeplx" && endpoint == "https://example.com/translate")
                     ),
-                    TextTranslation::ChatMock => {
-                        unreachable!("covered by independent ChatMock persistence tests")
+                    TextTranslation::ChatMock | TextTranslation::Apple => {
+                        unreachable!("covered by independent local and ChatMock persistence tests")
                     }
                     TextTranslation::FollowService => {
                         assert_eq!(credentials.direct_api_key(), Some("synthetic-asr"))
@@ -8397,7 +8893,9 @@ mod tests {
                     store.configuration().unwrap().credentials.direct_api_key(),
                     Some("synthetic-asr")
                 ),
-                TextTranslation::OpenAICompatible | TextTranslation::ChatMock => unreachable!(),
+                TextTranslation::OpenAICompatible
+                | TextTranslation::ChatMock
+                | TextTranslation::Apple => unreachable!(),
             }
             assert_eq!(
                 fake.value(PROFILE_KEYCHAIN_SERVICE, &account).as_deref(),
@@ -9214,19 +9712,30 @@ mod tests {
 
     #[test]
     fn explicit_alibaba_save_retries_failed_reads_without_a_diagnostic() {
-        let fake = FakeSecretStore::default();
-        let store = settings(&fake);
-        let profile = store.active_profile().unwrap();
-        let account = credential_account(&profile);
-        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &account);
-        let request = translation_request(TextTranslation::FollowService, "synthetic-key", "", "");
-        assert_eq!(
-            store.save_credentials(&profile.id, &request),
-            Err(CREDENTIAL_STORE_UNAVAILABLE.into())
-        );
-        fake.state.lock().unwrap().unavailable.clear();
-        store.save_credentials(&profile.id, &request).unwrap();
-        assert_eq!(store.credential_state(&profile), CredentialState::Present);
+        for route in [TextTranslation::FollowService, TextTranslation::Apple] {
+            let fake = FakeSecretStore::default();
+            let store = settings(&fake);
+            let profile = store.active_profile().unwrap();
+            let account = credential_account(&profile);
+            fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &account);
+            let request = translation_request(route, "synthetic-key", "", "");
+            assert_eq!(
+                store.save_credentials(&profile.id, &request),
+                Err(CREDENTIAL_STORE_UNAVAILABLE.into())
+            );
+            fake.state.lock().unwrap().unavailable.clear();
+            store.save_credentials(&profile.id, &request).unwrap();
+            assert_eq!(store.credential_state(&profile), CredentialState::Present);
+            if route == TextTranslation::Apple {
+                assert_eq!(
+                    fake.load_count(
+                        PROFILE_KEYCHAIN_SERVICE,
+                        &SettingsStore::destination_account(&profile),
+                    ),
+                    0
+                );
+            }
+        }
     }
 
     #[test]
@@ -10097,7 +10606,10 @@ mod tests {
             &mut preferences,
             &ServiceProfile::new("tencent", "Tencent", ProviderKind::TencentCloud).unwrap(),
         );
-        assert_eq!(preferences.target_language, TargetLanguage::English);
+        assert_eq!(
+            preferences.target_language,
+            TargetLanguage::SimplifiedChinese
+        );
     }
 
     #[test]

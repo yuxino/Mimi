@@ -28,12 +28,40 @@ it.each(["zh", "en", "ja"] as const)("gives Apple resource and language recovery
   expect(credentialErrorMessage("apple_speech_assets_missing")).toBe(I18N.settings.appleSpeechAssetsMissing);
   expect(profileErrorMessage("apple_speech_language_unsupported")).toBe(I18N.settings.appleSpeechLanguageUnsupported);
   expect(profileErrorMessage("apple_speech_translation_language_unsupported")).toBe(I18N.settings.appleSpeechTranslationLanguageUnsupported);
-  expect(I18N.settings.appleSpeechAssetsMissing).toContain(I18N.settings.appleSpeechAddLanguagePack);
+  expect(I18N.settings.appleSpeechAssetsMissing).toContain(I18N.settings.appleSpeechDownloadAndUse);
   expect(credentialErrorMessage("apple_speech_unavailable")).toBe(I18N.settings.appleSpeechUnavailable);
   for (const suffix of ["setup_timeout", "start_failed", "recognition_failed", "audio_failed", "not_connected", "result_backlog", "invalid_result", "finalize_timeout"]) {
     expect(credentialErrorMessage(`apple_speech_${suffix}`)).toBe(I18N.settings.appleSpeechRecognitionFailed);
   }
   expect(profileErrorMessage("apple_speech_prepare_failed: private-native-path")).not.toContain("private-native-path");
+});
+
+it.each(["zh", "en", "ja"] as const)("keeps Apple translation recovery separate from speech packs and private in %s", language => {
+  setStoredUiLanguage(language);
+  const errors = {
+    apple_translation_assets_missing: I18N.settings.appleTranslationAssetsMissing,
+    apple_translation_language_unsupported: I18N.settings.appleTranslationUnsupported,
+    apple_translation_unavailable: I18N.settings.appleTranslationUnavailable,
+    apple_translation_cancelled: I18N.settings.appleTranslationCancelled,
+    apple_translation_busy: I18N.settings.appleTranslationBusy,
+    apple_translation_timeout: I18N.settings.appleTranslationFailed,
+    apple_translation_invalid_input: I18N.settings.appleTranslationFailed,
+    apple_translation_invalid_result: I18N.settings.appleTranslationFailed,
+    apple_translation_failed: I18N.settings.appleTranslationFailed,
+  };
+  for (const [label, message] of Object.entries(errors)) {
+    expect(credentialErrorMessage(label)).toBe(message);
+    expect(sessionActionErrorMessage(new Error(label), "fallback")).toBe(message);
+    expect(credentialErrorMessage(`${label}: private-native-content`)).toBeNull();
+    expect(sessionErrorSettingsTarget(`${label}: private-native-content`)).toBeNull();
+  }
+  for (const label of ["apple_translation_assets_missing", "apple_translation_language_unsupported", "apple_translation_unavailable"]) {
+    expect(sessionErrorSettingsTarget(label)).toBe("service");
+  }
+  expect(sessionErrorSettingsTarget("apple_speech_assets_missing")).toBe("appleSpeechResources");
+  for (const reason of ["appleTranslationAssetsMissing", "appleTranslationLanguageUnsupported", "appleTranslationUnavailable", "appleTranslationFailed"] as const) {
+    expect(diagnosticCopy().reasons[reason]).toBeTruthy();
+  }
 });
 
 

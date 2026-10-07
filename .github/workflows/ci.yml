@@ -104,6 +104,11 @@ jobs:
             -o "$queue_dir/queue-tests"
           "$queue_dir/queue-tests"
 
+      - name: Apple Translation lifetime and weak-link tests
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        shell: bash
+        run: bash scripts/check-apple-translation.sh
+
       - name: Format
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 

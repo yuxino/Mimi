@@ -14,6 +14,7 @@ pub mod volcano_engine;
 pub mod xai_realtime;
 
 pub mod deepl;
+pub mod deepl_languages;
 pub mod deeplx;
 
 #[cfg(test)]

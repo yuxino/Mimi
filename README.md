@@ -35,29 +35,35 @@
 
 ## Get started
 
-For your first setup, **we recommend starting with Alibaba Cloud**. We’ve done more real-world testing with it. We’re still improving support for other services, so results and reliability may vary.
+For your first setup, **we recommend starting with Alibaba Cloud or Google Gemini**. We’ve done more real-world testing with Alibaba Cloud; in my experience so far, Gemini has delivered the most consistent subtitle output.
 
-You can also try Google Gemini; it works well with a stable connection. It currently offers a free tier. Check your quota and billing in [Google AI Studio](https://aistudio.google.com/), where you can also get an API key.
+For Google Gemini, use a stable network connection. Check your available quota, billing, and API keys in [Google AI Studio](https://aistudio.google.com/).
+
+For activation links, credential instructions, and the models Mimi currently uses, see the **[provider setup guide](docs/provider-setup.md)**.
 
 1. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save.
 2. Choose the recognition and translation languages.
 3. Play something and turn on Live Subtitles under Subtitles. On macOS, allow Screen & System Audio Recording when asked.
 
-Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Independent text translation sends recognized text to your chosen translation service.
+Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Remote text translation sends recognized text to your chosen service; Apple Translation keeps text on the Mac.
 
 [Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](CONTRIBUTING.md)
 
+<a id="apple-local-recognition"></a>
+
 ### Apple local recognition
 
-**Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. The configuration shows this Mac's supported languages and resource status. Stop subtitles, choose the target language under **Speech resources**, and click **Prepare speech resources** if it is missing; this explicit action may download system assets. Then choose the same **Recognition Language** and start subtitles. Automatic language detection is not offered.
+**Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. Stop subtitles and choose the language under **Recognition Language**. If it is missing, click **Download and use**; Mimi downloads its Apple resources and selects that language when ready. For an already downloaded language, click **Set recognition language**, then start subtitles. No System Settings detour is needed. Automatic language detection is not offered. See [Apple Speech setup](docs/provider-setup.md#apple-speech).
 
-Use original-only subtitles, or configure a separate text translator such as Index-Translate. Apple recognition does not supply the translation model, and a remote text translator still receives recognized text.
+**Apple Translation** is a separate on-device text service on supported Apple silicon Macs running macOS 26 or later. Select it under **Text Translation**, save the configuration, and choose an explicit source and target language. Mimi shows whether the pair is ready; use **Download or enable languages** to open Apple’s setup confirmation. Translation models are separate from speech models. Existing models are reused; Apple downloads missing models when you confirm. Checks and subtitle sessions never request a download. No text API key or text proxy is needed.
+
+To show only the original text with Apple Speech, select **No translation (original only)**. You can also use a remote text translator such as [Index-Translate](#try-index-translate); that service receives recognized text.
 
 ### Try Index-Translate
 
-Bilibili's [Index-Translate](https://github.com/bilibili/Index-Translate#inference) currently offers a free public translation API (as of October 5, 2026). You can try it in Mimi and compare the subtitle translations with your usual service.
+Bilibili's [Index-Translate](https://github.com/bilibili/Index-Translate#inference) currently offers a free public translation API (as of October 5, 2026). It can provide text translation for Alibaba Cloud or Apple Speech recognition.
 
-In **Settings → Speech & Translation**, open an **Alibaba Cloud** configuration and select **OpenAI-compatible API** under **Text translation**. Use the values from the [official example](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41):
+In **Settings → Speech & Translation**, open an **Alibaba Cloud** or **Apple Speech** configuration and select **OpenAI-compatible API** under **Text translation**. Use the values from the [official example](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41):
 
 | Field | Value |
 | --- | --- |
@@ -67,7 +73,7 @@ In **Settings → Speech & Translation**, open an **Alibaba Cloud** configuratio
 
 Save, then run the connection check beside **Text translation**. If this address already has a saved key, remove it with **Remove translation key** and save again.
 
-Index-Translate handles text translation only: keep your Alibaba Cloud speech-recognition credentials configured; recognition may still incur charges. Free API availability is subject to the upstream service.
+Index-Translate handles text translation only. When using Alibaba Cloud, keep its speech-recognition credentials configured; recognition may still incur charges. Apple Speech recognition needs no key. Free API availability is subject to the upstream service.
 
 ## FAQ
 

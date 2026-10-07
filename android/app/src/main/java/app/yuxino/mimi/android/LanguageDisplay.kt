@@ -18,6 +18,12 @@ fun languageDisplayName(context: Context, code: String): String {
 }
 
 internal fun explicitLanguageDisplayName(code: String, locale: Locale): String {
+    if (code == "wuu") return when (locale.language) { "zh" -> "上海话"; "ja" -> "上海語"; else -> "Shanghainese" }
+    if (code == "zh_en") return when (locale.language) {
+        "zh" -> "中文与英语（混合）"
+        "ja" -> "中国語と英語（混在）"
+        else -> "Chinese and English (mixed)"
+    }
     val tag = when(code) { "zh_tw" -> "zh-Hant"; "tl" -> "fil"; else -> code }
     return Locale.forLanguageTag(tag).getDisplayName(locale).ifBlank { code }
 }

@@ -169,6 +169,10 @@ export function diagnosticCopy(platform: DiagnosticPlatform = diagnosticPlatform
       appleSpeechLanguageUnsupported: I18N.settings.appleSpeechLanguageUnsupported,
       appleSpeechUnavailable: I18N.settings.appleSpeechUnavailable,
       appleSpeechRecognitionFailed: I18N.settings.appleSpeechRecognitionFailed,
+      appleTranslationAssetsMissing: I18N.settings.appleTranslationAssetsMissing,
+      appleTranslationLanguageUnsupported: I18N.settings.appleTranslationUnsupported,
+      appleTranslationUnavailable: I18N.settings.appleTranslationUnavailable,
+      appleTranslationFailed: I18N.settings.appleTranslationFailed,
       localDevCredentialsUnavailable: labels.localDevUnavailable },
   };
 }
@@ -370,6 +374,15 @@ function builtinServiceErrorMessage(error: string): string | null {
 /** Match only sanitized backend labels; never interpolate arbitrary native errors. */
 export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlatform): string | null {
   if (typeof error !== "string") return null;
+  if (error === "apple_translation_assets_missing") return I18N.settings.appleTranslationAssetsMissing;
+  if (error === "apple_translation_source_required") return I18N.settings.appleTranslationChooseSource;
+  if (error === "apple_translation_language_unsupported") return I18N.settings.appleTranslationUnsupported;
+  if (error === "apple_translation_unavailable" || error === "apple_translation_ui_test_unavailable") return I18N.settings.appleTranslationUnavailable;
+  if (error === "apple_translation_status_failed") return I18N.settings.appleTranslationStatusFailed;
+  if (error === "apple_translation_prepare_failed") return I18N.settings.appleTranslationPrepareFailed;
+  if (error === "apple_translation_cancelled") return I18N.settings.appleTranslationCancelled;
+  if (error === "apple_translation_busy") return I18N.settings.appleTranslationBusy;
+  if (["apple_translation_timeout", "apple_translation_failed", "apple_translation_invalid_input", "apple_translation_invalid_result"].includes(error)) return I18N.settings.appleTranslationFailed;
   if (error === "apple_speech_assets_missing") return I18N.settings.appleSpeechAssetsMissing;
   if (error === "apple_speech_language_unsupported") return I18N.settings.appleSpeechLanguageUnsupported;
   if (error === "apple_speech_translation_language_unsupported") return I18N.settings.appleSpeechTranslationLanguageUnsupported;
@@ -447,6 +460,12 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
   }
   if (typeof label !== "string") return null;
   if ([
+    "apple_translation_assets_missing",
+    "apple_translation_source_required",
+    "apple_translation_language_unsupported",
+    "apple_translation_unavailable",
+    "apple_translation_prepare_failed",
+    "apple_translation_status_failed",
     "credential_authentication_failed",
     "custom_speech_authentication_failed",
     "custom_speech_credentials_missing",

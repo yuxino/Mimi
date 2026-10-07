@@ -89,6 +89,22 @@ settings action under Mimi's actual identity, then query again. Querying capabil
 starting recognition must not trigger hidden downloads. The adapter accepts already
 captured PCM; it must not request microphone access for a system-only session.
 
+## Apple Translation readiness and language identity
+
+Translation resources are separate from SpeechTranscriber resources. A global
+installed-language result does not establish that the current translation session
+is ready. The installed-only bridge awaits session readiness and forbids downloads;
+only the explicit settings preparation action opens Apple's confirmation UI.
+Leaving that UI before preparing must keep the pair unready and allow retry.
+
+Treat language aliases and scripts at the owning adapter boundary. A Simplified
+Chinese selection must not fall back to a Traditional Chinese recognition locale
+and then report the source as Simplified Chinese. Explicit regional variants need
+an exact runtime match; a base language does not certify every regional variant.
+Keep provider mixed-language modes out of same-language passthrough checks, including
+floating subtitle projection, or the translation can disappear despite a valid
+server response.
+
 ## ScreenCaptureKit native property types
 
 Use the Apple SDK and Objective-C runtime method signatures when checking native

@@ -1,3 +1,4 @@
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { credentialErrorMessage } from "../../lib/connectionDiagnostics";
 /**
  * Pure derived state for the subtitle overlay. Keeping these transformations
@@ -14,7 +15,6 @@ import type {
 } from "../../lib/types";
 import { I18N } from "../../lib/i18n";
 import {
-  TARGET_LANGUAGE_DISPLAY_NAMES,
   SOURCE_LANGUAGE_DISPLAY_NAMES,
   sourceLanguageStatusDisplayName,
 } from "../../lib/types";
@@ -69,6 +69,8 @@ function isSameLanguageMode(
   detectedLanguage: string | null,
 ): boolean {
   if (settings.targetLanguage === "original") return true;
+  // This is a bilingual direction mode, even when source and target codes match.
+  if (settings.targetLanguage === "zh_en") return false;
   if (detectedLanguage !== null) {
     return detectedLanguage === settings.targetLanguage;
   }
@@ -560,7 +562,7 @@ export function languageStatus(
   settings: SettingsSnapshot,
   detectedLanguage: string | null,
 ): LanguageStatus | null {
-  const sourceName = settings.audioInput === "both" && settings.sourceLanguage === "auto"
+  const sourceName = settings.sourceLanguage === "zh_en" ? speechLanguageGuidance(settings).optionLabel(settings.sourceLanguage) : settings.audioInput === "both" && settings.sourceLanguage === "auto"
     ? SOURCE_LANGUAGE_DISPLAY_NAMES.auto : sourceLanguageStatusDisplayName(
     settings.sourceLanguage,
     detectedLanguage,
@@ -577,7 +579,7 @@ export function languageStatus(
   return {
     source: sourceName,
     separator: I18N.overlay.separator,
-    target: TARGET_LANGUAGE_DISPLAY_NAMES[settings.targetLanguage],
+    target: targetLanguageOptionLabel(settings, settings.targetLanguage),
   };
 }
 

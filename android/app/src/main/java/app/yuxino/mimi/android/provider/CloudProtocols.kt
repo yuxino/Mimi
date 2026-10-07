@@ -57,9 +57,10 @@ internal class TencentProtocol(config: ServiceConfiguration, private val source:
         require(appId.matches(Regex("[0-9]+")) && secretId.matches(Regex("[a-zA-Z0-9_.~-]+")))
         require(voiceId.matches(Regex("[a-zA-Z0-9_.~-]{1,128}")) && nonce in 1..9999999999L)
         require(secretKey.isNotEmpty() && timestamp in 0..(Long.MAX_VALUE - 3600))
-        require(source in ServiceProvider.TENCENT.sources && target in ServiceProvider.TENCENT.targets)
+        val wireSource = if (source == "auto") "zh_en" else source
+        require(target in TENCENT_LANGUAGE_PAIRS[wireSource].orEmpty()) { "unsupported_language" }
         val values = sortedMapOf("expired" to "${timestamp + 3600}", "nonce" to "$nonce", "secretid" to secretId,
-            "source" to source, "target" to target, "timestamp" to "$timestamp", "trans_model" to "hunyuan-translation-lite",
+            "source" to wireSource, "target" to target, "timestamp" to "$timestamp", "trans_model" to "hunyuan-translation-lite",
             "voice_format" to "1", "voice_id" to voiceId)
         val path = "asr.cloud.tencent.com/asr/speech_translate/$appId"
         val canonical = path + "?" + values.entries.joinToString("&") { "${it.key}=${it.value}" }
@@ -111,7 +112,7 @@ internal class TencentProtocol(config: ServiceConfiguration, private val source:
 internal class BaiduProtocol(private val config: ServiceConfiguration, private val source: String, private val target: String) : ServiceProtocol {
     override val frameBytes = 1280
     override fun request() = Request.Builder().url("wss://aip.baidubce.com/ws/realtime_speech_trans").build()
-    private fun language(code: String) = when(code) { "ja" -> "jp"; "ko" -> "kor"; else -> code }
+    private fun language(code: String) = requireNotNull(BAIDU_LANGUAGE_CODES[code]) { "unsupported_language" }
     override fun setup() = textFrame(obj("type" to "START", "from" to language(source), "to" to language(target),
         "app_id" to config.value("appId"), "app_key" to config.value("appKey"), "sampling_rate" to 16000))
     override fun audio(data: ByteArray): WireFrame { require(data.size == frameBytes); return WireFrame.Binary(data) }
@@ -206,8 +207,13 @@ internal class AzureProtocol(private val config: ServiceConfiguration, private v
         val url = root.newBuilder().encodedPath("/openai/v1/realtime/translations").addQueryParameter("model", config.value("deployment")).build()
         return request(url).header("api-key", config.value("apiKey")).build()
     }
-    override fun setup() = textFrame(obj("type" to "session.update", "session" to obj("audio" to obj(
-        "input" to obj("transcription" to obj("model" to config.value("transcriptionDeployment"))), "output" to obj("language" to target)))))
+    override fun setup(): WireFrame {
+        require(target in ServiceProvider.OPENAI.targets) { "unsupported_language" }
+        val transcription = config.value("transcriptionDeployment").trim()
+        require(transcription.isNotEmpty()) { "missing_deployment" }
+        return textFrame(obj("type" to "session.update", "session" to obj("audio" to obj(
+            "input" to obj("transcription" to obj("model" to transcription)), "output" to obj("language" to target)))))
+    }
     override fun audio(data: ByteArray): WireFrame { require(data.size == frameBytes); return textFrame(obj("type" to "session.input_audio_buffer.append", "audio" to encoded(data))) }
     override fun finish() = textFrame(obj("type" to "session.close"))
     override fun text(value: String): List<ServiceEvent> {
@@ -246,7 +252,17 @@ internal class AzureProtocol(private val config: ServiceConfiguration, private v
     }
 }
 
+// Exact gemini-3.5-live-translate-preview language list, using Mimi's stable codes.
+internal val GEMINI_TRANSLATION_LANGUAGE_CODES = listOf(
+    "zh", "en", "ja", "zh_tw", "ko", "ru", "es", "fr", "de", "it", "th", "vi", "id", "ms", "ar",
+    "hi", "he", "ur", "bn", "pl", "nl", "tr", "km", "cs", "sv", "hu", "da", "fi", "tl", "fa",
+    "af", "ak", "sq", "am", "hy", "az", "eu", "be", "bg", "my", "ca", "hr", "et", "gl", "ka",
+    "el", "gu", "ha", "is", "jv", "kn", "kk", "rw", "lo", "lv", "lt", "mk", "ml", "mr", "mn",
+    "ne", "no", "pt-BR", "pt-PT", "pa", "ro", "sr", "sd", "si", "sk", "sl", "su", "sw", "ta",
+    "te", "uk", "uz", "zu",
+)
+
 internal fun geminiTargetCode(target: String): String {
-    require(target in ServiceProvider.GEMINI.targets) { "unsupported_language" }
+    require(target in GEMINI_TRANSLATION_LANGUAGE_CODES) { "unsupported_language" }
     return when(target) { "zh" -> "zh-Hans"; "zh_tw" -> "zh-Hant"; "tl" -> "fil"; else -> target }
 }

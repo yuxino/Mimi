@@ -10,6 +10,10 @@ use base64::Engine;
 use serde_json::{json, Value};
 use thiserror::Error;
 
+// Azure deploys the same dedicated gpt-realtime-translate model, with its
+// thirteen output languages; ordinary transcription catalogs do not apply.
+pub use super::openai_realtime::TRANSLATION_LANGUAGE_CODES;
+
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AzureOpenAIRealtimeProtocolError {
     #[error("Azure OpenAI Realtime Translation requires a translated output language.")]
@@ -99,10 +103,7 @@ impl AzureOpenAIRealtimeRequestEncoder {
         transcription_deployment: &str,
         event_id: Option<&str>,
     ) -> Result<Value, AzureOpenAIRealtimeProtocolError> {
-        if !matches!(
-            target_language,
-            TargetLanguage::SimplifiedChinese | TargetLanguage::English | TargetLanguage::Japanese
-        ) {
+        if !TRANSLATION_LANGUAGE_CODES.contains(&target_language.raw_value()) {
             return Err(AzureOpenAIRealtimeProtocolError::InvalidTargetLanguage);
         }
         let transcription_deployment = transcription_deployment.trim();
@@ -350,14 +351,10 @@ mod tests {
 
     #[test]
     fn expanded_app_targets_do_not_expand_this_wire_contract() {
-        for target in TargetLanguage::ALL.into_iter().filter(|target| {
-            !matches!(
-                target,
-                TargetLanguage::SimplifiedChinese
-                    | TargetLanguage::English
-                    | TargetLanguage::Japanese
-            )
-        }) {
+        for target in TargetLanguage::ALL
+            .into_iter()
+            .filter(|target| !TRANSLATION_LANGUAGE_CODES.contains(&target.raw_value()))
+        {
             assert_eq!(
                 AzureOpenAIRealtimeRequestEncoder::session_update(
                     target,
@@ -366,6 +363,24 @@ mod tests {
                 )
                 .unwrap_err(),
                 AzureOpenAIRealtimeProtocolError::InvalidTargetLanguage
+            );
+        }
+    }
+
+    #[test]
+    fn all_dedicated_model_targets_are_configurable() {
+        for code in TRANSLATION_LANGUAGE_CODES {
+            let target = serde_json::from_value(json!(code)).unwrap();
+            let setup = AzureOpenAIRealtimeRequestEncoder::session_update(
+                target,
+                "synthetic-transcription",
+                None,
+            )
+            .unwrap();
+            assert_eq!(setup["session"]["audio"]["output"]["language"], *code);
+            assert_eq!(
+                setup["session"]["audio"]["input"]["transcription"]["model"],
+                "synthetic-transcription"
             );
         }
     }

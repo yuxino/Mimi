@@ -253,7 +253,7 @@ mod tests {
         let mut cache = SupportCache::default();
         let mut support = map_capabilities(AppleSpeechCapabilities {
             available: true,
-            locales: vec![locale("en-US", true), locale("fr-FR", true)],
+            locales: vec![locale("en-US", true), locale("km-KH", true)],
         });
         cache.replace(support.clone());
         let before = cache.snapshot();
@@ -261,7 +261,7 @@ mod tests {
         support
             .languages
             .iter_mut()
-            .find(|language| language.source_language == SourceLanguage::French)
+            .find(|language| language.source_language == SourceLanguage::Khmer)
             .unwrap()
             .installed = false;
         cache.replace(support.clone());
@@ -316,7 +316,7 @@ mod tests {
         use crate::core::provider::{ProviderKind, TextTranslation};
         let support = map_capabilities(AppleSpeechCapabilities {
             available: true,
-            locales: vec![locale("en-US", true), locale("fr-FR", true)],
+            locales: vec![locale("en-US", true), locale("km-KH", true)],
         });
         for route in [TextTranslation::DeepL, TextTranslation::DeepLX] {
             let mut profile =
@@ -325,7 +325,7 @@ mod tests {
             assert!(validate_profile_source(
                 &support,
                 &profile,
-                SourceLanguage::French,
+                SourceLanguage::Khmer,
                 TargetLanguage::Original,
                 true,
             )
@@ -334,7 +334,7 @@ mod tests {
                 validate_profile_source(
                     &support,
                     &profile,
-                    SourceLanguage::French,
+                    SourceLanguage::Khmer,
                     TargetLanguage::English,
                     true,
                 )
@@ -374,7 +374,7 @@ mod tests {
             locales: vec![
                 locale("en-US", true),
                 locale("ja-JP", false),
-                locale("fr-FR", true),
+                locale("km-KH", true),
             ],
         });
         for (refreshed, source, expected) in [
@@ -400,7 +400,7 @@ mod tests {
             ),
             (
                 Ok(support.clone()),
-                SourceLanguage::French,
+                SourceLanguage::Khmer,
                 "apple_speech_translation_language_unsupported",
             ),
         ] {
@@ -443,7 +443,7 @@ mod tests {
             },
             AppleSpeechCapabilities {
                 available: true,
-                locales: vec![locale("yue-HK", true)],
+                locales: vec![locale("zz-XX", true)],
             },
         ] {
             assert_eq!(map_capabilities(native), AppleSpeechSupport::default());
@@ -463,7 +463,7 @@ mod tests {
             ],
         });
         assert!(support.available);
-        assert_eq!(support.languages.len(), 3);
+        assert_eq!(support.languages.len(), 5);
         let english = require_language(&support, SourceLanguage::English).unwrap();
         assert_eq!(english.locale, "en_US");
         assert!(!english.installed);

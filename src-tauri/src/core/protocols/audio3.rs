@@ -13,6 +13,11 @@ use serde_json::{json, Value};
 /// but no workspace-id in the URL — auth is `Authorization: Bearer <key>`).
 pub const DASHSCOPE_INFERENCE_WS: &str = "wss://dashscope.aliyuncs.com/api-ws/v1/inference";
 
+pub const LANGUAGE_CODES: &[&str] = &[
+    "zh", "en", "ja", "ko", "vi", "th", "id", "ms", "tl", "hi", "ar", "fr", "de", "es", "pt", "ru",
+    "it", "nl", "sv", "da", "fi", "no", "el", "pl", "cs", "hu", "ro", "bg", "hr", "sk",
+];
+
 #[derive(Clone)]
 pub struct Audio3ASREndpoint {
     pub url: url::Url,
@@ -48,6 +53,12 @@ impl Audio3ASRRequestEncoder {
         context: Option<&str>,
         model: &str,
     ) -> Result<Value, LiveTranslateProtocolError> {
+        if model == Audio3ASREndpoint::MODEL
+            && source_language != SourceLanguage::Automatic
+            && !LANGUAGE_CODES.contains(&source_language.raw_value())
+        {
+            return Err(LiveTranslateProtocolError::UnsupportedLanguage);
+        }
         let trimmed_context = context.map(str::trim).filter(|t| !t.is_empty());
 
         let mut parameters = json!({
@@ -387,14 +398,12 @@ mod tests {
             "pt", "ru", "it", "nl", "sv", "da", "fi", "no", "el", "pl", "cs", "hu", "ro", "bg",
             "hr", "sk",
         ];
-        assert_eq!(
-            SourceLanguage::ALL[1..]
-                .iter()
-                .map(|source| source.raw_value())
-                .collect::<Vec<_>>(),
-            expected
-        );
+        assert_eq!(LANGUAGE_CODES, expected);
         for source in SourceLanguage::ALL {
+            if source != SourceLanguage::Automatic && !expected.contains(&source.raw_value()) {
+                assert!(Audio3ASRRequestEncoder::run_task("synthetic-task", source, None).is_err());
+                continue;
+            }
             let payload = Audio3ASRRequestEncoder::run_task(
                 "synthetic-task",
                 source,

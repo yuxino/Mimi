@@ -1900,21 +1900,21 @@
   border-top: 1px solid var(--settings-border);
 }
 .profile-language-settings h3 {
-  margin: 0 0 14px;
+  margin: 0;
   font-size: 12px;
   font-weight: 650;
 }
 .profile-language-settings .settings-row {
   grid-template-columns: 160px minmax(0, 1fr);
-  align-items: start;
-  gap: 18px;
+  align-items: center;
+  gap: 12px;
   padding: 8px 0;
 }
 .profile-language-settings .settings-row__copy {
-  padding-top: 8px;
+  padding-top: 0;
 }
 .profile-language-settings .settings-row__control {
-  justify-content: flex-start;
+  justify-content: flex-end;
   min-width: 0;
 }
 .profile-language-settings .mimi-select {
@@ -2713,8 +2713,8 @@
 .profile-language-settings__heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  margin-bottom: 14px;
 }
 .session-export__privacy {
   font-size: 13px;
@@ -3041,14 +3041,23 @@
 .apple-speech-tutorial p { margin: 0 0 8px; }
 .apple-speech-tutorial ol { margin: 0; padding-inline-start: 22px; list-style: decimal; }
 .apple-speech-tutorial li + li { margin-top: 4px; }
-.apple-speech-pack-manager {
-  display: grid;
-  min-width: 0;
-  gap: 12px;
-  padding-block: 12px;
-  border-block: 1px solid var(--settings-border);
+/* Keep the language, its resource state and its action in one flow. */
+.apple-speech-settings > .service-stage > .settings-row {
+  grid-template-columns: 160px minmax(0, 1fr);
+  column-gap: 12px;
 }
-.apple-speech-pack-manager .settings-row { margin: 0; }
+.apple-speech-settings > .service-stage > .settings-row .mimi-select { width: 100%; }
+.apple-speech-resource-note {
+  color: var(--settings-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: right;
+}
+@media (max-width: 700px) {
+  .apple-speech-settings > .service-stage > .settings-row { grid-template-columns: minmax(0, 1fr); }
+}
+.apple-translation-settings { display: grid; min-width: 0; gap: 12px; }
+.apple-translation-settings .settings-feedback { margin: 0; font-size: 14px; }
 .apple-speech-connection-check:empty { display: none; }
 .apple-speech-connection-check .connection-check {
   align-items: flex-start;

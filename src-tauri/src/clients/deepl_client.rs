@@ -197,8 +197,9 @@ mod tests {
             assert!(request.contains("authorization: DeepL-Auth-Key synthetic:fx"));
             assert!(!request.contains("Bearer"));
             let mut expected = serde_json::json!({"text":["synthetic"],"target_lang":"JA"});
-            if source == Some(SourceLanguage::English) {
-                expected["source_lang"] = serde_json::json!("EN");
+            if let Some(source) = source {
+                expected["source_lang"] =
+                    serde_json::json!(source.raw_value().to_ascii_uppercase());
             }
             let body: serde_json::Value =
                 serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();

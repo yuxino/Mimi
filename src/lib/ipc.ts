@@ -6,10 +6,13 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { effectiveUiLanguage } from "./i18n";
 import { observeSessionWireReceived } from "./developmentTrace";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppleSpeechSupport,
+  AppleTranslationSupport,
+  AppleTranslationStatus,
   ProfileOptionsDraft,
   AudioInput,
   AudioSource,
@@ -49,6 +52,22 @@ export function getAppleSpeechSupport(): Promise<AppleSpeechSupport> {
 /** The explicit resource action may download a selected language; querying support never does. */
 export function prepareAppleSpeechLanguage(sourceLanguage: Exclude<SourceLanguage, "auto">): Promise<AppleSpeechSupport> {
   return invoke<AppleSpeechSupport>("prepare_apple_speech_language", { sourceLanguage });
+}
+
+/** Local model discovery and status checks never request a download. */
+export function getAppleTranslationSupport(): Promise<AppleTranslationSupport> {
+  return isTauri ? invoke<AppleTranslationSupport>("get_apple_translation_support")
+    : Promise.resolve({ available: false, sourceLanguages: [], targetLanguages: [] });
+}
+
+export function getAppleTranslationStatus(sourceLanguage: SourceLanguage, targetLanguage: TargetLanguage): Promise<AppleTranslationStatus> {
+  return isTauri ? invoke<AppleTranslationStatus>("get_apple_translation_status", { sourceLanguage, targetLanguage })
+    : Promise.resolve("unavailable");
+}
+
+/** Only this explicit action may present Apple's native model-download UI. */
+export function prepareAppleTranslationLanguages(sourceLanguage: Exclude<SourceLanguage, "auto">, targetLanguage: Exclude<TargetLanguage, "original">): Promise<AppleTranslationStatus> {
+  return invoke<AppleTranslationStatus>("prepare_apple_translation_languages", { sourceLanguage, targetLanguage, uiLanguage: effectiveUiLanguage() });
 }
 
 export function sessionStart(): Promise<void> {

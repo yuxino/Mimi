@@ -1,7 +1,9 @@
+import languageCatalogs from "../../shared/provider-language-catalogs.json";
 import {
   AUDIO3_RECOGNITION_LANGUAGE_CODES,
   QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES,
-  LEGACY_SOURCE_LANGUAGE_CASES,
+  SOURCE_LANGUAGE_CODES,
+  TARGET_LANGUAGE_CODES,
   TRANSLATION_MODE_CASES,
   type ProviderCapabilities,
   type CredentialState,
@@ -19,22 +21,31 @@ type LanguageSettings = Pick<SettingsSnapshot, "profiles" | "activeProfileId"> &
 
 const LITE_LANGUAGE_CODES = new Set<string>(QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES);
 // Protocol values Mimi can encode. This is not any custom endpoint's model catalog.
-const CUSTOM_CONFIGURABLE_SOURCES: readonly SourceLanguage[] = ["auto", "zh", "en", "ja", "ko", "vi", "th", "id", "ms", "tl", "hi", "ar", "fr", "de", "es", "pt", "ru", "it", "nl", "sv", "da", "fi", "no", "el", "pl", "cs", "hu", "ro", "bg", "hr", "sk"];
+const CUSTOM_CONFIGURABLE_SOURCES: readonly SourceLanguage[] = ["auto", ...SOURCE_LANGUAGE_CODES];
 const ALIBABA_RECOGNITION_SOURCES: readonly SourceLanguage[] = ["auto", ...AUDIO3_RECOGNITION_LANGUAGE_CODES];
 const ALIBABA_TRANSLATION_SOURCES: readonly SourceLanguage[] = [
   "auto", ...AUDIO3_RECOGNITION_LANGUAGE_CODES.filter((code) => LITE_LANGUAGE_CODES.has(code)),
 ];
-export const OPENAI_TRANSLATION_TARGETS: readonly TargetLanguage[] = ["zh", "en", "ja", "ko", "ru", "es", "fr", "pt", "de", "it", "vi", "id", "hi"];
-export const GEMINI_TRANSLATION_TARGETS: readonly TargetLanguage[] = ["zh", "en", "ja", "zh_tw", "ko", "ru", "es", "fr", "de", "it", "th", "vi", "id", "ms", "ar", "hi", "he", "ur", "bn", "pl", "nl", "tr", "km", "cs", "sv", "hu", "da", "fi", "tl", "fa"];
-export const XAI_RECOGNITION_SOURCES: readonly SourceLanguage[] = ["auto", "zh", "en", "ja", "ko", "vi", "id", "hi", "fr", "de", "ru", "it"];
+export const OPENAI_TRANSLATION_TARGETS = languageCatalogs.openAIRealtime.targetLanguages as readonly TargetLanguage[];
+export const GEMINI_TRANSLATION_TARGETS = languageCatalogs.googleGeminiLive.targetLanguages as readonly TargetLanguage[];
+export const XAI_RECOGNITION_SOURCES = languageCatalogs.xAIRealtime.sourceLanguages as readonly SourceLanguage[];
 const ALIBABA_TARGETS: readonly TargetLanguage[] = ["original", ...QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES];
-const LEGACY_ALIBABA_CAPABILITIES: ProviderCapabilities = {
-  sourceLanguages: LEGACY_SOURCE_LANGUAGE_CASES,
-  targetLanguages: ["original", "zh", "en", "ja"],
-  translationModes: TRANSLATION_MODE_CASES,
-};
-const SOURCE_CODES = new Set<string>(ALIBABA_RECOGNITION_SOURCES);
-const TARGET_CODES = new Set<string>(ALIBABA_TARGETS);
+const CUSTOM_CONFIGURABLE_TARGETS: readonly TargetLanguage[] = ["original", ...TARGET_LANGUAGE_CODES];
+const SOURCE_CODES = new Set<string>(CUSTOM_CONFIGURABLE_SOURCES);
+const TARGET_CODES = new Set<string>(CUSTOM_CONFIGURABLE_TARGETS);
+
+export function textTranslationSourceLanguages(route: "deepL" | "deepLX"): readonly SourceLanguage[] {
+  return ["auto", ...languageCatalogs[route].sourceLanguages as SourceLanguage[]];
+}
+
+function textTranslationTargetLanguages(route: "deepL" | "deepLX", original: boolean): readonly TargetLanguage[] {
+  return [...(original ? ["original" as const] : []), ...languageCatalogs[route].targetLanguages as TargetLanguage[]];
+}
+
+function intersectTranslationSources(sources: readonly SourceLanguage[], route: "deepL" | "deepLX"): readonly SourceLanguage[] {
+  const supported = textTranslationSourceLanguages(route);
+  return sources.filter(source => supported.includes(source));
+}
 
 export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
   "alibabaCloud",
@@ -56,7 +67,7 @@ const PROVIDER_CAPABILITIES: Readonly<
   appleSpeech: { sourceLanguages: [], targetLanguages: ["original"], translationModes: ["turbo"] },
   customDashScopeASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
   customOpenAIASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
-  deepLX: { sourceLanguages: LEGACY_SOURCE_LANGUAGE_CASES, targetLanguages: ["zh", "en", "ja"], translationModes: ["turbo"] },
+  deepLX: { sourceLanguages: intersectTranslationSources(ALIBABA_RECOGNITION_SOURCES, "deepLX"), targetLanguages: textTranslationTargetLanguages("deepLX", false), translationModes: ["turbo"] },
   alibabaCloud: {
     sourceLanguages: ALIBABA_TRANSLATION_SOURCES,
     targetLanguages: ALIBABA_TARGETS,
@@ -74,27 +85,27 @@ const PROVIDER_CAPABILITIES: Readonly<
   },
   azureOpenAIRealtime: {
     sourceLanguages: ["auto"],
-    targetLanguages: ["zh", "en", "ja"],
+    targetLanguages: OPENAI_TRANSLATION_TARGETS,
     translationModes: ["turbo"],
   },
   volcanoEngine: {
-    sourceLanguages: ["ja", "en", "zh"],
-    targetLanguages: ["zh", "en", "ja"],
+    sourceLanguages: languageCatalogs.volcanoEngine.sourceLanguages as SourceLanguage[],
+    targetLanguages: languageCatalogs.volcanoEngine.targetLanguages as TargetLanguage[],
     translationModes: ["turbo"],
   },
   tencentCloud: {
-    sourceLanguages: ["ja", "en", "ko", "zh"],
-    targetLanguages: ["zh", "en", "ja"],
+    sourceLanguages: languageCatalogs.tencentCloud.sourceLanguages as SourceLanguage[],
+    targetLanguages: languageCatalogs.tencentCloud.targetLanguages as TargetLanguage[],
     translationModes: ["turbo"],
   },
   baiduTranslate: {
-    sourceLanguages: ["ja", "en", "ko", "zh"],
-    targetLanguages: ["zh", "en", "ja"],
+    sourceLanguages: languageCatalogs.baiduTranslate.sourceLanguages as SourceLanguage[],
+    targetLanguages: languageCatalogs.baiduTranslate.targetLanguages as TargetLanguage[],
     translationModes: ["turbo"],
   },
   xAIRealtime: {
     sourceLanguages: XAI_RECOGNITION_SOURCES,
-    targetLanguages: ["zh", "en", "ja"],
+    targetLanguages: languageCatalogs.xAIRealtime.targetLanguages as TargetLanguage[],
     translationModes: ["turbo"],
   },
 };
@@ -129,7 +140,7 @@ export function isCustomSpeechProvider(provider: ServiceProvider): boolean {
 function declaredCustomSources(profile: ServiceProfile, sources: readonly SourceLanguage[]): readonly SourceLanguage[] {
   if (!isCustomSpeechProvider(profile.provider)) return sources;
   const declared = profile.customSpeechSourceLanguages;
-  return ["auto", ...sources.filter(source => source !== "auto" && (declared == null || declared.includes(source)))];
+  return sources.filter(source => source === "auto" || declared == null || declared.includes(source));
 }
 
 export function isStandaloneAsrProvider(provider: ServiceProvider): boolean {
@@ -151,21 +162,30 @@ export function capabilitiesForProfile(
   profile: ServiceProfile,
   targetLanguage: TargetLanguage = "zh",
 ): ProviderCapabilities {
+  if (textTranslationForProfile(profile) === "apple" && (isStandaloneAsrProvider(profile.provider) || ["alibabaCloud", "deepLX"].includes(profile.provider))) {
+    // Only the native runtime can certify Apple's catalog. An unavailable or
+    // not-yet-loaded catalog must not borrow a cloud provider's language list.
+    return {
+      sourceLanguages: targetLanguage === "original" ? declaredCustomSources(profile, profile.provider === "appleSpeech" ? [] : isCustomSpeechProvider(profile.provider) ? CUSTOM_CONFIGURABLE_SOURCES : ALIBABA_RECOGNITION_SOURCES) : [],
+      targetLanguages: ["original"],
+      translationModes: ["turbo"],
+    };
+  }
   if (isStandaloneAsrProvider(profile.provider)) {
     const capabilities = capabilitiesForProvider(profile.provider);
     const route = textTranslationForProfile(profile);
     const generic = isChatCompletionsTranslation(route);
     return { ...capabilities,
-      sourceLanguages: declaredCustomSources(profile, profile.provider === "appleSpeech" || targetLanguage === "original" || route === "followService" || generic ? capabilities.sourceLanguages : LEGACY_SOURCE_LANGUAGE_CASES),
-      targetLanguages: route === "followService" ? capabilities.targetLanguages : generic ? ALIBABA_TARGETS : ["original", "zh", "en", "ja"],
+      sourceLanguages: declaredCustomSources(profile, targetLanguage === "original" || route === "followService" || generic || route === "apple" ? capabilities.sourceLanguages : intersectTranslationSources(capabilities.sourceLanguages, route)),
+      targetLanguages: route === "followService" ? capabilities.targetLanguages : generic ? CUSTOM_CONFIGURABLE_TARGETS : route === "apple" ? ["original"] : textTranslationTargetLanguages(route, true),
     };
   }
   if (profile.provider !== "alibabaCloud" && profile.provider !== "deepLX") {
     return capabilitiesForProvider(profile.provider);
   }
   const route = textTranslationForProfile(profile);
-  if (isChatCompletionsTranslation(route)) return { ...LEGACY_ALIBABA_CAPABILITIES, sourceLanguages: ALIBABA_RECOGNITION_SOURCES, targetLanguages: ALIBABA_TARGETS };
-  if (route === "deepL") return LEGACY_ALIBABA_CAPABILITIES;
+  if (isChatCompletionsTranslation(route)) return { sourceLanguages: ALIBABA_RECOGNITION_SOURCES, targetLanguages: CUSTOM_CONFIGURABLE_TARGETS, translationModes: TRANSLATION_MODE_CASES };
+  if (route === "deepL") return { sourceLanguages: targetLanguage === "original" ? ALIBABA_RECOGNITION_SOURCES : intersectTranslationSources(ALIBABA_RECOGNITION_SOURCES, route), targetLanguages: textTranslationTargetLanguages(route, true), translationModes: TRANSLATION_MODE_CASES };
   if (route === "deepLX") return PROVIDER_CAPABILITIES.deepLX;
   const capabilities = PROVIDER_CAPABILITIES.alibabaCloud;
   return targetLanguage === "original"
@@ -186,24 +206,23 @@ function capabilitiesForSettings(
   const native = settings.languageCapabilities;
   // A profile can retain its ID while changing providers or text destinations.
   // Never borrow options stamped for a different route/target or stale profile.
-  // Custom declarations are locally computable and absent from the native stamp;
-  // an older narrow list must not override a newly expanded or cleared declaration.
+  // Apple needs a native catalog even for custom recognition. A declaration
+  // stamp prevents an old catalog overriding a newly edited recognition list.
+  const appleTranslation = profile && textTranslationForProfile(profile) === "apple";
+  const customStampMatches = profile && JSON.stringify(native?.customSpeechSourceLanguages ?? null) === JSON.stringify(profile.customSpeechSourceLanguages ?? null);
   if (
-    profile && !isCustomSpeechProvider(profile.provider) && native &&
+    profile && (!isCustomSpeechProvider(profile.provider) || (appleTranslation && customStampMatches)) && native &&
     native.profileId === profile.id &&
     native.provider === profile.provider &&
     native.textTranslation === textTranslationForProfile(profile) &&
     native.targetLanguage === target &&
-    Array.isArray(native.sourceLanguages) && (profile.provider === "appleSpeech" || native.sourceLanguages.length > 0) &&
+    Array.isArray(native.sourceLanguages) && (profile.provider === "appleSpeech" || appleTranslation || native.sourceLanguages.length > 0) &&
     Array.isArray(native.targetLanguages) && native.targetLanguages.length > 0 &&
-    native.sourceLanguages.every((code) => SOURCE_CODES.has(code) && (profile.provider !== "appleSpeech" || code !== "auto")) &&
+    native.sourceLanguages.every((code) => SOURCE_CODES.has(code) && ((profile.provider !== "appleSpeech" && (!appleTranslation || target === "original")) || code !== "auto")) &&
     native.targetLanguages.every((code) => TARGET_CODES.has(code))
   ) {
     return {
-      sourceLanguages: declaredCustomSources(profile, [...new Set(native.sourceLanguages)].filter(source =>
-        profile.provider !== "appleSpeech" || target === "original"
-        || !["deepL", "deepLX"].includes(textTranslationForProfile(profile))
-        || LEGACY_SOURCE_LANGUAGE_CASES.includes(source))),
+      sourceLanguages: declaredCustomSources(profile, [...new Set(native.sourceLanguages)]),
       targetLanguages: [...new Set(native.targetLanguages)],
       translationModes: fallback.translationModes,
     };
@@ -221,6 +240,12 @@ export function targetLanguagesForSettings(
   settings: LanguageSettings & Pick<SettingsSnapshot, "sourceLanguage">,
 ): readonly TargetLanguage[] {
   const targetLanguages = capabilitiesForSettings(settings).targetLanguages;
+  const provider = activeServiceProfile(settings)?.provider;
+  if (provider === "tencentCloud" || provider === "volcanoEngine") {
+    const pairs: Readonly<Record<string, readonly string[]>> = languageCatalogs[provider].targetsBySource;
+    const supported = pairs[settings.sourceLanguage];
+    return supported ? supported as readonly TargetLanguage[] : targetLanguages;
+  }
   if (
     settings.sourceLanguage === "auto" ||
     targetLanguages.includes("original")
@@ -236,11 +261,7 @@ function sourceMatchesTarget(
   source: SourceLanguage,
   target: TargetLanguage,
 ): boolean {
-  return (
-    (source === "zh" && target === "zh") ||
-    (source === "en" && target === "en") ||
-    (source === "ja" && target === "ja")
-  );
+  return source === target;
 }
 
 export function targetLanguageAfterSourceSwitch(
@@ -253,20 +274,10 @@ export function targetLanguageAfterSourceSwitch(
   >,
   sourceLanguage: SourceLanguage,
 ): TargetLanguage {
-  const capabilities = capabilitiesForSettings(settings);
-  if (
-    capabilities.targetLanguages.includes(settings.targetLanguage) &&
-    (capabilities.targetLanguages.includes("original") ||
-      !sourceMatchesTarget(sourceLanguage, settings.targetLanguage))
-  ) {
-    return settings.targetLanguage;
-  }
-
-  return (
-    capabilities.targetLanguages.find(
-      (target) => !sourceMatchesTarget(sourceLanguage, target),
-    ) ?? settings.targetLanguage
-  );
+  const targets = targetLanguagesForSettings({ ...settings, sourceLanguage });
+  return targets.includes(settings.targetLanguage)
+    ? settings.targetLanguage
+    : targets[0] ?? settings.targetLanguage;
 }
 
 export function translationModesForSettings(

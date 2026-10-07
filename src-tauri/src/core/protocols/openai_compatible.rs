@@ -144,6 +144,7 @@ pub fn request(
         TargetLanguage::Tagalog => "Tagalog",
         TargetLanguage::Persian => "Persian",
         TargetLanguage::Original => return Err(OpenAICompatibleError::Language),
+        other => other.qwen_mt_name(),
     };
     let text = text.trim();
     if text.is_empty() {

@@ -2,13 +2,15 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import languageCatalogs from "../../../shared/provider-language-catalogs.json";
+import { languageStatus } from "../overlay/overlayModel";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { sessionActionErrorMessage, profileErrorMessage } from "../../lib/connectionDiagnostics";
 import { useStore } from "../../lib/store";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
 import { sourceLanguagesForSettings } from "../../lib/providerCapabilities";
-import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
+import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
 
 let host: HTMLDivElement;
 let root: Root;
@@ -30,6 +32,7 @@ beforeEach(() => {
     status: { source: "Automatic", separator: "→", target: "Chinese" },
     isPaused: false, canPauseSession: true, isWaitingForFinalTranslation: false, isChangingSession: false,
     onDismiss: vi.fn(), onSwitchSourceLanguage: vi.fn().mockResolvedValue(undefined),
+    onSwitchTargetLanguage: vi.fn().mockResolvedValue(undefined),
     onTogglePaused: vi.fn().mockResolvedValue(undefined),
     onSelectProfile: vi.fn().mockResolvedValue(undefined),
     onSetSkipTranslation: vi.fn().mockResolvedValue(undefined),
@@ -69,7 +72,7 @@ async function searchSource(query: string) {
 it.each(["zh", "en", "ja"] as const)("keeps %s language, display and application choices compact without a mode grid", async (language) => {
   setStoredUiLanguage(language);
   await mount();
-  expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(4);
+  expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(5);
   expect(host.querySelectorAll('.application-audio-picker')).toHaveLength(1);
   expect(host.querySelector('fieldset, .overlay-control-options, .overlay-control-group')).toBeNull();
   expect(host.querySelectorAll('[role="switch"]')).toHaveLength(6);
@@ -79,12 +82,12 @@ it.each(["zh", "en", "ja"] as const)("keeps %s language, display and application
   expect(props.onSetSubtitleDisplayMode).not.toHaveBeenCalled();
 });
 
-it("supports keyboard source selection and dismisses only after the command succeeds", async () => {
+it("supports keyboard source selection and keeps both language controls available", async () => {
   await mount();
   const source = picker(I18N.overlay.sourceLanguage);
   await key(source, "ArrowDown"); await key(source, "End"); await key(source, "Enter");
   expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith(props.model.sourceOptions.at(-1));
-  expect(props.onDismiss).toHaveBeenCalledOnce();
+  expect(props.onDismiss).not.toHaveBeenCalled();
 });
 
 it("keeps system audio application selection and More settings without hidden input switches", async () => {
@@ -217,7 +220,7 @@ it.each(["zh", "en", "ja"] as const)("offers the same full source list as settin
   expect(filtered[0].textContent).toBe(SOURCE_LANGUAGE_DISPLAY_NAMES.fr);
   await act(async () => filtered[0].click());
   expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith("fr");
-  expect(props.onDismiss).toHaveBeenCalledOnce();
+  expect(props.onDismiss).not.toHaveBeenCalled();
   expect(document.querySelector('[role="listbox"]')).toBeNull();
 });
 
@@ -255,15 +258,15 @@ it("offers all Original-mode recognition hints including searchable Norwegian", 
   expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith("no");
 });
 
-it.each(["deepL", "deepLX"] as const)("keeps the %s small route list non-searchable and matches settings language labels", async route => {
+it.each(["deepL", "deepLX"] as const)("keeps the complete %s route intersection searchable and matches settings language labels", async route => {
   configure({ profiles: [{ ...props.settings.profiles[0], textTranslation: route }] });
   await mount();
   await act(async () => picker(I18N.overlay.sourceLanguage).click());
   const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
-  expect(options).toHaveLength(5);
+  expect(options.length).toBeGreaterThan(6);
   expect(options.map(option => option.textContent)).toEqual(sourceLanguagesForSettings(props.settings)
     .map(language => SOURCE_LANGUAGE_DISPLAY_NAMES[language]));
-  expect(document.querySelector("input.mimi-select__search")).toBeNull();
+  expect(document.querySelector("input.mimi-select__search")).not.toBeNull();
   const chinese = options.find(option => option.textContent === SOURCE_LANGUAGE_DISPLAY_NAMES.zh)!;
   await act(async () => chinese.click());
   expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith("zh");
@@ -287,7 +290,7 @@ it.each(["openAICompatible", "chatMock"] as const)("searches all 31 sources with
   expect(filtered.map(option => option.textContent)).toEqual([SOURCE_LANGUAGE_DISPLAY_NAMES.no]);
   await act(async () => filtered[0].click());
   expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith("no");
-  expect(props.onDismiss).toHaveBeenCalledOnce();
+  expect(props.onDismiss).not.toHaveBeenCalled();
   expect(document.querySelector('[role="listbox"]')).toBeNull();
 });
 
@@ -508,4 +511,64 @@ it.each([false, true])("keeps a failed panel resume actionable unless a newer re
   expect(host.querySelector('[role="alert"]')?.textContent ?? null).toBe(superseded ? null : sessionActionErrorMessage(error, "fallback"));
   expect(host.textContent).not.toContain(error);
   expect(props.onDismiss).not.toHaveBeenCalled();
+});
+
+
+it.each(["zh", "en", "ja"] as const)("uses the expanded xAI sources and current target label in the %s floating controller", async locale => {
+  setStoredUiLanguage(locale);
+  configure({ sourceLanguage: "auto", targetLanguage: "pt-PT", profiles: [{ ...props.settings.profiles[0], provider: "xAIRealtime" }] });
+  props.status = languageStatus(props.settings, null)!;
+  await mount();
+  expect(host.textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES["pt-PT"]);
+  await act(async () => picker(I18N.overlay.sourceLanguage).click());
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent))
+    .toEqual(languageCatalogs.xAIRealtime.sourceLanguages.map(code => SOURCE_LANGUAGE_DISPLAY_NAMES[code as keyof typeof SOURCE_LANGUAGE_DISPLAY_NAMES]));
+  const choice = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === SOURCE_LANGUAGE_DISPLAY_NAMES["pt-BR"])!;
+  await act(async () => choice.click());
+  expect(props.onSwitchSourceLanguage).toHaveBeenCalledExactlyOnceWith("pt-BR");
+});
+
+it("shows Gemini automatic source and an expanded target without inventing manual source choices", async () => {
+  configure({ sourceLanguage: "auto", targetLanguage: "uk", profiles: [{ ...props.settings.profiles[0], provider: "googleGeminiLive" }] });
+  props.status = languageStatus(props.settings, null)!;
+  await mount();
+  expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
+  expect(picker(I18N.settings.translateTo).disabled).toBe(false);
+  expect(host.textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES.uk);
+  expect(host.querySelector(".overlay-control-header")?.getAttribute("aria-label")).toContain(I18N.overlay.autoDetecting);
+});
+
+it.each(["zh", "en", "ja"] as const)("offers every Gemini target beside the disabled automatic source in %s", async locale => {
+  setStoredUiLanguage(locale);
+  configure({ sourceLanguage: "auto", targetLanguage: "zh", profiles: [{ ...props.settings.profiles[0], provider: "googleGeminiLive" }] });
+  await mount();
+  expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
+  const target = picker(I18N.settings.translateTo);
+  await act(async () => target.click());
+  const choices = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  expect(choices.map(choice => choice.textContent)).toEqual(languageCatalogs.googleGeminiLive.targetLanguages.map(code => TARGET_LANGUAGE_DISPLAY_NAMES[code as keyof typeof TARGET_LANGUAGE_DISPLAY_NAMES]));
+  await act(async () => choices.find(choice => choice.textContent === TARGET_LANGUAGE_DISPLAY_NAMES["pt-BR"])!.click());
+  expect(props.onSwitchTargetLanguage).toHaveBeenCalledExactlyOnceWith("pt-BR");
+  expect(props.onDismiss).not.toHaveBeenCalled();
+});
+
+it("keeps the saved target after a failed switch and permits retry without dismissing the panel", async () => {
+  let reject!: (error: unknown) => void;
+  props.onSwitchTargetLanguage = vi.fn().mockImplementationOnce(() => new Promise<void>((_, fail) => { reject = fail; })).mockResolvedValue(undefined);
+  configure({ sourceLanguage: "auto", targetLanguage: "zh", profiles: [{ ...props.settings.profiles[0], provider: "googleGeminiLive" }] });
+  await mount();
+  const change = async () => {
+    await act(async () => picker(I18N.settings.translateTo).click());
+    await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(choice => choice.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.fr)!.click());
+  };
+  await change();
+  expect(picker(I18N.settings.translateTo).disabled).toBe(true);
+  expect(picker(I18N.settings.currentProfile).disabled).toBe(true);
+  await act(async () => reject("target_switch_unsupported"));
+  expect(picker(I18N.settings.translateTo).textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.languageSwitchUnsupported);
+  await change();
+  expect(props.onSwitchTargetLanguage).toHaveBeenCalledTimes(2);
+  expect(props.onDismiss).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
 });

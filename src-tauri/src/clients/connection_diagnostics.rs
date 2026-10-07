@@ -64,6 +64,10 @@ pub enum ConnectionCheckReason {
     AppleSpeechLanguageUnsupported,
     AppleSpeechUnavailable,
     AppleSpeechRecognitionFailed,
+    AppleTranslationAssetsMissing,
+    AppleTranslationLanguageUnsupported,
+    AppleTranslationUnavailable,
+    AppleTranslationFailed,
 }
 
 #[derive(Debug, Serialize)]
@@ -111,6 +115,19 @@ impl ConnectionDiagnostic {
 
 /// Only known, content-free labels influence the public preparation result.
 pub fn preparation_failure(error: &str) -> ConnectionDiagnostic {
+    let local_reason = match error {
+        "apple_translation_assets_missing" => {
+            Some(ConnectionCheckReason::AppleTranslationAssetsMissing)
+        }
+        "apple_translation_language_unsupported" | "apple_translation_invalid_input" => {
+            Some(ConnectionCheckReason::AppleTranslationLanguageUnsupported)
+        }
+        "apple_translation_unavailable" => Some(ConnectionCheckReason::AppleTranslationUnavailable),
+        _ => None,
+    };
+    if let Some(reason) = local_reason {
+        return ConnectionDiagnostic::unavailable("present", reason);
+    }
     let credential = match error {
         "custom_speech_credentials_missing" | "text_translation_credentials_missing" => "missing",
         "local_dev_credentials_unavailable" => "localDevUnavailable",
@@ -190,6 +207,20 @@ fn timed_diagnostic(
 pub async fn check_text_service(
     configuration: &TextTranslationProbeConfiguration,
 ) -> ConnectionDiagnostic {
+    if matches!(
+        configuration.credentials,
+        TextTranslationProbeCredentials::Independent(TextTranslationCredentials::Apple)
+    ) {
+        let started = Instant::now();
+        let result = tokio::time::timeout(
+            PROBE_TIMEOUT,
+            probe_apple_translation(configuration.source_language, configuration.target_language),
+        )
+        .await
+        .map_err(|_| ConnectionCheckReason::Timeout)
+        .and_then(|result| result.map(|_| ()));
+        return timed_diagnostic(result, started);
+    }
     initialize_probe_tls();
     let network = match ProviderNetwork::resolve(&configuration.network_proxy) {
         Ok(network) => network,
@@ -286,6 +317,17 @@ async fn probe_text_translation(
     configuration: &LiveTranslationConfiguration,
     network: &ProviderNetwork,
 ) -> Result<(), ConnectionCheckReason> {
+    if matches!(
+        configuration.text_credentials,
+        Some(TextTranslationCredentials::Apple)
+    ) {
+        return probe_apple_translation(
+            configuration.source_language,
+            configuration.target_language,
+        )
+        .await
+        .map(|_| ());
+    }
     if configuration.provider.is_standalone_asr() && configuration.text_credentials.is_none() {
         return if configuration.target_language == TargetLanguage::Original {
             Ok(())
@@ -448,6 +490,7 @@ async fn probe_independent_text_translation(
     phrase: &str,
 ) -> Result<String, ConnectionCheckReason> {
     match credentials {
+        TextTranslationCredentials::Apple => probe_apple_translation(source, target).await,
         TextTranslationCredentials::DeepL { api_key } => {
             let mut client = DeepLClient::new(api_key, source, target)
                 .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
@@ -491,6 +534,69 @@ async fn probe_independent_text_translation(
                 .map_err(|error| openai_compatible_reason(&error))
         }
     }
+}
+
+async fn probe_apple_translation(
+    source: SourceLanguage,
+    target: TargetLanguage,
+) -> Result<String, ConnectionCheckReason> {
+    let client =
+        crate::clients::apple_translation_client::AppleTranslationClient::new(source, target)
+            .map_err(|error| qwen_reason(&error))?;
+    client
+        .check_ready()
+        .await
+        .map_err(|error| qwen_reason(&error))?;
+    let phrase = apple_test_phrase(source)
+        .ok_or(ConnectionCheckReason::AppleTranslationLanguageUnsupported)?;
+    if target.matches_reported_asr(Some(source.raw_value())) {
+        return Ok(phrase.into());
+    }
+    client
+        .translate(phrase, Some(source))
+        .await
+        .map_err(|error| qwen_reason(&error))
+}
+
+// Public synthetic setup phrases in the selected source. No recognized text or
+// user content participates in an explicit translation check.
+fn apple_test_phrase(source: SourceLanguage) -> Option<&'static str> {
+    Some(
+        match source.raw_value().split('-').next().unwrap_or_default() {
+            "en" => "Hello.",
+            "zh" | "zh_tw" => "你好。",
+            "ja" => "こんにちは。",
+            "ko" => "안녕하세요.",
+            "vi" => "Xin chào.",
+            "th" => "สวัสดี",
+            "id" => "Halo.",
+            "ms" => "Helo.",
+            "tl" => "Kumusta.",
+            "hi" => "नमस्ते।",
+            "ar" => "مرحبا.",
+            "fr" => "Bonjour.",
+            "de" => "Hallo.",
+            "es" => "Hola.",
+            "pt" => "Olá.",
+            "ru" => "Здравствуйте.",
+            "it" => "Ciao.",
+            "nl" => "Hallo.",
+            "sv" => "Hej.",
+            "da" => "Hej.",
+            "fi" | "no" => "Hei.",
+            "el" => "Γεια σας.",
+            "pl" => "Dzień dobry.",
+            "cs" => "Dobrý den.",
+            "hu" => "Jó napot.",
+            "ro" => "Bună ziua.",
+            "bg" => "Здравейте.",
+            "hr" => "Dobar dan.",
+            "sk" => "Dobrý deň.",
+            "tr" => "Merhaba.",
+            "uk" => "Вітаю.",
+            _ => return None,
+        },
+    )
 }
 
 fn recognition_reason(error: &RecognitionClientError) -> ConnectionCheckReason {
@@ -571,6 +677,17 @@ fn deepl_reason(error: &DeepLError) -> ConnectionCheckReason {
 
 fn qwen_reason(error: &QwenMTClientError) -> ConnectionCheckReason {
     match error {
+        QwenMTClientError::Apple(label) => match *label {
+            "apple_translation_assets_missing" => {
+                ConnectionCheckReason::AppleTranslationAssetsMissing
+            }
+            "apple_translation_language_unsupported" => {
+                ConnectionCheckReason::AppleTranslationLanguageUnsupported
+            }
+            "apple_translation_unavailable" => ConnectionCheckReason::AppleTranslationUnavailable,
+            "apple_translation_timeout" => ConnectionCheckReason::Timeout,
+            _ => ConnectionCheckReason::AppleTranslationFailed,
+        },
         QwenMTClientError::OpenAICompatible(error) => openai_compatible_reason(error),
         QwenMTClientError::DeepLX(error) => deeplx_reason(error),
         QwenMTClientError::MissingAPIKey => ConnectionCheckReason::CredentialsMissing,
@@ -722,6 +839,29 @@ pub(crate) async fn rejected_websocket_endpoint(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn local_text_checks_use_a_synthetic_phrase_in_the_selected_source() {
+        assert_eq!(
+            apple_test_phrase(SourceLanguage::Japanese),
+            Some("こんにちは。")
+        );
+        assert_eq!(apple_test_phrase(SourceLanguage::Chinese), Some("你好。"));
+        assert_eq!(apple_test_phrase(SourceLanguage::English), Some("Hello."));
+        for (code, phrase) in [
+            ("tr", "Merhaba."),
+            ("uk", "Вітаю."),
+            ("pt-BR", "Olá."),
+            ("ar-EG", "مرحبا."),
+        ] {
+            let source = serde_json::from_value(serde_json::json!(code)).unwrap();
+            assert_eq!(apple_test_phrase(source), Some(phrase));
+        }
+        // Global language expansion must not send an English probe mislabeled as another language.
+        assert_eq!(apple_test_phrase(SourceLanguage::Automatic), None);
+        let unmapped = serde_json::from_value(serde_json::json!("ast")).unwrap();
+        assert_eq!(apple_test_phrase(unmapped), None);
+    }
+
     #[test]
     fn tencent_json_rejections_use_shared_actionable_categories() {
         let contract: serde_json::Value = serde_json::from_str(include_str!(concat!(
@@ -962,6 +1102,7 @@ mod tests {
                 socket.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
             });
             let configuration = TextTranslationProbeConfiguration {
+                source_language: SourceLanguage::English,
                 credentials: TextTranslationProbeCredentials::Independent(
                     TextTranslationCredentials::OpenAICompatible {
                         endpoint: format!("http://{address}/v1"),
@@ -989,6 +1130,18 @@ mod tests {
     #[test]
     fn unprepared_checks_have_no_fake_latency_or_raw_error_content() {
         for (label, reason) in [
+            (
+                "apple_translation_language_unsupported",
+                ConnectionCheckReason::AppleTranslationLanguageUnsupported,
+            ),
+            (
+                "apple_translation_assets_missing",
+                ConnectionCheckReason::AppleTranslationAssetsMissing,
+            ),
+            (
+                "apple_translation_unavailable",
+                ConnectionCheckReason::AppleTranslationUnavailable,
+            ),
             (
                 "custom_speech_credentials_missing",
                 ConnectionCheckReason::CredentialsMissing,

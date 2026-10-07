@@ -206,7 +206,7 @@ export type ServiceProvider =
   | "customOpenAIASR"
   | "deepLX";
 
-export type TextTranslation = "followService" | "deepL" | "deepLX" | "openAICompatible" | "chatMock";
+export type TextTranslation = "followService" | "apple" | "deepL" | "deepLX" | "openAICompatible" | "chatMock";
 
 /** Write-only payload sent to the native secure credential store. */
 export type ProviderCredentialsInput =
@@ -278,6 +278,14 @@ export interface AppleSpeechSupport {
   languages: { sourceLanguage: Exclude<SourceLanguage, "auto">; locale: string; installed: boolean }[];
 }
 
+export interface AppleTranslationSupport {
+  available: boolean;
+  sourceLanguages: Exclude<SourceLanguage, "auto">[];
+  targetLanguages: Exclude<TargetLanguage, "original">[];
+}
+
+export type AppleTranslationStatus = "installed" | "supported" | "unsupported" | "unavailable";
+
 export interface LanguageCapabilitiesSnapshot {
   profileId: string;
   provider: ServiceProvider;
@@ -287,6 +295,8 @@ export interface LanguageCapabilitiesSnapshot {
   targetLanguages: readonly TargetLanguage[];
   /** Complete Apple resource status, including languages excluded by this route. */
   appleSpeechSupportRevision?: number;
+  /** Declaration used to intersect a native translation catalog with custom ASR. */
+  customSpeechSourceLanguages?: readonly SourceLanguage[] | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,8 +315,34 @@ export const QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES = Object.freeze([
   "ar", "hi", "he", "ur", "bn", "pl", "nl", "tr", "km", "cs", "sv", "hu", "da", "fi", "tl", "fa",
 ] as const);
 
-export type SourceLanguage = "auto" | typeof AUDIO3_RECOGNITION_LANGUAGE_CODES[number];
-export type TargetLanguage = "original" | typeof QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES[number];
+/** Serializable source codes. Provider capabilities determine which choices are supported. */
+export const SOURCE_LANGUAGE_CODES = Object.freeze([
+  "zh", "en", "ja", "ko", "vi", "th", "id", "ms", "tl", "hi", "ar", "fr", "de", "es", "pt", "ru", "it", "nl",
+  "sv", "da", "fi", "no", "el", "pl", "cs", "hu", "ro", "bg", "hr", "sk", "wuu", "ast", "ace", "af", "ak", "am", "an",
+  "ar-AE", "ar-EG", "ar-SA", "as", "ay", "az", "ba", "be", "bho", "bn", "br", "bs", "ca", "ceb", "ckb", "cy",
+  "en-GB", "en-US", "eo", "es-419", "es-ES", "es-MX", "et", "eu", "fa", "ga", "gl", "gn", "gom", "gu", "ha",
+  "he", "ht", "hy", "ig", "is", "jv", "ka", "kk", "km", "kmr", "kn", "ky", "la", "lb", "lmo", "ln", "lo",
+  "lt", "lv", "mai", "mg", "mi", "mk", "ml", "mn", "mr", "mt", "my", "ne", "oc", "om", "pa", "pag", "pam",
+  "prs", "ps", "pt-BR", "pt-PT", "qu", "rw", "sa", "scn", "sd", "si", "sl", "sq", "sr", "st", "su", "sw",
+  "ta", "te", "tg", "tk", "tn", "tr", "ts", "tt", "uk", "ur", "uz", "wo", "xh", "yi", "yue", "zh_en",
+  "zh_tw", "zu",
+] as const);
+
+/** Serializable target codes. Provider capabilities determine which choices are supported. */
+export const TARGET_LANGUAGE_CODES = Object.freeze([
+  "zh", "en", "ja", "zh_tw", "ko", "ru", "es", "fr", "pt", "de", "it", "th", "vi", "id", "ms", "ar", "hi",
+  "he", "ur", "bn", "pl", "nl", "tr", "km", "cs", "sv", "hu", "da", "fi", "tl", "fa", "wuu", "ast", "ace", "af", "ak",
+  "am", "an", "ar-AE", "ar-EG", "ar-SA", "as", "ay", "az", "ba", "be", "bg", "bho", "br", "bs", "ca", "ceb",
+  "ckb", "cy", "el", "en-GB", "en-US", "eo", "es-419", "es-ES", "es-MX", "et", "eu", "ga", "gl", "gn", "gom",
+  "gu", "ha", "hr", "ht", "hy", "ig", "is", "jv", "ka", "kk", "kmr", "kn", "ky", "la", "lb", "lmo", "ln",
+  "lo", "lt", "lv", "mai", "mg", "mi", "mk", "ml", "mn", "mr", "mt", "my", "ne", "no", "oc", "om", "pa",
+  "pag", "pam", "prs", "ps", "pt-BR", "pt-PT", "qu", "ro", "rw", "sa", "scn", "sd", "si", "sk", "sl", "sq",
+  "sr", "st", "su", "sw", "ta", "te", "tg", "tk", "tn", "ts", "tt", "uk", "uz", "wo", "xh", "yi", "yue",
+  "zh_en", "zu",
+] as const);
+
+export type SourceLanguage = "auto" | typeof SOURCE_LANGUAGE_CODES[number];
+export type TargetLanguage = "original" | typeof TARGET_LANGUAGE_CODES[number];
 export type TranslationMode = "lowLatency" | "highQuality" | "turbo";
 
 /** Conservative ASR scope for translation routes without expanded language mapping. */
@@ -334,6 +370,21 @@ const LANGUAGE_DISPLAY_NAMES: Record<LanguageDisplayLocale, Record<LanguageDispl
     pl: "波兰语", cs: "捷克语", hu: "匈牙利语", ro: "罗马尼亚语", bg: "保加利亚语",
     hr: "克罗地亚语", sk: "斯洛伐克语", he: "希伯来语", ur: "乌尔都语", bn: "孟加拉语",
     tr: "土耳其语", km: "高棉语", fa: "波斯语",
+    "wuu": "上海话", "ast": "阿斯图里亚斯语", "ace": "亚齐语", "af": "南非荷兰语", "ak": "阿肯语", "am": "阿姆哈拉语", "an": "阿拉贡语", "ar-AE": "阿拉伯语（阿拉伯联合酋长国）",
+    "ar-EG": "阿拉伯语（埃及）", "ar-SA": "阿拉伯语（沙特阿拉伯）", "as": "阿萨姆语", "ay": "艾马拉语", "az": "阿塞拜疆语", "ba": "巴什基尔语",
+    "be": "白俄罗斯语", "bho": "博杰普尔语", "br": "布列塔尼语", "bs": "波斯尼亚语", "ca": "加泰罗尼亚语", "ceb": "宿务语",
+    "ckb": "中库尔德语", "cy": "威尔士语", "en-GB": "英国英语", "en-US": "美国英语", "eo": "世界语", "es-419": "拉丁美洲西班牙语",
+    "es-ES": "欧洲西班牙语", "es-MX": "墨西哥西班牙语", "et": "爱沙尼亚语", "eu": "巴斯克语", "ga": "爱尔兰语", "gl": "加利西亚语",
+    "gn": "瓜拉尼语", "gom": "孔卡尼语", "gu": "古吉拉特语", "ha": "豪萨语", "ht": "海地克里奥尔语", "hy": "亚美尼亚语", "ig": "伊博语",
+    "is": "冰岛语", "jv": "爪哇语", "ka": "格鲁吉亚语", "kk": "哈萨克语", "kmr": "北库尔德语", "kn": "卡纳达语", "ky": "柯尔克孜语",
+    "la": "拉丁语", "lb": "卢森堡语", "lmo": "伦巴第语", "ln": "林加拉语", "lo": "老挝语", "lt": "立陶宛语", "lv": "拉脱维亚语",
+    "mai": "迈蒂利语", "mg": "马拉加斯语", "mi": "毛利语", "mk": "马其顿语", "ml": "马拉雅拉姆语", "mn": "蒙古语", "mr": "马拉地语",
+    "mt": "马耳他语", "my": "缅甸语", "ne": "尼泊尔语", "oc": "奥克语", "om": "奥罗莫语", "pa": "旁遮普语", "pag": "邦阿西南语",
+    "pam": "邦板牙语", "prs": "达里语", "ps": "普什图语", "pt-BR": "巴西葡萄牙语", "pt-PT": "欧洲葡萄牙语", "qu": "克丘亚语",
+    "rw": "卢旺达语", "sa": "梵语", "scn": "西西里语", "sd": "信德语", "si": "僧伽罗语", "sl": "斯洛文尼亚语", "sq": "阿尔巴尼亚语",
+    "sr": "塞尔维亚语", "st": "南索托语", "su": "巽他语", "sw": "斯瓦希里语", "ta": "泰米尔语", "te": "泰卢固语", "tg": "塔吉克语",
+    "tk": "土库曼语", "tn": "茨瓦纳语", "ts": "聪加语", "tt": "鞑靼语", "uk": "乌克兰语", "uz": "乌兹别克语", "wo": "沃洛夫语",
+    "xh": "科萨语", "yi": "意第绪语", "yue": "粤语", "zh_en": "中英混合", "zu": "祖鲁语",
   },
   en: {
     zh: "Chinese", zh_tw: "Traditional Chinese", en: "English", ja: "Japanese", ko: "Korean",
@@ -343,6 +394,26 @@ const LANGUAGE_DISPLAY_NAMES: Record<LanguageDisplayLocale, Record<LanguageDispl
     el: "Greek", pl: "Polish", cs: "Czech", hu: "Hungarian", ro: "Romanian", bg: "Bulgarian",
     hr: "Croatian", sk: "Slovak", he: "Hebrew", ur: "Urdu", bn: "Bengali", tr: "Turkish",
     km: "Khmer", fa: "Persian",
+    "wuu": "Shanghainese", "ast": "Asturian", "ace": "Acehnese", "af": "Afrikaans", "ak": "Akan", "am": "Amharic", "an": "Aragonese",
+    "ar-AE": "Arabic (United Arab Emirates)", "ar-EG": "Arabic (Egypt)", "ar-SA": "Arabic (Saudi Arabia)",
+    "as": "Assamese", "ay": "Aymara", "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian",
+    "bho": "Bhojpuri", "br": "Breton", "bs": "Bosnian", "ca": "Catalan", "ceb": "Cebuano",
+    "ckb": "Central Kurdish", "cy": "Welsh", "en-GB": "British English", "en-US": "American English",
+    "eo": "Esperanto", "es-419": "Latin American Spanish", "es-ES": "European Spanish",
+    "es-MX": "Mexican Spanish", "et": "Estonian", "eu": "Basque", "ga": "Irish", "gl": "Galician",
+    "gn": "Guarani", "gom": "Konkani", "gu": "Gujarati", "ha": "Hausa", "ht": "Haitian Creole",
+    "hy": "Armenian", "ig": "Igbo", "is": "Icelandic", "jv": "Javanese", "ka": "Georgian", "kk": "Kazakh",
+    "kmr": "Northern Kurdish", "kn": "Kannada", "ky": "Kyrgyz", "la": "Latin", "lb": "Luxembourgish",
+    "lmo": "Lombard", "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian", "mai": "Maithili",
+    "mg": "Malagasy", "mi": "Māori", "mk": "Macedonian", "ml": "Malayalam", "mn": "Mongolian",
+    "mr": "Marathi", "mt": "Maltese", "my": "Burmese", "ne": "Nepali", "oc": "Occitan", "om": "Oromo",
+    "pa": "Punjabi", "pag": "Pangasinan", "pam": "Pampanga", "prs": "Dari", "ps": "Pashto",
+    "pt-BR": "Brazilian Portuguese", "pt-PT": "European Portuguese", "qu": "Quechua", "rw": "Kinyarwanda",
+    "sa": "Sanskrit", "scn": "Sicilian", "sd": "Sindhi", "si": "Sinhala", "sl": "Slovenian",
+    "sq": "Albanian", "sr": "Serbian", "st": "Southern Sotho", "su": "Sundanese", "sw": "Swahili",
+    "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "tk": "Turkmen", "tn": "Tswana", "ts": "Tsonga",
+    "tt": "Tatar", "uk": "Ukrainian", "uz": "Uzbek", "wo": "Wolof", "xh": "Xhosa", "yi": "Yiddish",
+    "yue": "Cantonese", "zh_en": "Chinese and English (mixed)", "zu": "Zulu",
   },
   ja: {
     zh: "中国語", zh_tw: "繁体中国語", en: "英語", ja: "日本語", ko: "韓国語",
@@ -353,6 +424,23 @@ const LANGUAGE_DISPLAY_NAMES: Record<LanguageDisplayLocale, Record<LanguageDispl
     cs: "チェコ語", hu: "ハンガリー語", ro: "ルーマニア語", bg: "ブルガリア語", hr: "クロアチア語",
     sk: "スロバキア語", he: "ヘブライ語", ur: "ウルドゥー語", bn: "ベンガル語", tr: "トルコ語",
     km: "クメール語", fa: "ペルシア語",
+    "wuu": "上海語", "ast": "アストゥリアス語", "ace": "アチェ語", "af": "アフリカーンス語", "ak": "アカン語", "am": "アムハラ語", "an": "アラゴン語", "ar-AE": "アラビア語 (アラブ首長国連邦)",
+    "ar-EG": "アラビア語 (エジプト)", "ar-SA": "アラビア語 (サウジアラビア)", "as": "アッサム語", "ay": "アイマラ語", "az": "アゼルバイジャン語",
+    "ba": "バシキール語", "be": "ベラルーシ語", "bho": "ボージュプリー語", "br": "ブルトン語", "bs": "ボスニア語", "ca": "カタロニア語",
+    "ceb": "セブアノ語", "ckb": "中央クルド語", "cy": "ウェールズ語", "en-GB": "イギリス英語", "en-US": "アメリカ英語", "eo": "エスペラント語",
+    "es-419": "スペイン語 (ラテンアメリカ)", "es-ES": "スペイン語 (イベリア半島)", "es-MX": "スペイン語 (メキシコ)", "et": "エストニア語",
+    "eu": "バスク語", "ga": "アイルランド語", "gl": "ガリシア語", "gn": "グアラニー語", "gom": "コンカニ語", "gu": "グジャラート語",
+    "ha": "ハウサ語", "ht": "ハイチ・クレオール語", "hy": "アルメニア語", "ig": "イボ語", "is": "アイスランド語", "jv": "ジャワ語",
+    "ka": "ジョージア語", "kk": "カザフ語", "kmr": "北クルド語", "kn": "カンナダ語", "ky": "キルギス語", "la": "ラテン語",
+    "lb": "ルクセンブルク語", "lmo": "ロンバルド語", "ln": "リンガラ語", "lo": "ラオ語", "lt": "リトアニア語", "lv": "ラトビア語",
+    "mai": "マイティリー語", "mg": "マダガスカル語", "mi": "マオリ語", "mk": "マケドニア語", "ml": "マラヤーラム語", "mn": "モンゴル語",
+    "mr": "マラーティー語", "mt": "マルタ語", "my": "ミャンマー語", "ne": "ネパール語", "oc": "オック語", "om": "オロモ語", "pa": "パンジャブ語",
+    "pag": "パンガシナン語", "pam": "パンパンガ語", "prs": "ダリー語", "ps": "パシュトゥー語", "pt-BR": "ポルトガル語 (ブラジル)",
+    "pt-PT": "ポルトガル語 (イベリア半島)", "qu": "ケチュア語", "rw": "キニアルワンダ語", "sa": "サンスクリット語", "scn": "シチリア語",
+    "sd": "シンド語", "si": "シンハラ語", "sl": "スロベニア語", "sq": "アルバニア語", "sr": "セルビア語", "st": "南部ソト語", "su": "スンダ語",
+    "sw": "スワヒリ語", "ta": "タミル語", "te": "テルグ語", "tg": "タジク語", "tk": "トルクメン語", "tn": "ツワナ語", "ts": "ツォンガ語",
+    "tt": "タタール語", "uk": "ウクライナ語", "uz": "ウズベク語", "wo": "ウォロフ語", "xh": "コサ語", "yi": "イディッシュ語", "yue": "広東語",
+    "zh_en": "中国語・英語（混在）", "zu": "ズールー語",
   },
 };
 
@@ -387,7 +475,7 @@ export const SOURCE_LANGUAGE_DISPLAY_NAMES: Record<SourceLanguage, string> = loc
   const locale = languageDisplayLocale();
   return {
     auto: sourceLanguageDisplayName("auto", locale),
-    ...languageNamesForCodes(AUDIO3_RECOGNITION_LANGUAGE_CODES, LANGUAGE_DISPLAY_NAMES[locale]),
+    ...languageNamesForCodes(SOURCE_LANGUAGE_CODES, LANGUAGE_DISPLAY_NAMES[locale]),
   };
 });
 
@@ -396,7 +484,7 @@ export const TARGET_LANGUAGE_DISPLAY_NAMES: Record<TargetLanguage, string> = loc
   const locale = languageDisplayLocale();
   return {
     original: targetLanguageDisplayName("original", locale),
-    ...languageNamesForCodes(QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES, LANGUAGE_DISPLAY_NAMES[locale]),
+    ...languageNamesForCodes(TARGET_LANGUAGE_CODES, LANGUAGE_DISPLAY_NAMES[locale]),
     zh: targetLanguageDisplayName("zh", locale),
     tl: targetLanguageDisplayName("tl", locale),
   };

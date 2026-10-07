@@ -62,6 +62,8 @@ class DashScopeEngine(
         customBaseUrl: String,
         customModel: String,
     ) {
+        dashScopeSourceCode(sourceLang, transcriptionOnly)
+        if (!transcriptionOnly) dashScopeTargetCode(targetLang)
         this.sourceLang = sourceLang
         this.targetLang = targetLang
         model = customModel.trim().ifEmpty { if (transcriptionOnly) ASR_MODEL else MODEL }
@@ -175,10 +177,9 @@ class DashScopeEngine(
     internal fun buildSessionUpdate(): JSONObject {
         val transcription = JSONObject()
         if (!transcriptionOnly) transcription.put("model", ASR_MODEL)
-        if (sourceLang != "auto") {
-            transcription.put("language", sourceLang)
-        }
-        val translation = JSONObject().put("language", targetLang)
+        dashScopeSourceCode(sourceLang, transcriptionOnly)?.let { transcription.put("language", it) }
+        val translation = JSONObject()
+        if (!transcriptionOnly) translation.put("language", dashScopeTargetCode(targetLang))
         if (hotwords.isNotEmpty()) {
             val phrases = JSONObject()
             for ((term, translation) in hotwords) {

@@ -9,6 +9,9 @@ class DeepLTranslationClient(
     private val configuration: TranslationConfiguration,
     client: OkHttpClient = defaultTranslationHttpClient(),
 ) : TranslationClient {
+    override fun resolveSourceLanguage(configured: String, reported: String?): String =
+        translationSourceLanguage(configured, reported, DEEPL_SOURCE_CODES)
+
     private val transport = BoundedTranslationHttpClient(client)
 
     override fun translate(text: String, sourceLanguage: String, targetLanguage: String, callback: (TranslationResult) -> Unit): TranslationCall =
@@ -31,14 +34,6 @@ internal fun deepLRequest(text: String, source: String, target: String): JSONObj
         .put("target_lang", deepLLanguage(target, source = false))
     if (source != "auto") body.put("source_lang", deepLLanguage(source, source = true))
     return body
-}
-
-internal fun deepLLanguage(code: String, source: Boolean): String = when (code) {
-    "zh" -> "ZH"
-    "en" -> "EN"
-    "ja" -> "JA"
-    "ko" -> if (source) "KO" else throw IllegalArgumentException("translation_language")
-    else -> throw IllegalArgumentException("translation_language")
 }
 
 internal fun decodeDeepLResponse(body: String): String {

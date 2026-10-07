@@ -22,41 +22,30 @@ Examples of configuration values (use your own service key; region/account avail
 
 The model name selects the field shape; it does not establish compatibility of a custom host. Remote addresses require `wss://`; only loopback accepts `ws://`. No URL query parameters are accepted by the custom editor. Bearer authentication, PCM format, acknowledgements and result events must match the selected protocol. See [DashScope events](https://help.aliyun.com/zh/model-studio/qwen-audio-asr-streaming-client-events) and [OpenAI transcription](https://developers.openai.com/api/docs/guides/realtime-transcription).
 
-The custom picker exposes 30 explicit codes that Mimi can encode in recognition-only mode: `zh en ja ko vi th id ms tl hi ar fr de es pt ru it nl sv da fi no el pl cs hu ro bg hr sk`. This is **not a model support list**. OpenAI-compatible/ChatMock text translation keeps these source choices and exposes Mimi’s represented target codes, including Traditional Chinese; these are configurable values, not a support guarantee for a third-party model. DeepL/DeepLX still narrow explicit source choices to their implemented Chinese/English/Japanese/Korean mapping plus Service default. A profile’s declared recognition range further narrows the choices. If enabling translation changes the recognition language to Service default, a transient notice names the adjustment. Auto-detected languages outside that mapping remain automatic for DeepL/DeepLX rather than failing locally. Arbitrary custom translation models may have their own limits.
+The custom picker exposes Mimi’s complete encodable registry. This is **not a model support list**. A profile’s declaration narrows these choices. Independent translation further intersects the recognition and text service catalogs. Original-only retains the recognition catalog. OpenAI-compatible/ChatMock targets remain configurable instructions whose support depends on the selected model.
 
-Generic text translation offers 31 targets, OpenAI dedicated translation 13, and Gemini 30. Choose one translation target at a time; Original (no translation) is a separate option.
+### Official API audit — 2026-10-06
 
-### Automatic detection, hints and explicit input
+These are documentation and request-contract checks, not live acceptance tests for every language. Settings, tray and floating subtitle controls share the same capability resolver and saved source/target selection. Tray and floating controls also expose the target picker for integrated services such as Gemini. Native target switching rejects an unsupported direction before saving rather than substituting another target; a listening session reconnects, while a paused session stays paused.
 
-| Current route | Meaning of recognition choice | Output choices in this implementation |
+| Current service/model | Automatic input and language choices | Primary evidence |
 | --- | --- | --- |
-| Alibaba Audio3 | Auto omits `language_hints`; a specific choice sends one hint, not a strict language filter | Default Qwen-MT Lite route: 31 translations plus Original; recognition-only: 30 explicit sources plus Auto |
-| OpenAI dedicated translation | Input detection remains automatic | 13: Chinese, English, Japanese, Korean, Russian, Spanish, French, Portuguese, German, Italian, Vietnamese, Indonesian, Hindi |
-| Gemini dedicated translation | Input detection remains automatic | 30 represented targets; Simplified/Traditional Chinese map separately; Filipino uses `fil`. Portuguese needs a regional choice and is not exposed yet |
-| xAI Grok Voice | Auto omits `language_hint`; a specific choice biases recognition | Input hints: Chinese, English, Japanese, Korean, Vietnamese, Indonesian, Hindi, French, German, Russian, Italian. Translation remains prompt-directed Chinese/English/Japanese |
-| Tencent / Baidu / Volcano | Explicit input required; there is no general Auto choice in these integrations | Existing verified/implemented subsets; see audit below |
-| Any custom endpoint | Service default omits the parameter; actual default behavior and support depend on its model | Unknown until checked against that service's documentation |
+| Desktop Alibaba Audio3 + Qwen-MT Lite | Auto omits the hint; 30 explicit ASR hints, 31 text targets plus Original. Translation intersects both catalogs. | [Audio3 client events](https://help.aliyun.com/zh/model-studio/qwen-audio-asr-streaming-client-events), [Qwen-MT model tables](https://help.aliyun.com/zh/model-studio/machine-translation#supported-languages) |
+| Android Alibaba `qwen3.5-livetranslate-flash-realtime` / `qwen3-asr-flash-realtime` | Auto already existed. Built-in route now exposes 60 languages; independent text uses 27 explicit ASR hints plus Auto. `nb`/`fil` wire aliases remain model-specific. | [Live translation](https://help.aliyun.com/zh/model-studio/qwen3-5-livetranslate-flash-realtime), [ASR events](https://help.aliyun.com/zh/model-studio/qwen-asr-realtime-client-events) |
+| OpenAI `gpt-realtime-translate` | Automatic input, all 13 documented targets already present. | [Dedicated model language table](https://developers.openai.com/cookbook/examples/voice_solutions/realtime_translation_guide#supported-languages) |
+| Azure deployment of `gpt-realtime-translate` | Automatic input; remove Mimi’s three-target guard and use the model’s 13 targets. Microsoft directly demonstrates German; the full catalog follows the same model’s publisher documentation. This is a model-identity inference, not live Azure proof. | [Microsoft model identity](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-realtime-translate), [Microsoft translation example](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets#translate-audio-in-real-time), OpenAI table above |
+| Google `gemini-3.5-live-translate-preview` | Automatic input already present; expand 30 to 78 targets. Preserve `zh→zh-Hans`, `zh_tw→zh-Hant`, `tl→fil`, and explicit `pt-BR`/`pt-PT`. Generic Live transcription hints do not establish fixed-source support for this model. | [Model language table](https://ai.google.dev/gemini-api/docs/live-api/live-translate#supported-languages), [generic transcription field](https://ai.google.dev/api/live#AudioTranscriptionConfig) |
+| xAI `grok-voice-latest` | Auto omits `language_hint`. Expose all 20 documented codes for explicit hints and prompt-directed targets. Arabic/Spanish/Portuguese regions remain distinct; a hint is not a strict filter. | [Speech-to-speech languages and hints](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech#supported-languages) |
+| Tencent `speech_translate` + `hunyuan-translation-lite` | Nine explicit sources with a target matrix. No universal Auto. `zh_en` is Chinese/English mixed mode; its same-code target means bidirectional translation. | [Exact speech translation API](https://cloud.tencent.com/document/product/1093/127565) |
+| Baidu `realtime_speech_trans` | All 45 source/target languages with the vendor’s exact codes, such as `ja→jp` and `fr→fra`. No general Auto field is documented for this API. | [Exact real-time speech translation API](https://ai.baidu.com/ai-doc/MT/Sl9p2h5k9) |
+| DeepL text | Expand the local adapter to 114 source and 120 target codes/aliases. Automatic source omits `source_lang`. Recognition choices still depend on the selected ASR. No account language lookup is made. | [Language API documentation](https://developers.deepl.com/docs/getting-started/supported-languages), [official SDK types](https://github.com/DeepLcom/deepl-node/blob/main/src/types.ts), [request contract](https://developers.deepl.com/api-reference/translate/request-translation) |
+| DeepLX text | Separate 32 source / 38 target choices including aliases and regional outputs; automatic source uses `auto`. Actual support depends on the deployed compatible server version. | [Upstream supported language table](https://deeplx.owo.network/endpoints/free.html#supported-languages) |
+| Apple Speech / Translation | Read current system languages and readiness. Explicit source required; recognition and translation packs are separate. New regional choices require exact native support. | [SpeechTranscriber](https://developer.apple.com/documentation/speech/speechtranscriber), [Translation](https://developer.apple.com/documentation/translation) |
+| Volcano AST2.0 S2T | Expand to 20 ordinary languages and input-only Cantonese/Shanghainese. Source or target must be Chinese/English. Explicit Chinese ↔ English reversal sends `zhen` on both sides; it is not universal Auto. Canonical `yue`/`wuu` map to the vendor's `yue-CN`/`sh-CN`. | [Exact AST2.0 API, language sets and constraints](https://docs.volcengine.com/docs/DoubaoVoice/SimultaneousInterpretation20APIAccessDocumentation?lang=zh) |
 
-### Official API audit — 2026-10-05
+The checked automatic modes were already exposed. No universal Auto option is invented for an explicit-input API. Catalogs use the integrated model’s documented scope rather than another model from the same company. Unsupported language pairs fail before connection; changing a source keeps the target when legal and otherwise chooses a supported fallback.
 
-This audit distinguishes current code coverage from official capability. It is not a live-account acceptance report.
-
-| Service and primary source | Confirmed alignment or gap |
-| --- | --- |
-| [Audio3](https://help.aliyun.com/zh/model-studio/qwen-audio-asr-streaming-client-events) / [Qwen-MT](https://help.aliyun.com/zh/model-studio/machine-translation#supported-languages) | Audio3's 30 hint codes and Auto omission match. The API accepts up to four hints; Mimi intentionally sends one. The default Lite translation table has 31 entries; do not substitute the Plus model's table. The effective desktop route is Audio3 plus text translation, not the legacy integrated live-translate encoder. |
-| [OpenAI dedicated translation](https://developers.openai.com/cookbook/examples/voice_solutions/realtime_translation_guide) | Expanded output from three to all 13 documented codes; no unsupported input-language field was added. Ordinary transcription has a different contract. |
-| [Gemini dedicated translation](https://ai.google.dev/gemini-api/docs/live-api/live-translate#supported-languages) | Expanded to the 30 unambiguous represented targets. `zh→zh-Hans`, `zh_tw→zh-Hant`, `tl→fil`; `pt-BR`/`pt-PT` still need distinct product choices. |
-| [xAI Voice](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech#language-hint) | Added the missing optional input hint. Spanish/Portuguese regional variants, ambiguous Arabic region defaults and languages outside Mimi's source enum remain unexposed. A hint is not a forced-language guarantee. |
-| [Azure dedicated translation](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets#translate-audio-in-real-time) | Retains three outputs in Mimi. Official dedicated examples include German; Azure's complete deployment-specific range was not established here. OpenAI's public catalog is not silently assigned to Azure aliases. |
-| [Tencent](https://cloud.tencent.com/document/product/1093/127565) | Retains four sources and three targets. Official support is larger but uses a language-pair matrix; flat expansion would allow invalid pairs. `zh_en` is Chinese/English mixing, not universal Auto. |
-| [Baidu](https://ai.baidu.com/ai-doc/MT/Sl9p2h5k9) | Retains four sources and three targets. Official documentation lists 45 languages; expanding the catalog requires provider-specific code mappings, not raw ISO codes. This remains a known gap. |
-| [Volcano product overview](https://docs.volcengine.com/docs/DoubaoVoice/ProductOverview-3?lang=zh) / [API entry](https://docs.volcengine.com/docs/6561/1756902?lang=zh) | No range expansion. Existing Mimi code exposes Chinese/English/Japanese; the accessible current overview advertises Chinese/English. Japanese support still needs exact API/account verification and is not newly certified here. |
-| [DeepL request](https://developers.deepl.com/api-reference/translate/request-translation) / [language API](https://developers.deepl.com/docs/languages/using-the-languages-api) | Preserves Auto by omitting `source_lang` when an ASR report cannot be mapped locally. Source/target catalogs differ; broader DeepL language selection is still not exposed. No account capability lookup was made. |
-| [DeepLX/DLX upstream](https://github.com/OwO-Network/DLX) / [OpenAI-compatible chat](https://developers.openai.com/api/reference/resources/chat) | DeepLX is not official DeepL and depends on its deployment. Chat-compatible translation uses instructions, with no universal language-capability discovery. Neither protocol implies support for all languages. |
-
-Official catalogs in this UI come from Mimi’s API mappings, not automatic service discovery. Custom declarations remain user-provided and may become stale when the endpoint or model changes; recheck the service documentation when editing those fields.
-
-Custom recognition editors and their optional language declarations remain desktop features. Android shares the changed OpenAI/Gemini/xAI wire behavior and catalogs, but its Alibaba model/route differs; no desktop-only custom profile is implied. External model runners are not installed by this configuration feature. A compatible local endpoint still needs its own separately managed service.
+Shared wire fixtures are consumed by desktop Rust and Android tests. The encodable registry and provider catalogs are checked separately so adding one service’s language cannot silently broaden another. Custom recognition editors and declarations remain desktop features; Android’s differing Alibaba models remain explicit platform differences. No paid cloud audio request was made for this audit.
 
 ## 中文
 
@@ -72,17 +61,19 @@ Custom recognition editors and their optional language declarations remain deskt
 
 阿里兼容接入发送 `language_hints: ["en"]`；OpenAI 独立转写通常发送 `transcription.language: "en"`，`gpt-live-transcribe` 系列改用 `transcription.languages: ["en"]`。自动/服务默认时省略这些字段。模型名只用于选择字段形状，不能证明任意兼容地址支持该能力。区域地址与账户权限请以服务自己的文档为准；这里不会自动探测私有地址。
 
-自定义识别的原文模式可选择 Mimi 能编码的 30 种语言代码（见上方完整代码表），**它们不是模型支持列表**。OpenAI 兼容／ChatMock 文字翻译保留这些源语言，并提供 Mimi 已表示的目标语言（含繁体中文）；这些是可发送的参数，不保证任意模型都支持。DeepL／DeepLX 仍按各自已实现的映射限制显式源语言为中、英、日、韩及服务默认。每项配置里用户声明的识别范围会进一步筛选选项。如果开启翻译使识别语言回到服务默认，界面会用短暂通知说明实际调整。选自动时，DeepL/DeepLX 对无法本地映射的检测结果保留服务自动检测，不再因法语、德语等报告在本地失败。
+自定义识别提供 Mimi 可编码的完整语言目录，**不是任意模型的支持承诺**。配置里声明的语言范围和独立文字翻译服务会进一步筛选；只显示原文时保留识别服务自己的范围。通用 Chat Completions／ChatMock 的目标是传给模型的翻译指令，实际效果仍由模型决定。
 
-界面中的官方语言目录来自 Mimi 对已接入 API 的映射，不是远端自动发现。第三方声明由用户提供，修改地址或模型后应重新核对文档；选择语言不会自动下载模型资源。
+### 本次核对与修复
 
-通用文字翻译提供 31 个目标，OpenAI 专用翻译 13 个，Gemini 30 个；每次选择一个翻译目标。「不翻译」另计。
+上方表格逐项列出了当前模型、自动识别语义、修复范围及官方出处：
 
-### 手动还是自动
+- Gemini 从 30 补到 78 个目标；葡萄牙语地区变体单列。OpenAI 保持完整的 13 个，Azure 同名专用模型从 3 个补到 13 个。
+- xAI 补齐 20 个官方语言／地区代码。自动识别省略提示；阿拉伯语、西班牙语和葡萄牙语的地区不擅自代选。
+- 百度补齐 45 个语言及其专用代码。腾讯补齐 9 个识别选项，并按识别语言筛选目标；「中英混合」不等于通用自动识别，同模式互译也不会被当成无需翻译。
+- DeepL 与 DeepLX 分别按自己的目录扩充；计数含地区和兼容别名。自动文字检测保留，识别语言仍与所选 ASR 求交集，不会让阿里 Audio3 凭空支持更多语言。
+- Android 阿里内置同传和独立识别使用不同模型，分别处理 60 个同传语言与 27 个显式识别提示。桌面 Audio3 的 30 个提示及 Qwen-MT Lite 的 31 个目标保持原模型范围。
+- Apple 根据系统实际目录及就绪状态显示，区域语言需要准确匹配。设置、托盘与悬浮字幕的来源和目标选择共用相同规则及已保存状态；Gemini 等一体服务也可在托盘和悬浮窗选择翻译目标。原生切换会在保存前拒绝不支持的方向，不会擅自换成另一种目标；运行中的会话重连，暂停状态保持暂停。
 
-- **阿里 Audio3 / xAI：** 不确定输入语言可选自动；已知单一语言可给提示。提示会偏向该语言，不保证严格排除其他语言。
-- **OpenAI / Gemini 专用实时翻译：** 输入语言由服务检测，不需要手动填源语言。OpenAI 当前可选 13 种输出；Gemini 可选 Mimi 已表示且映射明确的 30 种输出。葡萄牙语地区变体不擅自代选。
-- **腾讯 / 百度 / 火山当前接入：** 必须明确选输入语言。当前选项是 Mimi 已接入的子集，并非服务的完整官方范围。
-- **自定义服务：** 支持范围未知，按自己的 endpoint 和 model 文档配置。若本地桥忽略语言提示，Mimi 的选择不会改变模型行为。
+核对到的通用自动识别模式原本均已有入口；没有给要求明确输入的接口虚构「自动」选项。火山补齐 20 种普通语言、粤语与上海话输入，以及「中英互译」模式；识别或翻译一侧必须为中英，方言仅作输入。中英互译同时发送 `zhen`，不等于任意语种自动识别。Azure 的完整 13 项依据相同模型身份与模型发布方文档推导，尚未逐项调用 Azure 验证。
 
-上方官方审计表逐项列出本次已补齐和仍未覆盖的范围：xAI hint、OpenAI/Gemini 输出已补；腾讯语言对矩阵、百度完整专有代码、Azure 更广输出、火山日语核验和更广 DeepL／DeepLX 文字翻译语言仍有明确边界。不能把这次修改称为“所有官方 API 全量对齐”。此文档和协议测试没有使用云端付费请求，也不代表账户、网络或音频质量的验收。
+这些结论来自官方资料、实际请求编码及桌面／Android 共用合成用例，不代表每种语言的云端账号、语音质量或完整字幕会话均已实测。本轮语言目录审计没有发送云端付费音频。Apple 语言包下载与文字检查的原生实测另记于集成记录。

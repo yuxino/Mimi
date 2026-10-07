@@ -146,7 +146,7 @@ export const CHATMOCK_DEFAULT_ENDPOINT = "http://127.0.0.1:8000/v1";
 export function buildAlibabaTranslationCredentials(profile: ServiceProfile, draft: CredentialDraft, translation: TextTranslation, clearToken = false): ProviderCredentialsInput | null {
   const custom = isStandaloneAsrProvider(profile.provider);
   if (!custom && profile.provider !== "alibabaCloud" && profile.provider !== "deepLX") return null;
-  if (!custom && !draft.apiKey.trim() && profile.credentialState !== "present") return null;
+  if (!custom && !draft.apiKey.trim() && (profile.speechCredentialState ?? profile.credentialState) !== "present") return null;
   const savedTranslation = profile.textTranslation ?? (profile.provider === "deepLX" ? "deepLX" : "followService");
   const keepsSavedDestination = (custom ? profile.textCredentialState : profile.credentialState) === "present" && translation === savedTranslation;
   if (translation === "deepLX" && !draft.endpoint.trim() && !keepsSavedDestination) return null;
@@ -157,7 +157,7 @@ export function buildAlibabaTranslationCredentials(profile: ServiceProfile, draf
     apiKey: custom ? "" : draft.apiKey.trim(),
     textTranslation: translation,
     endpoint: translation === "deepLX" || isChatCompletionsTranslation(translation) ? draft.endpoint.trim() : "",
-    token: translation === "followService" || (isChatCompletionsTranslation(translation) && clearToken) ? "" : draft.token.trim(),
+    token: translation === "followService" || translation === "apple" || (isChatCompletionsTranslation(translation) && clearToken) ? "" : draft.token.trim(),
     model: isChatCompletionsTranslation(translation) ? draft.model.trim() : "",
     ...(isChatCompletionsTranslation(translation) && clearToken ? { clearToken: true } : {}),
   };

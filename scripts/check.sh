@@ -15,6 +15,7 @@ export CARGO_HOME="${CARGO_HOME:-$PROJECT_DIR/.cargo-home}"
 export npm_config_cache="${npm_config_cache:-$PROJECT_DIR/.npm-cache}"
 
 bash "$SCRIPT_DIR/dev-app-launch-test.sh"
+bash "$SCRIPT_DIR/check-apple-translation.sh"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   echo "==> development install recovery safety"

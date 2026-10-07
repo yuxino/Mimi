@@ -137,6 +137,7 @@ const RECOVERY_ATTEMPTS: usize = 4;
 
 #[derive(Clone, PartialEq, Eq)]
 enum MTBudgetRoute {
+    Apple,
     Qwen(QwenMTModel),
     DeepL,
     DeepLX,
@@ -156,11 +157,20 @@ impl MTBudgetScope {
         profile_id: String,
         configuration: &LiveTranslationConfiguration,
     ) -> Option<Self> {
-        let route = if configuration.provider.is_standalone_asr() {
+        let route = if matches!(
+            configuration.text_credentials,
+            Some(TextTranslationCredentials::Apple)
+        ) {
+            if !configuration.target_language.translates_audio() {
+                return None;
+            }
+            MTBudgetRoute::Apple
+        } else if configuration.provider.is_standalone_asr() {
             if !configuration.target_language.translates_audio() {
                 return None;
             }
             match configuration.text_credentials.as_ref()? {
+                TextTranslationCredentials::Apple => MTBudgetRoute::Apple,
                 TextTranslationCredentials::DeepL { .. } => MTBudgetRoute::DeepL,
                 TextTranslationCredentials::DeepLX { .. } => MTBudgetRoute::DeepLX,
                 TextTranslationCredentials::OpenAICompatible { .. } => {
@@ -467,8 +477,19 @@ fn apply_establish_failure_state(
 
 /// These fixed application errors cannot improve through automatic reconnect.
 /// Starting again is an explicit user action after authorization or system stop.
-fn session_error_requires_user_action(error: &str) -> bool {
+fn configuration_failure_requires_repair(error: &str) -> bool {
     crate::core::protocols::audio3::failure_requires_configuration(error)
+        || matches!(
+            error,
+            "apple_translation_unavailable"
+                | "apple_translation_assets_missing"
+                | "apple_translation_language_unsupported"
+                | "apple_translation_invalid_input"
+        )
+}
+
+fn session_error_requires_user_action(error: &str) -> bool {
+    configuration_failure_requires_repair(error)
         || matches!(
             error,
             "System audio capture permission was denied."
@@ -496,7 +517,7 @@ fn clear_stale_configuration_error(
     };
     if !changed
         || *epoch != current_epoch
-        || !crate::core::protocols::audio3::failure_requires_configuration(error)
+        || !configuration_failure_requires_repair(error)
         || controller.state.status != SessionStatus::Error(error.clone())
     {
         return false;
@@ -1208,7 +1229,7 @@ impl SessionManager {
         let controller = self.controller.lock().unwrap();
         match &controller.state.status {
             SessionStatus::Error(error)
-                if crate::core::protocols::audio3::failure_requires_configuration(error)
+                if configuration_failure_requires_repair(error)
                     && self.active_generation.load(Ordering::SeqCst) == NO_GENERATION =>
             {
                 Some((
@@ -2613,6 +2634,31 @@ impl SessionManager {
             None
         };
         let live = action != ProfileSwitchAction::SelectOnly;
+        if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
+            if self.is_ui_test() && selection.target_language.translates_audio() {
+                return Err("apple_translation_unavailable".into());
+            }
+            if !live
+                && selection.source_language == SourceLanguage::Automatic
+                && selection.target_language.translates_audio()
+            {
+                // Idle metadata can await an explicit source choice; do not
+                // guess another language merely to activate the editor.
+                if !crate::apple_translation_support::refresh().await?.available {
+                    return Err("apple_translation_unavailable".into());
+                }
+            } else {
+                crate::apple_translation_support::validate_pair(
+                    selection.source_language,
+                    selection.target_language,
+                    live,
+                )
+                .await?;
+            }
+            if !self.is_lifecycle_request_current(switch_epoch) {
+                return Err("profile_switch_superseded".into());
+            }
+        }
         // Validate before persistence: an incomplete profile must not replace
         // the working session. UI fixtures never resolve credentials.
         let proposed = if live && !self.is_ui_test() {
@@ -2724,6 +2770,9 @@ impl SessionManager {
         let provider = profile.effective_provider();
         let prefs = self.settings.preferences();
         if provider == ProviderKind::AppleSpeech {
+            if self.is_ui_test() {
+                return Err("apple_speech_ui_test_unavailable".into());
+            }
             // Validate once while holding the lifecycle guard. Refusals must
             // reach IPC instead of looking like a successful language change.
             let support = crate::apple_speech_support::refresh().await;
@@ -2769,6 +2818,20 @@ impl SessionManager {
             );
             (target, mode, needs_reconnect)
         };
+        if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
+            if self.is_ui_test() && target_language.translates_audio() {
+                return Err("apple_translation_unavailable".into());
+            }
+            crate::apple_translation_support::validate_pair(
+                language,
+                target_language,
+                self.has_active_session() || self.is_paused(),
+            )
+            .await?;
+            if !self.is_lifecycle_request_current(switch_epoch) {
+                return Err("source_switch_superseded".into());
+            }
+        }
         if self
             .settings
             .save_preferences_for_active_profile(|prefs| {
@@ -2815,14 +2878,13 @@ impl SessionManager {
         self.try_reconnect_if_current(switch_epoch).await
     }
 
-    /// Switches between recognition-only and a supported translation target.
+    /// Switches to a supported translation target or recognition-only mode.
     /// Shares the source-switch lifecycle: paused sessions stay paused, live
     /// sessions reconnect, and newer stop/pause requests supersede reconnect.
     pub async fn switch_target_language(
         self: &Arc<Self>,
         target: crate::core::models::TargetLanguage,
     ) -> Result<(), String> {
-        use crate::core::models::TargetLanguage;
         use crate::core::provider::ProviderPreferences;
         let switch_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
         let lifecycle = self.settings_mutation_guard(false).await?;
@@ -2840,18 +2902,23 @@ impl SessionManager {
             .active_profile()
             .map_err(|_| "target_switch_profile")?;
         let prefs = self.settings.preferences();
-        let capabilities = profile.capabilities(target);
-        if !capabilities
-            .target_languages
-            .contains(&TargetLanguage::Original)
-            || !capabilities.target_languages.contains(&target)
-        {
-            return Err("target_switch_unsupported".into());
-        }
+        let selection = profile
+            .preferences_after_target_switch(
+                ProviderPreferences {
+                    source_language: prefs.source_language,
+                    target_language: prefs.target_language,
+                    translation_mode: prefs.translation_mode,
+                },
+                target,
+            )
+            .ok_or("target_switch_unsupported")?;
         if prefs.target_language == target {
             return Ok(());
         }
         if profile.provider == ProviderKind::AppleSpeech {
+            if self.is_ui_test() {
+                return Err("apple_speech_ui_test_unavailable".into());
+            }
             crate::apple_speech_support::validate_refreshed_profile_source(
                 crate::apple_speech_support::refresh().await,
                 &profile,
@@ -2864,11 +2931,20 @@ impl SessionManager {
                 return Err("language_switch_superseded".into());
             }
         }
-        let selection = profile.normalize_preferences(ProviderPreferences {
-            source_language: prefs.source_language,
-            target_language: target,
-            translation_mode: prefs.translation_mode,
-        });
+        if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
+            if self.is_ui_test() && target.translates_audio() {
+                return Err("apple_translation_unavailable".into());
+            }
+            crate::apple_translation_support::validate_pair(
+                prefs.source_language,
+                target,
+                self.has_active_session() || self.is_paused(),
+            )
+            .await?;
+            if !self.is_lifecycle_request_current(switch_epoch) {
+                return Err("language_switch_superseded".into());
+            }
+        }
         // A session started in Original mode can lack translation credentials.
         // Validate its resumed route before saving, so a missing text key cannot
         // leave the preference and running session on different selections.
@@ -2878,7 +2954,8 @@ impl SessionManager {
                 configuration.source_language = selection.source_language;
                 configuration.target_language = selection.target_language;
                 configuration.translation_mode = selection.translation_mode;
-                if configuration.provider.is_standalone_asr()
+                if (configuration.provider.is_standalone_asr()
+                    || profile.text_translation() == crate::core::provider::TextTranslation::Apple)
                     && target.translates_audio()
                     && configuration.text_credentials.is_none()
                 {

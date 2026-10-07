@@ -1,6 +1,7 @@
 //! Native and network clients for live recognition and translation.
 
 pub mod apple_speech_client;
+pub mod apple_translation_client;
 
 pub mod audio3_client;
 pub mod azure_openai_realtime_client;

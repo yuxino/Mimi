@@ -1,4 +1,4 @@
-import { speechLanguageGuidance } from "../../lib/speechLanguageGuidance";
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
@@ -14,6 +14,7 @@ import {
   activeServiceProfile,
   credentialStateForTarget,
   sourceLanguagesForSettings,
+  targetLanguagesForSettings,
 } from "../../lib/providerCapabilities";
 import {
   selectSessionErrorMessage,
@@ -21,10 +22,8 @@ import {
   useStore,
 } from "../../lib/store";
 import {
-  TARGET_LANGUAGE_DISPLAY_NAMES,
-  targetLanguageTranslatesAudio,
-  type SettingsSnapshot,
   type SourceLanguage,
+  type TargetLanguage,
   type SubtitleAlignment,
 } from "../../lib/types";
 import { subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
@@ -75,6 +74,7 @@ export function TrayPanel() {
   const togglePaused = useStore((state) => state.togglePaused);
   const selectProfile = useStore((state) => state.selectProfile);
   const switchSourceLanguage = useStore((state) => state.switchSourceLanguage);
+  const switchTargetLanguage = useStore((state) => state.switchTargetLanguage);
   const saveSettings = useStore((state) => state.saveSettings);
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showOverlay = useStore((state) => state.showOverlay);
@@ -90,6 +90,7 @@ export function TrayPanel() {
 
   const activeProfile = activeServiceProfile(settings);
   const sourceLanguages = sourceLanguagesForSettings(settings);
+  const targetLanguages = targetLanguagesForSettings(settings);
   const presentation = deriveTrayPresentation({
     statusKind: sessionStatusKind,
     isPaused,
@@ -308,7 +309,6 @@ export function TrayPanel() {
           </span>
           <span className="tray-setting-row__copy">
             <span>{I18N.tray.sourceLanguage} <SettingsHelp text={speechLanguageGuidance(settings).help} label={I18N.settings.helpLabel} /></span>
-            <small>{translationSummary(settings)}</small>
           </span>
           <span className="tray-select-wrap">
             <LanguageSelect label={I18N.tray.sourceLanguage} value={settings.sourceLanguage}
@@ -316,6 +316,20 @@ export function TrayPanel() {
               disabled={sourcePickerDisabled}
               options={sourceLanguages.map((language) => ({ value: language, label: speechLanguageGuidance(settings).optionLabel(language) }))}
               onChange={(value) => performAction("language", () => switchSourceLanguage(value as SourceLanguage))} />
+          </span>
+        </div>
+
+        <div className="tray-setting-row tray-setting-row--language tray-setting-row--target">
+          <span className="tray-setting-row__icon" aria-hidden="true"><Icon name="languages" /></span>
+          <span className="tray-setting-row__copy">
+            <span>{I18N.settings.translateTo} <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} /></span>
+          </span>
+          <span className="tray-select-wrap">
+            <LanguageSelect label={I18N.settings.translateTo} value={settings.targetLanguage}
+              valueLabel={targetLanguageOptionLabel(settings, settings.targetLanguage)}
+              disabled={anyActionPending || !presentation.canChangeSourceLanguage || targetLanguages.length === 0 || (targetLanguages.length === 1 && targetLanguages[0] === settings.targetLanguage)}
+              options={targetLanguages.map(language => ({ value: language, label: targetLanguageOptionLabel(settings, language) }))}
+              onChange={value => performAction("language", () => switchTargetLanguage(value as TargetLanguage))} />
           </span>
         </div>
 
@@ -679,12 +693,4 @@ function sessionActionIcon(action: TraySessionAction): IconName {
     case "stopping":
       return "waves";
   }
-}
-
-function translationSummary(settings: SettingsSnapshot) {
-  if (!targetLanguageTranslatesAudio(settings.targetLanguage)) {
-    return I18N.tray.originalOnly;
-  }
-  const target = TARGET_LANGUAGE_DISPLAY_NAMES[settings.targetLanguage];
-  return `→ ${target}`;
 }

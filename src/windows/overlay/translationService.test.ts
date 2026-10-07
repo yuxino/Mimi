@@ -36,7 +36,7 @@ it.each(["alibabaCloud", "customDashScopeASR", "customOpenAIASR", "appleSpeech"]
   "keeps %s recognition visible beside each independent translator", provider => {
     for (const [textTranslation, label] of [
       ["deepL", "DeepL"], ["deepLX", "DeepLX"], ["chatMock", "ChatMock"],
-      ["openAICompatible", "OpenAI-compatible API"],
+      ["openAICompatible", "OpenAI-compatible API"], ["apple", "Apple Translation"],
     ] as const) {
       const result = translationService(settings({ provider, textTranslation }));
       expect(result?.stages).toEqual([
@@ -97,7 +97,7 @@ it.each(["zh", "en", "ja"] as const)("resolves both stages and original-only cop
     .toContain(`${I18N.settings.textTranslationLabel}: ${I18N.overlay.originalOnly}`);
 });
 
-it.each(["deepL", "deepLX", "chatMock", "openAICompatible"] as const)(
+it.each(["deepL", "deepLX", "chatMock", "openAICompatible", "apple"] as const)(
   "uses the selected %s alias while retaining its protocol and recognition identities", textTranslation => {
     const result = translationService(settings({
       textTranslation,

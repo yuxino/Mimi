@@ -137,13 +137,21 @@ class TranslationPipelineTest {
     }
     @Test fun explicitSourceWinsAndAutomaticSourceNormalizesAsrAliases() {
         assertEquals("ja", translationSourceLanguage("ja", "English"))
-        assertEquals("en", translationSourceLanguage("auto", "en-US"))
+        assertEquals("en-US", translationSourceLanguage("auto", "en-US"))
         assertEquals("ja", translationSourceLanguage("auto", "ja-JP"))
         assertEquals("zh", translationSourceLanguage("auto", "Chinese"))
         assertEquals("zh", translationSourceLanguage("auto", "Mandarin"))
         assertEquals("en", translationSourceLanguage("auto", "English"))
         assertEquals("ko", translationSourceLanguage("auto", "Korean"))
-        for (label in listOf(null, "", "unknown provider language", "fr-FR", "x".repeat(100))) {
+        assertEquals("fr", translationSourceLanguage("auto", "fr-FR"))
+        assertEquals("tl", translationSourceLanguage("auto", "fil"))
+        assertEquals("no", translationSourceLanguage("auto", "nb"))
+        assertEquals("zh_tw", translationSourceLanguage("auto", "zh-Hant"))
+        assertEquals("pt-BR", translationSourceLanguage("auto", "pt-BR"))
+        assertEquals("auto", translationSourceLanguage("auto", "en-US", DEEPL_SOURCE_CODES))
+        assertEquals("en-US", translationSourceLanguage("en-US", "en", DEEPL_SOURCE_CODES))
+        assertEquals("fr", translationSourceLanguage("auto", "fr-FR", DEEPL_SOURCE_CODES))
+        for (label in listOf(null, "", "unknown provider language", "x".repeat(100))) {
             assertEquals("auto", translationSourceLanguage("auto", label))
         }
         pipeline.submit("synthetic", "ja-JP")

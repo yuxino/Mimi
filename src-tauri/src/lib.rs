@@ -3,6 +3,8 @@
 
 mod apple_speech;
 mod apple_speech_support;
+mod apple_translation;
+mod apple_translation_support;
 mod audio;
 #[cfg(test)]
 mod audio3_benchmark;
@@ -348,6 +350,9 @@ pub fn run() {
             commands::settings_get,
             commands::get_apple_speech_support,
             commands::prepare_apple_speech_language,
+            commands::get_apple_translation_support,
+            commands::get_apple_translation_status,
+            commands::prepare_apple_translation_languages,
             fonts::installed_font_families,
             commands::windows_audio_status,
             commands::audio_census,

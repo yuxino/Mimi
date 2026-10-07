@@ -38,10 +38,13 @@ class SharedTranslationContractTest {
                 val target = case.getString("target")
                 when(case.getString("provider")) {
                     "openAIRealtime" -> JSONObject().put("targetCode", openAITranslationSetup(target).getJSONObject("session").getJSONObject("audio").getJSONObject("output").getString("language"))
+                    "azureOpenAIRealtime" -> JSONObject().put("targetCode", JSONObject((AzureProtocol(ServiceConfiguration(ServiceProvider.AZURE, mapOf("transcriptionDeployment" to "synthetic-transcription")), target).setup() as WireFrame.Text).value).getJSONObject("session").getJSONObject("audio").getJSONObject("output").getString("language"))
                     "googleGeminiLive" -> JSONObject().put("targetCode", JSONObject((GeminiProtocol(ServiceConfiguration(ServiceProvider.GEMINI, emptyMap()), target).setup() as WireFrame.Text).value).getJSONObject("setup").getJSONObject("generationConfig").getJSONObject("translationConfig").getString("targetLanguageCode"))
                     "xAIRealtime" -> {
                         val session = JSONObject((GrokProtocol(ServiceConfiguration(ServiceProvider.XAI, emptyMap()), target, case.getString("source")).setup() as WireFrame.Text).value)
-                        JSONObject().put("sourceHint", session.getJSONObject("session").getJSONObject("audio").getJSONObject("input").getJSONObject("transcription").opt("language_hint") ?: JSONObject.NULL)
+                        JSONObject().put("sourceHint", session.getJSONObject("session").getJSONObject("audio").getJSONObject("input").getJSONObject("transcription").opt("language_hint") ?: JSONObject.NULL).also {
+                            if (case.optJSONObject("expected")?.has("instructions") == true) it.put("instructions", session.getJSONObject("session").getString("instructions"))
+                        }
                     }
                     else -> error("unknown_provider")
                 }
@@ -52,7 +55,7 @@ class SharedTranslationContractTest {
         val catalogs = contract.getJSONArray("speechLanguageCatalogs")
         repeat(catalogs.length()) { index ->
             val case = catalogs.getJSONObject(index)
-            val provider = when(case.getString("provider")) { "openAIRealtime" -> ServiceProvider.OPENAI; "googleGeminiLive" -> ServiceProvider.GEMINI; else -> ServiceProvider.XAI }
+            val provider = when(case.getString("provider")) { "openAIRealtime" -> ServiceProvider.OPENAI; "azureOpenAIRealtime" -> ServiceProvider.AZURE; "googleGeminiLive" -> ServiceProvider.GEMINI; "xAIRealtime" -> ServiceProvider.XAI; else -> error("unknown_provider") }
             val expected = case.getJSONObject("expected")
             assertTrue(case.getString("id"), expected.getJSONArray("sourceLanguages").similar(org.json.JSONArray(provider.sources)))
             assertTrue(case.getString("id"), expected.getJSONArray("targetLanguages").similar(org.json.JSONArray(provider.targets)))
@@ -126,10 +129,33 @@ class SharedTranslationContractTest {
         assertFalse(targets.contains("original"))
     }
 
+    @Test fun strictTextCatalogsAndRequestsCoverEveryDocumentedLanguage() {
+        val catalogs = contract.getJSONObject("textLanguageCatalogs")
+        for ((provider, sources, targets) in listOf(
+            Triple("deepL", DEEPL_SOURCE_CODES, DEEPL_TARGET_CODES),
+            Triple("deepLX", DEEPLX_SOURCE_CODES, DEEPLX_TARGET_CODES),
+        )) {
+            val catalog = catalogs.getJSONObject(provider)
+            assertTrue("$provider sources", catalog.getJSONArray("sourceLanguages").similar(org.json.JSONArray(sources)))
+            assertTrue("$provider targets", catalog.getJSONArray("targetLanguages").similar(org.json.JSONArray(targets)))
+            val testedSources = mutableSetOf<String>()
+            val testedTargets = mutableSetOf<String>()
+            cases("requests") { case ->
+                if (case.getString("provider") == provider && !case.isNull("expected")) {
+                    testedSources += case.getString("source")
+                    testedTargets += case.getString("target")
+                }
+            }
+            assertTrue("$provider source coverage", testedSources.containsAll(sources))
+            assertTrue("$provider target coverage", testedTargets.containsAll(targets))
+        }
+    }
+
     @Test fun sharedDetectedSourceRequestContracts() = cases("detectedSourceRequests") { case ->
         val actual = runCatching {
             val reported = if (case.isNull("reported")) null else case.getString("reported")
-            val source = translationSourceLanguage(case.getString("source"), reported)
+            val supportedSources = when (case.getString("provider")) { "deepL" -> DEEPL_SOURCE_CODES; "deepLX" -> DEEPLX_SOURCE_CODES; else -> error("unknown_provider") }
+            val source = translationSourceLanguage(case.getString("source"), reported, supportedSources)
             val text = case.getString("text")
             val target = case.getString("target")
             when (case.getString("provider")) {

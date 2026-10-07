@@ -180,7 +180,7 @@ mod tests {
     }
     #[tokio::test]
     async fn automatic_source_keeps_detection_for_unmapped_reports() {
-        for source in [SourceLanguage::French, SourceLanguage::German] {
+        for source in [SourceLanguage::Khmer, SourceLanguage::Asturian] {
             let (client, server) =
                 fixture(200, r#"{"code":200,"data":"synthetic result"}"#, "", false).await;
             client.translate("synthetic", Some(source)).await.unwrap();
