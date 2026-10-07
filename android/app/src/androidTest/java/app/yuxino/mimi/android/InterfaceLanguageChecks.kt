@@ -168,7 +168,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
         onUi { editor.window.decorView.findViewWithTag<View>("speech-help").performClick() }
         instrumentation.waitForIdleSync()
         onUi { check(WindowInspector.getGlobalWindowViews().any {
-            it.findViewById<TextView>(android.R.id.message)?.text?.contains(editor.getString(R.string.guide_help_azure)) == true
+            it.findViewWithTag<TextView>("help-message")?.text?.contains(editor.getString(R.string.guide_help_azure)) == true
         }) }
         capture("${tag.ifEmpty { "system" }}-help-$theme")
         instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)

@@ -11,7 +11,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.doOnLayout
 import app.yuxino.mimi.android.provider.*
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
@@ -118,10 +117,10 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         localHttp.isChecked = state.localHttp
         fields.visibility = if (hasNetworkProvider()) View.VISIBLE else View.GONE
         val customEndpoint = selected.usesOpenAIProtocol || selected == TextTranslationProvider.DEEPLX
-        inputLayouts.getValue(endpoint).visibility = if (customEndpoint) View.VISIBLE else View.GONE
-        inputLayouts.getValue(endpoint).hint = activity.getString(if (selected == TextTranslationProvider.DEEPLX) R.string.translation_deeplx_endpoint else R.string.translation_endpoint)
+        ServiceSettingsUi.fieldVisible(inputLayouts.getValue(endpoint), customEndpoint)
+        ServiceSettingsUi.fieldLabel(inputLayouts.getValue(endpoint), activity.getString(if (selected == TextTranslationProvider.DEEPLX) R.string.translation_deeplx_endpoint else R.string.translation_endpoint))
         inputLayouts.getValue(endpoint).placeholderText = if (selected == TextTranslationProvider.DEEPLX) "https://example.com/translate" else "https://example.com/v1"
-        inputLayouts.getValue(model).visibility = if (selected.usesOpenAIProtocol) View.VISIBLE else View.GONE
+        ServiceSettingsUi.fieldVisible(inputLayouts.getValue(model), selected.usesOpenAIProtocol)
         localHttp.visibility = if (customEndpoint) View.VISIBLE else View.GONE
         rendering = false
         updateKeyLabel(); onModeChange(enabled)
@@ -163,7 +162,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
             TextTranslationProvider.DEEPLX -> R.string.translation_token
             else -> R.string.translation_key
         })
-        inputLayouts.getValue(key).hint = if (hasSavedKey && state.key.isBlank()) activity.getString(R.string.translation_saved_field, label) else label
+        ServiceSettingsUi.fieldLabel(inputLayouts.getValue(key), if (hasSavedKey && state.key.isBlank()) activity.getString(R.string.translation_saved_field, label) else label)
         inputLayouts.getValue(key).placeholderText = when {
             hasSavedKey && state.key.isBlank() -> activity.getString(R.string.service_secret_saved)
             selected == TextTranslationProvider.DEEPL -> null
@@ -188,8 +187,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
             }) + (if (selected == TextTranslationProvider.DEEPL) "" else "\n\n" + activity.getString(R.string.translation_help_network)) +
                 "\n\n" + activity.getString(R.string.translation_help_save)
         }
-        MaterialAlertDialogBuilder(activity).setTitle(translationProviderLabel(selected)).setMessage(body)
-            .setPositiveButton(android.R.string.ok, null).show()
+        ServiceSettingsUi.showHelp(activity, activity.getString(translationProviderLabel(selected)), body)
     }
 
     private fun checkConnection() {
@@ -245,7 +243,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         }
         inputLayouts[edit] = box
         box.addView(edit, LinearLayout.LayoutParams(-1, -2))
-        fields.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+        ServiceSettingsUi.addField(activity, fields, box, edit, activity.getString(title), dp(16))
         return edit
     }
 }
@@ -265,7 +263,6 @@ internal fun helpButton(activity: AppCompatActivity, title: Int, body: Int, tag:
     imageTintList = ContextCompat.getColorStateList(activity, R.color.mimi_muted)
     contentDescription = activity.getString(title); tooltipText = activity.getString(title)
     setOnClickListener {
-        MaterialAlertDialogBuilder(activity).setTitle(title).setMessage(body)
-            .setPositiveButton(android.R.string.ok, null).show()
+        ServiceSettingsUi.showHelp(activity, activity.getString(title), activity.getString(body))
     }
 }

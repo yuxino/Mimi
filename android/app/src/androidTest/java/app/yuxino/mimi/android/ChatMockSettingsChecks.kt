@@ -269,9 +269,9 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
         click(editor, "translation-help")
         onUi {
             val dialog = WindowInspector.getGlobalWindowViews().firstOrNull {
-                it.findViewById<TextView>(android.R.id.message)?.isShown == true
+                it.findViewWithTag<TextView>("help-message")?.isShown == true
             } ?: error("Requirements must open a standard help dialog")
-            val message = dialog.findViewById<TextView>(android.R.id.message)
+            val message = dialog.findViewWithTag<TextView>("help-message")
             check(message.text.isNotBlank()) { "ChatMock requirements are missing" }
             check(message.textSize / message.resources.displayMetrics.scaledDensity >= 14f) { "Help copy is too small" }
             check(dialog.findViewById<View>(android.R.id.button1)?.isShown == true) { "Help has no dismissal action" }
@@ -279,7 +279,7 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
         capture("chatmock-help-$theme")
         onUi {
             val dialog = WindowInspector.getGlobalWindowViews().first {
-                it.findViewById<TextView>(android.R.id.message)?.isShown == true
+                it.findViewWithTag<TextView>("help-message")?.isShown == true
             }
             check(dialog.findViewById<View>(android.R.id.button1).performClick())
         }

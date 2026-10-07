@@ -87,7 +87,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             capture("$prefix-empty")
             onUi {
                 SubtitleBus.setHistoryLimit(2)
-                SubtitleBus.onFinalPair("少し待ってください。", "请稍等一下。", "ja")
+                SubtitleBus.onFinalPair("もう少し歩いてみましょう。", "再往前走一会儿吧。", "ja")
                 SubtitleBus.onSourceDraft("もう少し歩いてみましょう。", "ja")
                 SubtitleBus.onTranslationDraft("再往前走一会儿吧。")
             }
@@ -122,11 +122,12 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 val currentSize = caption().textSize / context.resources.displayMetrics.scaledDensity
                 check(abs(currentSize - (if (baseline) 21 else 25)) < 1) { "Unexpected native caption size" }
                 check(SubtitleBus.historySnapshot() == history)
-                settings.finish()
             }
             capture("$prefix-settings-size")
+            onUi { settings.finish() }
             if (!baseline) {
-                onUi { root().findViewWithTag<View>("collapse-overlay").performClick(); SubtitleBus.hideLive() }
+                // Confirmed pairs intentionally remain readable. Test the genuinely empty state.
+                onUi { root().findViewWithTag<View>("collapse-overlay").performClick(); SubtitleBus.clear(); SubtitleBus.hideLive() }
                 waitFor { !root().isShown }
             }
             check(!MimiService.isRunning)

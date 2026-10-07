@@ -36,7 +36,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         provider=ServiceProvider.fromId(intent.getStringExtra("provider").orEmpty())
         saved=runCatching { SettingsStore.configuration(this,provider) }.getOrElse { storageUnavailable = true; ServiceConfiguration(provider, emptyMap()) }
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
-        val header=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,dp(24),0) }
+        val header=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(64); setPadding(dp(12),dp(8),dp(24),dp(8)) }
         header.addView(ImageButton(this).apply {
             id=R.id.back; setImageResource(R.drawable.ic_back); setBackgroundColor(android.graphics.Color.TRANSPARENT)
             imageTintList=ContextCompat.getColorStateList(context,R.color.mimi_text)
@@ -61,16 +61,12 @@ class ServiceSettingsActivity : AppCompatActivity() {
                     }, start, message.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 message.append("\n\n").append(getString(R.string.guide_local_save))
-                val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(this@ServiceSettingsActivity)
-                    .setTitle(providerTitle(this@ServiceSettingsActivity, provider))
-                    .setMessage(message)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .setNeutralButton(R.string.guide_official) { _, _ -> openHelp(help.documentation) }
-                    .setNegativeButton(R.string.guide_billing) { _, _ -> openHelp(help.billing) }.show()
-                dialog.findViewById<android.widget.TextView>(android.R.id.message)?.movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                ServiceSettingsUi.showHelp(this@ServiceSettingsActivity, providerTitle(this@ServiceSettingsActivity, provider), message,
+                    listOf(R.string.guide_official to { openHelp(help.documentation) },
+                        R.string.guide_billing to { openHelp(help.billing) }))
             }
         }, LinearLayout.LayoutParams(dp(48),dp(48)))
-        root.addView(header,LinearLayout.LayoutParams(-1,dp(64)))
+        root.addView(header,LinearLayout.LayoutParams(-1,-2))
         val scroll=ScrollView(this).apply { isFillViewport=true }
         val content=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(24),dp(12),dp(24),dp(24)) }
         status=ServiceSettingsUi.label(this,"",16f).apply {
@@ -89,7 +85,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
             val pair=field(content,field.id,title,field.secret)
             if(field.secret) {
                 if(saved.value(field.id).isNotBlank()) {
-                    pair.first.hint=getString(R.string.translation_saved_field,title)
+                    ServiceSettingsUi.fieldLabel(pair.first,getString(R.string.translation_saved_field,title))
                     pair.first.placeholderText=getString(R.string.service_secret_saved)
                 }
             } else pair.second.setText(saved.value(field.id))
@@ -121,16 +117,17 @@ class ServiceSettingsActivity : AppCompatActivity() {
         if(provider.hasAdvanced) content.addView(advanced)
         if (provider == ServiceProvider.DASHSCOPE && !storageUnavailable) {
             translationSettings = TextTranslationSettings(this) { custom ->
-                modelLayout.visibility = if (custom) View.GONE else View.VISIBLE
-                hotwordsLayout?.let { it.visibility = if (custom) View.GONE else View.VISIBLE }
+                ServiceSettingsUi.fieldVisible(modelLayout, !custom)
+                hotwordsLayout?.let { ServiceSettingsUi.fieldVisible(it, !custom) }
             }
             content.addView(translationSettings!!.view, LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
         }
         scroll.addView(content); root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
         val footer=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(24),dp(8),dp(24),dp(12)) }
         footer.addView(MaterialButton(this).apply {
-            id=R.id.save; text=getString(R.string.service_save_use); setOnClickListener { save() }
-        },LinearLayout.LayoutParams(-1,dp(52)))
+            id=R.id.save; text=getString(R.string.service_save_use); isSingleLine=false
+            setPadding(paddingLeft,dp(12),paddingRight,dp(12)); setOnClickListener { save() }
+        },LinearLayout.LayoutParams(-1,-2))
         root.addView(footer); setContentView(root); applySystemBarInsets()
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
@@ -145,7 +142,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
             isSingleLine=true; textSize=16f; typeface=android.graphics.Typeface.DEFAULT
         }
         box.addView(edit,LinearLayout.LayoutParams(-1,-2))
-        container.addView(box,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(18) })
+        ServiceSettingsUi.addField(this,container,box,edit,title,dp(18))
         return box to edit
     }
     override fun onDestroy() { translationSettings?.dispose(); super.onDestroy() }

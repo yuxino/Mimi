@@ -22,6 +22,12 @@ Settings tabs stack at large system font scales. Overlay actions reflow into a
 third row when even two translated actions exceed the available width; check
 native bounds rather than assuming two rows are sufficient.
 
+Service editors use visible wrapping labels at large system font scales, with
+the same shared field wrapper for speech and text translation. Header and save
+action height follow their text. Provider-help links stay in scrollable content
+instead of a fixed-height multi-button dialog footer. This preserves complete
+labels and reachable actions without reducing the requested font scale.
+
 Use a blank emulator and the same synthetic captions for Before/After captures:
 empty initial state, font control, settings slider and compact/expanded captions.
 Assert actual native text size, visibility, current numeric label and history
