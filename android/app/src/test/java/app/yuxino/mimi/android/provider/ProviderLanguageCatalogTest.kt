@@ -8,6 +8,70 @@ class ProviderLanguageCatalogTest {
     private val catalogs = requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
         .bufferedReader().use { JSONObject(it.readText()) }.getJSONObject("providerLanguageCatalogs")
 
+    @Test fun volcanoAcceptsProto3EmptyTextWithoutAcceptingMalformedFields() {
+        val contract = requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { JSONObject(it.readText()) }
+        val cases = contract.getJSONArray("volcanoSubtitleEvents")
+        val protocol = VolcanoProtocol(ServiceConfiguration(ServiceProvider.VOLCANO, emptyMap()), "ja", "zh")
+        repeat(cases.length()) { index ->
+            val case = cases.getJSONObject(index)
+            val bytes = case.getString("hex").chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val result = runCatching { protocol.binary(bytes) }
+            if (case.isNull("expected")) {
+                assertTrue(case.getString("id"), result.isFailure)
+            } else {
+                val expected = case.getJSONObject("expected")
+                val text = expected.getString("text")
+                val event = when (expected.getString("type")) {
+                    "sourceDraft" -> ServiceEvent.Source(text, false, "ja")
+                    "sourceFinal" -> ServiceEvent.Source(text, true, "ja")
+                    "translationDraft" -> ServiceEvent.Translation(text, false)
+                    "translationFinal" -> ServiceEvent.Translation(text, true)
+                    else -> error("unknown_contract_event")
+                }
+                assertEquals(case.getString("id"), listOf(event), result.getOrThrow())
+            }
+        }
+    }
+
+    @Test fun volcanoAccumulatesIncrementalPreviewsAndResetsEachSentence() {
+        val contract = requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { JSONObject(it.readText()) }
+        val cases = contract.getJSONArray("volcanoSubtitleSequences")
+        repeat(cases.length()) { index ->
+            val case = cases.getJSONObject(index)
+            val protocol = VolcanoProtocol(ServiceConfiguration(ServiceProvider.VOLCANO, emptyMap()), "ja", "zh")
+            val actual = JSONObject()
+            for (key in listOf("sourceDrafts", "translationDrafts", "sourceFinals", "translationFinals")) actual.put(key, org.json.JSONArray())
+            val frames = case.getJSONArray("frames")
+            repeat(frames.length()) { frameIndex ->
+                val bytes = frames.getString(frameIndex).chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                for (event in protocol.binary(bytes)) {
+                    when (event) {
+                        is ServiceEvent.Source -> actual.getJSONArray(if (event.final) "sourceFinals" else "sourceDrafts").put(event.text)
+                        is ServiceEvent.Translation -> actual.getJSONArray(if (event.final) "translationFinals" else "translationDrafts").put(event.text)
+                        else -> error("unexpected_contract_event")
+                    }
+                }
+            }
+            assertTrue(case.getString("id"), case.getJSONObject("expected").similar(actual))
+        }
+    }
+
+    @Test fun volcanoIncrementalPreviewsRemainBounded() {
+        val protocol = VolcanoProtocol(ServiceConfiguration(ServiceProvider.VOLCANO, emptyMap()), "ja", "zh")
+        for (event in listOf(651, 654)) {
+            for (character in listOf("a", "日")) {
+                val start = if (event == 651) 650 else 653
+                protocol.binary(VolcanoWire.number(2, start.toLong()))
+                protocol.binary(VolcanoWire.number(2, event.toLong()) + VolcanoWire.string(4, character.repeat(64 * 1024 / character.toByteArray().size)))
+                assertThrows(IllegalArgumentException::class.java) {
+                    protocol.binary(VolcanoWire.number(2, event.toLong()) + VolcanoWire.string(4, character))
+                }
+            }
+        }
+    }
+
     @Test fun baiduMapsAllDocumentedSpeechLanguagesToItsOwnWireCodes() {
         val expected = catalogs.getJSONObject("baidu").getJSONObject("wireByCode")
         assertEquals(expected.keys().asSequence().toSet(), BAIDU_LANGUAGE_CODES.keys)

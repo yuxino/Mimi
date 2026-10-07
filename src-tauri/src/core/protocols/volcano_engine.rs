@@ -65,8 +65,6 @@ pub enum VolcanoEngineProtocolError {
     UnsupportedWireType,
     #[error("The Volcano Engine response is missing its event.")]
     MissingEvent,
-    #[error("The Volcano Engine subtitle response is missing its text.")]
-    MissingText,
     #[error("The Volcano Engine protobuf message repeats a singular field.")]
     DuplicateField,
 }
@@ -331,23 +329,23 @@ impl VolcanoEngineServerEvent {
             }
         }
 
+        // The official proto3 `string text = 4` has implicit presence: an
+        // omitted field means an empty string, not a malformed response.
+        // Keep `Option` while parsing so repeated explicit fields still fail.
+        let text = text.unwrap_or_default();
         match event.ok_or(VolcanoEngineProtocolError::MissingEvent)? as u32 {
             EVENT_SESSION_STARTED => Ok(Self::SessionStarted),
             EVENT_SOURCE_SUBTITLE_START => Ok(Self::SourceSubtitleStarted),
-            EVENT_SOURCE_SUBTITLE_RESPONSE => Ok(Self::SourceSubtitleDraft(
-                text.ok_or(VolcanoEngineProtocolError::MissingText)?,
-            )),
+            EVENT_SOURCE_SUBTITLE_RESPONSE => Ok(Self::SourceSubtitleDraft(text)),
             EVENT_SOURCE_SUBTITLE_END => Ok(Self::SourceSubtitleFinal {
-                text: text.ok_or(VolcanoEngineProtocolError::MissingText)?,
+                text,
                 start_time_ms,
                 end_time_ms,
             }),
             EVENT_TRANSLATION_SUBTITLE_START => Ok(Self::TranslationSubtitleStarted),
-            EVENT_TRANSLATION_SUBTITLE_RESPONSE => Ok(Self::TranslationSubtitleDraft(
-                text.ok_or(VolcanoEngineProtocolError::MissingText)?,
-            )),
+            EVENT_TRANSLATION_SUBTITLE_RESPONSE => Ok(Self::TranslationSubtitleDraft(text)),
             EVENT_TRANSLATION_SUBTITLE_END => Ok(Self::TranslationSubtitleFinal {
-                text: text.ok_or(VolcanoEngineProtocolError::MissingText)?,
+                text,
                 start_time_ms,
                 end_time_ms,
             }),
@@ -518,6 +516,40 @@ impl<'a> ProtoReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_subtitle_contract_accepts_proto3_empty_text_and_rejects_malformed_fields() {
+        let contract: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../shared/translation-contracts.json"
+        ))
+        .unwrap();
+        for case in contract["volcanoSubtitleEvents"].as_array().unwrap() {
+            let hex = case["hex"].as_str().unwrap();
+            let bytes = (0..hex.len())
+                .step_by(2)
+                .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
+                .collect::<Vec<_>>();
+            let decoded = VolcanoEngineServerEvent::decode(&bytes);
+            let expected = &case["expected"];
+            if expected.is_null() {
+                assert!(decoded.is_err(), "{}", case["id"]);
+                continue;
+            }
+            let (kind, text) = match decoded.unwrap() {
+                VolcanoEngineServerEvent::SourceSubtitleDraft(text) => ("sourceDraft", text),
+                VolcanoEngineServerEvent::SourceSubtitleFinal { text, .. } => ("sourceFinal", text),
+                VolcanoEngineServerEvent::TranslationSubtitleDraft(text) => {
+                    ("translationDraft", text)
+                }
+                VolcanoEngineServerEvent::TranslationSubtitleFinal { text, .. } => {
+                    ("translationFinal", text)
+                }
+                other => panic!("unexpected event {other:?}"),
+            };
+            assert_eq!(kind, expected["type"].as_str().unwrap(), "{}", case["id"]);
+            assert_eq!(text, expected["text"].as_str().unwrap(), "{}", case["id"]);
+        }
+    }
 
     #[test]
     fn shared_s2t_catalog_validates_all_directions_and_serializes_every_legal_setup() {
@@ -832,7 +864,7 @@ mod tests {
             vec![0x10, 0x80],
             vec![0x12, 0x01, 0x96],
             vec![0x10, 0x96, 0x01, 0x10, 0x96, 0x01],
-            vec![0x10, 0x8b, 0x05],
+            vec![0x10, 0x8b, 0x05, 0x20, 0x00],
             vec![0x10, 0x8b, 0x05, 0x22, 0x01, 0xff],
             vec![0x10, 0x96, 0x01, 0x1b],
         ];

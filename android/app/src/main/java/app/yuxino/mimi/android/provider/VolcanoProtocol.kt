@@ -61,6 +61,12 @@ internal object VolcanoWire {
 
 internal class VolcanoProtocol(private val config: ServiceConfiguration, private val source: String, private val target: String,
     private val session: String = UUID.randomUUID().toString()) : ServiceProtocol {
+    private val sourceDraft = TurnText()
+    private val translationDraft = TurnText()
+    private fun appendDraft(buffer: TurnText, delta: String): String {
+        require(buffer.value.toByteArray().size.toLong() + delta.toByteArray().size <= 64 * 1024)
+        return buffer.append(delta)
+    }
     override val frameBytes = 2560
     override fun request() = Request.Builder().url("wss://openspeech.bytedance.com/api/v4/ast/v2/translate")
         .header("X-Api-Key", config.value("apiKey")).header("X-Api-Resource-Id", "volc.service_type.10053").build()
@@ -79,14 +85,19 @@ internal class VolcanoProtocol(private val config: ServiceConfiguration, private
         val fields = VolcanoWire.fields(value)
         val event = requireNotNull(fields[2]); require(event.wire == 0 && event.number in 0..Int.MAX_VALUE.toLong())
         fields[1]?.let { require(it.wire == 2 && it.bytes.size <= 64*1024); VolcanoWire.fields(it.bytes) }
-        val text = fields[4]?.let { VolcanoWire.string(it) }
+        // Proto3's implicit string field is omitted when its value is empty.
+        // fields() still rejects duplicate explicit fields and string() checks UTF-8.
+        val text = fields[4]?.let { VolcanoWire.string(it) }.orEmpty()
         return when(event.number.toInt()) {
             150 -> listOf(ServiceEvent.Ready)
-            152 -> listOf(ServiceEvent.Closed)
-            153 -> error("provider_error")
-            650, 653 -> emptyList()
-            651, 652 -> listOf(ServiceEvent.Source(requireNotNull(text), event.number == 652L, source))
-            654, 655 -> listOf(ServiceEvent.Translation(requireNotNull(text), event.number == 655L))
+            152 -> { sourceDraft.clear(); translationDraft.clear(); listOf(ServiceEvent.Closed) }
+            153 -> { sourceDraft.clear(); translationDraft.clear(); error("provider_error") }
+            650 -> { sourceDraft.clear(); emptyList() }
+            653 -> { translationDraft.clear(); emptyList() }
+            651 -> listOf(ServiceEvent.Source(appendDraft(sourceDraft, text), false, source))
+            652 -> { sourceDraft.clear(); listOf(ServiceEvent.Source(text, true, source)) }
+            654 -> listOf(ServiceEvent.Translation(appendDraft(translationDraft, text), false))
+            655 -> { translationDraft.clear(); listOf(ServiceEvent.Translation(text, true)) }
             else -> emptyList()
         }
     }
