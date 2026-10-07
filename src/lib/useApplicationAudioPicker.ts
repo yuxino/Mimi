@@ -9,8 +9,8 @@ import { useStore } from "./store";
 
 let latestIconRequest = 0;
 
-/** Selectable lists load on user intent. The chosen macOS application's icon
- * can refresh silently through NSWorkspace, without permission or capture. */
+/** Selectable lists load on user intent. The chosen application's local icon
+ * can refresh silently on macOS/Windows, without permission or capture. */
 export function useApplicationAudioPicker(disabled = false) {
   const target = useStore(state => state.settings.systemAudioTarget) ?? { kind: "system" as const };
   const ready = useStore(state => state.initializationStatus === "ready");
@@ -44,7 +44,7 @@ export function useApplicationAudioPicker(disabled = false) {
   const text = applicationAudioCopy();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    if (!isTauri || !/Mac/i.test(navigator.userAgent) || !ready || !targetKey) return;
+    if (!isTauri || !/Mac|Windows/i.test(navigator.userAgent) || !ready || !targetKey) return;
     // An older list only covers this choice while its icon is still cached.
     // A failed lookup can clear icons before another window selects it again.
     // Cache updates are not dependencies: missing icons never start a retry loop.

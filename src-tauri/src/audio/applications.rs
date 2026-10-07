@@ -12,19 +12,19 @@ pub struct AudioApplication {
     pub icon_data_url: Option<String>,
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(super) const MAX_APPLICATION_ICON_PNG_BYTES: usize = 8 * 1024;
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 const MAX_APPLICATION_ICON_SNAPSHOT_BYTES: usize = 1024 * 1024;
 
 /// A fresh budget for one already sorted/bounded application snapshot. There is
 /// no persistent icon cache; the frontend replaces its previous snapshot.
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 pub(super) struct ApplicationIconBudget {
     remaining_bytes: usize,
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 impl Default for ApplicationIconBudget {
     fn default() -> Self {
         Self {
@@ -33,7 +33,7 @@ impl Default for ApplicationIconBudget {
     }
 }
 
-#[cfg(any(target_os = "macos", test))]
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
 impl ApplicationIconBudget {
     pub fn encode_png(&mut self, png: &[u8]) -> Option<String> {
         use base64::Engine as _;
@@ -122,6 +122,7 @@ pub fn windows_applications() -> Result<ApplicationSnapshot, SystemAudioCaptureE
         }
     }
     sort_applications(&mut applications);
+    super::windows_application_icons::populate(&mut applications);
     Ok(ApplicationSnapshot {
         supported: true,
         applications,
@@ -185,26 +186,17 @@ impl Process {
     }
     pub fn identity(&self) -> windows::core::Result<(String, String)> {
         use windows::Win32::Foundation::FILETIME;
-        use windows::Win32::System::Threading::{
-            GetProcessTimes, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-        };
+        use windows::Win32::System::Threading::GetProcessTimes;
         let mut created = FILETIME::default();
         let mut exit = FILETIME::default();
         let mut kernel = FILETIME::default();
         let mut user = FILETIME::default();
-        let mut path = [0u16; 32768];
-        let mut length = path.len() as u32;
         unsafe {
             GetProcessTimes(self.handle, &mut created, &mut exit, &mut kernel, &mut user)?;
-            QueryFullProcessImageNameW(
-                self.handle,
-                PROCESS_NAME_WIN32,
-                windows::core::PWSTR(path.as_mut_ptr()),
-                &mut length,
-            )?;
         }
         let created = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
-        let path = String::from_utf16_lossy(&path[..length as usize]);
+        let path = self.image_path()?;
+        let path = String::from_utf16_lossy(&path);
         let name = path
             .rsplit('\\')
             .next()
@@ -212,6 +204,22 @@ impl Process {
             .trim_end_matches(".exe")
             .to_string();
         Ok((format!("windows:{}:{}", self.pid, created), name))
+    }
+
+    pub(super) fn image_path(&self) -> windows::core::Result<Vec<u16>> {
+        use windows::Win32::System::Threading::{QueryFullProcessImageNameW, PROCESS_NAME_WIN32};
+        let mut path = vec![0u16; 32768];
+        let mut length = path.len() as u32;
+        unsafe {
+            QueryFullProcessImageNameW(
+                self.handle,
+                PROCESS_NAME_WIN32,
+                windows::core::PWSTR(path.as_mut_ptr()),
+                &mut length,
+            )?;
+        }
+        path.truncate(length as usize);
+        Ok(path)
     }
     pub fn selected(id: &str) -> Result<Self, SystemAudioCaptureError> {
         let pid = id

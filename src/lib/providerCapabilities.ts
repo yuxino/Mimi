@@ -149,7 +149,7 @@ export function isStandaloneAsrProvider(provider: ServiceProvider): boolean {
 
 export function credentialStateForTarget(profile: ServiceProfile | undefined, target: TargetLanguage): CredentialState {
   return profile && isStandaloneAsrProvider(profile.provider) && target === "original"
-    ? profile.speechCredentialState ?? profile.credentialState : profile?.credentialState ?? "unavailable";
+    ? profile.speechCredentialState ?? profile.credentialState : profile?.credentialState ?? "missing";
 }
 
 export function effectiveProviderForProfile(profile: ServiceProfile): ServiceProvider {

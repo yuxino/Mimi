@@ -21,6 +21,11 @@ import {
   translationModesForSettings,
 } from "./providerCapabilities";
 
+it("treats no selected profile as setup required and preserves genuine storage failures", () => {
+  expect(credentialStateForTarget(undefined, "zh")).toBe("missing");
+  expect(credentialStateForTarget({ id: "saved", name: "Saved", provider: "alibabaCloud", credentialState: "unavailable" }, "zh")).toBe("unavailable");
+});
+
 it("requires only custom speech credentials for Original while translated targets require both stages", () => {
   const profile = { id: "custom", name: "Custom", provider: "customOpenAIASR", credentialState: "missing", speechCredentialState: "present", textCredentialState: "missing", textTranslation: "deepL" } as const;
   expect(credentialStateForTarget(profile, "original")).toBe("present");

@@ -75,6 +75,28 @@ it("preserves the existing service navigation intent", async () => {
   expect(window.location.hash).toBe("#service-profiles");
 });
 
+it("opens subtitles when an existing configured profile arrives after the empty native placeholder", async () => {
+  window.history.replaceState(null, "", window.location.pathname);
+  useStore.setState({ initializationStatus: "loading" });
+  await act(async () => root.render(<SettingsView />));
+  expect(host.querySelector("#settings-category-service")?.getAttribute("aria-current")).toBe("page");
+  await act(async () => useStore.setState({ initializationStatus: "ready", settings: { ...initial.settings,
+    activeProfileId: "existing", profiles: [{ id: "existing", provider: "googleGeminiLive", name: "Existing service", credentialState: "present" }] } }));
+  expect(host.querySelector("#settings-category-subtitles")?.getAttribute("aria-current")).toBe("page");
+});
+
+it("keeps a fresh install on services and preserves navigation after its first profile is added", async () => {
+  window.history.replaceState(null, "", window.location.pathname);
+  await act(async () => root.render(<SettingsView />));
+  expect(host.querySelector("#settings-category-service")?.getAttribute("aria-current")).toBe("page");
+  await act(async () => host.querySelector<HTMLButtonElement>("#settings-category-subtitles")!.click());
+  expect(host.querySelector("#settings-session-status")?.textContent).toBe(I18N.settings.sessionSetupRequired);
+  await act(async () => host.querySelector<HTMLButtonElement>("#settings-category-general")!.click());
+  await act(async () => useStore.setState({ settings: { ...initial.settings,
+    activeProfileId: "first", profiles: [{ id: "first", provider: "googleGeminiLive", name: "First service", credentialState: "present" }] } }));
+  expect(host.querySelector("#settings-category-general")?.getAttribute("aria-current")).toBe("page");
+});
+
 it("routes repeated Apple resource intents to the service page without losing the specific destination", async () => {
   await act(async () => root.render(<SettingsView />));
   await act(async () => navigate("appleSpeechResources"));

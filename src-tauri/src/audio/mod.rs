@@ -93,6 +93,8 @@ pub mod applications;
 pub mod census;
 #[cfg(target_os = "windows")]
 mod windows_application;
+#[cfg(target_os = "windows")]
+mod windows_application_icons;
 
 #[cfg(target_os = "macos")]
 pub mod macos;

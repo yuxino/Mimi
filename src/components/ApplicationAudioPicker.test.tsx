@@ -143,8 +143,16 @@ it("ignores an old unmounted read when a reopened panel already received newer i
   expect(icon()).toBe(currentIcon);
 });
 
-it.each(["Windows", "Linux"])("does not automatically enumerate application icons on %s", async platform => {
-  vi.stubGlobal("navigator", { userAgent: platform });
+it("restores the selected Windows application's icon without changing capture or preferences", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Windows NT 10.0" });
+  await mount();
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("audio_applications");
+  expect(icon()).toBe(player.iconDataUrl);
+  expect(switchTarget).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+});
+
+it("does not automatically enumerate application icons on Linux", async () => {
+  vi.stubGlobal("navigator", { userAgent: "Linux" });
   await mount();
   expect(invoke).not.toHaveBeenCalled();
   expect(icon()).toBeUndefined();

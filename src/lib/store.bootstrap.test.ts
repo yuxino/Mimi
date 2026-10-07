@@ -11,7 +11,7 @@ vi.mock("./ipc", async (original) => ({ ...await original<typeof import("./ipc")
 }));
 
 const initial = useStore.getState();
-const settings: SettingsSnapshot = { ...initial.settings, profiles: [{ ...initial.settings.profiles[0], name: "Current service", credentialState: "present" }] };
+const settings: SettingsSnapshot = { ...initial.settings, activeProfileId: "existing", profiles: [{ id: "existing", provider: "alibabaCloud", name: "Current service", credentialState: "present" }] };
 const session: SessionStateEvent = { ...initial.session, status: { kind: "listening" }, isActive: true };
 beforeEach(() => {
   disposeStoreSnapshotStreams();
@@ -22,6 +22,15 @@ beforeEach(() => {
   useStore.setState(initial, true);
 });
 afterEach(() => { disposeStoreSnapshotStreams(); vi.useRealTimers(); useStore.setState(initial, true); });
+
+it("keeps native startup and a fresh settings snapshot free of placeholder profiles", async () => {
+  expect(initial.settings.profiles).toEqual([]);
+  expect(initial.settings.activeProfileId).toBe("");
+  sources.getSettings.mockResolvedValueOnce(initial.settings);
+  await useStore.getState().init();
+  expect(useStore.getState().settings.profiles).toEqual([]);
+  expect(useStore.getState().initializationStatus).toBe("ready");
+});
 
 it("keeps overlay session events alive after overnight settings timeout and accepts the original late Keychain response", async () => {
   let complete!: (snapshot: SettingsSnapshot) => void;

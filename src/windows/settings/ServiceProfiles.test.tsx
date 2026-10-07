@@ -546,6 +546,26 @@ it("creates the selected provider only after confirmation and opens the created 
   expect(actions.selectProfile).not.toHaveBeenCalled();
 });
 
+it("starts with no service and creates the first chosen provider only after confirmation", async () => {
+  const empty = { ...settings, profiles: [], activeProfileId: "" };
+  const created: ServiceProfile = { id: "first", provider: "googleGeminiLive", name: providerDisplayName("googleGeminiLive"), credentialState: "missing" };
+  const next = { ...empty, profiles: [created], activeProfileId: created.id };
+  actions.createProfile.mockResolvedValue(next);
+  await render(empty);
+  expect(host.querySelector(".service-row")).toBeNull();
+  await click(I18N.settings.addProfile);
+  await previewProvider(created.provider);
+  expect(actions.createProfile).not.toHaveBeenCalled();
+  await click(I18N.settings.cancel);
+  expect(host.querySelector(".service-row")).toBeNull();
+  await previewProvider(created.provider);
+  await click(I18N.settings.confirmAddProfile);
+  await render(next);
+  expect(actions.createProfile).toHaveBeenCalledExactlyOnceWith(created.provider, created.name);
+  expect(host.querySelector(".service-detail__identity h2")?.textContent).toBe(created.name);
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+});
+
 it("guards duplicate confirmation synchronously and keeps a failed provider preview available for retry", async () => {
   let reject!: (error: unknown) => void;
   actions.createProfile.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));

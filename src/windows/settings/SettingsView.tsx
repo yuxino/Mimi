@@ -85,28 +85,19 @@ export function SettingsView() {
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>(
     locationCategory ?? preferredCategory,
   );
-  const locationSelectedCategory = useRef(locationCategory !== null);
+  const [initialCategoryResolved, setInitialCategoryResolved] = useState(initializationReady);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const [appleResourcesRequest, setAppleResourcesRequest] = useState(0);
   const appleResourcesSequence = useRef(0);
   const [profileEditorRequest, setProfileEditorRequest] = useState(0);
   const profileEditorSequence = useRef(0);
-  const initialCredentialState = useRef(activeProfile?.credentialState);
 
-  // Native settings arrive after the first render. Resolve the initial
-  // fail-closed `unavailable` placeholder once, without later pulling users
-  // away from a category they chose or changing category after key edits.
-  useEffect(() => {
-    if (
-      locationSelectedCategory.current ||
-      initialCredentialState.current !== "unavailable" ||
-      activeProfile?.credentialState === "unavailable"
-    ) {
-      return;
-    }
-    initialCredentialState.current = activeProfile?.credentialState;
-    setActiveCategory(activeProfile?.credentialState === "present" ? "subtitles" : "service");
-  }, [activeProfile?.credentialState]);
+  // Resolve the first native snapshot once. An empty catalog opens services;
+  // later additions and credential changes preserve the user's current page.
+  if (!initialCategoryResolved && initializationReady) {
+    setInitialCategoryResolved(true);
+    setActiveCategory(locationCategory ?? preferredCategory);
+  }
 
   const categories: readonly {
     id: SettingsCategory;
@@ -142,7 +133,6 @@ export function SettingsView() {
   };
 
   const selectCategory = useCallback((category: SettingsCategory) => {
-    locationSelectedCategory.current = true;
     setAppleResourcesRequest(0);
     setProfileEditorRequest(0);
     setActiveCategory(category);

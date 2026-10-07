@@ -103,15 +103,17 @@ const INITIAL_SESSION: SessionStateEvent = {
 };
 
 const INITIAL_SETTINGS: SettingsSnapshot = {
-  profiles: [
+  // The browser-only preview has an explicit demo profile. Native startup waits
+  // for the real catalog and never suggests a provider before the user adds one.
+  profiles: isTauri ? [] : [
     {
       id: "alibaba-default",
       name: "Alibaba Cloud",
       provider: "alibabaCloud",
-      credentialState: isTauri ? "unavailable" : "present",
+      credentialState: "present",
     },
   ],
-  activeProfileId: "alibaba-default",
+  activeProfileId: isTauri ? "" : "alibaba-default",
   sourceLanguage: "auto",
   targetLanguage: "zh",
   translationMode: "turbo",
@@ -513,6 +515,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     const id = `mock-${provider}-${Date.now()}`;
     const snapshot: SettingsSnapshot = {
       ...current,
+      activeProfileId: current.profiles.length ? current.activeProfileId : id,
       profiles: [
         ...current.profiles,
         { id, name, provider, credentialState: "missing", ...(isCustomSpeechProvider(provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : {}) },

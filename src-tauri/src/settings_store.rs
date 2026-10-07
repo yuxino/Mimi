@@ -671,19 +671,25 @@ impl Default for ProfileCatalog {
     fn default() -> Self {
         Self {
             schema_version: PROFILE_CATALOG_SCHEMA_VERSION,
-            active_profile_id: DEFAULT_ALIBABA_PROFILE_ID.to_string(),
-            profiles: vec![ServiceProfile::alibaba_default()],
+            active_profile_id: String::new(),
+            profiles: Vec::new(),
         }
     }
 }
 
 impl ProfileCatalog {
+    /// Only pre-catalog installations and explicit test fixtures use this profile.
+    fn legacy_alibaba() -> Self {
+        Self {
+            active_profile_id: DEFAULT_ALIBABA_PROFILE_ID.to_string(),
+            profiles: vec![ServiceProfile::alibaba_default()],
+            ..Self::default()
+        }
+    }
+
     fn with_local_dev_profiles(mut self, enabled: &[&str]) -> Self {
         let previous = self.profiles.clone();
         self.profiles.retain(|p| !is_local_dev_profile_id(&p.id));
-        if self.profiles.is_empty() && enabled.is_empty() {
-            self.profiles.push(ServiceProfile::alibaba_default());
-        }
         let mut presets = Vec::new();
         for (id, provider, name) in [
             (
@@ -722,14 +728,17 @@ impl ProfileCatalog {
         presets.append(&mut self.profiles);
         self.profiles = presets;
         if !self.profiles.iter().any(|p| p.id == self.active_profile_id) {
-            self.active_profile_id = self.profiles[0].id.clone();
+            self.active_profile_id = self
+                .profiles
+                .first()
+                .map(|p| p.id.clone())
+                .unwrap_or_default();
         }
         self
     }
 
     fn validated(self) -> Result<Self, ()> {
         if self.schema_version != PROFILE_CATALOG_SCHEMA_VERSION
-            || self.profiles.is_empty()
             || self
                 .profiles
                 .iter()
@@ -749,7 +758,9 @@ impl ProfileCatalog {
             }
             profiles.push(validated);
         }
-        if !ids.contains(&self.active_profile_id) {
+        if (profiles.is_empty() && !self.active_profile_id.is_empty())
+            || (!profiles.is_empty() && !ids.contains(&self.active_profile_id))
+        {
             return Err(());
         }
 
@@ -785,9 +796,9 @@ pub struct SettingsStore {
 
 impl SettingsStore {
     /// Loads preferences and `service-profiles.json` from the app config
-    /// directory. A missing catalog is created atomically with Alibaba as the
-    /// active default; malformed data is preserved and all profile writes are
-    /// blocked until it is repaired.
+    /// directory. New installations start with an empty catalog; existing
+    /// pre-catalog preferences retain legacy migration. Malformed data is
+    /// preserved and profile writes are blocked until it is repaired.
     pub fn load(app_config_dir: PathBuf, is_ui_test: bool, application_identifier: &str) -> Self {
         let is_development = application_identifier == DEVELOPMENT_APPLICATION_IDENTIFIER;
         let profile_keychain_service = if is_development {
@@ -796,9 +807,10 @@ impl SettingsStore {
             PROFILE_KEYCHAIN_SERVICE
         };
         if is_ui_test {
-            return Self::in_memory_with_scope(
-                Box::new(KeyringSecretStore),
+            return Self::load_with_secret(
+                app_config_dir,
                 true,
+                Box::new(KeyringSecretStore),
                 profile_keychain_service,
                 false,
             );
@@ -839,7 +851,9 @@ impl SettingsStore {
     ) -> Self {
         if is_ui_test {
             // UI fixtures never inspect the user's preferences, catalog or keychain.
-            return Self::in_memory_with_scope(secret, true, profile_keychain_service, false);
+            let store = Self::in_memory_with_scope(secret, true, profile_keychain_service, false);
+            *store.catalog.lock().unwrap() = ProfileCatalog::default();
+            return store;
         }
         let prefs_path = app_config_dir.join("preferences.json");
         let prefs = std::fs::read_to_string(&prefs_path)
@@ -872,7 +886,12 @@ impl SettingsStore {
                     }
                 },
                 Err(error) if error.kind() == ErrorKind::NotFound => {
-                    (ProfileCatalog::default(), false, true)
+                    let catalog = if prefs_path.is_file() {
+                        ProfileCatalog::legacy_alibaba()
+                    } else {
+                        ProfileCatalog::default()
+                    };
+                    (catalog, false, true)
                 }
                 Err(_) => {
                     tracing::warn!("service profile catalog unavailable label=read_failed");
@@ -900,8 +919,7 @@ impl SettingsStore {
         if should_create_catalog && !is_ui_test && store.persist_catalog().is_err() {
             tracing::warn!("service profile catalog unavailable label=create_failed");
         }
-        let active_profile =
-            (!store.catalog_write_blocked).then(|| store.active_profile().unwrap_or_default());
+        let active_profile = store.active_profile().ok();
         {
             let mut prefs = store.prefs.lock().unwrap();
             let original = prefs.clone();
@@ -929,7 +947,7 @@ impl SettingsStore {
         profile_keychain_service: &'static str,
         migrate_legacy_alibaba: bool,
     ) -> Self {
-        let catalog = ProfileCatalog::default().with_local_dev_profiles(&if is_ui_test {
+        let catalog = ProfileCatalog::legacy_alibaba().with_local_dev_profiles(&if is_ui_test {
             Vec::new()
         } else {
             secret.local_dev_profile_ids()
@@ -1014,6 +1032,17 @@ impl SettingsStore {
 
     #[cfg(test)]
     fn at_path(app_config_dir: PathBuf, secret: Box<dyn SecretStore>) -> Self {
+        // Existing provider/storage regressions exercise an explicitly configured
+        // installation. First-run tests call load_with_secret without this fixture.
+        if !app_config_dir.join(PROFILE_CATALOG_FILE).exists()
+            && !app_config_dir.join("preferences.json").exists()
+        {
+            atomic_write(
+                &app_config_dir.join(PROFILE_CATALOG_FILE),
+                &serde_json::to_vec(&ProfileCatalog::legacy_alibaba()).unwrap(),
+            )
+            .unwrap();
+        }
         Self::load_with_secret(
             app_config_dir,
             false,
@@ -1072,8 +1101,10 @@ impl SettingsStore {
         &self,
         update: impl FnOnce(&mut Preferences),
     ) -> Result<(), String> {
-        let profile = self.active_profile()?;
+        let (active_id, profiles) = self.profile_catalog()?;
+        let profile = profiles.into_iter().find(|profile| profile.id == active_id);
         self.save_preferences_validated(update, |previous, next| {
+            let Some(profile) = &profile else { return Ok(()); };
             let capabilities = profile.capabilities(next.target_language).for_source(next.source_language);
             if next.target_language != previous.target_language
                 && !capabilities.target_languages.contains(&next.target_language) {
@@ -1083,7 +1114,7 @@ impl SettingsStore {
                 && !capabilities.source_languages.contains(&next.source_language) {
                 return Err(crate::core::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage.to_string());
             }
-            normalize_preferences_value(next, &profile);
+            normalize_preferences_value(next, profile);
             Ok(())
         })
     }
@@ -1132,7 +1163,13 @@ impl SettingsStore {
         provider: ProviderKind,
         name: &str,
     ) -> Result<ServiceProfile, String> {
-        self.mutate_catalog(|catalog| {
+        let profile = ServiceProfile::new(
+            format!("profile-{}", uuid::Uuid::new_v4().simple()),
+            name,
+            provider,
+        )
+        .map_err(|error| error.to_string())?;
+        self.mutate_catalog_with_normalization(Some(&profile.id), |catalog| {
             if catalog
                 .profiles
                 .iter()
@@ -1142,14 +1179,11 @@ impl SettingsStore {
             {
                 return Err("No more service profiles can be added.".to_string());
             }
-            let profile = ServiceProfile::new(
-                format!("profile-{}", uuid::Uuid::new_v4().simple()),
-                name,
-                provider,
-            )
-            .map_err(|error| error.to_string())?;
+            if catalog.profiles.is_empty() {
+                catalog.active_profile_id = profile.id.clone();
+            }
             catalog.profiles.push(profile.clone());
-            Ok(profile)
+            Ok(profile.clone())
         })
     }
 
@@ -3179,13 +3213,6 @@ impl SettingsStore {
             .ok_or_else(|| PROFILE_NOT_FOUND.to_string())
     }
 
-    fn mutate_catalog<T>(
-        &self,
-        update: impl FnOnce(&mut ProfileCatalog) -> Result<T, String>,
-    ) -> Result<T, String> {
-        self.mutate_catalog_with_normalization(None, update)
-    }
-
     fn mutate_catalog_with_normalization<T>(
         &self,
         normalize_profile: Option<&str>,
@@ -3704,10 +3731,106 @@ mod animation_switch_tests {
 
 #[cfg(test)]
 mod tests {
+    fn fresh_store(directory: &Path, fake: &FakeSecretStore) -> SettingsStore {
+        SettingsStore::load_with_secret(
+            directory.into(),
+            false,
+            Box::new(fake.clone()),
+            PROFILE_KEYCHAIN_SERVICE,
+            false,
+        )
+    }
+
+    #[test]
+    fn fresh_install_stays_empty_after_saving_preferences_and_restarting() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = fresh_store(directory.path(), &fake);
+        assert_eq!(store.profile_catalog().unwrap(), (String::new(), vec![]));
+        store
+            .save_preferences_for_active_profile(|prefs| prefs.font_size = 19.0)
+            .unwrap();
+        drop(store);
+        let restarted = fresh_store(directory.path(), &fake);
+        assert_eq!(
+            restarted.profile_catalog().unwrap(),
+            (String::new(), vec![])
+        );
+        assert_eq!(restarted.preferences().font_size, 19.0);
+        assert!(ProfileCatalog::default().validated().is_ok());
+        assert!(ProfileCatalog {
+            active_profile_id: "missing".into(),
+            ..ProfileCatalog::default()
+        }
+        .validated()
+        .is_err());
+    }
+
+    #[test]
+    fn first_confirmed_profile_becomes_active_and_survives_restart() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = fresh_store(directory.path(), &fake);
+        let first = store
+            .create_profile(ProviderKind::GoogleGeminiLive, "First service")
+            .unwrap();
+        assert_eq!(store.active_profile().unwrap(), first);
+        let second = store
+            .create_profile(ProviderKind::AlibabaCloud, "Second service")
+            .unwrap();
+        drop(store);
+        let restarted = fresh_store(directory.path(), &fake);
+        assert_eq!(restarted.active_profile().unwrap(), first);
+        assert_eq!(restarted.profile_catalog().unwrap().1, vec![first, second]);
+    }
+
+    #[test]
+    fn failed_first_profile_write_restores_the_empty_catalog_and_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let mut store = fresh_store(directory.path(), &fake);
+        let original = store.preferences();
+        store.catalog_path = directory.path().join("blocked-catalog");
+        std::fs::create_dir(&store.catalog_path).unwrap();
+        assert!(store
+            .create_profile(ProviderKind::GoogleGeminiLive, "First service")
+            .is_err());
+        assert_eq!(store.profile_catalog().unwrap(), (String::new(), vec![]));
+        assert_eq!(store.preferences(), original);
+        drop(store);
+        assert_eq!(
+            fresh_store(directory.path(), &fake)
+                .profile_catalog()
+                .unwrap(),
+            (String::new(), vec![])
+        );
+    }
+
+    #[test]
+    fn pre_catalog_preferences_preserve_the_legacy_alibaba_profile() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(
+            directory.path().join("preferences.json"),
+            serde_json::to_vec(&Preferences::default()).unwrap(),
+        )
+        .unwrap();
+        let store = fresh_store(directory.path(), &FakeSecretStore::default());
+        assert_eq!(
+            store.active_profile().unwrap().id,
+            DEFAULT_ALIBABA_PROFILE_ID
+        );
+        assert_eq!(store.profile_catalog().unwrap().1.len(), 1);
+    }
+
     #[test]
     fn qwen_model_metadata_survives_reopening_settings_without_reading_credentials() {
         use crate::core::protocols::qwen_mt::QwenMTModel;
         let directory = tempfile::tempdir().unwrap();
+        atomic_write(
+            &directory.path().join(PROFILE_CATALOG_FILE),
+            &serde_json::to_vec(&ProfileCatalog::legacy_alibaba()).unwrap(),
+        )
+        .unwrap();
         let fake = FakeSecretStore::default();
         let open = || {
             SettingsStore::load_with_secret(
@@ -7970,6 +8093,11 @@ mod tests {
     #[test]
     fn deleting_the_last_regular_dev_profile_does_not_restore_it_on_restart() {
         let directory = tempfile::tempdir().unwrap();
+        atomic_write(
+            &directory.path().join(PROFILE_CATALOG_FILE),
+            &serde_json::to_vec(&ProfileCatalog::legacy_alibaba()).unwrap(),
+        )
+        .unwrap();
         let fake = FakeSecretStore::default();
         let load = || {
             SettingsStore::load_with_secret(
@@ -8494,7 +8622,9 @@ mod tests {
                 PROFILE_KEYCHAIN_SERVICE,
                 false,
             );
-            let profile = store.active_profile().unwrap();
+            let profile = store
+                .create_profile(ProviderKind::AlibabaCloud, "Recovery")
+                .unwrap();
             let slot = cache_key(PROFILE_KEYCHAIN_SERVICE, &credential_account(&profile));
             fake.state
                 .lock()
@@ -9803,6 +9933,7 @@ mod tests {
         let store =
             SettingsStore::load(directory.clone(), true, DEVELOPMENT_APPLICATION_IDENTIFIER);
         assert_eq!(store.preferences(), Preferences::default());
+        assert_eq!(store.profile_catalog().unwrap(), (String::new(), vec![]));
         store
             .save_preferences(|preferences| preferences.pulse_style = PulseStyle::Syllable)
             .unwrap();
