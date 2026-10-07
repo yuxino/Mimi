@@ -14,6 +14,8 @@ use std::path::Path;
 
 #[cfg(all(test, feature = "local-dev-credentials", target_os = "macos"))]
 mod live_tests;
+#[cfg(all(test, feature = "local-dev-credentials", target_os = "macos"))]
+mod qwen_comparison;
 
 #[cfg(unix)]
 const MAX_FILE_BYTES: u64 = 16 * 1024;

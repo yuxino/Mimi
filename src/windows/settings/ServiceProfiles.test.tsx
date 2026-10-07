@@ -62,16 +62,16 @@ it.each([undefined, "localDevFile"] as const)("saves the Alibaba text model for 
   await render(initial);
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   const picker = host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Translation model"]')!;
-  expect(picker.textContent).toBe("Qwen-MT Lite");
+  expect(picker.textContent).toBe("Qwen-MT Lite（fast · streaming）");
   await act(async () => picker.click());
   const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
-  expect(options.map(option => option.textContent)).toEqual(["Qwen-MT Lite", "Qwen-MT Flash", "Qwen-MT Plus"]);
+  expect(options.map(option => option.textContent)).toEqual(["Qwen-MT Lite（fast · streaming）", "Qwen-MT Flash（balanced · streaming）", "Qwen-MT Plus（quality · full text）"]);
   await act(async () => options[1].click());
   expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith(ready.id, undefined, { qwenMtModel: "flash" });
   expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
   expect(actions.selectProfile).not.toHaveBeenCalled();
   await render(changed);
-  expect(host.querySelector('[role="combobox"][aria-label="Translation model"]')!.textContent).toBe("Qwen-MT Flash");
+  expect(host.querySelector('[role="combobox"][aria-label="Translation model"]')!.textContent).toBe("Qwen-MT Flash（balanced · streaming）");
   expect(document.querySelector('.settings-toast')).toBeNull();
 });
 
@@ -80,9 +80,9 @@ it("keeps the saved model and reports a failed model save through the toast", as
   await render({ ...settings, profiles: [{ ...profile, credentialState: "present" }] });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   await act(async () => host.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="Translation model"]')!.click());
-  const plus = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === "Qwen-MT Plus")!;
+  const plus = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === "Qwen-MT Plus（quality · full text）")!;
   await act(async () => plus.click());
-  expect(host.querySelector('[role="combobox"][aria-label="Translation model"]')!.textContent).toBe("Qwen-MT Lite");
+  expect(host.querySelector('[role="combobox"][aria-label="Translation model"]')!.textContent).toBe("Qwen-MT Lite（fast · streaming）");
   expect(document.body.textContent).toContain("Could not save the translation model. Try again.");
   expect(document.body.textContent).not.toContain("synthetic-private-error");
 });
