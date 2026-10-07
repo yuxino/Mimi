@@ -6,7 +6,7 @@
     <string name="stop_capture">停止字幕</string>
     <string name="open_settings">設定</string>
     <string name="need_overlay_permission">需要懸浮窗權限，請在系統設定中允許「顯示在其他應用上層」。</string>
-    <string name="need_audio_permission">Android 需要錄音權限才能捕獲其他應用播放的聲音；mimi 不採集麥克風。</string>
+    <string name="need_audio_permission">Android 需要錄音權限才能擷取其他應用程式播放的聲音。</string>
     <string name="capture_failed">字幕會話已停止，請檢查權限、服務設定或網路後重試。</string>
     <string name="service_authentication_failed">服務認證失敗。請在設定中檢查當前服務的憑證和訪問權限，再開始字幕。</string>
     <string name="need_api_key">請先在設定中填寫 API Key。</string>

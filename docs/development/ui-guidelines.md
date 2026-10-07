@@ -11,6 +11,12 @@ These project rules apply to implementation and review.
 - Start with the existing design tokens, components, icons and nearby screens.
   Keep the established black, white and neutral-gray visual language. Use
   status colors only for a concrete state; preserve existing provider branding.
+- Name the actual function, state or action in plain language. Do not use slogans,
+  promises or personified service names such as “translation partner”. Preview
+  captions use ordinary sample text. Describe only capabilities available on
+  that platform; omit unsupported features from product copy. Android playback
+  capture still needs the system audio-recording permission, so explain that
+  requirement where permission is requested.
 - Make the title, current state, main action and detail areas easy to distinguish.
   Group related controls, use consistent button sizes and align actions right.
   Do not scatter buttons across large blank areas or add cards to every row.
@@ -158,3 +164,9 @@ actual hover dismissal and icon/label geometry at large font scales. Optional
 ready/running explanations stay in help; setup, permission, silent-capture and
 storage recovery stay visible. First-run audio-sending and charge disclosures
 remain visible before the user starts a session.
+
+Android's default tooltip can ellipsize a complete explanation after three lines,
+even when its tooltipText is intact. Use the shared bounded, scrollable help
+popup; check the rendered line ellipsis and an actual hover screenshot. Native
+UI tests must inject mouse pointer properties through the system input channel
+and restore fixtures on assertion failure.

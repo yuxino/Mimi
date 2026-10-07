@@ -112,7 +112,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
 
     private fun renderDraft() {
         invalidateCheck(); rendering = true
-        help.tooltipText = activity.getString(helpResource()).substringBefore("\n\n")
+        HelpUi.setMessage(help, activity.getString(helpResource()).substringBefore("\n\n"))
         val state = drafts.getValue(selected)
         endpoint.setText(state.endpoint); model.setText(state.model); key.setText(state.key)
         localHttp.isChecked = state.localHttp

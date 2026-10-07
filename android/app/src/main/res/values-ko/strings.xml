@@ -6,7 +6,7 @@
     <string name="stop_capture">자막 중지</string>
     <string name="open_settings">설정</string>
     <string name="need_overlay_permission">시스템 설정에서 다른 앱 위에 표시를 허용하세요.</string>
-    <string name="need_audio_permission">앱 재생 소리를 캡처하려면 Android의 오디오 녹음 권한이 필요합니다. mimi는 마이크를 사용하지 않습니다.</string>
+    <string name="need_audio_permission">다른 앱에서 재생되는 소리를 캡처하려면 Android의 오디오 녹음 권한이 필요합니다.</string>
     <string name="capture_failed">자막 세션이 중지되었습니다. 권한, 서비스 설정, 네트워크를 확인한 후 다시 시도하세요.</string>
     <string name="service_authentication_failed">서비스 인증에 실패했습니다. 설정에서 현재 서비스의 인증 정보와 접근 권한을 확인한 후 자막을 다시 시작하세요.</string>
     <string name="need_api_key">먼저 설정에서 API 키를 추가하세요.</string>

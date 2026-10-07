@@ -1,14 +1,14 @@
 <resources>
     <string name="guide_open">Getting started</string>
     <string name="guide_intro">Choose a translation service</string>
-    <string name="guide_intro_hint">mimi sends playback audio to your chosen service and shows the translation over your content.</string>
+    <string name="guide_intro_hint">Starting capture sends playback audio to the selected service for speech recognition.</string>
     <string name="guide_saved_hint">Save your service credentials in encrypted storage on this phone. Saving does not contact the service or verify authentication.</string>
     <string name="guide_saved">Credentials saved · connection is checked during the trial</string>
     <string name="guide_missing">Credentials for this service have not been saved</string>
     <string name="guide_credentials">Add or edit credentials</string>
     <string name="guide_check_permissions">Check phone permissions</string>
     <string name="guide_permission_title">Let captions appear over your content</string>
-    <string name="guide_permission_audio">Android also requires audio recording permission for playback capture. mimi captures media and game playback, without using the microphone.</string>
+    <string name="guide_permission_audio">Android requires audio recording permission to capture app playback.</string>
     <string name="guide_permission_hint">Allow overlays and audio first, then turn on screen sharing. You can continue later.</string>
     <string name="guide_grant">Allow phone permissions</string>
     <string name="guide_trial_next">Continue to trial</string>
@@ -19,9 +19,8 @@
     <string name="guide_capture_limits">Some apps block audio sharing. DRM content, calls and apps that opt out of capture cannot be captured. mimi respects these limits.</string>
     <string name="guide_see_caption">Look for captions</string>
     <string name="guide_start_trial">Start trial · share screen</string>
-    <string name="guide_complete_title">Your first caption is here</string>
+    <string name="guide_complete_title">Captions are displayed</string>
     <string name="guide_wait_caption_title">Waiting for translation</string>
-    <string name="guide_complete_hint">You can keep watching.</string>
     <string name="guide_stopped">Screen sharing ended. Turn it on again.</string>
     <string name="guide_finish">Done</string>
     <string name="guide_waiting_back">Keep waiting · return to playback</string>
@@ -47,7 +46,7 @@
     <string name="guide_understood">Got it</string>
     <string name="guide_progress">Getting started · %1$d / 5</string>
     <string name="guide_continue_provider">Continue · %1$s</string>
-    <string name="guide_connect">Connect %1$s</string>
+    <string name="guide_connect">Configure %1$s</string>
     <string name="guide_permission_states">Overlay: %1$s\nAudio permission: %2$s\nScreen sharing: %3$s (fresh consent each time)</string>
     <string name="guide_trial_hint">Open a video or game and play a few seconds of speech. Starting connects to %1$s and may incur service charges.</string>
     <string name="guide_no_pcm">No audio frames received · check screen sharing</string>

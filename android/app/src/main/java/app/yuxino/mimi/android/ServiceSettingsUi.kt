@@ -48,6 +48,7 @@ internal object ServiceSettingsUi {
         if (activity.isFinishing || activity.isDestroyed) return
         val host = activity.window.decorView
         if ((host.getTag(R.id.active_help_dialog) as? androidx.appcompat.app.AlertDialog)?.isShowing == true) return
+        HelpUi.dismiss(activity)
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(activity, 24), dp(activity, 12), dp(activity, 24), dp(activity, 8))

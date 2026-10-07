@@ -1,14 +1,14 @@
 <resources>
     <string name="guide_open">開始使用指南</string>
-    <string name="guide_intro">先選一位翻譯夥伴</string>
-    <string name="guide_intro_hint">mimi 把手機正在播放的聲音交給你選的服務，再把翻譯放到畫面上。</string>
+    <string name="guide_intro">選擇翻譯服務</string>
+    <string name="guide_intro_hint">開始擷取後，播放聲音會傳送到所選服務進行辨識。</string>
     <string name="guide_saved_hint">準備好服務憑證，儲存到手機的加密儲存。儲存不會發起網路驗證，也不代表驗證成功。</string>
     <string name="guide_saved">憑證已儲存 · 連線會在試用時驗證</string>
     <string name="guide_missing">還沒有儲存這項服務的憑證</string>
     <string name="guide_credentials">填寫或修改憑證</string>
     <string name="guide_check_permissions">繼續檢查權限</string>
     <string name="guide_permission_title">讓字幕出現在畫面上</string>
-    <string name="guide_permission_audio">Android 把播放採集也叫作“錄音”權限。mimi 只採集媒體和遊戲的播放聲音，不使用麥克風。</string>
+    <string name="guide_permission_audio">Android 需要錄音權限才能擷取其他應用程式播放的聲音。</string>
     <string name="guide_permission_hint">先允許懸浮窗和音訊權限，再開啟螢幕共享。也可以稍後繼續。</string>
     <string name="guide_grant">先授予手機權限</string>
     <string name="guide_trial_next">繼續試用</string>
@@ -19,9 +19,8 @@
     <string name="guide_capture_limits">有些應用禁止共享聲音；DRM 內容、通話聲音和主動退出採集的應用無法捕獲。mimi 不會繞過這些限制。</string>
     <string name="guide_see_caption">去看字幕</string>
     <string name="guide_start_trial">開始試用 · 共享螢幕</string>
-    <string name="guide_complete_title">第一句字幕，到了</string>
+    <string name="guide_complete_title">字幕已顯示</string>
     <string name="guide_wait_caption_title">正在等待翻譯</string>
-    <string name="guide_complete_hint">可以繼續看影片了。</string>
     <string name="guide_stopped">螢幕共享已結束，請重新開啟</string>
     <string name="guide_finish">完成</string>
     <string name="guide_waiting_back">繼續等待 · 返回播放內容</string>
@@ -47,7 +46,7 @@
     <string name="guide_understood">知道了</string>
     <string name="guide_progress">開始使用 · %1$d / 5</string>
     <string name="guide_continue_provider">繼續 · %1$s</string>
-    <string name="guide_connect">連線 %1$s</string>
+    <string name="guide_connect">設定 %1$s</string>
     <string name="guide_permission_states">懸浮窗：%1$s\n音訊權限：%2$s\n螢幕共享：%3$s（每次重新確認）</string>
     <string name="guide_trial_hint">打開影片或遊戲，播放幾秒帶人聲的內容。開始後會連線 %1$s，可能產生服務費用。</string>
     <string name="guide_no_pcm">沒有收到音訊幀 · 檢查共享是否仍開啟</string>

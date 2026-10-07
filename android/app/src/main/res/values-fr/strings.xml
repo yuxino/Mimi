@@ -6,7 +6,7 @@
     <string name="stop_capture">Arrêter les sous-titres</string>
     <string name="open_settings">Réglages</string>
     <string name="need_overlay_permission">Autorisez l’affichage par-dessus les autres applications dans les réglages système.</string>
-    <string name="need_audio_permission">Android exige l’autorisation d’enregistrement audio pour capturer le son des applications. mimi n’utilise pas le microphone.</string>
+    <string name="need_audio_permission">Android exige l’autorisation d’enregistrement audio pour capturer le son des applications.</string>
     <string name="capture_failed">La session de sous-titres s’est arrêtée. Vérifiez les autorisations, le service et le réseau, puis réessayez.</string>
     <string name="service_authentication_failed">Échec de l’authentification. Vérifiez les identifiants et les droits d’accès du service dans les réglages, puis redémarrez les sous-titres.</string>
     <string name="need_api_key">Ajoutez d’abord une clé API dans les réglages.</string>

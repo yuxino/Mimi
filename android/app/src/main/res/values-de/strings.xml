@@ -6,7 +6,7 @@
     <string name="stop_capture">Untertitel stoppen</string>
     <string name="open_settings">Einstellungen</string>
     <string name="need_overlay_permission">In den Systemeinstellungen „Über anderen Apps einblenden“ erlauben.</string>
-    <string name="need_audio_permission">Android benötigt die Aufnahmeberechtigung, um App-Audio zu erfassen. mimi verwendet kein Mikrofon.</string>
+    <string name="need_audio_permission">Android benötigt die Aufnahmeberechtigung, um App-Audio zu erfassen.</string>
     <string name="capture_failed">Untertitelsitzung beendet. Berechtigungen, Diensteinstellungen und Netzwerk prüfen und erneut versuchen.</string>
     <string name="service_authentication_failed">Authentifizierung fehlgeschlagen. Zugangsdaten und Dienstberechtigungen in den Einstellungen prüfen und Untertitel erneut starten.</string>
     <string name="need_api_key">Zuerst einen API-Schlüssel in den Einstellungen hinzufügen.</string>

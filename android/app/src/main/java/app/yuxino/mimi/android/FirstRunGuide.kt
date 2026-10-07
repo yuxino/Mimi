@@ -159,7 +159,6 @@ internal class FirstRunGuide(private val activity: AppCompatActivity, private va
                 val complete = MimiService.isRunning && Settings.canDrawOverlays(activity) && audioPermission() &&
                     synchronized(MimiService.firstRunEvidence) { MimiService.firstRunEvidence.complete }
                 label(if (complete) activity.getString(R.string.guide_complete_title) else activity.getString(R.string.guide_wait_caption_title), 24f)
-                if (complete) label(activity.getString(R.string.guide_complete_hint), muted = true)
                 val sharingEnded = projectionSharingEnded(MimiService.isRunning, MimiService.lastCaptureError)
                 if (sharingEnded) label(activity.getString(R.string.guide_stopped), muted = true)
                 button(if (complete) activity.getString(R.string.guide_finish) else if (sharingEnded) activity.getString(R.string.guide_reopen_sharing) else if (MimiService.isRunning) activity.getString(R.string.guide_waiting_back) else activity.getString(R.string.guide_retry), "guide-finish") {

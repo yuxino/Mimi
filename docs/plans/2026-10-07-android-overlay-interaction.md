@@ -44,3 +44,10 @@ capture-limit details follow this rule. Keep setup, permission, silent-capture
 and storage recovery visible at normal size, along with first-run audio-sending
 and service-charge disclosures. Verify native hover and tap separately, all
 seven languages, narrow/large-font layouts and comparable Before/After captures.
+
+The Android framework tooltip clips multiline explanations to three lines.
+Shared help uses a neutral scrollable native popup, bounded by the available
+space above/below its anchor. Hover can move into the popup for scrolling;
+focus, long press and tap keep help reachable without a mouse. Dismiss on
+pointer/focus exit, navigation and host destruction. Do not classify a stored
+full tooltip string as proof that the explanation is visibly complete.

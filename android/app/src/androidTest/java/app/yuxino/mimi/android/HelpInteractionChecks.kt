@@ -25,7 +25,12 @@ import java.io.File
 /** Blank API 33+ emulator only: native hover, touch help and visible recovery, no capture/network. */
 internal class HelpInteractionChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
-    private fun ui(action: () -> Unit) { test.runOnMainSync(action); test.waitForIdleSync() }
+    private fun ui(action: () -> Unit) {
+        var failure: Throwable? = null
+        test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
+        test.waitForIdleSync()
+        failure?.let { throw it }
+    }
     private fun views(view: View): List<View> = listOf(view) + if (view is ViewGroup)
         (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
     private fun windows() = WindowInspector.getGlobalWindowViews()
@@ -44,7 +49,7 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
         ui {
             button.requestRectangleOnScreen(android.graphics.Rect(0, 0, button.width, button.height), true)
             check(button.contentDescription.isNotBlank())
-            check(button.tooltipText.toString() == expected)
+            check(button.tooltipText == null) { "Framework tooltip would duplicate contextual help" }
             check(button.pointerIcon == PointerIcon.getSystemIcon(context, PointerIcon.TYPE_HAND))
             val row = button.parent as ViewGroup
             val label = (0 until row.childCount).map { row.getChildAt(it) }.filterIsInstance<TextView>().firstOrNull()
@@ -54,15 +59,36 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
                 check(label.layout.height <= label.height - label.paddingTop - label.paddingBottom) { "Help label clipped: $tag" }
             }
         }
+        SystemClock.sleep(300) // ScrollView must finish layout before system pointer coordinates are read.
         if (hover) {
-            fun event(action: Int) = MotionEvent.obtain(SystemClock.uptimeMillis(), SystemClock.uptimeMillis(), action,
-                button.width / 2f, button.height / 2f, 0).apply { source = InputDevice.SOURCE_MOUSE }
-            ui { event(MotionEvent.ACTION_HOVER_MOVE).also { button.dispatchGenericMotionEvent(it); it.recycle() } }
+            val point = IntArray(2)
+            ui {
+                button.getLocationOnScreen(point)
+                val visible = android.graphics.Rect()
+                check(button.getGlobalVisibleRect(visible) && visible.height() == button.height && visible.width() == button.width) {
+                    "Hover target is outside the visible viewport: $tag"
+                }
+            }
+            fun pointer(x: Float, y: Float) {
+                val props = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE }
+                val coords = MotionEvent.PointerCoords().apply { this.x = x; this.y = y }
+                val event = MotionEvent.obtain(SystemClock.uptimeMillis(), SystemClock.uptimeMillis(), MotionEvent.ACTION_HOVER_MOVE,
+                    1, arrayOf(props), arrayOf(coords), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0)
+                try { check(test.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+            }
+            val x = point[0] + button.width / 2f
+            val y = point[1] + button.height / 2f
+            pointer(x - 8, y); pointer(x, y)
             SystemClock.sleep(900)
-            ui { check(contains(expected)) { "Native hover explanation missing: $tag" } }
+            ui {
+                check(contains(expected)) { "Native hover explanation missing: $tag" }
+                check(windows().flatMap(::views).count { it is TextView && it.isShown && it.text.toString() == expected } == 1) { "Duplicate hover explanations" }
+                val tooltip = windows().firstNotNullOf { it.findViewWithTag<TextView>("help-tooltip-message") }
+                check((0 until tooltip.layout.lineCount).all { tooltip.layout.getEllipsisCount(it) == 0 }) { "Hover explanation was truncated" }
+            }
             capture("$screenshot-hover")
-            ui { event(MotionEvent.ACTION_HOVER_EXIT).also { button.dispatchGenericMotionEvent(it); it.recycle() } }
-            SystemClock.sleep(100)
+            pointer(1f, 1f)
+            SystemClock.sleep(250)
             ui { check(!contains(expected)) { "Hover tooltip did not dismiss" } }
         }
         ui { button.performClick(); button.performClick() }
@@ -106,7 +132,7 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             check(InterfaceLanguage.indexOf(currentHome.resources.configuration.locales[0]) == InterfaceLanguage.tags.indexOf(locale)) { "Activity locale differs from requested sample" }
             capture("$prefix-home")
             if (!baseline) {
-                help(currentHome, "home-help", currentHome.getString(R.string.home_description) + "\n\n" + currentHome.getString(R.string.home_privacy), "$prefix-home", hover = true)
+                help(currentHome, "home-help", currentHome.getString(R.string.home_description), "$prefix-home", hover = true)
                 ui { check(currentHome.findViewById<View>(R.id.status_hint).isShown) }
                 // Inject only content-free observations; no foreground service, audio or network starts.
                 ui {
@@ -130,7 +156,7 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             capture("$prefix-language")
             if (!baseline) {
                 val button = windows().firstNotNullOf { it.findViewWithTag<ImageButton>("language-help") }
-                ui { check(button.tooltipText.toString() == currentHome.getString(R.string.language_sheet_hint)); button.performClick() }
+                ui { check(button.tooltipText == null); button.performClick() }
                 capture("$prefix-language-detail")
                 test.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
             }
@@ -143,7 +169,13 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             ui {
                 currentSettings.findViewById<View>(R.id.appearance_more_toggle).performClick()
             }
+            SystemClock.sleep(300) // Wait for expansion layout before choosing the scroll limit.
             ui { currentSettings.findViewById<ScrollView>(R.id.settings_scroll).fullScroll(View.FOCUS_DOWN) }
+            if (!baseline) ui {
+                check(views(currentSettings.findViewById(android.R.id.content)).count {
+                    it is TextView && it.text.toString() == currentSettings.getString(R.string.settings_history)
+                } == 1) { "Duplicate history label" }
+            }
             capture("$prefix-history")
             if (!baseline) help(currentSettings, "history-help", currentSettings.getString(R.string.settings_history_help), "$prefix-history")
             ui { currentSettings.finish() }
@@ -172,7 +204,7 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (failure == null && baseline) "Native $prefix captured: six comparable screens only; no capture or provider.\n"
                 else if (failure == null) "Native $prefix passed: hover, touch, duplicate taps, adjacent labels, visible recovery and first-run disclosure; no capture or provider.\n"
-                else "Native $prefix failed: ${failure.javaClass.simpleName}: ${failure.message}\n")
+                else "Native $prefix failed: ${failure.javaClass.simpleName}: ${failure.message}; ${failure.stackTrace.firstOrNull { it.className.contains("HelpInteractionChecks") }}\n")
         })
     }
 }

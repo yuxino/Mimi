@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         applySystemBarInsets()
         findViewById<LinearLayout>(R.id.home_heading).addView(HelpUi.heading(this,
-            getString(R.string.home_title), getString(R.string.home_description) + "\n\n" + getString(R.string.home_privacy),
+            getString(R.string.home_title), getString(R.string.home_description),
             26f, "home-help"))
 
         guide = FirstRunGuide(this) { beginStartFlow(permissionOnly = guide.step == 2) }
@@ -179,7 +179,7 @@ class MainActivity : AppCompatActivity() {
             setText(hint); visibility = if (needsAction) View.VISIBLE else View.GONE
         }
         findViewById<android.widget.ImageButton>(R.id.status_help).apply {
-            HelpUi.bind(this@MainActivity, this, findViewById<TextView>(R.id.status).text.toString(), getString(hint))
+            HelpUi.bind(this@MainActivity, this, this@MainActivity.findViewById<TextView>(R.id.status).text.toString(), getString(hint))
             visibility = if (needsAction) View.GONE else View.VISIBLE
         }
         findViewById<TextView>(R.id.source_summary).text = languageLabel(SettingsStore.sourceLang(this))

@@ -5,7 +5,7 @@
     <string name="stop_capture">字幕を停止</string>
     <string name="open_settings">設定</string>
     <string name="need_overlay_permission">システム設定で他のアプリの上に重ねて表示を許可してください。</string>
-    <string name="need_audio_permission">アプリの再生音声を取得するには録音権限が必要です。mimi はマイクを使用しません。</string>
+    <string name="need_audio_permission">ほかのアプリの再生音声を取得するには、Android の録音権限が必要です。</string>
     <string name="capture_failed">字幕セッションが停止しました。権限、サービス設定、ネットワークを確認して再試行してください。</string>
     <string name="service_authentication_failed">サービスの認証に失敗しました。設定で現在のサービスの認証情報とアクセス権を確認してから、字幕を開始してください。</string>
     <string name="need_api_key">先に設定で API Key を入力してください。</string>

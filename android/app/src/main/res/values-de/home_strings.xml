@@ -2,8 +2,8 @@
 <resources>
     <string name="brand_description">mimi-Figurenlogo</string>
     <string name="home_kicker">Live-Untertitel und Übersetzung</string>
-    <string name="home_title">Kein Satz geht verloren.</string>
-    <string name="home_description">Untertitel für Videos, Streams und Spiele während der Wiedergabe.</string>
+    <string name="home_title">Live-Untertitel</string>
+    <string name="home_description">Zeigt Untertitel für die Audiowiedergabe anderer Apps. Manche Apps erlauben keine Audioerfassung.</string>
     <string name="home_source">Gesprochene Sprache</string>
     <string name="home_target">Übersetzen in</string>
     <string name="home_service">Übersetzungsdienst</string>
@@ -16,13 +16,12 @@
     <string name="home_ready_hint">Nach dem Start erscheinen Untertitel über anderen Apps.</string>
     <string name="home_overlay_hint">Als Nächstes Einblendungen in den Systemeinstellungen erlauben.</string>
     <string name="home_starting_status">Warten auf Berechtigung</string>
-    <string name="home_privacy">Nur Wiedergabe-Audio · kein Mikrofon</string>
     <string name="preview_label">Untertitelvorschau</string>
     <string name="preview_example">Beispiel</string>
-    <string name="preview_source">A little closer to the world.</string>
-    <string name="preview_zh">离世界，再近一点。</string>
-    <string name="preview_en">A little closer to the world.</string>
-    <string name="preview_ja">世界に、もう少し近づく。</string>
+    <string name="preview_source">This is a sample subtitle.</string>
+    <string name="preview_zh">这是一条示例字幕。</string>
+    <string name="preview_en">This is a sample subtitle.</string>
+    <string name="preview_ja">字幕の表示例です。</string>
     <string name="home_edit_appearance">Untertiteldarstellung anpassen</string>
     <string name="preview_edit">Beispiel · Darstellung anpassen ›</string>
     <string name="language_source_title">Welche Sprache wird gesprochen?</string>
@@ -36,7 +35,7 @@
     <string name="capture_no_pcm">Noch keine Audiodaten empfangen</string>
     <string name="capture_silent">Kein nutzbarer Ton erkannt</string>
     <string name="capture_no_sound_hint">Kein nutzbarer Ton. Wiedergabe prüfen; die Quell-App kann die Erfassung einschränken.</string>
-    <string name="capture_source_hint">Quelle: App-Wiedergabe · kein Mikrofon. Erkannter Ton bestätigt keine Spracherkennung.</string>
+    <string name="capture_source_hint">Quelle: App-Wiedergabe. Erkannter Ton bestätigt keine Spracherkennung.</string>
     <string name="copy_capture_diagnostics">Erfassungsdiagnose kopieren</string>
     <string name="capture_diagnostics_copied">Ohne Audio, Untertitel oder Zugangsdaten kopiert</string>
     <string name="capture_diagnostics_copy_failed">Diagnose konnte nicht kopiert werden. Erneut versuchen.</string>

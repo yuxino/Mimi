@@ -258,13 +258,6 @@
                         android:baselineAligned="false">
                         <LinearLayout android:id="@+id/history_heading" android:layout_width="0dp"
                             android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" />
-                    <TextView
-                            style="@style/TextAppearance.Mimi.Label"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/settings_history"
-                            android:textColor="@color/mimi_text"/>
                         <TextView
                             android:id="@+id/history_lines_value"
                             android:layout_width="wrap_content"

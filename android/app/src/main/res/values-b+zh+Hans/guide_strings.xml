@@ -1,14 +1,14 @@
 <resources>
     <string name="guide_open">开始使用指南</string>
-    <string name="guide_intro">先选一位翻译伙伴</string>
-    <string name="guide_intro_hint">mimi 把手机正在播放的声音交给你选的服务，再把翻译放到画面上。</string>
+    <string name="guide_intro">选择翻译服务</string>
+    <string name="guide_intro_hint">开始采集后，播放声音会发送到所选服务进行识别。</string>
     <string name="guide_saved_hint">准备好服务凭据，保存到手机的加密存储。保存不会发起网络验证，也不代表鉴权成功。</string>
     <string name="guide_saved">凭据已保存 · 连接会在试用时验证</string>
     <string name="guide_missing">还没有保存这项服务的凭据</string>
     <string name="guide_credentials">填写或修改凭据</string>
     <string name="guide_check_permissions">继续检查权限</string>
     <string name="guide_permission_title">让字幕出现在画面上</string>
-    <string name="guide_permission_audio">Android 把播放采集也叫作“录音”权限。mimi 只采集媒体和游戏的播放声音，不使用麦克风。</string>
+    <string name="guide_permission_audio">Android 需要录音权限才能采集其他应用播放的声音。</string>
     <string name="guide_permission_hint">先允许悬浮窗和音频权限，再开启屏幕共享。也可以稍后继续。</string>
     <string name="guide_grant">先授予手机权限</string>
     <string name="guide_trial_next">继续试用</string>
@@ -19,9 +19,8 @@
     <string name="guide_capture_limits">有些应用禁止共享声音；DRM 内容、通话声音和主动退出采集的应用无法捕获。mimi 不会绕过这些限制。</string>
     <string name="guide_see_caption">去看字幕</string>
     <string name="guide_start_trial">开始试用 · 共享屏幕</string>
-    <string name="guide_complete_title">第一句字幕，到了</string>
+    <string name="guide_complete_title">字幕已显示</string>
     <string name="guide_wait_caption_title">正在等待翻译</string>
-    <string name="guide_complete_hint">可以继续看视频了。</string>
     <string name="guide_stopped">屏幕共享已结束，请重新开启</string>
     <string name="guide_finish">完成</string>
     <string name="guide_waiting_back">继续等待 · 返回播放内容</string>
@@ -47,7 +46,7 @@
     <string name="guide_understood">知道了</string>
     <string name="guide_progress">开始使用 · %1$d / 5</string>
     <string name="guide_continue_provider">继续 · %1$s</string>
-    <string name="guide_connect">连接 %1$s</string>
+    <string name="guide_connect">配置 %1$s</string>
     <string name="guide_permission_states">悬浮窗：%1$s\n音频权限：%2$s\n屏幕共享：%3$s（每次重新确认）</string>
     <string name="guide_trial_hint">打开视频或游戏，播放几秒带人声的内容。开始后会连接 %1$s，可能产生服务费用。</string>
     <string name="guide_no_pcm">没有收到音频帧 · 检查共享是否仍开启</string>

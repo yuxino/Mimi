@@ -2,14 +2,14 @@
 <resources>
     <string name="guide_open">Premiers pas</string>
     <string name="guide_intro">Choisir un service de traduction</string>
-    <string name="guide_intro_hint">mimi envoie le son de lecture au service choisi et affiche la traduction par-dessus votre contenu.</string>
+    <string name="guide_intro_hint">Le démarrage de la capture envoie le son de lecture au service choisi pour la reconnaissance vocale.</string>
     <string name="guide_saved_hint">Enregistrez les identifiants du service dans le stockage chiffré du téléphone. L’enregistrement ne contacte pas le service et ne vérifie pas l’authentification.</string>
     <string name="guide_saved">Identifiants enregistrés · connexion vérifiée pendant l’essai</string>
     <string name="guide_missing">Les identifiants de ce service ne sont pas enregistrés</string>
     <string name="guide_credentials">Ajouter ou modifier les identifiants</string>
     <string name="guide_check_permissions">Vérifier les autorisations du téléphone</string>
     <string name="guide_permission_title">Afficher les sous-titres par-dessus votre contenu</string>
-    <string name="guide_permission_audio">Android exige aussi l’autorisation d’enregistrement audio pour la capture du son de lecture. mimi capture le son des médias et des jeux sans utiliser le microphone.</string>
+    <string name="guide_permission_audio">Android exige l’autorisation d’enregistrement audio pour capturer le son des applications.</string>
     <string name="guide_permission_hint">Autorisez d’abord la superposition et l’audio, puis activez le partage d’écran. Vous pouvez continuer plus tard.</string>
     <string name="guide_grant">Autoriser les accès du téléphone</string>
     <string name="guide_trial_next">Passer à l’essai</string>
@@ -20,9 +20,8 @@
     <string name="guide_capture_limits">Certaines applications bloquent le partage audio. Les contenus DRM, les appels et les applications qui refusent la capture ne peuvent pas être capturés. mimi respecte ces limites.</string>
     <string name="guide_see_caption">Vérifier les sous-titres</string>
     <string name="guide_start_trial">Démarrer l’essai · partager l’écran</string>
-    <string name="guide_complete_title">Votre premier sous-titre est là</string>
+    <string name="guide_complete_title">Sous-titres affichés</string>
     <string name="guide_wait_caption_title">En attente de traduction</string>
-    <string name="guide_complete_hint">Vous pouvez continuer à regarder.</string>
     <string name="guide_stopped">Le partage d’écran s’est arrêté. Réactivez-le.</string>
     <string name="guide_finish">Terminé</string>
     <string name="guide_waiting_back">Continuer d’attendre · retourner à la lecture</string>
@@ -48,7 +47,7 @@
     <string name="guide_understood">Compris</string>
     <string name="guide_progress">Premiers pas · %1$d / 5</string>
     <string name="guide_continue_provider">Continuer · %1$s</string>
-    <string name="guide_connect">Connecter %1$s</string>
+    <string name="guide_connect">Configurer %1$s</string>
     <string name="guide_permission_states">Superposition : %1$s\nAutorisation audio : %2$s\nPartage d’écran : %3$s (nouvel accord à chaque fois)</string>
     <string name="guide_trial_hint">Ouvrez une vidéo ou un jeu et lisez quelques secondes de paroles. Le démarrage se connecte à %1$s et peut entraîner des frais.</string>
     <string name="guide_no_pcm">Aucune trame audio reçue · vérifiez le partage d’écran</string>

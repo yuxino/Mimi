@@ -1,8 +1,8 @@
 <resources>
     <string name="brand_description">mimi character icon</string>
     <string name="home_kicker">Live captions and translation</string>
-    <string name="home_title">Follow every line.</string>
-    <string name="home_description">Add captions to videos, streams and games as they play.</string>
+    <string name="home_title">Live captions</string>
+    <string name="home_description">Show captions for audio playing in other apps. Some apps restrict audio capture.</string>
     <string name="home_source">Spoken language</string>
     <string name="home_target">Translate to</string>
     <string name="home_service">Translation service</string>
@@ -15,13 +15,12 @@
     <string name="home_ready_hint">Captions will appear over other apps once started.</string>
     <string name="home_overlay_hint">Next, allow overlays in system settings.</string>
     <string name="home_starting_status">Waiting for permission</string>
-    <string name="home_privacy">Playback audio only · no microphone capture</string>
     <string name="preview_label">Caption preview</string>
     <string name="preview_example">Sample content</string>
-    <string name="preview_source">A little closer to the world.</string>
-    <string name="preview_zh">离世界，再近一点。</string>
-    <string name="preview_en">A little closer to the world.</string>
-    <string name="preview_ja">世界に、もう少し近づく。</string>
+    <string name="preview_source">This is a sample subtitle.</string>
+    <string name="preview_zh">这是一条示例字幕。</string>
+    <string name="preview_en">This is a sample subtitle.</string>
+    <string name="preview_ja">字幕の表示例です。</string>
     <string name="home_edit_appearance">Adjust caption appearance</string>
     <string name="preview_edit">Sample · adjust appearance ›</string>
     <string name="language_source_title">What language is being spoken?</string>
@@ -35,7 +34,7 @@
     <string name="capture_no_pcm">No audio frames received yet</string>
     <string name="capture_silent">No usable sound detected</string>
     <string name="capture_no_sound_hint">No usable sound. Check playback; the source app may restrict capture.</string>
-    <string name="capture_source_hint">Source: app playback · no microphone. Sound detection does not prove speech recognition.</string>
+    <string name="capture_source_hint">Source: app playback. Sound detection does not prove speech recognition.</string>
     <string name="copy_capture_diagnostics">Copy capture diagnostics</string>
     <string name="capture_diagnostics_copied">Copied without audio, captions or credentials</string>
     <string name="capture_diagnostics_copy_failed">Could not copy diagnostics. Try again.</string>

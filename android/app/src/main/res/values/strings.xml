@@ -5,7 +5,7 @@
     <string name="stop_capture">Stop captions</string>
     <string name="open_settings">Settings</string>
     <string name="need_overlay_permission">Allow Display over other apps in system settings.</string>
-    <string name="need_audio_permission">Android requires audio recording permission to capture app playback. mimi does not use the microphone.</string>
+    <string name="need_audio_permission">Android requires audio recording permission to capture app playback.</string>
     <string name="capture_failed">Caption session stopped. Check permissions, service settings and network, then retry.</string>
     <string name="service_authentication_failed">Service authentication failed. Check the current service credentials and access permissions in Settings, then start captions again.</string>
     <string name="need_api_key">Add an API key in Settings first.</string>

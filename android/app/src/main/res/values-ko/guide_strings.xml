@@ -2,14 +2,14 @@
 <resources>
     <string name="guide_open">시작 안내</string>
     <string name="guide_intro">번역 서비스 선택</string>
-    <string name="guide_intro_hint">mimi는 재생 소리를 선택한 서비스에 보내고 콘텐츠 위에 번역을 표시합니다.</string>
+    <string name="guide_intro_hint">캡처를 시작하면 재생 소리가 음성 인식을 위해 선택한 서비스로 전송됩니다.</string>
     <string name="guide_saved_hint">서비스 인증 정보를 이 휴대전화에 암호화하여 저장합니다. 저장만으로는 서비스에 접속하거나 인증을 확인하지 않습니다.</string>
     <string name="guide_saved">인증 정보 저장됨 · 체험 중 연결 확인</string>
     <string name="guide_missing">이 서비스의 인증 정보가 저장되지 않았습니다</string>
     <string name="guide_credentials">인증 정보 추가 또는 편집</string>
     <string name="guide_check_permissions">휴대전화 권한 확인</string>
     <string name="guide_permission_title">콘텐츠 위에 자막 표시</string>
-    <string name="guide_permission_audio">재생 소리를 캡처하려면 Android의 오디오 녹음 권한도 필요합니다. mimi는 마이크를 사용하지 않고 미디어와 게임의 재생 소리를 캡처합니다.</string>
+    <string name="guide_permission_audio">다른 앱에서 재생되는 소리를 캡처하려면 Android의 오디오 녹음 권한이 필요합니다.</string>
     <string name="guide_permission_hint">먼저 다른 앱 위에 표시와 오디오 권한을 허용한 다음 화면 공유를 켜세요. 나중에 계속할 수도 있습니다.</string>
     <string name="guide_grant">휴대전화 권한 허용</string>
     <string name="guide_trial_next">체험으로 계속</string>
@@ -20,9 +20,8 @@
     <string name="guide_capture_limits">일부 앱은 소리 공유를 차단합니다. DRM 콘텐츠, 통화, 캡처를 허용하지 않는 앱의 소리는 캡처할 수 없습니다. mimi는 이러한 제한을 따릅니다.</string>
     <string name="guide_see_caption">자막 확인</string>
     <string name="guide_start_trial">체험 시작 · 화면 공유</string>
-    <string name="guide_complete_title">첫 자막이 표시되었습니다</string>
+    <string name="guide_complete_title">자막이 표시되었습니다</string>
     <string name="guide_wait_caption_title">번역 대기 중</string>
-    <string name="guide_complete_hint">계속 시청하셔도 됩니다.</string>
     <string name="guide_stopped">화면 공유가 종료되었습니다. 다시 켜세요.</string>
     <string name="guide_finish">완료</string>
     <string name="guide_waiting_back">계속 기다리기 · 재생 화면으로 돌아가기</string>
@@ -48,7 +47,7 @@
     <string name="guide_understood">확인</string>
     <string name="guide_progress">시작 안내 · %1$d / 5</string>
     <string name="guide_continue_provider">계속 · %1$s</string>
-    <string name="guide_connect">%1$s 연결</string>
+    <string name="guide_connect">%1$s 설정</string>
     <string name="guide_permission_states">다른 앱 위에 표시: %1$s\n오디오 권한: %2$s\n화면 공유: %3$s (매번 새로 동의)</string>
     <string name="guide_trial_hint">영상이나 게임을 열어 말소리를 몇 초간 재생하세요. 시작하면 %1$s에 연결되며 서비스 요금이 발생할 수 있습니다.</string>
     <string name="guide_no_pcm">오디오 프레임을 받지 못했습니다 · 화면 공유 확인</string>

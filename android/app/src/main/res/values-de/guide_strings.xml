@@ -2,14 +2,14 @@
 <resources>
     <string name="guide_open">Erste Schritte</string>
     <string name="guide_intro">Übersetzungsdienst auswählen</string>
-    <string name="guide_intro_hint">mimi sendet Wiedergabe-Audio an den gewählten Dienst und blendet die Übersetzung über dem Inhalt ein.</string>
+    <string name="guide_intro_hint">Beim Start der Erfassung wird Wiedergabe-Audio zur Spracherkennung an den gewählten Dienst gesendet.</string>
     <string name="guide_saved_hint">Zugangsdaten verschlüsselt auf diesem Telefon speichern. Speichern kontaktiert den Dienst nicht und prüft keine Authentifizierung.</string>
     <string name="guide_saved">Zugangsdaten gespeichert · Verbindung wird im Probelauf geprüft</string>
     <string name="guide_missing">Für diesen Dienst sind keine Zugangsdaten gespeichert</string>
     <string name="guide_credentials">Zugangsdaten hinzufügen oder bearbeiten</string>
     <string name="guide_check_permissions">Telefonberechtigungen prüfen</string>
     <string name="guide_permission_title">Untertitel über dem Inhalt anzeigen</string>
-    <string name="guide_permission_audio">Android benötigt für die Wiedergabe-Erfassung auch die Aufnahmeberechtigung. mimi erfasst Medien- und Spielaudio ohne Mikrofon.</string>
+    <string name="guide_permission_audio">Android benötigt die Aufnahmeberechtigung, um App-Audio zu erfassen.</string>
     <string name="guide_permission_hint">Zuerst Einblendungen und Audio erlauben, dann die Bildschirmfreigabe aktivieren. Fortsetzen ist auch später möglich.</string>
     <string name="guide_grant">Telefonberechtigungen erlauben</string>
     <string name="guide_trial_next">Weiter zum Probelauf</string>
@@ -20,9 +20,8 @@
     <string name="guide_capture_limits">Manche Apps blockieren die Audiofreigabe. DRM-Inhalte, Anrufe und Apps mit Erfassungssperre können nicht erfasst werden. mimi respektiert diese Grenzen.</string>
     <string name="guide_see_caption">Auf Untertitel achten</string>
     <string name="guide_start_trial">Probelauf starten · Bildschirm freigeben</string>
-    <string name="guide_complete_title">Der erste Untertitel ist da</string>
+    <string name="guide_complete_title">Untertitel werden angezeigt</string>
     <string name="guide_wait_caption_title">Warten auf Übersetzung</string>
-    <string name="guide_complete_hint">Einfach weiterschauen.</string>
     <string name="guide_stopped">Bildschirmfreigabe beendet. Erneut aktivieren.</string>
     <string name="guide_finish">Fertig</string>
     <string name="guide_waiting_back">Weiter warten · zur Wiedergabe zurück</string>
@@ -48,7 +47,7 @@
     <string name="guide_understood">Verstanden</string>
     <string name="guide_progress">Erste Schritte · %1$d / 5</string>
     <string name="guide_continue_provider">Weiter · %1$s</string>
-    <string name="guide_connect">%1$s verbinden</string>
+    <string name="guide_connect">%1$s konfigurieren</string>
     <string name="guide_permission_states">Einblendungen: %1$s\nAudioberechtigung: %2$s\nBildschirmfreigabe: %3$s (jedes Mal neu erlauben)</string>
     <string name="guide_trial_hint">Ein Video oder Spiel öffnen und einige Sekunden Sprache abspielen. Der Start verbindet sich mit %1$s und kann Dienstkosten verursachen.</string>
     <string name="guide_no_pcm">Keine Audiodaten empfangen · Bildschirmfreigabe prüfen</string>
