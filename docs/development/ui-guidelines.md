@@ -170,3 +170,8 @@ even when its tooltipText is intact. Use the shared bounded, scrollable help
 popup; check the rendered line ellipsis and an actual hover screenshot. Native
 UI tests must inject mouse pointer properties through the system input channel
 and restore fixtures on assertion failure.
+
+Before/After screenshots must show stable native frames: wait for the owning
+activity to regain focus and for modal exit/entry animations before capturing.
+Inspect every saved image against its scenario; a successful file write or test
+result does not prove that a screenshot shows the intended page.

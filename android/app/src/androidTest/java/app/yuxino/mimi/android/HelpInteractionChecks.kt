@@ -36,10 +36,15 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
     private fun windows() = WindowInspector.getGlobalWindowViews()
     private fun contains(text: String) = windows().flatMap(::views).any { it is TextView && it.isShown && it.text.toString() == text }
     private fun capture(name: String) {
-        test.waitForIdleSync(); SystemClock.sleep(200)
+        test.waitForIdleSync(); SystemClock.sleep(600)
         val file = File(context.getExternalFilesDir(null), "ui-preview/$name.png").apply { parentFile!!.mkdirs() }
         val bitmap = checkNotNull(test.uiAutomation.takeScreenshot())
         file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }; bitmap.recycle()
+    }
+    private fun back() {
+        test.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        test.waitForIdleSync()
+        SystemClock.sleep(300) // Wait for the dialog's exit animation before addressing its parent.
     }
     private fun field(name: String, value: Any?) {
         MimiService::class.java.getDeclaredField(name).apply { isAccessible = true; set(null, value) }
@@ -98,7 +103,7 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             check(dialogs.single().findViewWithTag<TextView>("help-message").text.toString() == expected)
         }
         capture("$screenshot-detail")
-        test.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK); test.waitForIdleSync()
+        back()
         ui { check(windows().none { it.findViewWithTag<View>("help-message") != null }) }
     }
     fun run(arguments: Bundle?) {
@@ -158,12 +163,17 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
                 val button = windows().firstNotNullOf { it.findViewWithTag<ImageButton>("language-help") }
                 ui { check(button.tooltipText == null); button.performClick() }
                 capture("$prefix-language-detail")
-                test.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+                back()
             }
-            test.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
-            val currentSettings = test.startActivitySync(Intent(context, SettingsActivity::class.java).putExtra("settings_section", "appearance")
+            back()
+            ui { check(windows().none { it.findViewWithTag<View>("language-help") != null }) { "Language sheet still open" } }
+            val currentSettings = test.startActivitySync(Intent(context, SettingsActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
             settings = currentSettings
+            capture("$prefix-services")
+            if (!baseline) help(currentSettings, "services-help", currentSettings.getString(R.string.services_hint) + "\n\n" +
+                currentSettings.getString(R.string.services_key_note), "$prefix-services", hover = true)
+            ui { currentSettings.findViewById<View>(R.id.tab_appearance).performClick() }
             capture("$prefix-appearance")
             if (!baseline) help(currentSettings, "immersive-help", currentSettings.getString(R.string.settings_immersive_help), "$prefix-immersive", hover = true)
             ui {
@@ -179,6 +189,13 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             capture("$prefix-history")
             if (!baseline) help(currentSettings, "history-help", currentSettings.getString(R.string.settings_history_help), "$prefix-history")
             ui { currentSettings.finish() }
+            val resumedDeadline = SystemClock.elapsedRealtime() + 5000
+            var resumed = false
+            do {
+                ui { resumed = currentHome.hasWindowFocus() }
+                if (!resumed) SystemClock.sleep(50)
+            } while (!resumed && SystemClock.elapsedRealtime() < resumedDeadline)
+            check(resumed) { "Home did not resume before guide sample" }
             val currentGuide = FirstRunGuide(currentHome) { error("Help must not start capture") }
             guide = currentGuide
             ui { currentGuide.open(1) }; capture("$prefix-guide-storage")
