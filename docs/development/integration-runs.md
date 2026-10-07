@@ -1295,3 +1295,30 @@
 - Sustained stability, Android hardware and billing eligibility remain
   unverified. The native evidence covers only the observed connection,
   subtitle and pause/resume run.
+
+### 2026-10-07 — Android interface language and playback-capture diagnosis
+
+- Source `0b9ea536`, debug APK 1.5.16. Blank ARM64 API 32 and API 35 emulators
+  passed the native picker checks for system/Chinese/English/Japanese, settings
+  recreation, force-stop/relaunch persistence and service-owned overlay labels.
+  Subtitle source/target and synthetic subtitle history remained unchanged.
+  Light/dark screenshots were inspected; API 35 also passed at 320 dp and 200%
+  font scale. Its system App languages setting synchronized back to the picker.
+  The adjacent settings/service-editor light smoke passed with eight screenshots.
+- Both Android variants passed 145 JVM tests, including actual JNI, and lint;
+  debug APK verification passed for all four ABIs. After integrating main,
+  `scripts/check.sh` passed: Rust 1,253 / 2 ignored, shared core 72 plus JNI,
+  frontend 2,005 across 129 files, strict checks and production build.
+- The configured emulator's Chrome 124 manifest explicitly disables playback
+  capture. Guest and host output were unmuted; a separate two-second AudioTrack
+  probe played all 96,000 frames. In isolated API 35 real playback capture,
+  allowed media yielded 53/53 nonzero chunks; opted-out playing media yielded
+  122 zero chunks and no nonzero chunks. Silence/recovery, fresh consent,
+  projection revocation, stop cleanup, restart and cancellation all passed,
+  using a discard sink with no microphone, credentials or provider requests.
+- Emulator playback also encountered process hangs/exits and System UI ANRs.
+  Vulkan was disabled and test VMs were run serially. The short successful
+  output/capture runs do not prove physical speaker audibility or sustained
+  emulator stability. The API 32 capture-probe attempt stopped at the newer
+  consent-dialog helper before capture; only its language checks passed.
+  Real-device, live-provider and sustained-session language changes remain open.
