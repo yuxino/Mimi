@@ -44,9 +44,9 @@ pub enum VolcanoEngineClientError {
     AuthenticationFailed,
     #[error("Add a Volcano Engine API key in Settings.")]
     MissingAPIKey,
-    #[error("Volcano Engine requires an explicit Chinese, English, or Japanese source language.")]
+    #[error("Volcano Engine requires an explicit supported source language.")]
     UnsupportedSourceLanguage,
-    #[error("Volcano Engine requires a Chinese, English, or Japanese translation language.")]
+    #[error("Volcano Engine does not support this translation direction.")]
     UnsupportedTargetLanguage,
     #[error("The Volcano Engine translation session is not connected.")]
     NotConnected,
@@ -124,6 +124,8 @@ struct PendingFinalTextLimitExceeded;
 type SubtitleCommitResult = Result<Option<LiveTranslateServerEvent>, PendingFinalTextLimitExceeded>;
 
 struct VolcanoSubtitlePairCommitter {
+    source_draft: String,
+    translation_draft: String,
     source_in_progress: bool,
     translation_in_progress: bool,
     discard_source: bool,
@@ -138,6 +140,8 @@ struct VolcanoSubtitlePairCommitter {
 impl VolcanoSubtitlePairCommitter {
     fn new(source_language: SourceLanguage) -> Self {
         Self {
+            source_draft: String::new(),
+            translation_draft: String::new(),
             source_in_progress: false,
             translation_in_progress: false,
             discard_source: false,
@@ -253,12 +257,16 @@ impl VolcanoSubtitlePairCommitter {
         }
         self.sources.clear();
         self.translations.clear();
+        self.source_draft.clear();
+        self.translation_draft.clear();
         self.pending_text_bytes = 0;
         self.discard_source |= active;
         self.discard_translation |= active;
     }
 
     fn reset(&mut self) {
+        self.source_draft.clear();
+        self.translation_draft.clear();
         self.source_in_progress = false;
         self.translation_in_progress = false;
         self.discard_source = false;
@@ -855,6 +863,7 @@ async fn handle_server_event(context: &ReceiveContext, event: VolcanoEngineServe
         }
         VolcanoEngineServerEvent::SourceSubtitleStarted => {
             let mut committer = context.inner.committer.lock().await;
+            committer.source_draft.clear();
             committer.source_in_progress = true;
             committer.discard_source = false;
         }
@@ -864,6 +873,15 @@ async fn handle_server_event(context: &ReceiveContext, event: VolcanoEngineServe
             if committer.discard_source {
                 return false;
             }
+            if committer.source_draft.len().saturating_add(text.len())
+                > crate::core::models::MAX_SUBTITLE_TEXT_BYTES
+            {
+                committer.reset();
+                emit_commit_result(context, Err(PendingFinalTextLimitExceeded));
+                return true;
+            }
+            committer.source_draft.push_str(&text);
+            let text = committer.source_draft.clone();
             if !emit_if_current(
                 context,
                 LiveTranslateServerEvent::SourceDraft {
@@ -881,6 +899,7 @@ async fn handle_server_event(context: &ReceiveContext, event: VolcanoEngineServe
         } => {
             let mut committer = context.inner.committer.lock().await;
             committer.source_in_progress = false;
+            committer.source_draft.clear();
             if committer.discard_source {
                 return false;
             }
@@ -891,6 +910,7 @@ async fn handle_server_event(context: &ReceiveContext, event: VolcanoEngineServe
         }
         VolcanoEngineServerEvent::TranslationSubtitleStarted => {
             let mut committer = context.inner.committer.lock().await;
+            committer.translation_draft.clear();
             committer.translation_in_progress = true;
             committer.discard_translation = false;
             if !emit_if_current(context, LiveTranslateServerEvent::TranslationStarted) {
@@ -903,6 +923,15 @@ async fn handle_server_event(context: &ReceiveContext, event: VolcanoEngineServe
             if committer.discard_translation {
                 return false;
             }
+            if committer.translation_draft.len().saturating_add(text.len())
+                > crate::core::models::MAX_SUBTITLE_TEXT_BYTES
+            {
+                committer.reset();
+                emit_commit_result(context, Err(PendingFinalTextLimitExceeded));
+                return true;
+            }
+            committer.translation_draft.push_str(&text);
+            let text = committer.translation_draft.clone();
             if !emit_if_current(context, LiveTranslateServerEvent::TranslationDraft(text)) {
                 return true;
             }
@@ -914,6 +943,7 @@ async fn handle_server_event(context: &ReceiveContext, event: VolcanoEngineServe
         } => {
             let mut committer = context.inner.committer.lock().await;
             committer.translation_in_progress = false;
+            committer.translation_draft.clear();
             if committer.discard_translation {
                 return false;
             }
@@ -1049,6 +1079,8 @@ mod tests {
         {
             let mut committer = client.inner.committer.lock().await;
             committer.source_in_progress = true;
+            committer.source_draft = "old source preview".into();
+            committer.translation_draft = "old translation preview".into();
             committer
                 .push_source("old source".into(), Some(0), Some(10))
                 .unwrap();
@@ -1060,6 +1092,7 @@ mod tests {
         assert_eq!(client.content_revision(), 1);
         let mut committer = client.inner.committer.lock().await;
         assert!(committer.sources.is_empty() && committer.translations.is_empty());
+        assert!(committer.source_draft.is_empty() && committer.translation_draft.is_empty());
         assert_eq!(committer.pending_text_bytes, 0);
         assert!(committer.discard_source && committer.discard_translation);
         assert!(committer
@@ -1484,6 +1517,250 @@ mod tests {
             .connect_with_timeout(Duration::from_millis(500))
             .await
             .unwrap();
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn shared_incremental_subtitle_sequences_keep_full_previews_and_sentence_boundaries() {
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../../../shared/translation-contracts.json"))
+                .unwrap();
+        for case in contract["volcanoSubtitleSequences"].as_array().unwrap() {
+            let frames = case["frames"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|hex| {
+                    let hex = hex.as_str().unwrap();
+                    (0..hex.len())
+                        .step_by(2)
+                        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = url::Url::parse(&format!(
+                "ws://{}/translate",
+                listener.local_addr().unwrap()
+            ))
+            .unwrap();
+            let (connected, accepted) =
+                tokio::join!(tokio_tungstenite::connect_async(endpoint.clone()), async {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    tokio_tungstenite::accept_async(stream).await
+                });
+            let (socket, _) = connected.unwrap();
+            let _server = accepted.unwrap();
+            let (_, stream) = socket.split();
+            let (sender, mut events) = provider_event_channel();
+            let client = VolcanoEngineClient::with_endpoint(
+                "test-key-not-real",
+                SourceLanguage::Japanese,
+                TargetLanguage::SimplifiedChinese,
+                sender.clone(),
+                endpoint,
+            )
+            .unwrap();
+            let (setup, _) = watch::channel(SetupState::Ready);
+            let context = ReceiveContext {
+                inner: Arc::clone(&client.inner),
+                stream,
+                events: sender,
+                setup,
+                source_language: SourceLanguage::Japanese,
+                generation: 0,
+            };
+            let mut source_drafts = Vec::new();
+            let mut translation_drafts = Vec::new();
+            let mut source_finals = Vec::new();
+            let mut translation_finals = Vec::new();
+            let expected = &case["expected"];
+            // Drain after each real handler call. Draft transport intentionally
+            // coalesces snapshots, so a burst socket test cannot assert every preview.
+            for frame in frames {
+                assert!(
+                    !handle_server_event(
+                        &context,
+                        VolcanoEngineServerEvent::decode(&frame).unwrap()
+                    )
+                    .await
+                );
+                while let Ok(event) = events.try_recv() {
+                    match event {
+                        LiveTranslateServerEvent::SourceDraft { text, .. } => {
+                            source_drafts.push(text)
+                        }
+                        LiveTranslateServerEvent::TranslationDraft(text) => {
+                            translation_drafts.push(text)
+                        }
+                        LiveTranslateServerEvent::SubtitleFinalPair {
+                            source,
+                            translation,
+                            ..
+                        } => {
+                            source_finals.push(source);
+                            translation_finals.push(translation);
+                        }
+                        LiveTranslateServerEvent::Error { code, .. } => {
+                            panic!("unexpected failure {code}")
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            assert_eq!(
+                serde_json::json!({
+                    "sourceDrafts": source_drafts, "translationDrafts": translation_drafts,
+                    "sourceFinals": source_finals, "translationFinals": translation_finals,
+                }),
+                *expected,
+                "{}",
+                case["id"]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn incremental_draft_overflow_is_bounded_on_both_sides() {
+        for event in [
+            EVENT_SOURCE_SUBTITLE_RESPONSE,
+            EVENT_TRANSLATION_SUBTITLE_RESPONSE,
+        ] {
+            for character in ["a", "日"] {
+                let (client, mut events) = test_client(move |mut socket| {
+                    Box::pin(async move {
+                        socket.next().await.unwrap().unwrap();
+                        socket
+                            .send(Message::Binary(
+                                server_event(EVENT_SESSION_STARTED as u64, None).into(),
+                            ))
+                            .await
+                            .unwrap();
+                        socket.next().await.unwrap().unwrap();
+                        for text in [
+                            character.repeat(
+                                crate::core::models::MAX_SUBTITLE_TEXT_BYTES / character.len(),
+                            ),
+                            character.into(),
+                        ] {
+                            socket
+                                .send(Message::Binary(
+                                    server_event(event as u64, Some(&text)).into(),
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                        while socket.next().await.is_some() {}
+                    })
+                })
+                .await;
+                client.connect().await.unwrap();
+                client
+                    .send_audio(&vec![0; VolcanoEngineEndpoint::AUDIO_FRAME_BYTE_COUNT])
+                    .await
+                    .unwrap();
+                loop {
+                    let event = tokio::time::timeout(Duration::from_secs(2), events.recv())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    if let LiveTranslateServerEvent::Error { code, .. } = event {
+                        assert_eq!(code, "volcano_transcript_safety_limit");
+                        break;
+                    }
+                }
+                client.disconnect().await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_subtitle_events_do_not_disconnect_or_block_the_next_final_pair() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                socket.next().await.unwrap().unwrap();
+                socket
+                    .send(Message::Binary(
+                        server_event(EVENT_SESSION_STARTED as u64, None).into(),
+                    ))
+                    .await
+                    .unwrap();
+                // Send only after connect has completed, as with normal audio.
+                socket.next().await.unwrap().unwrap();
+                for event in [
+                    EVENT_SOURCE_SUBTITLE_RESPONSE,
+                    EVENT_SOURCE_SUBTITLE_END,
+                    EVENT_TRANSLATION_SUBTITLE_RESPONSE,
+                    EVENT_TRANSLATION_SUBTITLE_END,
+                ] {
+                    for text in [None, Some("")] {
+                        socket
+                            .send(Message::Binary(server_event(event as u64, text).into()))
+                            .await
+                            .unwrap();
+                    }
+                }
+                for response in [
+                    timed_server_event(
+                        EVENT_SOURCE_SUBTITLE_END as u64,
+                        "Synthetic source.",
+                        100,
+                        200,
+                    ),
+                    timed_server_event(
+                        EVENT_TRANSLATION_SUBTITLE_END as u64,
+                        "合成テスト。",
+                        100,
+                        200,
+                    ),
+                ] {
+                    socket.send(Message::Binary(response.into())).await.unwrap();
+                }
+                let finish = binary(socket.next().await.unwrap().unwrap());
+                assert_eq!(find_varint(&finish, 2), Some(EVENT_FINISH_SESSION as u64));
+                socket
+                    .send(Message::Binary(
+                        server_event(EVENT_SESSION_FINISHED as u64, None).into(),
+                    ))
+                    .await
+                    .unwrap();
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        client
+            .send_audio(&vec![0; VolcanoEngineEndpoint::AUDIO_FRAME_BYTE_COUNT])
+            .await
+            .unwrap();
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            match event {
+                LiveTranslateServerEvent::Error { code, .. } => panic!("unexpected failure {code}"),
+                LiveTranslateServerEvent::SubtitleFinalPair {
+                    source,
+                    translation,
+                    ..
+                } => {
+                    assert_eq!(source, "Synthetic source.");
+                    assert_eq!(translation, "合成テスト。");
+                    break;
+                }
+                _ => {}
+            }
+        }
+        client.finish(Duration::from_secs(1)).await;
+        let remaining = std::iter::from_fn(|| events.try_recv().ok()).collect::<Vec<_>>();
+        assert!(remaining
+            .iter()
+            .any(|event| matches!(event, LiveTranslateServerEvent::SessionFinished)));
+        assert!(!remaining.iter().any(|event| matches!(
+            event,
+            LiveTranslateServerEvent::Error { .. }
+                | LiveTranslateServerEvent::SubtitleFinalPair { .. }
+        )));
         client.disconnect().await;
     }
 
