@@ -275,7 +275,7 @@ export interface ProviderCapabilities {
 
 export interface AppleSpeechSupport {
   available: boolean;
-  languages: { sourceLanguage: Exclude<SourceLanguage, "auto">; locale: string; installed: boolean }[];
+  languages: { sourceLanguage: Exclude<SourceLanguage, "auto">; locale: string; installed: boolean; downloading?: boolean }[];
 }
 
 export interface AppleTranslationSupport {

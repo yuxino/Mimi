@@ -389,6 +389,13 @@ export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlat
   if (error === "apple_speech_unavailable" || error === "apple_speech_ui_test_unavailable") return I18N.settings.appleSpeechUnavailable;
   if (error === "apple_speech_status_failed") return I18N.settings.appleSpeechLoadFailed;
   if (error === "apple_speech_prepare_failed") return I18N.settings.appleSpeechPrepareFailed;
+  if (error === "apple_speech_service_unavailable") return I18N.settings.appleSpeechServiceUnavailable;
+  if (error === "apple_speech_reservation_limit") return I18N.settings.appleSpeechReservationLimit;
+  if (error === "apple_speech_download_cancelled") return I18N.settings.appleSpeechDownloadCancelled;
+  if (error === "apple_speech_download_timeout") return I18N.settings.appleSpeechDownloadTimeout;
+  if (error === "apple_speech_download_network") return I18N.settings.appleSpeechDownloadNetwork;
+  if (error === "apple_speech_download_storage") return I18N.settings.appleSpeechDownloadStorage;
+  if (error === "apple_speech_resources_unavailable") return I18N.settings.appleSpeechResourcesUnavailable;
   if (error === "apple_speech_preparing") return I18N.settings.appleSpeechPreparationInProgress;
   if (["apple_speech_setup_timeout", "apple_speech_start_failed", "apple_speech_recognition_failed", "apple_speech_audio_failed", "apple_speech_not_connected", "apple_speech_result_backlog", "apple_speech_invalid_result", "apple_speech_finalize_timeout"].includes(error)) return I18N.settings.appleSpeechRecognitionFailed;
   if (error === "custom_speech_endpoint_invalid") return I18N.settings.customSpeechEndpointInvalid;
@@ -455,7 +462,12 @@ export function profileErrorMessage(error: unknown): string {
 /** Exact safe labels only: navigation never starts capture or downloads resources. */
 export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTarget | null {
   const label = error instanceof Error ? error.message : error;
-  if (label === "apple_speech_assets_missing" || label === "apple_speech_preparing" || label === "apple_speech_prepare_failed") {
+  if (typeof label === "string" && [
+    "apple_speech_assets_missing", "apple_speech_preparing", "apple_speech_prepare_failed",
+    "apple_speech_service_unavailable", "apple_speech_reservation_limit", "apple_speech_download_cancelled",
+    "apple_speech_download_timeout", "apple_speech_download_network", "apple_speech_download_storage",
+    "apple_speech_resources_unavailable",
+  ].includes(label)) {
     return "appleSpeechResources";
   }
   if (typeof label !== "string") return null;

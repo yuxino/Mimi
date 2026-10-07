@@ -75,6 +75,13 @@ it.each(["zh", "en", "ja"] as const)("keeps every Apple readiness failure specif
     apple_speech_ui_test_unavailable: I18N.settings.appleSpeechUnavailable,
     apple_speech_status_failed: I18N.settings.appleSpeechLoadFailed,
     apple_speech_prepare_failed: I18N.settings.appleSpeechPrepareFailed,
+    apple_speech_service_unavailable: I18N.settings.appleSpeechServiceUnavailable,
+    apple_speech_reservation_limit: I18N.settings.appleSpeechReservationLimit,
+    apple_speech_download_cancelled: I18N.settings.appleSpeechDownloadCancelled,
+    apple_speech_download_timeout: I18N.settings.appleSpeechDownloadTimeout,
+    apple_speech_download_network: I18N.settings.appleSpeechDownloadNetwork,
+    apple_speech_download_storage: I18N.settings.appleSpeechDownloadStorage,
+    apple_speech_resources_unavailable: I18N.settings.appleSpeechResourcesUnavailable,
     apple_speech_preparing: I18N.settings.appleSpeechPreparationInProgress,
   };
   for (const [label, expected] of Object.entries(messages)) {
@@ -345,7 +352,12 @@ it.each(["en", "zh", "ja"] as const)("sanitizes paused-session recovery errors i
 
 
 it("routes only exact resource errors to Apple preparation and preserves other recovery behavior", () => {
-  for (const label of ["apple_speech_assets_missing", "apple_speech_preparing", "apple_speech_prepare_failed"]) {
+  for (const label of [
+    "apple_speech_assets_missing", "apple_speech_preparing", "apple_speech_prepare_failed",
+    "apple_speech_service_unavailable", "apple_speech_reservation_limit", "apple_speech_download_cancelled",
+    "apple_speech_download_timeout", "apple_speech_download_network", "apple_speech_download_storage",
+    "apple_speech_resources_unavailable",
+  ]) {
     expect(sessionErrorSettingsTarget(label)).toBe("appleSpeechResources");
     expect(sessionErrorSettingsTarget(new Error(label))).toBe("appleSpeechResources");
     expect(sessionErrorSettingsTarget(`${label}: private-runtime-detail`)).toBeNull();

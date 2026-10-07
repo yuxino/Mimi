@@ -18,6 +18,14 @@ AssetInventory 下载和安装；无需引导用户到系统听写、朗读或�
   中文、英文、日文保持同一操作含义。
 - 识别检查对应界面当前选定的识别语言，语言或资源状态变化后旧结果失效；
   迟到的结果不能当作新选择的检查结果。
+- 保留 Apple 的下载中状态；首次下载尝试失败但系统仍在后台处理时，
+  不降级成「未下载」或自动再次下载。操作改为「刷新状态」，就绪后由
+  用户确认设为识别语言；刷新本身不下载、不保存识别偏好。
+- 仅对明确的系统语音服务断开做一次有界重试。准备完成后短暂重新确认
+  模块状态；失败时也刷新资源清单，区分已就绪、仍下载和实际失败。
+  错误按安全分类显示，未知失败不归因网络，不展示原生错误详情。
+- 前置翻译兼容检查与语言包下载分别显示实际阶段；错误和重试状态绑定
+  当前语言选择，其他窗口切换语言后不保留旧错误或弹出迟到通知。
 - 对未启用配置，明确的设置语言动作一次校验并保存配置与语言。
   无效语言或保存失败保留原配置和偏好，不先切换再补救。
 - 独立识别服务选择「不翻译（仅原文）」时不展示翻译连接错误或无意义检查。
@@ -31,3 +39,9 @@ AssetInventory 下载和安装；无需引导用户到系统听写、朗读或�
 用回归测试覆盖菜单发现、教程、空列表、下载失败/重试、完成后使用、非当前配置、
 保存失败、会话锁和过期检查结果。运行仓库完整检查；在 canonical signed dev
 检查实际原生设置界面与资源状态，将实际执行和未执行的边界记录到集成运行日志。
+
+下载状态依据 Apple 的 [downloadAndInstall](https://developer.apple.com/documentation/speech/assetinstallationrequest/downloadandinstall())
+及 [.downloading](https://developer.apple.com/documentation/speech/assetinventory/status/downloading)：
+首次下载尝试失败后系统可能继续重试，下载中也包含等待条件恢复。
+[assetInstallationRequest](https://developer.apple.com/documentation/speech/assetinventory/assetinstallationrequest(supporting:))
+自动预留所需语言；不通过移除其他应用的资源或反复预留来修复失败。

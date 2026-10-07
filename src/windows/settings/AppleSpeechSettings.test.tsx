@@ -292,6 +292,61 @@ it("serializes download clicks, preserves retry state, and keeps native failure 
   expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
 });
 
+it.each([
+  ["apple_speech_preparing", "appleSpeechPreparationInProgress"],
+  ["apple_speech_service_unavailable", "appleSpeechServiceUnavailable"],
+  ["apple_speech_language_unsupported", "appleSpeechLanguageUnsupported"],
+  ["apple_speech_unavailable", "appleSpeechUnavailable"],
+  ["apple_speech_status_failed", "appleSpeechLoadFailed"],
+] as const)("preserves the safe preparation failure reason for %s", async (error, message) => {
+  vi.mocked(prepareAppleSpeechLanguage).mockRejectedValue(new Error(error));
+  const missing = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage !== "ja" })) };
+  await render({ support: missing });
+  await choose("ja");
+  await act(async () => button(I18N.settings.appleSpeechDownloadAndUse)!.click());
+  expect(host.querySelector("#apple-speech-resources")?.textContent).toContain(I18N.settings[message]);
+  expect(host.textContent).not.toContain(I18N.settings.appleSpeechPrepareFailed);
+  expect(host.textContent).not.toContain(error);
+  expect(button(I18N.settings.appleSpeechRetryDownload)?.disabled).toBe(false);
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("does not carry a failed download or retry label across external source changes", async () => {
+  vi.mocked(prepareAppleSpeechLanguage).mockRejectedValue(new Error("private-native-error"));
+  const missing = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage === "en" })) };
+  await render({ support: missing });
+  await choose("ja");
+  await act(async () => button(I18N.settings.appleSpeechDownloadAndUse)!.click());
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeDefined();
+  await render({ settings: { ...settings(), sourceLanguage: "fr" } });
+  expect(host.querySelector("#apple-speech-resources")?.textContent).not.toContain(I18N.settings.appleSpeechPrepareFailed);
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeUndefined();
+  expect(button(I18N.settings.appleSpeechDownloadAndUse)).toBeDefined();
+  await render({ settings: settings() });
+  await choose("ja");
+  expect(host.querySelector("#apple-speech-resources")?.textContent).not.toContain(I18N.settings.appleSpeechPrepareFailed);
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeUndefined();
+  expect(button(I18N.settings.appleSpeechDownloadAndUse)).toBeDefined();
+});
+
+it("does not attach a late download failure to a different source or toast", async () => {
+  let reject!: (error: Error) => void;
+  vi.mocked(prepareAppleSpeechLanguage).mockReturnValue(new Promise((_, fail) => { reject = fail; }));
+  const missing = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage === "en" })) };
+  await render({ support: missing });
+  await choose("ja");
+  await act(async () => button(I18N.settings.appleSpeechDownloadAndUse)!.click());
+  await render({ settings: { ...settings(), sourceLanguage: "fr" } });
+  expect(host.querySelector(".apple-speech-resource-status")?.textContent).not.toContain(I18N.settings.appleSpeechPreparing);
+  await act(async () => reject(new Error("private-native-error")));
+  expect(host.textContent).not.toContain(I18N.settings.appleSpeechPrepareFailed);
+  expect(host.querySelector(".settings-toast")).toBeNull();
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeUndefined();
+  expect(button(I18N.settings.appleSpeechDownloadAndUse)?.disabled).toBe(false);
+  expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+  expect(save).not.toHaveBeenCalled();
+});
+
 it("provides the add-language path with no downloaded languages and honors its stop lock", async () => {
   const missing = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: false })) };
   await render({ support: missing, requiresStop: true });
@@ -302,6 +357,83 @@ it("provides the add-language path with no downloaded languages and honors its s
   expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
   await render({ requiresStop: false });
   expect(button(I18N.settings.appleSpeechDownloadAndUse)?.disabled).toBe(false);
+});
+
+it("refreshes a pending Apple download without retrying or applying it automatically", async () => {
+  let resolve!: () => void;
+  const onRetry = vi.fn().mockImplementation(() => new Promise<void>(done => { resolve = done; }));
+  const downloading = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage !== "ja", downloading: item.sourceLanguage === "ja" })) };
+  await render({ support: downloading, onRetry });
+  await choose("ja");
+  expect(host.querySelector('[role="combobox"]')?.textContent).toBe(`${SOURCE_LANGUAGE_DISPLAY_NAMES.ja} · ${I18N.settings.appleSpeechDownloadPending}`);
+  expect(host.querySelector(".apple-speech-resource-status")?.textContent).toContain(I18N.settings.appleSpeechDownloadPending);
+  expect(host.querySelector("#apple-speech-resources")?.textContent).not.toContain(I18N.settings.appleSpeechNotInstalled);
+  expect(button(I18N.settings.appleSpeechDownloadAndUse)).toBeUndefined();
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeUndefined();
+  const refresh = button(I18N.settings.appleSpeechRefreshStatus)!;
+  await act(async () => { refresh.click(); refresh.click(); });
+  expect(onRetry).toHaveBeenCalledOnce();
+  expect(refresh.disabled).toBe(true);
+  expect(host.querySelector(".apple-speech-resource-status")?.textContent).toContain(I18N.settings.appleSpeechLoading);
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+  await act(async () => resolve());
+  await render({ support: ready });
+  expect(button(I18N.settings.appleSpeechRefreshStatus)).toBeUndefined();
+  expect(button(I18N.settings.appleSpeechUseLanguage)?.disabled).toBe(false);
+  expect(save).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain(I18N.settings.appleSpeechLanguageSelected);
+  await act(async () => button(I18N.settings.appleSpeechUseLanguage)!.click());
+  expect(save).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "ja" });
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+});
+
+it("keeps a deferred preparation as downloading without reporting failure or applying it", async () => {
+  const missing = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage !== "ja" })) };
+  const downloading = { ...missing, languages: missing.languages.map(item => ({ ...item, downloading: item.sourceLanguage === "ja" })) };
+  vi.mocked(prepareAppleSpeechLanguage).mockResolvedValue(downloading);
+  await render({ support: missing });
+  await choose("ja");
+  await act(async () => button(I18N.settings.appleSpeechDownloadAndUse)!.click());
+  expect(props.onPrepared).toHaveBeenCalledExactlyOnceWith(downloading);
+  expect(save).not.toHaveBeenCalled();
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+  expect(host.querySelector(".settings-toast")).toBeNull();
+  expect(host.textContent).not.toContain(I18N.settings.appleSpeechPrepareFailed);
+  await render({ support: downloading });
+  expect(button(I18N.settings.appleSpeechRefreshStatus)?.disabled).toBe(false);
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeUndefined();
+  expect(button(I18N.settings.appleSpeechDownloadAndUse)).toBeUndefined();
+  expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+});
+
+it("keeps status refresh failure actionable without issuing another download", async () => {
+  const downloading = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage !== "ja", downloading: item.sourceLanguage === "ja" })) };
+  const onRetry = vi.fn().mockRejectedValue(new Error("private-status-detail"));
+  await render({ support: downloading, onRetry });
+  await choose("ja");
+  await act(async () => button(I18N.settings.appleSpeechRefreshStatus)!.click());
+  expect(host.textContent).toContain(I18N.settings.appleSpeechLoadFailed);
+  expect(host.textContent).not.toContain("private-status-detail");
+  expect(button(I18N.settings.appleSpeechRefreshStatus)?.disabled).toBe(false);
+  expect(button(I18N.settings.appleSpeechRetryDownload)).toBeUndefined();
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("allows read-only download status refresh while language changes require stopping", async () => {
+  const downloading = { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage !== "ja", downloading: item.sourceLanguage === "ja" })) };
+  await render({ support: downloading, settings: { ...settings(), sourceLanguage: "ja" }, sourceLanguage: "ja", requiresStop: true, disabled: true, resourceRefreshDisabled: false });
+  expect(host.querySelector<HTMLButtonElement>('[role="combobox"]')?.disabled).toBe(true);
+  expect(button(I18N.settings.appleSpeechRefreshStatus)?.disabled).toBe(false);
+  await act(async () => button(I18N.settings.appleSpeechRefreshStatus)!.click());
+  expect(props.onRetry).toHaveBeenCalledOnce();
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+  await render({ resourceRefreshDisabled: true });
+  expect(button(I18N.settings.appleSpeechRefreshStatus)?.disabled).toBe(true);
+  await act(async () => button(I18N.settings.appleSpeechRefreshStatus)!.click());
+  expect(props.onRetry).toHaveBeenCalledOnce();
 });
 
 it("keeps unsupported devices and empty capability lists out of download actions", async () => {
@@ -398,6 +530,27 @@ async function renderMissingAppleTranslationSource(targetLanguage: SettingsSnaps
     support: { ...ready, languages: ready.languages.map(item => ({ ...item, installed: item.sourceLanguage !== "ja" })) } });
   await choose("ja");
 }
+
+it("shows the translation preflight before the actual speech download starts", async () => {
+  let resolveCheck!: (status: "supported") => void;
+  let resolveDownload!: (support: AppleSpeechSupport) => void;
+  vi.mocked(getAppleTranslationStatus).mockReturnValue(new Promise(done => { resolveCheck = done; }));
+  vi.mocked(prepareAppleSpeechLanguage).mockReturnValue(new Promise(done => { resolveDownload = done; }));
+  await renderMissingAppleTranslationSource();
+  await act(async () => button(I18N.settings.appleSpeechDownloadAndUse)!.click());
+  const status = host.querySelector(".apple-speech-resource-status")!;
+  expect(status.textContent).toContain(I18N.settings.appleTranslationChecking);
+  expect(status.textContent).not.toContain(I18N.settings.appleSpeechPreparing);
+  expect(button(I18N.settings.appleSpeechDownloadAndUse)?.disabled).toBe(true);
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+  await act(async () => resolveCheck("supported"));
+  expect(status.textContent).toContain(I18N.settings.appleSpeechPreparing);
+  expect(status.textContent).not.toContain(I18N.settings.appleTranslationChecking);
+  expect(prepareAppleSpeechLanguage).toHaveBeenCalledExactlyOnceWith("ja");
+  await act(async () => resolveDownload(ready));
+  expect(save).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "ja" });
+  expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+});
 
 it.each(["supported", "installed"] as const)("checks the Apple text pair before downloading Speech resources when %s", async status => {
   vi.mocked(getAppleTranslationStatus).mockResolvedValue(status);

@@ -17,6 +17,9 @@ pub struct AppleSpeechLocale {
     /// Ready for Mimi's actual module configuration and app identity. The OS's
     /// broader installedLocales list alone does not establish this readiness.
     pub installed: bool,
+    /// Apple may continue a failed initial download later in the background.
+    #[serde(default)]
+    pub downloading: bool,
 }
 
 #[derive(Clone)]
@@ -64,6 +67,20 @@ pub enum AppleSpeechError {
     InvalidResult,
     #[error("Apple Speech operation timed out")]
     Timeout,
+    #[error("Apple Speech language reservations are full")]
+    ReservationLimit,
+    #[error("Apple Speech system resources are unavailable")]
+    ResourcesUnavailable,
+    #[error("Apple Speech system service could not be reached")]
+    ServiceUnavailable,
+    #[error("Apple Speech language download was cancelled")]
+    DownloadCancelled,
+    #[error("Apple Speech language download could not reach the server")]
+    DownloadNetwork,
+    #[error("Apple Speech language download needs more disk space")]
+    DownloadStorage,
+    #[error("Apple Speech could not confirm the installed language state")]
+    StatusUnavailable,
     #[error("Apple Speech failed ({domain}, {code})")]
     Native { domain: String, code: i64 },
 }
@@ -198,6 +215,7 @@ mod tests {
             .map(|name| AppleSpeechLocale {
                 identifier: (*name).to_owned(),
                 installed: false,
+                downloading: false,
             })
             .collect()
     }

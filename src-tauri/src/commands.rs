@@ -330,16 +330,19 @@ mod tests {
                     source_language: SourceLanguage::English,
                     locale: "en-US".into(),
                     installed: true,
+                    downloading: false,
                 },
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::Japanese,
                     locale: "ja-JP".into(),
                     installed: false,
+                    downloading: false,
                 },
                 AppleSpeechLanguage {
                     source_language: SourceLanguage::French,
                     locale: "fr-FR".into(),
                     installed: false,
+                    downloading: false,
                 },
             ],
         }

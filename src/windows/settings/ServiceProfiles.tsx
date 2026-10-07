@@ -527,6 +527,7 @@ export function ServiceProfiles({
           <div className="service-detail__connection">
             <SelectedCredentialEditor
               support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage}
+              resourceRefreshDisabled={pendingAction !== null}
               onRetry={apple.refresh} onPrepared={apple.update} onBusyChange={busy => setPendingAction(busy ? "prepare-resource" : null)}
               onNativeTranslationBusyChange={busy => setPendingAction(busy ? "prepare-apple-translation" : null)}
               onNativeTranslationPrepared={() => invalidateProfileCheck(selectedProfile.id, "text")}

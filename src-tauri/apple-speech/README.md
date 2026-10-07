@@ -12,11 +12,26 @@ macOS 26. Intel macOS and other platforms compile an unavailable Rust adapter.
 End users do not need Xcode or an external service. Each selected audio source
 owns a separate native session.
 
-Only the explicit Prepare speech resources action may request system assets.
-Choosing a resource language does not change the session's recognition
-language; select that separately before starting subtitles. Runtime language
+Only the explicit Download and use action may request system assets. Choosing
+a resource language alone does not save or download it. A successful download
+applies the selection; a background download remains pending until the user
+refreshes its state and applies the ready language. Runtime language
 choices are intersected with the selected text translator's implemented source
 catalog. Original-only recognition retains the system's full supported set.
+
+Resource inventory distinguishes installed, downloading (including the system
+waiting to retry), and missing resources. Apple's installation request reserves
+locales automatically and consolidates duplicate downloads. A transient native
+service disconnect retries at most once with a fresh request. Installation
+completion is checked against the actual module; global installed locales are
+not treated as proof. A confirmed install updates only that locale in the latest
+cache, after older inventory scans finish, without requiring another full scan.
+Errors expose fixed categories only; unknown errors retain an allowlisted domain
+and numeric code for content-free diagnostics, never NSError descriptions.
+
+API references: [downloadAndInstall](https://developer.apple.com/documentation/speech/assetinstallationrequest/downloadandinstall()),
+[installation request](https://developer.apple.com/documentation/speech/assetinventory/assetinstallationrequest(supporting:)),
+and [downloading status](https://developer.apple.com/documentation/speech/assetinventory/status/downloading).
 
 The model-free `tests/PCMQueueTests.swift` source covers bounded overflow, EOF
 drain, and cancellation. Rust regression sources cover owned byte copies, late

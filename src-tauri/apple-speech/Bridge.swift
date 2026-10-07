@@ -10,6 +10,120 @@ public typealias MimiSpeechCallback = @convention(c) (UInt64, UnsafePointer<UInt
 private enum BridgeError: Int, Error {
     case unavailable = 1, assetsNotInstalled, invalidLocale, incompatibleFormat
     case invalidPCM, inputOverflow, closed, outputLimit, invalidResult
+    case reservationLimit, resourcesUnavailable, serviceUnavailable, downloadCancelled
+    case downloadNetwork, downloadStorage, statusUnavailable, downloadTimeout
+}
+
+// Inspect only public error domains/codes. Never send descriptions or userInfo
+// across the bridge: they can contain local paths and system-private context.
+@available(macOS 26.0, *)
+private func resourceFailure(_ error: any Error) -> any Error {
+    if error is BridgeError { return error }
+    if error is CancellationError { return BridgeError.downloadCancelled }
+    var value = error as NSError
+    var fallback: (any Error)?
+    for _ in 0..<4 {
+        if value.domain == NSCocoaErrorDomain {
+            switch value.code {
+            case NSXPCConnectionInterrupted, NSXPCConnectionInvalid: return BridgeError.serviceUnavailable
+            case NSFileWriteOutOfSpaceError: return BridgeError.downloadStorage
+            case NSUserCancelledError: return BridgeError.downloadCancelled
+            default: break
+            }
+        } else if value.domain == NSURLErrorDomain {
+            switch value.code {
+            case NSURLErrorCancelled: return BridgeError.downloadCancelled
+            case NSURLErrorTimedOut: return BridgeError.downloadTimeout
+            case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost,
+                 NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed,
+                 NSURLErrorNotConnectedToInternet, NSURLErrorInternationalRoamingOff,
+                 NSURLErrorDataNotAllowed: return BridgeError.downloadNetwork
+            default: break
+            }
+        } else if value.domain == NSPOSIXErrorDomain && value.code == 28 {
+            return BridgeError.downloadStorage
+        } else if value.domain == SFSpeechErrorDomain {
+            switch value.code {
+            case SFSpeechError.Code.tooManyAssetLocalesAllocated.rawValue: return BridgeError.reservationLimit
+            case SFSpeechError.Code.insufficientResources.rawValue: return BridgeError.resourcesUnavailable
+            case SFSpeechError.Code.cannotAllocateUnsupportedLocale.rawValue: return BridgeError.invalidLocale
+            case SFSpeechError.Code.timeout.rawValue: return BridgeError.downloadTimeout
+            case SFSpeechError.Code.internalServiceError.rawValue: fallback = BridgeError.serviceUnavailable
+            default: break
+            }
+        }
+        guard let underlying = value.userInfo[NSUnderlyingErrorKey] as? NSError else { break }
+        value = underlying
+    }
+    return fallback ?? error
+}
+
+@available(macOS 26.0, *)
+private func prepareResources(locale: Locale) async throws {
+    // A fresh module/request can recover a transient Speech service disconnect.
+    // Only this explicit action retries; capability checks never download.
+    for attempt in 0..<2 {
+        try Task.checkCancellation()
+        let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
+        do {
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await request.downloadAndInstall()
+            }
+            // Installation completion and the service's status cache can settle
+            // separately. Recheck briefly without re-downloading or claiming
+            // that the global installedLocales list proves module readiness.
+            for check in 0..<4 {
+                try Task.checkCancellation()
+                if await AssetInventory.status(forModules: [transcriber]) == .installed { return }
+                if check < 3 { try await Task.sleep(for: .milliseconds(250)) }
+            }
+            throw BridgeError.statusUnavailable
+        } catch {
+            let failure = resourceFailure(error)
+            if attempt == 0, (failure as? BridgeError) == .serviceUnavailable {
+                try await Task.sleep(for: .milliseconds(300))
+                continue
+            }
+            throw failure
+        }
+    }
+}
+
+private struct LocaleResourceStatus: Sendable {
+    let identifier: String
+    let installed: Bool
+    let downloading: Bool
+}
+
+@available(macOS 26.0, *)
+private func resourceStatuses(locales: [Locale]) async throws -> [LocaleResourceStatus] {
+    var values: [LocaleResourceStatus] = []
+    // Reduce serial catalogue latency without issuing an unbounded number of
+    // Speech service requests at once. Rust still enforces the query deadline.
+    for first in stride(from: 0, to: locales.count, by: 4) {
+        try Task.checkCancellation()
+        let batch = locales[first..<min(first + 4, locales.count)]
+        let results = try await withThrowingTaskGroup(of: LocaleResourceStatus.self) { group in
+            for locale in batch {
+                group.addTask {
+                    try Task.checkCancellation()
+                    let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
+                    let status = await AssetInventory.status(forModules: [transcriber])
+                    try Task.checkCancellation()
+                    return LocaleResourceStatus(
+                        identifier: locale.identifier(.bcp47),
+                        installed: status == .installed,
+                        downloading: status == .downloading
+                    )
+                }
+            }
+            var results: [LocaleResourceStatus] = []
+            for try await result in group { results.append(result) }
+            return results
+        }
+        values.append(contentsOf: results)
+    }
+    return values
 }
 
 private final class Output: @unchecked Sendable {
@@ -36,7 +150,7 @@ private final class Output: @unchecked Sendable {
     func fail(_ error: any Error) {
         let value = error as NSError
         let code = (error as? BridgeError)?.rawValue ?? value.code
-        let known = ["SFSpeechErrorDomain", "NSOSStatusErrorDomain", "NSCocoaErrorDomain", "NSPOSIXErrorDomain"]
+        let known = ["SFSpeechErrorDomain", "NSOSStatusErrorDomain", "NSCocoaErrorDomain", "NSPOSIXErrorDomain", "NSURLErrorDomain"]
         let domain = error is BridgeError ? "MimiAppleSpeech" : (known.contains(value.domain) ? value.domain : "SpeechFrameworkError")
         try? send(["event": "error", "domain": domain, "code": code])
     }
@@ -278,12 +392,9 @@ public func mimiAppleSpeechQuery(_ identifier: UInt64, _ callback: @escaping Mim
                     try output.send(["event": "capabilities", "available": false, "locales": []]); return
                 }
                 let locales = await SpeechTranscriber.supportedLocales
-                var values: [[String: Any]] = []
-                for locale in locales {
-                    try Task.checkCancellation()
-                    let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
-                    let installed = await AssetInventory.status(forModules: [transcriber]) == .installed
-                    values.append(["identifier": locale.identifier(.bcp47), "installed": installed])
+                let statuses = try await resourceStatuses(locales: locales)
+                let values: [[String: Any]] = statuses.map { status in
+                    ["identifier": status.identifier, "installed": status.installed, "downloading": status.downloading]
                 }
                 try output.send(["event": "capabilities", "available": true, "locales": values])
             } catch { if !(error is CancellationError) { output.fail(error) } }
@@ -300,15 +411,14 @@ public func mimiAppleSpeechPrepare(_ identifier: UInt64, _ localePointer: Unsafe
             do {
                 guard SpeechTranscriber.isAvailable else { throw BridgeError.unavailable }
                 guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: localeName)) else { throw BridgeError.invalidLocale }
-                let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
                 // Only this explicit user-triggered operation may reserve/download.
-                if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-                    try await request.downloadAndInstall()
-                }
-                try Task.checkCancellation()
-                guard await AssetInventory.status(forModules: [transcriber]) == .installed else { throw BridgeError.assetsNotInstalled }
+                try await prepareResources(locale: locale)
                 try output.send(["event": "prepared"])
-            } catch { if !(error is CancellationError) { output.fail(error) } }
+            } catch {
+                // A framework cancellation is an actionable result. A cancelled
+                // Rust request has already removed its callback route instead.
+                if !Task.isCancelled { output.fail(resourceFailure(error)) }
+            }
         }
     } else { output.fail(BridgeError.unavailable) }
 }
