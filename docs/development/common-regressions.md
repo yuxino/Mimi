@@ -39,6 +39,14 @@ Rules:
   `./scripts/verify-macos-install-identity.sh NEW_APP /Applications/mimi.app`.
   A mismatch fails closed. `MIMI_ALLOW_IDENTITY_CHANGE=1` is reserved for a
   deliberate, one-time certificate migration whose extra prompts are expected.
+- If a restricted executor reports `CSSMERR_TP_NOT_TRUSTED`, repeat the exact
+  read-only identity check with permitted access to macOS security services
+  before diagnosing a certificate failure. During v1.5.15 preparation, the
+  restricted check failed twice while the same check outside that boundary
+  passed without changing the app or certificate. This comparison establishes
+  an execution-boundary difference, not its underlying system cause. Preserve
+  the pinned identity and trust settings; an unrestricted failure still blocks
+  replacement. Do not bypass verification or change trust to suppress the error.
 - After an explicitly approved local signing migration, keep the public
   certificate fingerprint in `local-codesign-identity.txt` under that app's own
   config directory: `app.yuxino.mimi` for formal packaging and
