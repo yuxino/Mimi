@@ -35,6 +35,7 @@ import {
   Trash2,
   Volume2,
   Waves,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,6 +52,7 @@ export type IconName =
   | "pause"
   | "play"
   | "stop"
+  | "close"
   | "chevron-up"
   | "chevron-left"
   | "chevron-right"
@@ -88,6 +90,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   pause: Pause,
   play: Play,
   stop: Square,
+  close: X,
   "chevron-up": ChevronUp,
   "chevron-down": ChevronDown,
   "chevron-left": ChevronLeft,

@@ -295,43 +295,6 @@ it.each(["system", "microphone", "both"] as const)("offers shared time display a
   }
 });
 
-it("pauses and resumes the actual immersive session from its floating panel", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
-  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
-  vi.stubGlobal("cancelAnimationFrame", vi.fn());
-  const initial = useStore.getState();
-  const togglePaused = vi.fn(async () => {
-    const session = useStore.getState().session;
-    useStore.setState({ session: { ...session, isPaused: !session.isPaused } });
-  });
-  useStore.setState({ settings: { ...initial.settings, audioInput: "microphone", subtitleBlendsWithBackground: true },
-    session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false }, togglePaused });
-  const host = document.createElement("div"); document.body.append(host);
-  const root = createRoot(host);
-  try {
-    await act(async () => root.render(<OverlayControlWindow />));
-    const action = () => host.querySelector<HTMLButtonElement>(".overlay-control-session-action")!;
-    expect(action().getAttribute("aria-label")).toBe(I18N.overlay.pause);
-    await act(async () => action().click());
-    expect(useStore.getState().session.isPaused).toBe(true);
-    expect(action().getAttribute("aria-label")).toBe(I18N.overlay.resume);
-    await act(async () => action().click());
-    expect(useStore.getState().session.isPaused).toBe(false);
-    expect(togglePaused).toHaveBeenCalledTimes(2);
-    expect(useStore.getState().settings.subtitleBlendsWithBackground).toBe(true);
-    expect(native.hide).not.toHaveBeenCalled();
-    for (const kind of ["connecting", "stopping"] as const) {
-      await act(async () => useStore.setState({ session: { ...useStore.getState().session, status: { kind } } }));
-      expect(action().disabled).toBe(true);
-    }
-  } finally {
-    await act(async () => root.unmount()); host.remove();
-    useStore.setState(initial, true); native.hide.mockClear(); vi.unstubAllGlobals();
-  }
-});
-
 it("switches saved profiles through the shared store from the paused floating panel", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));

@@ -106,7 +106,7 @@ it("keeps every toolbar action in place after clearing and rejects clicks on the
   const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
     I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
-    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.openSettings,
+    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.openSettings, I18N.overlay.closeSubtitles,
   ]);
   const clear = buttons[2];
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => clear.querySelector("svg") });

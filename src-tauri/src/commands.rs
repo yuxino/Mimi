@@ -643,6 +643,7 @@ mod tests {
             .find(|entry| entry.contains("identifier = \"app-overlay\""))
             .unwrap();
         assert!(overlay_permission.contains("\"session_start\""));
+        assert!(overlay_permission.contains("\"session_stop\""));
         let capability: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/overlay.json")).unwrap();
         assert_eq!(capability["windows"], serde_json::json!(["overlay"]));
@@ -655,12 +656,12 @@ mod tests {
     }
 
     #[test]
-    fn control_panel_can_retry_pause_and_resume_without_session_stop_access() {
+    fn control_panel_can_retry_without_pause_or_stop_access() {
         let permission = include_str!("../permissions/app.toml")
             .split("[[permission]]")
             .find(|entry| entry.contains("identifier = \"app-overlay-control\""))
             .unwrap();
-        assert!(permission.contains("\"session_toggle_paused\""));
+        assert!(!permission.contains("\"session_toggle_paused\""));
         assert!(permission.contains("\"session_start\""));
         assert!(!permission.contains("\"session_stop\""));
         let capability: serde_json::Value =

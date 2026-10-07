@@ -75,6 +75,7 @@ identifier = "app-overlay"
 description = "Allows the subtitle overlay to control its own presentation and active session."
 commands.allow = [
   "session_start",
+  "session_stop",
   "session_toggle_paused",
   "session_clear_subtitles",
   "settings_save",
@@ -94,7 +95,6 @@ description = "Allows the overlay control island to retry failed sessions, chang
 commands.allow = [
   "profile_select",
   "session_start",
-  "session_toggle_paused",
   "capture_status",
   "audio_applications",
   "session_switch_audio_input",

@@ -31,7 +31,7 @@ import { CaptureStatusRow } from "./CaptureStatusRow";
 import type { OverlayControlPanelModel } from "./overlayControlModel";
 
 type PendingAction =
-  | "pause"
+  | "retry"
   | "profile"
   | "display"
   | "source"
@@ -50,7 +50,6 @@ interface OverlayControlPanelProps {
   settings: SettingsSnapshot;
   model: OverlayControlPanelModel;
   isPaused: boolean;
-  canPauseSession: boolean;
   isWaitingForFinalTranslation: boolean;
   isChangingSession: boolean;
   isStopping?: boolean;
@@ -58,7 +57,6 @@ interface OverlayControlPanelProps {
   errorSettingsTarget?: SettingsNavigationTarget | null;
   onRetrySession?: () => Promise<void>;
   onDismiss: () => void;
-  onTogglePaused: () => Promise<void>;
   onSelectProfile: (profileId: string) => Promise<void>;
   onSwitchSourceLanguage: (language: SourceLanguage) => Promise<void>;
   onSwitchTargetLanguage: (language: TargetLanguage) => Promise<void>;
@@ -78,7 +76,6 @@ export function OverlayControlPanel({
   settings,
   model,
   isPaused,
-  canPauseSession,
   isWaitingForFinalTranslation,
   isChangingSession,
   isStopping = false,
@@ -86,7 +83,6 @@ export function OverlayControlPanel({
   errorSettingsTarget,
   onRetrySession,
   onDismiss,
-  onTogglePaused,
   onSelectProfile,
   onSwitchSourceLanguage,
   onSwitchTargetLanguage,
@@ -113,10 +109,6 @@ export function OverlayControlPanel({
   const actionInFlight = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
-  const latestSession = useRef({ isPaused, canPauseSession });
-  useLayoutEffect(() => {
-    latestSession.current = { isPaused, canPauseSession };
-  }, [isPaused, canPauseSession]);
   const canChangeSessionSettings = !isChangingSession && pendingAction === null;
 
   useLayoutEffect(() => {
@@ -170,17 +162,15 @@ export function OverlayControlPanel({
     actionInFlight.current = true;
     setPendingAction(name);
     setOperationError(null);
-    const resuming = name === "pause" && isPaused;
     void operation()
       .then(() => {
         if (dismissAfter) onDismiss();
       })
       .catch((error: unknown) => {
-        if (resuming && (!latestSession.current.isPaused || !latestSession.current.canPauseSession)) return;
         setOperationError(
           name === "profile" ? profileErrorMessage(error)
             : name === "source" || name === "target" || name === "translation" ? languageActionErrorMessage(error, failureMessage)
-              : name === "pause" ? sessionActionErrorMessage(error, failureMessage) : failureMessage,
+              : name === "retry" ? sessionActionErrorMessage(error, failureMessage) : failureMessage,
         );
       })
       .finally(() => { actionInFlight.current = false; setPendingAction(null); });
@@ -209,23 +199,13 @@ export function OverlayControlPanel({
           onToggle={onDismiss}
         />
 
-        {sessionErrorMessage ? <SessionErrorFeedback
+        {sessionErrorMessage && <SessionErrorFeedback
           message={sessionErrorMessage}
           configureLabel={errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : undefined}
           onConfigure={() => performAction("settings", () => onShowSettings(errorSettingsTarget ?? "service"))}
-          onRetry={onRetrySession ? () => performAction("pause", onRetrySession, false) : undefined}
+          onRetry={onRetrySession ? () => performAction("retry", onRetrySession, false) : undefined}
           disabled={pendingAction !== null || isChangingSession}
-        /> : <button
-          type="button"
-          className="overlay-control-session-action"
-          aria-label={isPaused ? I18N.overlay.resume : I18N.overlay.pause}
-          disabled={!canPauseSession || isChangingSession || pendingAction !== null}
-          onClick={() => performAction("pause", onTogglePaused, false)}
-        >
-          <Icon name={isPaused ? "play" : "pause"} />
-          <span>{isPaused ? I18N.overlay.resume : I18N.overlay.pause}</span>
-        </button>}
-
+        />}
         <CaptureStatusRow
           disabled={pendingAction !== null}
         />

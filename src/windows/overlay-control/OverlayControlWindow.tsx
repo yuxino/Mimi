@@ -35,8 +35,6 @@ export function OverlayControlWindow() {
   const errorRequiresConfiguration = errorSettingsTarget !== null;
   const start = useStore(state => state.start);
   const sessionIsPaused = useStore((state) => state.session.isPaused);
-  const sessionIsActive = useStore((state) => state.session.isActive);
-  const togglePaused = useStore((state) => state.togglePaused);
   const detectedLanguage = useStore(
     (state) => state.session.detectedLanguage,
   );
@@ -137,7 +135,6 @@ export function OverlayControlWindow() {
           settings={settings}
           model={model}
           isPaused={sessionIsPaused}
-          canPauseSession={sessionIsActive || sessionIsPaused}
           isWaitingForFinalTranslation={isWaiting}
           isChangingSession={isChangingSession}
           isStopping={sessionStatusKind === "stopping"}
@@ -145,7 +142,6 @@ export function OverlayControlWindow() {
           errorSettingsTarget={errorSettingsTarget}
           onRetrySession={errorRequiresConfiguration ? undefined : start}
           onDismiss={dismiss}
-          onTogglePaused={togglePaused}
           onSelectProfile={async (profileId) => { await selectProfile(profileId); }}
           onSwitchSourceLanguage={switchSourceLanguage}
           onSwitchTargetLanguage={async target => {

@@ -205,7 +205,7 @@ it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("ke
   expect(drag.disabled).toBe(false);
   expect(drag.getAttribute("aria-label")).toBe(I18N.overlay.moveSubtitle);
   const topActions = [...host.querySelectorAll<HTMLButtonElement>(".overlay-control-button")];
-  expect(topActions).toHaveLength(6);
+  expect(topActions).toHaveLength(7);
   const settingsAction = topActions.find(button => button.getAttribute("aria-label") === I18N.overlay.openSettings)!;
   expect(settingsAction.disabled).toBe(false);
   for (const id of ["collapse-subtitles", "toggle-immersive-mode", "toggle-overlay-lock"]) {
@@ -243,7 +243,7 @@ it.each(["zh", "en", "ja"] as const)("assigns detailed recovery to the open pane
   await act(async () => { for (const listener of native.listeners) listener(native.mode); });
   expect(feedback().querySelector("p")?.textContent).toBe(summary);
   expect(feedback().querySelector("button")).toBeNull();
-  expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(6);
+  expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(7);
   expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')?.disabled).toBe(false);
 
   await mount("control");
