@@ -13,6 +13,8 @@ type MenuStyle = CSSProperties & {
 export interface SelectOption {
   value: string;
   label: string;
+  /** Optional second line in the menu; the closed control keeps the name compact. */
+  description?: string;
   /** Decorative mark; the label remains the option's searchable name. */
   icon?: ReactNode;
 }
@@ -83,12 +85,13 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
     button.focus();
     const rect = button.getBoundingClientRect();
     const theme = getComputedStyle(button);
-    const width = Math.min(Math.max(rect.width, searchable ? 280 : 200), window.innerWidth - 16);
+    const detailed = options.some(option => !!option.description);
+    const width = Math.min(Math.max(rect.width, searchable || detailed ? 280 : 200), window.innerWidth - 16);
     const below = window.innerHeight - rect.bottom - 12;
     const above = rect.top - 12;
     // Search results may arrive asynchronously. Reserve enough room for them
     // when opening; a short list still sizes naturally below this maximum.
-    const desired = searchable ? 280 : Math.min(options.length * 38 + 10, 280);
+    const desired = searchable ? 280 : Math.min(options.reduce((height, option) => height + (option.description ? 56 : 38), 10), 280);
     const upwards = below < desired && above > below;
     // In short windows, allow the searchable menu to overlap the trigger so
     // the input and at least one result remain usable within the viewport.
@@ -246,7 +249,9 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       onClick={() => choose(index)}>
       <span className="mimi-select__content">
         {option.icon && <span className="mimi-select__icon" aria-hidden="true">{option.icon}</span>}
-        <span className="mimi-select__label">{option.label}</span>
+        <span className={`mimi-select__option-copy${option.description ? " mimi-select__option-copy--detailed" : ""}`}><span className="mimi-select__label">{option.label}</span>
+          {option.description && <span className="mimi-select__description">{option.description}</span>}
+        </span>
       </span>{option.value === value && <Icon name="checkmark" />}
     </div>
   ));

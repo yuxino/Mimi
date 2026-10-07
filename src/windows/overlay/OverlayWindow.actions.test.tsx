@@ -54,7 +54,7 @@ it("shows the independent translation mark and opens settings with guarded failu
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
   await act(async () => service.click());
   expect(showSettings).toHaveBeenCalledTimes(2);
-  expect(showSettings).toHaveBeenCalledWith("service");
+  expect(showSettings).toHaveBeenCalledWith("activeProfile");
   expect(host.querySelector('[role="alert"]')).toBeNull();
 });
 

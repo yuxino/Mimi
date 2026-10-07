@@ -1,4 +1,4 @@
-import { profileSelectionLabel } from "../../lib/profileLanguagePreset";
+import { profileLanguagePresetLabel } from "../../lib/profileLanguagePreset";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
@@ -293,7 +293,7 @@ export function TrayPanel() {
           <span className="tray-select-wrap" title={activeProfile?.name}>
             <Select label={I18N.settings.currentProfile} value={settings.activeProfileId ?? ""}
               valueLabel={I18N.settings.noActiveProfile}
-              options={settings.profiles.map((profile) => ({ value: profile.id, label: profileSelectionLabel(profile),
+              options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name, description: profileLanguagePresetLabel(profile),
                 icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} /> }))}
               disabled={anyActionPending || sessionStatusKind === "connecting" || sessionStatusKind === "stopping"}
               onChange={(profileId) => {

@@ -1623,3 +1623,61 @@ it("applies an inactive Apple profile and selected language in one action and su
   expect(document.body.textContent).toContain(I18N.settings.appleSpeechAssetsMissing);
   expect(host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${I18N.settings.sourceLanguage}"]`)!.disabled).toBe(false);
 });
+
+it("opens the current configuration instead of the previously viewed editor on every navigation request", async () => {
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+  const current = { ...profile, id: "current", name: "Current configuration", credentialState: "present" as const };
+  const other = { ...profile, id: "other", name: "Another configuration", credentialState: "present" as const };
+  const snapshot = { ...settings, profiles: [current, other], activeProfileId: current.id };
+  await render(snapshot);
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
+  expect(host.querySelector(".service-detail h2")?.textContent).toBe(other.name);
+  const navigate = async (request: number) => act(async () => root.render(<><ServiceProfiles settings={snapshot} sessionIsActive={true} sessionStatusKind="listening" profileEditorRequest={request} /><SettingsToastRegion /></>));
+  await navigate(1);
+  expect(host.querySelector(".service-detail h2")?.textContent).toBe(current.name);
+  expect(document.activeElement).toBe(host.querySelector(".service-detail h2"));
+  expect(host.querySelector<HTMLInputElement>(`#profile-name-${current.id}`)?.disabled).toBe(true);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-back")!.click());
+  expect(host.querySelector(".service-detail")).toBeNull();
+  await navigate(2);
+  expect(host.querySelector(".service-detail h2")?.textContent).toBe(current.name);
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+});
+
+it("waits for settings initialization before consuming a current-configuration navigation request", async () => {
+  boot.initializationStatus = "loading";
+  const draw = () => root.render(<ServiceProfiles settings={settings} sessionIsActive={false} profileEditorRequest={1} />);
+  await act(async () => draw());
+  expect(host.querySelector(".service-detail")).toBeNull();
+  boot.initializationStatus = "ready";
+  await act(async () => draw());
+  expect(host.querySelector(".service-detail h2")?.textContent).toBe(profile.name);
+});
+
+it.each([true, false])("defers current-configuration navigation until a pending save ends, keeping a failed draft when success=%s", async success => {
+  const current = { ...profile, id: "current", name: "Current", credentialState: "present" as const };
+  const other: ServiceProfile = { ...profile, id: "other", name: "Other", provider: "customDashScopeASR", textTranslation: "openAICompatible", customSpeechSourceLanguages: ["en", "fr"] };
+  const snapshot = { ...settings, profiles: [current, other], activeProfileId: current.id };
+  let resolve!: (value: SettingsSnapshot) => void, reject!: (error: Error) => void;
+  actions.updateProfile.mockImplementationOnce(() => new Promise((done, failed) => { resolve = done; reject = failed; }));
+  await render(snapshot);
+  await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
+  const declarationButton = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".custom-speech-languages button")].find(item => item.textContent === label)!;
+  await act(async () => declarationButton(I18N.settings.customSpeechLanguagesEdit).click());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".custom-speech-languages__choices button")].find(item => item.textContent === "Frenchfr")!.click());
+  await act(async () => declarationButton(I18N.settings.customSpeechLanguagesSave).click());
+  const navigate = (request: number) => root.render(<><ServiceProfiles settings={snapshot} sessionIsActive={false} profileEditorRequest={request} /><SettingsToastRegion /></>);
+  await act(async () => navigate(1));
+  expect(host.querySelector(".service-detail h2")?.textContent).toBe(other.name);
+  await act(async () => success ? resolve(snapshot) : reject(new Error("synthetic save failure")));
+  expect(host.querySelector(".service-detail h2")?.textContent).toBe(success ? current.name : other.name);
+  if (!success) {
+    expect(host.querySelector(".custom-speech-languages__expanded")).not.toBeNull();
+    expect(host.querySelector('.custom-speech-languages [role="alert"]')).not.toBeNull();
+    await act(async () => navigate(2));
+    expect(host.querySelector(".service-detail h2")?.textContent).toBe(current.name);
+  }
+});

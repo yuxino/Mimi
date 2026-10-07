@@ -12,7 +12,7 @@ export function OverlayTranslationService({ service, onClick, disabled }: {
   disabled: boolean;
 }) {
   return <div className={`overlay-service${service.stages.length > 1 ? " overlay-service--split" : ""}`}>
-    <Tooltip label={`${service.detail}\n${I18N.overlay.openSettings}`} popupClassName="overlay-service-tooltip">
+    <Tooltip label={`${service.detail}\n${I18N.overlay.openCurrentProfile}`} popupClassName="overlay-service-tooltip">
       {(descriptionId, hovered) => <button type="button" className="overlay-service__button"
         aria-label={service.detail} aria-describedby={descriptionId}
         data-hovered={hovered || undefined} disabled={disabled} onClick={onClick}>

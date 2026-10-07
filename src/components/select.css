@@ -92,7 +92,12 @@
   user-select: none;
 }
 .mimi-select__option[data-active="true"] { background: var(--select-hover); }
+.mimi-select__option .mimi-select__content { flex: 1; }
+.mimi-select__option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mimi-select__option .mimi-select__label { overflow-wrap: anywhere; }
+.mimi-select__option-copy--detailed .mimi-select__label,
+.mimi-select__description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mimi-select__description { opacity: 0.7; }
 .mimi-select__option > svg { flex-shrink: 0; font-size: 12px; }
 .mimi-select__menu--searchable {
   display: flex;

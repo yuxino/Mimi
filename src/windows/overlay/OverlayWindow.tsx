@@ -282,7 +282,7 @@ export function OverlayWindow() {
       </div>
       <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
         {visibleService && <OverlayTranslationService service={visibleService}
-          onClick={() => runControlAction("settings", () => showSettings("service"))}
+          onClick={() => runControlAction("settings", () => showSettings("activeProfile"))}
           disabled={controlAction.pending} />}
         {returnToLive && <button type="button" className="overlay-return-to-live" onClick={() => {
           setReadingHistory(false);

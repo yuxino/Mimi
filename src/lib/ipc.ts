@@ -280,7 +280,7 @@ export function appQuit(): Promise<void> {
   return invoke("app_quit");
 }
 
-export type SettingsNavigationTarget = "service" | "export" | "appleSpeechResources";
+export type SettingsNavigationTarget = "service" | "export" | "appleSpeechResources" | "activeProfile";
 
 export function appShowSettings(
   target?: SettingsNavigationTarget,

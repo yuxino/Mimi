@@ -405,3 +405,20 @@ it("keeps the non-searchable typeahead timeout based on keyboard event timing", 
   await press("E", 2000);
   expect(document.querySelector('[data-active="true"]')?.textContent).toBe("English");
 });
+
+it("puts a configuration's language pair below its name only in the menu and preserves keyboard selection", async () => {
+  await act(() => root.render(<Select label="Configuration" value="ko" options={[
+    { value: "ko", label: "哈哈", description: "韩语 → 简体中文", icon: <svg /> },
+    { value: "ja", label: "Japanese", description: "Japanese → English" },
+    { value: "plain", label: "No saved pair" },
+  ]} onChange={onChange} />));
+  expect(trigger().textContent).toBe("哈哈");
+  await act(() => trigger().click());
+  const selected = document.querySelector('[role="option"][aria-selected="true"]')!;
+  expect(selected.querySelector(".mimi-select__label")?.textContent).toBe("哈哈");
+  expect(selected.querySelector(".mimi-select__description")?.textContent).toBe("韩语 → 简体中文");
+  expect(document.querySelectorAll(".mimi-select__description")).toHaveLength(2);
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("ja");
+});
