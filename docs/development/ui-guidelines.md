@@ -14,6 +14,9 @@ These project rules apply to implementation and review.
 - Make the title, current state, main action and detail areas easy to distinguish.
   Group related controls, use consistent button sizes and align actions right.
   Do not scatter buttons across large blank areas or add cards to every row.
+- An empty configuration list needs a short, readable next-step instruction
+  beside its add action. Show it only after a successful settings load; a zero
+  count alone is not sufficient guidance for a fresh install.
 - Keep essential labels, choices and actionable errors readable at normal text
   size. Put non-essential explanations behind hover/focus help icons. Long raw
   diagnostics and advanced details start collapsed; bound long lists and text.
