@@ -1,6 +1,6 @@
 # 服务开通指南
 
-[返回 README](../README_ZH.md) · [English](provider-setup.md) · [使用与常见问题](usage.zh-CN.md)
+[返回 README](readme/zh-CN.md) · [English](provider-setup.md) · [使用与常见问题](usage.zh-CN.md)
 
 这份指南说明各项服务去哪里开通、凭证从哪里拿，以及在 Mimi 里填写什么。只需配置你要使用的服务，不必全部开通。首次使用可以从 README 推荐的阿里云或 Google Gemini 开始。
 

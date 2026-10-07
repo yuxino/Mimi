@@ -2,4 +2,4 @@ blank_issues_enabled: true
 contact_links:
   - name: Security report
     url: https://github.com/yuxino
-    about: 请按 SECURITY.md 私下报告安全问题。
+    about: 请按 .github/SECURITY.md 私下报告安全问题。

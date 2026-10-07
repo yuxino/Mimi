@@ -28,6 +28,8 @@ Preserve these product constraints:
 - The product website lives in the separate `yuxino-labs/mimi-web`
   repository. Never add a website copy, subtree, or generated site assets to
   this application repository.
+- `README.md`: the single English entry point. Localized READMEs live in
+  `docs/readme/`; contribution and security guides live in `.github/`.
 - `docs/plans/`: current accepted design records; completed checklists and
   superseded designs stay in Git history.
 - `docs/development/common-regressions.md`: required macOS signing, permission,
