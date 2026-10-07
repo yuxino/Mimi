@@ -19,8 +19,11 @@ refreshes its state and applies the ready language. Runtime language
 choices are intersected with the selected text translator's implemented source
 catalog. Original-only recognition retains the system's full supported set.
 
-Resource inventory distinguishes installed, downloading (including the system
-waiting to retry), and missing resources. Apple's installation request reserves
+Resource inventory preserves the native installed, downloading, supported,
+unsupported and unknown states. Only supported means assets need downloading;
+unsupported or unknown cannot be reported as missing or used for a session.
+A preparation status failure leaves the selected language unconfirmed and offers
+a read-only refresh. Apple's installation request reserves
 locales automatically and consolidates duplicate downloads. A transient native
 service disconnect retries at most once with a fresh request. Installation
 completion is checked against the actual module; global installed locales are
@@ -28,6 +31,10 @@ not treated as proof. A confirmed install updates only that locale in the latest
 cache, after older inventory scans finish, without requiring another full scan.
 Errors expose fixed categories only; unknown errors retain an allowlisted domain
 and numeric code for content-free diagnostics, never NSError descriptions.
+Explicit preparation logs bounded stage/status records through OSLog, including
+whether an installation request exists and whether it returned. Installed-locale
+membership and audio-format counts are diagnostic comparisons only, not a
+replacement for confirmed module readiness. No audio, text or paths are logged.
 
 API references: [downloadAndInstall](https://developer.apple.com/documentation/speech/assetinstallationrequest/downloadandinstall()),
 [installation request](https://developer.apple.com/documentation/speech/assetinventory/assetinstallationrequest(supporting:)),

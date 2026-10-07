@@ -224,6 +224,20 @@ without removing that old entry had not restored capture. An enabled switch
 or a Listening label is insufficient evidence: check the actual session and
 translated output. Record only timing/counts/status, never speech or subtitles.
 
+## Apple Speech resources can exist while the module check fails
+
+On the signed `7885ede9` development app, a Japanese resource preparation found
+an existing system ASR asset, then the framework's anonymous XPC endpoint failed
+with Cocoa 4099 during the post-install status checks. Do not turn this into a
+network diagnosis or collapse `unsupported` and `supported` into "not downloaded".
+Record the native status and failed stage without error descriptions, content or
+paths. A same-identity development rebuild with diagnostic changes only was
+reopened and its Japanese recognition setup check succeeded in 540 ms; this is
+recovery evidence, not proof of a permanent OS fix or full audio recognition.
+Keep unconfirmed resources out of all ready-language lists, invalidate earlier
+recognition results when resource work starts, and offer a read-only refresh.
+Do not reset TCC, change signing or delete system assets without evidence.
+
 ## Overlay and UI checks
 
 For shared layout, notification choices and the cross-page review checklist,

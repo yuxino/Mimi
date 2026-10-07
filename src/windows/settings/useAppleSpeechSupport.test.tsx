@@ -20,7 +20,7 @@ const ready: AppleSpeechSupport = { available: true, languages: [
   { sourceLanguage: "en", locale: "en-US", installed: true },
   { sourceLanguage: "ja", locale: "ja-JP", installed: true },
 ] };
-const missing: AppleSpeechSupport = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: false })) };
+const missing: AppleSpeechSupport = { ...ready, languages: ready.languages.map(language => ({ ...language, installed: false, status: "supported" as const })) };
 let host: HTMLDivElement, root: Root;
 let current: ReturnType<typeof useAppleSpeechSupport>;
 let beginNotice: ReturnType<typeof useSettingsToast>["beginToast"];
@@ -101,7 +101,7 @@ it("refreshes a filtered-out language's resource state when the complete revisio
   useStore.setState({ settings: before });
   vi.mocked(getAppleSpeechSupport).mockResolvedValueOnce(frenchReady);
   await render();
-  const after = { ...frenchReady, languages: frenchReady.languages.map(language => ({ ...language, installed: language.sourceLanguage === "en" })) };
+  const after = { ...frenchReady, languages: frenchReady.languages.map(language => ({ ...language, installed: language.sourceLanguage === "en", status: language.sourceLanguage === "en" ? "installed" as const : "supported" as const })) };
   vi.mocked(getAppleSpeechSupport).mockResolvedValueOnce(after);
   await act(async () => useStore.setState({ settings: { ...before, languageCapabilities: { ...before.languageCapabilities!, appleSpeechSupportRevision: 2 } } }));
   expect(getAppleSpeechSupport).toHaveBeenCalledTimes(2);

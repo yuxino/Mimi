@@ -9,15 +9,15 @@ import { I18N, providerDisplayName, setStoredUiLanguage } from "../../lib/i18n";
 import { getAppleSpeechSupport, prepareAppleSpeechLanguage, profileCredentialEditorState, profileRevealCredential, testProfileConnection } from "../../lib/ipc";
 import { SERVICE_PROVIDERS, sourceLanguagesForSettings, targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
-import type { ServiceProfile, SettingsSnapshot } from "../../lib/types";
+import type { AppleSpeechSupport, ServiceProfile, SettingsSnapshot } from "../../lib/types";
 import { ServiceProfiles } from "./ServiceProfiles";
 
 const actions = vi.hoisted(() => ({
   createProfile: vi.fn(), updateProfile: vi.fn(), selectProfile: vi.fn(),
   saveSettings: vi.fn(), deleteProfile: vi.fn(), saveProfileCredentials: vi.fn(), deleteProfileAPIKey: vi.fn(),
 }));
-const boot = vi.hoisted(() => ({ initializationStatus: "ready" as "ready" | "loading" | "error", initializationError: null as "timeout" | "unavailable" | null, init: vi.fn() }));
-vi.mock("../../lib/store", () => ({ useStore: (select: (state: typeof actions & typeof boot & { settings: { windowsAudioSource: string }; session: { isActive: boolean; isPaused: boolean } }) => unknown) => select({ ...actions, ...boot, settings: { windowsAudioSource: "" }, session: { isActive: false, isPaused: false } }) }));
+const boot = vi.hoisted(() => ({ initializationStatus: "ready" as "ready" | "loading" | "error", initializationError: null as "timeout" | "unavailable" | null, init: vi.fn(), nativeSettings: null as SettingsSnapshot | null }));
+vi.mock("../../lib/store", () => ({ useStore: (select: (state: typeof actions & typeof boot & { settings: { windowsAudioSource?: string }; session: { isActive: boolean; isPaused: boolean } }) => unknown) => select({ ...actions, ...boot, settings: boot.nativeSettings ?? { windowsAudioSource: "" }, session: { isActive: false, isPaused: false } }) }));
 vi.mock("../../lib/ipc", () => ({ isTauri: false, getAppleSpeechSupport: vi.fn(), prepareAppleSpeechLanguage: vi.fn(), testProfileConnection: vi.fn(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "unavailable" };
@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.mocked(getAppleSpeechSupport).mockReset().mockResolvedValue({ available: false, languages: [] });
   vi.mocked(prepareAppleSpeechLanguage).mockReset();
   boot.initializationStatus = "ready"; boot.initializationError = null; boot.init.mockReset().mockResolvedValue(undefined);
+  boot.nativeSettings = null;
   setStoredUiLanguage("en");
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -53,7 +54,7 @@ afterEach(async () => {
 });
 async function render(snapshot = settings, sessionStatusKind: "idle" | "error" = "idle") { await act(async () => root.render(<><ServiceProfiles settings={snapshot} sessionIsActive={false} sessionStatusKind={sessionStatusKind} /><SettingsToastRegion /></>)); }
 
-const appleSupport = { available: true, languages: [{ sourceLanguage: "en" as const, locale: "en-US", installed: false }, { sourceLanguage: "ja" as const, locale: "ja-JP", installed: true }] };
+const appleSupport: AppleSpeechSupport = { available: true, languages: [{ sourceLanguage: "en" as const, locale: "en-US", installed: false, status: "supported" }, { sourceLanguage: "ja" as const, locale: "ja-JP", installed: true }] };
 const appleProfile: ServiceProfile = { id: "apple", name: "Apple Speech", provider: "appleSpeech", credentialState: "missing", speechCredentialState: "missing", textCredentialState: "missing", textTranslation: "followService" };
 function appleSettings(): SettingsSnapshot {
   return { ...settings, profiles: [appleProfile], activeProfileId: appleProfile.id, sourceLanguage: "en", targetLanguage: "original", languageCapabilities: { profileId: appleProfile.id, provider: "appleSpeech", textTranslation: "followService", targetLanguage: "original", sourceLanguages: ["en", "ja"], targetLanguages: ["original"] } };
@@ -162,7 +163,7 @@ it("prepares only the explicitly chosen Apple language and blocks duplicate prep
   expect(prepareButton.disabled).toBe(true);
   await act(async () => prepareButton.click());
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledOnce();
-  await act(async () => resolve({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true })) }));
+  await act(async () => resolve({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true, status: "installed" as const })) }));
   expect(host.textContent).toContain(I18N.settings.appleSpeechLanguageInUse);
   expect(host.querySelector<HTMLButtonElement>(".service-back")?.disabled).toBe(false);
   expect(actions.saveSettings).toHaveBeenCalledExactlyOnceWith({ sourceLanguage: "en" });
@@ -181,9 +182,36 @@ it("retains a failed Apple preparation as retryable feedback without exposing na
   expect([...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechRetryDownload)?.disabled).toBe(false);
 });
 
+it("keeps a current Apple recognition result when its inventory broadcast changes another locale", async () => {
+  const readySupport: AppleSpeechSupport = { ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true, status: "installed" })) };
+  boot.nativeSettings = { ...appleSettings(), languageCapabilities: { ...appleSettings().languageCapabilities!, appleSpeechSupportRevision: 1 } };
+  vi.mocked(getAppleSpeechSupport).mockResolvedValueOnce(readySupport);
+  let finishCheck!: (result: Awaited<ReturnType<typeof testProfileConnection>>) => void;
+  vi.mocked(testProfileConnection).mockReturnValue(new Promise(done => { finishCheck = done; }));
+  await render(boot.nativeSettings);
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  const check = host.querySelector<HTMLButtonElement>(".apple-speech-connection-check button")!;
+  await act(async () => check.click());
+  expect(testProfileConnection).toHaveBeenCalledExactlyOnceWith(appleProfile.id, "speech", undefined, "en");
+  let finishRefresh!: (support: AppleSpeechSupport) => void;
+  vi.mocked(getAppleSpeechSupport).mockReturnValueOnce(new Promise(done => { finishRefresh = done; }));
+  boot.nativeSettings = { ...boot.nativeSettings, languageCapabilities: { ...boot.nativeSettings.languageCapabilities!, appleSpeechSupportRevision: 2 } };
+  await render(boot.nativeSettings);
+  expect(host.querySelector(".apple-speech-connection-check button")).toBe(check);
+  expect(check.disabled).toBe(true);
+  await act(async () => finishRefresh({ ...readySupport, languages: readySupport.languages.map(item => item.sourceLanguage === "ja" ? { ...item, installed: false, status: "unknown" } : item) }));
+  await act(async () => finishCheck({ credential: "present", service: "available", reason: null, elapsedMs: 540 }));
+  expect(host.querySelector(".apple-speech-connection-check button")).toBe(check);
+  expect(host.querySelector(".apple-speech-connection-check")?.textContent).toContain(diagnosticCopy().available);
+  expect(host.querySelector(".apple-speech-connection-check")?.textContent).toContain("540 ms");
+  expect(check.disabled).toBe(false);
+  expect(actions.saveSettings).not.toHaveBeenCalled();
+  expect(prepareAppleSpeechLanguage).not.toHaveBeenCalled();
+});
+
 it("downloads and applies the language chosen in the single recognition selector", async () => {
   vi.mocked(getAppleSpeechSupport).mockResolvedValue(appleSupport);
-  vi.mocked(prepareAppleSpeechLanguage).mockResolvedValue({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true })) });
+  vi.mocked(prepareAppleSpeechLanguage).mockResolvedValue({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true, status: "installed" as const })) });
   await render({ ...appleSettings(), sourceLanguage: "ja" });
   await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
   expect(host.textContent).toContain("ja-JP");
@@ -1514,7 +1542,7 @@ it.each([false, true])("waits for preparation without reviving a cancelled resou
   await show(1);
   expect(host.querySelector(".service-detail__title")?.textContent).toContain(otherApple.name);
   if (cancelled) await show(0);
-  await act(async () => prepared({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true })) }));
+  await act(async () => prepared({ ...appleSupport, languages: appleSupport.languages.map(item => ({ ...item, installed: true, status: "installed" as const })) }));
   expect(host.querySelector(".service-detail__title")?.textContent).toContain(cancelled ? otherApple.name : appleProfile.name);
   if (!cancelled) expect(document.activeElement).toBe(host.querySelector("#apple-speech-resources"));
   expect(prepareAppleSpeechLanguage).toHaveBeenCalledOnce();
@@ -1544,7 +1572,7 @@ it("waits for initialized Apple settings and does not revive a resource intent r
 
 
 it("checks the displayed Apple language on an inactive profile without saving it", async () => {
-  const readySupport = { ...appleSupport, languages: appleSupport.languages.map(language => ({ ...language, installed: true })) };
+  const readySupport = { ...appleSupport, languages: appleSupport.languages.map(language => ({ ...language, installed: true, status: "installed" as const })) };
   vi.mocked(getAppleSpeechSupport).mockResolvedValue(readySupport);
   vi.mocked(testProfileConnection).mockResolvedValue({ credential: "present", service: "available", reason: null, elapsedMs: 95 });
   await render({ ...settings, profiles: [profile, appleProfile], sourceLanguage: "auto" });
@@ -1562,7 +1590,7 @@ it("checks the displayed Apple language on an inactive profile without saving it
 });
 
 it("applies an inactive Apple profile and selected language in one action and surfaces failure", async () => {
-  vi.mocked(getAppleSpeechSupport).mockResolvedValue({ ...appleSupport, languages: appleSupport.languages.map(language => ({ ...language, installed: true })) });
+  vi.mocked(getAppleSpeechSupport).mockResolvedValue({ ...appleSupport, languages: appleSupport.languages.map(language => ({ ...language, installed: true, status: "installed" as const })) });
   actions.selectProfile.mockRejectedValue(new Error("apple_speech_assets_missing"));
   await render({ ...settings, profiles: [profile, appleProfile], sourceLanguage: "en" });
   await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());

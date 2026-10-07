@@ -14,12 +14,21 @@ pub struct AppleSpeechCapabilities {
 #[serde(rename_all = "camelCase")]
 pub struct AppleSpeechLocale {
     pub identifier: String,
-    /// Ready for Mimi's actual module configuration and app identity. The OS's
-    /// broader installedLocales list alone does not establish this readiness.
-    pub installed: bool,
-    /// Apple may continue a failed initial download later in the background.
+    /// Preserve the native module state: unsupported is not a missing download.
     #[serde(default)]
-    pub downloading: bool,
+    pub status: AppleSpeechResourceStatus,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleSpeechResourceStatus {
+    Unsupported,
+    Supported,
+    Downloading,
+    Installed,
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone)]
@@ -53,6 +62,8 @@ pub enum AppleSpeechError {
     Unavailable,
     #[error("Download the selected Apple speech language before starting")]
     AssetsNotInstalled,
+    #[error("Apple Speech language preparation is still in progress")]
+    AssetsDownloading,
     #[error("Apple Speech does not support the selected language")]
     InvalidLocale,
     #[error("Apple Speech cannot accept the required audio format")]
@@ -209,13 +220,35 @@ pub use unsupported::{capabilities, prepare, start, AppleSpeechEvents, AppleSpee
 mod tests {
     use super::*;
 
+    #[test]
+    fn native_resource_status_preserves_unknown_instead_of_trusting_legacy_flags() {
+        for (status, expected) in [
+            ("unsupported", AppleSpeechResourceStatus::Unsupported),
+            ("supported", AppleSpeechResourceStatus::Supported),
+            ("downloading", AppleSpeechResourceStatus::Downloading),
+            ("installed", AppleSpeechResourceStatus::Installed),
+            ("unknown", AppleSpeechResourceStatus::Unknown),
+            ("future_status", AppleSpeechResourceStatus::Unknown),
+        ] {
+            let locale: AppleSpeechLocale = serde_json::from_value(serde_json::json!({
+                "identifier": "ja-JP", "status": status, "installed": true
+            }))
+            .unwrap();
+            assert_eq!(locale.status, expected);
+        }
+        let missing: AppleSpeechLocale = serde_json::from_value(serde_json::json!({
+            "identifier": "ja-JP", "installed": true, "downloading": false
+        }))
+        .unwrap();
+        assert_eq!(missing.status, AppleSpeechResourceStatus::Unknown);
+    }
+
     fn locales(names: &[&str]) -> Vec<AppleSpeechLocale> {
         names
             .iter()
             .map(|name| AppleSpeechLocale {
                 identifier: (*name).to_owned(),
-                installed: false,
-                downloading: false,
+                status: AppleSpeechResourceStatus::Supported,
             })
             .collect()
     }

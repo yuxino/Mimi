@@ -133,6 +133,7 @@ fn native_error(domain: String, code: i64) -> AppleSpeechError {
             15 => AppleSpeechError::DownloadStorage,
             16 => AppleSpeechError::StatusUnavailable,
             17 => AppleSpeechError::Timeout,
+            18 => AppleSpeechError::AssetsDownloading,
             _ => AppleSpeechError::InvalidResult,
         };
     }
@@ -561,6 +562,18 @@ mod tests {
         assert_send::<AppleSpeechEvents>();
         assert_send::<AppleSpeechError>();
         assert_sync::<AppleSpeechError>();
+    }
+
+    #[test]
+    fn native_readiness_errors_preserve_pending_and_unknown_states() {
+        assert!(matches!(
+            native_error("MimiAppleSpeech".into(), 18),
+            AppleSpeechError::AssetsDownloading
+        ));
+        assert!(matches!(
+            native_error("MimiAppleSpeech".into(), 16),
+            AppleSpeechError::StatusUnavailable
+        ));
     }
 
     #[test]

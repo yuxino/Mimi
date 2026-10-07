@@ -61,6 +61,8 @@ pub enum ConnectionCheckReason {
     Unreachable,
     TextTranslationNotConfigured,
     AppleSpeechAssetsMissing,
+    AppleSpeechPreparing,
+    AppleSpeechStatusFailed,
     AppleSpeechLanguageUnsupported,
     AppleSpeechUnavailable,
     AppleSpeechRecognitionFailed,
@@ -603,6 +605,10 @@ fn recognition_reason(error: &RecognitionClientError) -> ConnectionCheckReason {
     if let RecognitionClientError::Apple(label) = error {
         return match label.as_str() {
             "apple_speech_assets_missing" => ConnectionCheckReason::AppleSpeechAssetsMissing,
+            "apple_speech_preparing" => ConnectionCheckReason::AppleSpeechPreparing,
+            "apple_speech_status_failed" | "apple_speech_service_unavailable" => {
+                ConnectionCheckReason::AppleSpeechStatusFailed
+            }
             "apple_speech_language_unsupported" => {
                 ConnectionCheckReason::AppleSpeechLanguageUnsupported
             }
@@ -909,6 +915,18 @@ mod tests {
     #[test]
     fn apple_probe_reports_resource_recovery_without_network_or_credential_advice() {
         for (label, expected) in [
+            (
+                "apple_speech_preparing",
+                ConnectionCheckReason::AppleSpeechPreparing,
+            ),
+            (
+                "apple_speech_status_failed",
+                ConnectionCheckReason::AppleSpeechStatusFailed,
+            ),
+            (
+                "apple_speech_service_unavailable",
+                ConnectionCheckReason::AppleSpeechStatusFailed,
+            ),
             (
                 "apple_speech_assets_missing",
                 ConnectionCheckReason::AppleSpeechAssetsMissing,

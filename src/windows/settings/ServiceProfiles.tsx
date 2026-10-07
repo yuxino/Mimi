@@ -456,11 +456,10 @@ export function ServiceProfiles({
     const key = stage ?? "combined";
     const outcome = diagnostics[key];
     const context = JSON.stringify([profile.provider, textTranslationForProfile(profile), sourceLanguage ?? settings.sourceLanguage,
-      stage === "speech" ? null : settings.targetLanguage,
-      profile.provider === "appleSpeech" && stage === "speech" ? apple.support : null]);
+      stage === "speech" ? null : settings.targetLanguage]);
     return <DraftConnectionCheck key={`${profile.id}:${key}`} draft={draft} context={context}
       outcome={outcome?.profileId === profile.id ? outcome : undefined}
-      pending={pendingCheckStage === key} disabled={mutationsDisabled}
+      pending={pendingCheckStage === key} disabled={mutationsDisabled || (profile.provider === "appleSpeech" && stage === "speech" && apple.loading)}
       onCheck={input => { if (draft !== null) handleConnectionCheck(input, stage, draft, sourceLanguage); }}
       label={stage === "text" ? I18N.settings.checkTextTranslation : stage === "speech" ? I18N.settings.checkSpeechRecognition : undefined} />;
   };
@@ -528,7 +527,10 @@ export function ServiceProfiles({
             <SelectedCredentialEditor
               support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage}
               resourceRefreshDisabled={pendingAction !== null}
-              onRetry={apple.refresh} onPrepared={apple.update} onBusyChange={busy => setPendingAction(busy ? "prepare-resource" : null)}
+              onRetry={apple.refresh} onPrepared={apple.update} onBusyChange={busy => {
+                if (busy) invalidateProfileCheck(selectedProfile.id, "speech");
+                setPendingAction(busy ? "prepare-resource" : null);
+              }}
               onNativeTranslationBusyChange={busy => setPendingAction(busy ? "prepare-apple-translation" : null)}
               onNativeTranslationPrepared={() => invalidateProfileCheck(selectedProfile.id, "text")}
               translationLanguageControls={route => route === "apple" && textTranslationForProfile(selectedProfile) === "apple" && selectedProfile.id === settings.activeProfileId
