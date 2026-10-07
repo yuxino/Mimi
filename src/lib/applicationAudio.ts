@@ -1,18 +1,11 @@
+import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
+import { supplemental } from "./locales/supplemental";
 import { effectiveUiLanguage } from "./i18n";
 
 export interface AudioApplication { id: string; name: string; iconDataUrl?: string | null }
 export interface ApplicationSnapshot { supported: boolean; applications: AudioApplication[] }
 const copy = {
-  en: {
-    title: "Capture sound from", all: "All applications", application: "Application",
-    search: "Search applications", refresh: "Refresh applications", loading: "Loading applications…",
-    empty: "No applications found. Open the app, then refresh.", noMatch: "No matching applications.", missing: "Unavailable",
-    unavailable: "The selected application is no longer available. Open it and select it again, or choose All applications.",
-    unsupported: "Application audio capture is available on macOS and Windows 11 (build 20348 or later).",
-    failed: "Could not load applications. Refresh to try again.",
-    saveFailed: "Could not switch the captured application. Check subtitle status, then try again.",
-    help: "Captures only this application’s audio. Browser tabs share an application. Selecting an app does not mute it. On Windows, select it again after reopening it.",
-  },
+  en: SUPPLEMENTAL_EN.applicationAudio_copy,
   zh: {
     title: "采集应用", all: "全部应用", application: "应用",
     search: "搜索应用", refresh: "刷新应用列表", loading: "正在加载应用…",
@@ -31,6 +24,7 @@ const copy = {
     failed: "アプリを読み込めません。一覧を更新して再試行してください。", saveFailed: "音声を取得するアプリを切り替えられませんでした。字幕の状態を確認して再試行してください。",
     help: "選択したアプリの音声だけを取得します。ブラウザーのタブは同じアプリに属します。選択してもアプリはミュートされません。Windows ではアプリを開き直した後に再選択が必要です。",
   },
+  ...supplemental.applicationAudio_copy,
 };
 export function applicationAudioCopy(language = effectiveUiLanguage()) { return copy[language]; }
 export function applicationAudioError(message: string): string | null {

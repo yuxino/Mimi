@@ -28,12 +28,16 @@ These project rules apply to implementation and review.
   existing spacing around separators. A no-overflow result alone is not
   visual acceptance: inspect the screenshot for touching control borders,
   vertical rhythm and heading/section separation before presenting it.
-- Check Chinese, English and Japanese at the default and minimum window widths.
+- Check all supported interface languages (Simplified/Traditional Chinese, English, Japanese, Korean,
+  French and German) at the default and minimum window widths.
   Include Windows-only output choices and Linux-only recovery states even when
   developing on macOS. A hidden native capability must have an explicit local
   fixture; a successful macOS screen alone cannot cover that control. Reuse
   `scripts/fixtures/settings-layout.html` and `scripts/verify-settings-layout.js`
   for actual browser geometry, and keep the native-device evidence separate.
+  Memoized children that read localized copy must subscribe to the locale or
+  receive it as a prop. Check paused/static content too; do not remount subtitle
+  history to refresh labels and lose the reader's scroll position.
 - All interface text, native controls, tooltips and portaled menus use
   `--mimi-ui-font`. Order CJK fallbacks for the interface language and include
   Windows non-UI family names; do not add a separate stack to a shared tooltip.
@@ -129,3 +133,9 @@ Before calling a UI consistency fix complete:
 The [settings feedback audit](../plans/2026-10-04-settings-feedback-audit.md)
 records the specific cases that led to these rules. Keep prevention rules here
 so future work does not depend on finding a dated design note.
+
+Collapsed overlay tooltips must fit the 54px native window and leave its drag,
+pause, expand and close buttons uncovered at the minimum width in every UI
+language. Use a short gesture hint when the expanded instructions do not fit;
+retain a complete accessible action. Verify geometry with the actual overlay
+components and confirm the affected gesture in the signed native app.

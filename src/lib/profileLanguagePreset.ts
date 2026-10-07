@@ -5,7 +5,7 @@ export function profileSelectionChangesSettings(profile: ServiceProfile, setting
     && (profile.languagePreset.sourceLanguage !== settings.sourceLanguage || profile.languagePreset.targetLanguage !== settings.targetLanguage));
 }
 
-export function profileSelectionLabel(profile: ServiceProfile): string {
+export function profileLanguagePresetLabel(profile: ServiceProfile): string | undefined {
   const preset = profile.languagePreset;
-  return preset ? `${profile.name} · ${SOURCE_LANGUAGE_DISPLAY_NAMES[preset.sourceLanguage]} → ${TARGET_LANGUAGE_DISPLAY_NAMES[preset.targetLanguage]}` : profile.name;
+  return preset ? `${SOURCE_LANGUAGE_DISPLAY_NAMES[preset.sourceLanguage]} → ${TARGET_LANGUAGE_DISPLAY_NAMES[preset.targetLanguage]}` : undefined;
 }

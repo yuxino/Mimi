@@ -1,13 +1,29 @@
 /**
  * UI copy grouped by window. Tray strings, language/mode display names, and
- * the overlay copy follow the effective UI language (Chinese, English, or
- * Japanese). The overlay activity-phase labels live in `types.ts` so they
- * stay adjacent to their visual parameters.
+ * the overlay copy follow the effective UI language. Overlay activity-phase
+ * labels live in `types.ts` beside their visual parameters.
  */
+
+import * as DE from "./locales/de";
+import * as FR from "./locales/fr";
+import * as KO from "./locales/ko";
+import * as ZH_TW from "./locales/zh-TW";
 
 import type { ServiceProvider, UiLanguage } from "./types";
 
 export type { UiLanguage } from "./types";
+export type ResolvedUiLanguage = Exclude<UiLanguage, "system">;
+export const UI_LANGUAGES = ["zh", "zh-TW", "en", "ja", "de", "ko", "fr"] as const;
+export const UI_LANGUAGE_OPTIONS = [
+  { value: "zh", label: "简体中文" }, { value: "zh-TW", label: "繁體中文" },
+  { value: "en", label: "English" },
+  { value: "ja", label: "日本語" }, { value: "de", label: "Deutsch" },
+  { value: "ko", label: "한국어" }, { value: "fr", label: "Français" },
+] as const;
+
+function isUiLanguage(value: string | null | undefined): value is ResolvedUiLanguage {
+  return UI_LANGUAGES.some(language => language === value);
+}
 
 const UI_LANGUAGE_STORAGE_KEY = "mimi-ui-language";
 
@@ -15,7 +31,7 @@ const UI_LANGUAGE_STORAGE_KEY = "mimi-ui-language";
 function getStoredUiLanguage(): UiLanguage | null {
   try {
     const value = localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
-    return value === "zh" || value === "en" || value === "ja" || value === "system"
+    return isUiLanguage(value) || value === "system"
       ? value
       : null;
   } catch {
@@ -54,19 +70,22 @@ export function setStoredUiLanguage(language: UiLanguage): void {
 
 /** The effective UI language, honoring a stored override over the OS/webview
  * language. */
-export function effectiveUiLanguage(): "zh" | "en" | "ja" {
-  const stored = selectedUiLanguage;
-  if (stored === "zh" || stored === "en" || stored === "ja") return stored;
-  const system =
-    typeof navigator !== "undefined" ? (navigator.language ?? "") : "";
-  if (system.toLowerCase().startsWith("zh")) return "zh";
-  if (system.toLowerCase().startsWith("ja")) return "ja";
-  return "en";
+export function effectiveUiLanguage(): ResolvedUiLanguage {
+  if (isUiLanguage(selectedUiLanguage)) return selectedUiLanguage;
+  const system = typeof navigator !== "undefined" ? navigator.language ?? "" : "";
+  const parts = system.toLowerCase().split(/[-_]/);
+  const base = parts[0];
+  if (base === "zh") {
+    if (parts.includes("hant")) return "zh-TW";
+    if (parts.includes("hans")) return "zh";
+    if (parts.some(part => ["tw", "hk", "mo"].includes(part))) return "zh-TW";
+  }
+  return isUiLanguage(base) ? base : "en";
 }
 
 /** True when the effective UI language is Chinese (zh-*). */
 export function isChineseSystem(): boolean {
-  return effectiveUiLanguage() === "zh";
+  return ["zh", "zh-TW"].includes(effectiveUiLanguage());
 }
 
 const TRAY_ZH = {
@@ -168,12 +187,14 @@ const OVERLAY_ZH = {
   collapseSubtitle: "收起字幕",
   collapsedAccessibilityPrefix: "字幕已收起，",
   dragTooltip: "拖动字幕；双击收起或展开",
+  expandDragTooltip: "双击展开",
   moveSubtitle: "拖动以移动字幕",
   paused: "已暂停",
   translating: "翻译中",
   dotSeparator: "·",
   clearSubtitles: "清空字幕",
   openSettings: "打开 mimi 设置",
+  openCurrentProfile: "打开当前配置",
   returnToLive: "回到实时",
   listeningEmpty: "正在聆听，译文会保留在这里",
   connecting: "正在连接",
@@ -233,12 +254,14 @@ const OVERLAY_EN = {
   collapseSubtitle: "Collapse subtitles",
   collapsedAccessibilityPrefix: "Subtitles collapsed, ",
   dragTooltip: "Drag to move; double-click to collapse or expand",
+  expandDragTooltip: "Double-click",
   moveSubtitle: "Drag to move subtitles",
   paused: "Paused",
   translating: "Translating",
   dotSeparator: "·",
   clearSubtitles: "Clear subtitles",
   openSettings: "Open mimi Settings",
+  openCurrentProfile: "Open current configuration",
   returnToLive: "Back to live",
   listeningEmpty: "Listening — translations will stay here",
   connecting: "Connecting",
@@ -298,12 +321,14 @@ const OVERLAY_JA = {
   collapseSubtitle: "字幕を折りたたむ",
   collapsedAccessibilityPrefix: "字幕は折りたたまれています、",
   dragTooltip: "ドラッグで移動。ダブルクリックで折りたたみ・展開",
+  expandDragTooltip: "ダブルクリック",
   moveSubtitle: "ドラッグで字幕を移動",
   paused: "一時停止中",
   translating: "翻訳中",
   dotSeparator: "·",
   clearSubtitles: "字幕をクリア",
   openSettings: "mimi の設定を開く",
+  openCurrentProfile: "現在の構成を開く",
   returnToLive: "リアルタイムへ",
   listeningEmpty: "聞き取り中 — 翻訳はここに表示されます",
   connecting: "接続中",
@@ -698,7 +723,7 @@ const SETTINGS_ZH = {
   lockPosition: "锁定字幕位置",
   lockHelp: "关闭锁定后，可拖动字幕顶部来移动位置，也可从边缘或四角调整大小。",
   serviceProfilesTitle: "语音与翻译",
-  serviceProfilesDescription: "选择服务，并把对应凭证安全保存到系统安全存储。",
+  serviceProfilesDescription: "选择服务，并将对应凭据保存在本机私有文件中。",
   manageServiceProfiles: "管理服务配置",
   addProfile: "添加配置",
   chooseProvider: "添加语音服务",
@@ -874,7 +899,7 @@ const SETTINGS_ZH = {
     `切换到 ${language} 识别`,
 };
 
-type SettingsCopy = {
+export type SettingsCopy = {
   [Key in keyof typeof SETTINGS_ZH]: (typeof SETTINGS_ZH)[Key] extends (
     ...args: infer Args
   ) => string
@@ -1240,7 +1265,7 @@ const SETTINGS_EN = {
   lockPosition: "Lock Subtitle Position",
   lockHelp: "When unlocked, drag the subtitle top to move it, or resize from any edge or corner.",
   serviceProfilesTitle: "Speech & Translation",
-  serviceProfilesDescription: "Choose a service and keep its credentials in the system's secure storage.",
+  serviceProfilesDescription: "Choose a service and keep its credentials in a private local file.",
   manageServiceProfiles: "Manage Configurations",
   addProfile: "Add Configuration",
   chooseProvider: "Add a speech service",
@@ -1779,7 +1804,7 @@ const SETTINGS_JA = {
   lockPosition: "字幕の位置を固定",
   lockHelp: "固定を解除すると、字幕の上部をドラッグして移動したり、端や角からサイズを変更できます。",
   serviceProfilesTitle: "音声と翻訳",
-  serviceProfilesDescription: "サービスを選び、認証情報を OS の安全なストレージに保存します。",
+  serviceProfilesDescription: "サービスを選び、認証情報をローカルの非公開ファイルに保存します。",
   manageServiceProfiles: "サービス設定を管理",
   addProfile: "設定を追加",
   chooseProvider: "音声サービスを追加",
@@ -1974,14 +1999,23 @@ const MODES_JA = {
   lowLatencyHelp: "低遅延：高速プレビュー＋高品質な確定版。速度と精度のバランス。",
 };
 
+const COPY = {
+  "zh-TW": { overlay: ZH_TW.OVERLAY, tray: ZH_TW.TRAY, settings: ZH_TW.SETTINGS, modes: ZH_TW.MODES },
+  zh: { overlay: OVERLAY_ZH, tray: TRAY_ZH, settings: SETTINGS_ZH, modes: MODES_ZH },
+  en: { overlay: OVERLAY_EN, tray: TRAY_EN, settings: SETTINGS_EN, modes: MODES_EN },
+  ja: { overlay: OVERLAY_JA, tray: TRAY_JA, settings: SETTINGS_JA, modes: MODES_JA },
+  de: { overlay: DE.OVERLAY, tray: DE.TRAY, settings: DE.SETTINGS, modes: DE.MODES },
+  fr: { overlay: FR.OVERLAY, tray: FR.TRAY, settings: FR.SETTINGS, modes: FR.MODES },
+  ko: { overlay: KO.OVERLAY, tray: KO.TRAY, settings: KO.SETTINGS, modes: KO.MODES },
+} satisfies Record<ResolvedUiLanguage, {
+  overlay: typeof OVERLAY_EN; tray: typeof TRAY_EN; settings: SettingsCopy; modes: typeof MODES_EN;
+}>;
+
 export const I18N = {
-  get overlay() { return effectiveUiLanguage() === "ja" ? OVERLAY_JA : isChineseSystem() ? OVERLAY_ZH : OVERLAY_EN; },
-
-  get tray() { return effectiveUiLanguage() === "ja" ? TRAY_JA : isChineseSystem() ? TRAY_ZH : TRAY_EN; },
-
-  get settings() { return effectiveUiLanguage() === "ja" ? SETTINGS_JA : isChineseSystem() ? SETTINGS_ZH : SETTINGS_EN; },
-
-  get modes() { return effectiveUiLanguage() === "ja" ? MODES_JA : isChineseSystem() ? MODES_ZH : MODES_EN; },
+  get overlay() { return COPY[effectiveUiLanguage()].overlay; },
+  get tray() { return COPY[effectiveUiLanguage()].tray; },
+  get settings() { return COPY[effectiveUiLanguage()].settings; },
+  get modes() { return COPY[effectiveUiLanguage()].modes; },
 } as const;
 
 export function providerDisplayName(provider: ServiceProvider): string {

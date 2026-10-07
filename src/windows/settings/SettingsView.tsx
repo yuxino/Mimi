@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { SubtitleSessionControls } from "./SubtitleSessionControls";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
-import { I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
+import { UI_LANGUAGE_OPTIONS, I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
 import { announceSettingsNavigationReady, isTauri, listenSettingsNavigation, type SettingsNavigationTarget } from "../../lib/ipc";
 import { selectSessionStatusKind, useStore } from "../../lib/store";
 import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
@@ -89,6 +89,8 @@ export function SettingsView() {
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const [appleResourcesRequest, setAppleResourcesRequest] = useState(0);
   const appleResourcesSequence = useRef(0);
+  const [profileEditorRequest, setProfileEditorRequest] = useState(0);
+  const profileEditorSequence = useRef(0);
   const initialCredentialState = useRef(activeProfile?.credentialState);
 
   // Native settings arrive after the first render. Resolve the initial
@@ -142,6 +144,7 @@ export function SettingsView() {
   const selectCategory = useCallback((category: SettingsCategory) => {
     locationSelectedCategory.current = true;
     setAppleResourcesRequest(0);
+    setProfileEditorRequest(0);
     setActiveCategory(category);
     contentScrollRef.current?.scrollTo({ top: 0 });
     window.history.replaceState(null, "", `#${CATEGORY_SECTION_IDS[category]}`);
@@ -150,7 +153,10 @@ export function SettingsView() {
   const navigateToSettings = useCallback((target: SettingsNavigationTarget = "service") => {
     const category = target === "export" ? "export" : "service";
     selectCategory(category);
-    if (target === "appleSpeechResources") {
+    if (target === "activeProfile") {
+      profileEditorSequence.current += 1;
+      setProfileEditorRequest(profileEditorSequence.current);
+    } else if (target === "appleSpeechResources") {
       appleResourcesSequence.current += 1;
       setAppleResourcesRequest(appleResourcesSequence.current);
     } else {
@@ -445,7 +451,7 @@ export function SettingsView() {
             )}
 
             <div id="service-profiles-panel" className={`settings-category-panel${activeCategory !== "service" ? " is-inactive" : ""}`}>
-                <ServiceProfiles settings={settings} appleResourcesRequest={appleResourcesRequest} sessionIsActive={sessionIsActive} sessionIsPaused={sessionIsPaused} sessionStatusKind={sessionStatusKind} visible={activeCategory === "service"} overview={<AudioInputSettings />} />
+                <ServiceProfiles settings={settings} appleResourcesRequest={appleResourcesRequest} profileEditorRequest={profileEditorRequest} sessionIsActive={sessionIsActive} sessionIsPaused={sessionIsPaused} sessionStatusKind={sessionStatusKind} visible={activeCategory === "service"} overview={<AudioInputSettings />} />
               </div>
 
             <div id="diagnostics-panel" className={`settings-category-panel${activeCategory !== "diagnostics" ? " is-inactive" : ""}`}>
@@ -483,9 +489,7 @@ export function SettingsView() {
                         value: "system",
                         label: I18N.settings.systemLanguage,
                       },
-                      { value: "zh", label: I18N.settings.chinese },
-                      { value: "en", label: I18N.settings.english },
-                      { value: "ja", label: I18N.settings.japanese },
+                      ...UI_LANGUAGE_OPTIONS,
                     ]}
                   />
                 </SettingsRow>

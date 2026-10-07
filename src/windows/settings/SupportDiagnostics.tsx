@@ -1,3 +1,5 @@
+import { SUPPLEMENTAL_EN } from "../../lib/locales/supplemental-schema";
+import { supplemental } from "../../lib/locales/supplemental";
 import { SettingsHelp } from "./SettingsHelp";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, ChevronRight, Copy, ExternalLink, RotateCw } from "lucide-react";
@@ -9,19 +11,7 @@ import { writeDiagnosticClipboard } from "../../lib/diagnosticClipboard";
 import { supportDiagnosticSummary, type DiagnosticStatus, type DiagnosticSummaryEvent } from "./supportDiagnosticSummary";
 
 const copy = {
-  en: {
-    title: "Diagnostics", copy: "Copy diagnostics", issue: "GitHub feedback",
-    refresh: "Refresh diagnostics", refreshing: "Preparing diagnostics…", refreshed: "Diagnostics refreshed.",
-    status: "Session status", lastError: "Latest error", recent: "Recent events", sinceStart: "Since app start", noEvents: "No events yet",
-    failures: { unknown: "Unclassified error", configuration: "Configuration not supported", authentication: "Authentication failed", credential_storage: "Credential storage unavailable", device_unavailable: "Sound output unavailable", timeout: "Service timed out", request_rejected: "Request rejected", service_error: "Service unavailable", rate_limit: "Service rate limited", backlog: "Processing fell behind", transport: "Connection interrupted", stopped: "Audio capture stopped", processing: "Audio processing failed", size_limit: "Subtitle response too large" },
-    lifecycle: { start_requested: "Start requested", start_busy: "Start in progress", start_already_active: "Already running", start_superseded: "Start cancelled", stop_requested: "Stop requested", pause_requested: "Pause requested", resume_requested: "Resume requested" },
-    recovery: { retrying: "Reconnecting", recovered: "Connection restored", retries_exhausted: "Automatic retries exhausted", user_stopped: "Stopped by user" },
-    copied: "Copied successfully", failed: "Could not copy. Try again or copy the report below manually.",
-    prepareFailed: "Could not prepare diagnostics. Try again.",
-    opened: "GitHub opened. Review the report and describe the problem before submitting.",
-    paste: "GitHub opened. Copy diagnostics, then paste them into the report before submitting.",
-    openFailed: "Could not open GitHub. Copy diagnostics and visit the Mimi repository.", preview: "Raw diagnostic data",
-  },
+  en: SUPPLEMENTAL_EN.SupportDiagnostics_copy,
   zh: {
     title: "诊断", copy: "复制诊断信息", issue: "GitHub 反馈",
     refresh: "刷新诊断", refreshing: "正在准备诊断信息…", refreshed: "诊断信息已刷新。",
@@ -48,6 +38,7 @@ const copy = {
     paste: "GitHub を開きました。診断情報をコピーして本文に貼り付けてから送信してください。",
     openFailed: "GitHub を開けませんでした。診断情報をコピーし、Mimi リポジトリにアクセスしてください。", preview: "診断の生データ",
   },
+  ...supplemental.SupportDiagnostics_copy,
 };
 const isFailure = (value: Feedback) => value === "failed" || value === "prepareFailed" || value === "openFailed";
 type Feedback = "copied" | "refreshed" | "failed" | "prepareFailed" | "opened" | "paste" | "openFailed" | null;

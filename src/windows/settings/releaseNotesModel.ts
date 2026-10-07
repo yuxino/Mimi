@@ -37,7 +37,11 @@ export function selectLocalizedReleaseNotes(notes: string, language: ReleaseNote
 function headingLanguage(heading: string): ReleaseNotesLanguage | undefined {
   switch (heading.toLowerCase()) {
     case "english": case "en": return "en";
-    case "中文": case "简体中文": case "繁體中文": case "chinese": case "simplified chinese": case "zh": return "zh";
+    case "中文": case "简体中文": case "chinese": case "simplified chinese": case "zh": return "zh";
+    case "繁體中文": case "繁体中文": case "traditional chinese": case "zh-tw": case "zh-hant": return "zh-TW";
+    case "deutsch": case "german": case "de": return "de";
+    case "français": case "french": case "fr": return "fr";
+    case "한국어": case "korean": case "ko": return "ko";
     case "日本語": case "japanese": case "ja": return "ja";
     default: return undefined;
   }

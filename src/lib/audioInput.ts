@@ -1,3 +1,5 @@
+import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
+import { supplemental } from "./locales/supplemental";
 import { effectiveUiLanguage, I18N } from "./i18n";
 import type { AudioInput, SystemAudioTarget } from "./types";
 
@@ -9,22 +11,7 @@ export function audioInputLabel(input: AudioInput = "system", target?: SystemAud
 }
 
 const copy = {
-  en: {
-    unavailable: "Microphone input is temporarily unavailable. Use system audio.",
-    missing: "No microphone is available. Connect one and select it as the system’s default input.",
-    permission: "Microphone access was denied. Allow Mimi to use the microphone in system privacy settings, then try again.",
-    start: "Could not start the microphone. Check the system’s default input and its permissions, then try again.",
-    running: "Audio capture is already running.", cancelled: "Audio capture was cancelled.",
-    stopping: "Audio capture is still stopping. Try again in a moment.",
-    format: "This audio format could not be processed. Check the selected input in system sound settings.",
-    stopped: "Audio capture stopped unexpectedly. Check the selected input, then start subtitles again.",
-    timeout: "Audio capture setup timed out. Check the selected input, then try again.",
-    server: "Connect to PulseAudio or PipeWire with PulseAudio support, then try again.",
-    switchBusy: "Wait for the current connection change, then try again.",
-    switchSuperseded: "The session changed. Check its state before trying again.",
-    switchSave: "Could not save the audio input. Try again.",
-    switchStop: "Could not stop the previous audio input. Stop subtitles before trying again.",
-  },
+  en: SUPPLEMENTAL_EN.audioInput_copy,
   zh: {
     unavailable: "麦克风输入暂时不可用，请使用系统声音。",
     missing: "没有可用的麦克风。请连接麦克风，并将其设为系统默认输入。",
@@ -57,6 +44,7 @@ const copy = {
     switchSave: "音声入力を保存できませんでした。再試行してください。",
     switchStop: "以前の音声入力を停止できませんでした。字幕を停止してから再試行してください。",
   },
+  ...supplemental.audioInput_copy,
 };
 
 const errors: Record<string, keyof typeof copy.en> = {

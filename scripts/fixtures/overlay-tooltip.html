@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mimi compact tooltip fixture</title></head>
+<body><main id="root"></main><script type="module">
+// Actual overlay rendering with a stub native boundary; no provider or capture.
+window.__TAURI_INTERNALS__ = {
+  metadata: { currentWindow: { label: "overlay" }, currentWebview: { label: "overlay" } },
+  transformCallback: () => 0, unregisterCallback: () => {},
+  invoke: async command => command === "overlay_control_get_state" ? "island" : null,
+};
+import React from "react";
+import { createRoot } from "react-dom/client";
+const { OverlayWindow } = await import("/src/windows/overlay/OverlayWindow.tsx");
+const { useStore } = await import("/src/lib/store.ts");
+const { setStoredUiLanguage } = await import("/src/lib/i18n.ts");
+import "/src/index.css";
+const root = createRoot(document.getElementById("root"));
+const initial = useStore.getState();
+window.renderTooltipFixture = (language = "fr", compact = true, audioInput = "system") => {
+  setStoredUiLanguage(language);
+  useStore.setState({ ...initial,
+    session: { ...initial.session, isActive: true, isPaused: true, isOverlayCollapsed: compact, status: { kind: "listening" } },
+    settings: { ...initial.settings, audioInput, isOverlayLocked: false, subtitleBlendsWithBackground: false, pulseAnimation: false, subtitleAnimation: false },
+    setOverlayCollapsed: async collapsed => useStore.setState(state => ({ session: { ...state.session, isOverlayCollapsed: collapsed } })),
+    togglePaused: async () => {}, stop: async () => {},
+  }, true);
+  root.render(React.createElement(OverlayWindow, { key: `${language}-${compact}-${audioInput}` }));
+};
+window.renderTooltipFixture();
+window.tooltipReady = true;
+</script></body></html>

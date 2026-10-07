@@ -33,6 +33,7 @@ pub enum SettingsNavigationTarget {
     Service,
     Export,
     AppleSpeechResources,
+    ActiveProfile,
 }
 
 pub struct AppState {
@@ -1191,6 +1192,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<SettingsNavigationTarget>(r#""appleSpeechResources""#).unwrap(),
             SettingsNavigationTarget::AppleSpeechResources
+        );
+        assert_eq!(
+            serde_json::from_str::<SettingsNavigationTarget>(r#""activeProfile""#).unwrap(),
+            SettingsNavigationTarget::ActiveProfile
         );
         assert!(serde_json::from_str::<SettingsNavigationTarget>(r#""general""#).is_err());
     }

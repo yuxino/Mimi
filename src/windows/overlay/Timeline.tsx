@@ -1,6 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { hexToRgba } from "../../lib/types";
-import { I18N } from "../../lib/i18n";
+import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
 import { subtitleFontFamily } from "../../lib/subtitleFont";
 import { subtitleColorHex } from "../../lib/subtitleColor";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../lib/types";
@@ -80,6 +80,7 @@ export const Timeline = memo(function Timeline({
   followTailRequest = 0,
   onReadingHistoryChange,
 }: TimelineProps) {
+  useSyncExternalStore(subscribeUiLanguage, effectiveUiLanguage, effectiveUiLanguage);
   const containerRef = useRef<HTMLDivElement>(null);
   // Keep the newest content pinned to the bottom: the block count changes when
   // an utterance is committed, and the live lanes grow while streaming (the

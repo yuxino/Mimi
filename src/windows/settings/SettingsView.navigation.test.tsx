@@ -15,7 +15,7 @@ vi.mock("../../lib/ipc", async original => ({
   sessionArchiveState: native.archive, sessionHistoryList: vi.fn().mockResolvedValue([]),
 }));
 // These unrelated pages do not participate in the native navigation contract.
-vi.mock("./ServiceProfiles", () => ({ ServiceProfiles: ({ appleResourcesRequest }: { appleResourcesRequest: number }) => <div data-apple-resource-request={appleResourcesRequest} /> }));
+vi.mock("./ServiceProfiles", () => ({ ServiceProfiles: ({ appleResourcesRequest, profileEditorRequest }: { appleResourcesRequest: number; profileEditorRequest: number }) => <div data-apple-resource-request={appleResourcesRequest} data-profile-editor-request={profileEditorRequest} /> }));
 vi.mock("./SoftwareUpdate", () => ({ SoftwareUpdate: () => null }));
 vi.mock("./WindowsAudioSource", () => ({ WindowsAudioSource: () => null }));
 vi.mock("./SupportDiagnostics", () => ({ SupportDiagnostics: () => null }));
@@ -85,4 +85,16 @@ it("routes repeated Apple resource intents to the service page without losing th
   await act(async () => navigate("appleSpeechResources"));
   expect(host.querySelector("#settings-category-service")?.getAttribute("aria-current")).toBe("page");
   expect(host.querySelector("[data-apple-resource-request]")?.getAttribute("data-apple-resource-request")).toBe("2");
+});
+
+it("routes repeated current-configuration intents to the detail request without focusing category navigation", async () => {
+  await act(async () => root.render(<SettingsView />));
+  await act(async () => navigate("activeProfile"));
+  expect(host.querySelector("#settings-category-service")?.getAttribute("aria-current")).toBe("page");
+  expect(host.querySelector("[data-profile-editor-request]")?.getAttribute("data-profile-editor-request")).toBe("1");
+  await act(async () => navigate("export"));
+  expect(host.querySelector("[data-profile-editor-request]")?.getAttribute("data-profile-editor-request")).toBe("0");
+  await act(async () => navigate("activeProfile"));
+  expect(host.querySelector("[data-profile-editor-request]")?.getAttribute("data-profile-editor-request")).toBe("2");
+  expect(host.querySelector("[data-apple-resource-request]")?.getAttribute("data-apple-resource-request")).toBe("0");
 });

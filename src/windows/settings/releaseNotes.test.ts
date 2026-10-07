@@ -21,6 +21,15 @@ describe("localized release notes", () => {
     expect(selectLocalizedReleaseNotes(bilingual, language)).toBe(expected);
   });
 
+  it.each([
+    ["de", "Deutsch", "Startfehler behoben."],
+    ["fr", "Français", "Problème de démarrage corrigé."],
+    ["ko", "한국어", "시작 오류 수정."],
+  ] as const)("selects %s notes when present and English otherwise", (language, heading, body) => {
+    expect(selectLocalizedReleaseNotes(`${bilingual}\n## ${heading}\n${body}`, language)).toBe(body);
+    expect(selectLocalizedReleaseNotes(bilingual, language)).toContain("Fixed");
+  });
+
   it("uses Japanese notes when supplied and falls back from empty sections", () => {
     expect(selectLocalizedReleaseNotes(`${bilingual}\n## 日本語\n起動を修正。`, "ja")).toBe("起動を修正。");
     expect(selectLocalizedReleaseNotes(`${bilingual}\n## 日本語\n  `, "ja")).toContain("Fixed");
@@ -107,4 +116,12 @@ describe("published bilingual release history", () => {
       expect(html).not.toMatch(/## English|## 中文|\*\*|https:\/\/github.com/);
     }
   });
+});
+
+
+it("selects distinct traditional and simplified Chinese release notes", () => {
+  const notes = "## English\nEnglish changes\n## 中文\n简体更新\n## 繁體中文\n繁體更新";
+  expect(selectLocalizedReleaseNotes(notes, "zh-TW")).toBe("繁體更新");
+  expect(selectLocalizedReleaseNotes(notes, "zh")).toBe("简体更新");
+  expect(selectLocalizedReleaseNotes("## English\nFallback\n## 中文\n简体", "zh-TW")).toBe("Fallback");
 });

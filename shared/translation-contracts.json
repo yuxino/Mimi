@@ -15059,5 +15059,174 @@
         "https://deeplx.owo.network/endpoints/free.html#supported-languages"
       ]
     }
-  }
+  },
+  "volcanoSubtitleEvents": [
+    {
+      "id": "sourceDraft-omitted",
+      "hex": "108b05",
+      "expected": {
+        "type": "sourceDraft",
+        "text": ""
+      }
+    },
+    {
+      "id": "sourceDraft-explicit-empty",
+      "hex": "108b052200",
+      "expected": {
+        "type": "sourceDraft",
+        "text": ""
+      }
+    },
+    {
+      "id": "sourceDraft-nonempty",
+      "hex": "108b052212e59088e68890e38386e382b9e38388e38082",
+      "expected": {
+        "type": "sourceDraft",
+        "text": "合成テスト。"
+      }
+    },
+    {
+      "id": "sourceFinal-omitted",
+      "hex": "108c05",
+      "expected": {
+        "type": "sourceFinal",
+        "text": ""
+      }
+    },
+    {
+      "id": "sourceFinal-explicit-empty",
+      "hex": "108c052200",
+      "expected": {
+        "type": "sourceFinal",
+        "text": ""
+      }
+    },
+    {
+      "id": "sourceFinal-nonempty",
+      "hex": "108c052212e59088e68890e38386e382b9e38388e38082",
+      "expected": {
+        "type": "sourceFinal",
+        "text": "合成テスト。"
+      }
+    },
+    {
+      "id": "translationDraft-omitted",
+      "hex": "108e05",
+      "expected": {
+        "type": "translationDraft",
+        "text": ""
+      }
+    },
+    {
+      "id": "translationDraft-explicit-empty",
+      "hex": "108e052200",
+      "expected": {
+        "type": "translationDraft",
+        "text": ""
+      }
+    },
+    {
+      "id": "translationDraft-nonempty",
+      "hex": "108e05220fe59088e68890e6b58be8af95e38082",
+      "expected": {
+        "type": "translationDraft",
+        "text": "合成测试。"
+      }
+    },
+    {
+      "id": "translationFinal-omitted",
+      "hex": "108f05",
+      "expected": {
+        "type": "translationFinal",
+        "text": ""
+      }
+    },
+    {
+      "id": "translationFinal-explicit-empty",
+      "hex": "108f052200",
+      "expected": {
+        "type": "translationFinal",
+        "text": ""
+      }
+    },
+    {
+      "id": "translationFinal-nonempty",
+      "hex": "108f05220fe59088e68890e6b58be8af95e38082",
+      "expected": {
+        "type": "translationFinal",
+        "text": "合成测试。"
+      }
+    },
+    {
+      "id": "invalid-utf8",
+      "hex": "108b052201ff",
+      "expected": null
+    },
+    {
+      "id": "duplicate-text",
+      "hex": "108b0522002200",
+      "expected": null
+    },
+    {
+      "id": "wrong-text-wire",
+      "hex": "108b052000",
+      "expected": null
+    },
+    {
+      "id": "truncated-text",
+      "hex": "108b052201",
+      "expected": null
+    }
+  ],
+  "volcanoSubtitleSequences": [
+    {
+      "id": "incremental-unicode-empty-and-new-sentence",
+      "frames": [
+        "108a05",
+        "108b052206e59088e68890",
+        "108b05220ce38386e382b9e38388e38082",
+        "108b05",
+        "108c052212e59088e68890e38386e382b9e38388e38082286430c801",
+        "108d05",
+        "108e052206e59088e68890",
+        "108e052209e6b58be8af95e38082",
+        "108e05",
+        "108f05220fe59088e68890e6b58be8af95e38082286430c801",
+        "108a05",
+        "108b052206e7a0b4e6a384",
+        "108a05",
+        "108b05220ce6aca1e381aee69687e38082",
+        "108c05220ce6aca1e381aee69687e3808228ac02309003",
+        "108d05",
+        "108e052206e4b8a2e5bc83",
+        "108d05",
+        "108e05220ce4b88be4b880e58fa5e38082",
+        "108f05220ce4b88be4b880e58fa5e3808228ac02309003"
+      ],
+      "expected": {
+        "sourceDrafts": [
+          "合成",
+          "合成テスト。",
+          "合成テスト。",
+          "破棄",
+          "次の文。"
+        ],
+        "translationDrafts": [
+          "合成",
+          "合成测试。",
+          "合成测试。",
+          "丢弃",
+          "下一句。"
+        ],
+        "sourceFinals": [
+          "合成テスト。",
+          "次の文。"
+        ],
+        "translationFinals": [
+          "合成测试。",
+          "下一句。"
+        ]
+      }
+    }
+  ]
 }

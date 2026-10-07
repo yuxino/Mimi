@@ -26,6 +26,11 @@ update both implementations and their platform-specific tests in the same change
   still called online through the signed-in ChatMock account.
 - OpenAI-compatible/ChatMock text translation accepts the represented source and target language codes on both platforms, including Traditional Chinese. These are configurable request values, not a discovery result or guarantee of model support. Existing Chinese/English/Japanese prompts are unchanged; shared fixtures cover the additional mappings. DeepL/DeepLX retain their separate implemented catalogs.
 - Provider language catalogs are model-specific and checked against `shared/provider-language-catalogs.json` and shared wire fixtures. Settings, tray and floating controls resolve the same saved source/target pair. Tencent and Volcano restrict targets by the selected source; their Chinese/English mixed modes are explicit choices, not unrestricted automatic detection. DeepL and DeepLX keep separate source/target catalogs.
+- Volcano's native adapters accept proto3 omitted text as empty and accumulate
+  incremental source/translation previews separately until their official sentence
+  boundaries. Both enforce the existing shared 64 KiB UTF-8 subtitle-field limit
+  before appending each delta; Android also retains its turn-buffer character bound.
+  Shared wire/sequence fixtures check the common behavior.
 - Endpoint prefixes are preserved. An OpenAI-compatible base receives `/chat/completions`;
   use an explicit `/v1` base for ChatMock. Complete endpoints remain unchanged. HTTPS is
   the default; each platform's explicit local transport boundary remains enforced.
@@ -139,3 +144,11 @@ desktop live-tail behavior and does not imply parity in capture, recording or
 timestamp preferences.
 
 Desktop offers a default-on **Show interim subtitles** preference, including live session changes. With it off, only final lines and confirmed pairs appear; bounded Stop-tail fallback still follows the existing desktop final lane. This affects presentation, not provider requests or accuracy. Android currently has no matching switch. Shared snapshots expose `displayPairFinal` on both platforms, and Rust/JNI fixtures distinguish a completed preview from an accepted final even without retained presentation history.
+
+## Desktop interface languages
+
+Desktop supports Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean and French, with
+regional system-language detection and in-place window updates. This is desktop
+interface localization; Android UI resources remain platform-native and are not
+expanded by this change. Recognition/translation language support is independent
+of the interface language and still follows each provider's capabilities.

@@ -78,6 +78,7 @@ export function ServiceProfiles({
   visible = true,
   overview,
   appleResourcesRequest = 0,
+  profileEditorRequest = 0,
 }: {
   settings: SettingsSnapshot;
   sessionIsActive: boolean;
@@ -86,6 +87,7 @@ export function ServiceProfiles({
   visible?: boolean;
   overview?: ReactNode;
   appleResourcesRequest?: number;
+  profileEditorRequest?: number;
 }) {
   const createProfile = useStore((state) => state.createProfile);
   const updateProfile = useStore((state) => state.updateProfile);
@@ -108,11 +110,17 @@ export function ServiceProfiles({
     activeProfile?.id ?? settings.activeProfileId,
   );
   const [showsEditor, setShowsEditor] = useState(false);
+  const [handledProfileEditorRequest, setHandledProfileEditorRequest] = useState(0);
+  const [deferredProfileEditorRequest, setDeferredProfileEditorRequest] = useState(0);
+  const [openedProfileEditorRequest, setOpenedProfileEditorRequest] = useState(0);
+  const focusedProfileEditorRequest = useRef(0);
+  const profileDetailHeading = useRef<HTMLHeadingElement>(null);
   const [handledAppleResourcesRequest, setHandledAppleResourcesRequest] = useState(0);
   const focusedAppleResourcesRequest = useRef(0);
   const [appleResourcesProfileId, setAppleResourcesProfileId] = useState<string | null>(null);
   const [showsProviderPicker, setShowsProviderPicker] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [profileOperationFailed, setProfileOperationFailed] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const { beginToast } = useSettingsToast();
   const [diagnostics, setDiagnostics] = useState<Partial<Record<CheckStage, CheckOutcome>>>({});
@@ -190,6 +198,43 @@ export function ServiceProfiles({
     setPendingConfirmation(null);
   }
 
+  if (visible && profileEditorRequest > 0 && profileEditorRequest !== handledProfileEditorRequest
+    && pendingAction !== null && deferredProfileEditorRequest !== profileEditorRequest) {
+    setDeferredProfileEditorRequest(profileEditorRequest);
+  }
+
+  // Open the currently active configuration, even if another editor or the
+  // provider picker was left open. Defer navigation until a pending save ends.
+  if (visible && initializationStatus === "ready" && pendingAction === null
+    && profileEditorRequest !== handledProfileEditorRequest) {
+    setHandledProfileEditorRequest(profileEditorRequest);
+    // A failed deferred save must keep its draft and retry visible. A new
+    // explicit navigation request can still leave that editor afterwards.
+    if (profileEditorRequest > 0 && activeProfile
+      && !(deferredProfileEditorRequest === profileEditorRequest && (profileOperationFailed || feedback?.tone === "error"))) {
+      setOpenedProfileEditorRequest(profileEditorRequest);
+      setSelectedProfileId(activeProfile.id);
+      setShowsProviderPicker(false);
+      setShowsEditor(true);
+      setPendingConfirmation(null);
+      setFeedback(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!visible || !showsEditor || !activeProfile || selectedProfile?.id !== activeProfile.id
+      || pendingAction !== null || profileEditorRequest === 0
+      || openedProfileEditorRequest !== profileEditorRequest
+      || focusedProfileEditorRequest.current === profileEditorRequest) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (profileDetailHeading.current) {
+        profileDetailHeading.current.focus({ preventScroll: true });
+        focusedProfileEditorRequest.current = profileEditorRequest;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeProfile, openedProfileEditorRequest, pendingAction, profileEditorRequest, selectedProfile?.id, showsEditor, visible]);
+
   // A native resource action targets the current Apple profile, even when this
   // window last showed another editor. Do not unmount a pending form operation.
   if (visible && initializationStatus === "ready" && pendingAction === null
@@ -227,6 +272,16 @@ export function ServiceProfiles({
   const selectionDisabled = sessionStatusKind === "connecting" || sessionStatusKind === "stopping" || pendingAction !== null;
   const atProfileLimit = settings.profiles.filter(profile => profile.credentialStorage !== "localDevFile").length >= 20;
 
+  const trackProfileOperation = async (operation: () => Promise<SettingsSnapshot>) => {
+    setProfileOperationFailed(false);
+    try {
+      return await operation();
+    } catch (error) {
+      if (mounted.current) setProfileOperationFailed(true);
+      throw error;
+    }
+  };
+
   const perform = async (
     action: Exclude<PendingAction, null>,
     operation: () => Promise<SettingsSnapshot>,
@@ -239,7 +294,7 @@ export function ServiceProfiles({
     setFeedback(null);
     const notify = beginToast();
     try {
-      const snapshot = await operation();
+      const snapshot = await trackProfileOperation(operation);
       const result: Feedback = typeof successFeedback === "string"
           ? { tone: "success", message: successFeedback }
           : successFeedback(snapshot);
@@ -292,7 +347,7 @@ export function ServiceProfiles({
     mutationInFlight.current = true;
     setPendingAction("save-proxy");
     try {
-      await updateProfile(profile.id, undefined, stage === "speech" ? { speechNetworkProxy: config } : { textNetworkProxy: config });
+      await trackProfileOperation(() => updateProfile(profile.id, undefined, stage === "speech" ? { speechNetworkProxy: config } : { textNetworkProxy: config }));
       invalidateProfileCheck(profile.id, stage);
     } finally {
       mutationInFlight.current = false;
@@ -305,7 +360,7 @@ export function ServiceProfiles({
     mutationInFlight.current = true;
     setPendingAction("save-languages");
     try {
-      return await updateProfile(selectedProfile.id, undefined, { languagePreset: preset });
+      return await trackProfileOperation(() => updateProfile(selectedProfile.id, undefined, { languagePreset: preset }));
     } finally {
       mutationInFlight.current = false;
       if (mounted.current) setPendingAction(null);
@@ -321,7 +376,7 @@ export function ServiceProfiles({
     try {
       // The command response acknowledges this exact save even if its settings
       // event arrives first. Never infer normalization from an unrelated event.
-      const after = await updateProfile(profile.id, undefined, { customSpeechSourceLanguages: languages });
+      const after = await trackProfileOperation(() => updateProfile(profile.id, undefined, { customSpeechSourceLanguages: languages }));
       if (mounted.current) {
         invalidateProfileCheck(profile.id);
         notify(profile.id === before.activeProfileId && after.activeProfileId === before.activeProfileId && after.sourceLanguage !== before.sourceLanguage
@@ -520,7 +575,7 @@ export function ServiceProfiles({
               <ProviderIcon provider={selectedProfile.provider === "deepLX" ? "alibabaCloud" : selectedProfile.provider} />
               <div className="service-detail__copy">
                 <div className="service-detail__title">
-                  <div className="service-detail__name-help"><h2 key={selectedProfile.name}>{profileTitle(selectedProfile)}</h2><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></div>
+                  <div className="service-detail__name-help"><h2 ref={profileDetailHeading} tabIndex={-1} key={selectedProfile.name}>{profileTitle(selectedProfile)}</h2><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></div>
                   <div className="service-detail__status">
                     <CredentialBadge state={credentialStateForTarget(selectedProfile, settings.targetLanguage)} nativeSpeech={selectedProfile.provider === "appleSpeech"} />
                     {selectedProfile.id === settings.activeProfileId && (

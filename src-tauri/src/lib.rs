@@ -470,8 +470,12 @@ fn record_ui_test_tray_visible() {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NativeMenuLanguage {
     Chinese,
+    TraditionalChinese,
     English,
     Japanese,
+    German,
+    French,
+    Korean,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -593,15 +597,37 @@ fn effective_native_menu_language(
     system_language: Option<&str>,
 ) -> NativeMenuLanguage {
     let language = match override_language {
-        Some("zh") | Some("en") | Some("ja") => override_language,
+        Some("zh") | Some("zh-TW") | Some("en") | Some("ja") | Some("de") | Some("fr")
+        | Some("ko") => override_language,
         _ => system_language,
     }
     .unwrap_or("en")
-    .to_ascii_lowercase();
+    .to_ascii_lowercase()
+    .replace('_', "-");
     if language.starts_with("zh") {
-        NativeMenuLanguage::Chinese
+        let subtags: Vec<_> = language.split('-').skip(1).collect();
+        let traditional = if subtags.contains(&"hant") {
+            true
+        } else if subtags.contains(&"hans") {
+            false
+        } else {
+            subtags
+                .iter()
+                .any(|subtag| matches!(*subtag, "tw" | "hk" | "mo"))
+        };
+        if traditional {
+            NativeMenuLanguage::TraditionalChinese
+        } else {
+            NativeMenuLanguage::Chinese
+        }
     } else if language.starts_with("ja") {
         NativeMenuLanguage::Japanese
+    } else if language.starts_with("de") {
+        NativeMenuLanguage::German
+    } else if language.starts_with("fr") {
+        NativeMenuLanguage::French
+    } else if language.starts_with("ko") {
+        NativeMenuLanguage::Korean
     } else {
         NativeMenuLanguage::English
     }
@@ -620,6 +646,17 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "在 Dock 中显示",
         },
+        NativeMenuLanguage::TraditionalChinese => NativeMenuLabels {
+            start_subtitles: "開始字幕",
+            stop_subtitles: "停止字幕",
+            toggle_devtools: "開啟開發者工具",
+            settings: "設定…",
+            quit: "結束 mimi",
+            subtitle_display: "字幕顯示",
+            display_modes: ["僅譯文", "原文與譯文", "僅原文"],
+            #[cfg(any(target_os = "macos", test))]
+            show_in_dock: "在 Dock 中顯示",
+        },
         NativeMenuLanguage::Japanese => NativeMenuLabels {
             start_subtitles: "字幕を開始",
             stop_subtitles: "字幕を停止",
@@ -630,6 +667,47 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             display_modes: ["翻訳のみ", "原文と翻訳", "原文のみ"],
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Dock に表示",
+        },
+        NativeMenuLanguage::German => NativeMenuLabels {
+            start_subtitles: "Untertitel starten",
+            stop_subtitles: "Untertitel stoppen",
+            toggle_devtools: "Entwicklerwerkzeuge öffnen",
+            settings: "Einstellungen…",
+            quit: "mimi beenden",
+            subtitle_display: "Untertitelanzeige",
+            display_modes: [
+                "Nur Übersetzung",
+                "Original und Übersetzung",
+                "Nur Original",
+            ],
+            #[cfg(any(target_os = "macos", test))]
+            show_in_dock: "Im Dock anzeigen",
+        },
+        NativeMenuLanguage::French => NativeMenuLabels {
+            start_subtitles: "Démarrer les sous-titres",
+            stop_subtitles: "Arrêter les sous-titres",
+            toggle_devtools: "Ouvrir les outils de développement",
+            settings: "Réglages…",
+            quit: "Quitter mimi",
+            subtitle_display: "Affichage des sous-titres",
+            display_modes: [
+                "Traduction seule",
+                "Original et traduction",
+                "Original seul",
+            ],
+            #[cfg(any(target_os = "macos", test))]
+            show_in_dock: "Afficher dans le Dock",
+        },
+        NativeMenuLanguage::Korean => NativeMenuLabels {
+            start_subtitles: "자막 시작",
+            stop_subtitles: "자막 중지",
+            toggle_devtools: "개발자 도구 열기",
+            settings: "설정…",
+            quit: "mimi 종료",
+            subtitle_display: "자막 표시",
+            display_modes: ["번역만", "원문과 번역", "원문만"],
+            #[cfg(any(target_os = "macos", test))]
+            show_in_dock: "Dock에 표시",
         },
         NativeMenuLanguage::English => NativeMenuLabels {
             start_subtitles: "Start Subtitles",
@@ -1164,6 +1242,78 @@ fn setup_global_shortcuts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_menu_language_preserves_chinese_scripts_and_regions() {
+        for locale in [
+            "zh-TW",
+            "zh-HK",
+            "zh-MO",
+            "zh-Hant",
+            "zh-Hant-CN",
+            "ZH_hant_HK",
+        ] {
+            assert_eq!(
+                effective_native_menu_language(Some("system"), Some(locale)),
+                NativeMenuLanguage::TraditionalChinese,
+                "{locale}"
+            );
+        }
+        for locale in [
+            "zh",
+            "zh-CN",
+            "zh-SG",
+            "zh-Hans",
+            "zh-Hans-HK",
+            "ZH_hans_CN",
+        ] {
+            assert_eq!(
+                effective_native_menu_language(None, Some(locale)),
+                NativeMenuLanguage::Chinese,
+                "{locale}"
+            );
+        }
+        assert_eq!(
+            effective_native_menu_language(Some("zh-TW"), Some("zh-CN")),
+            NativeMenuLanguage::TraditionalChinese
+        );
+        assert_eq!(
+            effective_native_menu_language(Some("zh"), Some("zh-Hant")),
+            NativeMenuLanguage::Chinese
+        );
+        let labels = native_menu_labels(NativeMenuLanguage::TraditionalChinese);
+        assert_eq!(labels.start_subtitles, "開始字幕");
+        assert_eq!(labels.stop_subtitles, "停止字幕");
+        assert_eq!(labels.toggle_devtools, "開啟開發者工具");
+        assert_eq!(labels.settings, "設定…");
+        assert_eq!(labels.quit, "結束 mimi");
+        assert_eq!(labels.subtitle_display, "字幕顯示");
+        assert_eq!(labels.display_modes, ["僅譯文", "原文與譯文", "僅原文"]);
+        assert_eq!(labels.show_in_dock, "在 Dock 中顯示");
+    }
+
+    #[test]
+    fn added_interface_languages_localize_native_menus() {
+        for (code, region, language, label) in [
+            ("de", "de-DE", NativeMenuLanguage::German, "Einstellungen…"),
+            ("fr", "fr-CA", NativeMenuLanguage::French, "Réglages…"),
+            ("ko", "ko-KR", NativeMenuLanguage::Korean, "설정…"),
+        ] {
+            assert_eq!(
+                effective_native_menu_language(Some(code), Some("en-US")),
+                language
+            );
+            assert_eq!(
+                effective_native_menu_language(Some("system"), Some(region)),
+                language
+            );
+            assert_eq!(native_menu_labels(language).settings, label);
+            assert_ne!(
+                native_menu_labels(language).quit,
+                native_menu_labels(NativeMenuLanguage::English).quit
+            );
+        }
+    }
 
     #[test]
     fn application_settings_and_tray_share_the_settings_route_in_all_languages() {

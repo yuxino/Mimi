@@ -1,59 +1,12 @@
+import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
+import { supplemental } from "./locales/supplemental";
 import { audio3ErrorMessage, audio3ErrorRequiresConfiguration } from "./audio3Errors";
 import { effectiveUiLanguage, I18N } from "./i18n";
 import type { ConnectionDiagnostic, SettingsNavigationTarget } from "./ipc";
 
 export type DiagnosticPlatform = "macos" | "windows" | "linux";
 const copy = {
-  en: {
-    localDevReadOnly: "Development presets read their provider keys from the local .env. Edit that file and restart mimi dev to change a key. Other configurations use a private local file and remain editable.",
-    localDevTranslationLocked: "This development preset uses its built-in recognition and translation service.",
-    localDevTranslationHelp: "Add a regular configuration to choose another service or independent text translation. Its credentials use the development app's private local file; the preset keys stay in the read-only .env.",
-    localDevUnavailable: "Cannot read the local dev .env. Check its format, ownership and 0600 permissions, then restart mimi dev.",
-    storage: "Cannot read service credentials. Check local file access or save them again.",
-    linuxStorage: "Cannot access your desktop password store. Confirm a Secret Service provider, such as GNOME Keyring, is installed and enabled in this desktop session. Unlock it or allow the system prompt, then check again.",
-    serviceUnavailable: "Linux Secret Service is unavailable. Install or enable a Secret Service provider, such as GNOME Keyring, in this desktop session. Sign out and back in if required by your desktop setup, then check again.",
-    accessDenied: "The system credential store is locked or access was denied. Unlock it or allow the system prompt, then check again.",
-    missing: "No credentials configured. Save your service settings first.",
-    invalid: "Cannot read the saved credentials. Save them again.",
-    auth: "The service rejected authentication. Check your key and account access, then update the credentials.",
-    quota: "The service limit was reached. Try again later or check your quota.",
-    translationLimited: "The service is still limiting requests. Try again later.",
-    translationTemporary: "Translation is temporarily unavailable. Reconnect to try again.",
-    translationBacklog: "Translation fell behind. Reconnect to continue.",
-    translationSourceUnsupported: "This translation model does not support the detected language.",
-    subtitleTooLarge: "The service returned too much text. Reconnect to continue.",
-    timeout: "Connection timed out. Check your network or proxy, then try again.",
-    unreachable: "Secure connection failed. Check your network, proxy and system clock.",
-    speechUnreachable: "Could not connect to the speech recognition service. Check its address, network and proxy. If it runs locally, make sure it is started.",
-    speechTimeout: "The speech recognition connection timed out. Make sure the service is ready, then check its address, network and proxy before retrying.",
-    test: "Check connection", testing: "Checking…",
-    available: "Connection available", unavailable: "Unavailable", notTested: "Not checked",
-    checkSkipped: "UI preview mode does not check connections. Use normal mode to check.",
-    elapsed: "Check duration",
-    elapsedHelp: "Recognition measures session setup. Translation measures one short text request. This is not live subtitle latency.",
-    checkFailed: "Check failed. Try again.",
-    macosRecovery: "Unlock Keychain or allow access, then check again.",
-    windowsRecovery: "Check access in Credential Manager, then try again.",
-    linuxRecovery: "Unlock the password store or allow access, then check again.",
-    reasons: {
-      credentialsMissing: "Save your credentials first.",
-      textTranslationNotConfigured: "Choose and save a text translation service first.",
-      credentialsUnavailable: "Check local file access or save the credentials again.",
-      credentialsServiceUnavailable: "Enable Secret Service (such as GNOME Keyring), then check again.",
-      credentialsAccessDenied: "Unlock the credential store or allow access.",
-      invalidConfiguration: "Check the service settings.",
-      unsupportedLanguage: "This speech service does not support the selected source language. Change the language or speech service.",
-      authenticationRejected: "Check your credentials and account access.",
-      serviceRejected: "The service rejected the request.",
-      serviceNotActivated: "Enable realtime speech translation in the Tencent Cloud ASR console.",
-      quotaExhausted: "The service quota or balance is exhausted. Check your Tencent Cloud ASR billing and usage.",
-      concurrencyLimited: "Too many concurrent sessions. Stop another session and try again.",
-      localRecognitionOverloaded: "Local recognition is overloaded. Stop other local models or choose a smaller model, then retry.",
-      localRecognitionTimeout: "Local recognition timed out. Wait for the service to be ready, then retry.",
-      timeout: "Connection timed out.",
-      unreachable: "Could not connect to the service.",
-    },
-  },
+  en: SUPPLEMENTAL_EN.connectionDiagnostics_copy,
   zh: {
     localDevReadOnly: "开发预设从本机 .env 读取对应服务的密钥。修改密钥后需重新打开 mimi dev；其他配置使用本机私有文件，可正常编辑。",
     localDevTranslationLocked: "此开发预设使用内置服务进行识别与翻译。",
@@ -154,6 +107,7 @@ const copy = {
       unreachable: "サービスに接続できません。",
     },
   },
+  ...supplemental.connectionDiagnostics_copy,
 };
 export function diagnosticPlatform(userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent): DiagnosticPlatform {
   return /Mac/.test(userAgent) ? "macos" : /Windows/.test(userAgent) ? "windows" : "linux";
@@ -202,13 +156,7 @@ const deepLXErrors = {
     size: "DeepLX 返回数据过大。请检查服务器的 /translate 响应。",
     rejected: "DeepLX 拒绝请求。请向服务器管理员确认文字翻译地址和可选 Bearer token。",
   },
-  en: {
-    timeout: "DeepLX timed out. Check the text translation endpoint, network and server, then restart subtitles.",
-    connection: "Could not connect to DeepLX. Check the text translation endpoint, network and server, then restart subtitles.",
-    response: "DeepLX returned an invalid or empty translation. Check that the text endpoint supports the DeepLX /translate JSON API.",
-    size: "DeepLX returned too much data. Check the server's /translate response.",
-    rejected: "DeepLX rejected the request. Confirm the text translation endpoint and optional Bearer token with your server administrator.",
-  },
+  en: SUPPLEMENTAL_EN.connectionDiagnostics_deepLXErrors,
   ja: {
     timeout: "DeepLX がタイムアウトしました。文字翻訳 URL、ネットワーク、サーバーを確認し、字幕を再開してください。",
     connection: "DeepLX に接続できません。文字翻訳 URL、ネットワーク、サーバーを確認し、字幕を再開してください。",
@@ -216,6 +164,7 @@ const deepLXErrors = {
     size: "DeepLX の応答が大きすぎます。サーバーの /translate 応答を確認してください。",
     rejected: "DeepLX がリクエストを拒否しました。文字翻訳 URL と任意の Bearer token をサーバー管理者に確認してください。",
   },
+  ...supplemental.connectionDiagnostics_deepLXErrors,
 };
 const openAICompatibleErrors = {
   zh: {
@@ -225,13 +174,7 @@ const openAICompatibleErrors = {
     size: "第三方翻译服务返回数据过大。请检查服务器的响应。",
     rejected: "第三方翻译服务拒绝请求。请检查 API Key、模型名称和服务地址。",
   },
-  en: {
-    timeout: "The third-party translation service timed out. Check the service and network, then restart subtitles.",
-    connection: "Could not connect to the third-party translation service. Check its address and network, then restart subtitles.",
-    response: "The third-party service returned invalid or empty text. Check that it supports non-streaming Chat Completions and returns choices[0].message.content.",
-    size: "The third-party translation service returned too much data. Check the server response.",
-    rejected: "The third-party translation service rejected the request. Check its API key, model name and service address.",
-  },
+  en: SUPPLEMENTAL_EN.connectionDiagnostics_openAICompatibleErrors,
   ja: {
     timeout: "外部翻訳サービスがタイムアウトしました。サービスとネットワークを確認し、字幕を再開してください。",
     connection: "外部翻訳サービスに接続できません。URL とネットワークを確認し、字幕を再開してください。",
@@ -239,6 +182,7 @@ const openAICompatibleErrors = {
     size: "外部翻訳サービスの応答が大きすぎます。サーバーの応答を確認してください。",
     rejected: "外部翻訳サービスがリクエストを拒否しました。API Key、モデル名、サービス URL を確認してください。",
   },
+  ...supplemental.connectionDiagnostics_openAICompatibleErrors,
 };
 // These are exact, content-free labels emitted by the built-in clients. Keep
 // provider response bodies and native transport details outside this allowlist.
@@ -327,6 +271,8 @@ const builtinServiceErrors = {
     "Baidu realtime translation requires a translated output language.",
     "Volcano Engine requires an explicit Chinese, English, or Japanese source language.",
     "Volcano Engine requires a Chinese, English, or Japanese translation language.",
+    "Volcano Engine requires an explicit supported source language.",
+    "Volcano Engine does not support this translation direction.",
   ]),
   interrupted: new Set([
     "The live translation service returned invalid data.",

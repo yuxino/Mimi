@@ -1,7 +1,7 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>mimi</h1>
-  <p>Live subtitles and translation for system audio on macOS 13+ (Apple silicon and Intel) and Windows / Linux x86_64.</p>
+  <p>Live subtitles and translation for system audio or your microphone on macOS 13+ (Apple silicon and Intel) and Windows / Linux x86_64.</p>
   <p>
     <a href="https://mimi.yuxino.cn">Website</a>
     · <a href="https://github.com/yuxino/mimi/releases/latest"><strong>Download latest</strong></a>
@@ -19,17 +19,26 @@
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat&amp;logo=linux&amp;logoColor=white" alt="Linux"></a>
     <a href="android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
   </p>
+  <p>
+    <a href="README.md">English</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_KO.md">한국어</a> · <a href="README_FR.md">Français</a> · <a href="README_DE.md">Deutsch</a>
+  </p>
 </div>
 
-<p align="center">Mimi turns speech playing on your computer into live translated subtitles. Watch films, follow streams, or take lessons with subtitles floating over your screen.</p>
+<p align="center">Mimi turns speech from your computer or microphone into live translated subtitles. Watch films, follow streams, or take lessons with subtitles floating over your screen.</p>
 
 ![Mimi's bilingual subtitle window over an original illustrated scene](docs/assets/readme-preview.png)
 
 ## Features
 
+- Choose system audio, microphone, or both. System audio is the default; microphone capture requires explicit selection.
+- Translate audio from a selected app on macOS or Windows 11.
 - Show original text, translations, or both.
 - Adjust subtitle position, size, and color, or let mouse clicks pass through the window.
 - Save subtitles or audio locally and export TXT / WAV when needed. Saving and recording are off by default.
+
+The desktop interface supports **简体中文 · 繁體中文 · English · 日本語 · Deutsch · 한국어 · Français**. Change it in **Settings → General**. Interface, recognition and translation languages are separate choices.
+
+On desktop, each service configuration can remember a recognition/translation language pair. Save, update or remove it explicitly in the configuration details. Switching to or reapplying the configuration restores its saved pair; temporary language changes do not overwrite it. Tray and floating menus show the pair below the configuration name. Click the service information in the subtitle header to open the current configuration details.
 
 ## Get started
 

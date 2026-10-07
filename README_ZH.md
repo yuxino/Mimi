@@ -19,6 +19,9 @@
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat&amp;logo=linux&amp;logoColor=white" alt="Linux"></a>
     <a href="android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
   </p>
+  <p>
+    <a href="README.md">English</a> · <a href="README_ZH.md">简体中文</a> · <a href="README_ZH-TW.md">繁體中文</a> · <a href="README_KO.md">한국어</a> · <a href="README_FR.md">Français</a> · <a href="README_DE.md">Deutsch</a>
+  </p>
 </div>
 
 <p align="center">Mimi 把电脑或麦克风中的人声翻译成实时字幕。看电影、直播或网课时，字幕会悬浮显示在屏幕上。</p>
@@ -32,6 +35,10 @@
 - 显示原文、译文，或双语字幕。
 - 调整字幕的位置、大小和颜色，也可让鼠标点击穿过字幕窗口。
 - 按需保存字幕或音频到本机，导出 TXT / WAV；默认不保存、不录音。
+
+桌面界面支持 **简体中文 · 繁體中文 · English · 日本語 · Deutsch · 한국어 · Français**，可在「**设置 → 通用**」切换。界面语言与识别、翻译语言分别选择。
+
+桌面端每个服务配置可在详情中显式保存、更新或移除识别与翻译语言组合。切换或重新应用配置时会恢复已保存组合，临时更改语言不会覆盖它。托盘和悬浮菜单在配置名下方显示保存的组合；点击字幕顶部的服务信息可打开当前配置详情。
 
 ## 开始使用
 

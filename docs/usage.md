@@ -4,6 +4,8 @@
 
 Provider activation links, credential fields, and current models are in the [provider setup guide](provider-setup.md).
 
+Choose the desktop interface language in Settings → General: Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean or French. The system option follows your system language; changing the interface language keeps current edits and subtitle state. Recognition and translation languages are separate choices.
+
 ## Install and update
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.
@@ -40,6 +42,12 @@ This removes an old recording authorization, not a certificate or API key. If on
 
 Desktop credentials are stored in a private plaintext file protected by file permissions. Existing OS credentials are automatically imported once and deleted after the saved copy is verified. An old-store authorization may be needed for that import; after it completes, switching, saving and updating use only the file. Missing or damaged local credentials do not fall back to Keychain. A `codesign` request for a signing private key is a separate build-time prompt.
 
+## Service configurations
+
+Each desktop service configuration can remember a recognition/translation language pair. Activate the configuration and choose the languages, then open its details in Settings → Speech & Translation and use **Remember current languages**. To change or remove the saved pair, use **Update to current languages** or **Remove saved pair** explicitly.
+
+Switching to or reapplying a configuration restores its saved pair. Temporary language changes do not overwrite it. Tray and floating menus show the saved pair below the configuration name. Click the service information in the subtitle header to open the current configuration details.
+
 ## Audio and saved sessions
 
 Desktop uses system audio by default. In Settings or the floating controls, select system audio, microphone, or both. Microphone capture uses the system's default microphone and requests permission when capture starts, if needed. With both selected, each input has its own recognition connection, subtitles and service usage. Changing inputs turns audio recording off; enable it again in Save & export if needed.
@@ -56,7 +64,7 @@ Transcript retention is limited to 10,000 confirmed pairs / 2 MiB of text and au
 
 In Settings, choose one of the five subtitle color swatches (white by default), or use the custom swatch after them to open the desktop color picker. System audio and microphone have separate color settings. The preview and floating subtitles update immediately, including immersive mode. In bilingual mode, the original stays visually softer than the translation.
 
-Show time is available in subtitle settings and the floating controls, and is off by default. While the microphone is selected, it shows local confirmation time (HH:mm:ss) beside confirmed subtitles, including in immersive mode. It hides for system audio only and returns when the microphone is selected again. This is not the exact start of speech. Retained microphone lines keep a small source icon when switching back to system audio. The floating controls also provide pause/resume.
+Show time is available in subtitle settings and the floating controls, and is off by default. When enabled, it shows local confirmation time (HH:mm:ss) beside confirmed subtitles from both system audio and the microphone, including in immersive mode. This marks when the subtitle was confirmed, not when speech began. Retained microphone lines keep a small source icon when switching back to system audio. The floating controls also provide pause/resume.
 
 Choose Translation only, Original + translation, or Original only
 in Settings, the overlay control panel, or the tray. Switch instantly with
