@@ -45,6 +45,7 @@ export const OVERLAY = {
   collapseSubtitle: "Untertitel einklappen",
   collapsedAccessibilityPrefix: "Untertitel eingeklappt, ",
   dragTooltip: "Zum Verschieben ziehen; zum Ein- oder Ausklappen doppelklicken",
+  expandDragTooltip: "Doppelklick",
   moveSubtitle: "Untertitel durch Ziehen verschieben",
   paused: "Pausiert",
   translating: "Wird übersetzt",

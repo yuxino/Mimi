@@ -1,6 +1,6 @@
 import { audio3ErrorMessage } from "./audio3Errors";
 import { afterEach, expect, it } from "vitest";
-import { I18N, setStoredUiLanguage } from "./i18n";
+import { I18N, UI_LANGUAGES, setStoredUiLanguage } from "./i18n";
 import { sessionErrorSettingsTarget, sessionActionErrorMessage, languageActionErrorMessage, connectionDiagnosticMessage, credentialErrorMessage, credentialUnavailableHelp, profileErrorMessage, diagnosticCopy, diagnosticPlatform } from "./connectionDiagnostics";
 
 it.each(["zh", "en", "ja"] as const)("gives Tencent activation, quota and concurrency recovery without provider text in %s", language => {
@@ -371,7 +371,7 @@ it("routes only exact resource errors to Apple preparation and preserves other r
 });
 
 
-it.each(["en", "zh", "ja"] as const)("keeps safe provider failures actionable across session, language and profile actions in %s", language => {
+it.each(UI_LANGUAGES)("keeps safe provider failures actionable across session, language and profile actions in %s", language => {
   setStoredUiLanguage(language);
   const labels = diagnosticCopy();
   const rejected = `${labels.reasons.serviceRejected} ${labels.reasons.invalidConfiguration}`;
@@ -411,6 +411,8 @@ it.each(["en", "zh", "ja"] as const)("keeps safe provider failures actionable ac
     ["Volcano Engine ended the translation session unexpectedly.", labels.translationTemporary],
     ["Volcano Engine requires an explicit Chinese, English, or Japanese source language.", I18N.settings.languageSwitchUnsupported],
     ["Volcano Engine requires a Chinese, English, or Japanese translation language.", I18N.settings.languageSwitchUnsupported],
+    ["Volcano Engine requires an explicit supported source language.", I18N.settings.languageSwitchUnsupported],
+    ["Volcano Engine does not support this translation direction.", I18N.settings.languageSwitchUnsupported],
     ["Baidu realtime translation requires an explicit supported source language.", I18N.settings.languageSwitchUnsupported],
     ["Baidu realtime translation ended the session unexpectedly.", labels.translationTemporary],
     ["Tencent Cloud realtime translation ended the session unexpectedly.", labels.translationTemporary],

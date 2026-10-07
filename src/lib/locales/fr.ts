@@ -45,6 +45,7 @@ export const OVERLAY = {
   collapseSubtitle: "Réduire les sous-titres",
   collapsedAccessibilityPrefix: "Sous-titres réduits, ",
   dragTooltip: "Faites glisser pour déplacer ; double-cliquez pour réduire ou développer",
+  expandDragTooltip: "Double-clic",
   moveSubtitle: "Faites glisser pour déplacer les sous-titres",
   paused: "En pause",
   translating: "Traduction en cours",

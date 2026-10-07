@@ -133,3 +133,9 @@ Before calling a UI consistency fix complete:
 The [settings feedback audit](../plans/2026-10-04-settings-feedback-audit.md)
 records the specific cases that led to these rules. Keep prevention rules here
 so future work does not depend on finding a dated design note.
+
+Collapsed overlay tooltips must fit the 54px native window and leave its drag,
+pause, expand and close buttons uncovered at the minimum width in every UI
+language. Use a short gesture hint when the expanded instructions do not fit;
+retain a complete accessible action. Verify geometry with the actual overlay
+components and confirm the affected gesture in the signed native app.

@@ -45,6 +45,7 @@ export const OVERLAY = {
   collapseSubtitle: "자막 접기",
   collapsedAccessibilityPrefix: "자막 접힘, ",
   dragTooltip: "드래그하여 이동 · 두 번 클릭하여 접거나 펼치기",
+  expandDragTooltip: "두 번 클릭",
   moveSubtitle: "드래그하여 자막 이동",
   paused: "일시 정지됨",
   translating: "번역 중",
