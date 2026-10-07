@@ -1322,3 +1322,42 @@
   emulator stability. The API 32 capture-probe attempt stopped at the newer
   consent-dialog helper before capture; only its language checks passed.
   Real-device, live-provider and sustained-session language changes remain open.
+
+### 2026-10-07 — Android desktop-language parity and live overlay controls
+
+- Final Android source `dab59785`, debug APK 1.5.16. The catalog now matches
+  desktop's seven interface languages plus Follow system; each translated
+  resource set contains all 258 translatable keys. Catalog, placeholders,
+  protocol tokens and Hans/Hant script/region selection have automated coverage.
+- Blank ARM64 API 32 and API 35 native runs passed all eight picker choices,
+  settings recreation, service-editor/help localization and preservation of
+  subtitle source/target and nonempty synthetic history. API 32 retained French
+  across force-stop/relaunch; API 35 retained Traditional Chinese across both
+  force-stop and APK replacement. Both APIs also passed native control bounds at
+  320dp width, 200% system font scale and dark mode.
+- Overlay interaction runs on both APIs passed: truly empty compact windows are
+  hidden, the labeled font action opens only one slider, 16→18 updates actual
+  native text size, and a settings change to 22 updates the existing translation
+  to 25sp without restarting or losing history. Confirmed pairs deliberately
+  remain readable; the silence assertion clears the fixture before checking an
+  empty window. The first assertion incorrectly expected hiding the last
+  confirmed pair and was corrected rather than changing shared subtitle rules.
+- The adjacent speech/text-translation form run passed ten native light-mode
+  screenshots: provider selection, independent fields, local validation, help,
+  HTTP consent and discarded drafts. Large-font review also repaired clipped
+  service headings, required field labels, save actions and provider-help links.
+  No provider requests, capture or real credentials were involved in these runs.
+- Both Android variants passed 148 JVM tests, including actual JNI, and lint;
+  the debug APK passed all four ABI/alignment/license checks. Canonical
+  `scripts/check.sh` on the rebased desktop/shared baseline `482bc9d7` passed:
+  Rust 1,257 / 2 ignored, shared core 81 plus JNI, frontend 2,010 across 129 files,
+  formatting, Clippy, typecheck, lint, production build and diff checks. Subsequent
+  source changes affect Android UI and native UI checks only.
+- Comparable native [Before/After screenshots](../qa/android-language-and-overlay.md)
+  show the empty background, font control and live settings. API 35 screenshots
+  use the same synthetic captions, locale, width and font scale. An earlier
+  simulator run also hit an activity ANR; retries completed with software GPU
+  rendering and serial VMs. Short UI checks do not establish sustained emulator
+  stability, physical speaker audibility, real-device acceptance or live-provider
+  subtitle quality/language switching. The separate Chrome playback-capture
+  opt-out evidence above remains the owning audio diagnosis.
