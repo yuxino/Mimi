@@ -1,7 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "./lib/i18n";
-import { appIsUiTest, appUiTestFrontendReady, isTauri, testProfileConnection } from "./lib/ipc";
+import { appUiTestFrontendReady, isTauri } from "./lib/ipc";
+import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness";
 import { selectSessionStatusKind, useStore } from "./lib/store";
 import { useDesktopShortcuts } from "./lib/useDesktopShortcuts";
 
@@ -94,13 +95,7 @@ function FrontendReadySignal({ label }: { label: WindowLabel }) {
         // Native package smoke exercises the real IPC registration, window
         // capability and response shape. Production never probes a provider here.
         const diagnostics = label === "settings"
-          ? appIsUiTest().then(async (enabled) => {
-              if (!enabled) return;
-              const result = await testProfileConnection(useStore.getState().settings.activeProfileId);
-              if (result.credential !== "present" || result.service !== "notTested" || result.reason !== null) {
-                throw new Error("connection_diagnostic_smoke_failed");
-              }
-            })
+          ? verifyUiTestConnectionReadiness(useStore.getState().settings.activeProfileId)
           : Promise.resolve();
         void diagnostics.then(() => appUiTestFrontendReady())
           .then(() => {
