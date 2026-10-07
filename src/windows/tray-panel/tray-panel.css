@@ -39,6 +39,9 @@
   --tray-primary-bg-pressed: #dedede;
   --tray-primary-text: #121212;
   --tray-focus: #ffffff;
+  --provider-light-display: none;
+  --provider-dark-display: block;
+  --provider-backing-background: #fff;
   --tray-danger: var(--tray-text);
   --tray-state-color: var(--tray-text-faint);
   width: 100%;

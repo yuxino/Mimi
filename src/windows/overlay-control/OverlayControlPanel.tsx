@@ -5,6 +5,7 @@ import { SettingsHelp } from "../settings/SettingsHelp";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { Select } from "../../components/Select";
+import { ProviderIcon } from "../../components/ProviderIcon";
 import { LanguageSelect } from "../../components/LanguageSelect";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
@@ -234,7 +235,8 @@ export function OverlayControlPanel({
           <span className="overlay-control-picker__profile-label"><span>{I18N.settings.currentProfile}</span><SettingsHelp text={I18N.settings.profileSwitchHelp} label={I18N.settings.helpLabel} /></span>
           <Select label={I18N.settings.currentProfile} value={settings.activeProfileId ?? ""}
             valueLabel={I18N.settings.noActiveProfile}
-            options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+            options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name,
+              icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} /> }))}
             disabled={!canChangeSessionSettings}
             onChange={(profileId) => {
               if (profileId !== settings.activeProfileId) {
