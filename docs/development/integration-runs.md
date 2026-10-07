@@ -1410,3 +1410,55 @@
   latency acceptance: captions visibly lag the player's embedded subtitles.
   No end-to-end timing metric was collected. Emulator hangs, physical-device
   behavior, speaker audibility and sustained provider runs remain unaccepted.
+
+### 2026-10-08 — Unified v1.5.17 publication verification
+
+- Published [v1.5.17](https://github.com/yuxino/Mimi/releases/tag/v1.5.17) at
+  `2026-10-07T20:05:43Z` from merged main revision
+  `176a42f3e2991669e01ce08439c671cbae3d9d54`, after
+  [PR #211](https://github.com/yuxino/Mimi/pull/211),
+  [PR #214](https://github.com/yuxino/Mimi/pull/214) and
+  [PR #215](https://github.com/yuxino/Mimi/pull/215).
+  Desktop and Android versions are 1.5.17; Android versionCode is 10517.
+- Canonical `scripts/check.sh` passed on the final source: Rust 1,257 /
+  2 ignored, shared core 81 plus actual JNI, frontend 2,019 and strict checks.
+  Both Android variants passed 148 JVM tests each, actual JNI, lint and four-ABI
+  packaging/alignment/license checks. The original API 35 emulator updated in
+  place with its matching debug certificate and retained encrypted configuration.
+- The canonical signed macOS development bundle passed bounded UI-only
+  first-service add/cancel, missing-credential start guarding, subtitle
+  position-lock layout, version display, retention defaults and normal Quit.
+  Ordinary development mode was restored and visibly stopped afterward.
+- The initial Linux preparation run stalled on the hosted runner's Azure HTTP
+  Ubuntu mirror. CI-only source replacement with the official HTTPS archive,
+  bounded retries and timeouts reduced the same dependency step to 61 seconds.
+  The following Linux checks passed; developer APT sources are unchanged.
+- Initial unpublished 17 packages failed Linux/Windows settings readiness after
+  the first-run profile catalog became empty. The UI-only connection probe now
+  accepts only the exact native `profile_not_found` rejection for an empty ID;
+  missing IPC and unexpected configured responses still fail. Nine regressions
+  passed. The same signed macOS empty-profile fixture reproduced a missing
+  settings marker Before and both ready markers After without credentials,
+  provider requests or capture. The user explicitly retained 17 and authorized
+  updating its unpublished draft/tag to the rebuilt merged revision.
+- Both Mac architectures passed local pinned-identity, source/version/architecture,
+  archive, DMG and installed-app identity continuity checks; the formal app was
+  not replaced. Final [tag CI](https://github.com/yuxino/Mimi/actions/runs/37676491380)
+  passed every required job, including Windows x64/ARM64 startup, extracted
+  Windows portable startup and three launches each of installed Linux `.deb`
+  and AppImage packages. Both macOS updater signatures and the signed Android
+  release package passed their release gates.
+- Unauthenticated public verification confirmed Latest v1.5.17 and the exact
+  release/tag revision, all 17 uploaded asset URLs, GitHub digests and the
+  16-entry checksum list. Downloaded metadata/APK/signatures and all four local
+  macOS assets matched public SHA-256. The four-platform updater manifest and
+  public release contain identical reviewed English-first bilingual notes.
+  The downloaded APK matched the pinned Android certificate, 1.5.17/10517,
+  four JNI ABIs, 16 KB alignment and dependency notices. The browser confirmed
+  the public immutable release, Latest label, notes and complete asset list.
+- A concurrent local check/development frontend build removed an asset during
+  Tauri embedding. Serial execution passed; the prevention rule now lives in
+  [common regressions](common-regressions.md). Reusable shared caches were retained.
+  Recordings remain attached directly to PR #211. Its visible caption lag is
+  unresolved; physical speaker audibility, real devices, sustained sessions,
+  Intel Mac runtime and installed updater transitions remain unaccepted.
