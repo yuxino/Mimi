@@ -1330,7 +1330,9 @@
   resource set contains all 258 translatable keys. Catalog, placeholders,
   protocol tokens and Hans/Hant script/region selection have automated coverage.
 - Blank ARM64 API 32 and API 35 native runs passed all eight picker choices,
-  settings recreation, service-editor/help localization and preservation of
+  using `dab59785` and `08c1828b` respectively (the later one-line field-hint
+  cleanup was visually checked on API 32).
+  They cover settings recreation, service-editor/help localization and preservation of
   subtitle source/target and nonempty synthetic history. API 32 retained French
   across force-stop/relaunch; API 35 retained Traditional Chinese across both
   force-stop and APK replacement. Both APIs also passed native control bounds at
