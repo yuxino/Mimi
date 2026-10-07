@@ -40,7 +40,7 @@
     <string name="guide_official">Official credential guide</string>
     <string name="guide_billing">Service costs · official details</string>
     <string name="guide_no_browser">No browser available to open this link</string>
-    <string name="guide_local_save">Saving confirms local storage only. The trial connects to the service; check official pricing.</string>
+    <string name="guide_local_save">Saving settings does not connect to a provider. Starting captions may incur provider charges.</string>
     <string name="guide_immersive">Immersive captions</string>
     <string name="guide_immersive_hint">Show only caption text while keeping video controls accessible. Tap Exit on the right to restore the caption panel, or turn this off in Settings. Drag Exit up or down to move it.</string>
     <string name="guide_understood">Got it</string>

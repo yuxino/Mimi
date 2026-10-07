@@ -41,7 +41,7 @@
     <string name="guide_official">Offizielle Anleitung für Zugangsdaten</string>
     <string name="guide_billing">Dienstkosten · offizielle Informationen</string>
     <string name="guide_no_browser">Kein Browser zum Öffnen dieses Links verfügbar</string>
-    <string name="guide_local_save">Speichern bestätigt nur die lokale Ablage. Der Probelauf verbindet sich mit dem Dienst; offizielle Preise beachten.</string>
+    <string name="guide_local_save">Beim Speichern wird keine Verbindung zum Dienst hergestellt. Beim Starten der Untertitel können beim Anbieter Kosten entstehen.</string>
     <string name="guide_immersive">Immersive Untertitel</string>
     <string name="guide_immersive_hint">Nur Untertiteltext anzeigen; Videosteuerung bleibt bedienbar. Rechts „Zurück“ antippen oder den Modus in den Einstellungen abschalten, um das Untertitelfenster wiederherzustellen. „Zurück“ lässt sich vertikal verschieben.</string>
     <string name="guide_understood">Verstanden</string>

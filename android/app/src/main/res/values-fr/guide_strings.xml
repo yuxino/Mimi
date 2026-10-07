@@ -41,7 +41,7 @@
     <string name="guide_official">Guide officiel des identifiants</string>
     <string name="guide_billing">Tarifs du service · informations officielles</string>
     <string name="guide_no_browser">Aucun navigateur disponible pour ouvrir ce lien</string>
-    <string name="guide_local_save">L’enregistrement confirme uniquement le stockage local. L’essai se connecte au service ; consultez les tarifs officiels.</string>
+    <string name="guide_local_save">Enregistrer les réglages ne contacte pas le service. Le démarrage des sous-titres peut entraîner des frais chez le fournisseur.</string>
     <string name="guide_immersive">Sous-titres immersifs</string>
     <string name="guide_immersive_hint">Affiche uniquement le texte des sous-titres sans bloquer les commandes vidéo. Touchez Quitter à droite ou désactivez ce mode dans les réglages pour retrouver le panneau. Faites glisser Quitter verticalement pour le déplacer.</string>
     <string name="guide_understood">Compris</string>

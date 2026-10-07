@@ -41,7 +41,7 @@
     <string name="guide_official">공식 인증 정보 안내</string>
     <string name="guide_billing">서비스 요금 · 공식 안내</string>
     <string name="guide_no_browser">이 링크를 열 브라우저가 없습니다</string>
-    <string name="guide_local_save">저장은 로컬 저장만 확인합니다. 체험은 서비스에 연결하므로 공식 요금을 확인하세요.</string>
+    <string name="guide_local_save">설정을 저장해도 서비스에 연결하지 않습니다. 자막을 시작하면 서비스 이용 요금이 발생할 수 있습니다.</string>
     <string name="guide_immersive">몰입 자막</string>
     <string name="guide_immersive_hint">영상 조작을 방해하지 않고 자막 텍스트만 표시합니다. 오른쪽의 나가기를 누르거나 설정에서 끄면 자막 패널이 복원됩니다. 나가기 버튼을 위아래로 드래그해 옮길 수 있습니다.</string>
     <string name="guide_understood">확인</string>

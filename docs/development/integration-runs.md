@@ -1363,3 +1363,43 @@
   stability, physical speaker audibility, real-device acceptance or live-provider
   subtitle quality/language switching. The separate Chrome playback-capture
   opt-out evidence above remains the owning audio diagnosis.
+
+### 2026-10-08 — Android contextual help and recorded interaction review
+
+- Product source `a6ae4417` plus the seven-language save-help wording follow-up,
+  debug APK 1.5.16. API 35 native checks passed all seven languages at 320dp,
+  200% font scale and dark mode, including real mouse injection, keyboard focus,
+  touch, complete scrollable help and popup/anchor separation. All eight language
+  picker choices passed again after the final wording change. Normal-size help,
+  live overlay updates and ten independent-translation form states also passed.
+- A real hover failure came from Android's enlarged scrollbar mouse target
+  intercepting events over the help icon. The shared scroll adapter now yields
+  to visible interactive descendants, with hit testing relative to each root
+  window. Large-font service rows stack names/state above their configure action.
+  Both defects have native regression coverage; popup placement was not the
+  cause of this intercepted hover.
+- Both Android variants passed 148 JVM tests each, actual JNI, lint and APK
+  ABI/alignment/license checks after the wording and review-cleanup changes.
+  Canonical `scripts/check.sh` passed on `a6ae4417`: Rust 1,257 / 2 ignored,
+  shared core 81 plus JNI, frontend 2,010 across 129 files and strict checks.
+  Later changes affect Android copy, UI-only test cleanup and this ledger.
+- Comparable images and native touch recordings are attached directly to
+  [PR #211](https://github.com/yuxino/Mimi/pull/211), outside the repository.
+  UI-only recordings use a blank emulator and no provider/capture; the manual
+  overlay fixture restores preferences, first-run flags and position afterward.
+  Silent screen recordings do not establish speaker audibility or live-provider
+  quality. Hardware and sustained-session acceptance remain separate checks.
+- The configured API 35 emulator retained its encrypted credentials after
+  updating the same APK with its original matching debug certificate. A first
+  software-GPU attempt exited with QEMU main-loop/CPU-thread timeout logs.
+  A serial host-GPU run then completed system consent, real Bilibili 9.13.0
+  playback capture through Alibaba Cloud, repeated English/Chinese overlay
+  updates and normal stop back to Ready. Source remained Auto and target Chinese;
+  no microphone or subtitle/audio retention was enabled. Android reported a
+  started, unmuted media AudioTrack, and the host output was also unmuted.
+- The PR includes five native UI recordings and a 68-second, original-speed
+  excerpt of that public-video playback check, plus the stopped state. The
+  excerpt demonstrates capture and subtitle delivery, not sentence accuracy or
+  latency acceptance: captions visibly lag the player's embedded subtitles.
+  No end-to-end timing metric was collected. Emulator hangs, physical-device
+  behavior, speaker audibility and sustained provider runs remain unaccepted.

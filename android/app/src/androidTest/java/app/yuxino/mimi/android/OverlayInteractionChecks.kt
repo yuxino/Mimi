@@ -62,13 +62,20 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         val reviewSeconds = arguments?.getString("review_hold_seconds")?.toLongOrNull()?.takeIf { it in 1..180 }
         val baseline = arguments?.getString("baseline") == "true"
         val prefix = if (baseline) "before" else "after"
+        val source = SettingsStore.sourceLang(context)
+        val target = SettingsStore.targetLang(context)
+        val historyLines = SettingsStore.historyLines(context)
+        val position = SettingsStore.overlayYOffset(context)
         val font = SettingsStore.fontSize(context)
         val immersive = SettingsStore.immersiveSubtitles(context)
         val color = SettingsStore.translationColorIndex(context)
         val background = SettingsStore.overlayBgAlpha(context)
         val opacity = SettingsStore.overlayOpacity(context)
         val prefs = context.getSharedPreferences("first_run", 0)
+        val hadSeen = prefs.contains("seen")
         val seen = prefs.getBoolean("seen", false)
+        val hadImmersiveSeen = prefs.contains("immersive_seen")
+        val immersiveSeen = prefs.getBoolean("immersive_seen", false)
         var home: MainActivity? = null
         var settings: SettingsActivity? = null
         var failure: Throwable? = null
@@ -141,12 +148,19 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         finally {
             context.stopService(Intent(context, MimiService::class.java))
             onUi { settings?.finish(); home?.finish() }
+            SettingsStore.setSourceLang(context, source)
+            SettingsStore.setTargetLang(context, target)
+            SettingsStore.setHistoryLines(context, historyLines)
+            SettingsStore.setOverlayYOffset(context, position)
             SettingsStore.setFontSize(context, font)
             SettingsStore.setImmersiveSubtitles(context, immersive)
             SettingsStore.setTranslationColorIndex(context, color)
             SettingsStore.setOverlayBgAlpha(context, background)
             SettingsStore.setOverlayOpacity(context, opacity)
-            check(prefs.edit().putBoolean("seen", seen).commit())
+            val restore = prefs.edit()
+            if (hadSeen) restore.putBoolean("seen", seen) else restore.remove("seen")
+            if (hadImmersiveSeen) restore.putBoolean("immersive_seen", immersiveSeen) else restore.remove("immersive_seen")
+            check(restore.commit())
             check(SettingsStore.flushPendingWritesForTests(context))
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {

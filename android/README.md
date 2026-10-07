@@ -94,6 +94,14 @@ Kotlin 2.0, AGP 8.7. CI tests/lints both variants and produces a debug APK and a
 unsigned release APK. The unsigned artifact is for signing, not installation;
 device capture remains a separate manual check.
 
+Keep the same debug signing keystore when updating an existing development
+installation. An alternate `ANDROID_USER_HOME` can select a different debug
+key. Before `adb install -r`, compare the installed APK's certificate with the
+new APK using `apksigner verify --print-certs`. If Android reports
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`, use the existing matching debug key;
+do not uninstall the configured app to bypass the mismatch. Preserve its
+encrypted credentials and settings. Release signing remains separate.
+
 ### Signed release
 
 `version.properties` is the Android version source. Increment `versionCode` for

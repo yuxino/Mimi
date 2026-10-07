@@ -40,7 +40,7 @@
     <string name="guide_official">公式の認証情報ガイド</string>
     <string name="guide_billing">利用料金 · 公式案内</string>
     <string name="guide_no_browser">リンクを開くブラウザがありません</string>
-    <string name="guide_local_save">保存は端末への記録のみを確認します。試用でサービスに接続します。料金は公式案内をご確認ください。</string>
+    <string name="guide_local_save">設定を保存しても、サービスには接続しません。字幕を開始すると、サービスの利用料金が発生する場合があります。</string>
     <string name="guide_immersive">没入字幕</string>
     <string name="guide_immersive_hint">字幕の文字だけを表示し、動画の操作はそのまま使えます。右側の「退出」で字幕パネルに戻るか、設定でオフにします。退出ボタンは上下に移動できます。</string>
     <string name="guide_understood">わかりました</string>

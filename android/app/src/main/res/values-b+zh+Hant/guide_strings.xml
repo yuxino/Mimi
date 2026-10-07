@@ -40,7 +40,7 @@
     <string name="guide_official">官方憑證指南</string>
     <string name="guide_billing">服務費用 · 官方說明</string>
     <string name="guide_no_browser">沒有可打開連結的瀏覽器</string>
-    <string name="guide_local_save">儲存僅確認本地寫入。試用會連線服務，費用以官方說明為準。</string>
+    <string name="guide_local_save">儲存設定不會連接服務。開始字幕後，服務商可能收取費用。</string>
     <string name="guide_immersive">沉浸字幕</string>
     <string name="guide_immersive_hint">只顯示字幕文字，影片仍可觸摸操作。點選右側“退出”恢復字幕面板；也可回到設定關閉。退出按鈕可以上下拖動。</string>
     <string name="guide_understood">知道了</string>
