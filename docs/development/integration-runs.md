@@ -4,6 +4,14 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-07：v1.5.16 正式发布回读
+
+- PR [#208](https://github.com/yuxino/Mimi/pull/208) 在跨平台及 Android CI 通过后合并为 main `fef19ae62929123104381b9e9b9bfa36b31ab419`。桌面阿里云文字翻译增加按配置保存的 Lite／Flash／Plus 选择和七语括号说明；新建及未保存选择的旧配置仍默认 Lite，已有选择保持不变。Audio 3.0 识别不变，Android 保持 Lite。
+- 发布准备提交 `c4cf9a9d` 的完整 `./scripts/check.sh` 通过：Rust 1,253 passed／2 ignored、共享核心 81 项及实际 JNI、前端 129 文件／2,005 项、fmt／严格 Clippy／lint／类型／生产构建及 diff。[main CI 37611307011](https://github.com/yuxino/Mimi/actions/runs/37611307011) 成功；模型原生保存、布局及 36 次真实文字请求的范围见下方实测条目，没有新增采音或录制。
+- 从精确 main 重建 Apple silicon／Intel macOS 正式包，验证固定签名身份、DMG 与解包更新归档内 app、版本／架构及签名内源码 revision，生产包排除开发调试器。未替换正式或正在使用的开发应用。[标签 CI 37612235195](https://github.com/yuxino/Mimi/actions/runs/37612235195) 全部成功：双架构 macOS 复核与更新签名、Windows x64 安装包签名及程序／解压绿色版启动、Linux 包安装与冒烟、Android 签名 APK、Windows ARM64 编译与启动冒烟；独立 [Android CI 37612234563](https://github.com/yuxino/Mimi/actions/runs/37612234563) 成功。
+- [v1.5.16](https://github.com/yuxino/Mimi/releases/tag/v1.5.16) 于 `2026-10-07T11:34:28Z` 实际公开并设为 Latest，标签仍指向 `fef19ae6`。发布流水线确认全部 17 个附件公开可访问；独立回读核对 17 项资产集合、16 项校验和与 GitHub 摘要，以及四份本地 macOS 文件的大小和 SHA-256。公开下载的 Latest 清单包含正确版本、四个平台对应地址及附件签名；发布页与清单中的英中说明均与审核文件一致。
+- 本轮不补足真实音频模型切换、端到端字幕延迟、Windows／Linux 原生模型操作、Intel Mac 运行、Android 真机、已安装版本更新或长会话质量的验收缺口；公开说明保留这些边界及百度静音阶段的既有限制。必要验证日志和摘要保留为 Git 外私有证据；不将临时原始样本视为长期归档。
+
 ## 2026-10-07：Qwen-MT 三模型文字实测与选项说明
 
 - 源码基线 `8e3398cc` 加本轮手动比较工具（验证时 dirty）。按用户授权使用既有阿里云开发预设，经生产 `QwenMTClient` 串行发送六组公开合成英／日文字，每模型每样本两轮，共 36 次，全部成功。保留模型对应的领域提示／填充词表与系统代理，轮换模型顺序并复用连接；仅私有文件保留正文，控制台只有状态、时序和计数，无采音、录制或偏好修改。
