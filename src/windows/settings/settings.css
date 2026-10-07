@@ -211,8 +211,9 @@
 
 .settings-brand {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 10px;
+  gap: 2px 10px;
   padding: 0 12px 30px;
 }
 
@@ -901,9 +902,14 @@
 
 .credential-panel__heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.credential-panel__heading > button {
+  margin-left: auto;
 }
 
 .credential-panel__heading > span {

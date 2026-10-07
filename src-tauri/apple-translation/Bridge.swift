@@ -159,6 +159,30 @@ private final class PreparationState: NSObject, NSWindowDelegate {
     }
 }
 
+private func preparationInstruction(_ uiLanguage: String) -> String {
+    switch uiLanguage {
+    case "zh": "请按照系统提示下载或启用翻译语言包。"
+    case "zh-TW": "請依照系統提示下載或啟用翻譯語言套件。"
+    case "ja": "システムの案内に従って翻訳言語をダウンロード、または有効にしてください。"
+    case "de": "Folgen Sie dem macOS-Dialog, um Übersetzungssprachen zu laden oder zu aktivieren."
+    case "fr": "Suivez les indications de macOS pour télécharger ou activer les langues de traduction."
+    case "ko": "macOS 안내에 따라 번역 언어를 다운로드하거나 활성화하세요."
+    default: "Follow the macOS prompt to download or enable translation languages."
+    }
+}
+
+private func preparationCancelLabel(_ uiLanguage: String) -> String {
+    switch uiLanguage {
+    case "zh": "取消"
+    case "zh-TW": "取消"
+    case "ja": "キャンセル"
+    case "de": "Abbrechen"
+    case "fr": "Annuler"
+    case "ko": "취소"
+    default: "Cancel"
+    }
+}
+
 @available(macOS 26.0, *)
 @MainActor
 private struct PreparationView: View {
@@ -167,20 +191,8 @@ private struct PreparationView: View {
     let target: Locale.Language
     let uiLanguage: String
 
-    private var instruction: String {
-        switch uiLanguage {
-        case "zh": "请按照系统提示下载或启用翻译语言包。"
-        case "ja": "システムの案内に従って翻訳言語をダウンロード、または有効にしてください。"
-        default: "Follow the macOS prompt to download or enable translation languages."
-        }
-    }
-    private var cancelLabel: String {
-        switch uiLanguage {
-        case "zh": "取消"
-        case "ja": "キャンセル"
-        default: "Cancel"
-        }
-    }
+    private var instruction: String { preparationInstruction(uiLanguage) }
+    private var cancelLabel: String { preparationCancelLabel(uiLanguage) }
     private var pair: String {
         let locale = Locale(identifier: uiLanguage)
         let sourceName = locale.localizedString(forIdentifier: source.minimalIdentifier) ?? source.minimalIdentifier
@@ -419,10 +431,14 @@ public func mimiAppleTranslationStatus(_ identifier: UInt64, _ source: UnsafePoi
     submit(identifier, .status(source, target), callback)
 }
 
+private func supportsPreparationUiLanguage(_ language: String) -> Bool {
+    ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"].contains(language)
+}
+
 @_cdecl("mimi_apple_translation_prepare")
 public func mimiAppleTranslationPrepare(_ identifier: UInt64, _ source: UnsafePointer<CChar>, _ target: UnsafePointer<CChar>, _ uiLanguage: UnsafePointer<CChar>, _ callback: @escaping MimiTranslationCallback) {
     let language = String(cString: uiLanguage)
-    guard let (source, target) = languagePair(source, target), ["en", "zh", "ja"].contains(language) else { invalid(identifier, callback); return }
+    guard let (source, target) = languagePair(source, target), supportsPreparationUiLanguage(language) else { invalid(identifier, callback); return }
     submit(identifier, .prepare(source, target, language), callback)
 }
 
@@ -458,6 +474,15 @@ private let testCallback: MimiTranslationCallback = { _, bytes, length in
 // TranslationSession, showing UI, querying assets, or accessing the network.
 @MainActor
 func runTranslationBridgeInvariantTests() throws {
+    for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"] {
+        precondition(supportsPreparationUiLanguage(language))
+    }
+    for language in ["system", "zh-Hant", "zh_tw", "fr-CA", "invalid", ""] {
+        precondition(!supportsPreparationUiLanguage(language))
+    }
+    precondition(preparationInstruction("zh-TW") == "請依照系統提示下載或啟用翻譯語言套件。")
+    precondition(preparationInstruction("zh-TW") != preparationInstruction("zh"))
+    precondition(preparationCancelLabel("zh-TW") == "取消")
     let registry = TranslationRequests()
     let requests = (1...8).map { TranslationRequest(UInt64($0), .query, testCallback) }
     for request in requests { precondition(registry.insert(request)) }

@@ -167,7 +167,7 @@ pub async fn prepare(
     target: TargetLanguage,
     ui_language: &str,
 ) -> Result<(), String> {
-    if !matches!(ui_language, "en" | "zh" | "ja") {
+    if !apple_translation::supports_preparation_ui_language(ui_language) {
         return Err("apple_translation_invalid_input".into());
     }
     let _preparing = PREPARING

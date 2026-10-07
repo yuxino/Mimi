@@ -139,3 +139,11 @@ desktop live-tail behavior and does not imply parity in capture, recording or
 timestamp preferences.
 
 Desktop offers a default-on **Show interim subtitles** preference, including live session changes. With it off, only final lines and confirmed pairs appear; bounded Stop-tail fallback still follows the existing desktop final lane. This affects presentation, not provider requests or accuracy. Android currently has no matching switch. Shared snapshots expose `displayPairFinal` on both platforms, and Rust/JNI fixtures distinguish a completed preview from an accepted final even without retained presentation history.
+
+## Desktop interface languages
+
+Desktop supports Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean and French, with
+regional system-language detection and in-place window updates. This is desktop
+interface localization; Android UI resources remain platform-native and are not
+expanded by this change. Recognition/translation language support is independent
+of the interface language and still follows each provider's capabilities.

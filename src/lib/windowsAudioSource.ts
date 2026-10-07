@@ -1,3 +1,5 @@
+import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
+import { supplemental } from "./locales/supplemental";
 import { effectiveUiLanguage } from "./i18n";
 
 /** Follow-system sources. Empty string follows audible outputs with communications/media/console priority. */
@@ -25,19 +27,7 @@ export interface AudioSourceSnapshot {
 }
 
 const copy = {
-  en: {
-    title: "Output device", system: "Follow system", unavailable: "Unavailable output",
-    communications: "Follow the communications device (call headset)",
-    multimedia: "Follow the media device",
-    audible: "Follow the device that is playing",
-    help: "Choose the headphones or speakers your app plays through.",
-    stop: "Stop subtitles before changing the sound source.",
-    missing: "This output is unavailable. Choose another sound source.",
-    receiving: "Receiving sound", silent: "Audio data is arriving, but there is no clear sound. Play something, or check your app’s sound output.",
-    noData: "No audio data yet. Play something and check the selected sound source.",
-    idle: "Start subtitles and play something to check the sound.",
-    failed: "Sound outputs could not be loaded. Try reopening Settings.",
-  },
+  en: SUPPLEMENTAL_EN.windowsAudioSource_copy,
   zh: {
     title: "输出设备", system: "跟随系统", unavailable: "不可用的输出设备",
     communications: "跟随通信设备（通话耳机）",
@@ -64,6 +54,7 @@ const copy = {
     idle: "字幕を開始して音声を再生すると、受信を確認できます。",
     failed: "音声出力先を読み込めませんでした。設定を開き直してください。",
   },
+  ...supplemental.windowsAudioSource_copy,
 };
 
 

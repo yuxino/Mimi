@@ -5,7 +5,7 @@
  * (language enums and status semantics).
  */
 
-import { I18N, effectiveUiLanguage, isChineseSystem, localizedRecord } from "./i18n";
+import { I18N, effectiveUiLanguage, localizedRecord } from "./i18n";
 
 // ---------------------------------------------------------------------------
 // Session state
@@ -153,7 +153,7 @@ export interface NetworkProxyConfig {
   url: string | null;
 }
 
-export type UiLanguage = "system" | "zh" | "en" | "ja";
+export type UiLanguage = "system" | "zh" | "zh-TW" | "en" | "ja" | "de" | "fr" | "ko";
 export type AudioSource = "system" | "microphone";
 export type AudioInput = AudioSource | "both";
 export type SystemAudioTarget = { kind: "system" } | { kind: "application"; id: string; name: string };
@@ -365,9 +365,9 @@ export const TRANSLATION_MODE_CASES: readonly TranslationMode[] = [
 ];
 
 type LanguageDisplayCode = Exclude<SourceLanguage, "auto"> | Exclude<TargetLanguage, "original">;
-type LanguageDisplayLocale = "zh" | "en" | "ja";
+type LanguageDisplayLocale = Exclude<UiLanguage, "system">;
 
-const LANGUAGE_DISPLAY_NAMES: Record<LanguageDisplayLocale, Record<LanguageDisplayCode, string>> = {
+const LANGUAGE_DISPLAY_NAMES: Record<"zh" | "en" | "ja", Record<LanguageDisplayCode, string>> = {
   zh: {
     zh: "中文", zh_tw: "繁体中文", en: "英语", ja: "日语", ko: "韩语", vi: "越南语",
     th: "泰语", id: "印尼语", ms: "马来语", tl: "菲律宾语", hi: "印地语", ar: "阿拉伯语",
@@ -450,8 +450,25 @@ const LANGUAGE_DISPLAY_NAMES: Record<LanguageDisplayLocale, Record<LanguageDispl
   },
 };
 
+const languageNameCache = new Map<LanguageDisplayLocale, Record<LanguageDisplayCode, string>>();
+
+function languageDisplayNames(locale: LanguageDisplayLocale): Record<LanguageDisplayCode, string> {
+  if (locale === "zh" || locale === "en" || locale === "ja") return LANGUAGE_DISPLAY_NAMES[locale];
+  const cached = languageNameCache.get(locale);
+  if (cached) return cached;
+  const names = new Intl.DisplayNames([locale], { type: "language" });
+  const aliases: Partial<Record<LanguageDisplayCode, string>> = { zh_tw: "zh-Hant", tl: "fil" };
+  const result = Object.fromEntries(Object.keys(LANGUAGE_DISPLAY_NAMES.en).map(code => {
+    if (code === "zh_en") return [code, `${names.of("zh")} + ${names.of("en")}`];
+    const name = names.of(aliases[code as LanguageDisplayCode] ?? code);
+    return [code, !name || name === code ? LANGUAGE_DISPLAY_NAMES.en[code as LanguageDisplayCode] : name];
+  })) as Record<LanguageDisplayCode, string>;
+  languageNameCache.set(locale, result);
+  return result;
+}
+
 function languageDisplayLocale(): LanguageDisplayLocale {
-  return effectiveUiLanguage() === "ja" ? "ja" : isChineseSystem() ? "zh" : "en";
+  return effectiveUiLanguage();
 }
 
 function languageNamesForCodes<Code extends LanguageDisplayCode>(
@@ -463,17 +480,17 @@ function languageNamesForCodes<Code extends LanguageDisplayCode>(
 
 export function sourceLanguageDisplayName(language: SourceLanguage, locale = languageDisplayLocale()): string {
   return language === "auto"
-    ? { zh: "自动识别", en: "Auto Detect", ja: "自動認識" }[locale]
-    : LANGUAGE_DISPLAY_NAMES[locale][language];
+    ? { "zh-TW": "自動辨識", zh: "自动识别", en: "Auto Detect", ja: "自動認識", de: "Automatisch", fr: "Détection auto", ko: "자동 감지" }[locale]
+    : languageDisplayNames(locale)[language];
 }
 
 export function targetLanguageDisplayName(language: TargetLanguage, locale = languageDisplayLocale()): string {
   if (language === "original") {
-    return { zh: "原文（不翻译）", en: "Original (no translation)", ja: "原文（翻訳しない）" }[locale];
+    return { "zh-TW": "原文（不翻譯）", zh: "原文（不翻译）", en: "Original (no translation)", ja: "原文（翻訳しない）", de: "Original (ohne Übersetzung)", fr: "Original (sans traduction)", ko: "원문 (번역 안 함)" }[locale];
   }
-  if (language === "zh") return { zh: "简体中文", en: "Simplified Chinese", ja: "簡体中国語" }[locale];
-  if (language === "tl") return { zh: "塔加洛语", en: "Tagalog", ja: "タガログ語" }[locale];
-  return LANGUAGE_DISPLAY_NAMES[locale][language];
+  if (language === "zh") return { "zh-TW": "簡體中文", zh: "简体中文", en: "Simplified Chinese", ja: "簡体中国語", de: "Chinesisch (vereinfacht)", fr: "Chinois simplifié", ko: "중국어 간체" }[locale];
+  if (language === "tl") return { "zh-TW": "塔加洛語", zh: "塔加洛语", en: "Tagalog", ja: "タガログ語", de: "Tagalog", fr: "Tagalog", ko: "타갈로그어" }[locale];
+  return languageDisplayNames(locale)[language];
 }
 
 /** Localized source-language labels for the active UI language. */
@@ -481,7 +498,7 @@ export const SOURCE_LANGUAGE_DISPLAY_NAMES: Record<SourceLanguage, string> = loc
   const locale = languageDisplayLocale();
   return {
     auto: sourceLanguageDisplayName("auto", locale),
-    ...languageNamesForCodes(SOURCE_LANGUAGE_CODES, LANGUAGE_DISPLAY_NAMES[locale]),
+    ...languageNamesForCodes(SOURCE_LANGUAGE_CODES, languageDisplayNames(locale)),
   };
 });
 
@@ -490,7 +507,7 @@ export const TARGET_LANGUAGE_DISPLAY_NAMES: Record<TargetLanguage, string> = loc
   const locale = languageDisplayLocale();
   return {
     original: targetLanguageDisplayName("original", locale),
-    ...languageNamesForCodes(TARGET_LANGUAGE_CODES, LANGUAGE_DISPLAY_NAMES[locale]),
+    ...languageNamesForCodes(TARGET_LANGUAGE_CODES, languageDisplayNames(locale)),
     zh: targetLanguageDisplayName("zh", locale),
     tl: targetLanguageDisplayName("tl", locale),
   };

@@ -28,12 +28,16 @@ These project rules apply to implementation and review.
   existing spacing around separators. A no-overflow result alone is not
   visual acceptance: inspect the screenshot for touching control borders,
   vertical rhythm and heading/section separation before presenting it.
-- Check Chinese, English and Japanese at the default and minimum window widths.
+- Check all supported interface languages (Simplified/Traditional Chinese, English, Japanese, Korean,
+  French and German) at the default and minimum window widths.
   Include Windows-only output choices and Linux-only recovery states even when
   developing on macOS. A hidden native capability must have an explicit local
   fixture; a successful macOS screen alone cannot cover that control. Reuse
   `scripts/fixtures/settings-layout.html` and `scripts/verify-settings-layout.js`
   for actual browser geometry, and keep the native-device evidence separate.
+  Memoized children that read localized copy must subscribe to the locale or
+  receive it as a prop. Check paused/static content too; do not remount subtitle
+  history to refresh labels and lose the reader's scroll position.
 - All interface text, native controls, tooltips and portaled menus use
   `--mimi-ui-font`. Order CJK fallbacks for the interface language and include
   Windows non-UI family names; do not add a separate stack to a shared tooltip.

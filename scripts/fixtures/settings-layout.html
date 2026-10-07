@@ -47,6 +47,7 @@ window.__TAURI_INTERNALS__ = {
     if (command === "app_desktop_shortcut_commands") return null;
     if (["overlay_control_set_panel_height", "plugin:window|set_size", "plugin:window|set_position"].includes(command)) return;
     if (command === "session_switch_source_language") {
+      if (fixture.provider === "appleSpeech") window.layoutFixtureRequests.speechSave += 1;
       const current = useStore.getState().settings;
       const sourceLanguage = args.language;
       const targetLanguage = targetLanguageAfterSourceSwitch(current, sourceLanguage);
@@ -107,6 +108,7 @@ const { createRoot } = (await import("react-dom/client")).default;
 const { flushSync } = (await import("react-dom")).default;
 const { useStore } = await import("/src/lib/store.ts");
 const { SOURCE_LANGUAGE_DISPLAY_NAMES } = await import("/src/lib/types.ts");
+const { audioSourceCopy } = await import("/src/lib/windowsAudioSource.ts");
 const { setStoredUiLanguage, I18N } = await import("/src/lib/i18n.ts");
 const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
 const { TrayPanel } = await import("/src/windows/tray-panel/TrayPanel.tsx");
@@ -147,7 +149,7 @@ window.applyLayoutCase = async next => {
   location.hash = next.category ?? "service-profiles";
   localStorage.setItem("mimi.settings-theme", next.theme);
   setStoredUiLanguage(next.language);
-  window.layoutFixtureLabels = { source: I18N.settings.sourceLanguage, target: I18N.settings.translateTo, traySource: I18N.tray.sourceLanguage, overlaySource: I18N.overlay.sourceLanguage };
+  window.layoutFixtureLabels = { source: I18N.settings.sourceLanguage, target: I18N.settings.translateTo, traySource: I18N.tray.sourceLanguage, overlaySource: I18N.overlay.sourceLanguage, output: audioSourceCopy().title, appleReady: I18N.settings.appleTranslationReady, appleNeedsSetup: I18N.settings.appleTranslationNeedsSetup };
   const appleProfile = next.editor && next.provider === "appleSpeech";
   const sourceLanguage = next.sourceLanguage ?? (appleProfile ? "en" : initial.settings.sourceLanguage);
   const targetLanguage = next.targetLanguage ?? (appleProfile ? "original" : initial.settings.targetLanguage);
