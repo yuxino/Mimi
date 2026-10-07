@@ -43,3 +43,18 @@ expanded display-name and release-note tests, then `scripts/check.sh`.
 Inspect the canonical signed `mimi-dev.app --ui-only` across settings, tray,
 control panel and subtitle windows, including narrow widths and long labels.
 UI-only checks do not establish capture, service quality or device acceptance.
+
+## Compact overlay follow-up
+
+The 54px collapsed window cannot fit the expanded drag/double-click sentence.
+Use a separate short gesture hint in all seven languages; keep the full
+state-specific accessible action and expanded instructions. Do not change
+drag, double-click, disabled or pointer behavior. The reusable browser fixture
+renders the actual overlay components behind a stub native boundary and checks
+tooltip bounds, clipping, button overlap and double-click expansion.
+
+The current release integration also changes Volcano's unsupported-language
+error wording. Keep the exact safe labels in the localized diagnostic allowlist
+so the existing settings recovery remains available. README and usage updates
+describe the integrated configuration language presets, header navigation and
+confirmed-subtitle timestamps without extending provider support claims.

@@ -38,6 +38,8 @@
 
 Die Desktopoberfläche unterstützt **简体中文 · 繁體中文 · English · 日本語 · Deutsch · 한국어 · Français**. Ändere die Sprache unter **Einstellungen → Allgemein**. Oberflächensprache, Erkennungssprache und Übersetzungssprache werden unabhängig voneinander gewählt.
 
+Am Desktop kann jede Dienstkonfiguration ein Erkennungs- und Übersetzungssprachenpaar speichern. Speichere, aktualisiere oder entferne es ausdrücklich in den Konfigurationsdetails. Beim Auswählen oder erneuten Anwenden einer Konfiguration wird ihr gespeichertes Paar wiederhergestellt; vorübergehende Sprachwechsel überschreiben es nicht. Im Tray-Menü und im schwebenden Menü steht das Paar unter dem Konfigurationsnamen. Klicke auf die Dienstinformationen in der Kopfzeile der Untertitel, um die aktuelle Konfiguration zu öffnen.
+
 ## Erste Schritte
 
 Für die erste Einrichtung **empfehlen wir Alibaba Cloud oder Google Gemini**. Mit Alibaba Cloud haben wir mehr Tests unter realen Bedingungen durchgeführt; nach meiner bisherigen Erfahrung liefert Gemini die gleichmäßigsten Untertitelergebnisse.

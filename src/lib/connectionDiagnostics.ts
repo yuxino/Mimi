@@ -271,6 +271,8 @@ const builtinServiceErrors = {
     "Baidu realtime translation requires a translated output language.",
     "Volcano Engine requires an explicit Chinese, English, or Japanese source language.",
     "Volcano Engine requires a Chinese, English, or Japanese translation language.",
+    "Volcano Engine requires an explicit supported source language.",
+    "Volcano Engine does not support this translation direction.",
   ]),
   interrupted: new Set([
     "The live translation service returned invalid data.",

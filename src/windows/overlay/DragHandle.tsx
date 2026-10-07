@@ -52,7 +52,7 @@ export function DragHandle({
 
   return (
     <div className="flex shrink-0">
-      <Tooltip label={collapseDisabled ? I18N.overlay.moveSubtitle : I18N.overlay.dragTooltip}>
+      <Tooltip label={collapseDisabled ? I18N.overlay.moveSubtitle : compact ? I18N.overlay.expandDragTooltip : I18N.overlay.dragTooltip}>
         {(descriptionId, hovered) => <button
           type="button"
           data-testid="drag-handle"

@@ -45,6 +45,7 @@ export const OVERLAY = {
   collapseSubtitle: "收合字幕",
   collapsedAccessibilityPrefix: "字幕已收合，",
   dragTooltip: "拖曳字幕；按兩下收合或展開",
+  expandDragTooltip: "按兩下展開",
   moveSubtitle: "拖曳以移動字幕",
   paused: "已暫停",
   translating: "翻譯中",

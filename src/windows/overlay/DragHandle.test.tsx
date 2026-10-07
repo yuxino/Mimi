@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { I18N, setStoredUiLanguage } from "../../lib/i18n";
+import { I18N, UI_LANGUAGES, setStoredUiLanguage } from "../../lib/i18n";
 import { isClickablePointerTarget, OVERLAY_POINTER_TARGET_EVENT } from "../../lib/overlayPointer";
 import { DragHandle } from "./DragHandle";
 
@@ -183,4 +183,18 @@ it("allows native movement while error presentation prevents pointer, keyboard a
   await render();
   await press(button, 2);
   expect(toggle).toHaveBeenCalledOnce();
+});
+
+it.each(UI_LANGUAGES)("uses a state-specific expansion hint in the 54px compact surface: %s", async language => {
+  setStoredUiLanguage(language);
+  const button = await render({ compact: true });
+  await act(() => document.dispatchEvent(new CustomEvent(OVERLAY_POINTER_TARGET_EVENT, { detail: button.firstElementChild })));
+  const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]');
+  expect(tooltip?.textContent).toBe(I18N.overlay.expandDragTooltip);
+  expect(tooltip?.textContent).not.toBe(I18N.overlay.dragTooltip);
+  expect(button.getAttribute("aria-describedby")).toBe(tooltip?.id);
+  await act(() => button.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
+  await press(button, 2);
+  expect(toggle).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="tooltip"]')).toBeNull();
 });
