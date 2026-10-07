@@ -1,12 +1,7 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h1>mimi</h1>
+  <h1>Mimi</h1>
   <p>Sous-titres et traduction en direct pour l’audio du système ou le microphone sur macOS 13+ (puces Apple et Intel), Windows et Linux x86_64.</p>
-  <p>
-    <a href="https://mimi.yuxino.cn">Site web</a>
-    · <a href="https://github.com/yuxino/mimi/releases/latest"><strong>Télécharger la dernière version</strong></a>
-    · <a href="README_ZH.md">简体中文</a>
-  </p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="Dernière version"></a>
     <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="Nombre total de téléchargements"></a>
