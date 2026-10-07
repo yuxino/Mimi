@@ -1,12 +1,7 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
-  <h1>mimi</h1>
+  <h1>Mimi <sup>みみ</sup></h1>
   <p>系统声音或麦克风实时字幕与翻译，支持 Apple 芯片和 Intel Mac（macOS 13+），以及 Windows / Linux x86_64。</p>
-  <p>
-    <a href="https://mimi.yuxino.cn">官网</a>
-    · <a href="https://github.com/yuxino/mimi/releases/latest"><strong>下载最新版</strong></a>
-    · <a href="README.md">English</a>
-  </p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="最新版本"></a>
     <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="总下载量"></a>
