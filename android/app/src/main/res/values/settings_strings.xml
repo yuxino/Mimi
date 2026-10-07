@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_heading">设置</string>
+    <string name="settings_interface_language">界面语言</string>
+    <string name="settings_language_system">跟随系统</string>
+    <string name="settings_language_chinese" translatable="false">简体中文</string>
+    <string name="settings_language_failed">无法更改界面语言，请重试。</string>
     <string name="settings_back">返回</string>
     <string name="settings_tab_service">翻译服务</string>
     <string name="settings_tab_appearance">字幕外观</string>

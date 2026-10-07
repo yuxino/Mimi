@@ -53,6 +53,9 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   scoped by provider.
 - **History privacy** — disabled by default; opting into history retains only a bounded
   in-memory list. Disabling it or stopping the session clears retained subtitles.
+- **Interface language** — Settings offers Follow system, 简体中文, English and 日本語.
+  Changes apply immediately and persist after restart, independently of subtitle
+  source and target languages. Android 13+ also exposes this choice in system App languages.
 
 ## Requirements
 
@@ -118,7 +121,7 @@ build settings; this does not imply physical-device or all-provider validation.
 ## Local UI preview
 
 The Android interface reuses Mimi's existing character artwork and neutral
-light/dark palette. Languages can be changed directly on the home screen with Undo. Tapping the
+light/dark palette. Subtitle source and target languages can be changed directly on the home screen with Undo. Tapping the
 subtitle sample opens appearance settings, where changes are saved automatically
 and previewed without capture or a network session. The appearance screen also
 previews the compact card and immersive text mode. The service tab lists all eight integrations and opens a separate editor with only that service’s fields.
@@ -133,7 +136,13 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e theme dark app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
+
+The interface-language check requires a blank, idle emulator. It exercises the
+native picker, settings recreation and localized overlay controls without capture
+or provider requests. Use `-e leave_language zh-Hans`, force-stop the app, then run
+with `-e interface_language true -e expected_language zh-Hans` to check persistence.
 
 The checks exercise quick language selection/Undo, direct appearance access,
 auto-save with actual touch gestures, all eight service editors, write-only secret fields, rejected incomplete configurations, history clearing and the

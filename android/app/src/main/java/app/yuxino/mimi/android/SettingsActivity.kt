@@ -37,6 +37,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         applySystemBarInsets()
+        InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
         findViewById<View>(R.id.back).setOnClickListener { finish() }
         val tabs = findViewById<RadioGroup>(R.id.settings_tabs)
         fun showTab() {

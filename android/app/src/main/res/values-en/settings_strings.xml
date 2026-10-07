@@ -1,5 +1,8 @@
 <resources>
     <string name="settings_heading">Settings</string>
+    <string name="settings_interface_language">Interface language</string>
+    <string name="settings_language_system">Follow system</string>
+    <string name="settings_language_failed">Could not change the interface language. Try again.</string>
     <string name="settings_back">Back</string>
     <string name="settings_tab_service">Translation services</string>
     <string name="settings_tab_appearance">Caption appearance</string>

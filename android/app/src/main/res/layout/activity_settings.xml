@@ -79,6 +79,21 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
+            <TextView
+                style="@style/TextAppearance.Mimi.Label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:labelFor="@id/interface_language"
+                android:text="@string/settings_interface_language" />
+            <Spinner
+                android:id="@+id/interface_language"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="24dp"
+                android:background="@drawable/settings_field"
+                android:popupBackground="@color/mimi_bg"
+                android:spinnerMode="dropdown" />
             <LinearLayout
                 android:id="@+id/service_panel"
                 android:layout_width="match_parent"

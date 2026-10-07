@@ -35,6 +35,7 @@ class UiSmokeInstrumentation : Instrumentation() {
     private var immersiveHelp = false
     private var playbackCapture = false
     private var chatMock = false
+    private var interfaceLanguage = false
     private var captureArguments: Bundle? = null
     private var guideLocale = "en"
     private var overlayPreview = false
@@ -57,6 +58,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         chatMock = arguments?.getString("chatmock") == "true" || arguments?.getString("chatmock_saved") == "true" ||
             arguments?.getString("chatmock_connection") == "true"
         captureArguments = arguments
+        interfaceLanguage = arguments?.getString("interface_language") == "true"
         guideLocale = arguments?.getString("locale") ?: "en"
         overlayPreview = arguments?.getString("overlay_preview") == "true"
         expectLandscape = arguments?.getString("expect_landscape") == "true"
@@ -70,6 +72,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (interfaceLanguage) {
+            InterfaceLanguageChecks(this).run(captureArguments)
+            return
+        }
         if (playbackCapture) {
             PlaybackCaptureChecks(this).run(captureArguments)
             return
