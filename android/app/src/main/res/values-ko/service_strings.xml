@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="services_heading">번역 서비스</string>
+    <string name="services_hint">설정된 서비스를 누르면 전환됩니다.</string>
+    <string name="services_key_note">본인의 인증 정보를 사용하세요. 사용 요금은 서비스 제공업체에서 부과합니다. 인증 정보는 이 기기에 암호화하여 저장됩니다.</string>
+    <string name="service_active">사용 중</string>
+    <string name="service_configured">설정됨 · 눌러서 전환</string>
+    <string name="service_missing">설정 필요</string>
+    <string name="service_edit">설정</string>
+    <string name="service_configure">설정하기</string>
+    <string name="service_edit_named">%1$s 설정</string>
+    <string name="service_stop_first">서비스나 인증 정보를 변경하려면 먼저 자막을 중지하세요.</string>
+    <string name="service_secret_saved">저장됨 · 비워 두면 기존 값 유지</string>
+    <string name="service_endpoint">사용자 지정 엔드포인트 (선택)</string>
+    <string name="service_model">사용자 지정 모델 (선택)</string>
+    <string name="service_glossary">용어집 (선택)</string>
+    <string name="service_save_use">저장하고 선택</string>
+    <string name="service_required">필수 항목</string>
+    <string name="service_invalid">설정이 올바르지 않습니다. 엔드포인트와 인증 정보 항목을 확인하세요.</string>
+    <string name="service_save_failed">저장하지 못했습니다. 다시 시도하세요.</string>
+</resources>

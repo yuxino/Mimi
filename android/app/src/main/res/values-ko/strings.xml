@@ -1,0 +1,39 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">mimi</string>
+    <string name="settings_title">mimi 설정</string>
+    <string name="start_capture">자막 시작</string>
+    <string name="stop_capture">자막 중지</string>
+    <string name="open_settings">설정</string>
+    <string name="need_overlay_permission">시스템 설정에서 다른 앱 위에 표시를 허용하세요.</string>
+    <string name="need_audio_permission">다른 앱에서 재생되는 소리를 캡처하려면 Android의 오디오 녹음 권한이 필요합니다.</string>
+    <string name="capture_failed">자막 세션이 중지되었습니다. 권한, 서비스 설정, 네트워크를 확인한 후 다시 시도하세요.</string>
+    <string name="service_authentication_failed">서비스 인증에 실패했습니다. 설정에서 현재 서비스의 인증 정보와 접근 권한을 확인한 후 자막을 다시 시작하세요.</string>
+    <string name="need_api_key">먼저 설정에서 API 키를 추가하세요.</string>
+    <string name="notification_channel">자막 서비스</string>
+    <string name="notification_title">mimi가 재생 소리를 캡처하고 있습니다</string>
+    <string name="notification_text">실시간 자막 및 번역 실행 중</string>
+    <string name="stop_action">중지</string>
+    <string name="overlay_collapse">접기</string>
+    <string name="overlay_collapse_description">자막 창 접기</string>
+    <string name="overlay_font_description">자막 크기 조절</string>
+    <string name="overlay_language_description">언어 설정 열기</string>
+    <string name="overlay_enter_immersive">몰입</string>
+    <string name="overlay_exit_immersive">몰입 자막 종료</string>
+    <string name="overlay_exit_short">나가기</string>
+    <string name="lang_auto">자동 감지</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ja">日本語</string>
+    <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">Tencent Cloud에서 세션 설정을 거부했습니다. AppID와 선택한 언어를 확인하세요.</string>
+    <string name="tencent_service_activation_required">Tencent Cloud ASR 콘솔에서 실시간 음성 번역을 활성화하세요.</string>
+    <string name="tencent_quota_exhausted">Tencent Cloud 할당량이 소진되었거나 요금이 연체되었습니다. 콘솔에서 이용권, 잔액, 결제 상태를 확인하세요.</string>
+    <string name="tencent_capacity_exceeded">Tencent Cloud 동시 세션 한도에 도달했습니다. 다른 세션을 종료하거나 콘솔에서 동시 사용 한도를 조정하세요.</string>
+    <string name="tencent_provider_rejected">Tencent Cloud에서 세션을 거부했습니다. 콘솔에서 서비스 상태를 확인한 후 다시 시도하세요.</string>
+    <string name="overlay_font_size">크기 %1$d</string>
+    <string name="overlay_font_failed">자막 크기 설정을 열 수 없습니다. 다시 시도하세요.</string>
+    <string name="lang_shanghainese">상하이어</string>
+    <string name="lang_chinese_english">중국어 및 영어 (혼합)</string>
+    <string name="help_description">%1$s 도움말</string>
+</resources>

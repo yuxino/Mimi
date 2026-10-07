@@ -1,0 +1,39 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">mimi</string>
+    <string name="settings_title">Réglages de mimi</string>
+    <string name="start_capture">Démarrer les sous-titres</string>
+    <string name="stop_capture">Arrêter les sous-titres</string>
+    <string name="open_settings">Réglages</string>
+    <string name="need_overlay_permission">Autorisez l’affichage par-dessus les autres applications dans les réglages système.</string>
+    <string name="need_audio_permission">Android exige l’autorisation d’enregistrement audio pour capturer le son des applications.</string>
+    <string name="capture_failed">La session de sous-titres s’est arrêtée. Vérifiez les autorisations, le service et le réseau, puis réessayez.</string>
+    <string name="service_authentication_failed">Échec de l’authentification. Vérifiez les identifiants et les droits d’accès du service dans les réglages, puis redémarrez les sous-titres.</string>
+    <string name="need_api_key">Ajoutez d’abord une clé API dans les réglages.</string>
+    <string name="notification_channel">Service de sous-titres</string>
+    <string name="notification_title">mimi capture le son de lecture</string>
+    <string name="notification_text">Sous-titres et traduction en cours</string>
+    <string name="stop_action">Arrêter</string>
+    <string name="overlay_collapse">Réduire</string>
+    <string name="overlay_collapse_description">Réduire la fenêtre de sous-titres</string>
+    <string name="overlay_font_description">Ajuster la taille des sous-titres</string>
+    <string name="overlay_language_description">Ouvrir les réglages de langue</string>
+    <string name="overlay_enter_immersive">Immersif</string>
+    <string name="overlay_exit_immersive">Quitter les sous-titres immersifs</string>
+    <string name="overlay_exit_short">Quitter</string>
+    <string name="lang_auto">Détection automatique</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ja">日本語</string>
+    <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">Tencent Cloud a refusé la configuration de session. Vérifiez l’AppID et les langues choisies.</string>
+    <string name="tencent_service_activation_required">Activez la traduction vocale en temps réel dans la console ASR de Tencent Cloud.</string>
+    <string name="tencent_quota_exhausted">Le quota Tencent Cloud est épuisé ou un paiement est en retard. Vérifiez les forfaits, le solde et la facturation dans la console.</string>
+    <string name="tencent_capacity_exceeded">La limite de sessions Tencent Cloud simultanées est atteinte. Fermez d’autres sessions ou ajustez votre quota dans la console.</string>
+    <string name="tencent_provider_rejected">Tencent Cloud a refusé la session. Vérifiez l’état du service dans la console et réessayez.</string>
+    <string name="overlay_font_size">Taille %1$d</string>
+    <string name="overlay_font_failed">Impossible d’ouvrir le réglage de taille. Réessayez.</string>
+    <string name="lang_shanghainese">Shanghaïen</string>
+    <string name="lang_chinese_english">Chinois et anglais (mixte)</string>
+    <string name="help_description">Aide : %1$s</string>
+</resources>

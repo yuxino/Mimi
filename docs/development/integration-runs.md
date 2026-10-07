@@ -1302,3 +1302,111 @@
 - Sustained stability, Android hardware and billing eligibility remain
   unverified. The native evidence covers only the observed connection,
   subtitle and pause/resume run.
+
+### 2026-10-07 — Android interface language and playback-capture diagnosis
+
+- Source `0b9ea536`, debug APK 1.5.16. Blank ARM64 API 32 and API 35 emulators
+  passed the native picker checks for system/Chinese/English/Japanese, settings
+  recreation, force-stop/relaunch persistence and service-owned overlay labels.
+  Subtitle source/target and synthetic subtitle history remained unchanged.
+  Light/dark screenshots were inspected; API 35 also passed at 320 dp and 200%
+  font scale. Its system App languages setting synchronized back to the picker.
+  The adjacent settings/service-editor light smoke passed with eight screenshots.
+- Both Android variants passed 145 JVM tests, including actual JNI, and lint;
+  debug APK verification passed for all four ABIs. After integrating main,
+  `scripts/check.sh` passed: Rust 1,253 / 2 ignored, shared core 72 plus JNI,
+  frontend 2,005 across 129 files, strict checks and production build.
+- The configured emulator's Chrome 124 manifest explicitly disables playback
+  capture. Guest and host output were unmuted; a separate two-second AudioTrack
+  probe played all 96,000 frames. In isolated API 35 real playback capture,
+  allowed media yielded 53/53 nonzero chunks; opted-out playing media yielded
+  122 zero chunks and no nonzero chunks. Silence/recovery, fresh consent,
+  projection revocation, stop cleanup, restart and cancellation all passed,
+  using a discard sink with no microphone, credentials or provider requests.
+- Emulator playback also encountered process hangs/exits and System UI ANRs.
+  Vulkan was disabled and test VMs were run serially. The short successful
+  output/capture runs do not prove physical speaker audibility or sustained
+  emulator stability. The API 32 capture-probe attempt stopped at the newer
+  consent-dialog helper before capture; only its language checks passed.
+  Real-device, live-provider and sustained-session language changes remain open.
+
+### 2026-10-07 — Android desktop-language parity and live overlay controls
+
+- Final Android source `dab59785`, debug APK 1.5.16. The catalog now matches
+  desktop's seven interface languages plus Follow system; each translated
+  resource set contains all 258 translatable keys. Catalog, placeholders,
+  protocol tokens and Hans/Hant script/region selection have automated coverage.
+- Blank ARM64 API 32 and API 35 native runs passed all eight picker choices,
+  using `dab59785` and `08c1828b` respectively (the later one-line field-hint
+  cleanup was visually checked on API 32).
+  They cover settings recreation, service-editor/help localization and preservation of
+  subtitle source/target and nonempty synthetic history. API 32 retained French
+  across force-stop/relaunch; API 35 retained Traditional Chinese across both
+  force-stop and APK replacement. Both APIs also passed native control bounds at
+  320dp width, 200% system font scale and dark mode.
+- Overlay interaction runs on both APIs passed: truly empty compact windows are
+  hidden, the labeled font action opens only one slider, 16→18 updates actual
+  native text size, and a settings change to 22 updates the existing translation
+  to 25sp without restarting or losing history. Confirmed pairs deliberately
+  remain readable; the silence assertion clears the fixture before checking an
+  empty window. The first assertion incorrectly expected hiding the last
+  confirmed pair and was corrected rather than changing shared subtitle rules.
+- The adjacent speech/text-translation form run passed ten native light-mode
+  screenshots: provider selection, independent fields, local validation, help,
+  HTTP consent and discarded drafts. Large-font review also repaired clipped
+  service headings, required field labels, save actions and provider-help links.
+  No provider requests, capture or real credentials were involved in these runs.
+- Both Android variants passed 148 JVM tests, including actual JNI, and lint;
+  the debug APK passed all four ABI/alignment/license checks. Canonical
+  `scripts/check.sh` on the rebased desktop/shared baseline `482bc9d7` passed:
+  Rust 1,257 / 2 ignored, shared core 81 plus JNI, frontend 2,010 across 129 files,
+  formatting, Clippy, typecheck, lint, production build and diff checks. Subsequent
+  source changes affect Android UI and native UI checks only.
+- Comparable native [Before/After screenshots](https://github.com/yuxino/Mimi/pull/211)
+  show the empty background, font control and live settings. API 35 screenshots
+  use the same synthetic captions, locale, width and font scale. An earlier
+  simulator run also hit an activity ANR; retries completed with software GPU
+  rendering and serial VMs. Short UI checks do not establish sustained emulator
+  stability, physical speaker audibility, real-device acceptance or live-provider
+  subtitle quality/language switching. The separate Chrome playback-capture
+  opt-out evidence above remains the owning audio diagnosis.
+
+### 2026-10-08 — Android contextual help and recorded interaction review
+
+- Product source `a6ae4417` plus the seven-language save-help wording follow-up,
+  debug APK 1.5.16. API 35 native checks passed all seven languages at 320dp,
+  200% font scale and dark mode, including real mouse injection, keyboard focus,
+  touch, complete scrollable help and popup/anchor separation. All eight language
+  picker choices passed again after the final wording change. Normal-size help,
+  live overlay updates and ten independent-translation form states also passed.
+- A real hover failure came from Android's enlarged scrollbar mouse target
+  intercepting events over the help icon. The shared scroll adapter now yields
+  to visible interactive descendants, with hit testing relative to each root
+  window. Large-font service rows stack names/state above their configure action.
+  Both defects have native regression coverage; popup placement was not the
+  cause of this intercepted hover.
+- Both Android variants passed 148 JVM tests each, actual JNI, lint and APK
+  ABI/alignment/license checks after the wording and review-cleanup changes.
+  Canonical `scripts/check.sh` passed again on `18a19885`, after the final
+  wording, review cleanup and current-main merge: Rust 1,257 / 2 ignored,
+  shared core 81 plus JNI, frontend 2,010 across 129 files and strict checks.
+- Comparable images and native touch recordings are attached directly to
+  [PR #211](https://github.com/yuxino/Mimi/pull/211), outside the repository.
+  UI-only recordings use a blank emulator and no provider/capture; the manual
+  overlay fixture restores preferences, first-run flags and position afterward.
+  Silent screen recordings do not establish speaker audibility or live-provider
+  quality. Hardware and sustained-session acceptance remain separate checks.
+- The configured API 35 emulator retained its encrypted credentials after
+  updating the same APK with its original matching debug certificate. A first
+  software-GPU attempt exited with QEMU main-loop/CPU-thread timeout logs.
+  A serial host-GPU run then completed system consent, real Bilibili 9.13.0
+  playback capture through Alibaba Cloud, repeated English/Chinese overlay
+  updates and normal stop back to Ready. Source remained Auto and target Chinese;
+  no microphone or subtitle/audio retention was enabled. Android reported a
+  started, unmuted media AudioTrack, and the host output was also unmuted.
+- The PR includes five native UI recordings and a 68-second, original-speed
+  excerpt of that public-video playback check, plus the stopped state. The
+  excerpt demonstrates capture and subtitle delivery, not sentence accuracy or
+  latency acceptance: captions visibly lag the player's embedded subtitles.
+  No end-to-end timing metric was collected. Emulator hangs, physical-device
+  behavior, speaker audibility and sustained provider runs remain unaccepted.

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="services_heading">翻譯服務</string>
+    <string name="services_hint">已設定的服務點一下就能切換。</string>
+    <string name="services_key_note">使用你自己的服務商憑證，費用由服務商收取。憑證僅儲存在此裝置的加密儲存中。</string>
+    <string name="service_active">正在使用</string>
+    <string name="service_configured">已設定 · 點按切換</string>
+    <string name="service_missing">待設定</string>
+    <string name="service_edit">設定</string>
+    <string name="service_configure">設定</string>
+    <string name="service_edit_named">設定 %1$s</string>
+    <string name="service_stop_first">先停止字幕，再切換或修改服務。</string>
+    <string name="service_secret_saved">已儲存 · 留空保留原憑證</string>
+    <string name="service_endpoint">自訂連線地址（可選）</string>
+    <string name="service_model">自訂模型（可選）</string>
+    <string name="service_glossary">術語對照（可選）</string>
+    <string name="service_save_use">儲存並使用</string>
+    <string name="service_required">請填寫此項</string>
+    <string name="service_invalid">設定格式不正確，請檢查資源地址和憑證欄位。</string>
+    <string name="service_save_failed">未能儲存，請重試。</string>
+</resources>

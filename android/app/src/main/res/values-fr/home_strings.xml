@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="brand_description">Icône du personnage mimi</string>
+    <string name="home_kicker">Sous-titres et traduction en direct</string>
+    <string name="home_title">Sous-titres en direct</string>
+    <string name="home_description">Affiche des sous-titres pour le son lu par les autres applications. Certaines applications bloquent la capture audio.</string>
+    <string name="home_source">Langue parlée</string>
+    <string name="home_target">Traduire en</string>
+    <string name="home_service">Service de traduction</string>
+    <string name="home_service_unset">%1$s · à configurer</string>
+    <string name="home_service_ready">%1$s · configuré</string>
+    <string name="home_setup_action">Configurer le service de traduction</string>
+    <string name="home_setup_status">Première utilisation</string>
+    <string name="home_setup_hint">Choisissez un service et ajoutez vos identifiants.</string>
+    <string name="home_ready_status">Prêt à démarrer</string>
+    <string name="home_ready_hint">Les sous-titres apparaîtront par-dessus les autres applications après le démarrage.</string>
+    <string name="home_overlay_hint">Autorisez ensuite l’affichage par-dessus les autres applications dans les réglages système.</string>
+    <string name="home_starting_status">En attente d’autorisation</string>
+    <string name="preview_label">Aperçu des sous-titres</string>
+    <string name="preview_example">Exemple</string>
+    <string name="preview_source">This is a sample subtitle.</string>
+    <string name="preview_zh">这是一条示例字幕。</string>
+    <string name="preview_en">This is a sample subtitle.</string>
+    <string name="preview_ja">字幕の表示例です。</string>
+    <string name="home_edit_appearance">Ajuster l’apparence des sous-titres</string>
+    <string name="preview_edit">Exemple · ajuster l’apparence ›</string>
+    <string name="language_source_title">Quelle langue est parlée ?</string>
+    <string name="language_target_title">Dans quelle langue souhaitez-vous les sous-titres ?</string>
+    <string name="language_sheet_hint">Enregistré automatiquement, utilisé au prochain démarrage des sous-titres.</string>
+    <string name="language_saved">Défini sur %1$s</string>
+    <string name="language_saved_next_session">%1$s sera utilisé à la prochaine session</string>
+    <string name="undo">Annuler</string>
+    <string name="capture_audio_detected">Son de lecture détecté</string>
+    <string name="capture_waiting">En attente du son de lecture</string>
+    <string name="capture_no_pcm">Aucune trame audio reçue pour le moment</string>
+    <string name="capture_silent">Aucun son exploitable détecté</string>
+    <string name="capture_no_sound_hint">Aucun son exploitable. Vérifiez la lecture ; l’application source peut limiter la capture.</string>
+    <string name="capture_source_hint">Source : lecture des applications. La détection du son ne confirme pas la reconnaissance vocale.</string>
+    <string name="copy_capture_diagnostics">Copier le diagnostic de capture</string>
+    <string name="capture_diagnostics_copied">Copié sans audio, sous-titres ni identifiants</string>
+    <string name="capture_diagnostics_copy_failed">Impossible de copier le diagnostic. Réessayez.</string>
+</resources>

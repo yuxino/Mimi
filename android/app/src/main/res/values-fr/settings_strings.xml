@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="settings_heading">Réglages</string>
+    <string name="settings_interface_language">Langue de l’interface</string>
+    <string name="settings_language_system">Langue du système</string>
+    <string name="settings_language_failed">Impossible de changer la langue de l’interface. Réessayez.</string>
+    <string name="settings_back">Retour</string>
+    <string name="settings_tab_service">Services</string>
+    <string name="settings_tab_appearance">Sous-titres</string>
+    <string name="settings_advanced">Réglages avancés</string>
+    <string name="settings_font">Taille des sous-titres</string>
+    <string name="settings_color">Couleur des sous-titres</string>
+    <string name="settings_opacity">Opacité des sous-titres</string>
+    <string name="settings_background">Opacité du fond</string>
+    <string name="settings_immersive">Sous-titres immersifs</string>
+    <string name="settings_immersive_help">Texte seul, sans bloquer les commandes vidéo. Les changements sont immédiats ; Quitter se trouve à droite.</string>
+    <string name="settings_history">Conserver l’historique des sous-titres</string>
+    <string name="settings_history_help">Désactivé par défaut. L’historique reste limité à cette session et s’efface à la désactivation ou à l’arrêt.</string>
+    <string name="settings_reset">Réinitialiser la position des sous-titres</string>
+    <string name="settings_reset_done">Position rétablie en bas au centre</string>
+    <string name="settings_save">Enregistrer les réglages du service</string>
+    <string name="settings_saved">Enregistré</string>
+    <string name="settings_font_value">%1$d sp</string>
+    <string name="settings_percent_value">%1$d%%</string>
+    <string name="settings_history_off">Désactivé</string>
+    <string name="settings_history_value">%1$d lignes</string>
+    <string name="settings_color_white">Blanc (par défaut)</string>
+    <string name="settings_color_teal">Bleu-vert</string>
+    <string name="settings_color_yellow">Jaune</string>
+    <string name="settings_color_green">Vert</string>
+    <string name="settings_color_pink">Rose</string>
+    <string name="settings_advanced_collapse">Réduire les réglages avancés</string>
+    <string name="settings_more">Plus d’options</string>
+    <string name="settings_more_collapse">Moins d’options</string>
+</resources>

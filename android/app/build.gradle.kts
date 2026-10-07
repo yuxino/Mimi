@@ -128,6 +128,8 @@ tasks.withType<Test>().configureEach {
     dependsOn(buildSharedCoreHost)
     inputs.dir(sharedCoreHostOutput).withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty("java.library.path", sharedCoreHostOutput.get().asFile.absolutePath)
+    systemProperty("mimi.repositoryRoot", repositoryRoot.absolutePath)
+    inputs.file(repositoryRoot.resolve("src/lib/i18n.ts"))
 }
 
 dependencies {

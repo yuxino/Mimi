@@ -33,8 +33,10 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   (position persists). Tap it to open a translucent reading panel with the
   current source and translation; confirmed lines appear there only when
   bounded history is enabled in settings. The panel has a language shortcut,
-  font-size control, collapse action, and immersive toggle. Its compact card has adjustable background alpha
-  (0–90 %), text color presets, font size, and whole-window opacity. An optional
+  a labeled font-size slider, collapse action, and immersive toggle. Its compact card has adjustable background alpha
+  (0–90 %), text color presets, font size, and whole-window opacity.
+  Appearance changes apply immediately to an existing overlay; empty live captions
+  do not leave a background-only floating window. An optional
   immersive mode shows plain text with a contrast shadow and passes touches
   through to the app below. A small control on the right edge can be moved
   vertically and exits immersive
@@ -53,6 +55,16 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   scoped by provider.
 - **History privacy** — disabled by default; opting into history retains only a bounded
   in-memory list. Disabling it or stopping the session clears retained subtitles.
+- **Interface language** — Settings offers Follow system and the same seven interface
+  languages as desktop: 简体中文, 繁體中文, English, 日本語, Deutsch, 한국어 and Français.
+  Changes apply immediately and persist after restart, independently of subtitle
+  source and target languages. Android 13+ also exposes this choice in system App languages.
+  Unsupported system languages fall back to English.
+
+See the [native Before/After comparison](https://github.com/yuxino/Mimi/pull/211)
+for the empty-overlay, live font-size and help-icon repairs. Optional explanations
+appear on mouse hover/long press; tap a help icon to read scrollable details.
+Setup, permission and audio-recovery instructions remain visible.
 
 ## Requirements
 
@@ -81,6 +93,14 @@ Gradle 8.10.2 and verifies its distribution checksum. minSdk 29, targetSdk 35,
 Kotlin 2.0, AGP 8.7. CI tests/lints both variants and produces a debug APK and an
 unsigned release APK. The unsigned artifact is for signing, not installation;
 device capture remains a separate manual check.
+
+Keep the same debug signing keystore when updating an existing development
+installation. An alternate `ANDROID_USER_HOME` can select a different debug
+key. Before `adb install -r`, compare the installed APK's certificate with the
+new APK using `apksigner verify --print-certs`. If Android reports
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`, use the existing matching debug key;
+do not uninstall the configured app to bypass the mismatch. Preserve its
+encrypted credentials and settings. Release signing remains separate.
 
 ### Signed release
 
@@ -118,7 +138,7 @@ build settings; this does not imply physical-device or all-provider validation.
 ## Local UI preview
 
 The Android interface reuses Mimi's existing character artwork and neutral
-light/dark palette. Languages can be changed directly on the home screen with Undo. Tapping the
+light/dark palette. Subtitle source and target languages can be changed directly on the home screen with Undo. Tapping the
 subtitle sample opens appearance settings, where changes are saved automatically
 and previewed without capture or a network session. The appearance screen also
 previews the compact card and immersive text mode. The service tab lists all eight integrations and opens a separate editor with only that service’s fields.
@@ -133,7 +153,13 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e theme dark app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
+
+The interface-language check requires a blank, idle emulator. It exercises the
+native picker, settings recreation and localized overlay controls without capture
+or provider requests. Use `-e leave_language zh-Hans`, force-stop the app, then run
+with `-e interface_language true -e expected_language zh-Hans` to check persistence.
 
 The checks exercise quick language selection/Undo, direct appearance access,
 auto-save with actual touch gestures, all eight service editors, write-only secret fields, rejected incomplete configurations, history clearing and the

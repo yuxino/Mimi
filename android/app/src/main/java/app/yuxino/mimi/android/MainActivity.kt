@@ -46,6 +46,9 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(R.layout.activity_main)
         applySystemBarInsets()
+        findViewById<LinearLayout>(R.id.home_heading).addView(HelpUi.heading(this,
+            getString(R.string.home_title), getString(R.string.home_description),
+            26f, "home-help"))
 
         guide = FirstRunGuide(this) { beginStartFlow(permissionOnly = guide.step == 2) }
         startStop = findViewById(R.id.start_stop)
@@ -132,6 +135,8 @@ class MainActivity : AppCompatActivity() {
             startStop.isEnabled = false
             findViewById<TextView>(R.id.status).setText(R.string.service_save_failed)
             findViewById<TextView>(R.id.status_hint).setText(R.string.guide_storage_unavailable)
+            findViewById<View>(R.id.status_hint).visibility = View.VISIBLE
+            findViewById<View>(R.id.status_help).visibility = View.GONE
         }
     }
 
@@ -161,13 +166,22 @@ class MainActivity : AppCompatActivity() {
             !keyOk -> R.string.home_setup_status
             else -> R.string.home_ready_status
         })
-        findViewById<TextView>(R.id.status_hint).setText(when {
+        val hint = when {
             running && (captureState == CaptureHealth.State.NO_PCM || captureState == CaptureHealth.State.SILENT) -> R.string.capture_no_sound_hint
             running -> R.string.capture_source_hint
             !keyOk -> R.string.home_setup_hint
             !overlayOk -> R.string.home_overlay_hint
             else -> R.string.home_ready_hint
-        })
+        }
+        val needsAction = !running && (!keyOk || !overlayOk) ||
+            running && (captureState == CaptureHealth.State.NO_PCM || captureState == CaptureHealth.State.SILENT)
+        findViewById<TextView>(R.id.status_hint).apply {
+            setText(hint); visibility = if (needsAction) View.VISIBLE else View.GONE
+        }
+        findViewById<android.widget.ImageButton>(R.id.status_help).apply {
+            HelpUi.bind(this@MainActivity, this, this@MainActivity.findViewById<TextView>(R.id.status).text.toString(), getString(hint))
+            visibility = if (needsAction) View.GONE else View.VISIBLE
+        }
         findViewById<TextView>(R.id.source_summary).text = languageLabel(SettingsStore.sourceLang(this))
         val originalOnly = SettingsStore.originalTextOnly(this)
         findViewById<TextView>(R.id.target_summary).apply {
@@ -199,9 +213,9 @@ class MainActivity : AppCompatActivity() {
             else provider.targetsForTranslation(translation).filter { provider.supportsPair(previousSource, it, translation) }
         val dialog = BottomSheetDialog(this)
         val content = layoutInflater.inflate(R.layout.language_sheet, FrameLayout(this), false)
-        content.findViewById<TextView>(R.id.language_heading).setText(
-            if (source) R.string.language_source_title else R.string.language_target_title,
-        )
+        content.findViewById<LinearLayout>(R.id.language_help_heading).addView(HelpUi.heading(this,
+            getString(if (source) R.string.language_source_title else R.string.language_target_title),
+            getString(R.string.language_sheet_hint), 22f, "language-help"))
         val options = content.findViewById<LinearLayout>(R.id.language_options)
         for (code in choices) {
             val row = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {

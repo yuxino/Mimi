@@ -1,1 +1,1 @@
-<resources><item type="id" name="advanced_toggle"/><item type="id" name="save"/></resources>
+<resources><item type="id" name="advanced_toggle"/><item type="id" name="save"/><item type="id" name="active_help_dialog"/><item type="id" name="help_hover"/><item type="id" name="active_help_hover"/></resources>

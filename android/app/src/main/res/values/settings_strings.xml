@@ -1,33 +1,38 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="settings_heading">设置</string>
-    <string name="settings_back">返回</string>
-    <string name="settings_tab_service">翻译服务</string>
-    <string name="settings_tab_appearance">字幕外观</string>
-    <string name="settings_advanced">高级设置</string>
-    <string name="settings_font">字幕字号</string>
-    <string name="settings_color">字幕颜色</string>
-    <string name="settings_opacity">字幕不透明度</string>
-    <string name="settings_background">背景不透明度</string>
-    <string name="settings_immersive">沉浸字幕</string>
-    <string name="settings_immersive_help">只显示文字，不挡住视频操作。切换后立即生效；右侧可退出沉浸。</string>
-    <string name="settings_history">保留历史字幕</string>
-    <string name="settings_history_help">默认关闭。开启后仅在本次会话内保留；关闭或停止字幕后清除。</string>
-    <string name="settings_reset">恢复字幕位置</string>
-    <string name="settings_reset_done">已恢复到底部居中</string>
-    <string name="settings_save">保存服务设置</string>
-    <string name="settings_saved">已保存</string>
+    <string name="settings_heading">Settings</string>
+    <string name="settings_language_chinese" translatable="false">简体中文</string>
+    <string name="settings_language_traditional" translatable="false">繁體中文</string>
+    <string name="settings_language_german" translatable="false">Deutsch</string>
+    <string name="settings_language_french" translatable="false">Français</string>
+    <string name="settings_interface_language">Interface language</string>
+    <string name="settings_language_system">Follow system</string>
+    <string name="settings_language_failed">Could not change the interface language. Try again.</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_tab_service">Translation services</string>
+    <string name="settings_tab_appearance">Caption appearance</string>
+    <string name="settings_advanced">Advanced settings</string>
+    <string name="settings_font">Caption size</string>
+    <string name="settings_color">Caption color</string>
+    <string name="settings_opacity">Caption opacity</string>
+    <string name="settings_background">Background opacity</string>
+    <string name="settings_immersive">Immersive captions</string>
+    <string name="settings_immersive_help">Text only, leaving video controls accessible. Changes apply immediately; Exit is on the right.</string>
+    <string name="settings_history">Keep caption history</string>
+    <string name="settings_history_help">Off by default. History stays only for this session and clears when disabled or stopped.</string>
+    <string name="settings_reset">Reset caption position</string>
+    <string name="settings_reset_done">Restored to bottom center</string>
+    <string name="settings_save">Save service settings</string>
+    <string name="settings_saved">Saved</string>
     <string name="settings_font_value">%1$d sp</string>
     <string name="settings_percent_value">%1$d%%</string>
-    <string name="settings_history_off">关闭</string>
-    <string name="settings_history_value">%1$d 条</string>
-    <string name="settings_color_white">白色（默认）</string>
-    <string name="settings_color_teal">青绿</string>
-    <string name="settings_color_yellow">黄色</string>
-    <string name="settings_color_green">绿色</string>
-    <string name="settings_color_pink">粉色</string>
-    <string name="settings_advanced_collapse">收起高级设置</string>
-    <string name="settings_more">更多选项</string>
-    <string name="settings_more_collapse">收起更多选项</string>
-    <string name="settings_autosave">自动保存 · 下次开始字幕时生效</string>
+    <string name="settings_history_off">Off</string>
+    <string name="settings_history_value">%1$d lines</string>
+    <string name="settings_color_white">White (default)</string>
+    <string name="settings_color_teal">Teal</string>
+    <string name="settings_color_yellow">Yellow</string>
+    <string name="settings_color_green">Green</string>
+    <string name="settings_color_pink">Pink</string>
+    <string name="settings_advanced_collapse">Collapse advanced settings</string>
+    <string name="settings_more">More options</string>
+    <string name="settings_more_collapse">Fewer options</string>
 </resources>

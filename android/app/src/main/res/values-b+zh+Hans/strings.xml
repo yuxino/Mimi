@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">mimi</string>
+    <string name="settings_title">mimi 设置</string>
+    <string name="start_capture">开始字幕</string>
+    <string name="stop_capture">停止字幕</string>
+    <string name="open_settings">设置</string>
+    <string name="need_overlay_permission">需要悬浮窗权限，请在系统设置中允许「显示在其他应用上层」。</string>
+    <string name="need_audio_permission">Android 需要录音权限才能采集其他应用播放的声音。</string>
+    <string name="capture_failed">字幕会话已停止，请检查权限、服务设置或网络后重试。</string>
+    <string name="service_authentication_failed">服务认证失败。请在设置中检查当前服务的凭据和访问权限，再开始字幕。</string>
+    <string name="need_api_key">请先在设置中填写 API Key。</string>
+    <string name="notification_channel">字幕服务</string>
+    <string name="notification_title">mimi 正在捕获系统音频</string>
+    <string name="notification_text">实时字幕与翻译运行中</string>
+    <string name="stop_action">停止</string>
+    <string name="overlay_collapse">收起</string>
+    <string name="overlay_collapse_description">收起字幕浮窗</string>
+    <string name="overlay_font_description">调整字幕字号</string>
+    <string name="overlay_language_description">打开语言设置</string>
+    <string name="overlay_enter_immersive">沉浸</string>
+    <string name="overlay_exit_immersive">退出沉浸</string>
+    <string name="overlay_exit_short">退出</string>
+    <string name="lang_auto">自动检测</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ja">日本語</string>
+    <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">腾讯云拒绝了会话配置。请检查 AppID 和所选语言。</string>
+    <string name="tencent_service_activation_required">请在腾讯云语音识别控制台开通实时语音翻译服务。</string>
+    <string name="tencent_quota_exhausted">腾讯云额度不足或账号欠费。请在控制台检查资源包、余额和计费状态。</string>
+    <string name="tencent_capacity_exceeded">腾讯云并发会话已达上限。请关闭其他会话后重试，或在控制台调整并发额度。</string>
+    <string name="tencent_provider_rejected">腾讯云拒绝了会话。请在控制台检查服务状态后重试。</string>
+    <string name="overlay_font_size">字号 %1$d</string>
+    <string name="overlay_font_failed">无法打开字号设置，请重试。</string>
+    <string name="lang_shanghainese">上海话</string>
+    <string name="lang_chinese_english">中文与英语（混合）</string>
+    <string name="help_description">%1$s：帮助</string>
+</resources>

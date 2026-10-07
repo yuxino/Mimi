@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_description">mimi 官方角色图标</string>
+    <string name="home_kicker">实时字幕与翻译</string>
+    <string name="home_title">实时字幕</string>
+    <string name="home_description">为其他应用正在播放的声音显示字幕。部分应用可能不允许采集。</string>
+    <string name="home_source">原声语言</string>
+    <string name="home_target">翻译为</string>
+    <string name="home_service">翻译服务</string>
+    <string name="home_service_unset">%1$s · 待配置</string>
+    <string name="home_service_ready">%1$s · 已配置</string>
+    <string name="home_setup_action">配置翻译服务</string>
+    <string name="home_setup_status">首次使用</string>
+    <string name="home_setup_hint">先选择翻译服务，填入你自己的服务商凭证。</string>
+    <string name="home_ready_status">准备就绪</string>
+    <string name="home_ready_hint">开启后，字幕会显示在其他应用上方。</string>
+    <string name="home_overlay_hint">下一步将开启悬浮窗权限。</string>
+    <string name="home_starting_status">等待授权</string>
+    <string name="preview_label">字幕预览</string>
+    <string name="preview_example">示例内容</string>
+    <string name="preview_source">This is a sample subtitle.</string>
+    <string name="preview_zh">这是一条示例字幕。</string>
+    <string name="preview_en">This is a sample subtitle.</string>
+    <string name="preview_ja">字幕の表示例です。</string>
+    <string name="home_edit_appearance">调整字幕外观</string>
+    <string name="preview_edit">示例 · 调整外观 ›</string>
+    <string name="language_source_title">原声是什么语言？</string>
+    <string name="language_target_title">想看哪种语言的字幕？</string>
+    <string name="language_sheet_hint">选择后自动保存，下次开始字幕时使用。</string>
+    <string name="language_saved">已设为 %1$s</string>
+    <string name="language_saved_next_session">下次开始字幕时将使用 %1$s</string>
+    <string name="undo">撤销</string>
+    <string name="capture_audio_detected">已检测到播放声音</string>
+    <string name="capture_waiting">正在等待播放声音</string>
+    <string name="capture_no_pcm">暂未收到音频数据</string>
+    <string name="capture_silent">未检测到可用声音</string>
+    <string name="capture_no_sound_hint">未检测到可用声音。请确认正在播放；来源应用可能限制采音。</string>
+    <string name="capture_source_hint">来源：应用播放声音。检测到声音不代表已识别到语音。</string>
+    <string name="copy_capture_diagnostics">复制采音诊断</string>
+    <string name="capture_diagnostics_copied">已复制，不含音频、字幕或凭证</string>
+    <string name="capture_diagnostics_copy_failed">无法复制诊断，请重试。</string>
+</resources>

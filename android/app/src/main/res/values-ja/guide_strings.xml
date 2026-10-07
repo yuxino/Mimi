@@ -1,14 +1,14 @@
 <resources>
     <string name="guide_open">はじめての使い方</string>
-    <string name="guide_intro">翻訳サービスを選ぶ</string>
-    <string name="guide_intro_hint">mimi は再生中の音声を選んだサービスに送り、画面に翻訳を表示します。</string>
+    <string name="guide_intro">翻訳サービスを選択</string>
+    <string name="guide_intro_hint">取得を開始すると、再生音声が音声認識のために選択したサービスへ送信されます。</string>
     <string name="guide_saved_hint">サービスの認証情報を端末の暗号化ストレージに保存します。保存だけでは接続も認証確認も行いません。</string>
     <string name="guide_saved">認証情報を保存済み · 接続は試用時に確認</string>
     <string name="guide_missing">このサービスの認証情報は未保存です</string>
     <string name="guide_credentials">認証情報を入力・変更</string>
     <string name="guide_check_permissions">端末の権限を確認</string>
     <string name="guide_permission_title">画面に字幕を表示する</string>
-    <string name="guide_permission_audio">再生音声の取得にも Android の録音権限が必要です。mimi はメディアとゲームの再生音声だけを取得し、マイクは使用しません。</string>
+    <string name="guide_permission_audio">ほかのアプリの再生音声を取得するには、Android の録音権限が必要です。</string>
     <string name="guide_permission_hint">重ねて表示と音声の権限を許可してから、画面共有をオンにしてください。後で続けることもできます。</string>
     <string name="guide_grant">端末の権限を許可</string>
     <string name="guide_trial_next">試用に進む</string>
@@ -19,9 +19,8 @@
     <string name="guide_capture_limits">音声の共有を禁止するアプリもあります。DRM コンテンツ、通話、取得を拒否するアプリの音声は取得できません。mimi はこれらの制限を守ります。</string>
     <string name="guide_see_caption">字幕を確認</string>
     <string name="guide_start_trial">試用開始 · 画面を共有</string>
-    <string name="guide_complete_title">最初の字幕が届きました</string>
+    <string name="guide_complete_title">字幕を表示中</string>
     <string name="guide_wait_caption_title">翻訳を待っています</string>
-    <string name="guide_complete_hint">そのまま視聴できます。</string>
     <string name="guide_stopped">画面共有が終了しました。もう一度オンにしてください。</string>
     <string name="guide_finish">完了</string>
     <string name="guide_waiting_back">待ちながら再生画面に戻る</string>
@@ -41,13 +40,13 @@
     <string name="guide_official">公式の認証情報ガイド</string>
     <string name="guide_billing">利用料金 · 公式案内</string>
     <string name="guide_no_browser">リンクを開くブラウザがありません</string>
-    <string name="guide_local_save">保存は端末への記録のみを確認します。試用でサービスに接続します。料金は公式案内をご確認ください。</string>
+    <string name="guide_local_save">設定を保存しても、サービスには接続しません。字幕を開始すると、サービスの利用料金が発生する場合があります。</string>
     <string name="guide_immersive">没入字幕</string>
     <string name="guide_immersive_hint">字幕の文字だけを表示し、動画の操作はそのまま使えます。右側の「退出」で字幕パネルに戻るか、設定でオフにします。退出ボタンは上下に移動できます。</string>
     <string name="guide_understood">わかりました</string>
     <string name="guide_progress">はじめての使い方 · %1$d / 5</string>
     <string name="guide_continue_provider">続ける · %1$s</string>
-    <string name="guide_connect">%1$s に接続</string>
+    <string name="guide_connect">%1$s を設定</string>
     <string name="guide_permission_states">重ねて表示：%1$s\n音声の権限：%2$s\n画面共有：%3$s（毎回確認）</string>
     <string name="guide_trial_hint">動画やゲームで声のある部分を数秒再生してください。開始すると %1$s に接続し、利用料金がかかる場合があります。</string>
     <string name="guide_no_pcm">音声フレームが届いていません · 画面共有を確認</string>

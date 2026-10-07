@@ -1,5 +1,8 @@
 <resources>
     <string name="settings_heading">設定</string>
+    <string name="settings_interface_language">表示言語</string>
+    <string name="settings_language_system">システムに合わせる</string>
+    <string name="settings_language_failed">表示言語を変更できませんでした。もう一度お試しください。</string>
     <string name="settings_back">戻る</string>
     <string name="settings_tab_service">翻訳サービス</string>
     <string name="settings_tab_appearance">字幕の外観</string>
@@ -28,5 +31,4 @@
     <string name="settings_advanced_collapse">詳細設定を閉じる</string>
     <string name="settings_more">その他の設定</string>
     <string name="settings_more_collapse">その他の設定を閉じる</string>
-    <string name="settings_autosave">自動保存 · 次のセッションから適用</string>
 </resources>

@@ -11,6 +11,12 @@ These project rules apply to implementation and review.
 - Start with the existing design tokens, components, icons and nearby screens.
   Keep the established black, white and neutral-gray visual language. Use
   status colors only for a concrete state; preserve existing provider branding.
+- Name the actual function, state or action in plain language. Do not use slogans,
+  promises or personified service names such as “translation partner”. Preview
+  captions use ordinary sample text. Describe only capabilities available on
+  that platform; omit unsupported features from product copy. Android playback
+  capture still needs the system audio-recording permission, so explain that
+  requirement where permission is requested.
 - Make the title, current state, main action and detail areas easy to distinguish.
   Group related controls, use consistent button sizes and align actions right.
   Do not scatter buttons across large blank areas or add cards to every row.
@@ -142,3 +148,41 @@ pause, expand and close buttons uncovered at the minimum width in every UI
 language. Use a short gesture hint when the expanded instructions do not fit;
 retain a complete accessible action. Verify geometry with the actual overlay
 components and confirm the affected gesture in the signed native app.
+
+For Android, appearance preferences must refresh the existing service-owned
+subtitle views. Verify actual native text size after slider input; a changed
+saved integer or preview alone does not establish a live update. Preserve
+subtitle history and the reader's position for ordinary appearance changes.
+An empty live-caption flag is insufficient to show a padded overlay: require a
+nonblank displayed caption or actionable status, while retaining expanded
+controls and the immersive exit during silence. Check all seven interface
+languages at normal and large font scales; fixed-height labels and a nominal
+two-row toolbar can still clip long translations. Language resources, picker
+and system locale configuration must match the owning desktop language catalog.
+
+Android help icons show explanatory copy on native pointer hover/long press and
+open the same scrollable details on tap or keyboard activation. Keep a labeled
+48dp touch target beside the heading, and one help dialog per activity. Check
+actual hover dismissal and icon/label geometry at large font scales. Optional
+ready/running explanations stay in help; setup, permission, silent-capture and
+storage recovery stay visible. First-run audio-sending and charge disclosures
+remain visible before the user starts a session.
+
+Android's default tooltip can ellipsize a complete explanation after three lines,
+even when its tooltipText is intact. Use the shared bounded, scrollable help
+popup; check the rendered line ellipsis and an actual hover screenshot. Native
+UI tests must inject mouse pointer properties through the system input channel
+and restore fixtures on assertion failure.
+
+Before/After screenshots must show stable native frames: wait for the owning
+activity to regain focus and for modal exit/entry animations before capturing.
+Inspect every saved image against its scenario; a successful file write or test
+result does not prove that a screenshot shows the intended page.
+
+Android expands the native scrollbar's mouse hit area beyond its painted track.
+At narrow widths and large fonts this can intercept hover over a visible help
+button. Use `ControlScrollView` for native product scroll containers: controls
+receive hover within their clipped visible bounds, while the scrollbar keeps
+its handling elsewhere. Account for the root window offset in dialogs. Verify
+actual system-injected mouse movement across the icon, keyboard focus, touch,
+popup dismissal and popup/anchor separation; label geometry alone misses this.

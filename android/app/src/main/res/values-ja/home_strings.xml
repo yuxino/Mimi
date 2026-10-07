@@ -1,8 +1,8 @@
 <resources>
     <string name="brand_description">mimi のキャラクター</string>
     <string name="home_kicker">字幕と翻訳</string>
-    <string name="home_title">一言ずつ、わかる。</string>
-    <string name="home_description">動画、配信、ゲームの再生に字幕を添えます。</string>
+    <string name="home_title">リアルタイム字幕</string>
+    <string name="home_description">ほかのアプリで再生中の音声を字幕で表示します。音声の取得を許可しないアプリもあります。</string>
     <string name="home_source">元の音声</string>
     <string name="home_target">翻訳先</string>
     <string name="home_service">翻訳サービス</string>
@@ -15,13 +15,12 @@
     <string name="home_ready_hint">開始すると他のアプリの上に字幕が表示されます。</string>
     <string name="home_overlay_hint">次にシステム設定で重ねて表示を許可します。</string>
     <string name="home_starting_status">許可を待っています</string>
-    <string name="home_privacy">再生音声のみ · マイクは使用しません</string>
     <string name="preview_label">字幕プレビュー</string>
     <string name="preview_example">サンプル</string>
-    <string name="preview_source">A little closer to the world.</string>
-    <string name="preview_zh">离世界，再近一点。</string>
-    <string name="preview_en">A little closer to the world.</string>
-    <string name="preview_ja">世界に、もう少し近づく。</string>
+    <string name="preview_source">This is a sample subtitle.</string>
+    <string name="preview_zh">这是一条示例字幕。</string>
+    <string name="preview_en">This is a sample subtitle.</string>
+    <string name="preview_ja">字幕の表示例です。</string>
     <string name="home_edit_appearance">字幕の外観を調整</string>
     <string name="preview_edit">サンプル · 外観を調整 ›</string>
     <string name="language_source_title">元の音声の言語は？</string>
@@ -35,7 +34,7 @@
     <string name="capture_no_pcm">音声フレームはまだ届いていません</string>
     <string name="capture_silent">有効な音声を検出できません</string>
     <string name="capture_no_sound_hint">有効な音声がありません。再生を確認してください。元のアプリが取得を制限している場合があります。</string>
-    <string name="capture_source_hint">取得元：アプリの再生音声 · マイクは使いません。音声の検出だけでは認識成功を確認できません。</string>
+    <string name="capture_source_hint">取得元：アプリの再生音声。音声の検出だけでは認識成功を確認できません。</string>
     <string name="copy_capture_diagnostics">取得診断をコピー</string>
     <string name="capture_diagnostics_copied">音声、字幕、認証情報を含めずコピーしました</string>
     <string name="capture_diagnostics_copy_failed">診断をコピーできませんでした。もう一度お試しください。</string>

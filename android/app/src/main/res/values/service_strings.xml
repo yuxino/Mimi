@@ -1,21 +1,20 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="services_heading">翻译服务</string>
-    <string name="services_hint">已配置的服务点一下就能切换。</string>
-    <string name="services_key_note">使用你自己的服务商凭证，费用由服务商收取。凭证仅保存在此设备的加密存储中。</string>
-    <string name="service_active">正在使用</string>
-    <string name="service_configured">已配置 · 点按切换</string>
-    <string name="service_missing">待配置</string>
-    <string name="service_edit">设置</string>
-    <string name="service_configure">配置</string>
-    <string name="service_edit_named">配置 %1$s</string>
-    <string name="service_stop_first">先停止字幕，再切换或修改服务。</string>
-    <string name="service_secret_saved">已保存 · 留空保留原凭证</string>
-    <string name="service_endpoint">自定义连接地址（可选）</string>
-    <string name="service_model">自定义模型（可选）</string>
-    <string name="service_glossary">术语对照（可选）</string>
-    <string name="service_save_use">保存并使用</string>
-    <string name="service_required">请填写此项</string>
-    <string name="service_invalid">配置格式不正确，请检查资源地址和凭证字段。</string>
-    <string name="service_save_failed">未能保存，请重试。</string>
+    <string name="services_heading">Translation services</string>
+    <string name="services_hint">Tap a configured service to switch.</string>
+    <string name="services_key_note">Use your own credentials. The provider charges for usage. Credentials stay in encrypted storage on this device.</string>
+    <string name="service_active">Active</string>
+    <string name="service_configured">Configured · tap to switch</string>
+    <string name="service_missing">Needs setup</string>
+    <string name="service_edit">Settings</string>
+    <string name="service_configure">Configure</string>
+    <string name="service_edit_named">Configure %1$s</string>
+    <string name="service_stop_first">Stop captions before changing services or credentials.</string>
+    <string name="service_secret_saved">Saved · leave blank to keep the existing value</string>
+    <string name="service_endpoint">Custom endpoint (optional)</string>
+    <string name="service_model">Custom model (optional)</string>
+    <string name="service_glossary">Term glossary (optional)</string>
+    <string name="service_save_use">Save and select</string>
+    <string name="service_required">Required</string>
+    <string name="service_invalid">Invalid configuration. Check the endpoint and credential fields.</string>
+    <string name="service_save_failed">Could not save. Please retry.</string>
 </resources>
