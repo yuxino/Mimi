@@ -29,6 +29,11 @@ Rules:
   `CARGO_TARGET_DIR` selects both the binary and temporary bundle location.
   A fresh cache builds the existing SpeexDSP echo-cancellation dependency and
   needs CMake on `PATH`, or an explicit `CMAKE=/absolute/path/to/cmake`.
+- Serialize `check.sh`, `dev-app.sh`, `prepare-macos-release.sh` and other
+  frontend builds in one checkout. They write the same `dist` directory even
+  when Cargo target directories differ. Concurrent writes can remove a CSS or
+  JavaScript asset while Tauri embeds it; finish the first build before retrying
+  the second, without clearing shared caches.
 - `./scripts/package-app.sh` creates a local QA package without updater
   artifacts. `./scripts/prepare-macos-release.sh` creates public artifacts on
   the signing Mac with the pinned certificate. CI adds the existing updater
