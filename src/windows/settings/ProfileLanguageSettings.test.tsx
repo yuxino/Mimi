@@ -185,14 +185,19 @@ it("disables language controls during a transition without asking to stop an alr
 });
 
 it.each([false, true])("uses the session switch commands while active or paused (paused=%s)", async isPaused => {
-  useStore.setState({ session: { ...initial.session, isActive: !isPaused, isPaused, status: { kind: "listening" } } });
   await render();
+  await act(async () => useStore.setState({ session: { ...initial.session, isActive: !isPaused, isPaused, status: { kind: "listening" } } }));
   await choose(I18N.settings.sourceLanguage, "fr");
   await choose(I18N.settings.translateTo, "ja");
   expect(switchSource).toHaveBeenCalledExactlyOnceWith("fr");
   expect(switchTarget).toHaveBeenCalledExactlyOnceWith("ja");
   expect(save).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
+
+  await act(async () => useStore.setState({ session: initial.session }));
+  await choose(I18N.settings.translateTo, "zh");
+  expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "zh" });
+  expect(switchTarget).toHaveBeenCalledTimes(1);
 });
 
 it("retains the target and reports preparation failure when an active Apple target is not ready", async () => {

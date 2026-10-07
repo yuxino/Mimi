@@ -9,7 +9,7 @@ import { TrayPanel } from "../tray-panel/TrayPanel";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { SettingsView } from "./SettingsView";
 
-it("keeps non-subtitle windows and an unsaved credential draft stable across high-frequency session snapshots", async () => {
+it.each([false, true])("keeps non-subtitle windows and an unsaved credential draft stable across high-frequency session snapshots (paused=%s)", async isPaused => {
   const original = useStore.getState();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -38,7 +38,7 @@ it("keeps non-subtitle windows and an unsaved credential draft stable across hig
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "synthetic-unsaved-key");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => useStore.setState({ session: { ...useStore.getState().session, status: { kind: "listening" }, isActive: true } }));
+    await act(async () => useStore.setState({ session: { ...useStore.getState().session, status: { kind: "listening" }, isActive: !isPaused, isPaused } }));
     // Locking credentials intentionally discards the field's private reveal
     // state. Subsequent subtitle snapshots must keep that locked field stable.
     const lockedInput = host.querySelector<HTMLInputElement>('.credential-panel input[type="password"]')!;
