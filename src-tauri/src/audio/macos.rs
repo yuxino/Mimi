@@ -374,6 +374,8 @@ pub struct MacSystemAudioCapture {
     started: Arc<AtomicBool>,
     generation: CaptureGeneration,
     pending_teardown: PendingTeardown,
+    #[cfg(feature = "development-debugger")]
+    smoke_backend: Option<bool>,
 }
 
 impl MacSystemAudioCapture {
@@ -383,6 +385,17 @@ impl MacSystemAudioCapture {
             started: Arc::new(AtomicBool::new(false)),
             generation: CaptureGeneration::default(),
             pending_teardown: PendingTeardown::default(),
+            #[cfg(feature = "development-debugger")]
+            smoke_backend: None,
+        }
+    }
+
+    /// Only the explicit, local native-smoke entry point may force a backend.
+    #[cfg(feature = "development-debugger")]
+    pub(super) fn for_smoke(dispatcher: MainThreadDispatcher, tap: Option<bool>) -> Self {
+        Self {
+            smoke_backend: tap,
+            ..Self::new(dispatcher)
         }
     }
 
@@ -463,7 +476,22 @@ impl MacSystemAudioCapture {
             return Err(SystemAudioCaptureError::StartCancelled);
         }
 
-        if super::macos_tap::use_audio_tap(&target, super::macos_tap::is_available()) {
+        let use_tap = super::macos_tap::use_audio_tap(
+            &target,
+            super::macos_tap::is_available(),
+            core_graphics2::window::preflight_screen_capture_access(),
+        );
+        #[cfg(feature = "development-debugger")]
+        let use_tap = self.smoke_backend.unwrap_or(use_tap);
+        pipeline_log!(
+            "capture selected backend={}",
+            if use_tap {
+                "core_audio_tap"
+            } else {
+                "screen_capture_kit"
+            }
+        );
+        if use_tap {
             // Reserve teardown before spawning. A timed-out native permission
             // request must keep subsequent sources closed until it really exits.
             let result = super::macos_tap::start(

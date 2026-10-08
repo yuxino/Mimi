@@ -77,8 +77,14 @@ pub(super) fn is_available() -> bool {
     TapApi::load().is_some()
 }
 
-pub(super) fn use_audio_tap(target: &SystemAudioTarget, available: bool) -> bool {
-    available && target.application_id().is_none()
+pub(super) fn use_audio_tap(
+    target: &SystemAudioTarget,
+    available: bool,
+    screen_capture_authorized: bool,
+) -> bool {
+    // Preserve existing authorization rather than moving an already working
+    // installation to a separately permissioned API. Preflight never prompts.
+    available && !screen_capture_authorized && target.application_id().is_none()
 }
 
 pub(super) async fn start(
@@ -572,13 +578,16 @@ mod tests {
     #[test]
     fn only_system_mix_uses_taps_when_available() {
         let system = SystemAudioTarget::default();
-        assert!(use_audio_tap(&system, true));
-        assert!(!use_audio_tap(&system, false));
+        assert!(use_audio_tap(&system, true, false));
+        assert!(!use_audio_tap(&system, false, false));
+        assert!(!use_audio_tap(&system, true, true));
+        assert!(!use_audio_tap(&system, false, true));
         let application = SystemAudioTarget::Application {
             id: "com.example.player".into(),
             name: "Player".into(),
         };
-        assert!(!use_audio_tap(&application, true));
+        assert!(!use_audio_tap(&application, true, false));
+        assert!(!use_audio_tap(&application, true, true));
     }
 
     #[test]
