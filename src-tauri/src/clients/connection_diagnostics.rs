@@ -49,7 +49,6 @@ pub enum ConnectionCheckReason {
     CredentialsUnavailable,
     CredentialsServiceUnavailable,
     CredentialsAccessDenied,
-    LocalDevCredentialsUnavailable,
     InvalidConfiguration,
     UnsupportedLanguage,
     LocalRecognitionOverloaded,
@@ -110,7 +109,6 @@ impl ConnectionDiagnostic {
             "unavailable" => ConnectionCheckReason::CredentialsUnavailable,
             "serviceUnavailable" => ConnectionCheckReason::CredentialsServiceUnavailable,
             "accessDenied" => ConnectionCheckReason::CredentialsAccessDenied,
-            "localDevUnavailable" => ConnectionCheckReason::LocalDevCredentialsUnavailable,
             _ => ConnectionCheckReason::InvalidConfiguration,
         };
         Some(Self::unavailable(credential, reason))
@@ -134,7 +132,6 @@ pub fn preparation_failure(error: &str) -> ConnectionDiagnostic {
     }
     let credential = match error {
         "custom_speech_credentials_missing" | "text_translation_credentials_missing" => "missing",
-        "local_dev_credentials_unavailable" => "localDevUnavailable",
         "credential_store_unavailable" => "unavailable",
         "credential_service_unavailable" => "serviceUnavailable",
         "credential_store_access_denied" => "accessDenied",
@@ -1402,10 +1399,6 @@ mod tests {
             (
                 "accessDenied",
                 ConnectionCheckReason::CredentialsAccessDenied,
-            ),
-            (
-                "localDevUnavailable",
-                ConnectionCheckReason::LocalDevCredentialsUnavailable,
             ),
             ("invalid", ConnectionCheckReason::InvalidConfiguration),
         ] {

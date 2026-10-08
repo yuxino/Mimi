@@ -78,10 +78,6 @@ export const SUPPLEMENTAL = {
     task_failed: "서비스가 작업을 종료했으며 원인을 확인할 수 없습니다. 오디오 상태를 확인하고 다시 시도하세요.",
   },
   connectionDiagnostics_copy: {
-    localDevReadOnly: "개발 프리셋은 로컬 .env에서 서비스 키를 읽습니다. 키를 변경하려면 해당 파일을 편집하고 mimi 개발 앱을 다시 시작하세요. 다른 구성은 비공개 로컬 파일을 사용하며 편집할 수 있습니다.",
-    localDevTranslationLocked: "이 개발 프리셋은 내장된 인식 및 번역 서비스를 사용합니다.",
-    localDevTranslationHelp: "다른 서비스나 독립된 텍스트 번역을 선택하려면 일반 구성을 추가하세요. 인증 정보는 개발 앱의 비공개 로컬 파일에 저장하며 프리셋 키는 읽기 전용 .env에 유지됩니다.",
-    localDevUnavailable: "로컬 개발 .env를 읽을 수 없습니다. 형식, 소유자와 0600 권한을 확인한 후 mimi 개발 앱을 다시 시작하세요.",
     storage: "서비스 인증 정보를 읽을 수 없습니다. 로컬 파일 접근 권한을 확인하거나 다시 저장하세요.",
     linuxStorage: "데스크톱 비밀번호 저장소에 접근할 수 없습니다. GNOME Keyring 등 Secret Service 제공업체가 설치되어 있고 현재 데스크톱 세션에서 활성화되었는지 확인하세요. 잠금을 해제하거나 시스템 요청을 허용한 후 다시 확인하세요.",
     serviceUnavailable: "Linux Secret Service를 사용할 수 없습니다. 현재 데스크톱 세션에서 GNOME Keyring 등 Secret Service 제공업체를 설치하거나 활성화하세요. 데스크톱 설정에 따라 로그아웃 후 다시 로그인한 다음 확인하세요.",

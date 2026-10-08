@@ -217,7 +217,7 @@ def terminate(process):
 
 def compile_tests(repository, output):
     command = ['cargo', 'test', '--locked', '--manifest-path', str(repository / 'src-tauri/Cargo.toml'),
-               '--features', 'local-dev-credentials', '--lib', '--no-run', '--message-format=json']
+               '--features', 'development-debugger', '--lib', '--no-run', '--message-format=json']
     executable = None
     with (output / 'compile.jsonl').open('xb') as log:
         os.chmod(output / 'compile.jsonl', 0o600)

@@ -1,144 +1,45 @@
-# Local development credentials
+# Development credentials
 
-## 日常使用
+开发版和正式版采用相同的可编辑配置与私有本地凭据文件设计，不读取 `.env`，
+也不再自动创建 Alibaba / Gemini 开发预设。在设置的服务页面添加配置、保存凭据即可。
+旧预设元数据如果仍在目录中，作为普通配置显示；原 `.env` 密钥不会自动导入。
 
-只需配置一次：把自己的测试 Key 写入
-`~/Library/Application Support/app.yuxino.mimi.dev/.env` 的
-`ALIBABA_API_KEY=` 或 `GEMINI_API_KEY=` 后面，不加引号，并将文件权限设为 `0600`。下面的
-Setup 提供空模板的创建步骤；已有文件不需要重新填写。
+## 启动与隔离
 
-之后每次运行 `./scripts/dev-app.sh`，或从 Finder / Dock 重新打开
-`/Applications/mimi-dev.app`，应用都会自动读取该文件。设置中会有独立的
-**Alibaba Cloud · dev** 默认开发配置，直接使用阿里云识别与翻译，无需再保存 Key。
-文件中有 `GEMINI_API_KEY=` 时，还会出现独立的 **Google Gemini · dev** 预设。
-两项密钥互不借用，空值表示该预设未配置。已有仅阿里云的文件不必改动。
-修改 Key 后，正常退出并重新打开应用。
+使用 `./scripts/dev-app.sh` 构建并启动固定的 `/Applications/mimi-dev.app`。
+保留既有签名和 bundle identifier，避免破坏系统录音授权连续性。
 
-其他配置和正式版一样，可以添加、编辑和切换，也可以选择 DeepL、DeepLX、
-ChatMock 或兼容接口作为独立文字翻译。它们使用开发版自己的私有本地凭据文件，
-不会借用 `.env` 中的密钥，也不会改动正式版凭据。
+| 应用 | macOS 配置目录 |
+| --- | --- |
+| 正式版 `app.yuxino.mimi` | `~/Library/Application Support/app.yuxino.mimi/` |
+| 开发版 `app.yuxino.mimi.dev` | `~/Library/Application Support/app.yuxino.mimi.dev/` |
 
-把 `.env` 移走或删除，再重新打开，就切回可编辑的本地文件配置。文件存在但格式或权限错误时，
-默认开发配置明确报错，不会偷偷改用钥匙串；其他配置仍可正常使用。
-正式版和 `--ui-only` 模式都不会读取这个文件。
-不要把真实 Key 放进仓库、截图或日志，也不要在 shell 中 `source` 这个文件。
+每个目录分别保存 `preferences.json`、`service-profiles.json` 和私有的
+`credentials/credentials.json`。凭据目录权限为 `0700`，文件为 `0600`。
+启动、切换和编辑不会自动复制另一应用的数据；需要初始化副本时，必须明确指定，
+保留原数据并转换凭据文件内的应用服务命名空间。复制完成后两边独立保存。
+不要将真实密钥写入环境变量、命令行、Git、诊断、截图或导出。
+旧 `.env` 可以离线备份或自行删除，运行时不会访问它。
 
-The normal application stores provider credentials in a private local file.
-For local macOS development, `./scripts/dev-app.sh` additionally supports a
-read-only `.env` preset for Alibaba and Gemini. Other configurations use the
-development app's separate editable local credential file. Existing OS items are
-migrated once and retired after verification; the preset's key is never copied
-or used as an ordinary profile's fallback.
-This does not change the signing-private-key or system-audio permission prompts.
+Development uses the same editable local credential store as production, scoped
+by its own app identifier and directory. No `.env` loader or environment-backed
+preset remains. UI-only mode continues to use synthetic, in-memory credentials.
+Legacy OS-store import is a one-time compatibility path; a completed import never
+falls back to native credentials. See [local credential storage](../plans/2026-10-04-local-credential-storage.md).
 
-## Setup
+## 手动服务探针
 
-1. Create the private file using the empty template. This preserves an existing
-   file rather than overwriting its key:
+付费探针仍默认忽略，仅在 macOS 测试构建启用 `development-debugger` 时编译。
+它们使用开发版**当前选择**的普通服务配置及已保存凭据；先在设置中选好对应
+Alibaba 或 Gemini 配置，并停止原生应用中的服务会话。
 
-   ```bash
-   mimi_dev_config="$HOME/Library/Application Support/app.yuxino.mimi.dev"
-   mkdir -p "$mimi_dev_config"
-   chmod 700 "$mimi_dev_config"
-   if [ ! -e "$mimi_dev_config/.env" ]; then
-     (umask 077; cp docs/development/.env.example "$mimi_dev_config/.env")
-   fi
-   chmod 600 "$mimi_dev_config/.env"
-   ```
-
-2. Edit that private file in a local editor. Keep at most one assignment per provider, with an
-   unquoted test key after `ALIBABA_API_KEY=` or `GEMINI_API_KEY=`. Do not put the real key
-   in shell commands, Git, screenshots, diagnostics, or the tracked template.
-   Do not `source` this file. Comments and blank lines are allowed; shell
-   substitutions, quoted values, duplicate provider assignments, and other variables
-   are rejected. It is not a general dotenv parser.
-
-3. Run `./scripts/dev-app.sh` and use **Alibaba Cloud · dev**. The preset uses
-   Alibaba recognition and default translation, including Original mode. It is
-   selected initially when the existing selection is the default Alibaba profile;
-   later explicit selections are retained across restarts. Add or edit ordinary
-   configurations for other recognition or independent translation services.
-   Those credentials use the development app's private local credential file, never this preset file.
-   Select **Google Gemini · dev** for the Gemini Live Translation preset; it uses
-   only `GEMINI_API_KEY` and keeps its built-in translation route.
-
-The file must be a regular, non-symlink file owned by the current user, with
-exactly `0600` permissions and at most 16 KiB. A key is capped at 4096 bytes.
-An empty template selects file mode with a missing key.
-
-## Editing and returning to ordinary profiles
-
-Keys are read once at app startup. After changing the file, quit Mimi normally
-and reopen `/Applications/mimi-dev.app`; reopening from Finder or the Dock also
-reads it, because the path comes from the app config directory rather than the
-launching shell. No polling or automatic Keychain retry occurs.
-
-The built-in development presets are read-only: Settings cannot update, remove or
-reveal their keys, change their recognition/translation services, or delete them.
-Their language and proxy preferences remain editable.
-The Alibaba preset also allows a saved Qwen-MT Lite / Flash / Plus text-model
-choice after subtitles stop. This edits non-secret profile metadata; it does not
-edit, reveal or copy the preset key, change recognition, or unlock other services.
-Ordinary profiles keep their
-normal add/edit/delete, independent translation, credential reveal and switching
-behavior, with at most 20 user configurations in addition to the presets.
-
-To remove or replace a preset key, edit the private file and reopen the app.
-Moving that file out of the fixed path or deleting it removes the preset on the
-next startup. Removing only `GEMINI_API_KEY` removes the Gemini preset while
-preserving Alibaba. An explicit active-profile selection survives restarts while
-its preset is present. Ordinary profile metadata and local credentials are preserved.
-
-If the file exists but cannot be read or fails validation, Mimi reports a local
-development file error for the preset. It does **not** silently use Keychain.
-Check its format, ownership and permissions, then reopen the app. Other profiles
-continue using their own local credentials even when the preset file is invalid.
-
-## Scope and verification
-
-This feature is disabled by default in Cargo. It additionally requires macOS
-and the exact `app.yuxino.mimi.dev` bundle identifier before any secret-file
-access. Release identifiers ignore it even if accidentally compiled with the
-feature. UI-only mode never inspects the file, Keychain, provider networks, or
-system audio. The file is not copied into `.app`, preferences, profile JSON, or
-frontend state, and process environment variables are not credential inputs.
-
-Run focused synthetic tests without using your key:
+探针要求本地凭据文件和完成标记已经存在，避免以探针触发旧系统凭据导入。
+环境变量仅提供非秘密的 manifest、输出路径和测试模式。运行付费探针仍需当次明确授权；
+普通自动检查不发送真实服务请求。
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml --lib local_dev_credentials
-cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials --lib local_dev_credentials
+cargo test --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
 ```
 
-Never commit a `.env` file. Only the empty `.env.example` template is tracked.
-This is a local development exception, not a production credential-storage option.
-
-For an explicitly authorized Gemini connection check without opening the GUI:
-
-```bash
-cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials --lib \
-  local_dev_credentials_live_gemini_probe -- --ignored --nocapture
-```
-
-This invokes the same native speech-service check as Settings, loads only the
-Gemini preset key, and reports credential/service status and elapsed time. It
-does not capture audio or change the saved profile selection. It is ignored by
-default because it contacts Google using the private local key.
-
-An explicitly authorized, bounded Alibaba text comparison is also available:
-
-```bash
-MIMI_QWEN_COMPARISON_MANIFEST=/private/tmp/mimi-debug-benchmark/your-case/manifest.json \
-  cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials --lib \
-  manual_qwen_model_comparison -- --ignored --nocapture
-```
-
-The manifest has `output_directory` and up to six `samples`, each containing a
-unique safe `id`, `source` (`en` or `ja`) and synthetic `text` (at most 4096 bytes).
-Create a fresh 0700 output directory under the private benchmark root; outputs
-are create-only 0600 files. The comparison runs two rounds of three models,
-at most 36 serial paid requests, using the read-only Alibaba dev key and the
-production text client with its existing hints, terms and system proxy. Console
-output contains only timing/count/status metadata. Input and translation content
-stay in the explicitly selected private evidence files. Normal tests skip it;
-normal app builds exclude it. It does not capture audio or edit preferences.
+ASR 比较和批次执行方法见 [ASR benchmark](../plans/2026-10-02-audio3-repeatable-benchmark.md)
+及 [audio replay](audio-quality-replay.md)。签名私钥访问和系统录音权限独立于服务凭据存储。

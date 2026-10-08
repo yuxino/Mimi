@@ -1,10 +1,12 @@
 //! Explicit private audio checks, excluded from normal tests and production.
-use super::{select, DEVELOPMENT_APPLICATION_IDENTIFIER, DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE};
+use super::SettingsStore;
 use crate::clients::gemini_live_client::GeminiLiveClient;
 use crate::clients::provider_events::provider_event_channel;
+use crate::clients::provider_network::ProviderNetwork;
 use crate::core::models::TargetLanguage;
 use crate::core::protocols::gemini_live::GeminiLiveEndpoint;
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
+use crate::core::provider::ProviderKind;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::Write;
@@ -125,14 +127,15 @@ async fn manual_gemini_translation_audio() {
     assert!(manifest.output_directory.is_absolute() && manifest.output_directory.is_dir());
     let directory = PathBuf::from(std::env::var_os("HOME").unwrap())
         .join("Library/Application Support/app.yuxino.mimi.dev");
-    let secret = select(&directory, false, DEVELOPMENT_APPLICATION_IDENTIFIER).unwrap();
-    let key = secret
-        .load(
-            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
-            "provider-profile:gemini-local-dev:googleGeminiLive:api-key",
-        )
-        .unwrap()
-        .expect("Gemini dev key required");
+    let settings = SettingsStore::load_for_manual_probe(directory).unwrap();
+    let profile = settings.active_profile().unwrap();
+    assert_eq!(profile.provider, ProviderKind::GoogleGeminiLive);
+    let configuration = settings.configuration_for_profile_probe(&profile).unwrap();
+    let key = configuration
+        .credentials
+        .direct_api_key()
+        .expect("saved Gemini key required")
+        .to_owned();
     for clip in manifest.clips {
         assert!(
             !clip.label.is_empty()
@@ -149,7 +152,10 @@ async fn manual_gemini_translation_audio() {
         let pcm = std::fs::read(&clip.pcm_path).unwrap();
         assert!(!pcm.is_empty() && pcm.len() <= 180 * 32_000 && pcm.len() % 2 == 0);
         let (sender, mut receiver) = provider_event_channel();
-        let client = GeminiLiveClient::new(&key, clip.target, sender).unwrap();
+        let mut client = GeminiLiveClient::new(&key, clip.target, sender).unwrap();
+        client
+            .set_network(ProviderNetwork::resolve(&configuration.network_proxy).unwrap())
+            .unwrap();
         let setup_started = Instant::now();
         client.connect().await.unwrap();
         let setup_ms = setup_started.elapsed().as_millis();

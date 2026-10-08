@@ -1,4 +1,9 @@
-# Read-only local development credentials
+# Read-only local development credentials (superseded)
+
+This design was retired on 2026-10-08. Development now uses editable app-scoped
+local credential files; see [current design](2026-10-08-remove-dev-env-presets.md)
+and [development credentials](../development/local-dev-credentials.md). The text
+below records the earlier design and is not a setup guide.
 
 Repeated self-signed macOS builds can require API-key Keychain authorization
 despite a stable designated requirement. The user explicitly requested a private

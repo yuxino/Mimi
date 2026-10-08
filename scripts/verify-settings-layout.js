@@ -1,7 +1,7 @@
 // Browser geometry regression. Serve the repository with npm run dev, then
 // import this function from an ego-browser nodejs round with its managed Page.
 // Platform bridges and device state are fixtures, not native-device evidence.
-export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:1420", { readOnlyModes = [false, true] } = {}) {
+export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:1420", { storageModes = ["localFile"] } = {}) {
   await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);
   await page.cdp("Page.bringToFront", {});
@@ -11,10 +11,10 @@ export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:
   for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"]) for (const theme of ["light", "dark"]) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
-    for (const readOnly of readOnlyModes) for (const model of ["lite", "flash", "plus"]) {
+    for (const credentialStorage of storageModes) for (const model of ["lite", "flash", "plus"]) {
       const issues = await page.evaluate(async next => {
         await window.applyLayoutCase({ ...next, editor: true, platform: "macos", state: "idle", provider: "alibabaCloud", textTranslation: "followService",
-          profileOverrides: { qwenMtModel: next.model, ...(next.readOnly ? { credentialStorage: "localDevFile" } : {}) } });
+          profileOverrides: { qwenMtModel: next.model, credentialStorage: next.credentialStorage } });
         // Let pending viewport-resize handlers settle before opening the popup.
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const issues = [];
@@ -34,9 +34,9 @@ export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:
         if (options.map(node => node.textContent.split("（")[0]).join("|") !== "Qwen-MT Lite|Qwen-MT Flash|Qwen-MT Plus") issues.push("model choices missing");
         for (const option of options) if (option.scrollWidth > option.clientWidth + 1 || rect(option).left < 0 || rect(option).right > innerWidth + 1) issues.push("model option clipped");
         return issues;
-      }, { width, language, theme, readOnly, model });
+      }, { width, language, theme, credentialStorage, model });
       checked += 1;
-      if (issues.length) failures.push({ width, language, theme, readOnly, model, issues });
+      if (issues.length) failures.push({ width, language, theme, credentialStorage, model, issues });
     }
   }
   return { checked, failures };

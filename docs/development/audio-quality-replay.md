@@ -47,8 +47,7 @@ python3 -B scripts/run-development-batch.py \
 付费执行需要当次范围支持，才添加 `--run` 和明确的 `--jobs`（1–4，默认
 3）。已有样本、历史许可或本页不会自动扩大付费数量。复用已确认的
 `CARGO_HOME`、`CARGO_TARGET_DIR`、共享核心缓存与前端缓存；先核对并发使用，
-不清空有效缓存。按 [开发凭据规则](local-dev-credentials.md) 由既有 loader
-读取开发文件，环境变量仅用于非秘密的路径／模式，不传密钥。
+不清空有效缓存。按 [开发凭据规则](local-dev-credentials.md) 读取开发版当前选中的普通服务配置及本地凭据文件，环境变量仅用于非秘密的路径／模式，不传密钥。
 
 ## 每个原生案例先证明输入路径
 

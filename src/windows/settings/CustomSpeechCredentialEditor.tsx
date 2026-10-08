@@ -19,7 +19,7 @@ import { AutoSaveNameField } from "./AutoSaveNameField";
 export function CustomSpeechCredentialEditor(props: ComponentProps<typeof AlibabaCredentialEditor> & {
   onSaveRecognitionName?: (name: string) => Promise<unknown>;
 }) {
-  const { profile, inputId, disabled, busy, feedback, onSave, onRequestDelete, onConfirmDelete, confirmingDelete, onCancelDelete, connectionCheck, readOnly = false } = props;
+  const { profile, inputId, disabled, busy, feedback, onSave, onRequestDelete, onConfirmDelete, confirmingDelete, onCancelDelete, connectionCheck } = props;
   const [draft, setDraft] = useState(emptyCredentialDraft);
   const [editing, setEditing] = useState(false);
   const [changedFields, setChangedFields] = useState<{ endpoint?: true; model?: true }>({});
@@ -27,7 +27,7 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
   const [translationEpoch, setTranslationEpoch] = useState(0);
   const [invalid, setInvalid] = useState<"endpoint" | "model" | null>(null);
   const saved = profile.speechCredentialState === "present";
-  const editorState = useCredentialEditorState(profile.id, undefined, !readOnly && props.visible !== false && (!saved || editing), speechEpoch);
+  const editorState = useCredentialEditorState(profile.id, undefined, props.visible !== false && (!saved || editing), speechEpoch);
   const savedValues = editorState.state;
   const endpoint = changedFields.endpoint ? draft.endpoint : savedValues?.endpoint ?? "";
   const model = changedFields.model ? draft.model : savedValues?.model ?? "";
@@ -45,7 +45,7 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
   // An explicit complete replacement can be checked even if the saved-value
   // read failed. Partial drafts still need the saved configuration to resolve.
   const completeSpeechDraft = buildCustomSpeechCredentials({ ...profile, speechCredentialState: "missing" }, draft);
-  const speechCheckDraft: ProviderCredentialsInput | null | undefined = readOnly || retrySavedSpeech || (saved && !speechChanged)
+  const speechCheckDraft: ProviderCredentialsInput | null | undefined = retrySavedSpeech || (saved && !speechChanged)
     ? undefined : invalidSpeechDraft ? null : credentials ?? completeSpeechDraft;
   const endpointRef = useRef<ConfigInputElement>(null);
   const modelRef = useRef<ConfigInputElement>(null);
@@ -69,7 +69,7 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
   }, [feedback]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!credentials || readOnly || disabled) return;
+    if (!credentials || disabled) return;
     if ((changedFields.endpoint || !saved) && !customSpeechEndpointIsValid(endpoint)) { setInvalid("endpoint"); return; }
     if ((changedFields.model || !saved) && !openAICompatibleModelIsValid(model)) { setInvalid("model"); return; }
     setInvalid(null);
@@ -77,14 +77,14 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
   };
   return <div className="credential-panel" aria-busy={busy}>
     <div className="service-credential-toolbar">
-      <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />
+      <CredentialStorageHelp id={noteId} profile={profile} />
       {typeof connectionCheck === "function" ? connectionCheck(speechCheckDraft) : connectionCheck}
-      {!readOnly && saved && !editing && <span className="credential-panel__saved-actions">
+      {saved && !editing && <span className="credential-panel__saved-actions">
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled} onClick={() => setEditing(true)}><Icon name="key" />{I18N.settings.editSpeechConfiguration}</button>
         <button type="button" className="settings-button settings-button--quiet settings-button--compact" disabled={disabled || confirmingDelete} onClick={onRequestDelete}><Icon name="trash" />{I18N.settings.deleteCredentials}</button>
       </span>}
     </div>
-    {!readOnly && profile.credentialState === "unavailable" && !feedback && <p role="status" className="credential-unavailable">{credentialUnavailableHelp()}</p>}
+    {profile.credentialState === "unavailable" && !feedback && <p role="status" className="credential-unavailable">{credentialUnavailableHelp()}</p>}
     <section className="service-stage" aria-labelledby={`${speechId}-title`}>
       <header className="service-stage__heading"><div className="service-stage__name-help"><h3 id={`${speechId}-title`}>{I18N.settings.speechRecognition}</h3><SettingsHelp id={helpId} text={requirements} label={I18N.settings.helpLabel} /></div>
       </header>
@@ -92,8 +92,8 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
       {props.onSaveRecognitionName && <AutoSaveNameField key={profile.id} id={`${speechId}-name`}
         className="recognition-name-field" label={I18N.settings.speechRecognitionName}
         value={profile.speechRecognitionName ?? ""} placeholder={providerDisplayName(profile.provider)}
-        disabled={disabled} readOnly={readOnly} allowEmpty onSave={props.onSaveRecognitionName} />}
-      {!readOnly && (!saved || editing) && <form className="credential-form" onSubmit={submit}>
+        disabled={disabled} allowEmpty onSave={props.onSaveRecognitionName} />}
+      {(!saved || editing) && <form className="credential-form" onSubmit={submit}>
         {editorState.error && <InlineFeedback tone="error">{editorState.error}<button type="button" className="settings-link" disabled={disabled} onClick={() => setSpeechEpoch(current => current + 1)}>{I18N.settings.retryLoadingSettings}</button></InlineFeedback>}
         <div className="credential-form__fields">
           <label className="settings-field" htmlFor={`${speechId}-endpoint`}>
@@ -119,6 +119,6 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
     </section>
     <AlibabaCredentialEditor key={translationEpoch} {...props} inputId={`${inputId}-text`} storageNoteId={noteId} textOnly feedback={null} connectionCheck={undefined} />
     {feedback && <div ref={feedbackRef} tabIndex={-1}><InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback></div>}
-    {!readOnly && confirmingDelete && <DestructiveConfirmation message={I18N.settings.deleteCredentialsConfirm} disabled={disabled} onCancel={onCancelDelete} onConfirm={() => { discard(); setTranslationEpoch(current => current + 1); void onConfirmDelete(); }} />}
+    {confirmingDelete && <DestructiveConfirmation message={I18N.settings.deleteCredentialsConfirm} disabled={disabled} onCancel={onCancelDelete} onConfirm={() => { discard(); setTranslationEpoch(current => current + 1); void onConfirmDelete(); }} />}
   </div>;
 }

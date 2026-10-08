@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { profileCredentialEditorState, profileRevealCredential } from "../../lib/ipc";
-import { diagnosticCopy } from "../../lib/connectionDiagnostics";
 import { CustomSpeechCredentialEditor } from "./CustomSpeechCredentialEditor";
 
 vi.mock("../../lib/ipc", () => ({ isTauri: false, profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
@@ -152,12 +151,6 @@ it("shows OpenAI standalone requirements and locks all forms in an active sessio
   expect(host.querySelector('.service-stage .settings-help-control__description')?.textContent).toContain(I18N.settings.customSpeechRequirementsOpenAI);
   expect([...host.querySelectorAll<HTMLInputElement>("input")].every(input => input.disabled)).toBe(true);
   expect(host.querySelector('[role="combobox"]')?.hasAttribute("disabled")).toBe(true);
-});
-it("keeps local file mode read-only without exposing any credential form", async () => {
-  await render({ ...props, readOnly: true });
-  expect(host.querySelector("input, form, button[type=submit]")).toBeNull();
-  expect(host.querySelector('[role="combobox"]')).toBeNull();
-  expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
 });
 it("clears replacement speech and text drafts after confirmed deletion", async () => {
   await render(); await fillSpeech(); await render({ ...props, confirmingDelete: true });

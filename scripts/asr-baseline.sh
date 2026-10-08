@@ -7,7 +7,7 @@ if [[ $# -lt 1 || $# -gt 2 || "$1" != /* ]]; then
   exit 2
 fi
 if [[ "$(uname -s)" != Darwin ]]; then
-  echo 'This baseline requires the macOS private development credential file.' >&2
+  echo 'This baseline requires the macOS saved development profile.' >&2
   exit 2
 fi
 mimi_bench_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -16,5 +16,5 @@ MIMI_ASR_BENCH_ARM=baseline \
 MIMI_ASR_BENCH_DENOISE=bypass \
 MIMI_ASR_BENCH_PRIVATE_OUTPUT_DIR="${2:-/private/tmp/mimi-debug-benchmark/asr-baseline}" \
 cargo test --manifest-path "$mimi_bench_root/src-tauri/Cargo.toml" \
-  --features local-dev-credentials --lib \
+  --features development-debugger --lib \
   audio3_benchmark::manual_same_pcm_asr_comparison -- --ignored --exact --nocapture

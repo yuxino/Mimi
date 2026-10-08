@@ -8,10 +8,6 @@ export type DiagnosticPlatform = "macos" | "windows" | "linux";
 const copy = {
   en: SUPPLEMENTAL_EN.connectionDiagnostics_copy,
   zh: {
-    localDevReadOnly: "开发预设从本机 .env 读取对应服务的密钥。修改密钥后需重新打开 mimi dev；其他配置使用本机私有文件，可正常编辑。",
-    localDevTranslationLocked: "此开发预设使用内置服务进行识别与翻译。",
-    localDevTranslationHelp: "添加普通配置即可选择其他服务或独立文字翻译。普通配置的凭据保存在开发版自己的私有文件中，预设密钥仍由只读 .env 提供。",
-    localDevUnavailable: "无法读取本机开发 .env。请检查格式、文件归属及 0600 权限，然后重新打开 mimi dev。",
     storage: "无法读取服务凭据。请检查本地文件访问权限或重新保存。",
     linuxStorage: "无法访问桌面密码存储。请确认当前桌面会话已安装并启用 Secret Service 服务（例如 GNOME Keyring）。解锁密码存储或允许系统授权提示后，重新检查。",
     serviceUnavailable: "Linux Secret Service 服务不可用。请在当前桌面会话安装或启用兼容服务，例如 GNOME Keyring。若桌面配置要求，请注销并重新登录后再检查。",
@@ -58,10 +54,6 @@ const copy = {
     },
   },
   ja: {
-    localDevReadOnly: "開発プリセットはローカルの .env から各サービスのキーを読み込みます。キーを変更したら mimi dev を再起動してください。他の設定は専用ローカルファイルを使用し、通常どおり編集できます。",
-    localDevTranslationLocked: "この開発プリセットは組み込みサービスで認識と翻訳を行います。",
-    localDevTranslationHelp: "通常の設定を追加すると、別のサービスや独立したテキスト翻訳を選べます。認証情報は開発アプリ専用のローカルファイルに保存され、プリセットのキーは読み取り専用の .env に残ります。",
-    localDevUnavailable: "開発用 .env を読めません。形式、所有者、0600 権限を確認し、mimi dev を再起動してください。",
     storage: "サービスの認証情報を読めません。ローカルファイルへのアクセスを確認するか、再保存してください。",
     linuxStorage: "デスクトップのパスワードストアにアクセスできません。現在のデスクトップセッションで GNOME Keyring などの Secret Service がインストールされ、有効になっていることを確認してください。ストアのロックを解除するかシステムのアクセス許可を承認して、再確認してください。",
     serviceUnavailable: "Linux Secret Service を利用できません。現在のデスクトップセッションで GNOME Keyring などの対応サービスをインストールするか有効にしてください。デスクトップの設定に応じてログアウトして再ログインし、再確認してください。",
@@ -129,7 +121,7 @@ export function diagnosticCopy(platform: DiagnosticPlatform = diagnosticPlatform
       appleTranslationLanguageUnsupported: I18N.settings.appleTranslationUnsupported,
       appleTranslationUnavailable: I18N.settings.appleTranslationUnavailable,
       appleTranslationFailed: I18N.settings.appleTranslationFailed,
-      localDevCredentialsUnavailable: labels.localDevUnavailable },
+    },
   };
 }
 export function credentialUnavailableHelp(platform: DiagnosticPlatform = diagnosticPlatform()): string {
@@ -139,7 +131,7 @@ export function connectionDiagnosticMessage(result: ConnectionDiagnostic, platfo
   const labels = diagnosticCopy(platform);
   if (result.service === "available") return labels.available;
   const credentialReason = {
-    missing: "credentialsMissing", unavailable: "credentialsUnavailable", localDevUnavailable: "localDevCredentialsUnavailable",
+    missing: "credentialsMissing", unavailable: "credentialsUnavailable",
     serviceUnavailable: "credentialsServiceUnavailable", accessDenied: "credentialsAccessDenied", invalid: "invalidConfiguration",
   } as const;
   const reasonCode = result.reason ?? (result.credential === "present" ? null : credentialReason[result.credential]);
@@ -383,8 +375,6 @@ export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlat
   const compatibleRejected = /^The custom translation service rejected the request \(HTTP (\d{1,3})\)\./.exec(error);
   if (compatibleRejected) return `${compatible.rejected} (HTTP ${compatibleRejected[1]})`;
 
-  if (error === "local_dev_credentials_read_only") return diagnosticCopy(platform).localDevReadOnly;
-  if (error === "local_dev_credentials_unavailable") return diagnosticCopy(platform).localDevUnavailable;
   if (error === "credential_service_unavailable") return diagnosticCopy(platform).serviceUnavailable;
   if (error === "credential_store_access_denied") return diagnosticCopy(platform).accessDenied;
   if (error === "credential_store_unavailable" || error === "The system credential store is unavailable.") return diagnosticCopy(platform).storage;

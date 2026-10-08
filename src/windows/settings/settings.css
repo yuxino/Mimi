@@ -2600,14 +2600,6 @@
   align-items: center;
   gap: 8px;
 }
-.service-stage__restriction {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.service-stage__restriction .settings-feedback {
-  font-size: 13px;
-}
 .service-stage__provider {
   min-height: 36px;
   padding-inline: 10px;
