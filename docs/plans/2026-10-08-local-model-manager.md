@@ -49,11 +49,10 @@ unavailable. This change does not add capture sources or change credentials.
 - Explicit maintainer download acceptance verified both real pinned Qwen
   checkpoints, cancellation/retry, cleanup and refusal to delete a leased
   model. Ordinary tests never download weights.
-- `scripts/check-local-speech.py` tests the signed canonical development app's
+- Temporary synthetic-speech fixtures tested the signed canonical development app's
   helper with synthetic English, Chinese and Japanese speech, repeated turns,
-  clear, ping while stdin stays open, and finish. On an M5/16 GB, the 4.45–5.66 s
-  fixtures took 0.66–1.45 s (0.6B) and 1.35–2.88 s (1.7B) of inference. These
-  timings include previews and final inference, and exclude capture/network.
+  clear, ping while stdin stays open, and finish. These fixtures and benchmark runners stay outside the repository;
+  inference timing evidence belongs in the PR verification record.
 - The canonical `/Applications/mimi-dev.app` completed a real system-audio
   session with automatic recognition of all three fixture languages, original
   subtitles, no microphone and no saving/recording. Startup was about 1.4 s.

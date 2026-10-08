@@ -20,17 +20,22 @@ The small `hub-resources.patch` changes the pinned tokenizer fallback to search
 the app root, which macOS signing rejects. Command line builds keep the normal
 SwiftPM fallback. Dependency licenses are in `THIRD_PARTY_NOTICES.md`.
 
-After explicitly downloading models in the development app, reproduce the
-synthetic English/Chinese/Japanese checks without capture or network:
+For native acceptance, use `./scripts/dev-app.sh`. Explicitly download a model,
+click **Use model**, choose original-only subtitles, and verify a system-audio
+session with saving/recording and microphone disabled. Verify stop, deletion
+protection during recognition, confirmed deletion, progress and cancellation.
+Do not use private audio for shared evidence. One-off speech fixtures and
+benchmark runners belong outside the repository.
+
+The download manager also has an explicit, ignored acceptance test. Run it only
+with a disposable directory and deliberate network/download authorization:
 
 ```sh
-python3 scripts/check-local-speech.py \
-  --models "$HOME/Library/Application Support/app.yuxino.mimi.dev/local-models" \
-  --model qwen-small
-# Repeat with --model qwen-standard.
+MIMI_MODEL_ACCEPTANCE_DIR="$TMPDIR/mimi-model-acceptance" \
+  cargo test --manifest-path src-tauri/Cargo.toml \
+  accept_real_model_download -- --ignored
 ```
 
-This checks the signed app's bundled helper, repeated turns, draft/final IDs,
-clear, ping with stdin kept open, and finish. It prints timing/count metadata
-only and removes generated speech files. It does not establish live capture
-latency or accuracy on game dialogue/music.
+It exercises verified downloads, cancellation/retry and lease protection.
+Remove the disposable model directory after acceptance. Ordinary repository
+checks never download weights.
