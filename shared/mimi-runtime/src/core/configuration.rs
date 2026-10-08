@@ -106,7 +106,7 @@ impl LiveTranslationConfiguration {
             .translates_audio()
             .then_some(text)
             .flatten();
-        Ok((speech.map(&route).unwrap_or_default(), text.map(route)))
+        Ok((speech.map(route).unwrap_or_default(), text.map(route)))
     }
 
     pub fn for_provider(
