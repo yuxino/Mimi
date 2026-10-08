@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import { I18N, setStoredUiLanguage } from "./i18n";
+import { LOCAL_MODEL_COPY } from "./localModelI18n";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "./speechLanguageGuidance";
 import type { ServiceProvider } from "./types";
 const settings = (provider: ServiceProvider) => ({ profiles: [{ id: "p", name: "P", provider, credentialState: "missing" as const }], activeProfileId: "p", targetLanguage: "original" as const });
@@ -15,6 +16,7 @@ it.each(["zh", "en", "ja"] as const)("separates automatic, hint, explicit and un
   expect(speechLanguageGuidance(settings("openAIRealtime")).help).toBe(I18N.settings.recognitionAutomaticHelp);
   expect(speechLanguageGuidance(settings("googleGeminiLive")).help).toBe(I18N.settings.recognitionGeminiAutomaticHelp);
   expect(speechLanguageGuidance(settings("xAIRealtime")).help).toContain(I18N.settings.recognitionHintHelp);
+  expect(speechLanguageGuidance(settings("localSpeech")).help).toBe(LOCAL_MODEL_COPY.sourceHelp);
   const explicit = speechLanguageGuidance(settings("tencentCloud"));
   expect(explicit.help).toContain(I18N.settings.recognitionExplicitHelp);
   expect(explicit.help).not.toContain(I18N.settings.recognitionHintHelp);

@@ -148,3 +148,10 @@ Rust core. The locked native dependency inventory and upstream license texts
 are in [Android native notices](android/native-licenses/shared-core.txt),
 which are included in Android APK assets. See also
 [Android third-party notices](android/THIRD_PARTY_NOTICES.md).
+
+## Local speech runtime
+
+The macOS app bundles a pinned MLX Audio Swift helper. Its complete dependency
+licenses and notices are distributed in `LOCAL_SPEECH_NOTICES.md`; the source
+copy is `src-tauri/local-speech/THIRD_PARTY_NOTICES.md`. Qwen3-ASR and Voxtral
+model weights are optional downloads, licensed separately under Apache 2.0.

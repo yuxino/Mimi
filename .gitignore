@@ -9,6 +9,8 @@ node_modules/
 src-tauri/target/
 shared/**/target/
 src-tauri/gen/
+src-tauri/local-speech/.build/
+src-tauri/binaries/
 .cargo-home/
 dsh-blue-whale-maid/
 osu/

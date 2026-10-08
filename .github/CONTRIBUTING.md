@@ -20,6 +20,10 @@ Thank you for improving mimi. Small, focused pull requests are the easiest to re
 
 Requires Rust 1.88+ and Node.js 20.19.x, 22.13+, or 24+. Building the echo canceller also requires a C/C++ compiler, CMake, and libclang (build time only). macOS also needs the Xcode Command Line Tools and a `mimi Local Development` signing identity or an explicit `MIMI_CODESIGN_IDENTITY`.
 
+Apple 芯片构建还需要 Xcode 26.4+（Swift 6.3+）和 Metal Toolchain：`xcodebuild -downloadComponent MetalToolchain`。本地模型运行时和验收说明见 [local-speech/README.md](../src-tauri/local-speech/README.md)。
+
+Apple silicon builds also require Xcode 26.4+ (Swift 6.3+) and the Metal Toolchain: `xcodebuild -downloadComponent MetalToolchain`. See [local-speech/README.md](../src-tauri/local-speech/README.md) for runtime and acceptance details.
+
 ```bash
 git clone https://github.com/yuxino/mimi.git
 cd mimi

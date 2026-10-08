@@ -1,0 +1,172 @@
+[
+  {
+    "id": "qwenSmall",
+    "repository": "mlx-community/Qwen3-ASR-0.6B-4bit",
+    "revision": "313d850181767edf09f00a9c289becca70e58cd0",
+    "files": [
+      {
+        "name": "chat_template.json",
+        "bytes": 1161,
+        "sha256": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"
+      },
+      {
+        "name": "config.json",
+        "bytes": 7187,
+        "sha256": "923618cf5ca452fda0253a6be5c1a17f94a2e4851d3b98beb45848565587bd72"
+      },
+      {
+        "name": "generation_config.json",
+        "bytes": 142,
+        "sha256": "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c"
+      },
+      {
+        "name": "merges.txt",
+        "bytes": 1671853,
+        "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 708236945,
+        "sha256": "70c7e67e588062adce4f10796e47ad42ead51c6671eda61a0987eae38ca95ddf"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 71814,
+        "sha256": "e3bb80ef0fd42a5be07b04e90c97d60460bbde8af3531e0bfe9100a61404d81a"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "bytes": 330,
+        "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 12487,
+        "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"
+      },
+      {
+        "name": "vocab.json",
+        "bytes": 2776833,
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+      }
+    ],
+    "sourceLanguages": [
+      "auto",
+      "zh",
+      "en",
+      "yue",
+      "ar",
+      "de",
+      "fr",
+      "es",
+      "pt",
+      "id",
+      "it",
+      "ko",
+      "ru",
+      "th",
+      "vi",
+      "ja",
+      "tr",
+      "hi",
+      "ms",
+      "nl",
+      "sv",
+      "da",
+      "fi",
+      "pl",
+      "cs",
+      "tl",
+      "fa",
+      "el",
+      "hu",
+      "mk",
+      "ro"
+    ]
+  },
+  {
+    "id": "qwenStandard",
+    "repository": "mlx-community/Qwen3-ASR-1.7B-4bit",
+    "revision": "78a389c776a5483b2d0d4ea5494e11012e0d6159",
+    "files": [
+      {
+        "name": "chat_template.json",
+        "bytes": 1161,
+        "sha256": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff"
+      },
+      {
+        "name": "config.json",
+        "bytes": 7188,
+        "sha256": "539c6c9d482349066e2e740241e39896f3bf4de0866c245f6539c85dbb19d93c"
+      },
+      {
+        "name": "generation_config.json",
+        "bytes": 142,
+        "sha256": "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c"
+      },
+      {
+        "name": "merges.txt",
+        "bytes": 1671853,
+        "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 1603081617,
+        "sha256": "9848eaf7a5c1589c671b35035ac27b72e248dd0c604eacae547e7e403d29db45"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 78968,
+        "sha256": "2612ab715223843b3dec0742737bc85f50914ca1484ade45955f99b4e012f2bb"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "bytes": 330,
+        "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "bytes": 12487,
+        "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"
+      },
+      {
+        "name": "vocab.json",
+        "bytes": 2776833,
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+      }
+    ],
+    "sourceLanguages": [
+      "auto",
+      "zh",
+      "en",
+      "yue",
+      "ar",
+      "de",
+      "fr",
+      "es",
+      "pt",
+      "id",
+      "it",
+      "ko",
+      "ru",
+      "th",
+      "vi",
+      "ja",
+      "tr",
+      "hi",
+      "ms",
+      "nl",
+      "sv",
+      "da",
+      "fi",
+      "pl",
+      "cs",
+      "tl",
+      "fa",
+      "el",
+      "hu",
+      "mk",
+      "ro"
+    ]
+  }
+]

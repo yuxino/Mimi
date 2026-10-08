@@ -10,6 +10,7 @@ import { effectiveUiLanguage } from "./i18n";
 import { observeSessionWireReceived } from "./developmentTrace";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  LocalSpeechModel, LocalModelsSnapshot,
   AppleSpeechSupport,
   AppleTranslationSupport,
   AppleTranslationStatus,
@@ -150,8 +151,9 @@ export function settingsSave(draft: SettingsDraft): Promise<SettingsSnapshot> {
 export function profileCreate(
   provider: ServiceProvider,
   name: string,
+  localSpeechModel?: LocalSpeechModel,
 ): Promise<SettingsSnapshot> {
-  return invoke<SettingsSnapshot>("profile_create", { provider, name });
+  return invoke<SettingsSnapshot>("profile_create", { provider, name, ...(localSpeechModel ? { localSpeechModel } : {}) });
 }
 
 export function profileUpdate(
@@ -400,3 +402,10 @@ export type ConnectionCheckStage = "speech" | "text";
 export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput, sourceLanguage?: SourceLanguage): Promise<ConnectionDiagnostic> {
   return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}), ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
+
+export function localModelsStatus(): Promise<LocalModelsSnapshot> {
+  return isTauri ? invoke("local_models_status") : Promise.resolve({ available: false, models: [] });
+}
+export const downloadLocalModel = (model: LocalSpeechModel): Promise<void> => invoke("local_model_download", { model });
+export const cancelLocalModelDownload = (model: LocalSpeechModel): Promise<void> => invoke("local_model_cancel", { model });
+export const deleteLocalModel = (model: LocalSpeechModel): Promise<void> => invoke("local_model_delete", { model });

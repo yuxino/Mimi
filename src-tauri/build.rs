@@ -5,7 +5,11 @@ mod apple_translation_build;
 #[path = "src/core/development_build_permissions.rs"]
 mod development_build_permissions;
 
+#[path = "local-speech/build.rs"]
+mod local_speech_build;
+
 fn main() {
+    local_speech_build::build();
     apple_speech_build::build();
     apple_translation_build::build();
     println!("cargo:rerun-if-changed=permissions/app.toml");

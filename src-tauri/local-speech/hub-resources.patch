@@ -1,0 +1,14 @@
+--- a/.build/checkouts/swift-transformers/Sources/Hub/Hub.swift
++++ b/.build/checkouts/swift-transformers/Sources/Hub/Hub.swift
+@@ -326,7 +326,10 @@
+         // Fallback tokenizer configuration files are located in the `Sources/Hub/Resources` directory
+         // On Linux, Bundle.module may not be available if resources aren't properly bundled
+         #if canImport(Darwin)
+-        guard let url = Bundle.module.url(forResource: fallbackTokenizerConfigBaseName, withExtension: "json") else {
++        let mimiResourceBundle = Bundle.main.resourceURL
++            .flatMap { Bundle(url: $0.appendingPathComponent("swift-transformers_Hub.bundle")) }
++        let resources = mimiResourceBundle ?? Bundle.module
++        guard let url = resources.url(forResource: fallbackTokenizerConfigBaseName, withExtension: "json") else {
+             return nil
+         }
+         #else

@@ -2617,6 +2617,11 @@ impl SessionManager {
         let selection = self
             .settings
             .preferences_for_profile_selection(profile, source_language)?;
+        if profile.provider == ProviderKind::LocalSpeech {
+            let _lease = crate::local_models::manager()
+                .and_then(|manager| manager.acquire(profile.local_speech_model))
+                .map_err(str::to_owned)?;
+        }
         let apple_support = if profile.provider == ProviderKind::AppleSpeech {
             if self.is_ui_test() {
                 return Err("apple_speech_ui_test_unavailable".into());
@@ -3876,12 +3881,17 @@ impl SessionManager {
         {
             return false;
         }
-        let records_network_latency = self
-            .active_settings
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_none_or(|configuration| configuration.provider != ProviderKind::AppleSpeech);
+        let records_network_latency =
+            self.active_settings
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_none_or(|configuration| {
+                    !matches!(
+                        configuration.provider,
+                        ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+                    )
+                });
         let mut maximum_latency_ms = 0;
         for &source in self.sources() {
             let Some(client) = self.client_for_generation(source, generation) else {

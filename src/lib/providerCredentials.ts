@@ -58,6 +58,7 @@ export function credentialFieldsForProvider(
   provider: ServiceProvider,
 ): readonly CredentialFieldName[] {
   switch (provider) {
+    case "localSpeech":
     case "appleSpeech":
       return [];
     case "customDashScopeASR":
@@ -98,7 +99,7 @@ export function buildProviderProbeCredentials(
 }
 
 function buildProviderInput(provider: ServiceProvider, draft: CredentialDraft, savedFields: readonly string[]): ProviderCredentialsInput | null {
-  if (provider === "appleSpeech") return null;
+  if (provider === "appleSpeech" || provider === "localSpeech") return null;
   const values = Object.fromEntries(
     Object.entries(draft).map(([key, value]) => [key, value.trim()]),
   ) as CredentialDraft;

@@ -10,10 +10,12 @@ use thiserror::Error;
 pub const MAX_CUSTOM_SPEECH_MESSAGE_BYTES: usize = 1024 * 1024;
 pub const MAX_PCM_CHUNK_BYTES: usize = 128 * 1024;
 pub const PCM_SAMPLE_RATE: u32 = 24_000;
+#[cfg(test)]
 const VAD_FRAME_BYTES: usize = 960; // 20 ms of mono PCM16 at 24 kHz.
 const PREROLL_FRAMES: usize = 30;
 const SILENCE_FRAMES: usize = 30;
 const MAX_TURN_FRAMES: usize = 400;
+#[cfg(test)]
 const MIN_COMMIT_PCM_BYTES: usize = 4800; // Realtime requires at least 100 ms.
 const VOICE_MEAN_SQUARE: u64 = 256 * 256;
 
@@ -204,8 +206,9 @@ pub enum AudioTurnAction {
 
 /// RMS turn detection retains at most 600 ms of pre-roll and one partial
 /// 20 ms frame. Active PCM is sent immediately, never collected as a recording.
-#[derive(Default)]
 pub struct PcmTurnGate {
+    frame_bytes: usize,
+    minimum_bytes: usize,
     frame: Vec<u8>,
     preroll: VecDeque<Vec<u8>>,
     active: bool,
@@ -214,7 +217,26 @@ pub struct PcmTurnGate {
     sent_bytes: usize,
 }
 
+impl Default for PcmTurnGate {
+    fn default() -> Self {
+        Self::with_sample_rate(24_000)
+    }
+}
+
 impl PcmTurnGate {
+    pub fn with_sample_rate(rate: usize) -> Self {
+        assert!(matches!(rate, 16_000 | 24_000));
+        Self {
+            frame_bytes: rate / 50 * 2,
+            minimum_bytes: rate / 10 * 2,
+            frame: Vec::new(),
+            preroll: VecDeque::new(),
+            active: false,
+            silence_frames: 0,
+            turn_frames: 0,
+            sent_bytes: 0,
+        }
+    }
     pub fn is_active(&self) -> bool {
         self.active
     }
@@ -223,13 +245,13 @@ impl PcmTurnGate {
             return Err(CustomSpeechProtocolError::Audio);
         }
         let mut actions = Vec::new();
-        for part in pcm.chunks(VAD_FRAME_BYTES) {
+        for part in pcm.chunks(self.frame_bytes) {
             let mut remaining = part;
             while !remaining.is_empty() {
-                let count = remaining.len().min(VAD_FRAME_BYTES - self.frame.len());
+                let count = remaining.len().min(self.frame_bytes - self.frame.len());
                 self.frame.extend_from_slice(&remaining[..count]);
                 remaining = &remaining[count..];
-                if self.frame.len() == VAD_FRAME_BYTES {
+                if self.frame.len() == self.frame_bytes {
                     let frame = std::mem::take(&mut self.frame);
                     self.push_frame(frame, &mut actions);
                 }
@@ -250,7 +272,7 @@ impl PcmTurnGate {
             }
             self.active = true;
             self.turn_frames = self.preroll.len();
-            self.sent_bytes = self.turn_frames * VAD_FRAME_BYTES;
+            self.sent_bytes = self.turn_frames * self.frame_bytes;
             self.silence_frames = 0;
             actions.push(AudioTurnAction::Start);
             while let Some(frame) = self.preroll.pop_front() {
@@ -259,7 +281,7 @@ impl PcmTurnGate {
             return;
         }
         append(actions, frame);
-        self.sent_bytes += VAD_FRAME_BYTES;
+        self.sent_bytes += self.frame_bytes;
         self.turn_frames += 1;
         self.silence_frames = if voiced { 0 } else { self.silence_frames + 1 };
         if self.silence_frames >= SILENCE_FRAMES || self.turn_frames >= MAX_TURN_FRAMES {
@@ -275,7 +297,7 @@ impl PcmTurnGate {
         let mut actions = Vec::new();
         if !self.active && is_voiced(&self.frame) {
             actions.push(AudioTurnAction::Start);
-            self.sent_bytes = self.preroll.len() * VAD_FRAME_BYTES;
+            self.sent_bytes = self.preroll.len() * self.frame_bytes;
             while let Some(frame) = self.preroll.pop_front() {
                 append(&mut actions, frame);
             }
@@ -284,15 +306,12 @@ impl PcmTurnGate {
         if self.active {
             self.sent_bytes += self.frame.len();
             append(&mut actions, std::mem::take(&mut self.frame));
-            if self.sent_bytes < MIN_COMMIT_PCM_BYTES {
-                append(
-                    &mut actions,
-                    vec![0; MIN_COMMIT_PCM_BYTES - self.sent_bytes],
-                );
+            if self.sent_bytes < self.minimum_bytes {
+                append(&mut actions, vec![0; self.minimum_bytes - self.sent_bytes]);
             }
             actions.push(AudioTurnAction::Commit);
         }
-        *self = Self::default();
+        *self = Self::with_sample_rate(self.frame_bytes * 25);
         actions
     }
 }
@@ -570,6 +589,28 @@ mod tests {
             .cycle()
             .take(frames * VAD_FRAME_BYTES)
             .collect()
+    }
+
+    #[test]
+    fn local_16khz_turns_keep_the_same_time_bounds_after_finish() {
+        let mut gate = PcmTurnGate::with_sample_rate(16_000);
+        for _ in 0..2 {
+            let voice = 3000_i16.to_le_bytes().repeat(320);
+            assert!(matches!(
+                gate.push(&voice).unwrap().first(),
+                Some(AudioTurnAction::Start)
+            ));
+            for _ in 0..398 {
+                gate.push(&voice).unwrap();
+            }
+            assert!(matches!(
+                gate.push(&voice).unwrap().last(),
+                Some(AudioTurnAction::Commit)
+            ));
+            gate.finish();
+            assert_eq!(gate.frame_bytes, 640);
+            assert_eq!(gate.minimum_bytes, 3200);
+        }
     }
 
     #[test]

@@ -93,6 +93,9 @@ impl CredentialRevealField {
 pub enum ProviderCredentials {
     /// Local recognition has no persisted credential slot.
     AppleSpeech,
+    LocalSpeech {
+        model: crate::core::local_speech::LocalSpeechModel,
+    },
     /// Write-only request. Empty api_key reuses the profile's existing key
     /// natively; this request variant is never stored or returned over IPC.
     AlibabaTranslation {
@@ -584,6 +587,7 @@ impl ProviderCredentials {
     pub const fn kind_label(&self) -> &'static str {
         match self {
             Self::AppleSpeech => "apple_speech",
+            Self::LocalSpeech { .. } => "local_speech",
             Self::AlibabaTranslation { .. } => "alibaba_translation_update",
             Self::DeepLX { .. } => "deeplx",
             Self::DeepL { .. } => "deepl",
@@ -600,6 +604,9 @@ impl ProviderCredentials {
     pub fn validated_for(&self, provider: ProviderKind) -> Result<Self, ProviderCredentialsError> {
         match (provider, self) {
             (ProviderKind::AppleSpeech, Self::AppleSpeech) => Ok(Self::AppleSpeech),
+            (ProviderKind::LocalSpeech, Self::LocalSpeech { model }) => {
+                Ok(Self::LocalSpeech { model: *model })
+            }
             (
                 provider,
                 Self::CustomSpeech {
@@ -730,7 +737,9 @@ impl ProviderCredentials {
     ) -> Result<String, ProviderCredentialsError> {
         let credentials = self.validated_for(provider)?;
         match credentials {
-            Self::AppleSpeech => Err(ProviderCredentialsError::ProviderMismatch),
+            Self::AppleSpeech | Self::LocalSpeech { .. } => {
+                Err(ProviderCredentialsError::ProviderMismatch)
+            }
             Self::ApiKey { api_key } => Ok(api_key),
             other => serde_json::to_string(&other)
                 .map_err(|_| ProviderCredentialsError::InvalidStoredValue),
@@ -741,7 +750,10 @@ impl ProviderCredentials {
         provider: ProviderKind,
         value: &str,
     ) -> Result<Self, ProviderCredentialsError> {
-        if provider == ProviderKind::AppleSpeech {
+        if matches!(
+            provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) {
             return Err(ProviderCredentialsError::ProviderMismatch);
         }
         if value.trim().is_empty() {
@@ -801,6 +813,7 @@ impl ProviderCredentials {
             Self::AzureOpenAI { api_key, .. } => Some(api_key),
             Self::CustomSpeech { api_key, .. } => Some(api_key),
             Self::AppleSpeech
+            | Self::LocalSpeech { .. }
             | Self::AlibabaTranslation { .. }
             | Self::DeepLX { .. }
             | Self::DeepL { .. }

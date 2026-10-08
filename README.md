@@ -48,6 +48,12 @@
 
 [使用与常见问题](docs/usage.zh-CN.md) · [Android](android/README.md) · [反馈问题](https://github.com/yuxino/mimi/issues) · [贡献指南](.github/CONTRIBUTING.md)
 
+### 下载本地模型
+
+Apple 芯片 Mac（macOS 14+）可在「设置 → 语音与翻译 → 添加配置 → 本地模型」下载 Qwen3-ASR 0.6B（约 713 MB，轻量推荐）或 1.7B（约 1.6 GB）。下载后点击「使用模型」，无需识别 API Key、Python 或本地服务器。支持查看进度、取消、重试和删除；使用中的模型需先停止字幕再删除。删除保留配置，下次可重新下载。
+
+识别音频留在 Mac，文字翻译单独配置。只看原文可直接使用；选择云端文字翻译时会向该服务发送识别文字。
+
 <a id="apple-本地识别"></a>
 
 ### Apple 本地识别

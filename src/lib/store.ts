@@ -74,6 +74,7 @@ import type {
   SessionStateEvent,
   SettingsDraft,
   SettingsSnapshot,
+  LocalSpeechModel,
   ServiceProvider,
   SourceLanguage,
   SystemAudioTarget,
@@ -164,6 +165,7 @@ interface StoreState {
   createProfile: (
     provider: ServiceProvider,
     name: string,
+    localSpeechModel?: LocalSpeechModel,
   ) => Promise<SettingsSnapshot>;
   updateProfile: (
     profileId: string,
@@ -498,11 +500,11 @@ export const useStore = create<StoreState>()((set, get) => ({
     );
   },
 
-  createProfile: async (provider, name) => {
+  createProfile: async (provider, name, localSpeechModel) => {
     ensureProfileMutationsAllowed(get().session);
     if (isTauri) {
       const revision = settingsResponseGate.capture();
-      const snapshot = await profileCreate(provider, name);
+      const snapshot = await profileCreate(provider, name, localSpeechModel);
       if (settingsResponseGate.applyIfCurrent(revision)) {
         settingsSaveCoordinator.invalidate();
         set({ settings: snapshot });
@@ -518,7 +520,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       activeProfileId: current.profiles.length ? current.activeProfileId : id,
       profiles: [
         ...current.profiles,
-        { id, name, provider, credentialState: "missing", ...(isCustomSpeechProvider(provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : {}) },
+        { id, name, provider, ...(localSpeechModel ? { localSpeechModel } : {}), credentialState: provider === "localSpeech" ? "present" : "missing", ...(isCustomSpeechProvider(provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : {}) },
       ],
     };
     set({ settings: snapshot });

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { LOCAL_MODEL_COPY } from "../../lib/localModelI18n";
 import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -18,7 +19,7 @@ const actions = vi.hoisted(() => ({
 }));
 const boot = vi.hoisted(() => ({ initializationStatus: "ready" as "ready" | "loading" | "error", initializationError: null as "timeout" | "unavailable" | null, init: vi.fn(), nativeSettings: null as SettingsSnapshot | null }));
 vi.mock("../../lib/store", () => ({ useStore: (select: (state: typeof actions & typeof boot & { settings: { windowsAudioSource?: string }; session: { isActive: boolean; isPaused: boolean } }) => unknown) => select({ ...actions, ...boot, settings: boot.nativeSettings ?? { windowsAudioSource: "" }, session: { isActive: false, isPaused: false } }) }));
-vi.mock("../../lib/ipc", () => ({ isTauri: false, getAppleSpeechSupport: vi.fn(), prepareAppleSpeechLanguage: vi.fn(), testProfileConnection: vi.fn(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
+vi.mock("../../lib/ipc", () => ({ isTauri: false, localModelsStatus: vi.fn().mockResolvedValue({ available: false, models: [] }), getAppleSpeechSupport: vi.fn(), prepareAppleSpeechLanguage: vi.fn(), testProfileConnection: vi.fn(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "unavailable" };
 const settings: SettingsSnapshot = {
@@ -159,6 +160,7 @@ it("offers Apple only after this Mac reports availability and does not create it
   await click(I18N.settings.addProfile);
   expect(host.querySelector('[data-provider="appleSpeech"]')).toBeNull();
   await act(async () => resolve(appleSupport));
+  await click(LOCAL_MODEL_COPY.title);
   expect(host.querySelector('.provider-option[data-provider="appleSpeech"] img')).not.toBeNull();
   await previewProvider("appleSpeech");
   expect(actions.createProfile).not.toHaveBeenCalled();
@@ -174,6 +176,7 @@ it("keeps Apple hidden after a failed check and exposes a sanitized retry", asyn
   expect(document.body.textContent).not.toContain("private-native-detail");
   vi.mocked(getAppleSpeechSupport).mockResolvedValue(appleSupport);
   await click(I18N.settings.retryLoadingSettings);
+  await click(LOCAL_MODEL_COPY.title);
   expect(host.querySelector('.provider-option[data-provider="appleSpeech"]')).not.toBeNull();
 });
 
@@ -375,6 +378,7 @@ async function click(label: string) {
   await act(async () => button.click());
 }
 async function previewProvider(provider: ServiceProfile["provider"]) {
+  await click(provider === "appleSpeech" ? LOCAL_MODEL_COPY.title : provider.startsWith("custom") ? LOCAL_MODEL_COPY.custom : LOCAL_MODEL_COPY.cloud);
   const button = host.querySelector<HTMLButtonElement>(`.provider-option[data-provider="${provider}"]`)!;
   expect(button).toBeTruthy();
   await act(async () => button.click());
@@ -444,8 +448,9 @@ it.each(["zh", "en", "ja"] as const)("previews a provider and leaves settings un
   await render();
   await click(I18N.settings.addProfile);
   const options = [...host.querySelectorAll<HTMLButtonElement>(".provider-option")];
-  expect(options.map(option => option.dataset.provider)).toEqual(SERVICE_PROVIDERS.filter(provider => provider !== "appleSpeech"));
-  expect(options.slice(-2).map(option => option.dataset.provider)).toEqual(["customDashScopeASR", "customOpenAIASR"]);
+  expect(options.map(option => option.dataset.provider)).toEqual(SERVICE_PROVIDERS.filter(provider => !["appleSpeech", "localSpeech", "customDashScopeASR", "customOpenAIASR"].includes(provider)));
+  await click(LOCAL_MODEL_COPY.custom);
+  expect([...host.querySelectorAll<HTMLButtonElement>(".provider-option")].map(option => option.dataset.provider)).toEqual(["customDashScopeASR", "customOpenAIASR"]);
   expect(host.querySelector(".provider-picker small, .provider-picker p")).toBeNull();
   expect(host.querySelector(".provider-picker__heading .settings-help-control__description")?.textContent).toBe(I18N.settings.chooseProviderDescription);
   await previewProvider("customOpenAIASR");
@@ -454,7 +459,7 @@ it.each(["zh", "en", "ja"] as const)("previews a provider and leaves settings un
   expect(actions.createProfile).not.toHaveBeenCalled();
   await click(I18N.settings.cancel);
   expect(document.querySelector(".provider-picker__preview")).toBeNull();
-  expect(host.querySelectorAll(".provider-option")).toHaveLength(SERVICE_PROVIDERS.length - 1);
+  expect(host.querySelectorAll(".provider-option")).toHaveLength(2);
   await previewProvider("alibabaCloud");
   await click(I18N.settings.cancel);
   expect(document.querySelector('[role="alertdialog"], [role="dialog"]')).toBeNull();

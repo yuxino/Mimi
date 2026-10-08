@@ -324,6 +324,14 @@ TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --profile local-dev \
 
 rm -rf "$BUILD_APP"
 mkdir -p "$BUILD_APP/Contents/MacOS" "$BUILD_APP/Contents/Resources"
+LOCAL_SPEECH_TARGET="$(rustc -vV | sed -n 's/^host: //p')"
+cp "src-tauri/binaries/mimi-local-speech-$LOCAL_SPEECH_TARGET" "$BUILD_APP/Contents/MacOS/mimi-local-speech"
+cp src-tauri/binaries/mlx.metallib "$BUILD_APP/Contents/Resources/"
+cp src-tauri/local-speech/THIRD_PARTY_NOTICES.md "$BUILD_APP/Contents/Resources/LOCAL_SPEECH_NOTICES.md"
+for resource in src-tauri/binaries/*.bundle; do
+  [[ -d "$resource" ]] || continue
+  cp -R "$resource" "$BUILD_APP/Contents/Resources/"
+done
 cp "$BUILD_DIR/mimi" "$BUILD_APP/Contents/MacOS/mimi"
 cp "$PROJECT_DIR/src-tauri/icons/icon.icns" "$BUILD_APP/Contents/Resources/icon.icns"
 cp "$PROJECT_DIR/THIRD_PARTY_NOTICES.md" "$BUILD_APP/Contents/Resources/THIRD_PARTY_NOTICES.md"

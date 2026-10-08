@@ -164,14 +164,24 @@ impl LiveTranslationConfiguration {
             },
             TextTranslationCredentials::translation,
         );
-        self.provider
-            .capabilities_for_route(route, self.target_language)
-            .for_source(self.source_language)
+        let mut capabilities = self
+            .provider
+            .capabilities_for_route(route, self.target_language);
+        if let ProviderCredentials::LocalSpeech { model } = self.credentials {
+            let sources = model.source_languages();
+            capabilities
+                .source_languages
+                .retain(|language| sources.contains(language));
+        }
+        capabilities.for_source(self.source_language)
     }
 
     /// Returns a trimmed, validated copy of the configuration.
     pub fn validated(&self) -> Result<Self, LiveTranslationConfigurationError> {
-        let network_proxy = if self.provider == ProviderKind::AppleSpeech {
+        let network_proxy = if matches!(
+            self.provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) {
             ProxyConfig {
                 mode: crate::core::network_proxy::ProxyMode::Direct,
                 url: None,
@@ -182,8 +192,10 @@ impl LiveTranslationConfiguration {
         let text_network_proxy = if matches!(
             self.text_credentials,
             Some(TextTranslationCredentials::Apple)
-        ) || (self.provider == ProviderKind::AppleSpeech
-            && !self.target_language.translates_audio())
+        ) || (matches!(
+            self.provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) && !self.target_language.translates_audio())
         {
             ProxyConfig {
                 mode: crate::core::network_proxy::ProxyMode::Direct,
@@ -242,6 +254,38 @@ impl LiveTranslationConfiguration {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn local_recognition_is_keyless_and_limits_languages_per_model() {
+        use crate::core::local_speech::LocalSpeechModel;
+        let mut config = LiveTranslationConfiguration::with_credentials(
+            ProviderKind::LocalSpeech,
+            ProviderCredentials::LocalSpeech {
+                model: LocalSpeechModel::QwenStandard,
+            },
+            SourceLanguage::Japanese,
+            TargetLanguage::Original,
+            TranslationMode::Turbo,
+        );
+        assert!(config.validated().is_ok());
+        config.source_language = SourceLanguage::Norwegian;
+        assert_eq!(
+            config.validated().unwrap_err(),
+            LiveTranslationConfigurationError::UnsupportedSourceLanguage
+        );
+        config.credentials = ProviderCredentials::LocalSpeech {
+            model: LocalSpeechModel::QwenSmall,
+        };
+        config.source_language = SourceLanguage::Vietnamese;
+        assert!(config.validated().is_ok());
+        config.target_language = TargetLanguage::English;
+        assert!(matches!(
+            config.validated(),
+            Err(LiveTranslationConfigurationError::Credentials(
+                ProviderCredentialsError::MissingTextTranslation
+            ))
+        ));
+    }
+
     #[test]
     fn apple_text_credentials_are_local_and_keep_speech_network_independent() {
         use crate::core::network_proxy::ProxyMode;

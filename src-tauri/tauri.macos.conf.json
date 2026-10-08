@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "externalBin": [
+      "binaries/mimi-local-speech"
+    ],
+    "resources": {
+      "binaries/mlx.metallib": "mlx.metallib",
+      "local-speech/THIRD_PARTY_NOTICES.md": "LOCAL_SPEECH_NOTICES.md"
+    },
+    "macOS": {
+      "files": {
+        "Resources/swift-transformers_Hub.bundle": "binaries/swift-transformers_Hub.bundle",
+        "Resources/swift-crypto_Crypto.bundle": "binaries/swift-crypto_Crypto.bundle"
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import localSpeechCatalog from "../../src-tauri/src/core/local_speech_catalog.json";
 import languageCatalogs from "../../shared/provider-language-catalogs.json";
 import {
   AUDIO3_RECOGNITION_LANGUAGE_CODES,
@@ -57,6 +58,7 @@ export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
   "azureOpenAIRealtime",
   "xAIRealtime",
   "appleSpeech",
+  "localSpeech",
   "customDashScopeASR",
   "customOpenAIASR",
 ];
@@ -64,6 +66,7 @@ export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
 const PROVIDER_CAPABILITIES: Readonly<
   Record<ServiceProvider, ProviderCapabilities>
 > = {
+  localSpeech: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
   appleSpeech: { sourceLanguages: [], targetLanguages: ["original"], translationModes: ["turbo"] },
   customDashScopeASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
   customOpenAIASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
@@ -138,13 +141,17 @@ export function isCustomSpeechProvider(provider: ServiceProvider): boolean {
 
 /** User declarations only narrow encodable options; they never certify model support. */
 function declaredCustomSources(profile: ServiceProfile, sources: readonly SourceLanguage[]): readonly SourceLanguage[] {
+  if (profile.provider === "localSpeech") {
+    const codes = localSpeechCatalog.find(model => model.id === (profile.localSpeechModel ?? "qwenSmall"))?.sourceLanguages ?? [];
+    return sources.filter(source => codes.includes(source));
+  }
   if (!isCustomSpeechProvider(profile.provider)) return sources;
   const declared = profile.customSpeechSourceLanguages;
   return sources.filter(source => source === "auto" || declared == null || declared.includes(source));
 }
 
 export function isStandaloneAsrProvider(provider: ServiceProvider): boolean {
-  return provider === "appleSpeech" || isCustomSpeechProvider(provider);
+  return provider === "appleSpeech" || provider === "localSpeech" || isCustomSpeechProvider(provider);
 }
 
 export function credentialStateForTarget(profile: ServiceProfile | undefined, target: TargetLanguage): CredentialState {
@@ -166,7 +173,7 @@ export function capabilitiesForProfile(
     // Only the native runtime can certify Apple's catalog. An unavailable or
     // not-yet-loaded catalog must not borrow a cloud provider's language list.
     return {
-      sourceLanguages: targetLanguage === "original" ? declaredCustomSources(profile, profile.provider === "appleSpeech" ? [] : isCustomSpeechProvider(profile.provider) ? CUSTOM_CONFIGURABLE_SOURCES : ALIBABA_RECOGNITION_SOURCES) : [],
+      sourceLanguages: targetLanguage === "original" ? declaredCustomSources(profile, profile.provider === "appleSpeech" ? [] : isStandaloneAsrProvider(profile.provider) ? CUSTOM_CONFIGURABLE_SOURCES : ALIBABA_RECOGNITION_SOURCES) : [],
       targetLanguages: ["original"],
       translationModes: ["turbo"],
     };

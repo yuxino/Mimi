@@ -45,6 +45,8 @@ pub enum ProviderKind {
     CustomOpenAIASR,
     #[serde(rename = "appleSpeech")]
     AppleSpeech,
+    #[serde(rename = "localSpeech")]
+    LocalSpeech,
 }
 
 impl ProviderKind {
@@ -81,6 +83,7 @@ impl ProviderKind {
             Self::CustomDashScopeASR => "customDashScopeASR",
             Self::CustomOpenAIASR => "customOpenAIASR",
             Self::AppleSpeech => "appleSpeech",
+            Self::LocalSpeech => "localSpeech",
         }
     }
 
@@ -98,6 +101,7 @@ impl ProviderKind {
             Self::CustomDashScopeASR => "Custom DashScope ASR",
             Self::CustomOpenAIASR => "Custom OpenAI ASR",
             Self::AppleSpeech => "Apple Speech",
+            Self::LocalSpeech => "Local models",
         }
     }
 
@@ -177,13 +181,14 @@ impl ProviderKind {
                     .collect::<Vec<_>>();
                 catalog_capabilities(&codes, &codes, 16_000, false)
             }
-            Self::CustomDashScopeASR | Self::CustomOpenAIASR | Self::AppleSpeech => {
-                custom_speech_capabilities(
-                    self,
-                    TextTranslation::FollowService,
-                    TargetLanguage::Original,
-                )
-            }
+            Self::CustomDashScopeASR
+            | Self::CustomOpenAIASR
+            | Self::AppleSpeech
+            | Self::LocalSpeech => custom_speech_capabilities(
+                self,
+                TextTranslation::FollowService,
+                TargetLanguage::Original,
+            ),
         }
     }
 
@@ -192,7 +197,7 @@ impl ProviderKind {
     }
 
     pub const fn is_standalone_asr(self) -> bool {
-        self.is_custom_speech() || matches!(self, Self::AppleSpeech)
+        self.is_custom_speech() || matches!(self, Self::AppleSpeech | Self::LocalSpeech)
     }
 
     pub const fn supports_text_translation(self) -> bool {
@@ -596,6 +601,8 @@ pub struct ServiceProfile {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
+    #[serde(default)]
+    pub local_speech_model: crate::core::local_speech::LocalSpeechModel,
     /// Built-in Alibaba text translation only; historical profiles retain Lite.
     #[serde(default)]
     pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
@@ -651,6 +658,7 @@ impl ServiceProfile {
             name,
             provider,
             qwen_mt_model: Default::default(),
+            local_speech_model: Default::default(),
             language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
@@ -667,6 +675,7 @@ impl ServiceProfile {
             name: ProviderKind::AlibabaCloud.display_name().to_string(),
             provider: ProviderKind::AlibabaCloud,
             qwen_mt_model: Default::default(),
+            local_speech_model: Default::default(),
             language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
@@ -683,6 +692,7 @@ impl ServiceProfile {
         // reject activation, rather than rejecting the whole profile catalog.
         profile.language_preset = self.language_preset;
         profile.qwen_mt_model = self.qwen_mt_model;
+        profile.local_speech_model = self.local_speech_model;
         if matches!(
             self.text_translation,
             Some(
@@ -786,6 +796,12 @@ impl ServiceProfile {
         if self.provider.is_standalone_asr() {
             let mut capabilities =
                 custom_speech_capabilities(self.provider, self.text_translation(), target);
+            if self.provider == ProviderKind::LocalSpeech {
+                let sources = self.local_speech_model.source_languages();
+                capabilities
+                    .source_languages
+                    .retain(|language| sources.contains(language));
+            }
             if let Some(declared) = &self.custom_speech_source_languages {
                 capabilities.source_languages.retain(|language| {
                     *language == SourceLanguage::Automatic || declared.contains(language)

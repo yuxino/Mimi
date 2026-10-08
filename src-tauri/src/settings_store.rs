@@ -1163,12 +1163,22 @@ impl SettingsStore {
         provider: ProviderKind,
         name: &str,
     ) -> Result<ServiceProfile, String> {
-        let profile = ServiceProfile::new(
+        self.create_profile_with_model(provider, name, Default::default())
+    }
+
+    pub fn create_profile_with_model(
+        &self,
+        provider: ProviderKind,
+        name: &str,
+        model: crate::core::local_speech::LocalSpeechModel,
+    ) -> Result<ServiceProfile, String> {
+        let mut profile = ServiceProfile::new(
             format!("profile-{}", uuid::Uuid::new_v4().simple()),
             name,
             provider,
         )
         .map_err(|error| error.to_string())?;
+        profile.local_speech_model = model;
         self.mutate_catalog_with_normalization(Some(&profile.id), |catalog| {
             if catalog
                 .profiles
@@ -1465,7 +1475,11 @@ impl SettingsStore {
     }
 
     fn retry_profile_credential_errors(&self, profile: &ServiceProfile, speech: bool, text: bool) {
-        let speech = speech && profile.provider != ProviderKind::AppleSpeech;
+        let speech = speech
+            && !matches!(
+                profile.provider,
+                ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            );
         let account = credential_account(profile);
         let retry_legacy = speech && is_default_alibaba(profile) && self.migrate_legacy_alibaba;
         self.secret_cache
@@ -1538,7 +1552,10 @@ impl SettingsStore {
     }
 
     fn speech_presence_for_snapshot(&self, profile: &ServiceProfile) -> CredentialState {
-        if profile.provider == ProviderKind::AppleSpeech {
+        if matches!(
+            profile.provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) {
             return CredentialState::Present;
         }
         let presence = (|| {
@@ -1972,6 +1989,11 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<Option<ProviderCredentials>, String> {
+        if profile.provider == ProviderKind::LocalSpeech {
+            return Ok(Some(ProviderCredentials::LocalSpeech {
+                model: profile.local_speech_model,
+            }));
+        }
         if profile.provider == ProviderKind::AppleSpeech {
             return Ok(Some(ProviderCredentials::AppleSpeech));
         }
@@ -2901,6 +2923,24 @@ impl SettingsStore {
         profile: &ServiceProfile,
         source_language: Option<SourceLanguage>,
     ) -> Result<LiveTranslationConfiguration, String> {
+        if profile.provider == ProviderKind::LocalSpeech {
+            let prefs = profile.normalize_preferences(ProviderPreferences {
+                source_language: self.preferences().source_language,
+                target_language: TargetLanguage::Original,
+                translation_mode: crate::core::models::TranslationMode::Turbo,
+            });
+            return LiveTranslationConfiguration::with_credentials(
+                ProviderKind::LocalSpeech,
+                ProviderCredentials::LocalSpeech {
+                    model: profile.local_speech_model,
+                },
+                prefs.source_language,
+                TargetLanguage::Original,
+                prefs.translation_mode,
+            )
+            .validated()
+            .map_err(|error| error.to_string());
+        }
         if source_language.is_some() && profile.provider != ProviderKind::AppleSpeech {
             return Err("apple_speech_source_override_invalid".into());
         }
@@ -3131,7 +3171,8 @@ impl SettingsStore {
         {
             return Err("apple_translation_language_unsupported".into());
         }
-        if profile.custom_speech_source_languages.is_some()
+        if (profile.custom_speech_source_languages.is_some()
+            || profile.provider == ProviderKind::LocalSpeech)
             && !profile
                 .capabilities(prefs.target_language)
                 .source_languages
@@ -3274,7 +3315,10 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<Option<String>, SecretStoreError> {
-        if profile.provider == ProviderKind::AppleSpeech {
+        if matches!(
+            profile.provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) {
             return Ok(None);
         }
         let account = credential_account(profile);
@@ -3344,7 +3388,10 @@ impl SettingsStore {
     }
 
     fn delete_api_key_for_profile(&self, profile: &ServiceProfile) -> Result<(), String> {
-        if profile.provider == ProviderKind::AppleSpeech {
+        if matches!(
+            profile.provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) {
             return Ok(());
         }
         if is_default_alibaba(profile) && self.migrate_legacy_alibaba {
@@ -3380,7 +3427,10 @@ impl SettingsStore {
         value: &str,
         allow_collection_creation: bool,
     ) -> Result<(), String> {
-        if profile.provider == ProviderKind::AppleSpeech {
+        if matches!(
+            profile.provider,
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+        ) {
             return Err(
                 crate::core::credentials::ProviderCredentialsError::ProviderMismatch.to_string(),
             );
@@ -4353,6 +4403,47 @@ mod tests {
                 .unwrap()
                 .is_some());
         }
+    }
+
+    #[test]
+    fn local_model_profile_is_keyless_and_retains_its_model_identity() {
+        use crate::core::local_speech::LocalSpeechModel;
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store
+            .create_profile_with_model(
+                ProviderKind::LocalSpeech,
+                "Qwen standard",
+                LocalSpeechModel::QwenStandard,
+            )
+            .unwrap();
+        let speech_account = credential_account(&profile);
+        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &speech_account);
+        store.select_profile(&profile.id).unwrap();
+        let config = store.configuration().unwrap();
+        assert_eq!(
+            config.credentials,
+            ProviderCredentials::LocalSpeech {
+                model: LocalSpeechModel::QwenStandard
+            }
+        );
+        assert_eq!(config.target_language, TargetLanguage::Original);
+        assert_eq!(
+            store.credential_state_for_snapshot(&profile),
+            CredentialState::Present
+        );
+        assert!(store.configuration_for_speech_probe(&profile).is_ok());
+        assert!(store
+            .save_api_key(&profile.id, "synthetic-unrelated")
+            .is_err());
+        store.delete_profile(&profile.id).unwrap();
+        assert_eq!(
+            fake.load_count(PROFILE_KEYCHAIN_SERVICE, &speech_account),
+            0
+        );
+        assert!(fake
+            .value(PROFILE_KEYCHAIN_SERVICE, &speech_account)
+            .is_none());
     }
 
     #[test]

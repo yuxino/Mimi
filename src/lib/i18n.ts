@@ -2026,6 +2026,8 @@ export const I18N = {
 
 export function providerDisplayName(provider: ServiceProvider): string {
   switch (provider) {
+    case "localSpeech":
+      return { zh: "本地模型", "zh-TW": "本機模型", en: "Local models", ja: "ローカルモデル", de: "Lokale Modelle", ko: "로컬 모델", fr: "Modèles locaux" }[effectiveUiLanguage()];
     case "appleSpeech":
       return I18N.settings.appleSpeech;
     case "customDashScopeASR":

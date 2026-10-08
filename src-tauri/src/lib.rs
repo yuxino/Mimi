@@ -27,6 +27,7 @@ mod development_debugger;
 mod fonts;
 #[cfg(target_os = "linux")]
 mod linux_startup;
+mod local_models;
 #[cfg(any(target_os = "macos", test))]
 mod mac_dock;
 #[cfg(target_os = "macos")]
@@ -123,6 +124,10 @@ pub fn run() {
             {
                 return Err("development builds require the isolated Tauri identifier".into());
             }
+            local_models::initialize(
+                app.path().app_local_data_dir()?.join("local-models"),
+                std::env::var("MIMI_UI_TEST").as_deref() == Ok("1"),
+            )?;
             let is_ui_test = std::env::var("MIMI_UI_TEST").as_deref() == Ok("1");
             #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::initialize(&app_handle);
@@ -393,6 +398,10 @@ pub fn run() {
             commands::open_tencent_setup_page,
             commands::settings_save,
             commands::profile_create,
+            commands::local_models_status,
+            commands::local_model_download,
+            commands::local_model_cancel,
+            commands::local_model_delete,
             commands::profile_update,
             commands::profile_select,
             commands::profile_delete,

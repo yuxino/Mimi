@@ -55,6 +55,7 @@ pub struct ServiceProfilePayload {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
+    pub local_speech_model: crate::core::local_speech::LocalSpeechModel,
     pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
     pub language_preset: Option<crate::core::provider::ProfileLanguagePreset>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,6 +90,7 @@ impl ServiceProfilePayload {
             name: profile.name,
             provider: profile.provider,
             qwen_mt_model: profile.qwen_mt_model,
+            local_speech_model: profile.local_speech_model,
             language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
             credential_state,
@@ -110,6 +112,7 @@ impl ServiceProfilePayload {
             name: profile.name,
             provider: profile.provider,
             qwen_mt_model: profile.qwen_mt_model,
+            local_speech_model: profile.local_speech_model,
             language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
             credential_state: CredentialState::Unavailable,
@@ -941,6 +944,7 @@ mod tests {
         let payload = SettingsSnapshotPayload {
             credential_storage: "keychain",
             profiles: vec![ServiceProfilePayload {
+                local_speech_model: Default::default(),
                 qwen_mt_model: Default::default(),
                 language_preset: None,
                 speech_network_proxy: None,
@@ -2039,6 +2043,7 @@ pub async fn profile_create(
     state: State<'_, AppState>,
     provider: ProviderKind,
     name: String,
+    local_speech_model: Option<crate::core::local_speech::LocalSpeechModel>,
 ) -> Result<SettingsSnapshotPayload, String> {
     let _lifecycle = state.session.settings_mutation_guard(true).await?;
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
@@ -2047,7 +2052,17 @@ pub async fn profile_create(
         .inspect_err(|_| {
             let _ = emit_settings_snapshot(&app, &state.settings);
         })?;
-    state.settings.create_profile(provider, &name)?;
+    if provider == ProviderKind::LocalSpeech {
+        let model = local_speech_model.unwrap_or_default();
+        let _lease = crate::local_models::manager()
+            .and_then(|manager| manager.acquire(model))
+            .map_err(str::to_owned)?;
+        state
+            .settings
+            .create_profile_with_model(provider, &name, model)?;
+    } else {
+        state.settings.create_profile(provider, &name)?;
+    }
     emit_settings_snapshot(&app, &state.settings)
 }
 
@@ -2797,4 +2812,37 @@ pub async fn audio_applications(
         .audio_applications()
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn local_models_status() -> Result<crate::local_models::LocalModelsSnapshot, String> {
+    crate::local_models::manager()
+        .map(|manager| manager.snapshot())
+        .map_err(str::to_owned)
+}
+#[tauri::command]
+pub async fn local_model_download(
+    model: crate::core::local_speech::LocalSpeechModel,
+) -> Result<(), String> {
+    crate::local_models::manager()
+        .and_then(|manager| manager.download(model))
+        .map_err(str::to_owned)
+}
+#[tauri::command]
+pub fn local_model_cancel(
+    model: crate::core::local_speech::LocalSpeechModel,
+) -> Result<(), String> {
+    crate::local_models::manager()
+        .and_then(|manager| manager.cancel(model))
+        .map_err(str::to_owned)
+}
+#[tauri::command]
+pub async fn local_model_delete(
+    model: crate::core::local_speech::LocalSpeechModel,
+) -> Result<(), String> {
+    crate::local_models::manager()
+        .map_err(str::to_owned)?
+        .delete(model)
+        .await
+        .map_err(str::to_owned)
 }

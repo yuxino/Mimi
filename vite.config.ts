@@ -31,6 +31,7 @@ export default defineConfig(({ command, mode }) => {
   const productionAdapter = `${normalizePath(__dirname)}/src/lib/productionDevelopmentTools.ts`;
   return {
     plugins: [react()],
+    test: { include: ["src/**/*.test.{ts,tsx}"] },
     define: { __MIMI_DEVELOPMENT_BUILD__: JSON.stringify(developmentBuild) },
     resolve: {
       alias: developmentBuild ? [] : [

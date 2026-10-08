@@ -48,6 +48,12 @@ Cloud speech services require your own credentials and receive your audio; usage
 
 [Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](.github/CONTRIBUTING.md)
 
+### Download local models
+
+On Apple silicon Macs with macOS 14+, open **Settings → Speech & Translation → Add configuration → Local models** and download Qwen3-ASR 0.6B (about 713 MB, lightweight and recommended) or 1.7B (about 1.6 GB). Click **Use model** when ready. Recognition needs no API key, Python, or local server. Downloads support progress, cancellation, retry, and deletion; stop subtitles before deleting a model in use. Configurations remain so you can download the model again.
+
+Recognition audio stays on the Mac. Text translation is configured separately: original-only subtitles work immediately, while cloud text translation sends recognized text to that service.
+
 <a id="apple-local-recognition"></a>
 
 ### Apple local recognition

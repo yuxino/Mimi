@@ -192,7 +192,16 @@ export interface SettingsDraft {
   networkProxy?: NetworkProxyConfig;
 }
 
+export type LocalSpeechModel = "qwenSmall" | "qwenStandard";
+export interface LocalModelStatus {
+  id: LocalSpeechModel; name: string; downloadBytes: number; downloadedBytes: number;
+  phase: "missing" | "downloading" | "verifying" | "cancelling" | "installed" | "deleting" | "error";
+  installed: boolean; inUse: boolean; error: string | null;
+}
+export interface LocalModelsSnapshot { available: boolean; models: LocalModelStatus[] }
+
 export type ServiceProvider =
+  | "localSpeech"
   | "appleSpeech"
   | "alibabaCloud"
   | "openAIRealtime"
@@ -249,6 +258,7 @@ export type ProfileOptionsDraft = ProfileNetworkProxyDraft & {
 };
 
 export interface ServiceProfile {
+  localSpeechModel?: LocalSpeechModel;
   id: string;
   name: string;
   provider: ServiceProvider;
