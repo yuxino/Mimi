@@ -16,6 +16,11 @@ reducing compilation work and dependency installation.
 - Windows ARM64 Rust-only validation does not set up Node or install JavaScript
   packages. Acceptance-package and release runs still install the frontend.
   npm installs prefer the existing download cache and omit audit/funding output.
+- Validation caches use a separate `v1-line-tables` prefix after the debug
+  profile change. The action otherwise restores a manifest-mismatched cache
+  from its older prefix and retains both old full-debug and new line-table
+  artifacts. Start this namespace once with a cold cache, preserving all
+  toolchain/OS/architecture compatibility keys and every validation gate.
 - Acceptance-package and public-package jobs share compatible Rust dependency
   caches; their caches remain separate from ordinary Rust check/test jobs.
 - macOS release preparation builds and validates the Safari-targeted production

@@ -44,6 +44,7 @@ jobs:
           targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
+          prefix-key: v1-line-tables
           workspaces: |
             shared/mimi-core -> ../target
             shared/mimi-android-jni -> ../target
