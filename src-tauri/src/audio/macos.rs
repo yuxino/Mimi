@@ -1,5 +1,6 @@
-//! macOS system-audio capture through ScreenCaptureKit (audio only, own
-//! process audio excluded, provider-rate PCM16 mono).
+//! macOS system-audio capture (audio only, own process audio excluded,
+//! provider-rate PCM16 mono). The system mix uses Core Audio taps on macOS
+//! 14.2+; older systems and application capture use ScreenCaptureKit.
 //!
 //! ScreenCaptureKit types are main-thread-only (!Send). All stream, handler,
 //! and content objects are therefore created, used, and destroyed inside
@@ -272,11 +273,11 @@ impl CaptureStartBarrier {
     }
 }
 
-/// Invalidates asynchronous ScreenCaptureKit completions from older starts.
+/// Invalidates native callbacks and asynchronous completions from older starts.
 /// A stop changes the value synchronously, before its main-thread teardown is
 /// dispatched, so a pending content callback cannot install a ghost stream.
 #[derive(Clone, Default)]
-struct CaptureGeneration {
+pub(super) struct CaptureGeneration {
     value: Arc<AtomicU64>,
 }
 
@@ -300,19 +301,19 @@ impl CaptureGeneration {
             .is_ok()
     }
 
-    fn is_current(&self, token: u64) -> bool {
+    pub(super) fn is_current(&self, token: u64) -> bool {
         self.value.load(Ordering::SeqCst) == token
     }
 }
 
 #[derive(Clone, Default)]
-struct PendingTeardown {
+pub(super) struct PendingTeardown {
     count: Arc<AtomicUsize>,
     notify: Arc<Notify>,
 }
 
 impl PendingTeardown {
-    fn begin(&self) -> PendingTeardownGuard {
+    pub(super) fn begin(&self) -> PendingTeardownGuard {
         self.count.fetch_add(1, Ordering::SeqCst);
         PendingTeardownGuard {
             count: Arc::clone(&self.count),
@@ -320,7 +321,7 @@ impl PendingTeardown {
         }
     }
 
-    fn is_pending(&self) -> bool {
+    pub(super) fn is_pending(&self) -> bool {
         self.count.load(Ordering::SeqCst) > 0
     }
 
@@ -337,7 +338,7 @@ impl PendingTeardown {
     }
 }
 
-struct PendingTeardownGuard {
+pub(super) struct PendingTeardownGuard {
     count: Arc<AtomicUsize>,
     notify: Arc<Notify>,
 }
@@ -460,6 +461,24 @@ impl MacSystemAudioCapture {
         if !self.generation.is_current(generation_token) {
             self.finish_failed_start(generation_token).await;
             return Err(SystemAudioCaptureError::StartCancelled);
+        }
+
+        if super::macos_tap::use_audio_tap(&target, super::macos_tap::is_available()) {
+            // Reserve teardown before spawning. A timed-out native permission
+            // request must keep subsequent sources closed until it really exits.
+            let result = super::macos_tap::start(
+                audio_ingress,
+                failure_tx,
+                format,
+                self.generation.clone(),
+                generation_token,
+                self.pending_teardown.begin(),
+            )
+            .await;
+            if result.is_err() {
+                self.finish_failed_start(generation_token).await;
+            }
+            return result;
         }
 
         let application_target = target.application_id().is_some();
@@ -675,6 +694,13 @@ impl MacSystemAudioCapture {
                 pipeline_log!("capture stop timed out label=capture.native_stop_timed_out");
             }
         }
+        // The tap worker owns native resources until IOProc removal completes.
+        // Generation invalidation above tells it to stop, including mid-setup.
+        let _ = tokio::time::timeout(
+            CAPTURE_STOP_TIMEOUT,
+            self.pending_teardown.wait_until_clear(),
+        )
+        .await;
     }
 
     async fn finish_failed_start(&self, generation_token: u64) {
@@ -1137,7 +1163,7 @@ const RESAMPLE_CHUNK_FRAMES: usize = 1024;
 /// Decodes interleaved/planar linear PCM into mono f32 samples. Both the
 /// float and signed-integer branches handle multi-channel buffers by
 /// averaging channels, matching `PCM16Encoder::encode`.
-fn decode_to_f32_mono(
+pub(super) fn decode_to_f32_mono(
     bytes: &[u8],
     asbd: &AudioStreamBasicDescription,
 ) -> Result<Vec<f32>, SystemAudioCaptureError> {

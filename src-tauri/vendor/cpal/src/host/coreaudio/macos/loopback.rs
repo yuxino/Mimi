@@ -4,7 +4,10 @@ use std::{
     ffi::{c_void, CStr},
     mem::MaybeUninit,
     ptr::NonNull,
-    sync::atomic::{AtomicU32, Ordering},
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        OnceLock,
+    },
 };
 
 static AGGREGATE_INSTANCE_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -15,8 +18,7 @@ use objc2_core_audio::{
     kAudioAggregateDeviceTapListKey, kAudioAggregateDeviceUIDKey, kAudioDevicePropertyDeviceUID,
     kAudioEndPointDeviceIsPrivateKey, kAudioObjectPropertyElementMain,
     kAudioObjectPropertyScopeGlobal, kAudioSubTapDriftCompensationKey, kAudioSubTapUIDKey,
-    AudioHardwareCreateAggregateDevice, AudioHardwareCreateProcessTap,
-    AudioHardwareDestroyAggregateDevice, AudioHardwareDestroyProcessTap,
+    AudioHardwareCreateAggregateDevice, AudioHardwareDestroyAggregateDevice,
     AudioObjectGetPropertyData, AudioObjectID, AudioObjectPropertyAddress, CATapDescription,
     CATapMuteBehavior,
 };
@@ -30,6 +32,43 @@ use objc2_foundation::{NSArray, NSNumber, NSString};
 use super::device::Device;
 use crate::{host::coreaudio::check_os_status, Error, ErrorKind};
 type CFStringRef = *mut std::os::raw::c_void;
+
+// Mimi supports macOS 13. CPAL's output-device loopback is reachable through
+// DeviceTrait even when Mimi captures its system mix through another backend.
+// Strong imports of these 14.2 APIs can prevent the whole app loading on 13.
+type CreateTap = unsafe extern "C-unwind" fn(Option<&CATapDescription>, *mut AudioObjectID) -> i32;
+type DestroyTap = unsafe extern "C-unwind" fn(AudioObjectID) -> i32;
+
+#[derive(Clone, Copy)]
+struct TapApi {
+    create: CreateTap,
+    destroy: DestroyTap,
+}
+
+impl TapApi {
+    fn load() -> Option<Self> {
+        static API: OnceLock<Option<TapApi>> = OnceLock::new();
+        *API.get_or_init(|| {
+            unsafe extern "C" {
+                fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
+            }
+            // SAFETY: RTLD_DEFAULT is -2 in Darwin's dlfcn.h. CoreAudio is
+            // already linked; signatures match AudioHardwareTapping.h.
+            unsafe {
+                let handle = -2isize as *mut c_void;
+                let create = dlsym(handle, c"AudioHardwareCreateProcessTap".as_ptr());
+                let destroy = dlsym(handle, c"AudioHardwareDestroyProcessTap".as_ptr());
+                if create.is_null() || destroy.is_null() {
+                    return None;
+                }
+                Some(Self {
+                    create: std::mem::transmute::<*mut c_void, CreateTap>(create),
+                    destroy: std::mem::transmute::<*mut c_void, DestroyTap>(destroy),
+                })
+            }
+        })
+    }
+}
 
 impl Device {
     fn uid(&self) -> Result<Retained<NSString>, Error> {
@@ -84,6 +123,7 @@ impl LoopbackDevice {
     /// Create a [`LoopbackDevice`] that records the sound
     /// output of `device`.
     pub fn from_device(device: &Device) -> Result<Self, Error> {
+        let api = TapApi::load().ok_or_else(|| Error::from(ErrorKind::UnsupportedOperation))?;
         // 1 - Create tap
 
         let pid = std::process::id();
@@ -111,8 +151,7 @@ impl LoopbackDevice {
 
         let mut tap_obj_id: MaybeUninit<AudioObjectID> = MaybeUninit::uninit();
         let tap_obj_id = unsafe {
-            let status =
-                AudioHardwareCreateProcessTap(Some(tap_desc.as_ref()), tap_obj_id.as_mut_ptr());
+            let status = (api.create)(Some(tap_desc.as_ref()), tap_obj_id.as_mut_ptr());
             check_os_status(status)?;
             tap_obj_id.assume_init()
         };
@@ -146,7 +185,9 @@ impl Drop for LoopbackDevice {
             // We don't check status to avoid panic during `drop`
             let _status =
                 AudioHardwareDestroyAggregateDevice(self.aggregate_device.audio_device_id);
-            let _status = AudioHardwareDestroyProcessTap(self.tap_id);
+            if let Some(api) = TapApi::load() {
+                let _status = (api.destroy)(self.tap_id);
+            }
         }
     }
 }

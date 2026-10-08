@@ -11,8 +11,8 @@ pub struct CaptureDetails {
     pub kind: &'static str,
     pub strategy: &'static str,
     pub actual_device_name: Option<String>,
-    /// macOS's current default playback destination. ScreenCaptureKit captures
-    /// the system mix independently; this is not a selected capture device.
+    /// macOS's current default playback destination. The system mix captures
+    /// independently; this is not a selected capture device.
     pub system_output_device_name: Option<String>,
     pub observation: Option<CaptureSignal>,
 }
@@ -101,6 +101,9 @@ pub mod macos;
 
 #[cfg(target_os = "macos")]
 mod macos_block_buffer;
+
+#[cfg(target_os = "macos")]
+mod macos_tap;
 
 #[cfg(target_os = "macos")]
 pub mod macos_output;

@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>NSScreenCaptureUsageDescription</key>
-  <string>mimi needs Screen &amp; System Audio Recording access to hear system audio for live subtitles. It never records the screen.</string>
+  <string>mimi uses Screen &amp; System Audio Recording access for selected-application audio and system audio on older macOS versions. It never records the screen.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>mimi captures system audio to create live subtitles. Audio is saved locally only when you enable audio recording.</string>
   <key>NSMicrophoneUsageDescription</key>

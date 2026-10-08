@@ -70,6 +70,11 @@ core-graphics2 = { version = "0.6", features = ["display"] }
 objc2 = { version = "0.6", features = ["exception"] }
 objc2-app-kit = { version = "0.3", features = ["NSWindow"] }
 objc2-core-audio-types = { version = "0.3", features = ["objc2"] }
+# Already locked through cpal; Core Audio taps avoid ScreenCaptureKit for the
+# system mix on macOS 14.2+. New tap entry points are resolved at runtime.
+objc2-core-audio = { version = "0.3", default-features = false, features = ["std", "AudioHardware", "objc2", "objc2-core-audio-types", "objc2-foundation"] }
+objc2-core-foundation = { version = "0.3", features = ["CFDictionary"] }
+libc = "0.2"
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSString", "NSError", "NSObject", "NSBundle"] }
 dispatch2 = "0.3"
 # Existing transitive library; exact metadata-only login-Keychain lookup.
