@@ -3,7 +3,7 @@ name = "mimi-android-jni"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
-description = "Stateless Android JNI adapter for Mimi's shared subtitle core"
+description = "Android JNI adapter for Mimi's shared live runtime and subtitle core"
 license = "MIT"
 
 [lib]
@@ -14,6 +14,11 @@ crate-type = ["cdylib", "rlib"]
 # Reuse the version already present in the desktop dependency lock.
 jni = "=0.21.1"
 mimi-core = { path = "../mimi-core" }
+mimi-runtime = { path = "../mimi-runtime" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+base64 = "0.23"
 
 [profile.dev]
 debug = "line-tables-only"
@@ -25,3 +30,7 @@ opt-level = "s"
 # Keep unwinding inside the adapter's catch boundary, never across JNI.
 panic = "unwind"
 strip = "symbols"
+
+[dev-dependencies]
+futures-util = { version = "0.3", features = ["sink"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots", "url"] }

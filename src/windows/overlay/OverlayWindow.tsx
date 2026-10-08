@@ -150,7 +150,7 @@ export function OverlayWindow() {
   const presentationCollapsed = collapsed && !blendsWithBackground && !hasSessionError;
   const phase = computeActivityPhase(session, settings);
   const activeProvider = settings.profiles.find(profile => profile.id === settings.activeProfileId)?.provider;
-  const atomicProvider = usesAtomicSubtitlePreview(activeProvider);
+  const atomicProvider = session.atomicPreview ?? usesAtomicSubtitlePreview(activeProvider);
   const streamingProvider = usesStreamingSubtitlePreview(activeProvider);
   // Disabling an input keeps its confirmed captions and source identity.
   const dual = new Set([

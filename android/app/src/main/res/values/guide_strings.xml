@@ -42,7 +42,7 @@
     <string name="guide_no_browser">No browser available to open this link</string>
     <string name="guide_local_save">Saving settings does not connect to a provider. Starting captions may incur provider charges.</string>
     <string name="guide_immersive">Immersive captions</string>
-    <string name="guide_immersive_hint">Show only caption text while keeping video controls accessible. Tap Exit on the right to restore the caption panel, or turn this off in Settings. Drag Exit up or down to move it.</string>
+    <string name="guide_immersive_hint">Show only caption text while keeping video controls accessible. Tap Exit beside the captions to restore the previous view, or turn off Immersive captions on Home or in Settings. Your subtitle position is kept.</string>
     <string name="guide_understood">Got it</string>
     <string name="guide_progress">Getting started · %1$d / 5</string>
     <string name="guide_continue_provider">Continue · %1$s</string>
@@ -64,7 +64,7 @@
     <string name="guide_help_xai">Create an API key in the xAI console and check realtime voice access and available credits.</string>
     <string name="guide_projection_revoked">Session consent ended / revoked · allow again</string>
     <string name="guide_name_dashscope">Alibaba Cloud</string>
-    <string name="guide_detail_dashscope">Tongyi realtime translation</string>
+    <string name="guide_detail_dashscope">Audio 3.0 · Qwen-MT</string>
     <string name="guide_name_openai">OpenAI</string>
     <string name="guide_detail_openai">Realtime Translation</string>
     <string name="guide_name_gemini">Google Gemini</string>

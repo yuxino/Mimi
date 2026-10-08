@@ -13,7 +13,7 @@
     <string name="settings_opacity">Untertiteldeckkraft</string>
     <string name="settings_background">Hintergrunddeckkraft</string>
     <string name="settings_immersive">Immersive Untertitel</string>
-    <string name="settings_immersive_help">Nur Text; Videosteuerung bleibt bedienbar. Änderungen gelten sofort. Rechts geht es zurück.</string>
+    <string name="settings_immersive_help">Nur Text; die Videosteuerung bleibt bedienbar. Änderungen gelten sofort. Neben den Untertiteln zurückkehren oder auf der Startseite ausschalten.</string>
     <string name="settings_history">Untertitelverlauf behalten</string>
     <string name="settings_history_help">Standardmäßig aus. Verlauf nur für diese Sitzung; beim Abschalten oder Stoppen wird er gelöscht.</string>
     <string name="settings_reset">Untertitelposition zurücksetzen</string>

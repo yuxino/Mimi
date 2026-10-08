@@ -41,6 +41,7 @@ interface ProviderEngine {
 
 /** Events every engine maps its wire protocol onto. */
 interface EngineListener {
+    fun onRuntimeSnapshot(state: org.json.JSONObject, originalOnly: Boolean) = Unit
     fun onSessionReady()
 
     /** [language] is the provider's detected source language, if reported. */

@@ -8,7 +8,8 @@
 //! with the recognition line currently on screen.
 
 use crate::models::{
-    PreviewSubtitlePair, SubtitleEvent, SubtitleLine, SubtitlePair, SubtitleSnapshot, UtteranceRole,
+    PreviewSubtitlePair, RealtimeSubtitlePreview, SubtitleEvent, SubtitleLine, SubtitlePair,
+    SubtitleSnapshot, UtteranceRole,
 };
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -175,6 +176,13 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             && self.snapshot.history.iter().all(pair_valid)
             && self
                 .snapshot
+                .realtime_preview
+                .as_ref()
+                .is_none_or(|preview| {
+                    line_valid(&preview.source) && line_valid(&preview.translation)
+                })
+            && self
+                .snapshot
                 .preview_pair
                 .as_ref()
                 .is_none_or(preview_valid)
@@ -189,6 +197,9 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     && line_valid(&track.translation)
                     && track.history.len() <= self.max_history_count
                     && track.history.iter().all(pair_valid)
+                    && track.realtime_preview.as_ref().is_none_or(|preview| {
+                        line_valid(&preview.source) && line_valid(&preview.translation)
+                    })
                     && track.preview_pair.as_ref().is_none_or(preview_valid)
                     && track.display_pair.as_ref().is_none_or(preview_valid)
                     && track
@@ -246,6 +257,22 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         if !event.text_within_limit() {
             return;
         }
+        let realtime = matches!(
+            &event,
+            SubtitleEvent::SourceDraft(_)
+                | SubtitleEvent::SourceFinal(_)
+                | SubtitleEvent::TranslationDraft(_)
+                | SubtitleEvent::TranslationFinal(_)
+                | SubtitleEvent::UtteranceText { .. }
+                | SubtitleEvent::IdentifiedFinalPair { .. }
+                | SubtitleEvent::FinalPair { .. }
+        );
+        let atomic = matches!(
+            &event,
+            SubtitleEvent::SourceUtteranceDraft { .. }
+                | SubtitleEvent::PreviewPair { .. }
+                | SubtitleEvent::ConfirmedPair { .. }
+        );
         match event {
             SubtitleEvent::SourceDraft(text) => {
                 self.latest_source_ordinal = None;
@@ -543,6 +570,47 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 // watermark so a replay cannot restore explicitly cleared text.
             }
         }
+        if realtime {
+            self.refresh_realtime_preview();
+        } else if atomic {
+            self.snapshot.realtime_preview = None;
+        }
+    }
+
+    /// Select realtime lanes without changing the retained complete pair or history.
+    fn refresh_realtime_preview(&mut self) {
+        let mut source = self.snapshot.source.clone();
+        let mut translation = self.snapshot.translation.clone();
+        if let Some(pair) = self.snapshot.display_pair.as_ref() {
+            let previous = |line: &SubtitleLine, text: &str| {
+                self.snapshot.display_pair_final
+                    && line.is_final
+                    && line.text == text
+                    && line.utterance_id == pair.utterance_id
+            };
+            if previous(&source, &pair.source) {
+                source = SubtitleLine::new("", false);
+            }
+            if previous(&translation, &pair.translation) {
+                translation = SubtitleLine::new("", false);
+            }
+        }
+        // A translation with a different/unknown owner cannot accompany the
+        // current original. Translation-first streams can still show one lane.
+        if !source.text.is_empty()
+            && !translation.text.is_empty()
+            && source.utterance_id != translation.utterance_id
+        {
+            translation = SubtitleLine::new("", false);
+        }
+        self.snapshot.realtime_preview = if source.text.is_empty() && translation.text.is_empty() {
+            None
+        } else {
+            Some(RealtimeSubtitlePreview {
+                source,
+                translation,
+            })
+        };
     }
 
     /// Begins a distinct user session without erasing its bounded display.
@@ -569,6 +637,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         self.display_pair_source_utterance_id = None;
         self.layout_epoch = fresh_layout_epoch();
         self.snapshot.preview_pair = None;
+        self.snapshot.realtime_preview = None;
         self.clear_unconfirmed_display_pair();
         self.source_draft_since_confirmation = false;
         if !self.snapshot.source.is_final {

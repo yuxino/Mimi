@@ -15,11 +15,17 @@ Preserve these product constraints:
 
 - `shared/mimi-core/`: the single Rust implementation of subtitle state,
   transcript alignment and final translation policy. Desktop imports it directly;
-  Android calls it through `shared/mimi-android-jni/`. Keep capture, transport,
+  Android calls it through `shared/mimi-android-jni/`. Keep capture,
   platform credentials and rendering in native adapters.
 
-- `src-tauri/src/core/`: UI-independent models, configuration, wire protocols, subtitle assembly, text segmentation, and pipeline diagnostics. Pure Rust, fully unit-tested.
-- `src-tauri/src/clients/`: tokio network clients (Alibaba live translate/Audio 3.0/Qwen-MT pipelines and OpenAI Realtime translation).
+- `shared/mimi-runtime/`: the single portable provider/translation runtime:
+  models, configuration, wire protocols, clients, bounded PCM pipeline, MT
+  scheduling, session controller, recovery policies and connection probes.
+  Desktop imports it; Android's production engine calls it through JNI. Do not
+  recreate these rules in Kotlin or add another desktop implementation.
+- `src-tauri/src/core/` and `src-tauri/src/clients/`: compatibility re-exports of
+  shared modules plus desktop adapters. Portable behavior belongs in the shared
+  crates, which have direct Rust and actual JNI regression coverage.
 - `src-tauri/src/audio/`: system-audio capture (macOS ScreenCaptureKit via `screen-capture-kit`, Windows WASAPI loopback via `cpal` + `rubato`), Linux PulseAudio / PipeWire-Pulse output monitors, optional default microphone capture, and the bounded PCM send pipeline.
 - `src-tauri/src/session_manager.rs`: session lifecycle — start/stop/pause/resume, language/mode switching, health checks, automatic reconnection, state events.
 - `src-tauri/src/settings_store.rs`: preferences/profile JSON in the app config directory + provider/profile-scoped private local credential storage.
@@ -60,7 +66,7 @@ Preserve these product constraints:
 - Keep related action buttons compact, consistent, and right-aligned. Use existing icons. Configuration deletion uses a red destructive action and a standard confirmation dialog, never an expanding inline strip. Choosing a service type must not create a profile until the user confirms adding it. Display connection-check progress and results with the triggering action, including actual request duration; recognition and text translation have independent checks.
 - One-time operation feedback (copy, refresh, save, export, delete, quit, or up-to-date checks) belongs in the shared transient toast, never a full-width banner or a persistent paragraph that moves page content. Instant preference changes save quietly on success and report sanitized failures through that toast; do not swallow save rejections. Keep one toast per settings window, including inside an active modal, replace repeated notifications, and clear on navigation, native/DOM blur, close, hide and unmount. Keep unsaved-field validation/retry, connection-check results, ongoing storage failures and update actions visible beside their controls.
 - Read the relevant source and tests before changing behavior. For non-trivial behavior changes, add or update a design note in `docs/plans/`.
-- Keep UI-independent logic in `src-tauri/src/core/`; keep Tauri, window, keyring, and OS-audio integration in the app-layer modules. Never import `tauri` types in `core/` or `clients/`.
+- Keep portable UI-independent logic in `shared/mimi-core` or `shared/mimi-runtime`; keep Tauri, window, keyring, and OS-audio integration in the app-layer modules. Never import `tauri` types in the shared crates, `core/` or `clients/`.
 - Preserve Rust concurrency safety. Isolate mutable network or lifecycle state behind `Arc<Mutex<…>>` or actors; never hold a `std::sync::MutexGuard` across an `.await`.
 - Treat streaming drafts as replaceable previews and final events as durable subtitle history. Do not let preview work block, reorder, or overwrite final translations.
 - Keep queues and on-screen draft growth bounded. Latency fixes must account for cancellation, reconnects, stale generations, empty results, and out-of-order completions.
@@ -73,13 +79,29 @@ Preserve these product constraints:
 
 ## PC and Android parity
 
-- Change common subtitle/translation rules in `shared/mimi-core`, never by adding
+- Change common subtitle/translation rules in `shared/mimi-core` and provider /
+  scheduling rules in `shared/mimi-runtime`, never by adding
   another Kotlin or desktop implementation. Update shared behavioral fixtures and
   run both direct Rust and actual JNI tests. Shared source changes must trigger
   both desktop and Android CI. A packaging or JNI failure must fail the build;
   never silently fall back to an independent reducer.
 
-- Maintain shared provider behavior through `shared/translation-contracts.json`, consumed by Rust and Kotlin tests. A provider/API fix must update the common fixtures and both implementations together; do not treat a passing test on one platform as proof for the other.
+- The user's durable requirement is that a desktop business fix must automatically
+  reach Android through the same source, without a second manual implementation.
+  Desktop portable modules stay re-export-only; Android production enters
+  `SharedRuntimeEngine` and never calls the historical Kotlin engines or text
+  clients. `createTranslationClient` is a JVM-test fixture only.
+- Run `python3 -B scripts/check-shared-runtime.py` for this architecture boundary.
+  It is required by canonical/shared checks, Android preBuild/native builds and
+  desktop CI. Its rejection tests prove known fork attempts fail. Do not weaken
+  its checks or narrow Android CI's desktop/shared source coverage to make a
+  one-platform change pass.
+- Maintain shared provider behavior through `shared/translation-contracts.json`,
+  direct Rust and actual JNI tests. Historical Kotlin fixtures are offline
+  comparison evidence, not a second production implementation to keep copying.
+  A provider/API fix updates the shared implementation and fixtures; verify both
+  platform adapters before publishing. Native UI/capture changes need their own
+  checks and do not automatically make unsupported features available.
 - Keep text translation separate from recognition on both platforms. Protocols, optional authentication, response filtering, source/result pairing, cancellation, and final deadlines must follow the same contract where the feature exists.
 - Keep platform-native UI and capture implementations. Record intentional feature or resource-limit differences in [platform parity](docs/development/platform-parity.md); do not silently imply an Android feature exists because desktop supports it.
 - Shared fixture and provider changes trigger both desktop and Android CI. Verify both suites before publishing their changes.

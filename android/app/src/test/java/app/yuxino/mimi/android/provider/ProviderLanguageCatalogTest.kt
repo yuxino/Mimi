@@ -138,25 +138,40 @@ class ProviderLanguageCatalogTest {
         assertEquals("wuu" to "en", ServiceProvider.VOLCANO.normalize("wuu", "en"))
     }
 
-    @Test fun alibabaUsesExactModelCatalogAndWireMappingsForEachRoute() {
+    @Test fun legacyDashScopeWireCatalogIsKeptOnlyForOfflineProtocolRegression() {
         val alibaba = catalogs.getJSONObject("androidAlibaba")
         val live = alibaba.getJSONObject("liveTranslate").getJSONArray("wireCodes")
-        assertEquals(60, DASHSCOPE_LIVE_LANGUAGE_CODES.size)
-        assertEquals((0 until live.length()).map(live::getString), DASHSCOPE_LIVE_LANGUAGE_CODES.map(::dashScopeTargetCode))
-        assertEquals("nb", dashScopeSourceCode("no", false))
-        assertEquals("no", dashScopeSourceCode("no", true))
-        assertEquals("fil", dashScopeSourceCode("tl", true))
-        assertNull(dashScopeSourceCode("auto", true))
-        assertNull(dashScopeSourceCode("auto", false))
+        assertEquals(60, LEGACY_DASHSCOPE_LIVE_LANGUAGE_CODES.size)
+        assertEquals((0 until live.length()).map(live::getString), LEGACY_DASHSCOPE_LIVE_LANGUAGE_CODES.map(::legacyDashScopeTargetCode))
+        assertEquals("nb", legacyDashScopeSourceCode("no", false))
+        assertEquals("no", legacyDashScopeSourceCode("no", true))
+        assertEquals("fil", legacyDashScopeSourceCode("tl", true))
+        assertNull(legacyDashScopeSourceCode("auto", true))
+        assertNull(legacyDashScopeSourceCode("auto", false))
         val asr = alibaba.getJSONObject("asr").getJSONObject("wireByCode")
-        assertEquals(asr.keys().asSequence().toSet(), DASHSCOPE_ASR_LANGUAGE_CODES.toSet())
-        for (code in DASHSCOPE_ASR_LANGUAGE_CODES) assertEquals(asr.getString(code), dashScopeSourceCode(code, true))
-        assertEquals(27, DASHSCOPE_ASR_LANGUAGE_CODES.size)
-        assertTrue("nl" in ServiceProvider.DASHSCOPE.sources)
-        assertFalse("nl" in ServiceProvider.DASHSCOPE.sourcesForTranslation(TextTranslationProvider.NONE))
-        assertTrue("yue" in ServiceProvider.DASHSCOPE.sourcesForTranslation(TextTranslationProvider.NONE))
-        assertThrows(IllegalArgumentException::class.java) { dashScopeSourceCode("nl", true) }
-        assertThrows(IllegalArgumentException::class.java) { dashScopeTargetCode("invalid") }
+        assertEquals(asr.keys().asSequence().toSet(), LEGACY_DASHSCOPE_ASR_LANGUAGE_CODES.toSet())
+        for (code in LEGACY_DASHSCOPE_ASR_LANGUAGE_CODES) assertEquals(asr.getString(code), legacyDashScopeSourceCode(code, true))
+        assertEquals(27, LEGACY_DASHSCOPE_ASR_LANGUAGE_CODES.size)
+        assertThrows(IllegalArgumentException::class.java) { legacyDashScopeSourceCode("nl", true) }
+        assertThrows(IllegalArgumentException::class.java) { legacyDashScopeTargetCode("invalid") }
+    }
+
+    @Test fun productionAlibabaUsesPcAudio3InsteadOfTheLegacyAndroidAsrCatalog() {
+        val sources = ServiceProvider.DASHSCOPE.sourcesForTranslation(TextTranslationProvider.NONE)
+        assertEquals(31, sources.size) // Audio3's 30 languages plus Automatic.
+        for (code in listOf("nl", "el", "hu", "ro", "bg", "hr", "sk")) assertTrue(code in sources)
+        for (code in listOf("yue", "tr", "uk", "is")) assertFalse(code in sources)
+        assertEquals("nl" to "unused", ServiceProvider.DASHSCOPE.normalize("nl", "unused", TextTranslationProvider.NONE))
+        assertEquals(25, ServiceProvider.DASHSCOPE.sources.size) // PC Lite intersection plus Automatic.
+        assertFalse("no" in ServiceProvider.DASHSCOPE.sources)
+    }
+
+    @Test fun oldEmptyAndUnknownLanguagePreferencesNormalizeBeforeStarting() {
+        for ((source, target) in listOf("" to "", "unknown" to "unknown", "yue" to "yue")) {
+            val normalized = ServiceProvider.DASHSCOPE.normalize(source, target)
+            assertTrue(ServiceProvider.DASHSCOPE.supportsPair(normalized.first, normalized.second))
+            assertFalse(ServiceProvider.DASHSCOPE.supportsPair(source, target))
+        }
     }
 
     @Test fun independentTranslationIntersectsAsrWithTheSelectedTextProvider() {
@@ -165,14 +180,15 @@ class ProviderLanguageCatalogTest {
             Triple(TextTranslationProvider.DEEPL, DEEPL_SOURCE_CODES, DEEPL_TARGET_CODES),
             Triple(TextTranslationProvider.DEEPLX, DEEPLX_SOURCE_CODES, DEEPLX_TARGET_CODES),
         )) {
-            assertEquals(listOf("auto") + DASHSCOPE_ASR_LANGUAGE_CODES.filter { it in sourceCatalog }, provider.sourcesForTranslation(route))
-            assertEquals(targetCatalog, provider.targetsForTranslation(route))
+            val recognition = provider.sourcesForTranslation(TextTranslationProvider.NONE)
+            assertEquals(recognition.filter { it == "auto" || it in sourceCatalog }, provider.sourcesForTranslation(route))
+            assertEquals(listOf("original") + targetCatalog, provider.targetsForTranslation(route))
             for (source in provider.sourcesForTranslation(route)) {
                 val (from, to) = provider.normalize(source, "fr", route)
                 assertTrue(provider.supportsPair(from, to, route))
             }
         }
         assertEquals("fr" to "fr", provider.normalize("fr", "fr", TextTranslationProvider.OPENAI_COMPATIBLE))
-        assertEquals("yue" to "unused", provider.normalize("yue", "unused", TextTranslationProvider.NONE))
+        assertFalse(provider.supportsPair("yue", "unused", TextTranslationProvider.NONE))
     }
 }

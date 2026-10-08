@@ -849,8 +849,8 @@ class UiSmokeInstrumentation : Instrumentation() {
         click(tencent, R.id.back)
         val aliyun = openService(settings, "dashscope")
         pause("已保存的密钥不会回填到输入框", 2600)
-        click(aliyun, R.id.advanced_toggle)
-        pause("连接地址、模型和术语按需展开", 3000)
+        onUi { check(aliyun.window.decorView.findViewWithTag<Spinner>("qwen-mt-model").isShown) }
+        pause("Audio 3.0 转写，Qwen-MT Lite、Flash 或 Plus 翻译", 3000)
         click(aliyun, R.id.back)
         click(settings, R.id.back)
         pause("返回首页，外观已经记住", 3000)

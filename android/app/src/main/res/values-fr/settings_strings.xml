@@ -13,7 +13,7 @@
     <string name="settings_opacity">Opacité des sous-titres</string>
     <string name="settings_background">Opacité du fond</string>
     <string name="settings_immersive">Sous-titres immersifs</string>
-    <string name="settings_immersive_help">Texte seul, sans bloquer les commandes vidéo. Les changements sont immédiats ; Quitter se trouve à droite.</string>
+    <string name="settings_immersive_help">Texte seul, sans bloquer les commandes vidéo. Les changements sont immédiats. Quittez près des sous-titres ou désactivez ce mode sur l’accueil.</string>
     <string name="settings_history">Conserver l’historique des sous-titres</string>
     <string name="settings_history_help">Désactivé par défaut. L’historique reste limité à cette session et s’efface à la désactivation ou à l’arrêt.</string>
     <string name="settings_reset">Réinitialiser la position des sous-titres</string>

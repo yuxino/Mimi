@@ -58,6 +58,57 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         }
     }
 
+    /** Run only on a blank idle device; uses the existing synthetic overlay. */
+    private fun immersivePlacementChecks(home: MainActivity) {
+        val before = root()
+        onUi {
+            SettingsStore.setFontSize(context, 12)
+            SettingsStore.setOverlayYOffset(context, 48)
+            check(context.getSharedPreferences("first_run", 0).edit().putBoolean("immersive_seen", true).commit())
+            root().findViewWithTag<View>("collapse-overlay").performClick()
+        }
+        waitFor { root().findViewWithTag<View>("compact-subtitle").isShown }
+        fun bottom(): Int {
+            var value = 0
+            onUi { val origin = IntArray(2); root().getLocationOnScreen(origin); value = origin[1] + root().height }
+            return value
+        }
+        val anchor = bottom()
+        onUi { home.findViewById<View>(R.id.home_immersive).performClick() }
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+        onUi {
+            check(home.findViewById<TextView>(R.id.home_immersive).text.toString() == home.getString(R.string.overlay_exit_immersive))
+            home.findViewById<View>(R.id.home_immersive).performClick()
+        }
+        waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "exit-immersive" } }
+        check(!root().findViewWithTag<View>("expanded-subtitles").isShown)
+        repeat(3) {
+            onUi { root().findViewWithTag<View>("compact-subtitle").performClick() }
+            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+            onUi { root().findViewWithTag<View>("enter-immersive").performClick() }
+            waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+            check(root() === before) { "Mode toggle replaced the caption window" }
+            check(abs(bottom() - anchor) <= 2) { "Immersive changed the compact bottom anchor" }
+            onUi { WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" }.performClick() }
+            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+            onUi { root().findViewWithTag<View>("collapse-overlay").performClick() }
+            waitFor { root().findViewWithTag<View>("compact-subtitle").isShown }
+            check(abs(bottom() - anchor) <= 2)
+            check(SettingsStore.overlayYOffset(context) == 48)
+        }
+        onUi {
+            SettingsStore.setImmersiveSubtitles(context, true)
+            SettingsStore.setFontSize(context, 24)
+            SubtitleBus.onFinalPair("Synthetic source with several words.", "合成字幕用于内容高度变化检查。", "en")
+        }
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+        check(abs(bottom() - anchor) <= 2) { "Font/content reflow changed the bottom anchor" }
+        onUi { SettingsStore.setImmersiveSubtitles(context, false) }
+        waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "exit-immersive" } }
+        check(!root().findViewWithTag<View>("expanded-subtitles").isShown)
+        check(SettingsStore.overlayYOffset(context) == 48)
+    }
+
     fun run(arguments: Bundle?) {
         val reviewSeconds = arguments?.getString("review_hold_seconds")?.toLongOrNull()?.takeIf { it in 1..180 }
         val baseline = arguments?.getString("baseline") == "true"
@@ -138,8 +189,9 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 capture("$prefix-settings-size")
                 onUi { settings.finish() }
                 if (!baseline) {
+                    immersivePlacementChecks(checkNotNull(home))
                     // Confirmed pairs intentionally remain readable. Test the genuinely empty state.
-                    onUi { root().findViewWithTag<View>("collapse-overlay").performClick(); SubtitleBus.clear(); SubtitleBus.hideLive() }
+                    onUi { SubtitleBus.clear(); SubtitleBus.hideLive() }
                     waitFor { !root().isShown }
                 }
             }

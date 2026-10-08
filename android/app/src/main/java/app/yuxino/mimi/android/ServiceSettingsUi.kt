@@ -119,7 +119,10 @@ internal object ServiceSettingsUi {
                 when {
                     MimiService.isRunning -> Toast.makeText(activity,R.string.service_stop_first,Toast.LENGTH_SHORT).show()
                     !configured -> edit()
-                    !active -> { SettingsStore.activateProvider(activity,provider); renderList(activity,container) }
+                    !active -> {
+                        if (runCatching { SettingsStore.activateProvider(activity,provider) }.getOrDefault(false)) renderList(activity,container)
+                        else Toast.makeText(activity,R.string.guide_storage_unavailable,Toast.LENGTH_LONG).show()
+                    }
                     else -> edit()
                 }
             }

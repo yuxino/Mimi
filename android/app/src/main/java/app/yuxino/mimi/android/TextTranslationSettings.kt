@@ -15,7 +15,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
 /** A draft only. ServiceSettingsActivity commits this alongside the speech configuration. */
-internal class TextTranslationSettings(private val activity: AppCompatActivity, private val onModeChange: (Boolean) -> Unit = {}) {
+internal class TextTranslationSettings(private val activity: AppCompatActivity) {
     private class Draft(val saved: TranslationConfiguration) {
         var endpoint = saved.endpoint.ifBlank {
             if (saved.provider == TextTranslationProvider.CHAT_MOCK) "http://127.0.0.1:8000/v1" else ""
@@ -33,6 +33,9 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
     private val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val fields = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val mode = Spinner(activity).apply { tag = "translation-mode"; background = null; setPadding(0, 0, 0, 0) }
+    private val qwenModels = listOf("lite", "flash", "plus")
+    private val qwenModel = Spinner(activity).apply { tag = "qwen-mt-model"; background = null; setPadding(0, 0, 0, 0) }
+    private val qwenModelRow = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; tag = "qwen-mt-model-row" }
     private val help: ImageButton
     private val inputLayouts = mutableMapOf<TextInputEditText, TextInputLayout>()
     private val endpoint = field(R.string.translation_endpoint, "translation-endpoint")
@@ -55,6 +58,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
     private var request: TranslationCall? = null
     private var generation = 0
     val enabled: Boolean get() = selected != TextTranslationProvider.BUILTIN
+    val qwenMtModel: String get() = qwenModels[qwenModel.selectedItemPosition.coerceIn(qwenModels.indices)]
     val view: View get() = root
 
     init {
@@ -67,6 +71,13 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         mode.contentDescription = activity.getString(R.string.translation_title)
         mode.setSelection(providers.indexOf(selected))
         root.addView(mode, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(16) })
+        qwenModel.adapter = ArrayAdapter(activity, R.layout.mimi_spinner_item,
+            listOf("Qwen-MT Lite", "Qwen-MT Flash", "Qwen-MT Plus")).apply { setDropDownViewResource(R.layout.mimi_spinner_dropdown) }
+        qwenModel.contentDescription = activity.getString(R.string.translation_model)
+        qwenModel.setSelection(qwenModels.indexOf(SettingsStore.qwenMtModel(activity)))
+        qwenModelRow.addView(ServiceSettingsUi.label(activity, activity.getString(R.string.translation_model), 16f))
+        qwenModelRow.addView(qwenModel, LinearLayout.LayoutParams(-1, dp(56)))
+        root.addView(qwenModelRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
         fields.addView(localHttp, LinearLayout.LayoutParams(-1, -2))
         val actions = LinearLayout(activity).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
         actions.addView(removeKey)
@@ -117,6 +128,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         endpoint.setText(state.endpoint); model.setText(state.model); key.setText(state.key)
         localHttp.isChecked = state.localHttp
         fields.visibility = if (hasNetworkProvider()) View.VISIBLE else View.GONE
+        qwenModelRow.visibility = if (selected == TextTranslationProvider.BUILTIN) View.VISIBLE else View.GONE
         val customEndpoint = selected.usesOpenAIProtocol || selected == TextTranslationProvider.DEEPLX
         ServiceSettingsUi.fieldVisible(inputLayouts.getValue(endpoint), customEndpoint)
         ServiceSettingsUi.fieldLabel(inputLayouts.getValue(endpoint), activity.getString(if (selected == TextTranslationProvider.DEEPLX) R.string.translation_deeplx_endpoint else R.string.translation_endpoint))
@@ -124,7 +136,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         ServiceSettingsUi.fieldVisible(inputLayouts.getValue(model), selected.usesOpenAIProtocol)
         localHttp.visibility = if (customEndpoint) View.VISIBLE else View.GONE
         rendering = false
-        updateKeyLabel(); onModeChange(enabled)
+        updateKeyLabel()
     }
 
     fun draft(): TranslationConfiguration? {
@@ -207,7 +219,15 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         request?.cancel()
         check.isEnabled = false; check.setText(R.string.translation_checking)
         result.visibility = View.GONE
-        request = createTranslationClient(config).check { outcome -> activity.runOnUiThread {
+        val probe = try {
+            val (source, target) = ServiceProvider.DASHSCOPE.normalize(SettingsStore.sourceLang(activity),
+                SettingsStore.targetLang(activity).takeUnless { it == "original" } ?: "zh", config.provider)
+            buildTextProbeConfiguration(config, source, target, qwenMtModel)
+        } catch (_: Exception) {
+            check.isEnabled = true; check.setText(R.string.translation_check)
+            showError(R.string.translation_invalid); return
+        }
+        request = NativeTextProbeClient().check(probe) { outcome -> activity.runOnUiThread {
             if (epoch != generation || activity.isDestroyed || activity.isFinishing) return@runOnUiThread
             request = null; check.isEnabled = true; check.setText(R.string.translation_check)
             result.visibility = View.VISIBLE

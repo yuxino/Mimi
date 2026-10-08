@@ -7,6 +7,9 @@ import androidx.security.crypto.MasterKey
 import app.yuxino.mimi.android.provider.TextTranslationProvider
 import app.yuxino.mimi.android.provider.TranslationConfiguration
 import app.yuxino.mimi.android.provider.validateTranslationConfiguration
+import app.yuxino.mimi.android.provider.buildRuntimeConfiguration
+import app.yuxino.mimi.android.provider.normalizeQwenMTModel
+import org.json.JSONObject
 
 /** EncryptedSharedPreferences-backed settings (API key stays in Android Keystore-backed storage). */
 object SettingsStore {
@@ -19,6 +22,7 @@ object SettingsStore {
     private const val KEY_FONT_SIZE = "font_size"
     private const val KEY_BASE_URL_PREFIX = "base_url_"
     private const val KEY_MODEL_PREFIX = "model_"
+    private const val KEY_QWEN_MT_MODEL = "qwen_mt_model_dashscope"
     private const val KEY_OVERLAY_OPACITY = "overlay_opacity"
     private const val KEY_OVERLAY_BG_ALPHA = "overlay_bg_alpha"
     private const val KEY_IMMERSIVE_SUBTITLES = "immersive_subtitles"
@@ -106,7 +110,8 @@ object SettingsStore {
     /** Save one complete profile atomically; callers preserve blank, write-only secret fields. */
     fun saveConfiguration(context: Context, config: app.yuxino.mimi.android.provider.ServiceConfiguration,
         translation: app.yuxino.mimi.android.provider.TranslationConfiguration? = null,
-        translationEnabled: Boolean? = null): Boolean {
+        translationEnabled: Boolean? = null, qwenMtModel: String? = null): Boolean {
+        require(qwenMtModel == null || qwenMtModel in listOf("lite", "flash", "plus")) { "translation_model" }
         apiKey(context, config.provider.id) // Resolve legacy ownership before activating another provider.
         val editor = get(context).edit()
         config.provider.fields.forEach { field ->
@@ -115,6 +120,9 @@ object SettingsStore {
         }
         editor.putString(KEY_BASE_URL_PREFIX + config.provider.id, config.endpoint.trim())
         editor.putString(KEY_MODEL_PREFIX + config.provider.id, config.model.trim())
+        if (config.provider == app.yuxino.mimi.android.provider.ServiceProvider.DASHSCOPE && qwenMtModel != null) {
+            editor.putString(KEY_QWEN_MT_MODEL, qwenMtModel)
+        }
         if (config.provider == app.yuxino.mimi.android.provider.ServiceProvider.DASHSCOPE && translation != null) {
             val selected = if (translationEnabled == false) TextTranslationProvider.BUILTIN else translation.provider
             if (selected != TextTranslationProvider.BUILTIN) validateTranslationConfiguration(translation)
@@ -148,6 +156,19 @@ object SettingsStore {
 
     fun useChatMockTranslation(context: Context): Boolean =
         textTranslationProvider(context) == TextTranslationProvider.CHAT_MOCK
+
+    /** A distinct text-model preference; legacy realtime model overrides remain untouched. */
+    fun qwenMtModel(context: Context): String = normalizeQwenMTModel(get(context).getString(KEY_QWEN_MT_MODEL, null))
+
+    /** Private, short-lived native session input. Never include it in UI snapshots or logs. */
+    fun runtimeConfiguration(context: Context): JSONObject {
+        val speech = configuration(context)
+        val translation = if (speech.provider == app.yuxino.mimi.android.provider.ServiceProvider.DASHSCOPE)
+            translationConfiguration(context) else TranslationConfiguration(provider = TextTranslationProvider.BUILTIN)
+        // Normalize only this effective session input. Keep the saved language preference intact.
+        val (source, target) = speech.provider.normalize(sourceLang(context), targetLang(context), translation.provider)
+        return buildRuntimeConfiguration(speech, translation, source, target, qwenMtModel(context))
+    }
 
     fun translationConfiguration(context: Context, provider: TextTranslationProvider = textTranslationProvider(context)): TranslationConfiguration {
         if (provider in setOf(TextTranslationProvider.BUILTIN, TextTranslationProvider.NONE)) {

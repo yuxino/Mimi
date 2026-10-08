@@ -42,7 +42,7 @@
     <string name="guide_no_browser">没有可打开链接的浏览器</string>
     <string name="guide_local_save">保存设置不会连接服务。开始字幕后，服务商可能收取费用。</string>
     <string name="guide_immersive">沉浸字幕</string>
-    <string name="guide_immersive_hint">只显示字幕文字，视频仍可触摸操作。点击右侧“退出”恢复字幕面板；也可回到设置关闭。退出按钮可以上下拖动。</string>
+    <string name="guide_immersive_hint">只显示字幕文字，视频仍可触摸操作。点击字幕旁的“退出”返回原来的视图，也可在首页或设置关闭沉浸字幕。字幕位置会保留。</string>
     <string name="guide_understood">知道了</string>
     <string name="guide_progress">开始使用 · %1$d / 5</string>
     <string name="guide_continue_provider">继续 · %1$s</string>
@@ -64,7 +64,7 @@
     <string name="guide_help_xai">在 xAI 控制台创建 API Key，并确认账号有实时语音服务额度与访问权限。</string>
     <string name="guide_projection_revoked">本次授权已结束 / 撤销 · 需重新允许</string>
     <string name="guide_name_dashscope">阿里云</string>
-    <string name="guide_detail_dashscope">通义实时翻译</string>
+    <string name="guide_detail_dashscope">Audio 3.0 · Qwen-MT</string>
     <string name="guide_name_openai">OpenAI</string>
     <string name="guide_detail_openai">Realtime Translation</string>
     <string name="guide_name_gemini">Google Gemini</string>

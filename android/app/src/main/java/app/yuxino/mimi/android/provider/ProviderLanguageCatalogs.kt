@@ -61,18 +61,19 @@ internal val TENCENT_LANGUAGE_PAIRS: Map<String, List<String>> = linkedMapOf(
     "ru" to listOf("zh", "en", "ru"),
 )
 
-internal val DASHSCOPE_LIVE_LANGUAGE_CODES = listOf("zh", "en", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th", "vi", "ja", "tr", "hi", "ms", "nl", "ur", "no", "sv", "da", "he", "fi", "pl", "is", "cs", "tl", "fa", "yue", "el", "af", "ast", "be", "bg", "bn", "bs", "ca", "ceb", "et", "gl", "gu", "hr", "hu", "jv", "kk", "kn", "ky", "lv", "mk", "ml", "mr", "pa", "ro", "sk", "sl", "sw", "tg", "az", "uk")
-internal val DASHSCOPE_ASR_LANGUAGE_CODES = listOf("zh", "yue", "en", "ja", "de", "ko", "ru", "fr", "pt", "ar", "it", "es", "hi", "id", "th", "tr", "uk", "vi", "cs", "da", "tl", "fi", "is", "ms", "no", "pl", "sv")
+// Historical realtime wire fixtures only. Production choices come from shared Rust capabilities.
+internal val LEGACY_DASHSCOPE_LIVE_LANGUAGE_CODES = listOf("zh", "en", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th", "vi", "ja", "tr", "hi", "ms", "nl", "ur", "no", "sv", "da", "he", "fi", "pl", "is", "cs", "tl", "fa", "yue", "el", "af", "ast", "be", "bg", "bn", "bs", "ca", "ceb", "et", "gl", "gu", "hr", "hu", "jv", "kk", "kn", "ky", "lv", "mk", "ml", "mr", "pa", "ro", "sk", "sl", "sw", "tg", "az", "uk")
+internal val LEGACY_DASHSCOPE_ASR_LANGUAGE_CODES = listOf("zh", "yue", "en", "ja", "de", "ko", "ru", "fr", "pt", "ar", "it", "es", "hi", "id", "th", "tr", "uk", "vi", "cs", "da", "tl", "fi", "is", "ms", "no", "pl", "sv")
 
-internal fun dashScopeSourceCode(code: String, transcriptionOnly: Boolean): String? {
+internal fun legacyDashScopeSourceCode(code: String, transcriptionOnly: Boolean): String? {
     if (code == "auto") return null
-    val catalog = if (transcriptionOnly) DASHSCOPE_ASR_LANGUAGE_CODES else DASHSCOPE_LIVE_LANGUAGE_CODES
+    val catalog = if (transcriptionOnly) LEGACY_DASHSCOPE_ASR_LANGUAGE_CODES else LEGACY_DASHSCOPE_LIVE_LANGUAGE_CODES
     require(code in catalog) { "unsupported_language" }
     return when(code) { "tl" -> "fil"; "no" -> if (transcriptionOnly) "no" else "nb"; else -> code }
 }
 
-internal fun dashScopeTargetCode(code: String): String {
-    require(code in DASHSCOPE_LIVE_LANGUAGE_CODES) { "unsupported_language" }
+internal fun legacyDashScopeTargetCode(code: String): String {
+    require(code in LEGACY_DASHSCOPE_LIVE_LANGUAGE_CODES) { "unsupported_language" }
     return when(code) { "tl" -> "fil"; "no" -> "nb"; else -> code }
 }
 

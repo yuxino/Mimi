@@ -38,9 +38,9 @@
     <string name="translation_endpoint_required">請填寫文字翻譯地址。</string>
     <string name="translation_key_required">請填寫 DeepL API Key。</string>
     <string name="translation_key_invalid">金鑰格式不正確，請重新填寫。</string>
-    <string name="translation_help_builtin">語音辨識和翻譯均由阿里雲內建即時服務完成，使用上方語音服務的 API Key。儲存並使用後設定才生效。</string>
-    <string name="translation_help_none">僅顯示辨識後的原文，不呼叫文字翻譯服務。語音辨識使用阿里雲 qwen3-asr-flash-realtime，需在百鍊開通該模型。儲存並使用後生效。</string>
-    <string name="translation_help_speech">阿里雲負責語音辨識，所選文字翻譯服務只接收辨識後的文字。語音辨識使用 qwen3-asr-flash-realtime，需在百鍊開通該模型。語音與每種文字翻譯服務分別儲存金鑰，不會互相借用。</string>
+    <string name="translation_help_builtin">阿里雲 Audio 3.0 負責語音辨識，Qwen-MT 負責文字翻譯，使用上方語音服務的 API Key。Lite、Flash 支援串流出字，Plus 整段傳回。儲存並使用後設定才生效。</string>
+    <string name="translation_help_none">僅顯示辨識後的原文，不呼叫文字翻譯服務。語音辨識使用阿里雲 Audio 3.0（qwen-audio-3.0-asr-flash-streaming），需在百鍊開通該模型。儲存並使用後生效。</string>
+    <string name="translation_help_speech">阿里雲 Audio 3.0 負責語音辨識，所選文字翻譯服務只接收辨識後的文字。辨識使用 qwen-audio-3.0-asr-flash-streaming，需在百鍊開通該模型。語音與每種文字翻譯服務分別儲存金鑰。</string>
     <string name="translation_help_deepl">使用 DeepL 官方文字翻譯 API，需填寫獨立的 DeepL API Key。以 :fx 結尾的 Free 金鑰使用 api-free.deepl.com，其他金鑰使用 api.deepl.com；應用自動選擇官方地址，無需填寫模型或介面地址。語音服務的金鑰不會用於 DeepL。</string>
     <string name="translation_help_deeplx">連線你自行部署的 DeepLX 服務。填寫以 /translate 結尾的翻譯介面地址；服務地址沒有這個後綴時會自動補上。無需填寫模型。服務要求 Bearer 驗證時填寫 Token，否則留空。\n\n介面需接受 text、source_lang、target_lang，並返回 code: 200 和 data 中的翻譯文字。DeepLX 與 DeepL 官方 API 使用不同的地址和驗證方式。</string>
     <string name="translation_help_network">遠程服務使用 HTTPS。127.0.0.1 和 localhost 指當前手機或模擬器自身；本機 HTTP 不加密，需主動允許，僅支援 localhost、127.0.0.1、[::1] 和模擬器宿主機 10.0.2.2。開發除錯可用 adb reverse 轉發電腦連接埠。換服務或地址不會沿用其他服務或舊地址的金鑰。</string>

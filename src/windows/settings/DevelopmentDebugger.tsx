@@ -107,7 +107,7 @@ function ReplayTimeline({ session, settings, route: initialRoute, projectionSett
     ?? capturedAudioInput(initialRoute.audioInput) ?? settings.audioInput;
   const primaryAudioSource = session.subtitles.tracks?.[0]?.audioSource ?? (audioInput === "microphone" ? "microphone" : "system");
   const tracks = session.subtitles.tracks?.length ? session.subtitles.tracks : [{ ...session.subtitles, audioSource: primaryAudioSource, detectedLanguage: session.detectedLanguage, isTranslationPending: session.isTranslationPending, isTranslationTimedOut: session.isTranslationTimedOut }];
-  const atomic = usesAtomicSubtitlePreview(route.provider);
+  const atomic = session.atomicPreview ?? usesAtomicSubtitlePreview(route.provider);
   const tail = (subtitles: typeof session.subtitles, signals: Pick<SessionStateEvent, "detectedLanguage" | "isTranslationPending" | "isTranslationTimedOut">) => {
     const selected = visibleLiveSubtitles(subtitles, replaySettings, signals.detectedLanguage, signals.isTranslationPending, signals.isTranslationTimedOut, atomic && subtitles.previewPair !== undefined);
     return { source: selected.find(p => p.kind === "source")?.text ?? null, translation: selected.find(p => p.kind === "translation")?.text ?? null, utteranceId: selected[0]?.utteranceId, isStreaming: false };

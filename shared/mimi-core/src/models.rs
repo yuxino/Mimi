@@ -112,6 +112,13 @@ pub struct PreviewSubtitlePair {
     pub translation: String,
 }
 
+/// Replaceable realtime lanes. Empty lanes prevent cross-utterance bilingual pairing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RealtimeSubtitlePreview {
+    pub source: SubtitleLine,
+    pub translation: SubtitleLine,
+}
+
 /// One independent capture lane. Translation state and utterance IDs never cross lanes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +127,12 @@ pub struct SourceSubtitleSnapshot {
     pub source: SubtitleLine,
     pub translation: SubtitleLine,
     pub history: Vec<SubtitlePair>,
+    #[serde(
+        default,
+        rename = "realtimePreview",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub realtime_preview: Option<RealtimeSubtitlePreview>,
     pub preview_pair: Option<PreviewSubtitlePair>,
     #[serde(
         default,
@@ -144,6 +157,12 @@ pub struct SubtitleSnapshot {
     pub source: SubtitleLine,
     pub translation: SubtitleLine,
     pub history: Vec<SubtitlePair>,
+    #[serde(
+        default,
+        rename = "realtimePreview",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub realtime_preview: Option<RealtimeSubtitlePreview>,
     #[serde(default, rename = "previewPair")]
     pub preview_pair: Option<PreviewSubtitlePair>,
     #[serde(
@@ -164,6 +183,7 @@ impl SubtitleSnapshot {
             source: SubtitleLine::new("", false),
             translation: SubtitleLine::new("", false),
             history: Vec::new(),
+            realtime_preview: None,
             preview_pair: None,
             display_pair: None,
             display_pair_final: false,

@@ -14,17 +14,20 @@ object SubtitleBus {
     private var confirmationId = 0L
     private var draftId: Long? = null
     private var originalOnly = false
+    private var runtimeOwned = false
+    private var atomicPreview = false
 
     val sourceDraft: String get() = line("source", false)
     val sourceFinal: String get() = line("source", true)
     val translationDraft: String get() = if (originalOnly) "" else line("translation", false)
     val translationFinal: String get() = if (originalOnly) "" else line("translation", true)
-    /** A complete display pair survives raw recognition of the next sentence. */
+    /** Shared realtime projection advances drafts without mixing sentence owners. */
+    private fun realtimeText(role: String): String? = if (atomicPreview) null else snapshot.optJSONObject("realtimePreview")?.getJSONObject(role)?.getString("text")
     val displaySource: String get() = if (originalOnly) sourceDraft.ifEmpty { sourceFinal }
-        else snapshot.optJSONObject("displayPair")?.optString("source") ?: sourceDraft.ifEmpty { sourceFinal }
+        else realtimeText("source") ?: snapshot.optJSONObject("displayPair")?.optString("source") ?: sourceDraft.ifEmpty { sourceFinal }
     val displayTranslation: String get() = if (originalOnly) "" else
-        snapshot.optJSONObject("displayPair")?.optString("translation") ?: translationDraft.ifEmpty { translationFinal }
-    val displayPairFinal: Boolean get() = snapshot.optBoolean("displayPairFinal")
+        realtimeText("translation") ?: snapshot.optJSONObject("displayPair")?.optString("translation") ?: translationDraft.ifEmpty { translationFinal }
+    val displayPairFinal: Boolean get() = (atomicPreview || snapshot.optJSONObject("realtimePreview") == null) && snapshot.optBoolean("displayPairFinal")
     @Volatile var statusLine = ""
     @Volatile var liveHidden = false
     @Volatile var detectedSourceLanguage: String? = null
@@ -56,6 +59,18 @@ object SubtitleBus {
             val identified = event.optString("type") == "identified_final_pair" || event.optString("type") == "utterance_text"
             val ownsSource = !identified || snapshot.optJSONObject("source")?.optString("utteranceId") == event.optString("utterance_id")
             if (ownsSource) detectedSourceLanguage = language?.trim()?.lowercase()?.takeIf { it.length in 2..64 } ?: detectedSourceLanguage
+            liveHidden = false
+        }
+        notifyListeners()
+    }
+    /** The shared session controller has already reduced the provider event. */
+    fun onRuntimeSnapshot(value: JSONObject, sourceOnly: Boolean) {
+        synchronized(lock) {
+            runtimeOwned = true
+            atomicPreview = value.optBoolean("atomicPreview")
+            snapshot = value.getJSONObject("snapshot")
+            originalOnly = sourceOnly
+            detectedSourceLanguage = value.optString("detectedLanguage").takeUnless { it.isBlank() || it == "null" }
             liveHidden = false
         }
         notifyListeners()
@@ -96,14 +111,18 @@ object SubtitleBus {
     fun setHistoryLimit(limit: Int) {
         synchronized(lock) {
             historyLimit = limit.coerceIn(0, MAX_HISTORY)
-            ensureCreated()
-            exchange(JSONObject().put("type", "history_limit").put("limit", historyLimit))
+            if (!runtimeOwned) {
+                ensureCreated()
+                exchange(JSONObject().put("type", "history_limit").put("limit", historyLimit))
+            }
         }
         notifyListeners()
     }
     fun historySnapshot(): List<Pair> = synchronized(lock) {
         val rows = snapshot.optJSONArray("history") ?: return@synchronized emptyList()
-        List(rows.length()) { index ->
+        val count = minOf(rows.length(), historyLimit)
+        List(count) { offset ->
+            val index = rows.length() - count + offset
             val row = rows.getJSONObject(index)
             val source = row.getString("source")
             val translation = row.getString("translation")
@@ -123,6 +142,8 @@ object SubtitleBus {
     fun clear() {
         synchronized(lock) {
             state = null
+            runtimeOwned = false
+            atomicPreview = false
             snapshot = JSONObject()
             sourceId = 0; confirmationId = 0; draftId = null; originalOnly = false
             statusLine = ""; detectedSourceLanguage = null; liveHidden = false

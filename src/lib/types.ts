@@ -35,6 +35,8 @@ interface SubtitleHistoryItem {
 }
 
 export interface SourceSubtitleSnapshot {
+  /** Shared selection of current realtime lanes, possibly one lane only. */
+  realtimePreview?: { source: SubtitleLineSnapshot; translation: SubtitleLineSnapshot } | null;
   displayPair?: SubtitleSnapshot["previewPair"];
   /** Reducer confirmation, independent of preview completion. Missing means unconfirmed. */
   displayPairFinal?: boolean;
@@ -51,6 +53,8 @@ export interface SourceSubtitleSnapshot {
 }
 
 export interface SubtitleSnapshot {
+  /** Shared selection of current realtime lanes, possibly one lane only. */
+  realtimePreview?: { source: SubtitleLineSnapshot; translation: SubtitleLineSnapshot } | null;
   /** One bounded complete current pair, independent from saved history. */
   displayPair?: SubtitleSnapshot["previewPair"];
   /** Reducer confirmation, independent of preview completion. Missing means unconfirmed. */
@@ -70,6 +74,8 @@ export interface SubtitleSnapshot {
 }
 
 export interface SessionStateEvent {
+  /** Preview policy selected by the shared Rust provider factory. */
+  atomicPreview?: boolean | null;
   debugSnapshotId?: number | null;
   /** Latest content-free timing samples. Absent values are not measurements. */
   apiLatencyMs?: number | null;

@@ -43,7 +43,7 @@
     <string name="guide_no_browser">이 링크를 열 브라우저가 없습니다</string>
     <string name="guide_local_save">설정을 저장해도 서비스에 연결하지 않습니다. 자막을 시작하면 서비스 이용 요금이 발생할 수 있습니다.</string>
     <string name="guide_immersive">몰입 자막</string>
-    <string name="guide_immersive_hint">영상 조작을 방해하지 않고 자막 텍스트만 표시합니다. 오른쪽의 나가기를 누르거나 설정에서 끄면 자막 패널이 복원됩니다. 나가기 버튼을 위아래로 드래그해 옮길 수 있습니다.</string>
+    <string name="guide_immersive_hint">영상 조작을 방해하지 않고 자막 텍스트만 표시합니다. 자막 옆의 나가기를 누르면 이전 화면으로 돌아갑니다. 홈이나 설정에서도 몰입 자막을 끌 수 있습니다. 자막 위치는 유지됩니다.</string>
     <string name="guide_understood">확인</string>
     <string name="guide_progress">시작 안내 · %1$d / 5</string>
     <string name="guide_continue_provider">계속 · %1$s</string>
@@ -65,7 +65,7 @@
     <string name="guide_help_xai">xAI 콘솔에서 API 키를 생성하고 실시간 음성 접근 권한과 사용 가능한 크레딧을 확인하세요.</string>
     <string name="guide_projection_revoked">세션 동의 종료 / 취소됨 · 다시 허용</string>
     <string name="guide_name_dashscope">알리바바 클라우드</string>
-    <string name="guide_detail_dashscope">Tongyi 실시간 번역</string>
+    <string name="guide_detail_dashscope">Audio 3.0 · Qwen-MT</string>
     <string name="guide_name_openai">OpenAI</string>
     <string name="guide_detail_openai">실시간 번역</string>
     <string name="guide_name_gemini">Google Gemini</string>

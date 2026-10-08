@@ -43,7 +43,7 @@
     <string name="guide_no_browser">Aucun navigateur disponible pour ouvrir ce lien</string>
     <string name="guide_local_save">Enregistrer les réglages ne contacte pas le service. Le démarrage des sous-titres peut entraîner des frais chez le fournisseur.</string>
     <string name="guide_immersive">Sous-titres immersifs</string>
-    <string name="guide_immersive_hint">Affiche uniquement le texte des sous-titres sans bloquer les commandes vidéo. Touchez Quitter à droite ou désactivez ce mode dans les réglages pour retrouver le panneau. Faites glisser Quitter verticalement pour le déplacer.</string>
+    <string name="guide_immersive_hint">Affiche uniquement le texte des sous-titres sans bloquer les commandes vidéo. Touchez Quitter près des sous-titres pour retrouver la vue précédente, ou désactivez ce mode sur l’accueil ou dans les réglages. La position des sous-titres est conservée.</string>
     <string name="guide_understood">Compris</string>
     <string name="guide_progress">Premiers pas · %1$d / 5</string>
     <string name="guide_continue_provider">Continuer · %1$s</string>
@@ -65,7 +65,7 @@
     <string name="guide_help_xai">Créez une clé API dans la console xAI et vérifiez l’accès vocal en temps réel ainsi que les crédits disponibles.</string>
     <string name="guide_projection_revoked">Autorisation de session terminée / révoquée · autoriser à nouveau</string>
     <string name="guide_name_dashscope">Alibaba Cloud</string>
-    <string name="guide_detail_dashscope">Traduction Tongyi en temps réel</string>
+    <string name="guide_detail_dashscope">Audio 3.0 · Qwen-MT</string>
     <string name="guide_name_openai">OpenAI</string>
     <string name="guide_detail_openai">Traduction en temps réel</string>
     <string name="guide_name_gemini">Google Gemini</string>

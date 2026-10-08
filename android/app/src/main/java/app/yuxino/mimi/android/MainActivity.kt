@@ -30,6 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var startStop: MaterialButton
     private var starting = false
     private lateinit var guide: FirstRunGuide
+    private val immersiveHelp = ImmersiveModeHelp(this)
+    private var stopObservingAppearance: (() -> Unit)? = null
     private val stateListener: () -> Unit = { runOnUiThread { refreshUi() } }
 
     private val projectionManager: MediaProjectionManager by lazy {
@@ -66,6 +68,17 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java)
                     .putExtra("settings_section", "appearance"))
+            }
+        }
+        findViewById<View>(R.id.home_immersive).setOnClickListener {
+            if (SettingsStore.immersiveSubtitles(this)) {
+                runCatching { SettingsStore.setImmersiveSubtitles(this, false); refreshUi() }
+                    .onFailure { Toast.makeText(this, R.string.service_save_failed, Toast.LENGTH_LONG).show() }
+            } else {
+                immersiveHelp.requestEnable(
+                    onConfirmed = { SettingsStore.setImmersiveSubtitles(this, true); refreshUi() },
+                    onCancelled = { refreshUi() },
+                )
             }
         }
         findViewById<View>(R.id.copy_capture_diagnostics).setOnClickListener {
@@ -105,10 +118,14 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         MimiService.addStateListener(stateListener)
+        stopObservingAppearance = SettingsStore.observeAppearance(this) { runOnUiThread { refreshUi() } }
     }
 
     override fun onStop() {
         MimiService.removeStateListener(stateListener)
+        stopObservingAppearance?.invoke()
+        stopObservingAppearance = null
+        immersiveHelp.dismiss()
         super.onStop()
     }
 
@@ -133,6 +150,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshUi() {
         try { refreshAvailableUi() } catch (_: Exception) {
             startStop.isEnabled = false
+            findViewById<View>(R.id.home_immersive).isEnabled = false
             findViewById<TextView>(R.id.status).setText(R.string.service_save_failed)
             findViewById<TextView>(R.id.status_hint).setText(R.string.guide_storage_unavailable)
             findViewById<View>(R.id.status_hint).visibility = View.VISIBLE
@@ -146,6 +164,10 @@ class MainActivity : AppCompatActivity() {
         val captureState = MimiService.captureObservation?.state
         val keyOk = SettingsStore.isConfigured(this)
         val overlayOk = Settings.canDrawOverlays(this)
+        findViewById<MaterialButton>(R.id.home_immersive).apply {
+            isEnabled = true
+            setText(if (SettingsStore.immersiveSubtitles(this@MainActivity)) R.string.overlay_exit_immersive else R.string.settings_immersive)
+        }
         startStop.isEnabled = !starting
         startStop.setText(when {
             running -> R.string.stop_capture

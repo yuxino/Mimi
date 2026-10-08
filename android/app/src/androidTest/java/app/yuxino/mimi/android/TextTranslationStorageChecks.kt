@@ -136,6 +136,41 @@ internal fun runTextTranslationStorageChecks(context: Context) {
         }
         check(invalidSave.exceptionOrNull() is IllegalArgumentException) { "An empty DeepL key was accepted" }
         check(snapshot() == beforeInvalidSave) { "Invalid text settings partially changed saved speech or translation values" }
+
+        // The text model has its own preference. Legacy realtime values and all keys survive.
+        val preservedSpeech = ServiceConfiguration(ServiceProvider.DASHSCOPE, speech.credentials,
+            "wss://legacy.example.invalid/realtime", "qwen3.5-livetranslate-flash-realtime")
+        check(SettingsStore.saveConfiguration(context, preservedSpeech, TranslationConfiguration(provider = TextTranslationProvider.BUILTIN)))
+        check(preferences.edit().remove("qwen_mt_model_dashscope").commit())
+        val beforeModelRead = snapshot()
+        check(SettingsStore.qwenMtModel(context) == "lite")
+        check(snapshot() == beforeModelRead) { "Reading the new text model changed legacy settings" }
+        for (stored in listOf("", "unknown")) {
+            check(preferences.edit().putString("qwen_mt_model_dashscope", stored).commit())
+            val beforeEmptyRead = snapshot()
+            check(SettingsStore.qwenMtModel(context) == "lite")
+            check(snapshot() == beforeEmptyRead) { "Reading an empty text model rewrote preferences" }
+        }
+        for (model in listOf("lite", "flash", "plus")) {
+            check(SettingsStore.saveConfiguration(context, preservedSpeech,
+                TranslationConfiguration(provider = TextTranslationProvider.BUILTIN), qwenMtModel = model))
+            check(SettingsStore.qwenMtModel(context) == model)
+            check(SettingsStore.configuration(context, ServiceProvider.DASHSCOPE).model == preservedSpeech.model) {
+                "The text picker overwrote the legacy realtime model"
+            }
+            check(SettingsStore.configuration(context, ServiceProvider.DASHSCOPE).credentials == speech.credentials)
+            assertNetworkConfigurations()
+        }
+        val beforeInvalidModel = snapshot()
+        check(runCatching { SettingsStore.saveConfiguration(context, preservedSpeech,
+            TranslationConfiguration(provider = TextTranslationProvider.BUILTIN), qwenMtModel = "") }.exceptionOrNull() is IllegalArgumentException)
+        check(snapshot() == beforeInvalidModel) { "Invalid text model partially changed stored credentials" }
+        check(preferences.edit().putString("source_lang", "yue").putString("target_lang", "zh").commit())
+        val beforeEffectiveRead = snapshot()
+        val effective = SettingsStore.runtimeConfiguration(context)
+        check(effective.getString("sourceLanguage") != "yue") { "The effective Audio3 session retained an unsupported legacy ASR hint" }
+        check(effective.getString("qwenMtModel") == "plus")
+        check(snapshot() == beforeEffectiveRead) { "Building native input rewrote the stored language or key preference" }
         check(!MimiService.isRunning) { "Storage checks started an audio session" }
     }
 }

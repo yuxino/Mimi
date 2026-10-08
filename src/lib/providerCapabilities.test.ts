@@ -1,7 +1,7 @@
 import languageCatalogs from "../../shared/provider-language-catalogs.json";
 import contract from "../../shared/translation-contracts.json";
-import audio3 from "../../src-tauri/src/core/protocols/audio3.rs?raw";
-import qwenMt from "../../src-tauri/src/core/protocols/qwen_mt.rs?raw";
+import audio3 from "../../shared/mimi-runtime/src/core/protocols/audio3.rs?raw";
+import qwenMt from "../../shared/mimi-runtime/src/core/protocols/qwen_mt.rs?raw";
 import { describe, expect, it } from "vitest";
 import { AUDIO3_RECOGNITION_LANGUAGE_CODES, QWEN_MT_LITE_TRANSLATION_LANGUAGE_CODES, SOURCE_LANGUAGE_CODES, TARGET_LANGUAGE_CODES, type SettingsSnapshot } from "./types";
 import {

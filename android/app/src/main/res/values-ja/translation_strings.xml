@@ -38,9 +38,9 @@
     <string name="translation_endpoint_required">翻訳 URL を入力してください。</string>
     <string name="translation_key_required">DeepL API キーを入力してください。</string>
     <string name="translation_key_invalid">キーの形式が無効です。入力し直してください。</string>
-    <string name="translation_help_builtin">Alibaba Cloud の内蔵リアルタイムサービスで音声認識と翻訳を行います。上の音声サービスの API キーを使用します。「保存して使用」で設定が有効になります。</string>
-    <string name="translation_help_none">認識した原文のみを表示し、テキスト翻訳サービスは呼び出しません。音声認識には Alibaba Cloud の qwen3-asr-flash-realtime を使用します。アカウントでこのモデルを利用可能にしてください。「保存して使用」で有効になります。</string>
-    <string name="translation_help_speech">Alibaba Cloud が音声を認識し、選択したテキスト翻訳サービスに認識済みの文字だけを送ります。音声認識には qwen3-asr-flash-realtime を使用するため、Alibaba アカウントで利用可能にしてください。音声認識と各翻訳サービスのキーは別々に保存します。</string>
+    <string name="translation_help_builtin">Alibaba Cloud Audio 3.0 が音声を認識し、Qwen-MT が文字を翻訳します。上の音声サービスの API キーを使用します。Lite と Flash は逐次表示、Plus は翻訳全体を返します。「保存して使用」で設定が有効になります。</string>
+    <string name="translation_help_none">認識した原文のみを表示し、テキスト翻訳サービスは呼び出しません。音声認識には Alibaba Cloud の Audio 3.0 (qwen-audio-3.0-asr-flash-streaming) を使用します。アカウントでこのモデルを利用可能にしてください。「保存して使用」で有効になります。</string>
+    <string name="translation_help_speech">Alibaba Cloud Audio 3.0 が音声を認識し、選択した文字翻訳サービスには認識済みの文字だけを送ります。認識には qwen-audio-3.0-asr-flash-streaming を使用するため、Alibaba アカウントで利用可能にしてください。音声と各文字サービスのキーは別々に保存します。</string>
     <string name="translation_help_deepl">DeepL 公式の翻訳 API を、専用の DeepL API キーで使用します。末尾が :fx の Free キーでは api-free.deepl.com、それ以外は api.deepl.com を使用します。公式 URL は自動で選ばれるため、URL やモデルの入力は不要です。音声サービスのキーは流用しません。</string>
     <string name="translation_help_deeplx">自分で用意した DeepLX サービスに接続します。/translate で終わる翻訳 URL を入力してください。この末尾がない場合は自動で追加します。モデルは不要です。Bearer 認証が必要な場合のみトークンを入力します。\n\ntext、source_lang、target_lang を受け付け、code: 200 と data の翻訳テキストを返す必要があります。DeepLX と DeepL 公式 API は URL と認証方式が異なります。</string>
     <string name="translation_help_network">リモートサービスには HTTPS を使用します。127.0.0.1 と localhost は現在のスマートフォンまたはエミュレーター自身です。暗号化されないローカル HTTP は許可が必要で、localhost、127.0.0.1、[::1]、エミュレーターホストの 10.0.2.2 のみ対応します。開発時は adb reverse で PC のポートを転送できます。サービスや URL を変えても別サービスや旧接続先のキーは流用しません。</string>

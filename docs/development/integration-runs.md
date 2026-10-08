@@ -4,6 +4,30 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-09：共享业务维护防分叉（云端后续）
+
+- 用户明确要求以后 PC 业务改动自然到达 Android，不再依赖另一份手动同步。保留已上传的原版 29 文件交付及原哈希，后续独立版本继续基于同一 supplied snapshot；不把后续哈希误报成原 Library 文件版本。
+- 新增共享运行时架构检查：桌面 facade 只能转导出，生产 Android 只能通过 SharedRuntimeEngine，不能接回旧 Kotlin 引擎／文字客户端或新增平台 provider transport。旧文字客户端工厂原样移至 JVM test；两端 Cargo 必须引用仓库内共享源。Android preBuild／native／direct build、canonical 和 desktop CI scope 接入检查，Android CI 触发范围覆盖 desktop frontend/backend、shared、scripts/workflows。Gradle 增加 build.rs 和 Cargo config 输入，防止这些输入变化时复用旧 generated JNI。设计见 [维护约束](../plans/2026-10-09-runtime-parity-enforcement.md)。
+- 本次实际通过：架构检查、22 项真实输入变异／构建入口拒绝回归、7 项 CI scope、9 项 native packaging，两个工作流 YAML 语法解析、三个 Python 编译检查和 shell 语法检查。直接 native build 的拒绝测试在无法调用 Rust 的隔离 PATH 下验证坏 facade 会在编译前失败；没有产品编译或启动。
+- 未重跑原版 11 组 Java／220 PC／前端全套；这些仍是原版证据。云端 SDK／Cargo 依赖限制未解除，Gradle/Kotlin/JNI 完整构建、APK、远程 CI 和手机验收尚未执行。架构检查覆盖已验证的分叉模式，不能证明所有未来语义或原生 UI 都自动相同。
+- 下一步：按已有原版是否应用选择对应补丁；本地运行架构检查及 canonical、Android 两版完整检查，集成后确认 PC 或 shared source 改动实际触发 Android CI。设备验收继续沿用沉浸恢复／字幕时序清单。未提交、推送、PR、合并、发版、服务调用、采音、录制、Mac 连接或恢复其他任务。
+
+## 2026-10-08：云端 Android 沉浸定位与恢复（增量）
+
+- 起点是已校验的交接源码快照，原基线 `0ac005c01718412bdf599281999b00ea3040118b`；ZIP SHA-256 `9097539bcca9b883ba13db936003f82cc783daa7839abb69c38d81c2d018180e`，216 文件哈希一致。保留快照，在工作副本中增量修改；未提交、推送、创建 PR、合并、启动应用或连接 Mac。
+- 用户明确补充手机入口／恢复割裂、首屏缺沉浸按钮。增加首页共用入口，退出控件跟随字幕；原窗口切换保存紧凑 dp 锚点和展开阅读状态。旋转／insets／内容变化只约束显示位置，不覆盖用户偏好。共享运行链路审查另确认 Android 整体停止错误使用 provider-only 6 秒预算，改为共享分阶段上限及完整看门狗 9120ms。详见 [设计记录](../plans/2026-10-08-android-immersive-placement.md)。
+- 本轮云端实际通过：生产定位类的 11 组 Java/JVM 回归、PC 展示与布局 220 项聚焦回归、前端全套 lint/test/typecheck/build、6 项 updater、Rust fmt，79 个 XML 解析与七语言入口资源检查。Java 编译模块可用，没有 Android SDK／adb／emulator／AVD／KVM 或显示服务；约 8 核配额、8GiB 内存、14GiB 空闲磁盘。
+- canonical 在前置脚本通过后因 Cargo 缺 serde 缓存且下载被网络限制中止。Rust 编译／严格 Clippy／测试与 Android Gradle、JVM/JNI 全套、lint、APK、instrumentation 未在此增量完成；新增 JNI 尾部和原生交互回归尚待执行。交接包中的旧测试数和 APK 哈希不等于本轮结果。未采音、录制或调用真实服务，不能认定 #211 全部延迟根因或量化 PC／手机差距。
+- 下一步：本地审阅并应用增量，重跑 canonical 与两版 Android 检查，使用同一 APK hash 执行无凭据 overlay_interaction，然后验证已拖动位置、反复切换、展开恢复、长字幕／字体、横竖屏和导航栏。具体位置偏移和真实绘制仍未手机验收。
+
+## 2026-10-08：Android 实时草稿越过上一完整句
+
+- 基线为 main `0ac005c01718412bdf599281999b00ea3040118b`，修复为独立目录中的未提交修改。原仓库 HEAD、分支、未提交内容和 stash 均保持不变；未提交、推送、创建 PR 或合并。
+- 先前实际 Rust／Kotlin／JNI 合成回放确认：完整 A 后 B 原文、译文草稿已被接纳且通知已发送，Android 仍显示 A。新增共享 `realtimePreview`，按句子身份选择当前单侧或双侧实时内容，保留完整对与可选历史。Android 读取该投影；桌面实际实时路径复用它，避免以历史措辞隐藏新身份的单侧 final。当前桌面阿里云新会话统一为 Turbo，保持完整预览对策略。
+- 八组／41 步共享契约经直接 Rust、stateless bridge 和实际主机 JNI 验证，覆盖历史开关、译文先到、身份不匹配、同文不同句、迟到 final、清空／重连及独立 HTTP。实际 `DashScopeEngine` 的 `text/stash` 消息经配对流与 JNI 到达 `SubtitleBus`，显示依次为完整 A、B 原文、B 双语草稿、完整 B；未启动引擎或访问语音服务。
+- 最终 canonical `scripts/check.sh` 全部通过：共享核心 85 项、桌面 Rust 1,257 passed／2 ignored、前端 2,023 项及 fmt／严格 Clippy／lint／类型／生产构建／diff。补充 Kotlin／实际 JNI 32 项通过。初次沙盒运行有 166 项本机模拟端口测试被监听权限阻止；允许本机端口后相同套件通过，真实服务测试仍忽略。
+- JNI 为 macOS 主机库，Android 工具类仅在主机测试中替换 `Log`／`Base64` 边界。未运行 Android Gradle／lint／四 ABI 打包或设备像素检查，没有 APK、采音、真实服务调用或新增录制；未恢复其他暂停任务。离线通过证明显示等待修复，不证明 #211 无声录屏的全部延迟已消失。最小下一步是固定 APK hash、revision 和同一片段，以无正文时间戳关联音频发送、草稿到达与原生文本应用时刻，在真机比较修复前后。
+
 ## 2026-10-09：停用环境开发预设并隔离开发配置
 
 - 基线 `0ac005c0` 加本轮修改。移除 `.env` 解析、开发预设注入、只读配置分支和七语旧文案；开发版采用普通可编辑的私有本地凭据文件。旧预设 ID 仅保留元数据兼容，不自动导入环境文件密钥。付费手动探针仍默认忽略，改用当前选中的普通开发配置，并要求本地文件迁移已完成。
@@ -1469,3 +1493,45 @@
   Recordings remain attached directly to PR #211. Its visible caption lag is
   unresolved; physical speaker audibility, real devices, sustained sessions,
   Intel Mac runtime and installed updater transitions remain unaccepted.
+
+### 2026-10-08 — Shared Android and desktop live runtime, local verification
+
+- Local uncommitted work is based on main
+  `0ac005c01718412bdf599281999b00ea3040118b`. The original checkout, branch,
+  dirty files and two stashes are unchanged. No push, PR, merge or publication
+  happened, and no app was launched or installed.
+- The earlier actual Kotlin/JNI sequence reproduced the display hold:
+  complete A, source draft B, translation draft B, complete B displayed
+  A/A, A/A, A/A, B/B. The common realtime projection now advances by sentence
+  identity without combining owners, admitting stale completions into the live
+  preview, or changing confirmed history. This establishes a display problem,
+  not the complete cause of the silent PR #211 recording's lag.
+- In response to the user's requirement for the same code logic, the production
+  clients, protocols, live factory, AudioSendPipeline, MT scheduling, controller,
+  recovery/budget policy and text connection probes now live in mimi-runtime.
+  Desktop modules re-export them; Android's production service calls the same
+  implementations through JNI. Historical Kotlin engines remain offline test
+  fixtures and are not selected by MimiService or the text check button.
+- Both adapters publish the factory's atomic-preview choice and use the shared
+  60 ms snapshot cadence. Audio3 + Qwen-MT keeps the desktop paired preview;
+  integrated realtime clients use the current sentence's replaceable preview.
+  Android settings read Rust capabilities and share Lite/Flash/Plus selection
+  with Lite as default. Existing custom values are preserved. Native capture,
+  platform proxy/trust roots and rendering remain platform adapters.
+- Canonical scripts/check.sh passed: mimi-core 85 tests, mimi-runtime 686,
+  JNI runtime 3, desktop 569 and frontend 2,023; two intentional Rust tests are
+  ignored. Strict fmt/clippy, lint, typecheck, production build and updater
+  checks passed. Development-debugger all-target Clippy also passed.
+- Android debug and release each passed 179 JVM tests with the real host JNI
+  library, including configuration of eight providers, snapshot/preview parity,
+  cancelled probes and stale handles. The native test exercises real PCM over
+  a local mock WebSocket. Both APKs compiled and passed all four ABI, JNI symbol,
+  16 KB alignment and license checks. Instrumentation Kotlin compiled; device
+  instrumentation did not run. Both lint variants have no errors; existing
+  warning categories remain recorded in the report.
+- No real provider calls, paid speech, capture, new recording or unrelated task
+  resumption occurred. The recording's APK identity is unavailable; physical
+  device TLS/proxy/capture/rendering and end-to-end latency remain unaccepted.
+  The smallest next runtime check is a pinned APK hash and the same short sample,
+  with content-free PCM enqueue, draft arrival, MT start/end, snapshot and render
+  timestamps on PC and Android. No numerical latency gap is claimed.

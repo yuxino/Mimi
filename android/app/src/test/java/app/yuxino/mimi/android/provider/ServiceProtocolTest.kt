@@ -28,17 +28,18 @@ class ServiceProtocolTest {
     @Test fun genericTextTargetsStaySeparateFromSpeechAndStrictTranslationCatalogs() {
         for (route in listOf(TextTranslationProvider.OPENAI_COMPATIBLE, TextTranslationProvider.CHAT_MOCK)) {
             val targets = ServiceProvider.DASHSCOPE.targetsForTranslation(route)
-            assertEquals(OPENAI_COMPATIBLE_TARGET_LANGUAGE_NAMES.size, targets.size)
-            assertFalse(targets.contains("original"))
+            assertEquals(OPENAI_COMPATIBLE_TARGET_LANGUAGE_NAMES.size + 1, targets.size)
+            assertTrue(targets.contains("original"))
             for (target in targets) assertEquals("auto" to target, ServiceProvider.DASHSCOPE.normalize("auto", target, route))
             assertEquals("ja" to "zh_tw", ServiceProvider.DASHSCOPE.normalize("ja", "zh_tw", route))
-            // This Android ASR model retains its own explicit hint catalog.
+            // The runtime shares PC's Audio3 source catalog and same-language behavior.
             assertEquals("fr" to "fr", ServiceProvider.DASHSCOPE.normalize("fr", "fr", route))
             for (provider in ServiceProvider.entries.filter { it != ServiceProvider.DASHSCOPE }) {
                 assertEquals(provider.targets, provider.targetsForTranslation(route))
             }
         }
-        assertEquals(DASHSCOPE_LIVE_LANGUAGE_CODES, ServiceProvider.DASHSCOPE.targetsForTranslation(TextTranslationProvider.BUILTIN))
+        assertTrue(ServiceProvider.DASHSCOPE.targetsForTranslation(TextTranslationProvider.BUILTIN).contains("original"))
+        assertFalse(ServiceProvider.DASHSCOPE.targetsForTranslation(TextTranslationProvider.BUILTIN).contains("yue"))
         assertEquals("auto" to "fr", ServiceProvider.DASHSCOPE.normalize("auto", "fr"))
 
     }

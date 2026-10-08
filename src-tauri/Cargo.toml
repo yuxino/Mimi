@@ -20,10 +20,11 @@ default = []
 # Expose the WebView inspector when the signed development launcher opts in.
 devtools = ["tauri/devtools"]
 # Private evidence tooling is excluded from production builds.
-development-debugger = []
+development-debugger = ["mimi-runtime/development-debugger"]
 
 [dependencies]
 mimi-core = { path = "../shared/mimi-core" }
+mimi-runtime = { path = "../shared/mimi-runtime", features = ["apple-native"] }
 tauri = { version = "2", default-features = false, features = ["wry", "compression", "common-controls-v6", "tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
@@ -55,6 +56,10 @@ tauri-plugin-dialog = "2"
 time = "0.3"
 tempfile = "3"
 tauri-plugin-clipboard-manager = "2"
+
+[dev-dependencies]
+# Desktop test/debug adapters observe the same shared runtime state.
+mimi-runtime = { path = "../shared/mimi-runtime", features = ["apple-native", "test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cpal = "0.18"

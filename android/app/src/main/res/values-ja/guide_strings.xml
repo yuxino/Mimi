@@ -42,7 +42,7 @@
     <string name="guide_no_browser">リンクを開くブラウザがありません</string>
     <string name="guide_local_save">設定を保存しても、サービスには接続しません。字幕を開始すると、サービスの利用料金が発生する場合があります。</string>
     <string name="guide_immersive">没入字幕</string>
-    <string name="guide_immersive_hint">字幕の文字だけを表示し、動画の操作はそのまま使えます。右側の「退出」で字幕パネルに戻るか、設定でオフにします。退出ボタンは上下に移動できます。</string>
+    <string name="guide_immersive_hint">字幕の文字だけを表示し、動画はそのまま操作できます。字幕の横の「退出」で元の表示に戻れます。ホームや設定からも没入字幕をオフにできます。字幕の位置は保持されます。</string>
     <string name="guide_understood">わかりました</string>
     <string name="guide_progress">はじめての使い方 · %1$d / 5</string>
     <string name="guide_continue_provider">続ける · %1$s</string>
@@ -64,7 +64,7 @@
     <string name="guide_help_xai">xAI コンソールで API Key を作成し、リアルタイム音声へのアクセスと残高を確認してください。</string>
     <string name="guide_projection_revoked">今回の許可は終了・取り消し済み · 再度許可してください</string>
     <string name="guide_name_dashscope">Alibaba Cloud</string>
-    <string name="guide_detail_dashscope">通義リアルタイム翻訳</string>
+    <string name="guide_detail_dashscope">Audio 3.0 · Qwen-MT</string>
     <string name="guide_name_openai">OpenAI</string>
     <string name="guide_detail_openai">Realtime Translation</string>
     <string name="guide_name_gemini">Google Gemini</string>

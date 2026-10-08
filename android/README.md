@@ -1,16 +1,18 @@
 # mimi for Android
 
 Native Android version of [mimi](../README.md) — live subtitles and
-translation for system audio. Pure Kotlin (no Tauri), single module.
+translation for system audio. Native Kotlin UI/capture (no Tauri), with the same
+Rust subtitle/provider runtime as desktop through JNI.
 
 [Download Android](https://github.com/yuxino/mimi/releases/latest)
 
 [Provider setup and current models](../docs/provider-setup.md) · [服务开通与模型指南](../docs/provider-setup.zh-CN.md)
 
-> Android is packaged separately from mimi desktop releases. It reads the
-> same provider wire protocols as the desktop app (`src-tauri/src/core/protocols`)
-> with provider-specific credentials configured on Android. Live verification is
-> listed below; protocol parity alone does not establish service availability.
+> Android is packaged separately from mimi desktop releases. Both builds use
+> `shared/mimi-core` and `shared/mimi-runtime` for subtitle state, actual provider
+> clients, translation scheduling and recovery. Provider credentials remain
+> configured on Android. Shared source alone does not establish live service or
+> device availability; verification limits are listed below.
 
 ## Features
 
@@ -21,12 +23,12 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   resample to the provider's target rate (16 kHz / 24 kHz mono PCM16).
 - **Services** — Alibaba Cloud DashScope, OpenAI Realtime Translation, Google Gemini Live,
   Azure OpenAI, Volcano Engine Doubao, Tencent Cloud, Baidu realtime translation and xAI Grok Voice.
-  Their wire contracts mirror the corresponding desktop adapters. Grok is turn-based voice translation;
+  Their production clients are shared with desktop. Grok is turn-based voice translation;
   generated audio is discarded. Each service has its own encrypted credential fields and supported language choices.
 - **Configuration** — tap a configured service to switch, or open its settings to edit. Azure requires a
   resource endpoint and translation/transcription deployment names; Tencent requires AppID, SecretID and
-  SecretKey; Baidu requires AppID and AppKey. Other services use an API key. Optional endpoint/model overrides
-  are available for DashScope, OpenAI, Gemini and xAI. Stored secrets are not filled back into the editor;
+  SecretKey; Baidu requires AppID and AppKey. Other services use an API key. Built-in service models,
+  endpoints and language capabilities follow the shared factory. Stored secrets are not filled back into the editor;
   leaving a secret field empty preserves its saved value. Changes are written only with Save and use.
 - **Subtitle overlay** — `TYPE_APPLICATION_OVERLAY` floating window, text-hugging
   card, always horizontally centered over the video, vertically draggable
@@ -38,19 +40,18 @@ translation for system audio. Pure Kotlin (no Tauri), single module.
   Appearance changes apply immediately to an existing overlay; empty live captions
   do not leave a background-only floating window. An optional
   immersive mode shows plain text with a contrast shadow and passes touches
-  through to the app below. A small control on the right edge can be moved
-  vertically and exits immersive
-  mode without stopping the session; the app and foreground notification remain
-  backup controls. In landscape, the expanded panel stays centered and caps its
+  through to the app below. A small exit control follows the subtitle position;
+  Home and Settings also enter/exit immersive mode without stopping the session.
+  Returning restores the previous compact/expanded state and saved position.
+  In landscape, the expanded panel stays centered and caps its
   width at 560 dp; its covered area receives touches until it is collapsed.
-- **Native-subtitle behaviour** — only the current sentence is shown (drafts
-  are clipped to the last sentence of the provider's cumulative buffer);
-  English source speech shows source + translation lines, other languages show
-  the translation only; the card hides shortly after speech ends and never
-  lingers (streaming-watchdog fallback for cases where provider VAD is held
-  open by background music).
-- **Hotwords** — DashScope `translation.corpus.phrases` via comma-separated
-  `source=translation` entries (for example, `Cyberpunk=赛博朋克`).
+- **Subtitle previews** — the shared factory selects complete paired previews
+  for Audio3 + text translation and sentence-identified realtime previews for
+  integrated live clients. New sentence identities never borrow old final lines;
+  the current complete pair remains available independently of saved history.
+- **Alibaba Cloud** — Audio3 recognition with Qwen-MT Lite/Flash/Plus or an
+  independent text translator; Lite is the default. Historical built-in custom
+  endpoint/model/hotword keys are retained without enabling unsupported overrides.
 - **Credentials** — EncryptedSharedPreferences (Android Keystore master key),
   scoped by provider.
 - **History privacy** — disabled by default; opting into history retains only a bounded

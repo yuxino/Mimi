@@ -149,6 +149,36 @@ class SharedLivePairContractTest {
         }
     }
 
+    @Test fun realtimeTextAndStashAdvanceTheBusBeforeTheNextPairCompletes() {
+        val engine = DashScopeEngine(busListener())
+        try {
+            sourceFinal(engine, "A", "First sentence.")
+            linkedFinal(engine, "A", "response-A", "第一句。")
+
+            engine.receiveServerMessage("""{"type":"conversation.item.input_audio_transcription.text","item_id":"B","text":"Second ","stash":"draft."}""")
+            assertEquals("Second draft.", SubtitleBus.displaySource)
+            assertEquals("", SubtitleBus.displayTranslation)
+            assertFalse(SubtitleBus.displayPairFinal)
+
+            engine.receiveServerMessage("""{"type":"conversation.item.created","item":{"id":"response-B"},"previous_item_id":"B"}""")
+            engine.receiveServerMessage("""{"type":"response.text.text","item_id":"response-B","text":"第二句","stash":"草稿。"}""")
+            assertEquals("Second draft.", SubtitleBus.displaySource)
+            assertEquals("第二句草稿。", SubtitleBus.displayTranslation)
+            assertEquals(listOf(SubtitleBus.Pair("First sentence.", "第一句。")), SubtitleBus.historySnapshot())
+
+            sourceFinal(engine, "B", "Second sentence.")
+            assertEquals("Second sentence.", SubtitleBus.displaySource)
+            assertEquals("第二句草稿。", SubtitleBus.displayTranslation)
+            engine.receiveServerMessage("""{"type":"response.text.done","item_id":"response-B","text":"第二句。"}""")
+            assertEquals("Second sentence.", SubtitleBus.displaySource)
+            assertEquals("第二句。", SubtitleBus.displayTranslation)
+            assertTrue(SubtitleBus.displayPairFinal)
+            assertEquals(2, SubtitleBus.historySnapshot().size)
+        } finally {
+            engine.stop()
+        }
+    }
+
     @Test fun identicalFinalTextFromDistinctSourceIdsKeepsBothAndRetransmissionKeepsOnlyTwo() {
         val engine = DashScopeEngine(busListener())
         try {
