@@ -673,6 +673,8 @@ class UiSmokeInstrumentation : Instrumentation() {
             onUi { check(expanded.findViewWithTag<View>("collapse-overlay").performClick()) { "Collapse click failed" } }
             check(compact.isShown && !expanded.isShown) { "Floating overlay did not collapse" }
             capture("overlay-long-compact-$theme")
+            checkCompactCaptionEnd(compact)
+            checkCompactCaptionUpdates(compact)
             onUi { check(compact.performClick()) { "Compact reopen click failed" } }
             onUi { check(expanded.findViewWithTag<View>("enter-immersive").performClick()) { "Immersive entry click failed" } }
             acknowledgeImmersiveHelpIfShown()
@@ -695,6 +697,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             check((exit.layoutParams as WindowManager.LayoutParams).flags and
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) { "Exit control is not touchable" }
             capture("overlay-after-immersive-$theme")
+            checkCompactCaptionEnd(compact)
             onUi { check(exit.performClick()) { "Exit control click failed" } }
             waitForIdleSync()
             check(!SettingsStore.immersiveSubtitles(targetContext)) { "Exit did not clear immersive preference" }
@@ -768,8 +771,8 @@ class UiSmokeInstrumentation : Instrumentation() {
     }
 
     private fun checkLongExpandedCaption(panel: View) {
-        val source = "This is a deliberately long synthetic subtitle for layout review. It checks how the native reading panel wraps several lines while keeping the complete translation readable without starting audio capture."
-        val translation = "这是一段用于界面检查的合成长字幕，用来观察原生阅读面板如何换行。它包含较长的完整句子，以及足够多的文字，以便检查小屏幕上的排版和可读性。本次只展示合成内容，没有开启音频采集，也没有连接任何翻译服务。"
+        val source = "This is a deliberately long synthetic subtitle for layout review. It checks how the native reading panel wraps several lines while keeping the complete translation readable without starting audio capture. ".repeat(2).trimEnd()
+        val translation = "这是一段用于界面检查的合成长字幕，用来观察原生阅读面板如何换行。它包含较长的完整句子，以及足够多的文字，以便检查小屏幕上的排版和可读性。本次只展示合成内容，没有开启音频采集，也没有连接任何翻译服务。".repeat(2)
         onUi {
             SubtitleBus.clear()
             SubtitleBus.setHistoryLimit(0)
@@ -853,6 +856,54 @@ class UiSmokeInstrumentation : Instrumentation() {
                 "Current sentence beginning is outside the reading viewport"
             }
         }
+    }
+
+    private fun checkCompactCaptionEnd(compact: View) {
+        onUi { checkLatestCompactCaption(compact) }
+    }
+
+    private fun checkCompactCaptionUpdates(compact: View) {
+        val source = SubtitleBus.displaySource
+        val translation = SubtitleBus.displayTranslation
+        onUi { SubtitleBus.clear() }
+        for (length in 1..3) {
+            onUi {
+                SubtitleBus.onSourceDraft(source.repeat(length), "en")
+                SubtitleBus.onTranslationDraft(translation.repeat(length))
+            }
+            waitForIdleSync()
+            SystemClock.sleep(120)
+            checkCompactCaptionEnd(compact)
+            onUi {
+                val container = compact as android.view.ViewGroup
+                check((container.getChildAt(1) as TextView).text.toString() == source.repeat(length))
+                check((container.getChildAt(2) as TextView).text.toString() == translation.repeat(length))
+            }
+        }
+        val savedFont = SettingsStore.fontSize(targetContext)
+        for (size in listOf(24, 12, savedFont)) {
+            SettingsStore.setFontSize(targetContext, size)
+            targetContext.startService(Intent(targetContext, MimiService::class.java)
+                .setAction(MimiService.ACTION_APPLY_APPEARANCE))
+            waitForIdleSync()
+            SystemClock.sleep(120)
+            checkCompactCaptionEnd(compact)
+        }
+        onUi {
+            SubtitleBus.clear()
+            SubtitleBus.onSourceDraft("Short sentence.", "en")
+            SubtitleBus.onTranslationDraft("短句。")
+        }
+        waitForIdleSync()
+        SystemClock.sleep(120)
+        onUi { checkLatestCompactCaption(compact, requireOverflow = false) }
+        onUi { SubtitleBus.clear() }
+        waitForIdleSync()
+        check(!compact.isShown) { "Empty compact caption stayed visible" }
+        onUi { SubtitleBus.onFinalPair(source, translation, "en") }
+        waitForIdleSync()
+        SystemClock.sleep(120)
+        checkCompactCaptionEnd(compact)
     }
 
     private fun demonstrate() {

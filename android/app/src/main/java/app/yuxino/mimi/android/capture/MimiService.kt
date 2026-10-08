@@ -552,14 +552,14 @@ class MimiService : Service() {
             maxWidth = (resources.displayMetrics.widthPixels * 0.88f).toInt()
             visibility = View.GONE
         }
-        val source = TextView(this).apply {
+        val source = LatestCaptionTextView(this).apply {
             setTextColor(0xFFE7E7E7.toInt())
             textSize = SettingsStore.fontSize(this@MimiService).toFloat()
             maxLines = 2
             maxWidth = (resources.displayMetrics.widthPixels * 0.88f).toInt()
             if (immersiveSession) setShadowLayer(dp(4).toFloat(), 0f, dp(1).toFloat(), Color.BLACK)
         }
-        val translation = TextView(this).apply {
+        val translation = LatestCaptionTextView(this).apply {
             setTextColor(SettingsStore.translationColor(this@MimiService))
             textSize = (SettingsStore.fontSize(this@MimiService) + 3).toFloat()
             setTypeface(typeface, Typeface.BOLD)

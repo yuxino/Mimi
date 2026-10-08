@@ -22,6 +22,13 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class LiveAcceptanceChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
     private fun status(value: String) = test.sendStatus(0, Bundle().apply { putString("stream", "$value\n") })
+    private fun onUi(action: () -> Unit) {
+        var failure: Throwable? = null
+        test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
+        // Propagate on the instrumentation thread so finally restores the
+        // temporary provider even when a native UI assertion fails.
+        failure?.let { throw it }
+    }
     fun run(arguments: Bundle?) {
         val seconds = arguments?.getString("observe_seconds")?.toLongOrNull()?.coerceIn(30, 180) ?: 75
         val rounds = arguments?.getString("rounds")?.toIntOrNull()?.coerceIn(1, 3) ?: 2
@@ -59,7 +66,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                     val editor = test.startActivitySync(Intent(context, ServiceSettingsActivity::class.java)
                         .putExtra("provider", configuration.provider.id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ServiceSettingsActivity
                     try {
-                        test.runOnMainSync {
+                        onUi {
                             val spinner = editor.findViewById<View>(android.R.id.content).findViewWithTag<Spinner>("qwen-mt-model")
                             check(!spinner.isEnabled && !editor.findViewById<View>(R.id.save).isEnabled)
                             spinner.setSelection(if (savedModel == "plus") 0 else 2)
@@ -68,7 +75,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                         }
                         check(SettingsStore.qwenMtModel(context) == savedModel && MimiService.isRunning)
                         check(MimiService.activeModelNames == activeModels)
-                    } finally { test.runOnMainSync { editor.finish() } }
+                    } finally { onUi { editor.finish() } }
                     status("LIVE_MODEL_GUARD_PASSED round=$round model=$savedModel; disabled editor and stale save preserve active model; resume Bilibili playback if paused.")
                 }
                 stage = "observe_$round"
@@ -132,15 +139,15 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                     previousFinal = final; previousStatus = statusShown; previousCapture = capture
                 }
                 while (SystemClock.elapsedRealtime() - begin < seconds * 1000 && MimiService.isRunning) {
-                    test.runOnMainSync { observe() }
+                    onUi { observe() }
                     if (!modelInspected && activeModels.isNotEmpty() && translationUpdates > 0 && SystemClock.elapsedRealtime() - begin > 10_000) {
                         stage = "active_model_display_$round"
-                        test.runOnMainSync {
+                        onUi {
                             val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
                             root.findViewWithTag<View>("compact-subtitle").performClick()
                         }
                         test.waitForIdleSync()
-                        test.runOnMainSync {
+                        onUi {
                             val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
                             val label = root.findViewWithTag<TextView>("overlay-model")
                             check(label.isShown && label.text.toString() == modelNamesLabel(activeModels))
@@ -150,24 +157,47 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                         val bitmap = checkNotNull(test.uiAutomation.takeScreenshot())
                         File(context.getExternalFilesDir(null), "live-model.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         bitmap.recycle()
+                        onUi {
+                            WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                                .findViewWithTag<View>("collapse-overlay").performClick()
+                        }
                         modelInspected = true; stage = "observe_$round"
                         status("LIVE_MODEL_DISPLAY_PASSED round=$round; native expanded model label and screenshot verified.")
                     }
                     SystemClock.sleep(100)
                 }
                 check(MimiService.isRunning) { "session_ended_during_observation" }
+                stage = "compact_latest_$round"
+                onUi {
+                    val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                    root.findViewWithTag<View>("collapse-overlay").performClick()
+                }
+                test.waitForIdleSync()
+                SystemClock.sleep(120)
+                var compactOverflowViews = 0
+                onUi {
+                    val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                    compactOverflowViews = checkLatestCompactCaption(root.findViewWithTag("compact-subtitle"), requireOverflow = false)
+                }
+                val compactBitmap = checkNotNull(test.uiAutomation.takeScreenshot())
+                File(context.getExternalFilesDir(null), "live-compact.png").outputStream().use {
+                    compactBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+                compactBitmap.recycle()
+                status("LIVE_COMPACT_LATEST_PASSED round=$round overflowingViews=$compactOverflowViews; latest native lines remain visible.")
                 stage = "stop_$round"
                 status("LIVE_STOP_REQUEST round=$round")
                 val stop = SystemClock.elapsedRealtime()
                 context.startService(MimiService.stopIntent(context))
                 while (MimiService.isRunning && SystemClock.elapsedRealtime() - stop < 12_000) {
-                    test.runOnMainSync { observe() }; SystemClock.sleep(100)
+                    onUi { observe() }; SystemClock.sleep(100)
                 }
                 check(!MimiService.isRunning) { "stop_timeout" }
                 results.put(JSONObject().put("round", round).put("observedMs", stop - begin)
                     .put("provider", configuration.provider.wireProvider).put("models", JSONArray(activeModels))
                     .put("sourceUpdates", sourceUpdates).put("translationUpdates", translationUpdates)
                     .put("pairedFinalObservations", finals.get()).put("largestSourceUpdateGapMs", largestSourceGap)
+                    .put("compactOverflowViews", compactOverflowViews)
                     .put("stopMs", SystemClock.elapsedRealtime() - stop))
                 SubtitleBus.removeListener(checkNotNull(finalListener)); finalListener = null
                 check(sourceUpdates > 0 && translationUpdates > 0 && finals.get() > 0) { "missing_subtitle_stages" }
@@ -180,7 +210,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
             context.startService(MimiService.stopIntent(context))
             val deadline = SystemClock.elapsedRealtime() + 12_000
             while (MimiService.isRunning && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
-            test.runOnMainSync { home?.finish() }
+            onUi { home?.finish() }
             try { check(!MimiService.isRunning); temporary?.close() }
             catch (_: Exception) { failure = "restore_saved_configuration" }
         }

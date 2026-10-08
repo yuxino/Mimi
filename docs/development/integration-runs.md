@@ -1663,3 +1663,48 @@
   numerical PC/Android latency remain unaccepted. Existing Baidu silence-session
   behavior is outside this normal-speech sample. Source screenshots and metadata
   remain outside Git; final CI/release asset gates remain separate.
+
+### 2026-10-09 — PR #229 compact continuous-caption visibility
+
+- Candidate: `c76be9a9ee5c87abb6a6008cba9f3362a773c61a` plus this
+  entry's native follow-up; version 1.5.18 / 10518, debug APK SHA-256
+  `154f22ce0aefbe517b8b6d8ccb439f321926572038913f096e8180abf37ac67f`.
+  Same debug certificate and same-signature update; shared runtime unchanged.
+- The unchanged APK failed the actual compact-view last-line assertion:
+  six source lines, scroll 0, viewport 106 px. `maxLines` clipped the newest
+  content even while shared snapshots changed. Native compact TextViews now
+  follow complete latest lines after layout, including updates at the same size.
+  Full shared text, accessibility content and expanded manual reading remain
+  intact. Aligning the first visible line also removed a partial preceding line
+  found during screenshot review.
+- Final APK native portrait/light, 320 dp / 130% font/dark and 2400×1080
+  landscape-geometry/dark fixtures each passed ten screenshots. Assertions
+  cover last-line bounds, whole-line alignment, full text, growing drafts,
+  native 12/24 SP changes, short/empty reset, history and immersive restoration.
+  This does not establish physical sensor-rotation behavior.
+- A first extended synthetic fixture accidentally ended in whitespace that the
+  shared reducer trims; matching the normalized reference repaired that test.
+  A live Alibaba assertion also incorrectly required layout for its intentionally
+  hidden source lane. Native checks now inspect visible lanes, and live UI
+  exceptions propagate on the instrumentation thread so temporary-provider
+  cleanup still executes instead of crashing before finally. Neither failed
+  harness establishes a provider defect.
+- Final APK Gemini, same public Bilibili sample for 60 seconds:
+  S:51/T:51/final:1, Stop 2,233 ms. Both compact lanes overflowed and their
+  latest whole lines were verified visible at the end of actual playback;
+  Home/expanded active model checks passed. Content-free observations and native
+  screenshots are retained outside Git. This does not establish semantic scores.
+- Canonical strict checks passed again after the final line-alignment change.
+  Android debug/release each passed 183 tests with actual JNI, both lint
+  variants and four-ABI/16 KB/license packaging gates. The final native fixture
+  build passed separately; no desktop behavior changed in this rendering repair.
+- Final APK Alibaba Lite / auto → zh replay: S:35/T:34/final:4,
+  Stop 1,060 ms, one overflowing visible compact lane. Active model display,
+  disabled editor and stale-save rejection passed. The first attempt raced
+  Bilibili navigation against the model editor's closure and never established
+  playback; waiting for the explicit guard-complete notification repaired the
+  host harness. The same final APK and sample then passed.
+- Fresh-process constant-time credential comparison passed after final playback:
+  original Alibaba Lite / auto → zh / history off preserved, private comparison
+  input removed. The other seven original provider configurations remained
+  unconfigured. All provider sessions were stopped and Bilibili paused.

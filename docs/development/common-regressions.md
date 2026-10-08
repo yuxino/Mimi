@@ -491,6 +491,13 @@ a reader's older-history scroll position. Exercise the actual JNI/native overlay
 in landscape and narrow large-font layouts, including a new draft after a final,
 immersive toggles and reopening; shared reducer tests alone cannot detect this.
 
+A compact TextView maxLines limit clips the latest lines by default even while
+the shared continuous draft keeps updating. Follow its tail after native layout,
+including same-size text relayout, and reset scrolling for short text. Preserve
+full text for accessibility and expanded reading. Assert the last line is inside
+the native viewport after growing drafts, font changes and immersive transitions;
+update counts or an early screenshot cannot prove the latest subtitle is visible.
+
 For provider comparisons, two sessions sharing a credential also share its
 remote quota. A 429 and backoff must not be labeled an ASR disconnect or native
 capture failure. Preserve the retry/final/render event chain, then run sequential

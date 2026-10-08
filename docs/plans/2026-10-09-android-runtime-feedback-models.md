@@ -32,3 +32,12 @@ six-second provider bound and finish after the existing paired quiet checkpoint.
 Keep explicit-turn late-tail grace, interruption resets, generation guards and
 deadline rejection of unmatched text. Do not manufacture sentence alignment or
 promote drafts just because the user stops.
+
+Compact Android captions keep the complete shared text but follow its latest
+visible lines, matching the desktop compact rollup. Implement vertical viewport
+scrolling in the native TextView adapter after layout, including text changes
+that preserve the view's size. Expanded captions remain fully readable with
+manual scrolling; no shared state, pairing or retained text is truncated. Native
+regressions assert the last line's visible bounds after growth, font changes,
+short/empty replacement and immersive transitions, rather than counting text
+updates alone.
