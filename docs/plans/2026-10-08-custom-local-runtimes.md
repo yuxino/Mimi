@@ -13,6 +13,7 @@
 - Start the custom entry with two clear choices, connect a service or run a program. Preserve the existing OpenAI Realtime/DashScope protocol adapters; protocol details stay in help. Loopback services may omit authentication, while remote endpoints still require a key.
 - Local programs require an absolute executable path, a supported adapter and valid model files. Arguments are separate values, never an interpolated shell command. Bound output/audio/queue lengths and inference time; stale generations/revisions cannot publish results. Stop cancels and reaps owned children. Do not log paths, arguments, speech, or raw process errors.
 - Windows and Linux reuse these Rust adapters; built-in MLX remains Apple-silicon-only. Native platform acceptance must be reported separately from compilation/CI.
+- Close the temporary WAV's writable handle before starting whisper.cpp. Keep a `TempPath` guard until the child is reaped so success, failure and cancellation all remove the private file. A Windows native run reproduced exit 11 while the writer stayed open and exit 0 for the same closed file; CI must exercise an exclusive reader to prevent this regression.
 
 ## Implementation and acceptance
 

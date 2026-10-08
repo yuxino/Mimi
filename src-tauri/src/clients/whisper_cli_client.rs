@@ -327,21 +327,13 @@ async fn run(
     if pcm.len() > MAX_TURN_BYTES || !pcm.len().is_multiple_of(2) {
         return Err("local_model_audio_invalid");
     }
-    let mut audio = tempfile::Builder::new()
-        .prefix("mimi-speech-")
-        .suffix(".wav")
-        .tempfile()
-        .map_err(|_| "local_program_temporary_audio_failed")?;
-    audio
-        .write_all(&wave(pcm))
-        .and_then(|()| audio.flush())
-        .map_err(|_| "local_program_temporary_audio_failed")?;
+    let audio = temporary_audio(pcm)?;
     let mut child = command(Path::new(&config.executable))
         .args(&config.arguments)
         .arg("-m")
         .arg(&config.model_path)
         .arg("-f")
-        .arg(audio.path())
+        .arg(&audio)
         .arg("-l")
         .arg(source.raw_value())
         .args(["-nt", "-np"])
@@ -382,6 +374,21 @@ async fn run(
     result
 }
 
+fn temporary_audio(pcm: &[u8]) -> Result<tempfile::TempPath, &'static str> {
+    let mut audio = tempfile::Builder::new()
+        .prefix("mimi-speech-")
+        .suffix(".wav")
+        .tempfile()
+        .map_err(|_| "local_program_temporary_audio_failed")?;
+    audio
+        .write_all(&wave(pcm))
+        .and_then(|()| audio.flush())
+        .map_err(|_| "local_program_temporary_audio_failed")?;
+    // Windows audio readers may deny sharing with an existing writable handle.
+    // Close it before launching the CLI, retaining deletion on every exit path.
+    Ok(audio.into_temp_path())
+}
+
 fn wave(pcm: &[u8]) -> Vec<u8> {
     let length = pcm.len() as u32;
     let mut data = Vec::with_capacity(pcm.len() + 44);
@@ -413,6 +420,35 @@ fn failure(label: &str) -> LiveTranslateServerEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn temporary_audio_can_be_opened_exclusively_and_is_removed_on_drop() {
+        let pcm = [1, 2, 3, 4];
+        let audio = temporary_audio(&pcm).unwrap();
+        let path = audio.to_path_buf();
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.share_mode(0);
+        }
+        let mut reader = options.open(&audio).unwrap();
+        let mut bytes = vec![];
+        std::io::Read::read_to_end(&mut reader, &mut bytes).unwrap();
+        assert_eq!(bytes, wave(&pcm));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                reader.metadata().unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+        drop(reader);
+        drop(audio);
+        assert!(!path.exists());
+    }
+
     #[test]
     fn wav_is_exactly_one_bounded_pcm16_turn() {
         let pcm = [1, 2, 3, 4];
