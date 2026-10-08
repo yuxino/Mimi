@@ -102,7 +102,7 @@ export function WindowsLiveCaptionsSettings({ windowsSupport, loading, failed, c
       {requiresStop && !consented && <InlineFeedback tone="info">{I18N.settings.profileCreateRequiresStop}</InlineFeedback>}
       {error && <InlineFeedback tone="error">{error}</InlineFeedback>}
       <p className="windows-live-captions-note">{I18N.settings.windowsLiveCaptionsAudioUnavailable}</p>
-      {supported && consented && windowsSupport?.status === "ready" && <div className="apple-speech-connection-check">{typeof editor.connectionCheck === "function" ? editor.connectionCheck(undefined, editor.sourceLanguage) : editor.connectionCheck}</div>}
+      {supported && consented && windowsSupport?.status === "ready" && <div className="apple-speech-connection-check">{typeof editor.connectionCheck === "function" ? editor.connectionCheck(undefined) : editor.connectionCheck}</div>}
     </section>
     {!originalOnly && route === "followService" && <InlineFeedback tone="info">{I18N.settings.windowsLiveCaptionsNoTranslator}</InlineFeedback>}
     <AlibabaCredentialEditor {...editor} textOnly requiresStop={requiresStop} connectionCheck={undefined} disabled={editor.disabled || operation !== null} />

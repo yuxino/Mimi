@@ -20,7 +20,9 @@ or request authoritative recognition final events from this accessibility surfac
   only performs no translation request. Local recognition does not certify local
   translation, and Copilot+ translation is not integrated by this change.
 - Missing setup, a closed window, unsupported OS, an unreadable element and revoked
-  consent have explicit feedback. Never fall back to cloud recognition.
+  consent have explicit feedback. An initialized Windows window can omit the
+  caption element until speech arrives: guide audio playback and refresh before
+  suggesting setup is incomplete. Never fall back to cloud recognition.
 - This source represents Windows' mixed caption stream; it cannot certify per-app
   isolation, multiple independent sources or provide audio recordings. Reject
   incompatible capture/recording settings instead of misrepresenting them.
@@ -32,6 +34,11 @@ Windows' own LiveCaptions executable. UI Automation work runs on a dedicated COM
 thread, with bounded snapshot delivery and text size limits. Caption text must
 never appear in diagnostics or Debug output. Idle capability checks do not read
 caption text; session reading requires consent.
+
+Windows owns its recognition language. The settings recognition check must not
+send the source-language override reserved for Apple Speech.
+The overlay omits recognition API timing for this local source, while retaining
+the independent translator's observed timing when translation is enabled.
 
 Grant the support, explicit-open and consent IPC commands only through the
 settings window's `app-settings` permission. Registering a Tauri command does not

@@ -126,3 +126,9 @@ it("reports launch failures without claiming Windows is ready or granting consen
   expect(host.textContent).not.toContain(I18N.settings.windowsLiveCaptionsReady);
   expect(props.onRetry).not.toHaveBeenCalled(); expect(consent).not.toHaveBeenCalled();
 });
+
+it("checks Windows recognition without sending an Apple-only source language override", async () => {
+  const connectionCheck = vi.fn().mockReturnValue(<button>Check Windows recognition</button>);
+  await render({ profile: { ...profile, windowsLiveCaptionsConsent: true }, connectionCheck });
+  expect(connectionCheck).toHaveBeenCalledExactlyOnceWith(undefined);
+});
