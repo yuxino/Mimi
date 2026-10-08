@@ -37,7 +37,8 @@ Rules:
 - `./scripts/package-app.sh` creates a local QA package without updater
   artifacts, using the `local-package` profile with ThinLTO and parallel code
   generation. Public builds retain the size-focused `release` profile. Set
-  `CARGO_TARGET_DIR` to choose the QA output root. `./scripts/prepare-macos-release.sh` creates public artifacts on
+  `CARGO_TARGET_DIR` to choose the QA output root.
+  `./scripts/prepare-macos-release.sh` creates public artifacts on
   the signing Mac with the pinned certificate. CI adds the existing updater
   signature after verifying the app. The
   code-signing private key stays in that Mac's Keychain; CI verifies the

@@ -44,7 +44,13 @@ downloaded, separate empty target directories, one sample per configuration):
 | Debug output directory | 3.94 GiB | 3.08 GiB |
 
 The standalone verifier's cold release compilation took 1.01 s on this Mac.
-These measurements do not predict hosted runner totals or signed packaging time.
+Native cold compilation took approximately 171 s with the public release
+profile versus 126 s with the QA profile (Cargo-reported build times, same
+production frontend, independent empty profile outputs, one sample each).
+The QA executable was 11.91 MiB versus 8.75 MiB for the public release profile;
+this size trade-off applies only to local QA. Signed APP/DMG verification and
+default/relative target-directory packaging passed without replacing installed
+or running apps. These measurements do not predict hosted runner totals.
 
 The profile settings follow [Cargo's debug information options](https://doc.rust-lang.org/cargo/reference/profiles.html#debug).
 Package cache sharing uses [rust-cache's shared key](https://github.com/Swatinem/rust-cache#example-usage),
