@@ -46,6 +46,9 @@ mod tests {
             "session_export",
             "profile_save_credentials",
             "overlay_move_start",
+            "get_windows_live_captions_support",
+            "open_windows_live_captions",
+            "set_windows_live_captions_consent",
         ] {
             assert!(permissions.contains(&format!("\"{command}\"")), "{command}");
         }
@@ -64,6 +67,26 @@ mod tests {
         assert_eq!(permissions_for_build(TEMPLATE, true), TEMPLATE);
         assert!(TEMPLATE.contains("development_debug_start"));
         assert!(TEMPLATE.contains("development_debug_observe"));
+    }
+
+    #[test]
+    fn windows_caption_controls_are_scoped_to_settings() {
+        for command in [
+            "get_windows_live_captions_support",
+            "open_windows_live_captions",
+            "set_windows_live_captions_consent",
+        ] {
+            let quoted = format!("\"{command}\"");
+            let scopes: Vec<_> = TEMPLATE
+                .split("[[permission]]")
+                .filter(|scope| scope.contains(&quoted))
+                .collect();
+            assert_eq!(scopes.len(), 1, "{command} must have one permission scope");
+            assert!(
+                scopes[0].contains("identifier = \"app-settings\""),
+                "{command} must be restricted to settings"
+            );
+        }
     }
 
     #[test]

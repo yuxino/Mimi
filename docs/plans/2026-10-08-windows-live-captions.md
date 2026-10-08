@@ -33,6 +33,12 @@ thread, with bounded snapshot delivery and text size limits. Caption text must
 never appear in diagnostics or Debug output. Idle capability checks do not read
 caption text; session reading requires consent.
 
+Grant the support, explicit-open and consent IPC commands only through the
+settings window's `app-settings` permission. Registering a Tauri command does not
+grant the frontend access to it. Production permission tests must retain all three
+commands and ensure other window permission scopes do not expose them; mocked
+frontend support checks cannot validate the packaged application's ACL.
+
 The first snapshot is a baseline, so existing screen text is not replayed into a
 new session. Replaceable snapshots produce bounded previews. Stable text uses an
 explicitly heuristic final boundary; Windows provides no public recognition-final
