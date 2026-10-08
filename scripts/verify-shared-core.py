@@ -18,10 +18,14 @@ NOTICE_SOURCE = ROOT / "android/native-licenses/shared-core.txt"
 
 def verify_license_notices(content):
     """Reject stale inventories after dependency changes or stale APK assets."""
-    expected = NOTICE_SOURCE.read_bytes()
+    # Git may check text out with CRLF on Windows. Hash/compare the reviewed
+    # LF representation, without ignoring any dependency or notice content.
+    content = content.replace(b"\r\n", b"\n")
+    expected = NOTICE_SOURCE.read_bytes().replace(b"\r\n", b"\n")
     if content != expected:
         raise ValueError("Shared core dependency license notices do not match the reviewed inventory")
-    digest = hashlib.sha256(LOCKFILE.read_bytes()).hexdigest()
+    lock_bytes = LOCKFILE.read_bytes().replace(b"\r\n", b"\n")
+    digest = hashlib.sha256(lock_bytes).hexdigest()
     if f"Cargo-lock SHA256: {digest}".encode() not in content:
         raise ValueError("Shared core dependency license inventory is stale for Cargo.lock")
     text = content.decode("utf-8")
@@ -29,7 +33,7 @@ def verify_license_notices(content):
     count = re.search(r"^Inventory package count: (\d+)$", text, re.MULTILINE)
     if not count or len(packages) != int(count[1]) or len(set(packages)) != len(packages):
         raise ValueError("Shared core dependency license inventory has missing or duplicate entries")
-    lock_text = LOCKFILE.read_text()
+    lock_text = lock_bytes.decode("utf-8")
     locked = set()
     for block in lock_text.split("[[package]]")[1:]:
         if '\nsource = "registry+' not in block:

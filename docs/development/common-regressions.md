@@ -422,6 +422,9 @@ legacy-locale regression in `scripts/check-shared-runtime-test.py`; setting UTF-
 only in CI would leave direct Gradle/native build entry points broken.
 Format repository paths in guard diagnostics with `Path.as_posix()` as well;
 native Windows separators must not invalidate a correctly rejected mutation.
+Reviewed text inventories hash and compare the canonical LF representation:
+Windows CRLF checkout alone must not invalidate the JNI license inventory, while
+actual lockfile or notice edits must still fail the packaging gate.
 
 Run `./scripts/check.sh`. For signing changes, additionally build with
 `./scripts/package-app.sh`, verify the bundle, and compare its designated

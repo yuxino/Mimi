@@ -2,6 +2,7 @@
 """Regression tests for native ABI, toolchain pinning and packaging boundaries."""
 import importlib.util
 from pathlib import Path
+from unittest import mock
 import struct
 import tempfile
 import unittest
@@ -61,6 +62,23 @@ def apk(path, abis=None, aligned=True, compressed=False, duplicate=False,
 
 
 class NativeBuildTests(unittest.TestCase):
+    def test_windows_crlf_checkout_preserves_reviewed_inventory_and_rejects_changes(self):
+        notices = verify.NOTICE_SOURCE.read_bytes().replace(b"\r\n", b"\n")
+        lock = verify.LOCKFILE.read_bytes().replace(b"\r\n", b"\n")
+        with tempfile.TemporaryDirectory() as root:
+            notice_path = Path(root) / "shared-core.txt"
+            lock_path = Path(root) / "Cargo.lock"
+            notice_path.write_bytes(notices.replace(b"\n", b"\r\n"))
+            lock_path.write_bytes(lock.replace(b"\n", b"\r\n"))
+            with mock.patch.object(verify, "NOTICE_SOURCE", notice_path), mock.patch.object(verify, "LOCKFILE", lock_path):
+                verify.verify_license_notices(notices)
+                verify.verify_license_notices(notice_path.read_bytes())
+                with self.assertRaisesRegex(ValueError, "reviewed inventory"):
+                    verify.verify_license_notices(notices + b"Changed notice\n")
+                lock_path.write_bytes(lock_path.read_bytes() + b"# changed dependency graph\r\n")
+                with self.assertRaisesRegex(ValueError, "stale for Cargo.lock"):
+                    verify.verify_license_notices(notices)
+
     def test_dependency_notices_match_the_reviewed_lockfile_inventory(self):
         notices = verify.NOTICE_SOURCE.read_bytes()
         verify.verify_license_notices(notices)
