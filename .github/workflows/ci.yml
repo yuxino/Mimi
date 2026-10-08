@@ -40,7 +40,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Verify scope rules
-        run: python3 scripts/ci-scope-test.py
+        run: |
+          python3 -B scripts/ci-scope-test.py
+          python3 -B scripts/prepare-macos-release-test.py
       - id: plan
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -160,6 +162,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         with:
           node-version: 22
           cache: npm
@@ -176,7 +179,8 @@ jobs:
             shared/mimi-android-jni -> ../target
           shared-key: windows-arm64
 
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
 
       - name: Verify native ARM64 toolchain
         shell: pwsh
@@ -248,7 +252,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
@@ -305,12 +309,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
+          shared-key: desktop-package
           workspaces: |
             src-tauri
             shared/mimi-core -> ../target
             shared/mimi-android-jni -> ../target
 
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Install Linux build and smoke-test dependencies
         if: runner.os == 'Linux'
@@ -464,12 +469,9 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: |
-            src-tauri
-            shared/mimi-core -> ../target
-            shared/mimi-android-jni -> ../target
+            scripts/updater-signature-verifier
 
-      - run: npm ci
-      - run: npm run build
+      - run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Download maintainer-signed macOS assets from the draft
         shell: bash
@@ -520,8 +522,8 @@ jobs:
           staging_dir="$RUNNER_TEMP/mimi-release-assets"
           npm run tauri -- signer sign "$staging_dir/$MAC_ARCHIVE"
           public_key="$(node -p 'require("./src-tauri/tauri.conf.json").plugins.updater.pubkey')"
-          cargo run --release --locked --manifest-path src-tauri/Cargo.toml \
-            --example verify_updater_signature -- \
+          cargo run --release --locked --manifest-path scripts/updater-signature-verifier/Cargo.toml \
+            -- \
             "$public_key" "$staging_dir/$MAC_ARCHIVE.sig" "$staging_dir/$MAC_ARCHIVE"
 
       - name: Upload verified macOS release assets
@@ -571,12 +573,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
+          shared-key: desktop-package
           workspaces: |
             src-tauri
             shared/mimi-core -> ../target
             shared/mimi-android-jni -> ../target
 
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Verify updater signing secrets are configured
         shell: pwsh
@@ -640,7 +643,7 @@ jobs:
           Copy-Item -LiteralPath $expectedPaths -Destination $stagingDir
           $publicKey = (Get-Content "$env:GITHUB_WORKSPACE/src-tauri/tauri.conf.json" | ConvertFrom-Json).plugins.updater.pubkey
           foreach ($installer in @("mimi_${version}_x64_en-US.msi", "mimi_${version}_x64-setup.exe")) {
-            cargo run --release --locked --manifest-path src-tauri/Cargo.toml --example verify_updater_signature -- $publicKey "$stagingDir/$installer.sig" "$stagingDir/$installer"
+            cargo run --release --locked --manifest-path scripts/updater-signature-verifier/Cargo.toml -- $publicKey "$stagingDir/$installer.sig" "$stagingDir/$installer"
             if ($LASTEXITCODE -ne 0) {
               throw "Updater signature verification failed for $installer (exit $LASTEXITCODE)."
             }
@@ -684,6 +687,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
+          shared-key: desktop-package
           workspaces: |
             src-tauri
             shared/mimi-core -> ../target
@@ -692,7 +696,7 @@ jobs:
       - name: Install Linux build and smoke-test dependencies
         run: ./scripts/linux-ci-deps.sh
 
-      - run: npm ci
+      - run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Verify updater signing key is configured
         run: ': "${TAURI_SIGNING_PRIVATE_KEY:?Updater signing key is missing}"'

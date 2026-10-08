@@ -34,8 +34,8 @@ python3 scripts/check-appimage-gles.py "$extracted/squashfs-root"
 if [[ "${2:-}" == --signed ]]; then
   [[ -s "$appimage.sig" ]]
   public_key="$(node -p 'require("./src-tauri/tauri.conf.json").plugins.updater.pubkey')"
-  cargo run --release --locked --manifest-path src-tauri/Cargo.toml \
-    --example verify_updater_signature -- "$public_key" "$appimage.sig" "$appimage"
+  cargo run --release --locked --manifest-path scripts/updater-signature-verifier/Cargo.toml \
+    -- "$public_key" "$appimage.sig" "$appimage"
 fi
 
 # Install the actual .deb and smoke both package formats independently.

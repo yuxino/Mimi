@@ -58,9 +58,6 @@ time = "0.3"
 tempfile = "3"
 tauri-plugin-clipboard-manager = "2"
 
-[dev-dependencies]
-minisign-verify = "0.2.5"
-
 [target.'cfg(target_os = "macos")'.dependencies]
 cpal = "0.18"
 block2 = "0.6"
@@ -92,8 +89,12 @@ zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] 
 secret-service = { version = "5.1", features = ["crypto-rust"] }
 x11-dl = "2.21.0"
 
-# Keep the shipped desktop binary compact without changing the debug/test
-# profiles used during development. These are the stable-Rust settings
+# Keep filename/line backtraces without emitting full type and variable debug
+# data for the large desktop dependency graph. Tests inherit this profile.
+[profile.dev]
+debug = "line-tables-only"
+
+# Keep the shipped desktop binary compact. These are the stable-Rust settings
 # recommended by Tauri for production bundles.
 [profile.release]
 codegen-units = 1
@@ -101,6 +102,13 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# Local QA still exercises optimized, signed installers, while ThinLTO and
+# parallel code generation avoid the public release's expensive size tuning.
+[profile.local-package]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
 
 # Signed local bundles embed the frontend like a release, but favor rebuild speed
 # and useful backtraces. Keep these artifacts separate from production output.

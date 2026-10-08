@@ -1,0 +1,12 @@
+[package]
+name = "mimi-updater-signature-verifier"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+
+# Keep release verification independent of Tauri, audio and Swift compilation.
+# These are the same dependencies used by the former desktop example.
+[dependencies]
+base64 = "0.23"
+minisign-verify = "0.2.5"

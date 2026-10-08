@@ -6,6 +6,8 @@ Git history, not on the active documentation path.
 
 ## Architecture and security
 
+- `2026-10-08-build-throughput.md` — lean validation symbols, faster local QA
+  packaging, shared package caches and independent updater verification.
 - `2026-09-28-session-history-design.md` — opt-in local transcript and audio
   history, date groups, deletion, and export boundaries.
 - `2026-09-27-linux-support-design.md` — output-monitor capture, Secret Service,

@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Local QA packaging for the mimi Tauri application. Produces the native
 # bundles for the current platform (macOS: .app + .dmg; Windows: MSI + NSIS EXE)
-# under src-tauri/target/release/bundle/. Never commit dist/ or signing
+# under src-tauri/target/local-package/bundle/. Never commit dist/ or signing
 # identities.
 #
 # On macOS the signing identity is selected before Tauri creates either the
@@ -36,6 +36,14 @@ cd "$PROJECT_DIR"
 
 export CARGO_HOME="${CARGO_HOME:-$PROJECT_DIR/.cargo-home}"
 export npm_config_cache="${npm_config_cache:-$PROJECT_DIR/.npm-cache}"
+TARGET_DIR="${CARGO_TARGET_DIR:-$PROJECT_DIR/src-tauri/target}"
+case "$TARGET_DIR" in
+  /*|[A-Za-z]:/*|[A-Za-z]:\\*) ;;
+  *) TARGET_DIR="$PROJECT_DIR/$TARGET_DIR" ;;
+esac
+# Tauri runs Cargo from src-tauri; normalize relative overrides before building
+# so Cargo output and the bundle verification below resolve the same directory.
+export CARGO_TARGET_DIR="$TARGET_DIR"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   export MACOSX_DEPLOYMENT_TARGET="13.0"
   APPLE_SIGNING_IDENTITY="$("$SCRIPT_DIR/codesign-identity.sh")"
@@ -57,9 +65,9 @@ fi
 # Local QA packages are signed with the development identity, not the public
 # updater signature. Do not require or use the release updater private key for
 # QA; prepare-macos-release.sh creates updater artifacts on the signing Mac.
-npm run tauri -- build ${TARGET_ARGS[@]+"${TARGET_ARGS[@]}"} --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked
+npm run tauri -- build ${TARGET_ARGS[@]+"${TARGET_ARGS[@]}"} --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked --profile local-package
 
-BUNDLE_DIR="$PROJECT_DIR/src-tauri/target/${TARGET:+$TARGET/}release/bundle"
+BUNDLE_DIR="$TARGET_DIR/${TARGET:+$TARGET/}local-package/bundle"
 echo "Bundle produced under: $BUNDLE_DIR"
 find "$BUNDLE_DIR" -maxdepth 2 \( -name "*.app" -o -name "*.dmg" -o -name "*.msi" -o -name "*.exe" \) -print 2>/dev/null || true
 
