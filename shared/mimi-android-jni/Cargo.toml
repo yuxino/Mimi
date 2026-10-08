@@ -15,6 +15,9 @@ crate-type = ["cdylib", "rlib"]
 jni = "=0.21.1"
 mimi-core = { path = "../mimi-core" }
 
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -8,7 +8,7 @@ prompts. The visible app name and version are not enough to establish identity.
 | Use | Canonical app | Bundle identifier | Signing identity |
 | --- | --- | --- | --- |
 | Pre-push development and UI checks | `/Applications/mimi-dev.app` | `app.yuxino.mimi.dev` | Dev-specific local pin, otherwise `mimi Local Development` |
-| Local release-shaped bundle | `src-tauri/target/release/bundle/macos/mimi.app` | `app.yuxino.mimi` | Formal-specific local pin, otherwise `mimi Local Development` |
+| Local release-shaped bundle | `src-tauri/target/local-package/bundle/macos/mimi.app` | `app.yuxino.mimi` | Formal-specific local pin, otherwise `mimi Local Development` |
 | New release pipeline | `/Applications/mimi.app` | `app.yuxino.mimi` | Certificate pinned in `scripts/macos-release-identity.txt` |
 | Historical releases through v1.4.1 | `/Applications/mimi.app` | `app.yuxino.mimi` | Ad-hoc (build-specific) |
 
@@ -35,7 +35,9 @@ Rules:
   JavaScript asset while Tauri embeds it; finish the first build before retrying
   the second, without clearing shared caches.
 - `./scripts/package-app.sh` creates a local QA package without updater
-  artifacts. `./scripts/prepare-macos-release.sh` creates public artifacts on
+  artifacts, using the `local-package` profile with ThinLTO and parallel code
+  generation. Public builds retain the size-focused `release` profile. Set
+  `CARGO_TARGET_DIR` to choose the QA output root. `./scripts/prepare-macos-release.sh` creates public artifacts on
   the signing Mac with the pinned certificate. CI adds the existing updater
   signature after verifying the app. The
   code-signing private key stays in that Mac's Keychain; CI verifies the

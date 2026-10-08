@@ -11,8 +11,7 @@ if [[ -z "${MIMI_PYTHON:-}" && "${OS:-}" == "Windows_NT" ]]; then
   python_command=python
 fi
 "$python_command" -B scripts/shared-core-native-test.py
-for crate in mimi-core mimi-android-jni; do
-  manifest="shared/$crate/Cargo.toml"
+for manifest in shared/mimi-core/Cargo.toml shared/mimi-android-jni/Cargo.toml scripts/updater-signature-verifier/Cargo.toml; do
   cargo fmt --manifest-path "$manifest" -- --check
   cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings
   cargo test --locked --manifest-path "$manifest"

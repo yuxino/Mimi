@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Local QA packaging for the mimi Tauri application. Produces the native
 # bundles for the current platform (macOS: .app + .dmg; Windows: MSI + NSIS EXE)
-# under src-tauri/target/release/bundle/. Never commit dist/ or signing
+# under src-tauri/target/local-package/bundle/. Never commit dist/ or signing
 # identities.
 #
 # On macOS the signing identity is selected before Tauri creates either the
@@ -57,9 +57,11 @@ fi
 # Local QA packages are signed with the development identity, not the public
 # updater signature. Do not require or use the release updater private key for
 # QA; prepare-macos-release.sh creates updater artifacts on the signing Mac.
-npm run tauri -- build ${TARGET_ARGS[@]+"${TARGET_ARGS[@]}"} --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked
+npm run tauri -- build ${TARGET_ARGS[@]+"${TARGET_ARGS[@]}"} --config '{"bundle":{"createUpdaterArtifacts":false}}' -- --locked --profile local-package
 
-BUNDLE_DIR="$PROJECT_DIR/src-tauri/target/${TARGET:+$TARGET/}release/bundle"
+TARGET_DIR="${CARGO_TARGET_DIR:-$PROJECT_DIR/src-tauri/target}"
+[[ "$TARGET_DIR" == /* ]] || TARGET_DIR="$PROJECT_DIR/$TARGET_DIR"
+BUNDLE_DIR="$TARGET_DIR/${TARGET:+$TARGET/}local-package/bundle"
 echo "Bundle produced under: $BUNDLE_DIR"
 find "$BUNDLE_DIR" -maxdepth 2 \( -name "*.app" -o -name "*.dmg" -o -name "*.msi" -o -name "*.exe" \) -print 2>/dev/null || true
 

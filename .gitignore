@@ -12,3 +12,4 @@ src-tauri/gen/
 .cargo-home/
 dsh-blue-whale-maid/
 osu/
+scripts/updater-signature-verifier/target/

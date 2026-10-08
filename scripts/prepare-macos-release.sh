@@ -37,10 +37,14 @@ info['MimiSourceRevision'] = sys.argv[2]
 with (folder / 'Info.plist').open('wb') as f:
     plistlib.dump(info, f)
 (folder / 'tauri.conf.json').write_text(json.dumps({
+    'build': {'beforeBuildCommand': ''},
     'bundle': {'createUpdaterArtifacts': False, 'macOS': {'infoPlist': str(folder / 'Info.plist')}}
 }))
 PY
 VERSION="$(node -p 'require("./package.json").version')"
+# Both architectures embed the same Safari-targeted frontend from this exact
+# checkout. Build and validate it once before either native build starts.
+TAURI_ENV_PLATFORM=darwin npm run build
 for arch in arm64 x86_64; do
   if [[ "$arch" == arm64 ]]; then
     # Preserve the established native ARM cache and archive name for updates.
