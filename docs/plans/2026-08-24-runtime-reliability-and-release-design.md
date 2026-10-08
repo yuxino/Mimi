@@ -124,4 +124,4 @@ On macOS, `./scripts/dev-app.sh --ui-only` verifies normal, blended, locked,
 paused, connecting, error, collapsed, long-subtitle, English, and Japanese
 surfaces without reading credentials, opening provider sockets, or starting
 capture. A real-provider latency check is separate and uses only credentials
-already stored in the OS keychain.
+saved in the app’s private local credential file, with current task authorization.

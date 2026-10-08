@@ -1,8 +1,7 @@
 /**
- * Thin wrappers over the Tauri IPC surface defined by the contract in
- * `docs/plans/2026-08-22-multi-provider-professional-settings-design.md`.
- * Command names and payload
- * keys are fixed by that contract and must not drift.
+ * Thin wrappers over the Tauri handlers in `src-tauri/src/commands.rs`.
+ * Keep command names and payload keys aligned with those handlers and the
+ * frontend types in `src/lib/types.ts`.
  */
 
 import { invoke } from "@tauri-apps/api/core";

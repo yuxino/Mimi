@@ -37,10 +37,14 @@ it does not open a display or select X11 over Wayland. Ubuntu 22.04 native UI
 stress tests reproduced XCB sequence corruption when initialization happened
 too late, and the early call must be verified without preload diagnostics.
 
-The existing keyring v4 compatibility API selects Secret Service on Linux.
-Keep that secure backend and existing profile-scoped entries; fail closed when
-unavailable. No plaintext fallback or microphone capture is added. Retention
-and recording stay off by default.
+Credentials use the same private local-file design as the other platforms.
+Secret Service is a one-time legacy import and verified-retirement source only;
+normal reads, saves and deletes never require it after import. See the
+[Linux development guide](../development/linux.md) and
+[credential storage design](2026-10-04-local-credential-storage.md).
+Optional microphone capture follows the separate
+[audio input design](2026-10-03-optional-microphone-input.md). Retention and
+recording stay off by default.
 
 Use a colored tray asset outside macOS. Settings remains accessible at startup
 when the desktop has no tray host. Linux closes to exit rather than hiding an

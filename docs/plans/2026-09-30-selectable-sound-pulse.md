@@ -26,8 +26,7 @@ first-run proof is unchanged. A sharing-ended message and reopen action appear
 only for a stopped projection/permission-lock invalidation, not every idle or
 unrelated failure. Reopen uses the existing gated permission/start flow.
 The successful-caption line is shorter; optional failure/configuration/billing
-instructions are retained. Desktop guide copy is fixed on a separate #85 branch;
-that held feature is not merged here.
+instructions are retained.
 
 ## Validation and visual evidence boundaries
 
@@ -44,5 +43,5 @@ The task15 video demonstrates A/B shapes on the existing shared browser canvas;
 it is not the settings selector or final installed package. New settings,
 diagnostic simplification and Android/desktop copy require fresh screenshots
 at their exact implementation heads. Old #88 images stay previous-version
-evidence until those are captured. No native Mac build/install/launch, user
-data, paid provider, source PR merge or release is authorized by this change.
+evidence until those are captured. Dated browser evidence does not establish
+native macOS acceptance or real-provider behavior.

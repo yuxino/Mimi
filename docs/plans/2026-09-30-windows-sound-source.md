@@ -16,9 +16,7 @@ Windows can route Teams or another app to headphones while the default output is
 
 Pure policy tests cover default changes, stable endpoints, missing selections, and retired monitor generations. Native Windows tests cover sample activity and existing stream start/stop race handling. The canonical local check verifies macOS Rust and frontend compatibility. Windows CI compiles and tests the actual WASAPI branch on x64 and ARM64 where configured.
 
-CI and policy tests do not prove physical headphones, default-device changes, unplug/replug behavior, or Teams routing. Windows hardware acceptance still requires: start with speakers; change default to headphones while listening; choose the actual Teams output after stopping; unplug a pinned device; reconnect it; reopen settings with an unavailable saved choice; verify silence/playing/paused states. No merge or release is authorized by this draft PR.
-
-The concurrent DeepLX work is independent. Shared preference, IPC, settings view, and type files may need conflict resolution when separately reviewed; this branch does not include or merge that work.
+CI and policy tests do not prove physical headphones, default-device changes, unplug/replug behavior, or Teams routing. Windows hardware acceptance still requires: start with speakers; change default to headphones while listening; choose the actual Teams output after stopping; unplug a pinned device; reconnect it; reopen settings with an unavailable saved choice; verify silence/playing/paused states.
 
 ## Audio presence and Audio3 failure follow-up
 

@@ -64,6 +64,9 @@ These project rules apply to implementation and review.
   overwriting it. Clear loaded values and invalidate pending reads on focus
   loss, hide, close, route change and unmount. Nonsecret configuration values
   load into editable fields locally, never into a secret-containing snapshot.
+  Keep editor-only service URLs out of global snapshots. Submit unchanged fields
+  as unchanged so displaying a saved address cannot clear its credential. A
+  keyless destination stays valid without offering to reveal a nonexistent key.
 
 - Store loaded nonsecret configuration in the actual editable value, never a
   placeholder. Empty fields use concise localized entry hints; concrete examples
@@ -79,6 +82,11 @@ These project rules apply to implementation and review.
   inline retry, and update only the requested metadata so an alias or proxy
   cannot replay an old configuration name. Keep compact labels single-line;
   expanded editing is explicit.
+
+- Proxy system/direct choices save immediately. A custom address saves on blur,
+  Enter or explicit paste; typing stays local and saving does not run a probe.
+  Preserve failed mode/address drafts for retry and deduplicate Enter followed
+  by blur against the acknowledged value. Keep the active-session save guard.
 
 ## Choose feedback by purpose
 
@@ -138,10 +146,6 @@ Before calling a UI consistency fix complete:
 5. Review the final diff and report the pages/paths checked plus any intentional
    differences or unverified platform behavior. Update this guide when the
    shared rule changes; record new concrete pitfalls in `common-regressions.md`.
-
-The [settings feedback audit](../plans/2026-10-04-settings-feedback-audit.md)
-records the specific cases that led to these rules. Keep prevention rules here
-so future work does not depend on finding a dated design note.
 
 Collapsed overlay tooltips must fit the 54px native window and leave its drag,
 pause, expand and close buttons uncovered at the minimum width in every UI

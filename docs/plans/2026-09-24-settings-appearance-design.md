@@ -7,14 +7,14 @@ not change subtitle contrast over video or the tray's existing presentation.
 Only the appearance preference is stored, never subtitle or audio content.
 
 Reuse the neutral settings tokens. The sidebar layout and appearance preview
-controls follow `2026-09-24-settings-layout-design.md`. Light mode uses a white
+controls follow the [current UI guidelines](../development/ui-guidelines.md). Light mode uses a white
 panel on a near-white canvas, dark text, and neutral borders. Every neutral alpha
 uses the theme's foreground channels so selection, hover, focus, controls, and
 scrollbars remain legible. Selection uses explicit classes for WKWebView.
 
 Storage failures retain the chosen appearance for the current window. System
 appearance listeners are removed when the settings surface unmounts. All labels
-are available in Chinese, English, and Japanese.
+follow the seven supported interface languages.
 
 Validation: repository checks and the signed macOS development app in UI-only
 mode. Inspect category selection, service forms, General controls and dropdowns

@@ -42,32 +42,34 @@ reuse their existing bounded final/preview workers and quota recovery scope.
 ## Configuration and privacy
 
 Provider kinds `customDashScopeASR` and `customOpenAIASR` identify the exact wire
-protocol. The keychain holds a validated speech endpoint/model/key record and a
-separate profile-scoped text credential item. Preference JSON and IPC snapshots
-contain only provider/route and availability. Stage availability is derived from
-one read of each required keychain item; aggregate readiness is not a substitute
-for the individual states. Save/delete rollback preserves independent records.
+protocol. The private local credential file holds a validated speech
+endpoint/model/key record and a separate profile-scoped text credential slot.
+Preference JSON and IPC snapshots contain only non-secret metadata and stage
+availability. Stage availability comes from each required local-file slot;
+aggregate readiness is not a substitute for the individual states. Save/delete
+rollback preserves independent records.
 
 Full WSS URLs are required, except WS on loopback. URL credentials, query
 parameters, fragments and control characters are rejected. OpenAI's intent
 parameter is added internally only when connecting. Models are bounded to 256
-bytes. Production keys remain in OS secure storage; the read-only local dev
-exception is not extended to custom services. Diagnostics contain sanitized
-labels, timing, counts and language codes only.
+bytes. Production and development use separate editable private local files;
+native stores are only one-time legacy import sources. See the
+[storage design](2026-10-04-local-credential-storage.md). Diagnostics contain
+sanitized labels, timing, counts and language codes only.
 
-Custom source choices are Automatic, Chinese, English, Japanese and Korean;
-availability and detection depend on the selected model. Original is always
-available. An explicit text route adds Chinese, English and Japanese targets;
-unsupported source/target behavior is reported without claiming a universal
-provider language catalog.
+Resolve custom source choices from the protocol's encodable catalog, any saved
+model-language declaration, and the selected text route's intersection. A generic
+protocol code does not promise model support or automatic detection. Original
+remains available; independent targets follow their own route catalog. See the
+[current language rules](2026-10-06-provider-language-catalogs.md).
 
 ## Verification
 
 Focused tests cover wire setup, validation, source/destination isolation,
 write-only snapshots, rollback, Original without MT, ordered final translations,
 connection probes without PCM, streaming bounds and stale events. Frontend tests
-cover independent forms, tooltip copy in all three languages, field error focus,
-retained drafts, address/key guards, deletion, active-session locks and read-only
-mode. Before release, run `scripts/check.sh`, signed native UI checks, and the
+cover independent forms, tooltip copy in all seven interface languages, field
+error focus, retained drafts, address/key guards, deletion and active-session
+locks. Before release, run `scripts/check.sh`, signed native UI checks, and the
 platform CI/release asset checks. Record real-provider limits separately from
 synthetic protocol fixtures.

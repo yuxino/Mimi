@@ -39,8 +39,9 @@ identity, audio permissions and floating-panel UI during this change.
 
 Verification covers migration checkpoints/retry, missing values, malformed data,
 atomic replacement, profile/text isolation, deletion/restart, zero native-store
-calls after completion, and current-user file protection. Run credential-free native settings smoke checks. Leave the
-feature branch unmerged and unpushed, then install the current formal-mode build.
+calls after completion, and current-user file protection. Run credential-free
+native settings smoke checks. Current setup is documented in the
+[development guide](../development/local-dev-credentials.md).
 
 Reference: CC Switch serializes provider settings into its local SQLite database
 ([provider DAO](https://github.com/farion1231/cc-switch/blob/0d0dd0a5487dd72b1d0b21c648d411d2cd99396a/src-tauri/src/database/dao/providers.rs)).
