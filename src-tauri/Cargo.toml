@@ -21,8 +21,6 @@ default = []
 devtools = ["tauri/devtools"]
 # Private evidence tooling is excluded from production builds.
 development-debugger = []
-# Read-only local .env keys; runtime also requires the exact macOS dev identifier.
-local-dev-credentials = []
 
 [dependencies]
 mimi-core = { path = "../shared/mimi-core" }

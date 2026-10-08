@@ -1,9 +1,10 @@
 //! Explicit bounded text comparison through the production Qwen client.
 //! Never compiled into the app; content goes only to opted-in private files.
-use super::{select, DEVELOPMENT_APPLICATION_IDENTIFIER, DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE};
+use super::SettingsStore;
 use crate::clients::{provider_network::ProviderNetwork, qwen_mt_client::QwenMTClient};
 use crate::core::models::{SourceLanguage, TargetLanguage};
 use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTDomainHint, QwenMTModel};
+use crate::core::provider::ProviderKind;
 use serde::Deserialize;
 use serde_json::json;
 use std::io::Write;
@@ -56,21 +57,21 @@ async fn manual_qwen_model_comparison() {
     }
     let directory = PathBuf::from(std::env::var_os("HOME").unwrap())
         .join("Library/Application Support/app.yuxino.mimi.dev");
-    let secret = select(&directory, false, DEVELOPMENT_APPLICATION_IDENTIFIER).unwrap();
-    let key = secret
-        .load(
-            DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
-            "provider-profile:alibaba-local-dev:alibabaCloud:api-key",
-        )
-        .unwrap()
-        .expect("Alibaba dev key required");
+    let settings = SettingsStore::load_for_manual_probe(directory).unwrap();
+    let profile = settings.active_profile().unwrap();
+    assert_eq!(profile.provider, ProviderKind::AlibabaCloud);
+    let configuration = settings.configuration_for_profile_probe(&profile).unwrap();
+    let key = configuration
+        .credentials
+        .alibaba_key()
+        .expect("saved Alibaba key required");
     let models = [QwenMTModel::Lite, QwenMTModel::Flash, QwenMTModel::Plus];
     let mut clients = Vec::new();
     for source in [SourceLanguage::English, SourceLanguage::Japanese] {
         for model in models {
             let target = TargetLanguage::SimplifiedChinese;
             let mut client = QwenMTClient::new(
-                &key,
+                key,
                 source,
                 target,
                 model,
@@ -79,7 +80,9 @@ async fn manual_qwen_model_comparison() {
                 Duration::from_secs(8),
             )
             .unwrap();
-            client.set_network(ProviderNetwork::default()).unwrap();
+            client
+                .set_network(ProviderNetwork::resolve(&configuration.network_proxy).unwrap())
+                .unwrap();
             clients.push((source, model, client, 0usize));
         }
     }

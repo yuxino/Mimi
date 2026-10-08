@@ -511,7 +511,7 @@ export const useStore = create<StoreState>()((set, get) => ({
       return get().settings;
     }
     const current = get().settings;
-    if (current.profiles.filter(profile => profile.credentialStorage !== "localDevFile").length >= 20) throw new Error("profile-limit");
+    if (current.profiles.length >= 20) throw new Error("profile-limit");
     const id = `mock-${provider}-${Date.now()}`;
     const snapshot: SettingsSnapshot = {
       ...current,
@@ -553,7 +553,7 @@ export const useStore = create<StoreState>()((set, get) => ({
     }
     if (options && Object.hasOwn(options, "languagePreset")) {
       const profile = current.profiles.find(profile => profile.id === profileId);
-      if (!profile || profile.credentialStorage === "localDevFile") throw new Error("profile-read-only");
+      if (!profile) throw new Error("profile-read-only");
       const preset = options.languagePreset;
       if (preset && profile.provider !== "appleSpeech" && textTranslationForProfile(profile) !== "apple") {
         const proposed = { ...current, ...preset, activeProfileId: profileId, languageCapabilities: undefined };

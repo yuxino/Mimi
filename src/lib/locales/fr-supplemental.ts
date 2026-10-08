@@ -78,10 +78,6 @@ export const SUPPLEMENTAL = {
     task_failed: "le service a terminé la tâche sans cause identifiée. Vérifiez l’état audio, puis réessayez.",
   },
   connectionDiagnostics_copy: {
-    localDevReadOnly: "Les préréglages de développement lisent leurs clés de fournisseur dans le fichier .env local. Modifiez ce fichier et redémarrez mimi dev pour changer une clé. Les autres configurations utilisent un fichier local privé et restent modifiables.",
-    localDevTranslationLocked: "Ce préréglage de développement utilise son service de reconnaissance et de traduction intégré.",
-    localDevTranslationHelp: "Ajoutez une configuration ordinaire pour choisir un autre service ou une traduction du texte indépendante. Ses identifiants utilisent le fichier local privé de l’application de développement ; les clés du préréglage restent dans le .env en lecture seule.",
-    localDevUnavailable: "Impossible de lire le .env local de développement. Vérifiez son format, son propriétaire et ses permissions 0600, puis redémarrez mimi dev.",
     storage: "Impossible de lire les identifiants du service. Vérifiez l’accès au fichier local ou enregistrez-les de nouveau.",
     linuxStorage: "Impossible d’accéder au gestionnaire de mots de passe du bureau. Vérifiez qu’un fournisseur Secret Service, comme GNOME Keyring, est installé et activé dans cette session. Déverrouillez-le ou acceptez la demande du système, puis vérifiez de nouveau.",
     serviceUnavailable: "Secret Service est indisponible sous Linux. Installez ou activez un fournisseur Secret Service, comme GNOME Keyring, dans cette session. Déconnectez-vous puis reconnectez-vous si votre environnement de bureau l’exige, puis vérifiez de nouveau.",

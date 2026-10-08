@@ -123,15 +123,6 @@ it("localizes exhausted translation recovery without showing internal labels", (
 });
 import type { ConnectionDiagnostic } from "./ipc";
 afterEach(() => setStoredUiLanguage("en"));
-it.each(["en", "zh", "ja"] as const)("explains dev file credentials without suggesting Keychain authorization in %s", (language) => {
-  setStoredUiLanguage(language);
-  expect(profileErrorMessage("local_dev_credentials_read_only")).toBe(diagnosticCopy().localDevReadOnly);
-  expect(profileErrorMessage("local_dev_credentials_unavailable")).toBe(diagnosticCopy().localDevUnavailable);
-  expect(profileErrorMessage("local_dev_credentials_read_only")).toContain(".env");
-  expect(profileErrorMessage("local_dev_credentials_unavailable")).toContain("0600");
-  expect(connectionDiagnosticMessage({ credential: "localDevUnavailable", service: "unavailable", reason: "localDevCredentialsUnavailable" })).toContain(diagnosticCopy().localDevUnavailable);
-  expect(profileErrorMessage("local_dev_credentials_unavailable: synthetic-private-value")).not.toContain("synthetic-private-value");
-});
 it("localizes shortcut and storage errors without losing recovery guidance", () => {
   setStoredUiLanguage("zh");
   expect(credentialErrorMessage("credential_store_unavailable", "macos")).toContain("无法读取服务凭据");

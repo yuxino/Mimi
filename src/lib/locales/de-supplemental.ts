@@ -78,10 +78,6 @@ export const SUPPLEMENTAL = {
     task_failed: "Der Dienst hat die Aufgabe ohne erkennbare Ursache beendet. Prüfe den Audiostatus und versuche es erneut.",
   },
   connectionDiagnostics_copy: {
-    localDevReadOnly: "Entwicklungsvoreinstellungen lesen ihre Anbieterschlüssel aus der lokalen .env. Bearbeite diese Datei und starte mimi dev neu, um einen Schlüssel zu ändern. Andere Konfigurationen verwenden eine private lokale Datei und bleiben bearbeitbar.",
-    localDevTranslationLocked: "Diese Entwicklungsvoreinstellung verwendet ihren eingebauten Erkennungs- und Übersetzungsdienst.",
-    localDevTranslationHelp: "Füge eine reguläre Konfiguration hinzu, um einen anderen Dienst oder eine unabhängige Textübersetzung zu wählen. Ihre Zugangsdaten werden in der privaten lokalen Datei der Entwicklungs-App gespeichert; die Voreinstellungsschlüssel bleiben in der schreibgeschützten .env.",
-    localDevUnavailable: "Lokale Entwicklungs-.env kann nicht gelesen werden. Prüfe Format, Eigentümer und 0600-Berechtigungen und starte mimi dev neu.",
     storage: "Dienstzugangsdaten können nicht gelesen werden. Prüfe den lokalen Dateizugriff oder speichere sie erneut.",
     linuxStorage: "Der Passwortspeicher deiner Desktopumgebung ist nicht zugänglich. Prüfe, ob ein Secret-Service-Anbieter wie GNOME Keyring in dieser Sitzung installiert und aktiviert ist. Entsperre ihn oder erlaube die Systemabfrage und prüfe erneut.",
     serviceUnavailable: "Linux Secret Service ist nicht verfügbar. Installiere oder aktiviere einen Secret-Service-Anbieter wie GNOME Keyring in dieser Desktopsitzung. Melde dich bei Bedarf ab und wieder an und prüfe erneut.",

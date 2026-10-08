@@ -102,7 +102,7 @@ export interface SessionStateEvent {
 
 export interface SettingsSnapshot {
   /** Availability metadata only; credential bytes are never in snapshots. */
-  credentialStorage?: "keychain" | "localDevFile" | "localFile";
+  credentialStorage?: "keychain" | "localFile";
   /** Service profiles never contain credential material, only availability. */
   profiles: ServiceProfile[];
   activeProfileId: string;
@@ -258,7 +258,7 @@ export interface ServiceProfile {
   languagePreset?: ProfileLanguagePreset | null;
   credentialState: CredentialState;
   /** Storage kind only; credential values remain in the backend. */
-  credentialStorage?: "keychain" | "localDevFile" | "localFile";
+  credentialStorage?: "keychain" | "localFile";
   /** Custom speech profiles expose each independent store's availability, never its values. */
   speechCredentialState?: CredentialState;
   textCredentialState?: CredentialState;

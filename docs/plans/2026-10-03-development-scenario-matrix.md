@@ -28,7 +28,7 @@ Write a test which supplies a mismatched WAV and PCM and asserts preparation fai
 
 **Files:** Continue `scripts/run-development-batch.py` and its tests; update `scripts/check.sh`.
 
-Build with `cargo test --features local-dev-credentials --lib --no-run --message-format=json`, select the returned test executable and call only `audio3_benchmark::manual_same_pcm_asr_comparison --ignored --exact --nocapture`. Each child receives its own manifest, private output directory and fixed baseline/bypass options. No credential values are read or injected by Python; the existing private dev credential loader remains the only route.
+Build with `cargo test --features development-debugger --lib --no-run --message-format=json`, select the returned test executable and call only `audio3_benchmark::manual_same_pcm_asr_comparison --ignored --exact --nocapture`. Each child receives its own manifest, private output directory and fixed baseline/bypass options. No credential values are read or injected by Python; the selected ordinary development profile supplies its saved local-file credentials.
 
 Default to three jobs, maximum four. Hold one batch lease to prevent accidental parallel invocations from multiplying concurrency. Bound compiler and job logs, retain failure artifacts, terminate children on cancellation, and atomically update a content-free progress report plus analyzer-compatible baseline index. Unit tests use fake executors to establish the actual concurrency bound, failure isolation, completed-index publication and cancellation behavior without paid requests.
 

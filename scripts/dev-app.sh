@@ -319,7 +319,7 @@ fi
 npm run build:dev
 TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --profile local-dev \
   --locked \
-  --features tauri/custom-protocol,devtools,development-debugger,local-dev-credentials \
+  --features tauri/custom-protocol,devtools,development-debugger \
   --manifest-path src-tauri/Cargo.toml
 
 rm -rf "$BUILD_APP"

@@ -9,7 +9,7 @@ It measures recognizer behavior; it does not prove capture-to-screen latency,
 translation correctness or installed-app acceptance. Publication remains paused.
 
 `audio3_benchmark.rs` is registered only under `cfg(test)`. The paid ignored test
-exists only on macOS with the `local-dev-credentials` feature. Ordinary app builds
+exists only on macOS with the `development-debugger` feature. Ordinary app builds
 have no benchmark entry, model switch, configuration or credential behavior change.
 
 ## Controlled arms
@@ -112,11 +112,11 @@ distinguishable without publishing response content.
 
 The only environment inputs are the non-secret manifest path, optional arm name,
 and optional development config-directory path. Keys are not CLI/environment
-inputs. The ignored entry reuses `SettingsStore::load` with the exact development
-identifier and checks `credential_storage == localDevFile` **before** a credential
-read. The existing profile configuration API supplies the Alibaba key and proxy;
-there is no `credentials_snapshot()` API. An absent/invalid local dev file cannot
-cause a benchmark Keychain lookup. Credentials stay native, authorization headers
+inputs. The ignored entry requires an existing local credential file and completed-import
+marker before loading the exact development identifier. It uses the currently
+selected ordinary Alibaba profile with the default translation route. The existing
+profile configuration API supplies the saved key and proxy; there is no
+`credentials_snapshot()` API. An absent local file cannot initiate native import. Credentials remain in the backend, authorization headers
 are marked sensitive, and underlying errors are replaced with fixed categories.
 Do not run the paid benchmark while the native app has an active provider session.
 
@@ -232,7 +232,7 @@ prepared public fixtures and manifest.
 
 ```sh
 MIMI_ASR_BENCH_MANIFEST=/path/to/public-corpus/manifest.json \
-cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials \
+cargo test --manifest-path src-tauri/Cargo.toml --features development-debugger \
   --lib audio3_benchmark::manual_same_pcm_asr_comparison -- --ignored --exact --nocapture
 ```
 
@@ -242,7 +242,7 @@ only one arm. The fourth arm requires explicit selection:
 ```sh
 MIMI_ASR_BENCH_ARM=realtime-asr \
 MIMI_ASR_BENCH_MANIFEST=/path/to/public-corpus/manifest.json \
-cargo test --manifest-path src-tauri/Cargo.toml --features local-dev-credentials \
+cargo test --manifest-path src-tauri/Cargo.toml --features development-debugger \
   --lib audio3_benchmark::manual_same_pcm_asr_comparison -- --ignored --exact --nocapture
 ```
 

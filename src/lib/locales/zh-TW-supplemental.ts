@@ -77,10 +77,6 @@ export const SUPPLEMENTAL = {
     task_failed: "服務結束了工作，原因尚不明確。請檢查聲音狀態後再試一次。",
   },
   connectionDiagnostics_copy: {
-    localDevReadOnly: "開發預設從本機 .env 讀取對應服務的金鑰。修改金鑰後需重新開啟 mimi dev；其他設定使用本機私有檔案，可正常編輯。",
-    localDevTranslationLocked: "此開發預設使用內建服務進行辨識與翻譯。",
-    localDevTranslationHelp: "新增一般設定即可選擇其他服務或獨立文字翻譯。一般設定的認證資訊儲存在開發版自己的私有檔案中，預設金鑰仍由唯讀 .env 提供。",
-    localDevUnavailable: "無法讀取本機開發 .env。請檢查格式、檔案歸屬及 0600 權限，然後重新開啟 mimi dev。",
     storage: "無法讀取服務認證資訊。請檢查本機檔案存取權限或重新儲存。",
     linuxStorage: "無法存取桌面密碼儲存區。請確認目前桌面工作階段已安裝並啟用 Secret Service 服務（例如 GNOME Keyring）。解鎖密碼儲存區或允許系統授權提示後，重新檢查。",
     serviceUnavailable: "Linux Secret Service 服務不可用。請在目前桌面工作階段安裝或啟用相容服務，例如 GNOME Keyring。若桌面設定要求，請登出並重新登入後再檢查。",

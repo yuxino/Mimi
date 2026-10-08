@@ -926,7 +926,7 @@ async fn compare_with_evidence(
 
 /// This entry exists only in the explicitly enabled macOS test executable. It
 /// never falls back to Keychain and never accepts credentials from environment.
-#[cfg(all(feature = "local-dev-credentials", target_os = "macos"))]
+#[cfg(all(feature = "development-debugger", target_os = "macos"))]
 #[tokio::test]
 #[ignore = "manual paid provider benchmark; requires explicit private development credentials and public fixture manifest"]
 async fn manual_same_pcm_asr_comparison() {
@@ -975,25 +975,18 @@ async fn manual_same_pcm_asr_comparison() {
         if !directory.is_absolute() {
             return Err(Failure::CredentialsUnavailable);
         }
-        let settings = SettingsStore::load(directory, false, DEVELOPMENT_APPLICATION_IDENTIFIER);
-        // `load` may construct the ordinary store for an absent file, but this
-        // check runs before any credential read. No Keychain lookup is allowed.
-        if settings.credential_storage() != "localDevFile" {
+        let settings = SettingsStore::load_for_manual_probe(directory)
+            .map_err(|_| Failure::CredentialsUnavailable)?;
+        let profile = settings
+            .active_profile()
+            .map_err(|_| Failure::CredentialsUnavailable)?;
+        if profile.provider != ProviderKind::AlibabaCloud
+            || profile.text_translation() != TextTranslation::FollowService
+        {
             return Err(Failure::CredentialsUnavailable);
         }
-        let (_, profiles) = settings
-            .profile_catalog()
-            .map_err(|_| Failure::CredentialsUnavailable)?;
-        let profile = profiles
-            .iter()
-            .find(|profile| {
-                settings.profile_uses_local_dev_credentials(&profile.id)
-                    && profile.provider == ProviderKind::AlibabaCloud
-                    && profile.text_translation() == TextTranslation::FollowService
-            })
-            .ok_or(Failure::CredentialsUnavailable)?;
         let configuration = settings
-            .configuration_for_profile_probe(profile)
+            .configuration_for_profile_probe(&profile)
             .map_err(|_| Failure::CredentialsUnavailable)?;
         let key = configuration
             .credentials

@@ -76,10 +76,6 @@ export const SUPPLEMENTAL_EN = {
     task_failed: "the service ended the task without a recognized cause. Check the sound status, then try again.",
   },
   connectionDiagnostics_copy: {
-    localDevReadOnly: "Development presets read their provider keys from the local .env. Edit that file and restart mimi dev to change a key. Other configurations use a private local file and remain editable.",
-    localDevTranslationLocked: "This development preset uses its built-in recognition and translation service.",
-    localDevTranslationHelp: "Add a regular configuration to choose another service or independent text translation. Its credentials use the development app's private local file; the preset keys stay in the read-only .env.",
-    localDevUnavailable: "Cannot read the local dev .env. Check its format, ownership and 0600 permissions, then restart mimi dev.",
     storage: "Cannot read service credentials. Check local file access or save them again.",
     linuxStorage: "Cannot access your desktop password store. Confirm a Secret Service provider, such as GNOME Keyring, is installed and enabled in this desktop session. Unlock it or allow the system prompt, then check again.",
     serviceUnavailable: "Linux Secret Service is unavailable. Install or enable a Secret Service provider, such as GNOME Keyring, in this desktop session. Sign out and back in if required by your desktop setup, then check again.",

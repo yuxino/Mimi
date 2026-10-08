@@ -153,7 +153,6 @@ export function ServiceProfiles({
     () => settings.profiles.find((profile) => profile.id === selectedProfileId) ?? activeProfile,
     [activeProfile, selectedProfileId, settings.profiles],
   );
-  const selectedProfileReadOnly = selectedProfile?.credentialStorage === "localDevFile";
 
   const invalidateProfileCheck = useCallback((profileId: string, stage?: ConnectionCheckStage) => {
     const epochs = profileCheckEpochs.current;
@@ -271,7 +270,7 @@ export function ServiceProfiles({
   const requiresStop = sessionIsActive || sessionIsPaused || sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
   const mutationsDisabled = requiresStop || pendingAction !== null;
   const selectionDisabled = sessionStatusKind === "connecting" || sessionStatusKind === "stopping" || pendingAction !== null;
-  const atProfileLimit = settings.profiles.filter(profile => profile.credentialStorage !== "localDevFile").length >= 20;
+  const atProfileLimit = settings.profiles.length >= 20;
 
   const trackProfileOperation = async (operation: () => Promise<SettingsSnapshot>) => {
     setProfileOperationFailed(false);
@@ -357,7 +356,7 @@ export function ServiceProfiles({
   };
 
   const handleSaveLanguagePreset = async (preset: ProfileLanguagePreset | null) => {
-    if (!selectedProfile || mutationInFlight.current || mutationsDisabled || selectedProfileReadOnly) throw new Error("profile-change-requires-stop");
+    if (!selectedProfile || mutationInFlight.current || mutationsDisabled) throw new Error("profile-change-requires-stop");
     mutationInFlight.current = true;
     setPendingAction("save-languages");
     try {
@@ -369,7 +368,7 @@ export function ServiceProfiles({
   };
 
   const handleSaveSpeechLanguages = async (profile: ServiceProfile, languages: SourceLanguage[] | null) => {
-    if (mutationInFlight.current || mutationsDisabled || selectedProfileReadOnly) throw new Error("profile-change-requires-stop");
+    if (mutationInFlight.current || mutationsDisabled) throw new Error("profile-change-requires-stop");
     mutationInFlight.current = true;
     setPendingAction("save-languages");
     const before = settings;
@@ -594,7 +593,7 @@ export function ServiceProfiles({
           <div className="profile-form service-detail__name">
             <AutoSaveNameField key={selectedProfile.id} id={`profile-name-${selectedProfile.id}`}
               label={I18N.settings.profileName} value={selectedProfile.name} allowEmpty={false}
-              placeholder={I18N.settings.profileNamePlaceholder} disabled={mutationsDisabled} readOnly={selectedProfileReadOnly}
+              placeholder={I18N.settings.profileNamePlaceholder} disabled={mutationsDisabled}
               onSave={name => handleRename(selectedProfile.id, name)} />
           </div>
           <div className="service-detail__connection">
@@ -634,7 +633,7 @@ export function ServiceProfiles({
               }}
               connectionCheck={(draft: ProviderCredentialsInput | null | undefined, sourceLanguage?: SourceLanguage) => renderConnectionCheck(selectedProfile, isStandaloneAsrProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? "speech" : undefined, draft, sourceLanguage)}
               textConnectionCheck={(draft) => renderConnectionCheck(selectedProfile, "text", draft)}
-              readOnly={selectedProfileReadOnly}
+
               key={selectedProfile.id}
               profile={selectedProfile}
               inputId={`profile-api-key-${selectedProfile.id}`}
@@ -655,7 +654,7 @@ export function ServiceProfiles({
             />
           </div>
           {isCustomSpeechProvider(selectedProfile.provider) && <CustomSpeechLanguageSettings key={`${selectedProfile.id}-languages`}
-            profile={selectedProfile} disabled={mutationsDisabled || selectedProfileReadOnly}
+            profile={selectedProfile} disabled={mutationsDisabled}
             onSave={languages => handleSaveSpeechLanguages(selectedProfile, languages)} />}
           {(selectedProfile.provider !== "appleSpeech" || hasRemoteTextProxy) && <section className="service-proxies" aria-label={I18N.settings.networkProxyTitle}>
             <h3>{I18N.settings.networkProxyTitle}</h3>
@@ -673,7 +672,7 @@ export function ServiceProfiles({
             ? <ProfileLanguageSettings key={selectedProfile.id} settings={settings} disabled={selectionDisabled} onBusyChange={busy => setPendingAction(busy ? "switch-language" : null)} onOpenAppleResources={focusAppleSpeechResources} hideSourceLanguage={selectedProfile.provider === "appleSpeech"} />
             : null}
           <ProfileLanguagePresetSettings key={`${selectedProfile.id}-language-preset`} profile={selectedProfile} settings={settings}
-            disabled={mutationsDisabled || selectedProfileReadOnly} onSave={handleSaveLanguagePreset} />
+            disabled={mutationsDisabled} onSave={handleSaveLanguagePreset} />
           <div className="service-detail__actions">
             {canUseProfile(selectedProfile) &&
               profileSelectionChangesSettings(selectedProfile, settings) && (
@@ -690,7 +689,7 @@ export function ServiceProfiles({
                 <SettingsHelp text={I18N.settings.profileSwitchHelp} label={I18N.settings.helpLabel} />
                 </span>
               )}
-            {!selectedProfileReadOnly && <button
+            <button
               type="button"
               className="settings-button settings-button--danger settings-button--compact"
               disabled={mutationsDisabled || settings.profiles.length <= 1}
@@ -698,7 +697,7 @@ export function ServiceProfiles({
             >
               <Icon name="trash" />
               {I18N.settings.deleteProfile}
-            </button>}
+            </button>
           </div>
           {pendingConfirmation?.kind === "profile" &&
             pendingConfirmation.profileId === selectedProfile.id && (
@@ -720,7 +719,7 @@ export function ServiceProfiles({
                 <p>{I18N.settings.firstProfileHint}</p>
               </div>
             ) : (
-              <span className="services-toolbar__count">{I18N.settings.profileCount(settings.profiles.length)}<SettingsHelp label={I18N.settings.helpLabel} text={`${settings.profiles.some(profile => profile.credentialStorage === "localDevFile") ? diagnosticCopy().localDevReadOnly : I18N.settings.servicesHint}\n${I18N.settings.profileSwitchHelp}`} /></span>
+              <span className="services-toolbar__count">{I18N.settings.profileCount(settings.profiles.length)}<SettingsHelp label={I18N.settings.helpLabel} text={`${I18N.settings.servicesHint}\n${I18N.settings.profileSwitchHelp}`} /></span>
             )}
             <button
               type="button"
@@ -805,11 +804,9 @@ function CredentialEditor({
   confirmingDelete,
   onCancelDelete,
   connectionCheck,
-  readOnly = false,
 }: {
   connectionCheck?: ReactNode | ((draft?: ProviderCredentialsInput | null) => ReactNode);
   textConnectionCheck?: (draft?: ProviderCredentialsInput | null) => ReactNode;
-  readOnly?: boolean;
   profile: ServiceProfile;
   inputId: string;
   disabled: boolean;
@@ -826,7 +823,7 @@ function CredentialEditor({
   const [editingSavedCredential, setEditingSavedCredential] = useState(false);
   const [changedFields, setChangedFields] = useState<Partial<Record<CredentialFieldName, true>>>({});
   const [editorEpoch, setEditorEpoch] = useState(0);
-  const editorState = useCredentialEditorState(profile.id, undefined, !readOnly && visible && (profile.credentialState !== "present" || editingSavedCredential), editorEpoch);
+  const editorState = useCredentialEditorState(profile.id, undefined, visible && (profile.credentialState !== "present" || editingSavedCredential), editorEpoch);
   const savedValues = editorState.state;
   const displayedDraft = { ...draft };
   for (const field of ["endpoint", "model", "deployment", "transcriptionDeployment", "appId"] as const) {
@@ -858,12 +855,12 @@ function CredentialEditor({
     ?? (editorState.loading || editorState.error ? null
       : buildProviderProbeCredentials(profile.provider, displayedDraft, savedValues?.savedFields));
   const check = typeof connectionCheck === "function"
-    ? connectionCheck(readOnly || !hasCredentialChanges ? undefined : probeCredentials)
+    ? connectionCheck(!hasCredentialChanges ? undefined : probeCredentials)
     : connectionCheck;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!credentials || disabled || readOnly) return;
+    if (!credentials || disabled) return;
     if (profile.provider === "deepLX" && !deepLXEndpointIsValid(displayedDraft.endpoint)) {
       setEndpointInvalid(true);
       endpointRef.current?.focus();
@@ -899,8 +896,7 @@ function CredentialEditor({
     <div className="settings-field service-stage__selector"><span>{I18N.settings.serviceProvider}</span><span className="service-stage__provider"><ProviderIcon provider={profile.provider} size={32} />{providerDisplayName(profile.provider)}</span></div>
     {profile.provider === "tencentCloud" && <TencentSetupHelp />}
   </section>;
-  const storageHelp = <CredentialStorageHelp id={noteId} profile={profile} readOnly={readOnly} />;
-  if (readOnly) return <div className="credential-panel"><div className="service-credential-toolbar">{storageHelp}{check}</div>{serviceIdentity}</div>;
+  const storageHelp = <CredentialStorageHelp id={noteId} profile={profile} />;
 
   if (profile.credentialState === "present" && !editingSavedCredential) {
     return (

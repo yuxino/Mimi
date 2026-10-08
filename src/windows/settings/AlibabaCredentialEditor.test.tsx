@@ -100,22 +100,6 @@ it("retains the historical DeepLX route and switches back without repeating the 
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", model: "", apiKey: "", textTranslation: "followService", endpoint: "", token: "" });
 });
 
-it.each(["en", "zh", "ja"] as const)("shows both stages in read-only file mode without exposing any credential editor in %s", async (language) => {
-  setStoredUiLanguage(language);
-  await render({ ...props, readOnly: true, profile: { ...profile, textTranslation: "openAICompatible" } });
-  expect([...host.querySelectorAll(".service-stage h3")].map(node => node.textContent)).toEqual([I18N.settings.speechRecognition, I18N.settings.textTranslationLabel]);
-  expect(host.querySelector('[role="combobox"]')).toBeNull();
-  expect(host.querySelector('.service-stage--translation .service-stage__provider')?.textContent).toBe(I18N.settings.textTranslationOpenAICompatible);
-  expect(host.querySelector('.service-stage__restriction [role="status"]')?.textContent).toBe(diagnosticCopy().localDevTranslationLocked);
-  expect(host.querySelector(".credential-form, input, .stored-credential-reveal, .credential-panel__saved-actions, .credential-form__actions, button[type=submit]")).toBeNull();
-  expect(host.querySelector(".service-credential-toolbar .settings-help-control__description")?.textContent).toBe(diagnosticCopy().localDevReadOnly);
-  expect(host.querySelector(".service-credential-toolbar p")).toBeNull();
-  expect(profileRevealCredential).not.toHaveBeenCalled();
-  expect(props.onSave).not.toHaveBeenCalled();
-  expect(props.onRequestDelete).not.toHaveBeenCalled();
-  expect(props.onConfirmDelete).not.toHaveBeenCalled();
-});
-
 it("clears drafts before confirmed deletion and respects an active-session lock", async () => {
   await render({ ...props, profile: { ...profile, credentialState: "missing" } });
   await change("input", "synthetic-asr");
@@ -647,20 +631,6 @@ it("checks a legacy DeepLX token edit using the visible saved endpoint without a
   expect(props.onSave).not.toHaveBeenCalled();
   await submit();
   expect(props.onSave).toHaveBeenCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepLX", endpoint: "", token: "synthetic-new-token", model: "" });
-});
-
-it("checks DeepL and built-in translation drafts using only the relevant key", async () => {
-  const textConnectionCheck = vi.fn().mockReturnValue(null);
-  await render({ ...props, profile: { ...profile, credentialState: "missing" }, textConnectionCheck });
-  await change("#test-apiKey", "synthetic-speech-key");
-  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "synthetic-speech-key", textTranslation: "followService", endpoint: "", token: "", model: "" });
-  await chooseTranslation("deepL");
-  expect(textConnectionCheck).toHaveBeenLastCalledWith(null);
-  await change("#test-token", "synthetic-deepl-key");
-  expect(textConnectionCheck).toHaveBeenLastCalledWith({ kind: "alibabaTranslation", apiKey: "", textTranslation: "deepL", endpoint: "", token: "synthetic-deepl-key", model: "" });
-  await render({ ...props, readOnly: true });
-  expect(textConnectionCheck).toHaveBeenLastCalledWith(undefined);
-  expect(props.onSave).not.toHaveBeenCalled();
 });
 
 it.each(["appleSpeech", "customDashScopeASR", "customOpenAIASR"] as const)("does not present a translation error or check for original-only %s", async provider => {

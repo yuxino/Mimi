@@ -391,9 +391,9 @@ export function appDesktopShortcutCommands(): Promise<DesktopShortcutCommands | 
 }
 
 export interface ConnectionDiagnostic {
-  credential: "present" | "missing" | "unavailable" | "localDevUnavailable" | "serviceUnavailable" | "accessDenied" | "invalid";
+  credential: "present" | "missing" | "unavailable" | "serviceUnavailable" | "accessDenied" | "invalid";
   service: "available" | "unavailable" | "notTested";
-  reason: null | "credentialsMissing" | "credentialsUnavailable" | "localDevCredentialsUnavailable" | "credentialsServiceUnavailable" | "credentialsAccessDenied" | "invalidConfiguration" | "unsupportedLanguage" | "localRecognitionOverloaded" | "localRecognitionTimeout" | "authenticationRejected" | "serviceNotActivated" | "quotaExhausted" | "concurrencyLimited" | "serviceRejected" | "timeout" | "unreachable" | "textTranslationNotConfigured" | "appleSpeechAssetsMissing" | "appleSpeechPreparing" | "appleSpeechStatusFailed" | "appleSpeechLanguageUnsupported" | "appleSpeechUnavailable" | "appleSpeechRecognitionFailed";
+  reason: null | "credentialsMissing" | "credentialsUnavailable" | "credentialsServiceUnavailable" | "credentialsAccessDenied" | "invalidConfiguration" | "unsupportedLanguage" | "localRecognitionOverloaded" | "localRecognitionTimeout" | "authenticationRejected" | "serviceNotActivated" | "quotaExhausted" | "concurrencyLimited" | "serviceRejected" | "timeout" | "unreachable" | "textTranslationNotConfigured" | "appleSpeechAssetsMissing" | "appleSpeechPreparing" | "appleSpeechStatusFailed" | "appleSpeechLanguageUnsupported" | "appleSpeechUnavailable" | "appleSpeechRecognitionFailed";
   elapsedMs?: number | null;
 }
 export type ConnectionCheckStage = "speech" | "text";

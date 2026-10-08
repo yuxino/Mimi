@@ -157,8 +157,8 @@ desktop platforms. Legacy OS items are read only during automatic upgrade import
 then deleted after durable write and read-back verification. Completed imports
 must never fall back to the OS store, even if the local file later goes missing.
 See [local credential storage](../plans/2026-10-04-local-credential-storage.md).
-The optional read-only dev `.env` presets remain separate; removing that file
-returns to editable local profiles. Signing-private-key and capture authorization
+Development uses its own editable local profiles and credential file, never
+`.env` presets or automatic production-data sharing. Signing-private-key and capture authorization
 are independent of provider credential storage. Never weaken native ACLs.
 
 These prompts have different causes and fixes:
