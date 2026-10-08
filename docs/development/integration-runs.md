@@ -1708,3 +1708,37 @@
   original Alibaba Lite / auto → zh / history off preserved, private comparison
   input removed. The other seven original provider configurations remained
   unconfigured. All provider sessions were stopped and Bilibili paused.
+
+### 2026-10-09 — v1.5.18 official Android upgrade and release verification
+
+- Release source: `cbd72450e51e040a6913a7fe085adb54955fc548`, merged
+  PR #229. Its final native repair `c6455dd645e00f19396f4e4d38c35fbcaee3b71e`
+  passed desktop and Android CI; merged main passed both workflows too.
+- Official signed APK SHA-256:
+  `cf769aa3903e2e79aa6601ca33de24f4285aa834be618963960d697e51b9e756`.
+  Release certificate SHA-256:
+  `b263d1b5ec3c43eb4f8107f438a5cbebed18f9290e56ed2e0d0ffb11e4b74ec2`,
+  identical to the downloaded v1.5.17 official APK. The production artifact is
+  non-debuggable, version 1.5.18 / 10518, and passes four-ABI native symbols,
+  16 KB ELF/ZIP alignment and license-inventory verification.
+- On the task-owned API 35 arm64 emulator (1080×2400, density 420, font 1.0),
+  installed official v1.5.17, dismissed the optional guide, and saved English as
+  the target through native UI. Same-signature `install -r` of official v1.5.18
+  succeeded; Home launched and retained English. Advanced diagnostics appeared
+  below its visible section heading. No credentials were configured, provider
+  requests started or audio capture enabled. This validates that upgrade/UI path,
+  not physical-device credential continuity or real translation in the release APK.
+  Paid playback acceptance remains the separately recorded debug-candidate run.
+- Published as Latest: [mimi v1.5.18](https://github.com/yuxino/Mimi/releases/tag/v1.5.18),
+  2026-10-08 20:05:11 UTC. Release workflow `37834283650` and tag Android
+  workflow `37834283052` passed. Downloaded all 17 public assets, matched every
+  GitHub SHA-256 digest and all 16 checksum entries, verified five updater
+  signatures cryptographically against the repository public key, and checked
+  all four updater platforms. Release and updater English-first bilingual notes
+  match the reviewed source. The public APK exactly matches the upgrade-tested
+  artifact above. Native screenshots and bounded metadata remain outside Git.
+- Physical devices, sustained playback, forced network-loss recovery, semantic
+  accuracy, numerical PC/Android latency, Intel Mac runtime and desktop installed
+  updater transitions remain outside acceptance. OpenAI actual translation
+  remains blocked by the saved account's exhausted quota. These limits also
+  remain stated in the public release notes and PR evidence.
