@@ -74,6 +74,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             return value
         }
         val anchor = bottom()
+        capture("after-positioned-compact")
         onUi { home.findViewById<View>(R.id.home_immersive).performClick() }
         waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
         onUi {
@@ -82,19 +83,22 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         }
         waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "exit-immersive" } }
         check(!root().findViewWithTag<View>("expanded-subtitles").isShown)
-        repeat(3) {
+        repeat(3) { iteration ->
             onUi { root().findViewWithTag<View>("compact-subtitle").performClick() }
             waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
             onUi { root().findViewWithTag<View>("enter-immersive").performClick() }
             waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
             check(root() === before) { "Mode toggle replaced the caption window" }
             check(abs(bottom() - anchor) <= 2) { "Immersive changed the compact bottom anchor" }
+            if (iteration == 0) capture("after-positioned-immersive")
             onUi { WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" }.performClick() }
             waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+            if (iteration == 0) capture("after-positioned-expanded-restored")
             onUi { root().findViewWithTag<View>("collapse-overlay").performClick() }
             waitFor { root().findViewWithTag<View>("compact-subtitle").isShown }
             check(abs(bottom() - anchor) <= 2)
             check(SettingsStore.overlayYOffset(context) == 48)
+            if (iteration == 0) capture("after-positioned-compact-restored")
         }
         onUi {
             SettingsStore.setImmersiveSubtitles(context, true)

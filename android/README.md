@@ -154,6 +154,7 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e theme dark app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e overlay_interaction true app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
 
@@ -167,6 +168,13 @@ auto-save with actual touch gestures, all eight service editors, write-only secr
 keyboard. Changed non-secret preferences are restored in a finally block; provider
 drafts are discarded without Save and use. No provider or audio capture session starts. Screenshots contain sample subtitles and empty key
 fields and are written to the app's external `files/ui-preview` directory. Pass
+`-e overlay_interaction true` on a blank idle device for compact bottom-anchor,
+repeated immersive entry/exit and expanded-state restoration checks. The
+`interaction-after-positioned-*.png` screenshots show the positioned compact
+caption, immersive caption, restored expanded view and restored compact view.
+`overlay_preview` also captures the restored expanded and compact states. These
+are synthetic native fixtures, not a real provider or audio latency measurement.
+Pass
 `-e demo true` for a paced walkthrough suitable for emulator screen recording;
 it demonstrates the labeled sample, not live translation.
 

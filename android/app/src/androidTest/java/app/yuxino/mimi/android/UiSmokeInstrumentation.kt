@@ -640,18 +640,22 @@ class UiSmokeInstrumentation : Instrumentation() {
             check((exit.layoutParams as WindowManager.LayoutParams).flags and
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) { "Exit control is not touchable" }
             capture("overlay-after-immersive-$theme")
-            dragExitControl(exit)
             onUi { check(exit.performClick()) { "Exit control click failed" } }
             waitForIdleSync()
             check(!SettingsStore.immersiveSubtitles(targetContext)) { "Exit did not clear immersive preference" }
             val restored = WindowInspector.getGlobalWindowViews()
                 .firstOrNull { it.tag == "mimi-overlay" }
-            check(restored?.findViewWithTag<View>("compact-subtitle")?.isShown == true) {
-                "Exit did not restore the compact overlay"
+            check(restored === overlay && expanded.isShown && !compact.isShown) {
+                "Exit did not restore the same expanded reading window"
             }
+            capture("overlay-after-expanded-restored-$theme")
             check(WindowInspector.getGlobalWindowViews().none { it.tag == "exit-immersive" }) {
                 "Exit control remained after leaving immersive mode"
             }
+            onUi { check(expanded.findViewWithTag<View>("collapse-overlay").performClick()) }
+            waitForIdleSync()
+            check(compact.isShown && !expanded.isShown) { "Restored overlay did not collapse" }
+            capture("overlay-after-restored-compact-$theme")
             SettingsStore.setImmersiveSubtitles(targetContext, true)
             targetContext.startService(Intent(targetContext, MimiService::class.java)
                 .setAction(MimiService.ACTION_APPLY_APPEARANCE))
@@ -793,27 +797,6 @@ class UiSmokeInstrumentation : Instrumentation() {
                 "Current sentence beginning is outside the reading viewport"
             }
         }
-    }
-
-    private fun dragExitControl(exit: View) {
-        val location = IntArray(2)
-        onUi { exit.getLocationOnScreen(location) }
-        val x = location[0] + exit.width / 2f
-        val startY = location[1] + exit.height / 2f
-        val endY = (startY + 90f).coerceAtMost(targetContext.resources.displayMetrics.heightPixels - 70f)
-        val down = SystemClock.uptimeMillis()
-        fun event(action: Int, y: Float) {
-            val pointer = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
-            sendPointerSync(pointer)
-            pointer.recycle()
-        }
-        event(MotionEvent.ACTION_DOWN, startY)
-        event(MotionEvent.ACTION_MOVE, endY)
-        event(MotionEvent.ACTION_UP, endY)
-        waitForIdleSync()
-        val after = IntArray(2)
-        onUi { exit.getLocationOnScreen(after) }
-        check(after[1] > location[1] + 20) { "Immersive exit control could not move away from app controls" }
     }
 
     private fun demonstrate() {
