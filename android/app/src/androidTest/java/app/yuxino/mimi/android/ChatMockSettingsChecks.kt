@@ -94,6 +94,7 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
         val originalTranslations = TextTranslationProvider.entries.associateWith { SettingsStore.translationConfiguration(context, it) }
         val originalProvider = SettingsStore.provider(context)
         val originalEnabled = SettingsStore.useChatMockTranslation(context)
+        val originalQwenModel = SettingsStore.qwenMtModel(context)
         ChatMockLoopbackFixture().use { server ->
             val editor = open(ServiceProvider.DASHSCOPE)
             onUi { selectMode(editor, TextTranslationProvider.CHAT_MOCK) }
@@ -213,6 +214,7 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
     }
 
     private fun checkForms() {
+        val originalQwenModel = SettingsStore.qwenMtModel(context)
         val originalSpeech = SettingsStore.configuration(context, ServiceProvider.DASHSCOPE)
         val originalTranslation = SettingsStore.translationConfiguration(context)
         val originalTranslations = TextTranslationProvider.entries.associateWith { SettingsStore.translationConfiguration(context, it) }
@@ -224,6 +226,7 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
             check(TextTranslationProvider.entries.all { SettingsStore.translationConfiguration(context, it) == originalTranslations[it] }) { "A draft changed another translator" }
             check(SettingsStore.useChatMockTranslation(context) == originalEnabled) { "Draft enabled ChatMock" }
             check(SettingsStore.provider(context) == originalProvider) { "Draft changed active service" }
+            check(SettingsStore.qwenMtModel(context) == originalQwenModel) { "Unsaved Qwen model changed stored preferences" }
             check(!MimiService.isRunning) { "Settings started an audio session" }
         }
 
@@ -238,6 +241,13 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
                     TextTranslationProvider.CHAT_MOCK, TextTranslationProvider.OPENAI_COMPATIBLE, TextTranslationProvider.NONE)
                     .map { editor.getString(translationProviderLabel(it)) }) { "Text services are not in the expected order" }
             check(!translationKey.isShown) { "Custom fields must follow the selected translation mode" }
+            val qwen = field<Spinner>(editor, "qwen-mt-model")
+            check(qwen.isShown && qwen.count == 3)
+            for (legacy in listOf("credential-baseUrl", "credential-model", "credential-hotwords")) {
+                check(editor.window.decorView.findViewWithTag<View>(legacy) == null) { "Unused legacy speech setting is editable" }
+            }
+            check((0 until qwen.count).map { qwen.getItemAtPosition(it).toString() } == listOf("Qwen-MT Lite", "Qwen-MT Flash", "Qwen-MT Plus"))
+            qwen.setSelection((qwen.selectedItemPosition + 1) % qwen.count)
             checkSecretField(speechKey)
             checkSecretField(translationKey)
             check(speechKey !== translationKey) { "Recognition and translation share a credential input" }
@@ -253,6 +263,7 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
         unchanged()
         onUi {
             check(translationKey.isShown) { "ChatMock selection did not reveal its fields" }
+            check(!field<View>(editor, "qwen-mt-model").isShown)
             check(mode.selectedItem.toString() == "ChatMock") { "ChatMock must have its own entry" }
             check(field<TextInputEditText>(editor, "translation-endpoint").text.toString() == "http://127.0.0.1:8000/v1")
             check(field<TextInputEditText>(editor, "translation-model").text.isNullOrBlank()) { "ChatMock must not guess a model" }
@@ -337,6 +348,8 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
         val reopened = open(ServiceProvider.DASHSCOPE)
         onUi {
             check(field<Spinner>(reopened, "translation-mode").selectedItemPosition == 0) { "Unsaved mode survived reopening" }
+            check(field<Spinner>(reopened, "qwen-mt-model").selectedItem.toString() ==
+                "Qwen-MT " + originalQwenModel.replaceFirstChar { it.uppercase() }) { "Unsaved Qwen model survived reopening" }
             checkSecretField(field(reopened, "credential-apiKey"))
             checkSecretField(field(reopened, "translation-key"))
             check(field<TextInputEditText>(reopened, "translation-endpoint").text.toString() == originalTranslation.endpoint) { "Unsaved endpoint survived reopening" }
@@ -349,6 +362,8 @@ internal class ChatMockSettingsChecks(private val instrumentation: Instrumentati
             check(openAI.findViewById<View>(android.R.id.content).findViewWithTag<View>("translation-mode") == null) {
                 "ChatMock must not be presented as a realtime recognition provider"
             }
+            check(openAI.window.decorView.findViewWithTag<View>("credential-baseUrl") == null)
+            check(openAI.window.decorView.findViewWithTag<View>("credential-model") == null)
             openAI.finish()
         }
         unchanged()

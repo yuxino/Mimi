@@ -7,10 +7,12 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.InputDevice
 import android.view.View
 import android.view.inspector.WindowInspector
 import android.widget.SeekBar
 import android.widget.TextView
+import android.util.TypedValue
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SubtitleBus
 import java.io.File
@@ -21,6 +23,9 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
     private fun root() = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
     private fun caption() = root().findViewWithTag<TextView>("expanded-translation")
+    private fun captionPixels(sp: Int) = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_SP, sp.toFloat(), caption().resources.displayMetrics,
+    )
     private fun onUi(action: () -> Unit) {
         var failure: Throwable? = null
         test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
@@ -56,6 +61,97 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 event.recycle()
             }
         }
+    }
+
+    private fun dragCompact(view: View) {
+        val origin = IntArray(2)
+        var x = 0f
+        var y = 0f
+        var distance = 0f
+        onUi {
+            view.getLocationOnScreen(origin)
+            x = origin[0] + view.width / 2f
+            y = origin[1] + view.height / 2f
+            distance = 64 * view.resources.displayMetrics.density
+        }
+        val down = SystemClock.uptimeMillis()
+        for ((action, offset) in listOf(MotionEvent.ACTION_DOWN to 0f,
+            MotionEvent.ACTION_MOVE to distance / 2, MotionEvent.ACTION_MOVE to distance,
+            MotionEvent.ACTION_UP to distance)) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y - offset, 0)
+            event.source = InputDevice.SOURCE_TOUCHSCREEN
+            try { check(test.uiAutomation.injectInputEvent(event, true)) { "Compact drag injection failed" } }
+            finally { event.recycle() }
+            SystemClock.sleep(30)
+        }
+        test.waitForIdleSync()
+    }
+
+    /** Run only on a blank idle device; uses the existing synthetic overlay. */
+    private fun immersivePlacementChecks(home: MainActivity) {
+        val before = root()
+        onUi {
+            SettingsStore.setFontSize(context, 12)
+            SettingsStore.setOverlayYOffset(context, 48)
+            check(context.getSharedPreferences("first_run", 0).edit().putBoolean("immersive_seen", true).commit())
+            root().findViewWithTag<View>("collapse-overlay").performClick()
+        }
+        waitFor { root().findViewWithTag<View>("compact-subtitle").isShown }
+        dragCompact(root().findViewWithTag<View>("compact-subtitle"))
+        waitFor { SettingsStore.overlayYOffset(context) != 48 }
+        val savedOffset = SettingsStore.overlayYOffset(context)
+        fun bottom(): Int {
+            var value = 0
+            onUi { val origin = IntArray(2); root().getLocationOnScreen(origin); value = origin[1] + root().height }
+            return value
+        }
+        val anchor = bottom()
+        capture("after-positioned-compact")
+        onUi { home.findViewById<View>(R.id.home_immersive).performClick() }
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+        onUi {
+            check(home.findViewById<TextView>(R.id.home_immersive).text.toString() == home.getString(R.string.overlay_exit_immersive))
+            home.findViewById<View>(R.id.home_immersive).performClick()
+        }
+        waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "exit-immersive" } }
+        check(!root().findViewWithTag<View>("expanded-subtitles").isShown)
+        repeat(3) { iteration ->
+            onUi { root().findViewWithTag<View>("compact-subtitle").performClick() }
+            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+            onUi { root().findViewWithTag<View>("enter-immersive").performClick() }
+            waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+            check(root() === before) { "Mode toggle replaced the caption window" }
+            check(abs(bottom() - anchor) <= 2) { "Immersive changed the compact bottom anchor" }
+            if (iteration == 0) capture("after-positioned-immersive")
+            onUi { WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" }.performClick() }
+            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+            if (iteration == 0) capture("after-positioned-expanded-restored")
+            onUi { root().findViewWithTag<View>("collapse-overlay").performClick() }
+            waitFor { root().findViewWithTag<View>("compact-subtitle").isShown }
+            check(abs(bottom() - anchor) <= 2)
+            check(SettingsStore.overlayYOffset(context) == savedOffset)
+            if (iteration == 0) capture("after-positioned-compact-restored")
+        }
+        onUi {
+            SettingsStore.setImmersiveSubtitles(context, true)
+            SettingsStore.setFontSize(context, 24)
+            SubtitleBus.onFinalPair("Synthetic source with several words.", "合成字幕用于内容高度变化检查。", "en")
+        }
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+        check(abs(bottom() - anchor) <= 2) { "Font/content reflow changed the bottom anchor" }
+        onUi { SettingsStore.setImmersiveSubtitles(context, false) }
+        waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "exit-immersive" } }
+        check(!root().findViewWithTag<View>("expanded-subtitles").isShown)
+        check(SettingsStore.overlayYOffset(context) == savedOffset)
+        onUi { SettingsStore.setFontSize(context, 12) }
+        context.stopService(Intent(context, MimiService::class.java))
+        waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "mimi-overlay" } }
+        context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW))
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "mimi-overlay" } }
+        waitFor { root().findViewWithTag<View>("compact-subtitle").isShown }
+        check(SettingsStore.overlayYOffset(context) == savedOffset)
+        check(abs(bottom() - anchor) <= 2) { "Reopened overlay lost the saved drag position" }
+        capture("after-positioned-reopened")
     }
 
     fun run(arguments: Bundle?) {
@@ -120,7 +216,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                     check(WindowInspector.getGlobalWindowViews().count { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } == 1)
                     val slider = WindowInspector.getGlobalWindowViews().firstNotNullOf { it.findViewWithTag<SeekBar>("overlay-font-slider") }
                     drag(slider, 18)
-                    waitFor { SettingsStore.fontSize(context) == 18 && abs(caption().textSize - 21 * context.resources.displayMetrics.scaledDensity) < 1 }
+                    waitFor { SettingsStore.fontSize(context) == 18 && abs(caption().textSize - captionPixels(21)) < 1 }
                     onUi { check(root().findViewWithTag<TextView>("overlay-font").text.toString().endsWith("18")) }
                     onUi { WindowInspector.getGlobalWindowViews().first { it.findViewWithTag<SeekBar>("overlay-font-slider") != null }.findViewById<View>(android.R.id.button1).performClick() }
                 }
@@ -129,17 +225,17 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 val seek = settings.findViewById<SeekBar>(R.id.font_size)
                 drag(seek, 22)
                 waitFor { SettingsStore.fontSize(context) == 22 }
-                if (!baseline) waitFor { abs(caption().textSize - 25 * context.resources.displayMetrics.scaledDensity) < 1 }
+                if (!baseline) waitFor { abs(caption().textSize - captionPixels(25)) < 1 }
                 onUi {
-                    val currentSize = caption().textSize / context.resources.displayMetrics.scaledDensity
-                    check(abs(currentSize - (if (baseline) 21 else 25)) < 1) { "Unexpected native caption size" }
+                    check(abs(caption().textSize - captionPixels(if (baseline) 21 else 25)) < 1) { "Unexpected native caption size" }
                     check(SubtitleBus.historySnapshot() == history)
                 }
                 capture("$prefix-settings-size")
                 onUi { settings.finish() }
                 if (!baseline) {
+                    immersivePlacementChecks(checkNotNull(home))
                     // Confirmed pairs intentionally remain readable. Test the genuinely empty state.
-                    onUi { root().findViewWithTag<View>("collapse-overlay").performClick(); SubtitleBus.clear(); SubtitleBus.hideLive() }
+                    onUi { SubtitleBus.clear(); SubtitleBus.hideLive() }
                     waitFor { !root().isShown }
                 }
             }

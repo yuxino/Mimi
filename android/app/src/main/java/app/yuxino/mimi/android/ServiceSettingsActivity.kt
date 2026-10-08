@@ -21,13 +21,10 @@ class ServiceSettingsActivity : AppCompatActivity() {
     private lateinit var provider: ServiceProvider
     private lateinit var saved: ServiceConfiguration
     private var storageUnavailable = false
-    private lateinit var endpointInput: TextInputEditText
-    private lateinit var modelInput: TextInputEditText
-    private lateinit var modelLayout: TextInputLayout
-    private var hotwordsLayout: TextInputLayout? = null
-    private var hotwordsInput: TextInputEditText? = null
     private var translationSettings: TextTranslationSettings? = null
     private lateinit var status: android.widget.TextView
+    private var sessionBlocked = false
+    private val sessionListener: () -> Unit = { runOnUiThread { refreshSessionUi() } }
     private fun dp(value:Int)=ServiceSettingsUi.dp(this,value)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,6 +69,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         status=ServiceSettingsUi.label(this,"",16f).apply {
             visibility=View.GONE; accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
+        if (MimiService.isRunning) { status.setText(R.string.service_stop_first); status.visibility=View.VISIBLE }
         if (storageUnavailable) { status.text=getString(R.string.guide_storage_unavailable); status.visibility=View.VISIBLE }
         content.addView(status,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(16) })
         if (provider == ServiceProvider.DASHSCOPE) content.addView(ServiceSettingsUi.label(this,getString(R.string.translation_speech_title),18f), LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(16) })
@@ -91,35 +89,8 @@ class ServiceSettingsActivity : AppCompatActivity() {
             } else pair.second.setText(saved.value(field.id))
             inputs[field.id]=pair
         }
-        val advanced=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=View.GONE }
-        if(provider.hasAdvanced || provider == ServiceProvider.DASHSCOPE) {
-            val toggle=MaterialButton(this,null,com.google.android.material.R.attr.borderlessButtonStyle).apply {
-                id=R.id.advanced_toggle; text=getString(R.string.settings_advanced); isAllCaps=false
-                setTextColor(ContextCompat.getColor(context,R.color.mimi_text))
-                setOnClickListener { advanced.visibility=if(advanced.visibility==View.VISIBLE) View.GONE else View.VISIBLE
-                    setText(if(advanced.visibility==View.VISIBLE) R.string.settings_advanced_collapse else R.string.settings_advanced) }
-            }
-            content.addView(toggle,LinearLayout.LayoutParams(-1,dp(48)))
-        }
-        val endpointField=field(advanced,"baseUrl",getString(R.string.service_endpoint),false)
-        endpointInput=endpointField.second
-        val modelField=field(advanced,"model",getString(R.string.service_model),false)
-        modelLayout=modelField.first; modelInput=modelField.second
-        endpointInput.setText(saved.endpoint); endpointField.first.placeholderText=provider.endpoint
-        modelInput.setText(saved.model); modelLayout.placeholderText=provider.model
-        if(provider == ServiceProvider.DASHSCOPE) {
-            val hotwordsField=field(advanced,"hotwords",getString(R.string.service_glossary),false)
-            hotwordsLayout=hotwordsField.first
-            hotwordsInput=hotwordsField.second.apply {
-                setText(runCatching { SettingsStore.hotwordsText(this@ServiceSettingsActivity) }.getOrDefault("")); hotwordsLayout?.placeholderText="Mimi=mimi"
-            }
-        }
-        if(provider.hasAdvanced) content.addView(advanced)
         if (provider == ServiceProvider.DASHSCOPE && !storageUnavailable) {
-            translationSettings = TextTranslationSettings(this) { custom ->
-                ServiceSettingsUi.fieldVisible(modelLayout, !custom)
-                hotwordsLayout?.let { ServiceSettingsUi.fieldVisible(it, !custom) }
-            }
+            translationSettings = TextTranslationSettings(this)
             content.addView(translationSettings!!.view, LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) })
         }
         scroll.addView(content); root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -146,6 +117,17 @@ class ServiceSettingsActivity : AppCompatActivity() {
         return box to edit
     }
     override fun onDestroy() { translationSettings?.dispose(); super.onDestroy() }
+    override fun onStart() { super.onStart(); MimiService.addStateListener(sessionListener); refreshSessionUi() }
+    override fun onStop() { MimiService.removeStateListener(sessionListener); super.onStop() }
+    private fun refreshSessionUi() {
+        val running = MimiService.isRunning
+        inputs.values.forEach { (_, edit) -> edit.isEnabled = !running && !storageUnavailable }
+        translationSettings?.setEditingEnabled(!running && !storageUnavailable)
+        findViewById<View>(R.id.save).isEnabled = !running && !storageUnavailable
+        if (running) { status.setText(R.string.service_stop_first); status.visibility = View.VISIBLE }
+        else if (sessionBlocked && !storageUnavailable && status.text == getString(R.string.service_stop_first)) status.visibility = View.GONE
+        sessionBlocked = running
+    }
     private fun openHelp(url: String) {
         try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
         catch (_: android.content.ActivityNotFoundException) { Toast.makeText(this, R.string.guide_no_browser, Toast.LENGTH_SHORT).show() }
@@ -155,7 +137,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         if(storageUnavailable) return
         val textTranslation = translationSettings?.draft()
         if(translationSettings != null && textTranslation == null) { status.visibility=View.GONE; return }
-        if(MimiService.isRunning) { Toast.makeText(this,R.string.service_stop_first,Toast.LENGTH_SHORT).show(); return }
+        if(MimiService.isRunning) { status.setText(R.string.service_stop_first); Toast.makeText(this,R.string.service_stop_first,Toast.LENGTH_SHORT).show(); return }
         var valid=true
         val values=provider.fields.associate { field ->
             val (layout,edit)=inputs.getValue(field.id)
@@ -165,19 +147,21 @@ class ServiceSettingsActivity : AppCompatActivity() {
             field.id to value
         }
         if(!valid) return
-        val config=ServiceConfiguration(provider,values,endpointInput.text.toString().trim(),modelInput.text.toString().trim())
+        // The shared factory owns speech models and endpoints. Retain old overrides
+        // for compatibility without offering editable fields that the runtime ignores.
+        val config=ServiceConfiguration(provider,values,saved.endpoint,saved.model)
         val (source, target) = runCatching {
             provider.normalize(SettingsStore.sourceLang(this), SettingsStore.targetLang(this), textTranslation?.provider ?: TextTranslationProvider.BUILTIN)
         }.getOrElse { status.text = getString(R.string.guide_storage_unavailable); return }
-        // Validate URL/signing requirements locally without contacting a provider or logging secrets.
+        // Construct the same factory as PC locally, without connecting or logging secrets.
         try {
-            if(provider.hasAdvanced && config.endpoint.isNotBlank()) endpoint(config)
-            if(provider !in listOf(ServiceProvider.DASHSCOPE,ServiceProvider.OPENAI)) createProtocol(config,source,target).request()
+            NativeRuntimeConfiguration.endpoints(buildRuntimeConfiguration(config,
+                textTranslation ?: TranslationConfiguration(provider = TextTranslationProvider.BUILTIN),
+                source, target, translationSettings?.qwenMtModel ?: SettingsStore.qwenMtModel(this)))
         } catch (_:Exception) { status.text=getString(R.string.service_invalid); return }
-        if(!runCatching { SettingsStore.saveConfiguration(this,config,textTranslation,translationSettings?.enabled) && SettingsStore.activateProvider(this,provider) }.getOrDefault(false)) {
+        if(!runCatching { SettingsStore.saveConfiguration(this,config,textTranslation,translationSettings?.enabled,translationSettings?.qwenMtModel) && SettingsStore.activateProvider(this,provider) }.getOrDefault(false)) {
             status.text=getString(R.string.guide_storage_unavailable); return
         }
-        hotwordsInput?.let { SettingsStore.setHotwords(this,it.text.toString()) }
         Toast.makeText(this,R.string.settings_saved,Toast.LENGTH_SHORT).show(); finish()
     }
 }

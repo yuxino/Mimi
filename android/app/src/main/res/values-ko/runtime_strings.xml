@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">연결 중…</string>
+    <string name="runtime_rate_retry">번역 요청 제한 · 재시도 대기 중</string>
+    <string name="runtime_rate_wait">번역 요청 제한 · 새 음성 대기 중</string>
+    <string name="runtime_unavailable_retry">번역 서비스 사용 불가 · 재시도 대기 중</string>
+    <string name="runtime_unavailable_wait">번역 서비스 사용 불가 · 새 음성 대기 중</string>
+    <string name="runtime_translation_delayed">번역 지연 · 음성 인식은 계속됩니다</string>
+</resources>

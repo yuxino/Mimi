@@ -4,6 +4,30 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-09：共享业务维护防分叉（云端后续）
+
+- 用户明确要求以后 PC 业务改动自然到达 Android，不再依赖另一份手动同步。保留已上传的原版 29 文件交付及原哈希，后续独立版本继续基于同一 supplied snapshot；不把后续哈希误报成原 Library 文件版本。
+- 新增共享运行时架构检查：桌面 facade 只能转导出，生产 Android 只能通过 SharedRuntimeEngine，不能接回旧 Kotlin 引擎／文字客户端或新增平台 provider transport。旧文字客户端工厂原样移至 JVM test；两端 Cargo 必须引用仓库内共享源。Android preBuild／native／direct build、canonical 和 desktop CI scope 接入检查，Android CI 触发范围覆盖 desktop frontend/backend、shared、scripts/workflows。Gradle 增加 build.rs 和 Cargo config 输入，防止这些输入变化时复用旧 generated JNI。设计见 [维护约束](../plans/2026-10-09-runtime-parity-enforcement.md)。
+- 本次实际通过：架构检查、22 项真实输入变异／构建入口拒绝回归、7 项 CI scope、9 项 native packaging，两个工作流 YAML 语法解析、三个 Python 编译检查和 shell 语法检查。直接 native build 的拒绝测试在无法调用 Rust 的隔离 PATH 下验证坏 facade 会在编译前失败；没有产品编译或启动。
+- 未重跑原版 11 组 Java／220 PC／前端全套；这些仍是原版证据。云端 SDK／Cargo 依赖限制未解除，Gradle/Kotlin/JNI 完整构建、APK、远程 CI 和手机验收尚未执行。架构检查覆盖已验证的分叉模式，不能证明所有未来语义或原生 UI 都自动相同。
+- 下一步：按已有原版是否应用选择对应补丁；本地运行架构检查及 canonical、Android 两版完整检查，集成后确认 PC 或 shared source 改动实际触发 Android CI。设备验收继续沿用沉浸恢复／字幕时序清单。未提交、推送、PR、合并、发版、服务调用、采音、录制、Mac 连接或恢复其他任务。
+
+## 2026-10-08：云端 Android 沉浸定位与恢复（增量）
+
+- 起点是已校验的交接源码快照，原基线 `0ac005c01718412bdf599281999b00ea3040118b`；ZIP SHA-256 `9097539bcca9b883ba13db936003f82cc783daa7839abb69c38d81c2d018180e`，216 文件哈希一致。保留快照，在工作副本中增量修改；未提交、推送、创建 PR、合并、启动应用或连接 Mac。
+- 用户明确补充手机入口／恢复割裂、首屏缺沉浸按钮。增加首页共用入口，退出控件跟随字幕；原窗口切换保存紧凑 dp 锚点和展开阅读状态。旋转／insets／内容变化只约束显示位置，不覆盖用户偏好。共享运行链路审查另确认 Android 整体停止错误使用 provider-only 6 秒预算，改为共享分阶段上限及完整看门狗 9120ms。详见 [设计记录](../plans/2026-10-08-android-immersive-placement.md)。
+- 本轮云端实际通过：生产定位类的 11 组 Java/JVM 回归、PC 展示与布局 220 项聚焦回归、前端全套 lint/test/typecheck/build、6 项 updater、Rust fmt，79 个 XML 解析与七语言入口资源检查。Java 编译模块可用，没有 Android SDK／adb／emulator／AVD／KVM 或显示服务；约 8 核配额、8GiB 内存、14GiB 空闲磁盘。
+- canonical 在前置脚本通过后因 Cargo 缺 serde 缓存且下载被网络限制中止。Rust 编译／严格 Clippy／测试与 Android Gradle、JVM/JNI 全套、lint、APK、instrumentation 未在此增量完成；新增 JNI 尾部和原生交互回归尚待执行。交接包中的旧测试数和 APK 哈希不等于本轮结果。未采音、录制或调用真实服务，不能认定 #211 全部延迟根因或量化 PC／手机差距。
+- 下一步：本地审阅并应用增量，重跑 canonical 与两版 Android 检查，使用同一 APK hash 执行无凭据 overlay_interaction，然后验证已拖动位置、反复切换、展开恢复、长字幕／字体、横竖屏和导航栏。具体位置偏移和真实绘制仍未手机验收。
+
+## 2026-10-08：Android 实时草稿越过上一完整句
+
+- 基线为 main `0ac005c01718412bdf599281999b00ea3040118b`，修复为独立目录中的未提交修改。原仓库 HEAD、分支、未提交内容和 stash 均保持不变；未提交、推送、创建 PR 或合并。
+- 先前实际 Rust／Kotlin／JNI 合成回放确认：完整 A 后 B 原文、译文草稿已被接纳且通知已发送，Android 仍显示 A。新增共享 `realtimePreview`，按句子身份选择当前单侧或双侧实时内容，保留完整对与可选历史。Android 读取该投影；桌面实际实时路径复用它，避免以历史措辞隐藏新身份的单侧 final。当前桌面阿里云新会话统一为 Turbo，保持完整预览对策略。
+- 八组／41 步共享契约经直接 Rust、stateless bridge 和实际主机 JNI 验证，覆盖历史开关、译文先到、身份不匹配、同文不同句、迟到 final、清空／重连及独立 HTTP。实际 `DashScopeEngine` 的 `text/stash` 消息经配对流与 JNI 到达 `SubtitleBus`，显示依次为完整 A、B 原文、B 双语草稿、完整 B；未启动引擎或访问语音服务。
+- 最终 canonical `scripts/check.sh` 全部通过：共享核心 85 项、桌面 Rust 1,257 passed／2 ignored、前端 2,023 项及 fmt／严格 Clippy／lint／类型／生产构建／diff。补充 Kotlin／实际 JNI 32 项通过。初次沙盒运行有 166 项本机模拟端口测试被监听权限阻止；允许本机端口后相同套件通过，真实服务测试仍忽略。
+- JNI 为 macOS 主机库，Android 工具类仅在主机测试中替换 `Log`／`Base64` 边界。未运行 Android Gradle／lint／四 ABI 打包或设备像素检查，没有 APK、采音、真实服务调用或新增录制；未恢复其他暂停任务。离线通过证明显示等待修复，不证明 #211 无声录屏的全部延迟已消失。最小下一步是固定 APK hash、revision 和同一片段，以无正文时间戳关联音频发送、草稿到达与原生文本应用时刻，在真机比较修复前后。
+
 ## 2026-10-09：停用环境开发预设并隔离开发配置
 
 - 基线 `0ac005c0` 加本轮修改。移除 `.env` 解析、开发预设注入、只读配置分支和七语旧文案；开发版采用普通可编辑的私有本地凭据文件。旧预设 ID 仅保留元数据兼容，不自动导入环境文件密钥。付费手动探针仍默认忽略，改用当前选中的普通开发配置，并要求本地文件迁移已完成。
@@ -1469,3 +1493,218 @@
   Recordings remain attached directly to PR #211. Its visible caption lag is
   unresolved; physical speaker audibility, real devices, sustained sessions,
   Intel Mac runtime and installed updater transitions remain unaccepted.
+
+### 2026-10-08 — Shared Android and desktop live runtime, local verification
+
+- Local uncommitted work is based on main
+  `0ac005c01718412bdf599281999b00ea3040118b`. The original checkout, branch,
+  dirty files and two stashes are unchanged. No push, PR, merge or publication
+  happened, and no app was launched or installed.
+- The earlier actual Kotlin/JNI sequence reproduced the display hold:
+  complete A, source draft B, translation draft B, complete B displayed
+  A/A, A/A, A/A, B/B. The common realtime projection now advances by sentence
+  identity without combining owners, admitting stale completions into the live
+  preview, or changing confirmed history. This establishes a display problem,
+  not the complete cause of the silent PR #211 recording's lag.
+- In response to the user's requirement for the same code logic, the production
+  clients, protocols, live factory, AudioSendPipeline, MT scheduling, controller,
+  recovery/budget policy and text connection probes now live in mimi-runtime.
+  Desktop modules re-export them; Android's production service calls the same
+  implementations through JNI. Historical Kotlin engines remain offline test
+  fixtures and are not selected by MimiService or the text check button.
+- Both adapters publish the factory's atomic-preview choice and use the shared
+  60 ms snapshot cadence. Audio3 + Qwen-MT keeps the desktop paired preview;
+  integrated realtime clients use the current sentence's replaceable preview.
+  Android settings read Rust capabilities and share Lite/Flash/Plus selection
+  with Lite as default. Existing custom values are preserved. Native capture,
+  platform proxy/trust roots and rendering remain platform adapters.
+- Canonical scripts/check.sh passed: mimi-core 85 tests, mimi-runtime 686,
+  JNI runtime 3, desktop 569 and frontend 2,023; two intentional Rust tests are
+  ignored. Strict fmt/clippy, lint, typecheck, production build and updater
+  checks passed. Development-debugger all-target Clippy also passed.
+- Android debug and release each passed 179 JVM tests with the real host JNI
+  library, including configuration of eight providers, snapshot/preview parity,
+  cancelled probes and stale handles. The native test exercises real PCM over
+  a local mock WebSocket. Both APKs compiled and passed all four ABI, JNI symbol,
+  16 KB alignment and license checks. Instrumentation Kotlin compiled; device
+  instrumentation did not run. Both lint variants have no errors; existing
+  warning categories remain recorded in the report.
+- No real provider calls, paid speech, capture, new recording or unrelated task
+  resumption occurred. The recording's APK identity is unavailable; physical
+  device TLS/proxy/capture/rendering and end-to-end latency remain unaccepted.
+  The smallest next runtime check is a pinned APK hash and the same short sample,
+  with content-free PCM enqueue, draft arrival, MT start/end, snapshot and render
+  timestamps on PC and Android. No numerical latency gap is claimed.
+
+### 2026-10-09 — PR #229 local Android acceptance and release candidate
+
+- Candidate base: `16cef77d6f7a132b541fea980752c1ed701acfc1`, plus the
+  reviewed native scroll/diagnostics/acceptance changes and 1.5.18 version bump
+  in this entry's commit. Native live binaries were debug/development builds
+  of that dirty source before the version-only bump, reporting 1.5.17. They
+  are not signed release APK acceptance. The existing Bilibili AVD and saved
+  configurations were preserved; desktop development preferences and profile
+  catalog returned to their exact pre-test hashes. No credentials were changed,
+  no microphone was enabled and no audio/transcript recording was enabled.
+- At the clean base, all remote desktop CI jobs (macOS, Linux, Windows x64 and
+  native ARM64), frontend and Android CI passed. Local canonical checks passed
+  core 85, runtime 686, actual JNI 4, desktop 555 and frontend 2,012 tests;
+  two manual Rust tests remain ignored. Android debug/release each passed 181
+  JVM tests with actual host JNI, lint with zero errors, and four-ABI native
+  symbols, 16 KB alignment and license gates. Windows encoding, diagnostic path
+  and CRLF inventory regressions were repaired with rejecting mutation tests.
+- Independent blank API 35 native fixtures exercised actual touch dragging,
+  three expand/immersive/restore cycles, reopened saved offsets, first-use help,
+  light/dark preview states, landscape, and 320 dp / 130% font / three-button
+  navigation. Landscape reproduced history growth pushing the current draft
+  below the viewport. Following the current pair now reacts to history growth;
+  the same landscape and narrow fixtures pass while older-history review keeps
+  its position. This was a native rendering boundary, not a shared reducer fork.
+- Saved Alibaba Cloud credentials matched read-only on the Bilibili API 35 AVD
+  and signed `/Applications/mimi-dev.app`; both used Audio3, Qwen-MT Lite,
+  auto → zh and disabled retained history. Android consent selected Bilibili
+  only. Public source: TED精选演讲, “TED Talk: Your phone is eating you alive”,
+  published 2026-10-07, played in installed Bilibili 9.13.0 without downloading
+  media. Two rounds observed 120,022 / 120,060 ms, source updates 60 / 66,
+  translation updates 59 / 65 and paired-final observations 8 / 15. Stop took
+  1,235 / 236 ms, with no automatic restart after stop; the second round required
+  fresh native consent. API/adapter observations are not unique sentence counts.
+- PC received the emulator's system playback and published source/translation
+  through the shared runtime. Its metadata trace contains a request-rate 429
+  (#58), 8,000 ms backoff (#60), final completion (#147, 8,373 ms including retry)
+  and overlay commit (#154, S:98/T:36). No ASR reconnect appeared in that bounded
+  trace. The PC session was then stopped so Android round two ran alone; its
+  largest source-update gap was 3,126 ms versus 18,013 ms in the concurrent first
+  round. Different speech intervals and shared quota prevent a latency comparison.
+- Content-free Android observations, PC trace and selected native screenshots
+  are kept outside Git in the task's PR #229 evidence directory. No general
+  accuracy, physical-device, forced network-loss recovery, battery/background,
+  sustained-session or numerical PC-versus-Android latency acceptance is claimed.
+  The silent PR #211 recording's full cause remains unproven. Release signing,
+  final candidate CI and public asset verification are separate gates.
+
+### 2026-10-09 — PR #229 model and provider acceptance, Gemini Stop repair
+
+- Candidate: `16cef77d6f7a132b541fea980752c1ed701acfc1` plus this entry's
+  committed follow-ups; 1.5.18 / Android 10518, debug APK SHA-256
+  `8935b26bb36227bcbfcc41fe6da856d13666a8b14f5342fa8e721d17683c20d9`.
+  Debug certificate SHA-256 remains
+  `12980d22cbe9193478321e760eb5e859fb234a8becb5a20f31525df0f9d32d4e`.
+  Installed by same-signature update on the user's API 35 Bilibili AVD
+  (1080×2400, density 420, font 1.0); no wipe, microphone or recording.
+- Android had dropped shared connection/retry/timeout state. JNI snapshots and
+  native presentation now retain localized allowlisted feedback; healthy state
+  clears guidance without clearing the pair. Actual JNI regression and API 35
+  compact/expanded native fixtures passed for en, zh-Hans, zh-Hant, ja, ko, de,
+  fr at 320 dp / 130% font. The first locale harness incorrectly relied on
+  AppCompat without an Activity; it was corrected to API 33 LocaleManager and
+  rerun. Earlier English-only screenshots are superseded, not seven-language
+  evidence. Screenshot capture also waits for the compositor's next frame.
+- Home and expanded controls show shared-factory active model names. The saved
+  model, active display and independent/original routes have real JNI coverage.
+  A running Android session disables configuration/model edits and its Save
+  handler rejects stale actions. PC live profile switching remains an intentional
+  difference; editing a model requires Stop. Session language/model labels are
+  frozen to the running route rather than mutable next-session preferences.
+- Same public Bilibili sample, sequential 60-second Android observations:
+  Flash S:30/T:29/final:4, Plus S:35/T:34/final:4, Lite S:33/T:33/final:5
+  on the model-display candidate; these precede the Gemini-specific close fix.
+  An initial Flash attempt captured SILENT because the playback harness had not
+  started the player. Native Play/Pause verification repaired the harness and
+  the same provider/sample passed; this was not a Flash transport regression.
+- Final APK Gemini: S:50/T:50/final:1, Stop 2,635 ms. Before repair it produced
+  S:51/T:50 but zero finals and lost the unconfirmed tail on Stop. Earliest
+  boundary: a two-second close deadline raced the shared two-second quiet
+  checkpoint while continuous translation omitted turnComplete. The shared
+  client now allows 4.5 seconds inside the six-second provider bound and closes
+  after the existing paired quiet checkpoint. It never forces an unmatched tail
+  into history. All 26 Gemini client regressions passed, including a late paired
+  tail without turnComplete, interruption, timeout, rotation and stale content.
+  Shared finish-budget fixtures run in Rust and actual Android JNI tests.
+- Final APK Volcano: S:38/T:37/final:18, Stop 331 ms; Tencent:
+  S:56/T:40/final:7, Stop 1,828 ms; Baidu: S:172/T:16/final:11, Stop 998 ms.
+  Each ran 60 seconds, stayed live and stopped without automatic restart.
+  Temporary authorized development credentials were supplied in memory to a
+  debug-only private-cache fixture, deleted before playback, and the original
+  provider configuration/credentials restored and verified in finally.
+- OpenAI's Android connection ended before recognition. A no-audio connection
+  against the exact configured endpoint confirmed server error type
+  `insufficient_quota`, code `credit_balance_exhausted`, close 1013. This saved
+  key cannot establish OpenAI translation acceptance; no billing change made.
+- Signed canonical PC dev Gemini used the same public system playback,
+  auto → zh, and no recordings. Metadata-only case `44c5dace-75ad-4f4e-b1a5-b9fbaaade0eb`
+  has 380 entries, zero eviction/frontend loss, no private content/audio.
+  Final pair #340/341 was accepted at 38,998 ms, then overlay snapshot #22–24
+  committed S:75/T:23 (#360–373). Stop completed in approximately 2.7 seconds.
+  Preferences/catalog returned to exact pre-test hashes. Provider sessionFinished
+  after retirement was correctly rejected; the reliable final arrived first.
+- Canonical strict check passed: core 86 across unit/fixture suites, runtime
+  688 plus one manual ignored, JNI 5, desktop 555 plus one manual ignored,
+  frontend 2,012 in 130 files, architecture 23 and packaging 10 mutation checks.
+  Android debug/release each passed 183 tests with actual JNI, lint, four ABI
+  native symbols, 16 KB ELF/ZIP alignment and license gates.
+- Final APK Alibaba Lite rerun used en → zh: S:34/T:34/final:5, Stop
+  3,139 ms. The real active-model label and disabled editor/stale-save guard
+  passed. Original Alibaba Lite / auto → zh / history off was then durably
+  restored; a fresh-process constant-time credential comparison passed and the
+  other seven original provider configurations remained unconfigured.
+  Temporary test restores now flush encrypted preference writes before the
+  instrumentation process exits; their earlier in-memory check was insufficient.
+- Current-APK native large-font interaction initially failed because its test
+  multiplied SP by scaledDensity, which is inaccurate with API 34+ nonlinear
+  font scaling. It now uses TypedValue with the caption's actual resources.
+  The same 320 dp / 130% font case passed empty state, native font control,
+  64 dp touch drag, three mode cycles, saved anchor and reopening. No product
+  font behavior was changed for this harness correction.
+- Counts are adapter snapshot changes, not unique sentences or semantic scores.
+  Final notifications are observed directly so Stop acknowledgement on the same
+  UI tick cannot hide a final from a 100 ms sampler. Physical-device TLS/capture,
+  sustained sessions, forced network-loss recovery, battery/background and
+  numerical PC/Android latency remain unaccepted. Existing Baidu silence-session
+  behavior is outside this normal-speech sample. Source screenshots and metadata
+  remain outside Git; final CI/release asset gates remain separate.
+
+### 2026-10-09 — PR #229 compact continuous-caption visibility
+
+- Candidate: `c76be9a9ee5c87abb6a6008cba9f3362a773c61a` plus this
+  entry's native follow-up; version 1.5.18 / 10518, debug APK SHA-256
+  `154f22ce0aefbe517b8b6d8ccb439f321926572038913f096e8180abf37ac67f`.
+  Same debug certificate and same-signature update; shared runtime unchanged.
+- The unchanged APK failed the actual compact-view last-line assertion:
+  six source lines, scroll 0, viewport 106 px. `maxLines` clipped the newest
+  content even while shared snapshots changed. Native compact TextViews now
+  follow complete latest lines after layout, including updates at the same size.
+  Full shared text, accessibility content and expanded manual reading remain
+  intact. Aligning the first visible line also removed a partial preceding line
+  found during screenshot review.
+- Final APK native portrait/light, 320 dp / 130% font/dark and 2400×1080
+  landscape-geometry/dark fixtures each passed ten screenshots. Assertions
+  cover last-line bounds, whole-line alignment, full text, growing drafts,
+  native 12/24 SP changes, short/empty reset, history and immersive restoration.
+  This does not establish physical sensor-rotation behavior.
+- A first extended synthetic fixture accidentally ended in whitespace that the
+  shared reducer trims; matching the normalized reference repaired that test.
+  A live Alibaba assertion also incorrectly required layout for its intentionally
+  hidden source lane. Native checks now inspect visible lanes, and live UI
+  exceptions propagate on the instrumentation thread so temporary-provider
+  cleanup still executes instead of crashing before finally. Neither failed
+  harness establishes a provider defect.
+- Final APK Gemini, same public Bilibili sample for 60 seconds:
+  S:51/T:51/final:1, Stop 2,233 ms. Both compact lanes overflowed and their
+  latest whole lines were verified visible at the end of actual playback;
+  Home/expanded active model checks passed. Content-free observations and native
+  screenshots are retained outside Git. This does not establish semantic scores.
+- Canonical strict checks passed again after the final line-alignment change.
+  Android debug/release each passed 183 tests with actual JNI, both lint
+  variants and four-ABI/16 KB/license packaging gates. The final native fixture
+  build passed separately; no desktop behavior changed in this rendering repair.
+- Final APK Alibaba Lite / auto → zh replay: S:35/T:34/final:4,
+  Stop 1,060 ms, one overflowing visible compact lane. Active model display,
+  disabled editor and stale-save rejection passed. The first attempt raced
+  Bilibili navigation against the model editor's closure and never established
+  playback; waiting for the explicit guard-complete notification repaired the
+  host harness. The same final APK and sample then passed.
+- Fresh-process constant-time credential comparison passed after final playback:
+  original Alibaba Lite / auto → zh / history off preserved, private comparison
+  input removed. The other seven original provider configurations remained
+  unconfigured. All provider sessions were stopped and Bilibili paused.

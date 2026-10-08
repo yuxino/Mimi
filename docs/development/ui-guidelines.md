@@ -190,3 +190,13 @@ receive hover within their clipped visible bounds, while the scrollbar keeps
 its handling elsewhere. Account for the root window offset in dialogs. Verify
 actual system-injected mouse movement across the icon, keyboard focus, touch,
 popup dismissal and popup/anchor separation; label geometry alone misses this.
+
+Android immersive mode has a Home entry/restore action backed by the same
+preference as Settings and the floating panel. Change the existing caption
+window in place, retaining the compact dp anchor and previous expanded reading
+state. Temporary viewport/inset clamps must not rewrite saved placement. Keep
+the restore control adjacent to captions, with a 48dp touch target and localized
+width; caption touch-through must not make restoration unreachable. Test repeated
+mode notifications, rotation, content/font reflow and returning from both compact
+and expanded states. Host geometry tests do not establish native window or touch
+acceptance.

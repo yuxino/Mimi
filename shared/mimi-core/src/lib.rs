@@ -9,8 +9,8 @@ pub mod subtitle_reducer;
 pub mod translation_policy;
 
 pub use models::{
-    subtitle_text_within_limit, AudioSource, PreviewSubtitlePair, SourceSubtitleSnapshot,
-    SubtitleEvent, SubtitleLine, SubtitlePair, SubtitleSnapshot, TranslationRecovery,
-    TranslationRecoveryReason, UtteranceRole, MAX_SUBTITLE_TEXT_BYTES,
+    subtitle_text_within_limit, AudioSource, PreviewSubtitlePair, RealtimeSubtitlePreview,
+    SourceSubtitleSnapshot, SubtitleEvent, SubtitleLine, SubtitlePair, SubtitleSnapshot,
+    TranslationRecovery, TranslationRecoveryReason, UtteranceRole, MAX_SUBTITLE_TEXT_BYTES,
 };
 pub use subtitle_reducer::{ArchiveSink, NoopArchive, SubtitleReducer};

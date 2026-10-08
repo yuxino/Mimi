@@ -32,15 +32,29 @@ val pythonExecutable = providers.environmentVariable("MIMI_PYTHON").orElse(
 val sharedCoreTarget = repositoryRoot.resolve("shared/target")
 val sharedCoreHostOutput = layout.buildDirectory.dir("generated/shared-core/host")
 val sharedCoreNativeInputs = files(
-    fileTree(repositoryRoot.resolve("shared/mimi-core")) { include("Cargo.toml", "Cargo.lock", "src/**") },
-    fileTree(repositoryRoot.resolve("shared/mimi-android-jni")) { include("Cargo.toml", "Cargo.lock", "src/**") },
+    fileTree(repositoryRoot.resolve("shared/mimi-core")) { include("Cargo.toml", "Cargo.lock", "build.rs", "src/**", ".cargo/**") },
+    fileTree(repositoryRoot.resolve("shared/mimi-runtime")) { include("Cargo.toml", "Cargo.lock", "build.rs", "src/**", ".cargo/**") },
+    fileTree(repositoryRoot.resolve("shared/mimi-android-jni")) { include("Cargo.toml", "Cargo.lock", "build.rs", "src/**", ".cargo/**") },
+    fileTree(repositoryRoot.resolve(".cargo")) { include("config", "config.toml") },
+    fileTree(repositoryRoot.resolve("shared/.cargo")) { include("config", "config.toml") },
     repositoryRoot.resolve("scripts/build-shared-core.py"),
     repositoryRoot.resolve("scripts/verify-shared-core.py"),
+    repositoryRoot.resolve("scripts/check-shared-runtime.py"),
     rootProject.file("shared-core.properties"),
 )
 val rustVersion = providers.exec { commandLine("rustc", "-vV") }.standardOutput.asText
 
+val verifySharedRuntimeArchitecture = tasks.register<Exec>("verifySharedRuntimeArchitecture") {
+    workingDir(repositoryRoot)
+    commandLine(pythonExecutable.get(), "scripts/check-shared-runtime.py")
+    // No output/cache marker: check current production sources on every build.
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(verifySharedRuntimeArchitecture)
+}
+
 val buildSharedCoreHost = tasks.register<Exec>("buildSharedCoreHost") {
+    dependsOn(verifySharedRuntimeArchitecture)
     workingDir(repositoryRoot)
     commandLine(pythonExecutable.get(), "scripts/build-shared-core.py", "--platform", "host",
         "--profile", "debug", "--target-dir", sharedCoreTarget.absolutePath,
@@ -98,6 +112,7 @@ for (variant in listOf("debug", "release")) {
     val suffix = variant.replaceFirstChar { it.uppercaseChar() }
     val output = layout.buildDirectory.dir("generated/shared-core/$variant/jniLibs")
     val nativeBuild = tasks.register<Exec>("buildSharedCore$suffix") {
+        dependsOn(verifySharedRuntimeArchitecture)
         workingDir(repositoryRoot)
         commandLine(pythonExecutable.get(), "scripts/build-shared-core.py", "--platform", "android",
             "--profile", variant, "--target-dir", sharedCoreTarget.absolutePath,

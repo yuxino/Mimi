@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">Verbindung wird hergestellt…</string>
+    <string name="runtime_rate_retry">Übersetzungslimit erreicht · erneuter Versuch steht aus</string>
+    <string name="runtime_rate_wait">Übersetzungslimit erreicht · warte auf neue Spracheingabe</string>
+    <string name="runtime_unavailable_retry">Übersetzung nicht verfügbar · erneuter Versuch steht aus</string>
+    <string name="runtime_unavailable_wait">Übersetzung nicht verfügbar · warte auf neue Spracheingabe</string>
+    <string name="runtime_translation_delayed">Übersetzung verzögert · Spracherkennung läuft weiter</string>
+</resources>

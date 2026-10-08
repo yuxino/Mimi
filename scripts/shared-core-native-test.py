@@ -2,6 +2,7 @@
 """Regression tests for native ABI, toolchain pinning and packaging boundaries."""
 import importlib.util
 from pathlib import Path
+from unittest import mock
 import struct
 import tempfile
 import unittest
@@ -37,7 +38,8 @@ def elf(abi, alignment=16384):
     return bytes(content)
 
 
-def apk(path, abis=None, aligned=True, compressed=False, duplicate=False, notices=b"License notices"):
+def apk(path, abis=None, aligned=True, compressed=False, duplicate=False,
+        notices=verify.NOTICE_SOURCE.read_bytes()):
     with zipfile.ZipFile(path, "w") as archive:
         if notices is not None:
             archive.writestr(verify.NOTICES, notices)
@@ -60,6 +62,39 @@ def apk(path, abis=None, aligned=True, compressed=False, duplicate=False, notice
 
 
 class NativeBuildTests(unittest.TestCase):
+    def test_windows_crlf_checkout_preserves_reviewed_inventory_and_rejects_changes(self):
+        notices = verify.NOTICE_SOURCE.read_bytes().replace(b"\r\n", b"\n")
+        lock = verify.LOCKFILE.read_bytes().replace(b"\r\n", b"\n")
+        with tempfile.TemporaryDirectory() as root:
+            notice_path = Path(root) / "shared-core.txt"
+            lock_path = Path(root) / "Cargo.lock"
+            notice_path.write_bytes(notices.replace(b"\n", b"\r\n"))
+            lock_path.write_bytes(lock.replace(b"\n", b"\r\n"))
+            with mock.patch.object(verify, "NOTICE_SOURCE", notice_path), mock.patch.object(verify, "LOCKFILE", lock_path):
+                verify.verify_license_notices(notices)
+                verify.verify_license_notices(notice_path.read_bytes())
+                with self.assertRaisesRegex(ValueError, "reviewed inventory"):
+                    verify.verify_license_notices(notices + b"Changed notice\n")
+                lock_path.write_bytes(lock_path.read_bytes() + b"# changed dependency graph\r\n")
+                with self.assertRaisesRegex(ValueError, "stale for Cargo.lock"):
+                    verify.verify_license_notices(notices)
+
+    def test_dependency_notices_match_the_reviewed_lockfile_inventory(self):
+        notices = verify.NOTICE_SOURCE.read_bytes()
+        verify.verify_license_notices(notices)
+        with self.assertRaisesRegex(ValueError, "reviewed inventory"):
+            verify.verify_license_notices(b"License notices")
+        with tempfile.TemporaryDirectory() as root:
+            old_lock = verify.LOCKFILE
+            try:
+                path = Path(root) / "Cargo.lock"
+                path.write_bytes(old_lock.read_bytes() + b"\n# dependency graph changed\n")
+                verify.LOCKFILE = path
+                with self.assertRaisesRegex(ValueError, "stale for Cargo.lock"):
+                    verify.verify_license_notices(notices)
+            finally:
+                verify.LOCKFILE = old_lock
+
     def test_reviewed_toolchain_and_four_abis_are_pinned(self):
         config, abis = build.native_config()
         self.assertEqual(config["minSdk"], "29")

@@ -13,7 +13,7 @@
     <string name="settings_opacity">字幕不透明度</string>
     <string name="settings_background">背景不透明度</string>
     <string name="settings_immersive">沉浸字幕</string>
-    <string name="settings_immersive_help">只顯示文字，不擋住影片操作。切換後立即生效；右側可退出沉浸。</string>
+    <string name="settings_immersive_help">只顯示文字，不擋住影片操作。切換後立即生效；字幕旁可退出，也可在首頁關閉。</string>
     <string name="settings_history">保留歷史字幕</string>
     <string name="settings_history_help">預設關閉。開啟後僅在本次會話內保留；關閉或停止字幕後清除。</string>
     <string name="settings_reset">恢復字幕位置</string>

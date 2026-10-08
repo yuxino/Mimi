@@ -41,6 +41,8 @@ jobs:
           fetch-depth: 0
       - name: Verify scope rules
         run: |
+          python3 -B scripts/check-shared-runtime.py
+          python3 -B scripts/check-shared-runtime-test.py
           python3 -B scripts/ci-scope-test.py
           python3 -B scripts/prepare-macos-release-test.py
       - id: plan

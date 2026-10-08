@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">Connexion…</string>
+    <string name="runtime_rate_retry">Limite de traduction atteinte · nouvelle tentative en attente</string>
+    <string name="runtime_rate_wait">Limite de traduction atteinte · en attente de nouvelles paroles</string>
+    <string name="runtime_unavailable_retry">Traduction indisponible · nouvelle tentative en attente</string>
+    <string name="runtime_unavailable_wait">Traduction indisponible · en attente de nouvelles paroles</string>
+    <string name="runtime_translation_delayed">Traduction retardée · reconnaissance vocale toujours active</string>
+</resources>

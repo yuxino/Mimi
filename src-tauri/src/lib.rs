@@ -1,6 +1,8 @@
 //! mimi — live translated subtitles for anything playing on your device.
 //! Tauri v2 shell wiring: plugins, tray, global shortcut, windows, and state.
 
+pub(crate) use mimi_runtime::pipeline_log;
+
 mod apple_speech;
 mod apple_speech_support;
 mod apple_translation;

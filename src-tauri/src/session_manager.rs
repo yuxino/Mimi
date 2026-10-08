@@ -4,6 +4,11 @@
 //! The manager is always shared behind `Arc<SessionManager>`; spawned tasks
 //! hold clones of the same Arc so they observe one piece of session state.
 
+use mimi_runtime::core::health::{
+    probe_connection_health, AUDIO_DRAIN_TIMEOUT, DISCONNECT_TIMEOUT, HEALTH_CHECK_INTERVAL,
+};
+use mimi_runtime::core::recovery::*;
+
 use crate::audio::echo_pipeline::EchoPipeline;
 use crate::audio::send_pipeline::{AudioPipelineFailure, AudioSendPipeline};
 use crate::audio::{
@@ -13,13 +18,14 @@ use crate::clients::provider_events::{provider_event_channel, ProviderEvent};
 use crate::clients::translation_client::TranslationClient;
 use crate::core::audio_input::{AudioInput, AudioSource};
 use crate::core::configuration::LiveTranslationConfiguration;
+#[cfg(test)]
 use crate::core::credentials::{ProviderCredentials, TextTranslationCredentials};
 use crate::core::diagnostics::{
     milliseconds, TranslationLatency, TranslationLatencyKind, TranslationRecovery,
 };
 use crate::core::models::{SessionStatus, SourceLanguage, TranslationMode, UtteranceRole};
-use crate::core::preview_pacing::MTRequestBudget;
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
+#[cfg(test)]
 use crate::core::protocols::qwen_mt::QwenMTModel;
 #[cfg(test)]
 use crate::core::protocols::qwen_mt::REALTIME_MT_MODEL;
@@ -80,6 +86,7 @@ pub struct SessionStateEvent {
     #[serde(rename = "isOverlayCollapsed")]
     pub is_overlay_collapsed: bool,
     pub subtitles: crate::core::models::SubtitleSnapshot,
+    pub atomic_preview: Option<bool>,
     #[serde(rename = "detectedLanguage")]
     pub detected_language: Option<String>,
     #[serde(rename = "isTranslationPending")]
@@ -133,139 +140,7 @@ fn visible_session_latencies(
     )
 }
 
-const NO_GENERATION: u64 = 0;
 const SESSION_START_CANCELLED: &str = "The session start was superseded by a newer request.";
-const RECOVERY_ATTEMPTS: usize = 4;
-
-#[derive(Clone, PartialEq, Eq)]
-enum MTBudgetRoute {
-    Apple,
-    Qwen(QwenMTModel),
-    DeepL,
-    DeepLX,
-    OpenAICompatible,
-    ChatMock,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct MTBudgetScope {
-    profile_id: String,
-    provider: ProviderKind,
-    route: MTBudgetRoute,
-}
-
-impl MTBudgetScope {
-    fn for_configuration(
-        profile_id: String,
-        configuration: &LiveTranslationConfiguration,
-    ) -> Option<Self> {
-        let route = if matches!(
-            configuration.text_credentials,
-            Some(TextTranslationCredentials::Apple)
-        ) {
-            if !configuration.target_language.translates_audio() {
-                return None;
-            }
-            MTBudgetRoute::Apple
-        } else if configuration.provider.is_standalone_asr() {
-            if !configuration.target_language.translates_audio() {
-                return None;
-            }
-            match configuration.text_credentials.as_ref()? {
-                TextTranslationCredentials::Apple => MTBudgetRoute::Apple,
-                TextTranslationCredentials::DeepL { .. } => MTBudgetRoute::DeepL,
-                TextTranslationCredentials::DeepLX { .. } => MTBudgetRoute::DeepLX,
-                TextTranslationCredentials::OpenAICompatible { .. } => {
-                    MTBudgetRoute::OpenAICompatible
-                }
-                TextTranslationCredentials::ChatMock { .. } => MTBudgetRoute::ChatMock,
-            }
-        } else {
-            match &configuration.credentials {
-                ProviderCredentials::DeepL { .. } => MTBudgetRoute::DeepL,
-                ProviderCredentials::DeepLX { .. } => MTBudgetRoute::DeepLX,
-                ProviderCredentials::OpenAICompatible { .. } => MTBudgetRoute::OpenAICompatible,
-                ProviderCredentials::ChatMock { .. } => MTBudgetRoute::ChatMock,
-                ProviderCredentials::ApiKey { .. }
-                    if configuration.provider == ProviderKind::AlibabaCloud =>
-                {
-                    let model = match configuration.effective_translation_mode() {
-                        TranslationMode::Turbo => configuration.qwen_mt_model,
-                        TranslationMode::HighQuality => QwenMTModel::Plus,
-                        TranslationMode::LowLatency => return None,
-                    };
-                    MTBudgetRoute::Qwen(model)
-                }
-                _ => return None,
-            }
-        };
-        Some(Self {
-            profile_id,
-            provider: configuration.provider,
-            route,
-        })
-    }
-}
-
-/// One bounded continuation slot. Its token rejects late teardown snapshots
-/// after stop/new-start or after another client/route has already been prepared.
-#[derive(Default)]
-struct MTBudgetContinuity {
-    token: u64,
-    client_scope: Option<(u64, u64, MTBudgetScope)>,
-    retained: Option<(MTBudgetScope, MTRequestBudget)>,
-}
-
-impl MTBudgetContinuity {
-    fn reset(&mut self) {
-        self.token = self.token.wrapping_add(1).max(1);
-        self.client_scope = None;
-        self.retained = None;
-    }
-
-    fn prepare(
-        &mut self,
-        generation: u64,
-        scope: Option<MTBudgetScope>,
-    ) -> Option<MTRequestBudget> {
-        let Some(scope) = scope else {
-            self.reset();
-            return None;
-        };
-        if self
-            .retained
-            .as_ref()
-            .is_some_and(|(previous, _)| previous != &scope)
-        {
-            self.retained = None;
-        }
-        self.token = self.token.wrapping_add(1).max(1);
-        self.client_scope = Some((generation, self.token, scope.clone()));
-        self.retained
-            .as_ref()
-            .filter(|(previous, _)| previous == &scope)
-            .map(|(_, budget)| *budget)
-    }
-
-    fn take_lease(&mut self, generation: u64) -> Option<(u64, MTBudgetScope)> {
-        if self
-            .client_scope
-            .as_ref()
-            .is_none_or(|(owner, _, _)| *owner != generation)
-        {
-            return None;
-        }
-        self.client_scope
-            .take()
-            .map(|(_, token, scope)| (token, scope))
-    }
-
-    fn remember(&mut self, token: u64, scope: MTBudgetScope, budget: MTRequestBudget) {
-        if token == self.token {
-            self.retained = Some((scope, budget));
-        }
-    }
-}
 
 struct LifecycleOperationGuard {
     count: Arc<AtomicUsize>,
@@ -632,24 +507,6 @@ fn invalidate_audio_attempt_atoms(
     Some(epoch)
 }
 
-fn advance_lifecycle_sequence_if_current(
-    lifecycle_sequence: &AtomicU64,
-    expected: u64,
-) -> Option<u64> {
-    let mut next = expected.wrapping_add(1);
-    if next == NO_GENERATION {
-        next = 1;
-    }
-    lifecycle_sequence
-        .compare_exchange(expected, next, Ordering::SeqCst, Ordering::SeqCst)
-        .ok()
-        .map(|_| next)
-}
-
-fn lifecycle_sequence_matches(lifecycle_sequence: &AtomicU64, expected: u64) -> bool {
-    lifecycle_sequence.load(Ordering::SeqCst) == expected
-}
-
 fn resume_failure_is_still_owned(
     error: &str,
     failure_epoch: u64,
@@ -677,46 +534,6 @@ async fn restore_failed_resume(
     }
     restore();
     true
-}
-
-fn cancelled_recovery_attempt_is_retryable(
-    retry_generation: u64,
-    attempt_generation: u64,
-    current_epoch: u64,
-    has_active_settings: bool,
-) -> bool {
-    retry_generation == attempt_generation
-        && current_epoch == attempt_generation.wrapping_add(1)
-        && has_active_settings
-}
-
-fn recovery_exhaustion_is_still_owned(
-    recovery_epoch: u64,
-    current_epoch: u64,
-    active_generation: u64,
-) -> bool {
-    recovery_epoch == current_epoch && active_generation == NO_GENERATION
-}
-
-fn clear_recovery_atoms(is_recovering: &AtomicBool, retry_generation: &AtomicU64) {
-    retry_generation.store(NO_GENERATION, Ordering::SeqCst);
-    is_recovering.store(false, Ordering::SeqCst);
-}
-
-/// Bounded exponential recovery delay with deterministic per-generation
-/// jitter. Determinism keeps lifecycle tests reliable while preventing two
-/// mimi instances from reconnecting in lockstep after a shared outage.
-fn recovery_delay(attempt: usize, generation: u64) -> Duration {
-    if attempt == 0 {
-        return Duration::ZERO;
-    }
-    let exponent = u32::try_from(attempt.saturating_sub(1)).unwrap_or(u32::MAX);
-    let base_ms = 500_u64.saturating_mul(2_u64.saturating_pow(exponent.min(3)));
-    let mixed = generation
-        .wrapping_add((attempt as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15))
-        .wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    let jitter_ms = mixed % (base_ms / 4 + 1);
-    Duration::from_millis(base_ms + jitter_ms)
 }
 
 fn generation_accepts_event(
@@ -753,27 +570,6 @@ fn confirmed_history_tail_changed(
             current.created_at_ms != previous.created_at_ms || current != previous
         })
     })
-}
-
-fn provider_error_is_retryable(code: &str) -> bool {
-    matches!(
-        code,
-        "transport_error"
-            | "provider_event_backlog_overflow"
-            | "translation_backlog_overflow"
-            | "translation_rate_limited"
-            | "translation_temporarily_unavailable"
-    )
-}
-
-fn provider_recovery_minimum_delay(code: &str) -> Duration {
-    match code {
-        // A new client must not bypass the MT cooldown by replacing the
-        // generation after finite retries or bounded final-queue pressure.
-        "translation_rate_limited" | "translation_backlog_overflow" => Duration::from_secs(8),
-        "translation_temporarily_unavailable" => Duration::from_millis(600),
-        _ => Duration::ZERO,
-    }
 }
 
 fn clear_task_slot_if_id(
@@ -912,6 +708,7 @@ impl From<&TranslationSessionState> for SessionStateEvent {
             is_paused: false,
             is_overlay_collapsed: false,
             subtitles: state.subtitles.clone(),
+            atomic_preview: state.atomic_preview,
             detected_language: state
                 .detected_language
                 .as_ref()
@@ -2269,7 +2066,7 @@ impl SessionManager {
                 )
                 .await;
             } else {
-                self.finish_source_pipeline(source, Duration::from_secs(1))
+                self.finish_source_pipeline(source, AUDIO_DRAIN_TIMEOUT)
                     .await;
             }
             let taken = if stopping_generation == NO_GENERATION {
@@ -3189,13 +2986,13 @@ impl SessionManager {
                 audio_sources: [AudioSource::System, AudioSource::Microphone]
                     .into_iter()
                     .zip(recording.iter())
-                    .filter_map(|(source, recording)| (recording.len() > 0).then_some(source))
+                    .filter_map(|(source, recording)| (!recording.is_empty()).then_some(source))
                     .collect(),
                 audio_bytes: recording.iter().map(|recording| recording.len()).sum(),
                 audio_limited: recording.iter().any(|recording| recording.limited),
                 sample_rate: recording
                     .iter()
-                    .find(|recording| recording.len() > 0)
+                    .find(|recording| !recording.is_empty())
                     .map_or(0, |recording| recording.sample_rate),
                 history_save_error: false,
             };
@@ -3314,7 +3111,7 @@ impl SessionManager {
                     let mut available = recordings
                         .iter()
                         .enumerate()
-                        .filter(|(_, recording)| recording.len() > 0);
+                        .filter(|(_, recording)| !recording.is_empty());
                     let first = available.next().map(|(index, _)| index);
                     if available.next().is_some() {
                         return Err(std::io::Error::new(
@@ -3504,13 +3301,7 @@ impl SessionManager {
         }
 
         if let LiveTranslateServerEvent::Error { code, message } = &mut event {
-            if matches!(
-                code.as_str(),
-                "invalid_api_key"
-                    | "authentication_error"
-                    | "unauthorized"
-                    | "translation_authentication_failed"
-            ) {
+            if normalize_provider_error_code(code) == "credential_authentication_failed" {
                 *message = "credential_authentication_failed".into();
             }
         }
@@ -3700,7 +3491,15 @@ impl SessionManager {
             .store(task_id, Ordering::SeqCst);
         let this = Arc::clone(self);
         let task = tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+            let deadline = this
+                .controller
+                .lock()
+                .unwrap()
+                .translation_pending_deadline_from(source);
+            let Some(deadline) = deadline else {
+                return;
+            };
+            tokio::time::sleep_until(deadline.into()).await;
             let _content = this.subtitle_content_lock.lock().await;
             if !this.is_generation_current(generation)
                 || !this.clear_translation_timeout_task_if_id(source, task_id)
@@ -3708,11 +3507,14 @@ impl SessionManager {
                 return;
             }
             pipeline_log!("translation pending timed out; clearing");
-            this.controller
+            let expired = this
+                .controller
                 .lock()
                 .unwrap()
-                .clear_translation_pending_from(source);
-            this.publish_state();
+                .expire_translation_pending_from(source, Instant::now());
+            if expired {
+                this.publish_state();
+            }
         });
         *slot = Some(task);
     }
@@ -3849,7 +3651,7 @@ impl SessionManager {
         let self_arc = self.clone();
         let task = tokio::spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                tokio::time::sleep(HEALTH_CHECK_INTERVAL).await;
                 if !self_arc.check_connection_health(generation, task_id).await {
                     return;
                 }
@@ -3887,10 +3689,9 @@ impl SessionManager {
             let Some(client) = self.client_for_generation(source, generation) else {
                 return false;
             };
-            let started_at = Instant::now();
-            match client.ping(Duration::from_secs(4)).await {
-                Ok(()) => {
-                    let elapsed_ms = milliseconds(started_at, Instant::now());
+            match probe_connection_health(&client).await {
+                Ok(elapsed) => {
+                    let elapsed_ms = elapsed.as_millis().min(u64::MAX as u128) as u64;
                     {
                         // Pair the validity check and write with health-task
                         // replacement, so a late old probe cannot overwrite a
@@ -3990,9 +3791,11 @@ impl SessionManager {
 
         let mut recovered = false;
         let mut terminal_failure = None;
-        let mut recovery_epoch = recovery_generation;
-        for attempt in 0..RECOVERY_ATTEMPTS {
-            let delay = recovery_delay(attempt, failed_generation).max(minimum_delay);
+        let mut schedule =
+            RecoverySchedule::new(failed_generation, recovery_generation, minimum_delay);
+        while let Some(retry) = schedule.next_attempt() {
+            let attempt = retry.index;
+            let delay = retry.delay;
             pipeline_log!(
                 "session recovery attempt={} delayMs={}",
                 attempt + 1,
@@ -4006,13 +3809,14 @@ impl SessionManager {
                 return;
             }
             if attempt > 0 {
-                let Some(next_generation) =
-                    self.advance_lifecycle_request_if_current(recovery_epoch)
+                let _transition = self.generation_transition.lock().unwrap();
+                let Some(next_generation) = schedule.advance_for_retry(&self.lifecycle_sequence)
                 else {
                     clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
                     return;
                 };
                 recovery_generation = next_generation;
+                self.lifecycle_notify.notify_waiters();
             }
             let lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
             if !self.is_lifecycle_request_current(recovery_generation) {
@@ -4035,26 +3839,22 @@ impl SessionManager {
                         .swap(NO_GENERATION, Ordering::SeqCst);
                     let current_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
                     if self.is_recovering.load(Ordering::SeqCst)
-                        && cancelled_recovery_attempt_is_retryable(
+                        && schedule.accept_cancelled_attempt(
                             retry_generation,
-                            recovery_generation,
                             current_epoch,
                             self.active_settings.lock().unwrap().is_some(),
                         )
                     {
-                        recovery_epoch = current_epoch;
                         continue;
                     }
                     clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
                     return;
                 }
                 Err(error) => {
-                    let failure_epoch = recovery_generation.wrapping_add(1);
-                    if self.lifecycle_sequence.load(Ordering::SeqCst) != failure_epoch {
+                    if !schedule.accept_failure(self.lifecycle_sequence.load(Ordering::SeqCst)) {
                         clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
                         return;
                     }
-                    recovery_epoch = failure_epoch;
                     if session_error_requires_user_action(&error) {
                         terminal_failure = Some(error);
                         break;
@@ -4065,8 +3865,7 @@ impl SessionManager {
 
         if !recovered {
             let _lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
-            if !recovery_exhaustion_is_still_owned(
-                recovery_epoch,
+            if !schedule.owns_exhaustion(
                 self.lifecycle_sequence.load(Ordering::SeqCst),
                 self.active_generation.load(Ordering::SeqCst),
             ) {
@@ -4074,7 +3873,7 @@ impl SessionManager {
                 return;
             }
             if terminal_failure.is_none() {
-                self.record_recovery_if_current(RecoveryAction::RetriesExhausted, recovery_epoch);
+                self.record_recovery_if_current(RecoveryAction::RetriesExhausted, schedule.epoch());
                 pipeline_log!("session recovery exhausted");
             }
             // Preserve the permission/stop result instead of covering it with
@@ -4288,6 +4087,10 @@ impl SessionManager {
         }
         *self.lane(source).subtitle_content_revision.lock().unwrap() =
             (generation, client.content_revision());
+        self.controller
+            .lock()
+            .unwrap()
+            .set_atomic_preview(client.uses_atomic_preview());
         *slot = Some(client);
         self.lane(source)
             .client_generation
@@ -4571,7 +4374,7 @@ impl SessionManager {
             if let Some(client) = self.take_client_for_generation(source, generation) {
                 self.remember_mt_request_budget(source, generation, &client)
                     .await;
-                let _ = tokio::time::timeout(Duration::from_secs(2), client.disconnect()).await;
+                let _ = tokio::time::timeout(DISCONNECT_TIMEOUT, client.disconnect()).await;
             }
             if matches!(pumps, EventPumpCleanup::Abort) {
                 self.stop_pump_for_generation(source, generation);
@@ -4697,7 +4500,7 @@ impl SessionManager {
             // followed by a duplicate one.
             this.publish_dirty.store(false, Ordering::SeqCst);
             loop {
-                tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+                tokio::time::sleep(mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL).await;
                 this.publish_state_now().await;
                 if !this.publish_dirty.swap(false, Ordering::SeqCst) {
                     // Release the scheduling lock first, then check for a

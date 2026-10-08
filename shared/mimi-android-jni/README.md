@@ -1,13 +1,10 @@
 # Shared subtitle JNI build
 
-Desktop and Android use `../mimi-core`. This crate only carries JSON strings
-across JNI: each call provides its bounded serialized state and receives the
-next state and snapshot. It owns no reducers, registries, audio, credentials or
-network clients. Kotlin loads it without a fallback implementation.
-
-The adapter pins `jni` to 0.21.1, already present in the desktop dependency
-lock. Its new direct use is required to execute the same Rust subtitle reducer
-on Android rather than maintaining a second Kotlin implementation.
+Desktop and Android use `../mimi-core` for pure subtitle rules and
+`../mimi-runtime` for the actual provider transports and session controller.
+The stateless core API accepts a bounded serialized reducer state. The live API
+owns bounded session/check handles and accepts PCM from native capture. Kotlin
+loads the library without a fallback implementation.
 
 Build requirements: Rust 1.88 or later, Python 3, JDK 17, and the Android SDK
 platform/build-tools versions documented in `android/README.md`. Native builds
@@ -40,10 +37,23 @@ For an independent build without Gradle, run `scripts/build-shared-core.py`
 with `--platform host|android`, `--profile debug|release`, and `--output DIR`.
 Android builds use the pinned NDK under `ANDROID_HOME`, or the explicit
 `--ndk DIR`. `MIMI_PYTHON` can select Python for Gradle on hosts without a
-`python3` executable. `scripts/check-shared-core.sh` checks both Rust crates.
+`python3` executable. `scripts/check-shared-core.sh` checks all shared Rust crates.
 
 ## Native dependency notices
 
-`android/native-licenses/shared-core.txt` records the locked JNI/Serde native
+`android/native-licenses/shared-core.txt` records the locked shared-runtime native
 dependency versions and their upstream license texts. Gradle packages it as
 an APK asset; artifact verification rejects an APK without these notices.
+
+
+Live sessions also expose `NativeRuntimeConfiguration.exchangeRaw/pcmRaw`.
+They construct `mimi-runtime`'s real desktop provider factory and publish the
+same `TranslationSessionController` snapshot. The adapter bounds active live
+handles and text-check handles to two each; stop/cancel removes a handle and
+aborts its work. PCM uses the shared bounded desktop queue. A separate stateless
+`SharedSubtitleCore` exchange remains for pure contracts and UI fixtures.
+
+Android injects immutable platform trust roots and resolved speech/text proxy
+routes. No fallback trust store, alternate Kotlin provider or transcript log is
+used. Credential fields remain private to active sessions/checks. Text checks
+are explicit user actions, share PC connection diagnostics, and can be cancelled.

@@ -415,6 +415,17 @@ samples and [the run ledger](integration-runs.md) for this check's exact scope.
 
 ## Before handing off
 
+Python source guards and their mutation fixtures must read and write repository
+text with explicit UTF-8. Windows Python can default to cp1252: the shared-runtime
+guard once failed on non-ASCII Kotlin before checking the architecture. Keep the
+legacy-locale regression in `scripts/check-shared-runtime-test.py`; setting UTF-8
+only in CI would leave direct Gradle/native build entry points broken.
+Format repository paths in guard diagnostics with `Path.as_posix()` as well;
+native Windows separators must not invalidate a correctly rejected mutation.
+Reviewed text inventories hash and compare the canonical LF representation:
+Windows CRLF checkout alone must not invalidate the JNI license inventory, while
+actual lockfile or notice edits must still fail the packaging gate.
+
 Run `./scripts/check.sh`. For signing changes, additionally build with
 `./scripts/package-app.sh`, verify the bundle, and compare its designated
 requirement with any app that would be replaced. Before a commit, inspect the
@@ -462,3 +473,33 @@ actual JNI as well as Rust fixtures. Preserve raw spaces and subwords, and do
 not deduplicate by matching tails. Sentence breaks belong only to live display,
 never to transcript buffers or committed history. Keep preview clocks separate
 from local quiet checkpoints.
+
+Gemini's continuous model can omit `turnComplete` even after `audioStreamEnd`.
+Keep its Stop budget longer than the shared two-second paired-text quiet
+checkpoint, within the outer provider watchdog. Test a paired late tail without
+that terminal event, plus interruption, cancellation and unmatched timeout.
+Do not force drafts into history at the deadline. Native acceptance must observe
+the final snapshot notification: polling can miss a final and Stop acknowledgement
+delivered on the same UI tick.
+
+## Android current-caption visibility
+
+Growing confirmed history can push the current draft below a short landscape
+viewport even when that draft has not changed. Compute history changes before
+rendering, and follow the current pair when the reader is already at it. Preserve
+a reader's older-history scroll position. Exercise the actual JNI/native overlay
+in landscape and narrow large-font layouts, including a new draft after a final,
+immersive toggles and reopening; shared reducer tests alone cannot detect this.
+
+A compact TextView maxLines limit clips the latest lines by default even while
+the shared continuous draft keeps updating. Follow its tail after native layout,
+including same-size text relayout, and reset scrolling for short text. Preserve
+full text for accessibility and expanded reading. Assert the last line is inside
+the native viewport after growing drafts, font changes and immersive transitions;
+update counts or an early screenshot cannot prove the latest subtitle is visible.
+
+For provider comparisons, two sessions sharing a credential also share its
+remote quota. A 429 and backoff must not be labeled an ASR disconnect or native
+capture failure. Preserve the retry/final/render event chain, then run sequential
+sessions to avoid concurrent quota pressure. Counts and adapter timestamps do not
+establish semantic accuracy or cross-platform end-to-end latency.

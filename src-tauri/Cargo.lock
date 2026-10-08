@@ -2753,7 +2753,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "mimi"
-version = "1.5.17"
+version = "1.5.18"
 dependencies = [
  "aec-rs-sys",
  "base64 0.23.1",
@@ -2769,6 +2769,7 @@ dependencies = [
  "keyring-core",
  "libpulse-binding",
  "mimi-core",
+ "mimi-runtime",
  "objc2",
  "objc2-app-kit",
  "objc2-core-audio-types",
@@ -2814,6 +2815,27 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "mimi-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "futures-util",
+ "hyper-util",
+ "mimi-core",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "time",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]

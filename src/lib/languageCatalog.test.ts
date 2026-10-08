@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import nativeModels from "../../src-tauri/src/core/models.rs?raw";
+import nativeModels from "../../shared/mimi-runtime/src/core/models.rs?raw";
 import { setStoredUiLanguage } from "./i18n";
 import {
   AUDIO3_RECOGNITION_LANGUAGE_CODES,

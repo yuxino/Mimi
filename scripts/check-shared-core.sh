@@ -10,8 +10,10 @@ python_command="${MIMI_PYTHON:-python3}"
 if [[ -z "${MIMI_PYTHON:-}" && "${OS:-}" == "Windows_NT" ]]; then
   python_command=python
 fi
+"$python_command" -B scripts/check-shared-runtime.py
+"$python_command" -B scripts/check-shared-runtime-test.py
 "$python_command" -B scripts/shared-core-native-test.py
-for manifest in shared/mimi-core/Cargo.toml shared/mimi-android-jni/Cargo.toml scripts/updater-signature-verifier/Cargo.toml; do
+for manifest in shared/mimi-core/Cargo.toml shared/mimi-runtime/Cargo.toml shared/mimi-android-jni/Cargo.toml scripts/updater-signature-verifier/Cargo.toml; do
   cargo fmt --manifest-path "$manifest" -- --check
   cargo clippy --locked --manifest-path "$manifest" --all-targets -- -D warnings
   cargo test --locked --manifest-path "$manifest"

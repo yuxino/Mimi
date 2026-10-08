@@ -128,9 +128,27 @@ class SubtitleBusTest {
         SubtitleBus.onSourceDraft("Next unfinished sentence.")
         SubtitleBus.hideLive()
         assertFalse(SubtitleBus.liveHidden)
-        assertEquals("Complete sentence.", SubtitleBus.displaySource)
+        assertEquals("Next unfinished sentence.", SubtitleBus.displaySource)
+        assertEquals("", SubtitleBus.displayTranslation)
+        assertFalse(SubtitleBus.displayPairFinal)
         assertTrue(SubtitleBus.historySnapshot().isEmpty())
         SubtitleBus.clear()
         assertEquals("", SubtitleBus.displayTranslation)
+    }
+    @Test fun identifiedRealtimeDraftsAdvanceBeyondThePriorFinalWithoutMixingOwners() {
+        fun draft(role: String, text: String) = org.json.JSONObject().put("type", "utterance_text")
+            .put("utterance_id", "B").put("role", role).put("text", text).put("is_final", false)
+        SubtitleBus.onIdentifiedFinalPair("A", "Synthetic A.", "合成 A。", "en")
+        SubtitleBus.onCoreEvent(draft("source", "Synthetic B."), "en")
+        assertEquals("Synthetic B.", SubtitleBus.displaySource)
+        assertEquals("", SubtitleBus.displayTranslation)
+        assertFalse(SubtitleBus.displayPairFinal)
+        SubtitleBus.onCoreEvent(draft("translation", "合成 B。"))
+        assertEquals("Synthetic B.", SubtitleBus.displaySource)
+        assertEquals("合成 B。", SubtitleBus.displayTranslation)
+        assertTrue(SubtitleBus.historySnapshot().isEmpty())
+        SubtitleBus.onIdentifiedFinalPair("B", "Synthetic B.", "合成 B。", "en")
+        assertTrue(SubtitleBus.displayPairFinal)
+        assertEquals("合成 B。", SubtitleBus.displayTranslation)
     }
 }

@@ -10,6 +10,9 @@ pub const MAX_TRANSLATION_ATTEMPTS: usize = 3;
 pub const FINISH_DRAIN_TIMEOUT_MS: u64 = 3_000;
 pub const RECOGNITION_FINISH_TIMEOUT_MS: u64 = 1_000;
 pub const REALTIME_FINISH_TIMEOUT_MS: u64 = 2_000;
+// Continuous Gemini translation may omit turnComplete. Cover its two-second
+// transcript checkpoint plus late provider output within the outer stop bound.
+pub const GEMINI_FINISH_TIMEOUT_MS: u64 = 4_500;
 pub const PROVIDER_FINISH_TIMEOUT_MS: u64 = 6_000;
 pub const STARTUP_AUDIO_LIMIT_MS: u64 = 2_000;
 
@@ -21,6 +24,7 @@ pub struct TranslationPolicy {
     pub finish_drain_timeout_ms: u64,
     pub recognition_finish_timeout_ms: u64,
     pub realtime_finish_timeout_ms: u64,
+    pub gemini_finish_timeout_ms: u64,
     pub provider_finish_timeout_ms: u64,
     pub startup_audio_limit_ms: u64,
 }
@@ -33,6 +37,7 @@ pub const fn policy() -> TranslationPolicy {
         finish_drain_timeout_ms: FINISH_DRAIN_TIMEOUT_MS,
         recognition_finish_timeout_ms: RECOGNITION_FINISH_TIMEOUT_MS,
         realtime_finish_timeout_ms: REALTIME_FINISH_TIMEOUT_MS,
+        gemini_finish_timeout_ms: GEMINI_FINISH_TIMEOUT_MS,
         provider_finish_timeout_ms: PROVIDER_FINISH_TIMEOUT_MS,
         startup_audio_limit_ms: STARTUP_AUDIO_LIMIT_MS,
     }
@@ -145,6 +150,30 @@ pub fn retry_decision(code: &str, attempt: usize, elapsed_ms: u64) -> RetryDecis
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gemini_finish_policy_covers_shared_quiet_checkpoint_inside_provider_bound() {
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../../translation-contracts.json")).unwrap();
+        let expected = &contract["geminiFinishPolicy"];
+        assert_eq!(expected["finishTimeoutMs"], GEMINI_FINISH_TIMEOUT_MS);
+        assert_eq!(
+            expected["providerFinishTimeoutMs"],
+            PROVIDER_FINISH_TIMEOUT_MS
+        );
+        assert_eq!(
+            expected["quietCheckpointMs"],
+            crate::openai_transcript_committer::GEMINI_TRANSCRIPT_QUIET_MS
+        );
+        assert!(
+            expected["finishTimeoutMs"].as_u64().unwrap()
+                > expected["quietCheckpointMs"].as_u64().unwrap()
+        );
+        assert!(
+            expected["finishTimeoutMs"].as_u64().unwrap()
+                < expected["providerFinishTimeoutMs"].as_u64().unwrap()
+        );
+    }
 
     #[test]
     fn final_admission_has_one_original_budget_and_three_waiting_slots() {

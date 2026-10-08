@@ -862,3 +862,46 @@ describe("realtime drafts after a confirmed display pair", () => {
     ]);
   });
 });
+
+describe("shared realtime projection", () => {
+  const snapshot: SubtitleSnapshot = {
+    source: { text: "Synthetic B.", isFinal: false, utteranceId: "B" },
+    translation: { text: "Old A.", isFinal: true, utteranceId: "A" },
+    history: [], previewPair: null,
+    displayPair: { source: "Synthetic A.", translation: "Old A.", utteranceId: "A" }, displayPairFinal: true,
+    realtimePreview: { source: { text: "Synthetic B.", isFinal: false, utteranceId: "B" }, translation: { text: "", isFinal: false } },
+  };
+  const settings = { sourceLanguage: "en", targetLanguage: "zh", subtitleDisplayMode: "bilingual" } as const;
+  it("uses the Rust-selected lanes without attaching the prior translation", () => {
+    expect(visibleLiveSubtitles(snapshot, settings, "en", false, false)).toEqual([
+      { kind: "source", text: "Synthetic B.", isFinal: false, utteranceId: "B" },
+    ]);
+  });
+  it("keeps a new owner's same-text source final while its translation is still pending", () => {
+    const source = { text: "Synthetic A.", isFinal: true, utteranceId: "B" };
+    const value = { ...snapshot,
+      history: [{ source: "Synthetic A.", translation: "Old A.", createdAt: 1 }],
+      realtimePreview: { source, translation: { text: "", isFinal: false } },
+    };
+    expect(visibleLiveSubtitles(value, settings, "en", false, false)).toEqual([
+      { kind: "source", ...source },
+    ]);
+    expect(value.history).toHaveLength(1);
+  });
+  it("keeps a translation-first final even when its text repeats the preceding sentence", () => {
+    const translation = { text: "Old A.", isFinal: true, utteranceId: "B" };
+    const value = { ...snapshot,
+      history: [{ source: "Synthetic A.", translation: "Old A.", createdAt: 1 }],
+      realtimePreview: { source: { text: "", isFinal: false }, translation },
+    };
+    expect(visibleLiveSubtitles(value, settings, "en", false, false)).toEqual([
+      { kind: "translation", ...translation },
+    ]);
+  });
+  it("keeps complete pairs when interim display is off or the route is atomic", () => {
+    for (const [showIntermediateSubtitles, atomic] of [[false, false], [true, true]]) {
+      expect(visibleLiveSubtitles(snapshot, { ...settings, showIntermediateSubtitles }, "en", false, false, atomic)
+        .map(row => row.text)).toEqual(["Synthetic A.", "Old A."]);
+    }
+  });
+});

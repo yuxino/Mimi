@@ -30,6 +30,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var startStop: MaterialButton
     private var starting = false
     private lateinit var guide: FirstRunGuide
+    private val immersiveHelp = ImmersiveModeHelp(this)
+    private var stopObservingAppearance: (() -> Unit)? = null
     private val stateListener: () -> Unit = { runOnUiThread { refreshUi() } }
 
     private val projectionManager: MediaProjectionManager by lazy {
@@ -68,27 +70,16 @@ class MainActivity : AppCompatActivity() {
                     .putExtra("settings_section", "appearance"))
             }
         }
-        findViewById<View>(R.id.copy_capture_diagnostics).setOnClickListener {
-            val observation = MimiService.captureObservation
-            val report = "mimi Android capture diagnostics v1\n" +
-                "androidApi=${Build.VERSION.SDK_INT}\n" +
-                "source=android_playback_capture\nusage=media,game,unknown\nmicrophone=false\n" +
-                "running=${MimiService.isRunning}\n" +
-                "observation=${observation?.state?.name ?: "STOPPED"}\n" +
-                "pcmAgeMs=${observation?.pcmAgeMs ?: "unknown"}\n" +
-                "soundAgeMs=${observation?.soundAgeMs ?: "unknown"}\n" +
-                "captureError=${MimiService.lastCaptureError ?: "none"}"
-            val copied = try {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mimi capture diagnostics", report))
-                true
-            } catch (_: RuntimeException) {
-                false
+        findViewById<View>(R.id.home_immersive).setOnClickListener {
+            if (SettingsStore.immersiveSubtitles(this)) {
+                runCatching { SettingsStore.setImmersiveSubtitles(this, false); refreshUi() }
+                    .onFailure { Toast.makeText(this, R.string.service_save_failed, Toast.LENGTH_LONG).show() }
+            } else {
+                immersiveHelp.requestEnable(
+                    onConfirmed = { SettingsStore.setImmersiveSubtitles(this, true); refreshUi() },
+                    onCancelled = { refreshUi() },
+                )
             }
-            Toast.makeText(this,
-                if (copied) R.string.capture_diagnostics_copied else R.string.capture_diagnostics_copy_failed,
-                if (copied) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
-            ).show()
         }
         startStop.setOnClickListener {
             if (MimiService.isRunning) {
@@ -105,10 +96,14 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         MimiService.addStateListener(stateListener)
+        stopObservingAppearance = SettingsStore.observeAppearance(this) { runOnUiThread { refreshUi() } }
     }
 
     override fun onStop() {
         MimiService.removeStateListener(stateListener)
+        stopObservingAppearance?.invoke()
+        stopObservingAppearance = null
+        immersiveHelp.dismiss()
         super.onStop()
     }
 
@@ -133,6 +128,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshUi() {
         try { refreshAvailableUi() } catch (_: Exception) {
             startStop.isEnabled = false
+            findViewById<View>(R.id.home_immersive).isEnabled = false
             findViewById<TextView>(R.id.status).setText(R.string.service_save_failed)
             findViewById<TextView>(R.id.status_hint).setText(R.string.guide_storage_unavailable)
             findViewById<View>(R.id.status_hint).visibility = View.VISIBLE
@@ -146,6 +142,10 @@ class MainActivity : AppCompatActivity() {
         val captureState = MimiService.captureObservation?.state
         val keyOk = SettingsStore.isConfigured(this)
         val overlayOk = Settings.canDrawOverlays(this)
+        findViewById<MaterialButton>(R.id.home_immersive).apply {
+            isEnabled = true
+            setText(if (SettingsStore.immersiveSubtitles(this@MainActivity)) R.string.overlay_exit_immersive else R.string.settings_immersive)
+        }
         startStop.isEnabled = !starting
         startStop.setText(when {
             running -> R.string.stop_capture
@@ -193,6 +193,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.provider_summary).text = getString(
             if (keyOk) R.string.home_service_ready else R.string.home_service_unset, provider,
         )
+        findViewById<TextView>(R.id.model_summary).apply {
+            val models = if (running) MimiService.activeModelNames else if (keyOk)
+                runtimeModelNames(SettingsStore.runtimeConfiguration(this@MainActivity)) else emptyList()
+            text = modelNamesLabel(models)
+            visibility = if (models.isEmpty()) View.GONE else View.VISIBLE
+        }
         findViewById<SubtitlePreviewView>(R.id.subtitle_preview).configure(
             SettingsStore.fontSize(this), SettingsStore.translationColor(this),
             SettingsStore.overlayOpacity(this), SettingsStore.overlayBgAlpha(this), SettingsStore.targetLang(this),

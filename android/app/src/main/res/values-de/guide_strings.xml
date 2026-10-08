@@ -43,7 +43,7 @@
     <string name="guide_no_browser">Kein Browser zum Öffnen dieses Links verfügbar</string>
     <string name="guide_local_save">Beim Speichern wird keine Verbindung zum Dienst hergestellt. Beim Starten der Untertitel können beim Anbieter Kosten entstehen.</string>
     <string name="guide_immersive">Immersive Untertitel</string>
-    <string name="guide_immersive_hint">Nur Untertiteltext anzeigen; Videosteuerung bleibt bedienbar. Rechts „Zurück“ antippen oder den Modus in den Einstellungen abschalten, um das Untertitelfenster wiederherzustellen. „Zurück“ lässt sich vertikal verschieben.</string>
+    <string name="guide_immersive_hint">Nur Untertiteltext anzeigen; die Videosteuerung bleibt bedienbar. Mit „Zurück“ neben den Untertiteln zur vorherigen Ansicht wechseln oder den Modus auf der Startseite oder in den Einstellungen ausschalten. Die Untertitelposition bleibt erhalten.</string>
     <string name="guide_understood">Verstanden</string>
     <string name="guide_progress">Erste Schritte · %1$d / 5</string>
     <string name="guide_continue_provider">Weiter · %1$s</string>
@@ -65,7 +65,7 @@
     <string name="guide_help_xai">Einen API-Schlüssel in der xAI-Konsole erstellen und Echtzeit-Sprachzugriff sowie verfügbares Guthaben prüfen.</string>
     <string name="guide_projection_revoked">Sitzungsfreigabe beendet / widerrufen · erneut erlauben</string>
     <string name="guide_name_dashscope">Alibaba Cloud</string>
-    <string name="guide_detail_dashscope">Tongyi-Echtzeitübersetzung</string>
+    <string name="guide_detail_dashscope">Audio 3.0 · Qwen-MT</string>
     <string name="guide_name_openai">OpenAI</string>
     <string name="guide_detail_openai">Echtzeitübersetzung</string>
     <string name="guide_name_gemini">Google Gemini</string>

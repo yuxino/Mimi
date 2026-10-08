@@ -452,8 +452,14 @@ export function visibleLiveSubtitles(
       displayPair: subtitles.displayPairFinal === true ? subtitles.displayPair : null,
     };
   }
-  const displayPair = subtitles.displayPair;
   const translatedView = settings.subtitleDisplayMode !== "original" && !isSameLanguageMode(settings, detectedLanguage);
+  if (!preferAtomicPreview && translatedView && settings.showIntermediateSubtitles !== false && subtitles.realtimePreview) {
+    // The shared projection already excludes the prior confirmed owner. A
+    // current single-lane final may repeat its text before its pair completes;
+    // do not hide it by matching text against a different owner's history.
+    subtitles = { ...subtitles, ...subtitles.realtimePreview, history: [], displayPair: null, previewPair: null };
+  }
+  const displayPair = subtitles.displayPair;
   const hasRealtimeDraft = !preferAtomicPreview && translatedView && (
     (!subtitles.translation.isFinal && subtitles.translation.text.trim() !== "") ||
     (settings.subtitleDisplayMode === "bilingual" && !subtitles.source.isFinal && subtitles.source.text.trim() !== "")

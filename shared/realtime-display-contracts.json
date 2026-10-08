@@ -1,0 +1,755 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "identified-next-drafts-history-0",
+      "historyLimit": 0,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "A",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "translation",
+              "text": "合成 B。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": true
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "B",
+              "source": "Synthetic B.",
+              "translation": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "identified-next-drafts-history-6",
+      "historyLimit": 6,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "A",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "translation",
+              "text": "合成 B。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": true
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "B",
+              "source": "Synthetic B.",
+              "translation": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": true,
+            "historyCount": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "translation-first-and-owner-mismatch",
+      "historyLimit": 0,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "A",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "translation",
+              "text": "合成 B。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "unknown-C",
+              "role": "translation",
+              "text": "Unlinked.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "translation",
+              "text": "合成 B。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-text-different-utterance",
+      "historyLimit": 0,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "A",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic A.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "translation",
+              "text": "合成 A。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "B",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "legacy-realtime",
+      "historyLimit": 0,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "final_pair",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "source_draft",
+              "text": "Synthetic B."
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "translation_draft",
+              "text": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "final_pair",
+              "source": "Synthetic B.",
+              "translation": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "atomic-http-keeps-complete-pair",
+      "historyLimit": 0,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "source_utterance_draft",
+              "utterance_id": 1,
+              "text": "Synthetic A."
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "confirmed_pair",
+              "utterance_id": 1,
+              "source_utterance_id": 1,
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "source_utterance_draft",
+              "utterance_id": 2,
+              "text": "Synthetic B."
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "preview_pair",
+              "source_utterance_id": 2,
+              "source": "Synthetic B.",
+              "translation": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "confirmed_pair",
+              "utterance_id": 2,
+              "source_utterance_id": 2,
+              "source": "Synthetic B.",
+              "translation": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "reset-and-clear",
+      "historyLimit": 0,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "A",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "reset"
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "C",
+              "role": "translation",
+              "text": "合成 B。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "clear"
+            }
+          },
+          "expected": {
+            "source": "",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "D",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "D",
+              "role": "translation",
+              "text": "合成 B。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "合成 B。",
+            "confirmed": false,
+            "historyCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "late-final-does-not-rewind-current-preview",
+      "historyLimit": 6,
+      "steps": [
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "A",
+              "source": "Synthetic A.",
+              "translation": "合成 A。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic A.",
+            "translation": "合成 A。",
+            "confirmed": true,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "B",
+              "role": "source",
+              "text": "Synthetic B.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic B.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "C",
+              "role": "source",
+              "text": "Synthetic C.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic C.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 1
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "identified_final_pair",
+              "utterance_id": "B",
+              "source": "Synthetic B.",
+              "translation": "合成 B。"
+            }
+          },
+          "expected": {
+            "source": "Synthetic C.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 2
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "A",
+              "role": "translation",
+              "text": "Old draft.",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic C.",
+            "translation": "",
+            "confirmed": false,
+            "historyCount": 2
+          }
+        },
+        {
+          "operation": {
+            "type": "apply",
+            "event": {
+              "type": "utterance_text",
+              "utterance_id": "C",
+              "role": "translation",
+              "text": "合成 C。",
+              "is_final": false
+            }
+          },
+          "expected": {
+            "source": "Synthetic C.",
+            "translation": "合成 C。",
+            "confirmed": false,
+            "historyCount": 2
+          }
+        }
+      ]
+    }
+  ]
+}

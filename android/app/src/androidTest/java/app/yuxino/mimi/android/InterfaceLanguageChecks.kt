@@ -156,6 +156,21 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
     private fun checkServiceEditor(tag: String, theme: String) {
         val overlay = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
         onUi { overlay.visibility = View.GONE }
+        onUi { settings!!.findViewById<android.widget.ScrollView>(R.id.settings_scroll).fullScroll(View.FOCUS_DOWN) }
+        instrumentation.waitForIdleSync()
+        onUi {
+            val action = settings!!.findViewById<TextView>(R.id.copy_capture_diagnostics)
+            val position = IntArray(2)
+            action.getLocationOnScreen(position)
+            check(action.text.toString() == settings!!.getString(R.string.copy_capture_diagnostics))
+            check(position[0] >= 0 && position[0] + action.width <= settings!!.resources.displayMetrics.widthPixels)
+            check(action.layout.height <= action.height - action.paddingTop - action.paddingBottom) {
+                "Advanced diagnostic action clips vertically"
+            }
+        }
+        capture("${tag.ifEmpty { "system" }}-advanced-$theme")
+        onUi { settings!!.findViewById<android.widget.ScrollView>(R.id.settings_scroll).fullScroll(View.FOCUS_UP) }
+        instrumentation.waitForIdleSync()
         capture("${tag.ifEmpty { "system" }}-settings-$theme")
         onUi { settings!!.findViewById<View>(R.id.tab_service).performClick() }
         val monitor = instrumentation.addMonitor(ServiceSettingsActivity::class.java.name, null, false)

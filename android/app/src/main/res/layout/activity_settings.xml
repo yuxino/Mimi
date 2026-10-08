@@ -284,6 +284,22 @@
                         android:text="@string/settings_reset"/>
                 </LinearLayout>
             </LinearLayout>
+            <TextView
+                style="@style/TextAppearance.Mimi.Label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:text="@string/settings_advanced" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/copy_capture_diagnostics"
+                style="@style/Widget.Mimi.Button.Secondary"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginTop="8dp"
+                android:minHeight="48dp"
+                android:text="@string/copy_capture_diagnostics"
+                android:textAllCaps="false" />
         </LinearLayout>
     </app.yuxino.mimi.android.ControlScrollView>
 

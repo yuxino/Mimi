@@ -12,7 +12,7 @@
     <string name="settings_opacity">字幕の不透明度</string>
     <string name="settings_background">背景の不透明度</string>
     <string name="settings_immersive">没入字幕</string>
-    <string name="settings_immersive_help">文字だけを表示し、動画の操作を妨げません。変更はすぐに反映され、右側の退出で戻れます。</string>
+    <string name="settings_immersive_help">文字だけを表示し、動画の操作を妨げません。変更はすぐに反映されます。字幕の横から退出するか、ホームでオフにできます。</string>
     <string name="settings_history">字幕の履歴を保持</string>
     <string name="settings_history_help">初期状態ではオフです。履歴は今回のセッションだけで保持し、オフまたは停止で消去されます。</string>
     <string name="settings_reset">字幕の位置をリセット</string>

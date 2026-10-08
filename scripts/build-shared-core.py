@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build the stateless JNI adapter using Rust and the pinned Android NDK."""
+"""Build the shared provider runtime and JNI adapter using Rust and the pinned Android NDK."""
 import argparse
 import os
 from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "shared/mimi-android-jni/Cargo.toml"
@@ -59,6 +60,9 @@ def host_triple():
 
 
 def build(args):
+    # The direct build entry must enforce the same boundary as Gradle/CI.
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "check-shared-runtime.py")],
+                   cwd=ROOT, check=True)
     config, abis = native_config()
     target_dir = Path(args.target_dir).resolve()
     output = Path(args.output).resolve()
@@ -93,6 +97,8 @@ def build(args):
             raise ValueError(f"Pinned Android NDK linker is missing for {abi}")
         env = base_env.copy()
         env[f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"] = str(linker)
+        env[f"CC_{target.replace('-', '_')}"] = str(linker)
+        env[f"CXX_{target.replace('-', '_')}"] = str(toolchain / f"{clang_target}{config['minSdk']}-clang++{suffix}")
         # Encoded flags override inherited RUSTFLAGS consistently, including
         # arguments containing spaces in SDK paths. Do not inherit host flags.
         env["CARGO_ENCODED_RUSTFLAGS"] = "\x1f".join([
@@ -103,9 +109,12 @@ def build(args):
         subprocess.run(command + ["--target", target], cwd=ROOT, env=env, check=True)
         library = target_dir / target / profile / "libmimi_android_jni.so"
         symbols = subprocess.check_output([str(toolchain / f"llvm-nm{executable}"), "--dynamic", "--defined-only", str(library)], text=True)
-        entry_point = "Java_app_yuxino_mimi_android_provider_SharedSubtitleCore_exchangeRaw"
-        if not any(line.split() and line.split()[-1] == entry_point for line in symbols.splitlines()):
-            raise ValueError(f"Shared core JNI entry point is missing for {abi}")
+        required = {"Java_app_yuxino_mimi_android_provider_SharedSubtitleCore_exchangeRaw",
+                    "Java_app_yuxino_mimi_android_provider_NativeRuntimeConfiguration_exchangeRaw",
+                    "Java_app_yuxino_mimi_android_provider_NativeRuntimeConfiguration_pcmRaw"}
+        exported = {line.split()[-1] for line in symbols.splitlines() if line.split()}
+        if not required <= exported:
+            raise ValueError(f"Shared runtime JNI entry points are missing for {abi}")
         destination = output / abi
         destination.mkdir(parents=True, exist_ok=True)
         shutil.copy2(library, destination / library.name)

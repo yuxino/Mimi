@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "geminiFinishPolicy": {
+    "quietCheckpointMs": 2000,
+    "finishTimeoutMs": 4500,
+    "providerFinishTimeoutMs": 6000
+  },
   "description": "Shared text translation and provider wire semantics. Synthetic fixtures only. Platform-specific UI, transport limits and scheduling are tested separately.",
   "tencentSpeechTranslation": {
     "signing": [

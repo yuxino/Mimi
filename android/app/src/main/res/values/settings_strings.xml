@@ -16,7 +16,7 @@
     <string name="settings_opacity">Caption opacity</string>
     <string name="settings_background">Background opacity</string>
     <string name="settings_immersive">Immersive captions</string>
-    <string name="settings_immersive_help">Text only, leaving video controls accessible. Changes apply immediately; Exit is on the right.</string>
+    <string name="settings_immersive_help">Text only, leaving video controls accessible. Changes apply immediately. Exit beside the captions, or turn this off on Home.</string>
     <string name="settings_history">Keep caption history</string>
     <string name="settings_history_help">Off by default. History stays only for this session and clears when disabled or stopped.</string>
     <string name="settings_reset">Reset caption position</string>

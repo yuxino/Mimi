@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Verify every shared-core ABI and 16 KB native/APK alignment, offline."""
 import argparse
+import hashlib
 from pathlib import Path
+import re
 import struct
 import zipfile
 
@@ -9,6 +11,39 @@ ABIS = {"arm64-v8a": (2, 183), "armeabi-v7a": (1, 40), "x86_64": (2, 62), "x86":
 LIBRARY = "libmimi_android_jni.so"
 PAGE_SIZE = 16384
 NOTICES = "assets/shared-core.txt"
+ROOT = Path(__file__).resolve().parent.parent
+LOCKFILE = ROOT / "shared/mimi-android-jni/Cargo.lock"
+NOTICE_SOURCE = ROOT / "android/native-licenses/shared-core.txt"
+
+
+def verify_license_notices(content):
+    """Reject stale inventories after dependency changes or stale APK assets."""
+    # Git may check text out with CRLF on Windows. Hash/compare the reviewed
+    # LF representation, without ignoring any dependency or notice content.
+    content = content.replace(b"\r\n", b"\n")
+    expected = NOTICE_SOURCE.read_bytes().replace(b"\r\n", b"\n")
+    if content != expected:
+        raise ValueError("Shared core dependency license notices do not match the reviewed inventory")
+    lock_bytes = LOCKFILE.read_bytes().replace(b"\r\n", b"\n")
+    digest = hashlib.sha256(lock_bytes).hexdigest()
+    if f"Cargo-lock SHA256: {digest}".encode() not in content:
+        raise ValueError("Shared core dependency license inventory is stale for Cargo.lock")
+    text = content.decode("utf-8")
+    packages = re.findall(r"^Package: (\S+) (\S+)$", text, re.MULTILINE)
+    count = re.search(r"^Inventory package count: (\d+)$", text, re.MULTILINE)
+    if not count or len(packages) != int(count[1]) or len(set(packages)) != len(packages):
+        raise ValueError("Shared core dependency license inventory has missing or duplicate entries")
+    lock_text = lock_bytes.decode("utf-8")
+    locked = set()
+    for block in lock_text.split("[[package]]")[1:]:
+        if '\nsource = "registry+' not in block:
+            continue
+        name = re.search(r'^name = "([^"]+)"$', block, re.MULTILINE)
+        version = re.search(r'^version = "([^"]+)"$', block, re.MULTILINE)
+        if name and version:
+            locked.add((name[1], version[1]))
+    if not set(packages).issubset(locked):
+        raise ValueError("Shared core license inventory contains a package absent from Cargo.lock")
 
 
 def verify_elf(content, abi):
@@ -47,6 +82,7 @@ def verify_elf(content, abi):
 
 
 def verify_directory(directory):
+    verify_license_notices(NOTICE_SOURCE.read_bytes())
     actual = {path.parent.name for path in directory.glob(f"*/{LIBRARY}")}
     if actual != set(ABIS):
         raise ValueError("Generated shared core libraries do not contain exactly the four supported ABIs")
@@ -59,6 +95,7 @@ def verify_apk(path):
     with zipfile.ZipFile(path) as archive, path.open("rb") as raw:
         if NOTICES not in archive.namelist() or not archive.read(NOTICES).strip():
             raise ValueError("APK is missing the shared core dependency license notices")
+        verify_license_notices(archive.read(NOTICES))
         entries = [item for item in archive.infolist() if item.filename.endswith("/" + LIBRARY)]
         if len(entries) != len(expected) or {item.filename for item in entries} != expected:
             raise ValueError("APK must contain exactly one shared core library for each supported ABI")
