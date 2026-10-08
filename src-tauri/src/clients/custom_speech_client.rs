@@ -115,7 +115,9 @@ impl CustomSpeechClient {
         let model = custom_speech::validate_model(model)
             .map_err(|_| CustomSpeechClientError::InvalidModel)?;
         let api_key = api_key.trim();
-        if api_key.is_empty() || HeaderValue::from_str(&format!("Bearer {api_key}")).is_err() {
+        if (api_key.is_empty() && !custom_speech::is_loopback(&endpoint))
+            || (!api_key.is_empty() && HeaderValue::from_str(&format!("Bearer {api_key}")).is_err())
+        {
             return Err(CustomSpeechClientError::MissingAPIKey);
         }
         Ok(Self {
@@ -185,11 +187,13 @@ impl CustomSpeechClient {
             .clone()
             .into_client_request()
             .map_err(|_| CustomSpeechClientError::InvalidEndpoint)?;
-        request.headers_mut().insert(
-            "Authorization",
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key))
-                .map_err(|_| CustomSpeechClientError::MissingAPIKey)?,
-        );
+        if !self.api_key.is_empty() {
+            request.headers_mut().insert(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.api_key))
+                    .map_err(|_| CustomSpeechClientError::MissingAPIKey)?,
+            );
+        }
         let (socket, _) = tokio::time::timeout(
             Duration::from_secs(15),
             super::provider_network::websocket_with_message_limit(
@@ -716,6 +720,60 @@ mod tests {
         let (events, receiver) = provider_event_channel();
         client.set_event_sender(events).await;
         (client, receiver, listener)
+    }
+
+    #[tokio::test]
+    #[allow(clippy::result_large_err)]
+    async fn local_service_without_key_sends_no_authorization_header() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = CustomSpeechClient::new(
+            &format!("ws://{}/v1/realtime", listener.local_addr().unwrap()),
+            MODEL,
+            "",
+            SourceLanguage::English,
+        )
+        .unwrap();
+        client
+            .set_network(
+                ProviderNetwork::resolve(&ProxyConfig {
+                    mode: ProxyMode::Direct,
+                    url: None,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        let (events, _receiver) = provider_event_channel();
+        client.set_event_sender(events).await;
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_hdr_async(
+                stream,
+                |request: &tokio_tungstenite::tungstenite::handshake::server::Request, response| {
+                    assert!(!request.headers().contains_key("authorization"));
+                    Ok(response)
+                },
+            )
+            .await
+            .unwrap();
+            setup(&mut socket).await;
+            while let Some(message) = socket.next().await {
+                if matches!(message.unwrap(), Message::Close(_)) {
+                    break;
+                }
+            }
+        });
+        client.connect_for_probe("local-probe").await.unwrap();
+        client.disconnect().await;
+        server.await.unwrap();
+        assert!(matches!(
+            CustomSpeechClient::new(
+                "wss://remote.example/realtime",
+                MODEL,
+                "",
+                SourceLanguage::English
+            ),
+            Err(CustomSpeechClientError::MissingAPIKey)
+        ));
     }
 
     async fn wire(socket: &mut ServerSocket) -> Value {

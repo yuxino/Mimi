@@ -1,10 +1,11 @@
+import { LOCAL_PROGRAM_COPY } from "../../lib/localProgramI18n";
 import { useEffect, useRef, useState, type ComponentProps, type FormEvent } from "react";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { Icon } from "../../components/Icon";
 import { I18N, providerDisplayName } from "../../lib/i18n";
 import { credentialUnavailableHelp } from "../../lib/connectionDiagnostics";
 import type { ProviderCredentialsInput } from "../../lib/types";
-import { buildCustomSpeechCredentials, customSpeechEndpointIsValid, emptyCredentialDraft, openAICompatibleModelIsValid } from "../../lib/providerCredentials";
+import { buildCustomSpeechCredentials, customSpeechEndpointIsLoopback, customSpeechEndpointIsValid, emptyCredentialDraft, openAICompatibleModelIsValid } from "../../lib/providerCredentials";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
 import { SavedCredentialInput } from "./SavedCredentialInput";
 import { useCredentialEditorState } from "./useCredentialEditorState";
@@ -107,8 +108,8 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Alibab
             {invalid === "model" && <span id={`${speechId}-model-error`} role="alert" className="credential-unavailable">{I18N.settings.customSpeechModelInvalid}</span>}
           </label>
           <div className="settings-field">
-            <span className="service-stage__field-label"><label htmlFor={`${speechId}-key`}>{I18N.settings.apiKey}</label><SettingsHelp id={`${speechId}-address-key`} text={I18N.settings.customSpeechAddressKey} label={I18N.settings.helpLabel} /></span>
-            <SavedCredentialInput key={`${profile.id}:${speechEpoch}`} id={`${speechId}-key`} profileId={profile.id} field="apiKey" label={I18N.settings.apiKey} hasSavedValue={(savedValues?.savedFields.includes("apiKey") ?? false) && !changedEndpoint} active={props.visible !== false && !busy && !confirmingDelete} autoComplete="new-password" spellCheck={false} disabled={disabled} required={!saved || !!changedEndpoint} value={draft.apiKey} placeholder={saved && !changedEndpoint ? I18N.settings.savedTranslationKeyPlaceholder : I18N.settings.apiKeyPlaceholder} aria-describedby={`${speechId}-address-key ${noteId}`} onValueChange={value => setDraft(current => ({ ...current, apiKey: value }))} />
+            <span className="service-stage__field-label"><label htmlFor={`${speechId}-key`}>{I18N.settings.apiKey}</label><SettingsHelp id={`${speechId}-address-key`} text={customSpeechEndpointIsLoopback(endpoint) ? LOCAL_PROGRAM_COPY.optionalKey : I18N.settings.customSpeechAddressKey} label={I18N.settings.helpLabel} /></span>
+            <SavedCredentialInput key={`${profile.id}:${speechEpoch}`} id={`${speechId}-key`} profileId={profile.id} field="apiKey" label={I18N.settings.apiKey} hasSavedValue={(savedValues?.savedFields.includes("apiKey") ?? false) && !changedEndpoint} active={props.visible !== false && !busy && !confirmingDelete} autoComplete="new-password" spellCheck={false} disabled={disabled} required={(!saved || !!changedEndpoint) && !customSpeechEndpointIsLoopback(endpoint)} value={draft.apiKey} placeholder={saved && !changedEndpoint ? I18N.settings.savedTranslationKeyPlaceholder : I18N.settings.apiKeyPlaceholder} aria-describedby={`${speechId}-address-key ${noteId}`} onValueChange={value => setDraft(current => ({ ...current, apiKey: value }))} />
           </div>
         </div>
         <span className="credential-form__actions">

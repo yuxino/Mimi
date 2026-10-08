@@ -187,7 +187,7 @@ describe("provider capabilities", () => {
   });
 
   it("lists every provider exactly once with custom recognition protocols after built-in services", () => {
-    expect(new Set(SERVICE_PROVIDERS).size).toBe(12);
+    expect(new Set(SERVICE_PROVIDERS).size).toBe(13);
     expect(SERVICE_PROVIDERS).toEqual([
       "alibabaCloud",
       "googleGeminiLive",
@@ -199,6 +199,7 @@ describe("provider capabilities", () => {
       "xAIRealtime",
       "appleSpeech",
       "localSpeech",
+      "localProgram",
       "customDashScopeASR",
       "customOpenAIASR",
     ]);

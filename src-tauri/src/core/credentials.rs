@@ -96,6 +96,9 @@ pub enum ProviderCredentials {
     LocalSpeech {
         model: crate::core::local_speech::LocalSpeechModel,
     },
+    LocalProgram {
+        configuration: crate::core::local_program::LocalProgramConfiguration,
+    },
     /// Write-only request. Empty api_key reuses the profile's existing key
     /// natively; this request variant is never stored or returned over IPC.
     AlibabaTranslation {
@@ -588,6 +591,7 @@ impl ProviderCredentials {
         match self {
             Self::AppleSpeech => "apple_speech",
             Self::LocalSpeech { .. } => "local_speech",
+            Self::LocalProgram { .. } => "local_program",
             Self::AlibabaTranslation { .. } => "alibaba_translation_update",
             Self::DeepLX { .. } => "deeplx",
             Self::DeepL { .. } => "deepl",
@@ -604,6 +608,13 @@ impl ProviderCredentials {
     pub fn validated_for(&self, provider: ProviderKind) -> Result<Self, ProviderCredentialsError> {
         match (provider, self) {
             (ProviderKind::AppleSpeech, Self::AppleSpeech) => Ok(Self::AppleSpeech),
+            (ProviderKind::LocalProgram, Self::LocalProgram { configuration }) => {
+                Ok(Self::LocalProgram {
+                    configuration: configuration
+                        .validated()
+                        .map_err(|_| ProviderCredentialsError::InvalidField)?,
+                })
+            }
             (ProviderKind::LocalSpeech, Self::LocalSpeech { model }) => {
                 Ok(Self::LocalSpeech { model: *model })
             }
@@ -614,14 +625,23 @@ impl ProviderCredentials {
                     model,
                     api_key,
                 },
-            ) if provider.is_custom_speech() => Ok(Self::CustomSpeech {
-                endpoint: crate::core::protocols::custom_speech::endpoint(endpoint, provider)
-                    .map_err(|_| ProviderCredentialsError::InvalidCustomSpeechEndpoint)?
-                    .to_string(),
-                model: crate::core::protocols::custom_speech::validate_model(model)
-                    .map_err(|_| ProviderCredentialsError::InvalidCustomSpeechModel)?,
-                api_key: required_field(api_key, provider)?,
-            }),
+            ) if provider.is_custom_speech() => {
+                let endpoint = crate::core::protocols::custom_speech::endpoint(endpoint, provider)
+                    .map_err(|_| ProviderCredentialsError::InvalidCustomSpeechEndpoint)?;
+                let key = if api_key.trim().is_empty()
+                    && crate::core::protocols::custom_speech::is_loopback(&endpoint)
+                {
+                    String::new()
+                } else {
+                    required_field(api_key, provider)?
+                };
+                Ok(Self::CustomSpeech {
+                    endpoint: endpoint.to_string(),
+                    model: crate::core::protocols::custom_speech::validate_model(model)
+                        .map_err(|_| ProviderCredentialsError::InvalidCustomSpeechModel)?,
+                    api_key: key,
+                })
+            }
             (
                 ProviderKind::AlibabaCloud,
                 Self::DeepL {
@@ -737,7 +757,7 @@ impl ProviderCredentials {
     ) -> Result<String, ProviderCredentialsError> {
         let credentials = self.validated_for(provider)?;
         match credentials {
-            Self::AppleSpeech | Self::LocalSpeech { .. } => {
+            Self::AppleSpeech | Self::LocalSpeech { .. } | Self::LocalProgram { .. } => {
                 Err(ProviderCredentialsError::ProviderMismatch)
             }
             Self::ApiKey { api_key } => Ok(api_key),
@@ -752,7 +772,7 @@ impl ProviderCredentials {
     ) -> Result<Self, ProviderCredentialsError> {
         if matches!(
             provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) {
             return Err(ProviderCredentialsError::ProviderMismatch);
         }
@@ -814,6 +834,7 @@ impl ProviderCredentials {
             Self::CustomSpeech { api_key, .. } => Some(api_key),
             Self::AppleSpeech
             | Self::LocalSpeech { .. }
+            | Self::LocalProgram { .. }
             | Self::AlibabaTranslation { .. }
             | Self::DeepLX { .. }
             | Self::DeepL { .. }
@@ -1109,6 +1130,46 @@ mod tests {
         assert!(changed
             .resolve_draft(ProviderKind::CustomOpenAIASR, Some(&saved))
             .is_err());
+    }
+
+    #[test]
+    fn custom_loopback_can_omit_auth_without_forwarding_a_saved_remote_key() {
+        for provider in [
+            ProviderKind::CustomOpenAIASR,
+            ProviderKind::CustomDashScopeASR,
+        ] {
+            let saved = ProviderCredentials::CustomSpeech {
+                endpoint: "wss://speech.example/realtime".into(),
+                model: "old-model".into(),
+                api_key: "private-synthetic-key".into(),
+            };
+            for endpoint in [
+                "ws://127.0.0.1:8080/realtime",
+                "wss://localhost/realtime",
+                "ws://[::1]:8080/realtime",
+            ] {
+                let draft = ProviderCredentials::CustomSpeech {
+                    endpoint: endpoint.into(),
+                    model: "own-model".into(),
+                    api_key: String::new(),
+                };
+                let resolved = draft.resolve_draft(provider, Some(&saved)).unwrap();
+                assert!(
+                    matches!(&resolved, ProviderCredentials::CustomSpeech { api_key, model, .. } if api_key.is_empty() && model == "own-model")
+                );
+                let encoded = resolved.encode_for_keychain(provider).unwrap();
+                assert_eq!(
+                    ProviderCredentials::decode_from_keychain(provider, &encoded).unwrap(),
+                    resolved
+                );
+            }
+            let remote = ProviderCredentials::CustomSpeech {
+                endpoint: "wss://other.example/realtime".into(),
+                model: "own-model".into(),
+                api_key: String::new(),
+            };
+            assert!(remote.resolve_draft(provider, Some(&saved)).is_err());
+        }
     }
 
     #[test]

@@ -2617,6 +2617,15 @@ impl SessionManager {
         let selection = self
             .settings
             .preferences_for_profile_selection(profile, source_language)?;
+        if profile.provider == ProviderKind::LocalProgram {
+            crate::clients::local_program::validate_files(
+                profile
+                    .local_program
+                    .as_ref()
+                    .ok_or("local_program_configuration_missing")?,
+            )
+            .map_err(str::to_owned)?;
+        }
         if profile.provider == ProviderKind::LocalSpeech {
             let _lease = crate::local_models::manager()
                 .and_then(|manager| manager.acquire(profile.local_speech_model))
@@ -3889,7 +3898,9 @@ impl SessionManager {
                 .is_none_or(|configuration| {
                     !matches!(
                         configuration.provider,
-                        ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+                        ProviderKind::AppleSpeech
+                            | ProviderKind::LocalSpeech
+                            | ProviderKind::LocalProgram
                     )
                 });
         let mut maximum_latency_ms = 0;

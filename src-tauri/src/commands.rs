@@ -56,6 +56,7 @@ pub struct ServiceProfilePayload {
     pub name: String,
     pub provider: ProviderKind,
     pub local_speech_model: crate::core::local_speech::LocalSpeechModel,
+    pub local_program: Option<crate::core::local_program::LocalProgramConfiguration>,
     pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
     pub language_preset: Option<crate::core::provider::ProfileLanguagePreset>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -91,6 +92,7 @@ impl ServiceProfilePayload {
             provider: profile.provider,
             qwen_mt_model: profile.qwen_mt_model,
             local_speech_model: profile.local_speech_model,
+            local_program: profile.local_program,
             language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
             credential_state,
@@ -113,6 +115,7 @@ impl ServiceProfilePayload {
             provider: profile.provider,
             qwen_mt_model: profile.qwen_mt_model,
             local_speech_model: profile.local_speech_model,
+            local_program: profile.local_program,
             language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
             credential_state: CredentialState::Unavailable,
@@ -945,6 +948,7 @@ mod tests {
             credential_storage: "keychain",
             profiles: vec![ServiceProfilePayload {
                 local_speech_model: Default::default(),
+                local_program: None,
                 qwen_mt_model: Default::default(),
                 language_preset: None,
                 speech_network_proxy: None,
@@ -2080,16 +2084,23 @@ pub async fn profile_update(
     custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
     language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
     qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
+    local_program: Option<crate::core::local_program::LocalProgramConfiguration>,
 ) -> Result<SettingsSnapshotPayload, String> {
     let _lifecycle = state.session.settings_mutation_guard(true).await?;
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
+    if let Some(program) = &local_program {
+        crate::clients::local_program::validate_files(program).map_err(str::to_owned)?;
+    }
     let previous_profile = state.settings.active_profile()?;
     let changes_active_speech_route = previous_profile.id == profile_id
-        && speech_network_proxy
+        && (local_program
             .as_ref()
-            .is_some_and(|proxy| previous_profile.speech_network_proxy.as_ref() != Some(proxy));
+            .is_some_and(|program| previous_profile.local_program.as_ref() != Some(program))
+            || speech_network_proxy.as_ref().is_some_and(|proxy| {
+                previous_profile.speech_network_proxy.as_ref() != Some(proxy)
+            }));
     let configuration_failure = state.session.configuration_failure_snapshot();
-    state.settings.update_profile_options_with_model(
+    state.settings.update_profile_options_with_runtime(
         &profile_id,
         name.as_deref(),
         speech_network_proxy,
@@ -2099,6 +2110,7 @@ pub async fn profile_update(
         custom_speech_languages_patch,
         language_preset_patch,
         qwen_mt_model,
+        local_program,
     )?;
     state
         .session
@@ -2819,6 +2831,37 @@ pub fn local_models_status() -> Result<crate::local_models::LocalModelsSnapshot,
     crate::local_models::manager()
         .map(|manager| manager.snapshot())
         .map_err(str::to_owned)
+}
+
+#[tauri::command]
+pub async fn local_program_pick_path(
+    app: AppHandle,
+    directory: bool,
+    title: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if title.chars().count() > 128 || title.chars().any(char::is_control) {
+        return Err("local_program_picker_failed".into());
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let picker = app.dialog().file().set_title(title);
+    let completed = move |path: Option<tauri_plugin_dialog::FilePath>| {
+        let _ = sender.send(path);
+    };
+    if directory {
+        picker.pick_folder(completed);
+    } else {
+        picker.pick_file(completed);
+    }
+    receiver
+        .await
+        .map_err(|_| "local_program_picker_failed".to_owned())?
+        .map(|path| {
+            path.into_path()
+                .map(|path| path.to_string_lossy().into_owned())
+                .map_err(|_| "local_program_picker_failed".to_owned())
+        })
+        .transpose()
 }
 #[tauri::command]
 pub async fn local_model_download(

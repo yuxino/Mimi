@@ -395,7 +395,7 @@ export function appDesktopShortcutCommands(): Promise<DesktopShortcutCommands | 
 export interface ConnectionDiagnostic {
   credential: "present" | "missing" | "unavailable" | "localDevUnavailable" | "serviceUnavailable" | "accessDenied" | "invalid";
   service: "available" | "unavailable" | "notTested";
-  reason: null | "credentialsMissing" | "credentialsUnavailable" | "localDevCredentialsUnavailable" | "credentialsServiceUnavailable" | "credentialsAccessDenied" | "invalidConfiguration" | "unsupportedLanguage" | "localRecognitionOverloaded" | "localRecognitionTimeout" | "authenticationRejected" | "serviceNotActivated" | "quotaExhausted" | "concurrencyLimited" | "serviceRejected" | "timeout" | "unreachable" | "textTranslationNotConfigured" | "appleSpeechAssetsMissing" | "appleSpeechPreparing" | "appleSpeechStatusFailed" | "appleSpeechLanguageUnsupported" | "appleSpeechUnavailable" | "appleSpeechRecognitionFailed";
+  reason: null | "credentialsMissing" | "credentialsUnavailable" | "localDevCredentialsUnavailable" | "credentialsServiceUnavailable" | "credentialsAccessDenied" | "invalidConfiguration" | "unsupportedLanguage" | "localRecognitionOverloaded" | "localRecognitionTimeout" | "localProgramFailed" | "authenticationRejected" | "serviceNotActivated" | "quotaExhausted" | "concurrencyLimited" | "serviceRejected" | "timeout" | "unreachable" | "textTranslationNotConfigured" | "appleSpeechAssetsMissing" | "appleSpeechPreparing" | "appleSpeechStatusFailed" | "appleSpeechLanguageUnsupported" | "appleSpeechUnavailable" | "appleSpeechRecognitionFailed";
   elapsedMs?: number | null;
 }
 export type ConnectionCheckStage = "speech" | "text";
@@ -409,3 +409,7 @@ export function localModelsStatus(): Promise<LocalModelsSnapshot> {
 export const downloadLocalModel = (model: LocalSpeechModel): Promise<void> => invoke("local_model_download", { model });
 export const cancelLocalModelDownload = (model: LocalSpeechModel): Promise<void> => invoke("local_model_cancel", { model });
 export const deleteLocalModel = (model: LocalSpeechModel): Promise<void> => invoke("local_model_delete", { model });
+
+export function pickLocalProgramPath(directory: boolean, title: string): Promise<string | null> {
+  return invoke("local_program_pick_path", { directory, title });
+}

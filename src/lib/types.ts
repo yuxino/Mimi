@@ -192,6 +192,9 @@ export interface SettingsDraft {
   networkProxy?: NetworkProxyConfig;
 }
 
+export type LocalProgramEngine = "whisperCpp" | "mimiStdio";
+export interface LocalProgramConfiguration { engine: LocalProgramEngine; executable: string; modelPath: string; arguments: string[] }
+
 export type LocalSpeechModel = "qwenSmall" | "qwenStandard";
 export interface LocalModelStatus {
   id: LocalSpeechModel; name: string; downloadBytes: number; downloadedBytes: number;
@@ -202,6 +205,7 @@ export interface LocalModelsSnapshot { available: boolean; models: LocalModelSta
 
 export type ServiceProvider =
   | "localSpeech"
+  | "localProgram"
   | "appleSpeech"
   | "alibabaCloud"
   | "openAIRealtime"
@@ -250,6 +254,7 @@ export type QwenMTModel = "lite" | "flash" | "plus";
 export type TextTranslationNameDraft = { route: Exclude<TextTranslation, "followService">; name: string };
 export type ProfileLanguagePreset = { sourceLanguage: SourceLanguage; targetLanguage: TargetLanguage };
 export type ProfileOptionsDraft = ProfileNetworkProxyDraft & {
+  localProgram?: LocalProgramConfiguration;
   qwenMtModel?: QwenMTModel;
   languagePreset?: ProfileLanguagePreset | null;
   speechRecognitionName?: string;
@@ -259,6 +264,7 @@ export type ProfileOptionsDraft = ProfileNetworkProxyDraft & {
 
 export interface ServiceProfile {
   localSpeechModel?: LocalSpeechModel;
+  localProgram?: LocalProgramConfiguration | null;
   id: string;
   name: string;
   provider: ServiceProvider;

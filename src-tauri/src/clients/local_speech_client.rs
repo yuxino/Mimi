@@ -1,11 +1,12 @@
 //! Bounded private stdio adapter for the bundled, local-only MLX worker.
+use super::local_program::LocalWorkerRuntime;
 use super::provider_events::ProviderEventSender;
 use super::recognition_client::RecognitionClientError;
 use crate::core::local_speech::LocalSpeechModel;
 use crate::core::models::SourceLanguage;
 use crate::core::protocols::custom_speech::{AudioTurnAction, PcmTurnGate};
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::local_models::{self, ModelLease};
+use crate::local_models::ModelLease;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::process::Stdio;
@@ -56,7 +57,7 @@ struct Lifecycle {
     lease: Option<ModelLease>,
 }
 struct Inner {
-    model: LocalSpeechModel,
+    runtime: LocalWorkerRuntime,
     source: SourceLanguage,
     content: Mutex<Content>,
     lifecycle: tokio::sync::Mutex<Lifecycle>,
@@ -87,9 +88,18 @@ pub struct LocalSpeechClient {
 }
 impl LocalSpeechClient {
     pub fn new(model: LocalSpeechModel, source: SourceLanguage) -> Self {
+        Self::with_runtime(LocalWorkerRuntime::Managed(model), source)
+    }
+    pub fn external(
+        config: crate::core::local_program::LocalProgramConfiguration,
+        source: SourceLanguage,
+    ) -> Self {
+        Self::with_runtime(LocalWorkerRuntime::Program(config), source)
+    }
+    fn with_runtime(runtime: LocalWorkerRuntime, source: SourceLanguage) -> Self {
         Self {
             inner: Arc::new(Inner {
-                model,
+                runtime,
                 source,
                 content: Mutex::new(Content::default()),
                 lifecycle: tokio::sync::Mutex::new(Lifecycle::default()),
@@ -109,19 +119,13 @@ impl LocalSpeechClient {
         self.disconnect().await;
         let generation = self.inner.generation.load(Ordering::SeqCst);
         let mut cancel = self.inner.cancel.subscribe();
-        let lease = local_models::manager()
-            .and_then(|manager| manager.acquire(self.inner.model))
+        let launch = self
+            .inner
+            .runtime
+            .prepare(self.inner.source)
             .map_err(error)?;
-        let metal = lease
-            .helper
-            .parent()
-            .ok_or_else(|| error("local_models_unavailable"))?
-            .join("../Resources/mlx.metallib");
-        let mut child = tokio::process::Command::new(&lease.helper)
-            .arg(self.inner.model.directory())
-            .arg(&lease.directory)
-            .arg(self.inner.source.raw_value())
-            .arg(metal)
+        let mut child = super::local_program::command(&launch.executable)
+            .args(&launch.arguments)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -221,13 +225,7 @@ impl LocalSpeechClient {
                         let language = event
                             .get("language")
                             .and_then(Value::as_str)
-                            .filter(|value| {
-                                inner
-                                    .model
-                                    .source_languages()
-                                    .iter()
-                                    .any(|source| source.raw_value() == *value)
-                            })
+                            .filter(|value| inner.runtime.accepts_language(value))
                             .map(str::to_owned);
                         let value = if kind == "draft" {
                             LiveTranslateServerEvent::SourceUtteranceDraft {
@@ -271,7 +269,7 @@ impl LocalSpeechClient {
             }
         }));
         lifecycle.child = Some(child);
-        lifecycle.lease = Some(lease);
+        lifecycle.lease = launch.lease;
         Ok(())
     }
     pub fn send_audio(&self, pcm: &[u8]) -> Result<(), RecognitionClientError> {

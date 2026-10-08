@@ -30,3 +30,6 @@ pub mod deeplx_client;
 mod translation_contract_tests;
 
 pub mod local_speech_client;
+
+pub mod local_program;
+pub mod whisper_cli_client;

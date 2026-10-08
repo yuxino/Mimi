@@ -173,6 +173,11 @@ impl LiveTranslationConfiguration {
                 .source_languages
                 .retain(|language| sources.contains(language));
         }
+        if let ProviderCredentials::LocalProgram { configuration } = &self.credentials {
+            capabilities
+                .source_languages
+                .retain(|language| configuration.accepts_language(language.raw_value()));
+        }
         capabilities.for_source(self.source_language)
     }
 
@@ -180,7 +185,7 @@ impl LiveTranslationConfiguration {
     pub fn validated(&self) -> Result<Self, LiveTranslationConfigurationError> {
         let network_proxy = if matches!(
             self.provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) {
             ProxyConfig {
                 mode: crate::core::network_proxy::ProxyMode::Direct,
@@ -194,7 +199,7 @@ impl LiveTranslationConfiguration {
             Some(TextTranslationCredentials::Apple)
         ) || (matches!(
             self.provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) && !self.target_language.translates_audio())
         {
             ProxyConfig {

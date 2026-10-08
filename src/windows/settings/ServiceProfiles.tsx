@@ -1,3 +1,5 @@
+import { LocalProgramSettings } from "./LocalProgramSettings";
+import { LOCAL_PROGRAM_COPY } from "../../lib/localProgramI18n";
 import { LocalModelLibrary, LocalSpeechSettings } from "./LocalModelLibrary";
 import { useLocalModels } from "./useLocalModels";
 import { LOCAL_MODEL_COPY } from "../../lib/localModelI18n";
@@ -269,9 +271,9 @@ export function ServiceProfiles({
     selectedProfile?.provider, settings.activeProfileId, showsEditor, visible]);
 
   const hasIndependentTextProxy = !!selectedProfile && (isStandaloneAsrProvider(selectedProfile.provider) || ["alibabaCloud", "deepLX"].includes(selectedProfile.provider));
-  const hasRemoteTextProxy = hasIndependentTextProxy && selectedProfile && textTranslationForProfile(selectedProfile) !== "apple" && !(selectedProfile.provider === "localSpeech" && textTranslationForProfile(selectedProfile) === "followService");
+  const hasRemoteTextProxy = hasIndependentTextProxy && selectedProfile && textTranslationForProfile(selectedProfile) !== "apple" && !(["localSpeech", "localProgram"].includes(selectedProfile.provider) && textTranslationForProfile(selectedProfile) === "followService");
 
-  const SelectedCredentialEditor = selectedProfile?.provider === "localSpeech" ? LocalSpeechSettings : selectedProfile?.provider === "appleSpeech" ? AppleSpeechSettings : selectedProfile && isCustomSpeechProvider(selectedProfile.provider) ? CustomSpeechCredentialEditor : selectedProfile && ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? AlibabaCredentialEditor : CredentialEditor;
+  const SelectedCredentialEditor = selectedProfile?.provider === "localProgram" ? LocalProgramSettings : selectedProfile?.provider === "localSpeech" ? LocalSpeechSettings : selectedProfile?.provider === "appleSpeech" ? AppleSpeechSettings : selectedProfile && isCustomSpeechProvider(selectedProfile.provider) ? CustomSpeechCredentialEditor : selectedProfile && ["alibabaCloud", "deepLX"].includes(selectedProfile.provider) ? AlibabaCredentialEditor : CredentialEditor;
 
   const requiresStop = sessionIsActive || sessionIsPaused || sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
   const mutationsDisabled = requiresStop || pendingAction !== null;
@@ -540,13 +542,13 @@ export function ServiceProfiles({
   const renderConnectionCheck = (profile: ServiceProfile, stage?: ConnectionCheckStage, draft?: ProviderCredentialsInput | null, sourceLanguage?: SourceLanguage) => {
     const key = stage ?? "combined";
     const outcome = diagnostics[key];
-    const context = JSON.stringify([profile.provider, textTranslationForProfile(profile), sourceLanguage ?? settings.sourceLanguage,
+    const context = JSON.stringify([profile.provider, profile.localProgram, textTranslationForProfile(profile), sourceLanguage ?? settings.sourceLanguage,
       stage === "speech" ? null : settings.targetLanguage]);
     return <DraftConnectionCheck key={`${profile.id}:${key}`} draft={draft} context={context}
       outcome={outcome?.profileId === profile.id ? outcome : undefined}
       pending={pendingCheckStage === key} disabled={mutationsDisabled || (profile.provider === "appleSpeech" && stage === "speech" && apple.loading)}
       onCheck={input => { if (draft !== null) handleConnectionCheck(input, stage, draft, sourceLanguage); }}
-      label={stage === "text" ? I18N.settings.checkTextTranslation : stage === "speech" ? I18N.settings.checkSpeechRecognition : undefined} />;
+      label={stage === "speech" && profile.provider === "localProgram" ? LOCAL_PROGRAM_COPY.check : stage === "text" ? I18N.settings.checkTextTranslation : stage === "speech" ? I18N.settings.checkSpeechRecognition : undefined} />;
   };
 
   if (initializationStatus !== "ready") {
@@ -589,7 +591,7 @@ export function ServiceProfiles({
                 <div className="service-detail__title">
                   <div className="service-detail__name-help"><h2 ref={profileDetailHeading} tabIndex={-1} key={selectedProfile.name}>{profileTitle(selectedProfile)}</h2><SettingsHelp text={profileDescription(selectedProfile)} label={I18N.settings.helpLabel} /></div>
                   <div className="service-detail__status">
-                    {selectedProfile.provider === "localSpeech" ? <LocalModelBadge model={local.snapshot?.models.find(model => model.id === (selectedProfile.localSpeechModel ?? "qwenSmall"))} /> : <CredentialBadge state={credentialStateForTarget(selectedProfile, settings.targetLanguage)} nativeSpeech={selectedProfile.provider === "appleSpeech"} />}
+                    {selectedProfile.provider === "localProgram" ? <LocalProgramBadge profile={selectedProfile} /> : selectedProfile.provider === "localSpeech" ? <LocalModelBadge model={local.snapshot?.models.find(model => model.id === (selectedProfile.localSpeechModel ?? "qwenSmall"))} /> : <CredentialBadge state={credentialStateForTarget(selectedProfile, settings.targetLanguage)} nativeSpeech={selectedProfile.provider === "appleSpeech"} />}
                     {selectedProfile.id === settings.activeProfileId && (
                       <span className="profile-active-badge">
                         <Icon name="checkmark" />
@@ -610,6 +612,18 @@ export function ServiceProfiles({
           </div>
           <div className="service-detail__connection">
             <SelectedCredentialEditor
+              onSaveProgram={async configuration => {
+                if (mutationInFlight.current || mutationsDisabled) throw new Error("profile-change-requires-stop");
+                mutationInFlight.current = true;
+                setPendingAction("save-model");
+                try {
+                  await trackProfileOperation(() => updateProfile(selectedProfile.id, undefined, { localProgram: configuration }));
+                  invalidateProfileCheck(selectedProfile.id, "speech");
+                } finally {
+                  mutationInFlight.current = false;
+                  setPendingAction(null);
+                }
+              }}
               support={apple.support} settings={settings} requiresStop={requiresStop} loading={apple.loading} failed={apple.failed} sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage}
               resourceRefreshDisabled={pendingAction !== null}
               languageChangesDisabled={selectionDisabled}
@@ -668,9 +682,9 @@ export function ServiceProfiles({
           {isCustomSpeechProvider(selectedProfile.provider) && <CustomSpeechLanguageSettings key={`${selectedProfile.id}-languages`}
             profile={selectedProfile} disabled={mutationsDisabled || selectedProfileReadOnly}
             onSave={languages => handleSaveSpeechLanguages(selectedProfile, languages)} />}
-          {(!["appleSpeech", "localSpeech"].includes(selectedProfile.provider) || hasRemoteTextProxy) && <section className="service-proxies" aria-label={I18N.settings.networkProxyTitle}>
+          {(!["appleSpeech", "localSpeech", "localProgram"].includes(selectedProfile.provider) || hasRemoteTextProxy) && <section className="service-proxies" aria-label={I18N.settings.networkProxyTitle}>
             <h3>{I18N.settings.networkProxyTitle}</h3>
-            {!["appleSpeech", "localSpeech"].includes(selectedProfile.provider) && <NetworkProxySettings key={`${selectedProfile.id}-speech-proxy`} embedded
+            {!["appleSpeech", "localSpeech", "localProgram"].includes(selectedProfile.provider) && <NetworkProxySettings key={`${selectedProfile.id}-speech-proxy`} embedded
               label={hasIndependentTextProxy ? I18N.settings.speechRecognition : I18N.settings.voiceTranslation}
               scope={hasIndependentTextProxy ? I18N.settings.networkProxySpeechScope : I18N.settings.networkProxyIntegratedScope}
               value={selectedProfile.speechNetworkProxy ?? settings.networkProxy ?? DEFAULT_NETWORK_PROXY} disabled={mutationsDisabled}
@@ -762,7 +776,7 @@ export function ServiceProfiles({
                       void handleSelect(profile.id);
                     else openEditor(profile.id);
                   }}
-                  aria-label={`${profile.name}${isCustomSpeechProvider(profile.provider) && profile.speechRecognitionName?.trim() ? `, ${I18N.settings.speechRecognition}: ${speechRecognitionDisplayName(profile)}` : ""}, ${profile.provider === "localSpeech" ? local.snapshot?.models.some(model => model.id === (profile.localSpeechModel ?? "qwenSmall") && model.installed) ? LOCAL_MODEL_COPY.installed : LOCAL_MODEL_COPY.missing : credentialStateText(credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage), profile.provider === "appleSpeech")}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}: ${canUseProfile(profile) && profileSelectionChangesSettings(profile, settings) ? I18N.settings.useProfile : I18N.settings.editProfile}`}
+                  aria-label={`${profile.name}${isCustomSpeechProvider(profile.provider) && profile.speechRecognitionName?.trim() ? `, ${I18N.settings.speechRecognition}: ${speechRecognitionDisplayName(profile)}` : ""}, ${profile.provider === "localProgram" ? profile.localProgram ? LOCAL_PROGRAM_COPY.ready : LOCAL_PROGRAM_COPY.missing : profile.provider === "localSpeech" ? local.snapshot?.models.some(model => model.id === (profile.localSpeechModel ?? "qwenSmall") && model.installed) ? LOCAL_MODEL_COPY.installed : LOCAL_MODEL_COPY.missing : credentialStateText(credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage), profile.provider === "appleSpeech")}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}: ${canUseProfile(profile) && profileSelectionChangesSettings(profile, settings) ? I18N.settings.useProfile : I18N.settings.editProfile}`}
                 >
                   <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
@@ -772,7 +786,7 @@ export function ServiceProfiles({
                     {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock" | "apple"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
                   </span>
                   <span className="service-row__state">
-                    {profile.provider === "localSpeech" ? <LocalModelBadge model={local.snapshot?.models.find(model => model.id === (profile.localSpeechModel ?? "qwenSmall"))} /> : <CredentialBadge state={credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage)} nativeSpeech={profile.provider === "appleSpeech"} />}
+                    {profile.provider === "localProgram" ? <LocalProgramBadge profile={profile} /> : profile.provider === "localSpeech" ? <LocalModelBadge model={local.snapshot?.models.find(model => model.id === (profile.localSpeechModel ?? "qwenSmall"))} /> : <CredentialBadge state={credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage)} nativeSpeech={profile.provider === "appleSpeech"} />}
                     {profile.id === settings.activeProfileId && (
                       <span className="profile-active-badge">
                         {I18N.settings.activeProfile}
@@ -1072,6 +1086,7 @@ function profileTitle(profile: ServiceProfile): string {
 }
 
 function profileDescription(profile: ServiceProfile): string {
+  if (profile.provider === "localProgram") return LOCAL_PROGRAM_COPY.programHelp;
   if (profile.provider === "appleSpeech") return I18N.settings.appleSpeechDescription;
   if (isCustomSpeechProvider(profile.provider)) return [I18N.settings.customSpeechDescription, I18N.settings.customSpeechLanguages].join("\n");
   const translation = textTranslationForProfile(profile);
@@ -1181,16 +1196,16 @@ function ProviderPicker({
       <div className="provider-picker__tabs" aria-label={I18N.settings.chooseProvider}>
         {(["cloud", "local", "custom"] as const).map(key => <button key={key} type="button" aria-pressed={group === key} onClick={() => { setSelectedProvider(null); setGroup(key); }}>{key === "local" ? LOCAL_MODEL_COPY.title : LOCAL_MODEL_COPY[key]}</button>)}
       </div>
-      {group === "local" && <LocalModelLibrary disabled={disabled} onUse={(model, name) => onChoose("localSpeech", model, name)} />}
+      {group === "local" && <><LocalModelLibrary disabled={disabled} onUse={(model, name) => onChoose("localSpeech", model, name)} /><button type="button" className="settings-link local-models__own" disabled={disabled} onClick={() => { setGroup("custom"); setSelectedProvider("localProgram"); }}>{LOCAL_PROGRAM_COPY.own}<Icon name="chevron-right" /></button></>}
       <div className="provider-picker__options">
-        {SERVICE_PROVIDERS.filter(provider => provider !== "localSpeech" && (group === "local" ? provider === "appleSpeech" && apple.support?.available : group === "custom" ? isCustomSpeechProvider(provider) : provider !== "appleSpeech" && !isCustomSpeechProvider(provider))).map((provider) => (
+        {SERVICE_PROVIDERS.filter(provider => provider !== "localSpeech" && (group === "local" ? provider === "appleSpeech" && apple.support?.available : group === "custom" ? provider === "localProgram" || provider === "customOpenAIASR" : provider !== "appleSpeech" && provider !== "localProgram" && !isCustomSpeechProvider(provider))).map((provider) => (
           <div className="provider-picker__option-row" key={provider}>
             <button type="button" className="provider-option" data-provider={provider} disabled={disabled} onClick={() => setSelectedProvider(provider)}>
               <ProviderIcon provider={provider} />
-              <span><strong>{providerDisplayName(provider)}</strong></span>
+              <span><strong>{group === "custom" ? provider === "localProgram" ? LOCAL_PROGRAM_COPY.own : LOCAL_PROGRAM_COPY.connect : providerDisplayName(provider)}</strong></span>
               <Icon name="chevron-right" />
             </button>
-            <SettingsHelp text={providerDescription(provider)} label={`${providerDisplayName(provider)}: ${I18N.settings.helpLabel}`} />
+            <SettingsHelp text={group === "custom" && provider !== "localProgram" ? LOCAL_PROGRAM_COPY.connectHelp : providerDescription(provider)} label={`${providerDisplayName(provider)}: ${I18N.settings.helpLabel}`} />
           </div>
         ))}
       </div>
@@ -1199,11 +1214,17 @@ function ProviderPicker({
           <ProviderIcon provider={selectedProvider} />
           <div className="provider-picker__name-help"><h3>{providerDisplayName(selectedProvider)}</h3><SettingsHelp text={providerDescription(selectedProvider)} label={I18N.settings.helpLabel} /></div>
         </div>
+        {isCustomSpeechProvider(selectedProvider) && <fieldset className="provider-picker__protocol"><legend>{LOCAL_PROGRAM_COPY.protocol}</legend>{(["customOpenAIASR", "customDashScopeASR"] as const).map(provider => <button key={provider} type="button" className={`settings-button settings-button--compact${selectedProvider === provider ? " settings-button--primary" : ""}`} aria-pressed={selectedProvider === provider} disabled={disabled} onClick={() => setSelectedProvider(provider)}>{provider === "customOpenAIASR" ? "OpenAI Realtime" : "DashScope"}</button>)}</fieldset>}
         {requiresStop && <InlineFeedback tone="info">{I18N.settings.profileCreateRequiresStop}</InlineFeedback>}
         {feedback && <InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback>}
       </SettingsConfirmation>}
     </div>
   );
+}
+
+function LocalProgramBadge({ profile }: { profile: ServiceProfile }) {
+  const label = profile.localProgram ? LOCAL_PROGRAM_COPY.ready : LOCAL_PROGRAM_COPY.missing;
+  return <Tooltip label={label} popupClassName="settings-help-tooltip">{descriptionId => <span className="credential-badge" data-state={profile.localProgram ? "present" : "missing"} role="img" aria-label={label} aria-describedby={descriptionId} tabIndex={0}><Icon name={profile.localProgram ? "checkmark-circle" : "exclamation-triangle"} /></span>}</Tooltip>;
 }
 
 function LocalModelBadge({ model }: { model?: LocalModelStatus }) {
@@ -1218,6 +1239,8 @@ function CredentialBadge({ state, nativeSpeech = false }: { state: CredentialSta
 
 function providerDescription(provider: ServiceProvider): string {
   switch (provider) {
+    case "localProgram":
+      return LOCAL_PROGRAM_COPY.programHelp;
     case "localSpeech":
       return LOCAL_MODEL_COPY.privacy;
     case "appleSpeech":

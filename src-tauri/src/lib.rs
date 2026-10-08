@@ -399,6 +399,7 @@ pub fn run() {
             commands::settings_save,
             commands::profile_create,
             commands::local_models_status,
+            commands::local_program_pick_path,
             commands::local_model_download,
             commands::local_model_cancel,
             commands::local_model_delete,

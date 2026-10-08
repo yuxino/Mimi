@@ -379,9 +379,10 @@ async function click(label: string) {
 }
 async function previewProvider(provider: ServiceProfile["provider"]) {
   await click(provider === "appleSpeech" ? LOCAL_MODEL_COPY.title : provider.startsWith("custom") ? LOCAL_MODEL_COPY.custom : LOCAL_MODEL_COPY.cloud);
-  const button = host.querySelector<HTMLButtonElement>(`.provider-option[data-provider="${provider}"]`)!;
+  const button = host.querySelector<HTMLButtonElement>(`.provider-option[data-provider="${provider === "customDashScopeASR" ? "customOpenAIASR" : provider}"]`)!;
   expect(button).toBeTruthy();
   await act(async () => button.click());
+  if (provider === "customDashScopeASR") await click("DashScope");
 }
 async function change(selector: string, value: string) {
   const node = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
@@ -448,9 +449,9 @@ it.each(["zh", "en", "ja"] as const)("previews a provider and leaves settings un
   await render();
   await click(I18N.settings.addProfile);
   const options = [...host.querySelectorAll<HTMLButtonElement>(".provider-option")];
-  expect(options.map(option => option.dataset.provider)).toEqual(SERVICE_PROVIDERS.filter(provider => !["appleSpeech", "localSpeech", "customDashScopeASR", "customOpenAIASR"].includes(provider)));
+  expect(options.map(option => option.dataset.provider)).toEqual(SERVICE_PROVIDERS.filter(provider => !["appleSpeech", "localSpeech", "localProgram", "customDashScopeASR", "customOpenAIASR"].includes(provider)));
   await click(LOCAL_MODEL_COPY.custom);
-  expect([...host.querySelectorAll<HTMLButtonElement>(".provider-option")].map(option => option.dataset.provider)).toEqual(["customDashScopeASR", "customOpenAIASR"]);
+  expect([...host.querySelectorAll<HTMLButtonElement>(".provider-option")].map(option => option.dataset.provider)).toEqual(["localProgram", "customOpenAIASR"]);
   expect(host.querySelector(".provider-picker small, .provider-picker p")).toBeNull();
   expect(host.querySelector(".provider-picker__heading .settings-help-control__description")?.textContent).toBe(I18N.settings.chooseProviderDescription);
   await previewProvider("customOpenAIASR");

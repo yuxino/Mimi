@@ -1,3 +1,4 @@
+import { LOCAL_PROGRAM_COPY, localProgramError } from "./localProgramI18n";
 import { LOCAL_MODEL_COPY, localModelError } from "./localModelI18n";
 import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
 import { supplemental } from "./locales/supplemental";
@@ -119,7 +120,7 @@ export function diagnosticCopy(platform: DiagnosticPlatform = diagnosticPlatform
   return {
     ...labels,
     storage: labels.storage,
-    reasons: { ...labels.reasons, credentialsAccessDenied: recovery,
+    reasons: { ...labels.reasons, credentialsAccessDenied: recovery, localProgramFailed: LOCAL_PROGRAM_COPY.runError,
       appleSpeechAssetsMissing: I18N.settings.appleSpeechAssetsMissing,
       appleSpeechPreparing: I18N.settings.appleSpeechPreparationInProgress,
       appleSpeechStatusFailed: I18N.settings.appleSpeechLoadFailed,
@@ -332,6 +333,7 @@ export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlat
   if (error === "apple_translation_cancelled") return I18N.settings.appleTranslationCancelled;
   if (error === "apple_translation_busy") return I18N.settings.appleTranslationBusy;
   if (["apple_translation_timeout", "apple_translation_failed", "apple_translation_invalid_input", "apple_translation_invalid_result"].includes(error)) return I18N.settings.appleTranslationFailed;
+  if (typeof error === "string" && error.startsWith("local_program_")) return localProgramError(error);
   if (error === "local_model_missing") return `${LOCAL_MODEL_COPY.missing}. ${LOCAL_MODEL_COPY.download}.`;
   if (typeof error === "string" && (error.startsWith("local_model_") || error === "local_models_unavailable")) return localModelError(error);
   if (error === "apple_speech_assets_missing") return I18N.settings.appleSpeechAssetsMissing;

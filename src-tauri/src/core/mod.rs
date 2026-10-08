@@ -14,6 +14,7 @@ pub mod diagnostics;
 #[cfg(any(target_os = "macos", test))]
 pub mod dock_presentation;
 pub mod echo_cancellation;
+pub mod local_program;
 pub mod local_speech;
 pub mod models;
 pub mod network_proxy;

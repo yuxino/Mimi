@@ -54,6 +54,7 @@ pub enum ConnectionCheckReason {
     UnsupportedLanguage,
     LocalRecognitionOverloaded,
     LocalRecognitionTimeout,
+    LocalProgramFailed,
     AuthenticationRejected,
     ServiceNotActivated,
     QuotaExhausted,
@@ -412,7 +413,10 @@ async fn probe_text_translation(
                 .await
                 .map_err(|error| openai_compatible_reason(&error))?
         }
-        ProviderCredentials::CustomSpeech { .. } | ProviderCredentials::AppleSpeech => {
+        ProviderCredentials::CustomSpeech { .. }
+        | ProviderCredentials::AppleSpeech
+        | ProviderCredentials::LocalSpeech { .. }
+        | ProviderCredentials::LocalProgram { .. } => {
             probe_independent_text_translation(
                 configuration
                     .text_credentials
@@ -440,7 +444,7 @@ async fn probe_custom_speech(
 ) -> Result<(), ConnectionCheckReason> {
     let mut asr =
         RecognitionClient::standalone(configuration).map_err(|error| recognition_reason(&error))?;
-    if configuration.provider != ProviderKind::AppleSpeech {
+    if !configuration.provider.is_keyless_speech() {
         let network = ProviderNetwork::resolve(&configuration.network_proxy)
             .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
         asr.set_network(network)
@@ -637,6 +641,14 @@ fn recognition_reason(error: &RecognitionClientError) -> ConnectionCheckReason {
             }
             "apple_speech_unavailable" => ConnectionCheckReason::AppleSpeechUnavailable,
             _ => ConnectionCheckReason::AppleSpeechRecognitionFailed,
+        };
+    }
+    if matches!(error, RecognitionClientError::Local(label) if label.starts_with("local_program_"))
+    {
+        return if error.is_timeout() {
+            ConnectionCheckReason::LocalRecognitionTimeout
+        } else {
+            ConnectionCheckReason::LocalProgramFailed
         };
     }
     if error.is_missing_credentials() {

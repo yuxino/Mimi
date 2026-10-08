@@ -10,10 +10,11 @@ type LanguageSettings = Pick<SettingsSnapshot, "profiles" | "activeProfileId" | 
 export function speechLanguageGuidance(settings: LanguageSettings) {
   const profile = activeServiceProfile(settings);
   const provider = profile?.provider ?? "alibabaCloud";
-  const custom = isCustomSpeechProvider(provider);
+  const whisper = provider === "localProgram" && (profile?.localProgram?.engine ?? "whisperCpp") === "whisperCpp";
+  const custom = isCustomSpeechProvider(provider) || (provider === "localProgram" && !whisper);
   const appleTranslation = profile && textTranslationForProfile(profile) === "apple" && settings.targetLanguage !== "original";
   const sources = sourceLanguagesForSettings(settings);
-  const meaning = provider === "localSpeech" ? LOCAL_MODEL_COPY.sourceHelp : provider === "appleSpeech" ? I18N.settings.appleSpeechLanguageHelp : provider === "googleGeminiLive" ? I18N.settings.recognitionGeminiAutomaticHelp : provider === "volcanoEngine" ? I18N.settings.recognitionVolcanoHelp : custom ? I18N.settings.recognitionCustomHelp
+  const meaning = provider === "localSpeech" || whisper ? LOCAL_MODEL_COPY.sourceHelp : provider === "appleSpeech" ? I18N.settings.appleSpeechLanguageHelp : provider === "googleGeminiLive" ? I18N.settings.recognitionGeminiAutomaticHelp : provider === "volcanoEngine" ? I18N.settings.recognitionVolcanoHelp : custom ? I18N.settings.recognitionCustomHelp
     : provider === "alibabaCloud" || provider === "deepLX" || provider === "xAIRealtime"
       ? I18N.settings.recognitionHintHelp
       : sources.length === 1 && sources[0] === "auto"

@@ -240,3 +240,16 @@ it("bounds OpenAI-compatible model names by bytes and rejects control characters
     expect(openAICompatibleModelIsValid(value), value).toBe(true);
   }
 });
+
+
+it.each(["customDashScopeASR", "customOpenAIASR"] as const)("allows keyless literal-loopback %s services only", provider => {
+  const profile = { id: "local", name: "Own service", provider, credentialState: "missing" as const };
+  for (const endpoint of ["ws://127.0.0.1:8080/realtime", "ws://[::1]:8080/realtime", "wss://localhost/realtime"]) {
+    const draft = { ...emptyCredentialDraft(), endpoint, model: "own-model" };
+    expect(buildCustomSpeechCredentials(profile, draft)).toMatchObject({ apiKey: "", endpoint, model: "own-model" });
+    expect(buildProviderCredentials(provider, draft)).toMatchObject({ apiKey: "" });
+  }
+  for (const endpoint of ["wss://speech.example/realtime", "wss://localhost.example/realtime", "ws://127.0.0.1:8080/realtime?token=secret"]) {
+    expect(buildCustomSpeechCredentials(profile, { endpoint, model: "own-model", apiKey: "" })).toBeNull();
+  }
+});

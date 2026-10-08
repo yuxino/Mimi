@@ -45,6 +45,7 @@ mod tests {
             "app_quit",
             "session_export",
             "profile_save_credentials",
+            "local_program_pick_path",
             "overlay_move_start",
         ] {
             assert!(permissions.contains(&format!("\"{command}\"")), "{command}");

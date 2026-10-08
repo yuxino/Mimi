@@ -576,6 +576,7 @@ export const useStore = create<StoreState>()((set, get) => ({
           }
           return { ...profile, ...(name === undefined ? {} : { name: name.trim() }), ...proxies, textTranslationNames,
             ...(hasDeclaration ? { customSpeechSourceLanguages: declaration === null ? null : SOURCE_LANGUAGE_CODES.filter(code => declaration.includes(code)) } : {}),
+            ...(options?.localProgram ? { credentialState: "present" as const, speechCredentialState: "present" as const } : {}),
             ...(speechRecognitionName === undefined ? {} : { speechRecognitionName: speechRecognitionName.trim() || undefined }) };
         })() : profile,
       ),

@@ -47,7 +47,7 @@ pub fn endpoint(
         return Err(CustomSpeechProtocolError::Endpoint);
     }
     let url = url::Url::parse(value.trim()).map_err(|_| CustomSpeechProtocolError::Endpoint)?;
-    let loopback = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    let loopback = is_loopback(&url);
     if !(url.scheme() == "wss" || (url.scheme() == "ws" && loopback))
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -58,6 +58,11 @@ pub fn endpoint(
         return Err(CustomSpeechProtocolError::Endpoint);
     }
     Ok(url)
+}
+
+/// Optional authentication is limited to a literal loopback destination.
+pub fn is_loopback(url: &url::Url) -> bool {
+    matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
 }
 
 pub fn validate_model(value: &str) -> Result<String, CustomSpeechProtocolError> {

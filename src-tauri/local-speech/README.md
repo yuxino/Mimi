@@ -14,7 +14,9 @@ xcodebuild -downloadComponent MetalToolchain
 
 Cargo's build script invokes `build.sh` and pins dependencies through
 `Package.resolved`. Generated binaries/resources stay ignored. Intel builds
-stage an unavailable helper; other platforms keep their existing providers.
+stage an unavailable helper. Users on desktop platforms can instead choose a
+user-owned whisper.cpp CLI or a Mimi-compatible worker; see
+[own models and speech services](../../docs/local-programs.md).
 The small `hub-resources.patch` changes the pinned tokenizer fallback to search
 `Contents/Resources` in a signed Mac app. SwiftPM's default accessor searches
 the app root, which macOS signing rejects. Command line builds keep the normal

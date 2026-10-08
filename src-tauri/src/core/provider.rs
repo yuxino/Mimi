@@ -47,6 +47,8 @@ pub enum ProviderKind {
     AppleSpeech,
     #[serde(rename = "localSpeech")]
     LocalSpeech,
+    #[serde(rename = "localProgram")]
+    LocalProgram,
 }
 
 impl ProviderKind {
@@ -84,6 +86,7 @@ impl ProviderKind {
             Self::CustomOpenAIASR => "customOpenAIASR",
             Self::AppleSpeech => "appleSpeech",
             Self::LocalSpeech => "localSpeech",
+            Self::LocalProgram => "localProgram",
         }
     }
 
@@ -102,6 +105,7 @@ impl ProviderKind {
             Self::CustomOpenAIASR => "Custom OpenAI ASR",
             Self::AppleSpeech => "Apple Speech",
             Self::LocalSpeech => "Local models",
+            Self::LocalProgram => "Local program",
         }
     }
 
@@ -184,7 +188,8 @@ impl ProviderKind {
             Self::CustomDashScopeASR
             | Self::CustomOpenAIASR
             | Self::AppleSpeech
-            | Self::LocalSpeech => custom_speech_capabilities(
+            | Self::LocalSpeech
+            | Self::LocalProgram => custom_speech_capabilities(
                 self,
                 TextTranslation::FollowService,
                 TargetLanguage::Original,
@@ -197,7 +202,14 @@ impl ProviderKind {
     }
 
     pub const fn is_standalone_asr(self) -> bool {
-        self.is_custom_speech() || matches!(self, Self::AppleSpeech | Self::LocalSpeech)
+        self.is_custom_speech() || self.is_keyless_speech()
+    }
+
+    pub const fn is_keyless_speech(self) -> bool {
+        matches!(
+            self,
+            Self::AppleSpeech | Self::LocalSpeech | Self::LocalProgram
+        )
     }
 
     pub const fn supports_text_translation(self) -> bool {
@@ -539,6 +551,8 @@ pub enum ServiceProfileError {
     InvalidTextTranslationName,
     #[error("custom_speech_languages_invalid")]
     InvalidCustomSpeechLanguages,
+    #[error("{0}")]
+    InvalidLocalProgram(&'static str),
     #[error("Only custom speech services support a recognition display name.")]
     UnsupportedSpeechRecognitionName,
     #[error("The speech recognition service name is invalid.")]
@@ -603,6 +617,8 @@ pub struct ServiceProfile {
     pub provider: ProviderKind,
     #[serde(default)]
     pub local_speech_model: crate::core::local_speech::LocalSpeechModel,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_program: Option<crate::core::local_program::LocalProgramConfiguration>,
     /// Built-in Alibaba text translation only; historical profiles retain Lite.
     #[serde(default)]
     pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
@@ -659,6 +675,7 @@ impl ServiceProfile {
             provider,
             qwen_mt_model: Default::default(),
             local_speech_model: Default::default(),
+            local_program: None,
             language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
@@ -676,6 +693,7 @@ impl ServiceProfile {
             provider: ProviderKind::AlibabaCloud,
             qwen_mt_model: Default::default(),
             local_speech_model: Default::default(),
+            local_program: None,
             language_preset: None,
             custom_speech_source_languages: None,
             speech_recognition_name: None,
@@ -693,6 +711,18 @@ impl ServiceProfile {
         profile.language_preset = self.language_preset;
         profile.qwen_mt_model = self.qwen_mt_model;
         profile.local_speech_model = self.local_speech_model;
+        if let Some(program) = &self.local_program {
+            if self.provider != ProviderKind::LocalProgram {
+                return Err(ServiceProfileError::InvalidLocalProgram(
+                    "local_program_configuration_invalid",
+                ));
+            }
+            profile.local_program = Some(
+                program
+                    .validated()
+                    .map_err(ServiceProfileError::InvalidLocalProgram)?,
+            );
+        }
         if matches!(
             self.text_translation,
             Some(
@@ -801,6 +831,11 @@ impl ServiceProfile {
                 capabilities
                     .source_languages
                     .retain(|language| sources.contains(language));
+            }
+            if let Some(program) = &self.local_program {
+                capabilities
+                    .source_languages
+                    .retain(|language| program.accepts_language(language.raw_value()));
             }
             if let Some(declared) = &self.custom_speech_source_languages {
                 capabilities.source_languages.retain(|language| {

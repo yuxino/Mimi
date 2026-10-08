@@ -172,6 +172,13 @@ impl Audio3ASRClient {
         if trimmed_key.is_empty() {
             return Err(Audio3ASRClientError::MissingAPIKey);
         }
+        Self::with_key(trimmed_key, source_language)
+    }
+
+    fn with_key(
+        trimmed_key: &str,
+        source_language: SourceLanguage,
+    ) -> Result<Self, Audio3ASRClientError> {
         Ok(Self {
             network: super::provider_network::ProviderNetwork::default(),
             inner: Arc::new(Inner {
@@ -210,7 +217,12 @@ impl Audio3ASRClient {
         .map_err(|_| Audio3ASRClientError::InvalidCustomEndpoint)?;
         let model = crate::core::protocols::custom_speech::validate_model(model)
             .map_err(|_| Audio3ASRClientError::InvalidCustomModel)?;
-        let mut client = Self::new(api_key, source_language)?;
+        let loopback_without_key = api_key.trim().is_empty()
+            && crate::core::protocols::custom_speech::is_loopback(&endpoint);
+        if api_key.trim().is_empty() && !loopback_without_key {
+            return Err(Audio3ASRClientError::MissingAPIKey);
+        }
+        let mut client = Self::with_key(api_key.trim(), source_language)?;
         client.endpoint.url = endpoint;
         client.model = model;
         client.custom_endpoint = true;
@@ -294,11 +306,13 @@ impl Audio3ASRClient {
             .clone()
             .into_client_request()
             .map_err(|_| Audio3ASRClientError::NotConnected)?;
-        let auth = format!("Bearer {}", self.api_key);
-        request.headers_mut().insert(
-            "Authorization",
-            HeaderValue::from_str(&auth).map_err(|_| Audio3ASRClientError::MissingAPIKey)?,
-        );
+        if !self.api_key.is_empty() {
+            let auth = format!("Bearer {}", self.api_key);
+            request.headers_mut().insert(
+                "Authorization",
+                HeaderValue::from_str(&auth).map_err(|_| Audio3ASRClientError::MissingAPIKey)?,
+            );
+        }
         request
             .headers_mut()
             .insert("User-Agent", HeaderValue::from_static("mimi-tauri"));
@@ -753,6 +767,65 @@ mod streaming_tests {
     use crate::clients::provider_events::provider_event_channel;
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
+
+    #[tokio::test]
+    #[allow(clippy::result_large_err)]
+    async fn local_dashscope_without_key_sends_no_authorization_header() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = Audio3ASRClient::new_custom(
+            &format!("ws://{}/recognition", listener.local_addr().unwrap()),
+            "own-model",
+            "",
+            SourceLanguage::English,
+        )
+        .unwrap();
+        client
+            .set_network(
+                super::super::provider_network::ProviderNetwork::resolve(
+                    &crate::core::network_proxy::ProxyConfig {
+                        mode: crate::core::network_proxy::ProxyMode::Direct,
+                        url: None,
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let (events, _receiver) = provider_event_channel();
+        client.set_event_sender(events).await;
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_hdr_async(
+                stream,
+                |request: &tokio_tungstenite::tungstenite::handshake::server::Request, response| {
+                    assert!(!request.headers().contains_key("authorization"));
+                    Ok(response)
+                },
+            )
+            .await
+            .unwrap();
+            let request: serde_json::Value =
+                serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
+                    .unwrap();
+            socket.send(Message::Text(serde_json::json!({"header":{"event":"task-started", "task_id":request["header"]["task_id"]}}).to_string().into())).await.unwrap();
+            while let Some(message) = socket.next().await {
+                if matches!(message.unwrap(), Message::Close(_)) {
+                    break;
+                }
+            }
+        });
+        client.connect_for_probe("local-probe").await.unwrap();
+        client.disconnect().await;
+        server.await.unwrap();
+        assert!(matches!(
+            Audio3ASRClient::new_custom(
+                "wss://remote.example/recognition",
+                "own-model",
+                "",
+                SourceLanguage::English
+            ),
+            Err(Audio3ASRClientError::MissingAPIKey)
+        ));
+    }
 
     #[tokio::test]
     #[allow(clippy::result_large_err)] // Tungstenite fixes the handshake callback error type.

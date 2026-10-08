@@ -106,7 +106,8 @@ impl TranslationClient {
             ProviderKind::CustomDashScopeASR
             | ProviderKind::CustomOpenAIASR
             | ProviderKind::AppleSpeech
-            | ProviderKind::LocalSpeech => {
+            | ProviderKind::LocalSpeech
+            | ProviderKind::LocalProgram => {
                 return HighQualityTranslationClient::new_custom(configuration, events)
                     .map(Self::HighQuality)
                     .map_err(TranslationClientError::MT);

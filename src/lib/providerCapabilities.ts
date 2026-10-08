@@ -1,3 +1,4 @@
+import localProgramLanguages from "../../shared/local-program-languages.json";
 import localSpeechCatalog from "../../src-tauri/src/core/local_speech_catalog.json";
 import languageCatalogs from "../../shared/provider-language-catalogs.json";
 import {
@@ -59,6 +60,7 @@ export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
   "xAIRealtime",
   "appleSpeech",
   "localSpeech",
+  "localProgram",
   "customDashScopeASR",
   "customOpenAIASR",
 ];
@@ -66,6 +68,7 @@ export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
 const PROVIDER_CAPABILITIES: Readonly<
   Record<ServiceProvider, ProviderCapabilities>
 > = {
+  localProgram: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
   localSpeech: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
   appleSpeech: { sourceLanguages: [], targetLanguages: ["original"], translationModes: ["turbo"] },
   customDashScopeASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
@@ -141,6 +144,7 @@ export function isCustomSpeechProvider(provider: ServiceProvider): boolean {
 
 /** User declarations only narrow encodable options; they never certify model support. */
 function declaredCustomSources(profile: ServiceProfile, sources: readonly SourceLanguage[]): readonly SourceLanguage[] {
+  if (profile.provider === "localProgram" && (profile.localProgram?.engine ?? "whisperCpp") === "whisperCpp") return sources.filter(source => localProgramLanguages.whisperCpp.includes(source));
   if (profile.provider === "localSpeech") {
     const codes = localSpeechCatalog.find(model => model.id === (profile.localSpeechModel ?? "qwenSmall"))?.sourceLanguages ?? [];
     return sources.filter(source => codes.includes(source));
@@ -151,7 +155,7 @@ function declaredCustomSources(profile: ServiceProfile, sources: readonly Source
 }
 
 export function isStandaloneAsrProvider(provider: ServiceProvider): boolean {
-  return provider === "appleSpeech" || provider === "localSpeech" || isCustomSpeechProvider(provider);
+  return provider === "appleSpeech" || provider === "localSpeech" || provider === "localProgram" || isCustomSpeechProvider(provider);
 }
 
 export function credentialStateForTarget(profile: ServiceProfile | undefined, target: TargetLanguage): CredentialState {

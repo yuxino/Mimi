@@ -33,7 +33,7 @@ impl RecognitionClientError {
     }
 
     pub fn is_timeout(&self) -> bool {
-        if matches!(self, Self::Local(label) if matches!(label.as_str(), "local_model_setup_timeout" | "local_model_health_timeout"))
+        if matches!(self, Self::Local(label) if matches!(label.as_str(), "local_model_setup_timeout" | "local_model_health_timeout" | "local_program_inference_timeout"))
         {
             return true;
         }
@@ -53,7 +53,7 @@ impl RecognitionClientError {
     }
 
     pub fn is_invalid_configuration(&self) -> bool {
-        if matches!(self, Self::Local(label) if matches!(label.as_str(), "local_models_unavailable" | "local_model_missing" | "local_model_busy"))
+        if matches!(self, Self::Local(label) if matches!(label.as_str(), "local_models_unavailable" | "local_model_missing" | "local_model_busy") || label.starts_with("local_program_"))
         {
             return true;
         }
@@ -94,6 +94,7 @@ impl RecognitionClientError {
 pub enum RecognitionClient {
     Apple(AppleSpeechClient),
     Local(LocalSpeechClient),
+    Whisper(super::whisper_cli_client::WhisperCliClient),
     Audio3(Audio3ASRClient),
     OpenAI(CustomSpeechClient),
 }
@@ -103,6 +104,27 @@ impl RecognitionClient {
         configuration: &crate::core::configuration::LiveTranslationConfiguration,
     ) -> Result<Self, RecognitionClientError> {
         match (&configuration.provider, &configuration.credentials) {
+            (
+                ProviderKind::LocalProgram,
+                crate::core::credentials::ProviderCredentials::LocalProgram {
+                    configuration: program,
+                },
+            ) => {
+                use crate::core::local_program::LocalProgramEngine;
+                Ok(match program.engine {
+                    LocalProgramEngine::MimiStdio => Self::Local(LocalSpeechClient::external(
+                        program.clone(),
+                        configuration.source_language,
+                    )),
+                    LocalProgramEngine::WhisperCpp => {
+                        Self::Whisper(super::whisper_cli_client::WhisperCliClient::new(
+                            program.clone(),
+                            configuration.source_language,
+                        ))
+                    }
+                })
+            }
+
             (
                 ProviderKind::LocalSpeech,
                 crate::core::credentials::ProviderCredentials::LocalSpeech { model },
@@ -158,7 +180,7 @@ impl RecognitionClient {
 
     pub fn set_network(&mut self, network: ProviderNetwork) -> Result<(), ProviderNetworkError> {
         match self {
-            Self::Apple(_) | Self::Local(_) => Ok(()),
+            Self::Apple(_) | Self::Local(_) | Self::Whisper(_) => Ok(()),
             Self::Audio3(client) => client.set_network(network),
             Self::OpenAI(client) => client.set_network(network),
         }
@@ -166,7 +188,7 @@ impl RecognitionClient {
 
     pub fn set_audio_pending_gate(&self, gate: PendingPcmGate) {
         match self {
-            Self::Apple(_) | Self::Local(_) => {}
+            Self::Apple(_) | Self::Local(_) | Self::Whisper(_) => {}
             Self::Audio3(client) => client.set_audio_pending_gate(gate),
             Self::OpenAI(client) => client.set_audio_pending_gate(gate),
         }
@@ -176,6 +198,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.set_event_sender(events),
             Self::Local(client) => client.set_event_sender(events),
+            Self::Whisper(client) => client.set_event_sender(events),
             Self::Audio3(client) => client.set_event_sender(events).await,
             Self::OpenAI(client) => client.set_event_sender(events).await,
         }
@@ -185,6 +208,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.connect().await,
             Self::Local(client) => client.connect().await,
+            Self::Whisper(client) => client.connect().await,
             Self::Audio3(client) => client.connect(task_id).await.map_err(Into::into),
             Self::OpenAI(client) => client.connect(task_id).await.map_err(Into::into),
         }
@@ -194,6 +218,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.connect().await,
             Self::Local(client) => client.connect().await,
+            Self::Whisper(client) => client.connect().await,
             Self::Audio3(client) => client.connect_for_probe(task_id).await.map_err(Into::into),
             Self::OpenAI(client) => client.connect_for_probe(task_id).await.map_err(Into::into),
         }
@@ -203,6 +228,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.send_audio(pcm).await,
             Self::Local(client) => client.send_audio(pcm),
+            Self::Whisper(client) => client.send_audio(pcm),
             Self::Audio3(client) => client.send_audio(pcm).await.map_err(Into::into),
             Self::OpenAI(client) => client.send_audio(pcm).await.map_err(Into::into),
         }
@@ -212,6 +238,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.ping(),
             Self::Local(client) => client.ping(timeout).await,
+            Self::Whisper(client) => client.ping().await,
             Self::Audio3(client) => client.ping(timeout).await.map_err(Into::into),
             Self::OpenAI(client) => client.ping(timeout).await.map_err(Into::into),
         }
@@ -221,6 +248,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.finish(timeout).await,
             Self::Local(client) => client.finish(timeout).await,
+            Self::Whisper(client) => client.finish(timeout).await,
             Self::Audio3(client) => client.finish(timeout).await,
             Self::OpenAI(client) => client.finish(timeout).await,
         }
@@ -230,6 +258,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.disconnect().await,
             Self::Local(client) => client.disconnect().await,
+            Self::Whisper(client) => client.disconnect().await,
             Self::Audio3(client) => client.disconnect().await,
             Self::OpenAI(client) => client.disconnect().await,
         }
@@ -239,6 +268,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.clear_content(),
             Self::Local(client) => client.clear_content().await,
+            Self::Whisper(client) => client.clear_content().await,
             Self::Audio3(client) => client.clear_content().await,
             Self::OpenAI(client) => client.clear_content().await,
         }
@@ -248,6 +278,7 @@ impl RecognitionClient {
         match self {
             Self::Apple(client) => client.content_revision(),
             Self::Local(client) => client.content_revision(),
+            Self::Whisper(client) => client.content_revision(),
             Self::Audio3(client) => client.content_revision(),
             Self::OpenAI(client) => client.content_revision(),
         }

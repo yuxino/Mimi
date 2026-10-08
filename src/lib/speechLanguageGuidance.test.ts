@@ -17,6 +17,7 @@ it.each(["zh", "en", "ja"] as const)("separates automatic, hint, explicit and un
   expect(speechLanguageGuidance(settings("googleGeminiLive")).help).toBe(I18N.settings.recognitionGeminiAutomaticHelp);
   expect(speechLanguageGuidance(settings("xAIRealtime")).help).toContain(I18N.settings.recognitionHintHelp);
   expect(speechLanguageGuidance(settings("localSpeech")).help).toBe(LOCAL_MODEL_COPY.sourceHelp);
+  expect(speechLanguageGuidance(settings("localProgram")).help).toBe(LOCAL_MODEL_COPY.sourceHelp);
   const explicit = speechLanguageGuidance(settings("tencentCloud"));
   expect(explicit.help).toContain(I18N.settings.recognitionExplicitHelp);
   expect(explicit.help).not.toContain(I18N.settings.recognitionHintHelp);
@@ -28,6 +29,15 @@ it.each(["zh", "en", "ja"] as const)("separates automatic, hint, explicit and un
     expect(unknown.help).toContain(provider === "customDashScopeASR" ? "language_hints" : "transcription.languages");
     expect(unknown.help).not.toContain(I18N.settings.recognitionAutomaticHelp);
   }
+});
+
+it("does not assume automatic detection for an arbitrary compatible worker", () => {
+  const base = settings("localProgram");
+  const profile = { ...base.profiles[0], localProgram: { engine: "mimiStdio" as const, executable: "/program", modelPath: "/model", arguments: [] } };
+  const guidance = speechLanguageGuidance({ ...base, profiles: [profile] });
+  expect(guidance.help).toBe(I18N.settings.recognitionCustomHelp);
+  expect(guidance.notice).toBe(I18N.settings.recognitionCustomNotice);
+  expect(guidance.optionLabel("auto")).toBe(I18N.settings.recognitionServiceDefault);
 });
 
 it("labels explicit declarations without claiming discovered or verified support", () => {

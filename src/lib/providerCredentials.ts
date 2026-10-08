@@ -58,6 +58,7 @@ export function credentialFieldsForProvider(
   provider: ServiceProvider,
 ): readonly CredentialFieldName[] {
   switch (provider) {
+    case "localProgram":
     case "localSpeech":
     case "appleSpeech":
       return [];
@@ -99,12 +100,12 @@ export function buildProviderProbeCredentials(
 }
 
 function buildProviderInput(provider: ServiceProvider, draft: CredentialDraft, savedFields: readonly string[]): ProviderCredentialsInput | null {
-  if (provider === "appleSpeech" || provider === "localSpeech") return null;
+  if (provider === "appleSpeech" || provider === "localSpeech" || provider === "localProgram") return null;
   const values = Object.fromEntries(
     Object.entries(draft).map(([key, value]) => [key, value.trim()]),
   ) as CredentialDraft;
   if (
-    credentialFieldsForProvider(provider).some((field) => field !== "token" && !values[field] && !savedFields.includes(field))
+    credentialFieldsForProvider(provider).some((field) => field !== "token" && !(field === "apiKey" && isCustomSpeechProvider(provider) && customSpeechEndpointIsLoopback(values.endpoint)) && !values[field] && !savedFields.includes(field))
   ) {
     return null;
   }
@@ -168,9 +169,15 @@ export function buildCustomSpeechCredentials(profile: ServiceProfile, draft: Pic
   if (!isCustomSpeechProvider(profile.provider)) return null;
   const endpoint = draft.endpoint.trim(), model = draft.model.trim(), apiKey = draft.apiKey.trim();
   const saved = profile.speechCredentialState === "present";
-  if ((!saved && (!endpoint || !model || !apiKey)) || (endpoint && (!apiKey || !model))) return null;
+  const optionalKey = customSpeechEndpointIsLoopback(endpoint);
+  if ((!saved && (!endpoint || !model || (!apiKey && !optionalKey))) || (endpoint && ((!apiKey && !optionalKey) || !model))) return null;
   if (saved && !endpoint && !model && !apiKey) return null;
   return { kind: "customSpeech", endpoint, model, apiKey };
+}
+
+export function customSpeechEndpointIsLoopback(value: string): boolean {
+  if (!customSpeechEndpointIsValid(value)) return false;
+  return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(value.trim()).hostname);
 }
 
 /** A full credential-free WebSocket URL; plaintext is restricted to loopback. */

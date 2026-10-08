@@ -1228,6 +1228,7 @@ impl SettingsStore {
         )
     }
 
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub fn update_profile_options_with_model(
         &self,
@@ -1241,13 +1242,43 @@ impl SettingsStore {
         language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
         qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
     ) -> Result<ServiceProfile, String> {
+        self.update_profile_options_with_runtime(
+            profile_id,
+            name,
+            speech_network_proxy,
+            text_network_proxy,
+            text_translation_name,
+            speech_recognition_name,
+            custom_speech_languages_patch,
+            language_preset_patch,
+            qwen_mt_model,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_profile_options_with_runtime(
+        &self,
+        profile_id: &str,
+        name: Option<&str>,
+        speech_network_proxy: Option<ProxyConfig>,
+        text_network_proxy: Option<ProxyConfig>,
+        text_translation_name: Option<TextTranslationName>,
+        speech_recognition_name: Option<&str>,
+        custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
+        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
+        qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
+        local_program: Option<crate::core::local_program::LocalProgramConfiguration>,
+    ) -> Result<ServiceProfile, String> {
         if text_translation_name.is_some()
             || speech_recognition_name.is_some()
             || language_preset_patch.is_some()
         {
             self.require_writable_credentials(profile_id)?;
         }
-        let normalize_profile = custom_speech_languages_patch.as_ref().map(|_| profile_id);
+        let normalize_profile = (custom_speech_languages_patch.is_some()
+            || local_program.is_some())
+        .then_some(profile_id);
         self.mutate_catalog_with_normalization(normalize_profile, |catalog| {
             let current = catalog
                 .profiles
@@ -1255,6 +1286,12 @@ impl SettingsStore {
                 .find(|profile| profile.id == profile_id)
                 .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
             let mut updated = current.clone();
+            if let Some(program) = local_program {
+                if current.provider != ProviderKind::LocalProgram {
+                    return Err("local_program_configuration_invalid".into());
+                }
+                updated.local_program = Some(program.validated().map_err(str::to_owned)?);
+            }
             if let Some(model) = qwen_mt_model {
                 if current.provider != ProviderKind::AlibabaCloud {
                     return Err("provider-mismatch".into());
@@ -1478,7 +1515,7 @@ impl SettingsStore {
         let speech = speech
             && !matches!(
                 profile.provider,
-                ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+                ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
             );
         let account = credential_account(profile);
         let retry_legacy = speech && is_default_alibaba(profile) && self.migrate_legacy_alibaba;
@@ -1552,9 +1589,16 @@ impl SettingsStore {
     }
 
     fn speech_presence_for_snapshot(&self, profile: &ServiceProfile) -> CredentialState {
+        if profile.provider == ProviderKind::LocalProgram {
+            return if profile.local_program.is_some() {
+                CredentialState::Present
+            } else {
+                CredentialState::Missing
+            };
+        }
         if matches!(
             profile.provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) {
             return CredentialState::Present;
         }
@@ -1989,6 +2033,12 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<Option<ProviderCredentials>, String> {
+        if profile.provider == ProviderKind::LocalProgram {
+            return Ok(profile
+                .local_program
+                .clone()
+                .map(|configuration| ProviderCredentials::LocalProgram { configuration }));
+        }
         if profile.provider == ProviderKind::LocalSpeech {
             return Ok(Some(ProviderCredentials::LocalSpeech {
                 model: profile.local_speech_model,
@@ -2923,6 +2973,18 @@ impl SettingsStore {
         profile: &ServiceProfile,
         source_language: Option<SourceLanguage>,
     ) -> Result<LiveTranslationConfiguration, String> {
+        if profile.provider == ProviderKind::LocalProgram {
+            return LiveTranslationConfiguration::with_credentials(
+                profile.provider,
+                self.credentials_for_profile(profile)?
+                    .ok_or("local_program_configuration_missing")?,
+                self.preferences().source_language,
+                TargetLanguage::Original,
+                self.preferences().translation_mode,
+            )
+            .validated()
+            .map_err(|error| error.to_string());
+        }
         if profile.provider == ProviderKind::LocalSpeech {
             let prefs = profile.normalize_preferences(ProviderPreferences {
                 source_language: self.preferences().source_language,
@@ -3317,7 +3379,7 @@ impl SettingsStore {
     ) -> Result<Option<String>, SecretStoreError> {
         if matches!(
             profile.provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) {
             return Ok(None);
         }
@@ -3390,7 +3452,7 @@ impl SettingsStore {
     fn delete_api_key_for_profile(&self, profile: &ServiceProfile) -> Result<(), String> {
         if matches!(
             profile.provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) {
             return Ok(());
         }
@@ -3429,7 +3491,7 @@ impl SettingsStore {
     ) -> Result<(), String> {
         if matches!(
             profile.provider,
-            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech
+            ProviderKind::AppleSpeech | ProviderKind::LocalSpeech | ProviderKind::LocalProgram
         ) {
             return Err(
                 crate::core::credentials::ProviderCredentialsError::ProviderMismatch.to_string(),
@@ -7038,6 +7100,79 @@ mod tests {
 
     fn settings(fake: &FakeSecretStore) -> SettingsStore {
         SettingsStore::in_memory(Box::new(fake.clone()), false)
+    }
+
+    #[test]
+    fn local_program_is_keyless_persistent_metadata_and_rejects_invalid_updates() {
+        use crate::core::local_program::{LocalProgramConfiguration, LocalProgramEngine};
+        let fake = FakeSecretStore::default();
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        let profile = store
+            .create_profile(ProviderKind::LocalProgram, "Own model")
+            .unwrap();
+        assert_eq!(
+            store.speech_presence_for_snapshot(&profile),
+            CredentialState::Missing
+        );
+        let program = LocalProgramConfiguration {
+            engine: LocalProgramEngine::WhisperCpp,
+            executable: "/synthetic/program".into(),
+            model_path: "/synthetic/model.bin".into(),
+            arguments: vec!["-t".into(), "4".into()],
+        };
+        let saved = store
+            .update_profile_options_with_runtime(
+                &profile.id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(program.clone()),
+            )
+            .unwrap();
+        assert_eq!(
+            store.speech_presence_for_snapshot(&saved),
+            CredentialState::Present
+        );
+        assert!(
+            matches!(store.credentials_for_profile(&saved).unwrap(), Some(ProviderCredentials::LocalProgram { configuration }) if configuration == program)
+        );
+        let mut invalid = program.clone();
+        invalid.arguments.push("--output-txt".into());
+        assert!(store
+            .update_profile_options_with_runtime(
+                &profile.id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(invalid)
+            )
+            .is_err());
+        assert_eq!(
+            store.profile(&profile.id).unwrap().local_program,
+            Some(program.clone())
+        );
+        let restarted = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        assert_eq!(
+            restarted.profile(&profile.id).unwrap().local_program,
+            Some(program)
+        );
+        restarted.delete_profile(&profile.id).unwrap();
+        assert!(fake.state.lock().unwrap().values.is_empty());
+        assert_eq!(
+            fake.load_count(PROFILE_KEYCHAIN_SERVICE, &credential_account(&profile)),
+            0
+        );
     }
 
     fn custom_speech_request(endpoint: &str, model: &str, key: &str) -> ProviderCredentials {
