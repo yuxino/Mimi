@@ -26,6 +26,12 @@ support, but keeps installation and recognition self-contained. Windows, Linux,
 Intel and older macOS retain existing services and report this runtime as
 unavailable. This change does not add capture sources or change credentials.
 
+On unsupported devices, the library names the built-in Qwen restriction and
+hides missing, unusable catalog rows. The existing user-owned model entry
+remains directly actionable; installed models and ongoing operations stay
+visible for cleanup. Privacy copy uses “this computer” on every platform.
+This presentation does not add Windows built-in model support.
+
 ## Resource and lifecycle rules
 
 - Download only fixed HTTPS repositories, revisions and files. Verify SHA-256

@@ -10,6 +10,7 @@ window.__TAURI_INTERNALS__ = {
   transformCallback: () => 0,
   unregisterCallback: () => {},
   invoke: async (command, args) => {
+    if (command === "local_models_status") return fixture.localModels ?? { available: false, models: [] };
     if (command === "get_apple_speech_support") return fixture.appleSupport ?? { available: false, languages: [] };
     if (command === "prepare_apple_speech_language") {
       window.layoutFixtureRequests.speechPrepare += 1;

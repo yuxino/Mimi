@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { LOCAL_MODEL_COPY } from "../../lib/localModelI18n";
+import { LOCAL_PROGRAM_COPY } from "../../lib/localProgramI18n";
 import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -7,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { diagnosticCopy, profileErrorMessage } from "../../lib/connectionDiagnostics";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { I18N, providerDisplayName, setStoredUiLanguage } from "../../lib/i18n";
-import { getAppleSpeechSupport, prepareAppleSpeechLanguage, profileCredentialEditorState, profileRevealCredential, testProfileConnection } from "../../lib/ipc";
+import { localModelsStatus, getAppleSpeechSupport, prepareAppleSpeechLanguage, profileCredentialEditorState, profileRevealCredential, testProfileConnection } from "../../lib/ipc";
 import { SERVICE_PROVIDERS, sourceLanguagesForSettings, targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
 import type { AppleSpeechSupport, ServiceProfile, SettingsSnapshot } from "../../lib/types";
@@ -38,6 +39,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla Linux");
   for (const action of Object.values(actions)) action.mockReset();
+  vi.mocked(localModelsStatus).mockReset().mockResolvedValue({ available: false, models: [] });
   vi.mocked(testProfileConnection).mockReset();
   vi.mocked(profileRevealCredential).mockReset();
   vi.mocked(profileCredentialEditorState).mockReset().mockResolvedValue({ savedFields: ["apiKey"] });
@@ -1752,4 +1754,18 @@ it.each([true, false])("defers current-configuration navigation until a pending 
     await act(async () => navigate(2));
     expect(host.querySelector(".service-detail h2")?.textContent).toBe(current.name);
   }
+});
+
+it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko"] as const)("opens the available own-model flow from the local library in %s", async language => {
+  setStoredUiLanguage(language);
+  await render();
+  await click(I18N.settings.addProfile);
+  await click(LOCAL_MODEL_COPY.title);
+  expect(host.querySelector(".local-models")?.textContent).toContain(LOCAL_MODEL_COPY.unavailable);
+  await click(LOCAL_PROGRAM_COPY.own);
+  expect(document.querySelector(".provider-picker__preview h3")?.textContent).toBe(providerDisplayName("localProgram"));
+  expect(actions.createProfile).not.toHaveBeenCalled();
+  await click(I18N.settings.cancel);
+  expect(document.querySelector(".provider-picker__preview")).toBeNull();
+  expect(actions.createProfile).not.toHaveBeenCalled();
 });

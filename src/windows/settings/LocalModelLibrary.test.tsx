@@ -46,3 +46,32 @@ it("offers retry after a failed download", async () => {
   await act(async () => root.render(<LocalModelLibrary />)); expect(host.textContent).toContain("Verification failed");
   await act(async () => button("Retry").click()); expect(downloadLocalModel).toHaveBeenCalledExactlyOnceWith("qwenSmall");
 });
+
+it("guides unsupported devices to user-owned models without unusable downloads", async () => {
+  vi.mocked(localModelsStatus).mockResolvedValue({ available: false, models: [{ ...base }] });
+  const own = vi.fn();
+  await act(async () => root.render(<LocalModelLibrary onUseOwn={own} />));
+  expect(host.textContent).toContain("Built-in Qwen models require");
+  expect(host.querySelector(".local-models__privacy")?.textContent).toContain("this computer");
+  expect(host.querySelector(".local-models__row")).toBeNull();
+  expect(host.querySelector('[aria-label^="Download"]')).toBeNull();
+  await act(async () => button("Use your own model").click());
+  expect(own).toHaveBeenCalledOnce();
+  expect(downloadLocalModel).not.toHaveBeenCalled();
+});
+it("retains deletion of installed models on unsupported devices", async () => {
+  vi.mocked(localModelsStatus).mockResolvedValue({ available: false, models: [{ ...base, phase: "installed", installed: true }] });
+  await act(async () => root.render(<LocalModelLibrary onUse={vi.fn()} />));
+  expect(host.querySelector<HTMLButtonElement>('[aria-label^="Use model"]')!.disabled).toBe(true);
+  expect(host.querySelector<HTMLButtonElement>('[aria-label^="Delete model"]')!.disabled).toBe(false);
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label^="Delete model"]')!.click());
+  expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+  expect(deleteLocalModel).not.toHaveBeenCalled();
+});
+it("keeps the own-model action disabled while configuration changes are blocked", async () => {
+  vi.mocked(localModelsStatus).mockResolvedValue({ available: false, models: [{ ...base }] });
+  const own = vi.fn();
+  await act(async () => root.render(<LocalModelLibrary disabled onUseOwn={own} />));
+  await act(async () => button("Use your own model").click());
+  expect(own).not.toHaveBeenCalled();
+});

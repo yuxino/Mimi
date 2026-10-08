@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { LOCAL_MODEL_COPY as copy, localModelError } from "../../lib/localModelI18n";
+import { LOCAL_PROGRAM_COPY } from "../../lib/localProgramI18n";
 import { cancelLocalModelDownload, deleteLocalModel, downloadLocalModel } from "../../lib/ipc";
 import type { LocalModelStatus, LocalSpeechModel } from "../../lib/types";
 import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
@@ -13,7 +14,7 @@ import "./local-models.css";
 
 function modelSize(bytes: number) { return bytes >= 1_000_000_000 ? `${(bytes / 1_000_000_000).toFixed(1)} GB` : `${Math.ceil(bytes / 1_000_000)} MB`; }
 const busy = (model: LocalModelStatus) => ["downloading", "verifying", "cancelling", "deleting"].includes(model.phase);
-export function LocalModelLibrary({ only, visible = true, disabled = false, onUse }: { only?: LocalSpeechModel; visible?: boolean; disabled?: boolean; onUse?: (model: LocalSpeechModel, name: string) => Promise<void> }) {
+export function LocalModelLibrary({ only, visible = true, disabled = false, onUse, onUseOwn }: { only?: LocalSpeechModel; visible?: boolean; disabled?: boolean; onUse?: (model: LocalSpeechModel, name: string) => Promise<void>; onUseOwn?: () => void }) {
   const { snapshot, failed, refresh } = useLocalModels(visible);
   const [deleting, setDeleting] = useState<LocalModelStatus | null>(null);
   const [pending, setPending] = useState<LocalSpeechModel | null>(null);
@@ -43,7 +44,7 @@ export function LocalModelLibrary({ only, visible = true, disabled = false, onUs
     {snapshot && !snapshot.available && <InlineFeedback tone="info">{copy.unavailable}</InlineFeedback>}
     {!snapshot && !failed && <p role="status">{I18N.settings.settingsSnapshotLoading}</p>}
     <div className="local-models__list">
-      {snapshot?.models.filter(model => !only || model.id === only).map(model => {
+      {snapshot?.models.filter(model => (!only || model.id === only) && (snapshot.available || model.installed || busy(model))).map(model => {
         const working = busy(model);
         const percent = Math.min(100, Math.floor(model.downloadedBytes / model.downloadBytes * 100));
         const status = working ? copy[model.phase as "downloading" | "verifying" | "cancelling" | "deleting"] : model.inUse ? copy.inUse : model.installed ? copy.installed : copy.missing;
@@ -63,6 +64,7 @@ export function LocalModelLibrary({ only, visible = true, disabled = false, onUs
         </div>;
       })}
     </div>
+    {onUseOwn && <button type="button" className={snapshot?.available === false ? "settings-button settings-button--primary settings-button--compact local-models__own" : "settings-link local-models__own"} disabled={disabled} onClick={onUseOwn}>{LOCAL_PROGRAM_COPY.own}<Icon name="chevron-right" /></button>}
     {error && <InlineFeedback tone="error">{error}</InlineFeedback>}
     {deleting && <SettingsConfirmation message={copy.deleteConfirm} disabled={pending !== null} confirmLabel={copy.delete} onCancel={() => setDeleting(null)} onConfirm={() => void run(deleting.id, () => deleteLocalModel(deleting.id), copy.deleted)}><strong>{deleting.name}</strong></SettingsConfirmation>}
   </section>;

@@ -1196,7 +1196,7 @@ function ProviderPicker({
       <div className="provider-picker__tabs" aria-label={I18N.settings.chooseProvider}>
         {(["cloud", "local", "custom"] as const).map(key => <button key={key} type="button" aria-pressed={group === key} onClick={() => { setSelectedProvider(null); setGroup(key); }}>{key === "local" ? LOCAL_MODEL_COPY.title : LOCAL_MODEL_COPY[key]}</button>)}
       </div>
-      {group === "local" && <><LocalModelLibrary disabled={disabled} onUse={(model, name) => onChoose("localSpeech", model, name)} /><button type="button" className="settings-link local-models__own" disabled={disabled} onClick={() => { setGroup("custom"); setSelectedProvider("localProgram"); }}>{LOCAL_PROGRAM_COPY.own}<Icon name="chevron-right" /></button></>}
+      {group === "local" && <LocalModelLibrary disabled={disabled} onUse={(model, name) => onChoose("localSpeech", model, name)} onUseOwn={() => { setGroup("custom"); setSelectedProvider("localProgram"); }} />}
       <div className="provider-picker__options">
         {SERVICE_PROVIDERS.filter(provider => provider !== "localSpeech" && (group === "local" ? provider === "appleSpeech" && apple.support?.available : group === "custom" ? provider === "localProgram" || provider === "customOpenAIASR" : provider !== "appleSpeech" && provider !== "localProgram" && !isCustomSpeechProvider(provider))).map((provider) => (
           <div className="provider-picker__option-row" key={provider}>
