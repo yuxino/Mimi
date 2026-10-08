@@ -1,6 +1,6 @@
 # Documentation
 
-[English README](../README.md) · [简体中文](readme/zh-CN.md) · [繁體中文](readme/zh-TW.md) · [한국어](readme/ko.md) · [Français](readme/fr.md) · [Deutsch](readme/de.md)
+[简体中文](../README.md) · [English](../README_EN.md) · [繁體中文](readme/zh-TW.md) · [한국어](readme/ko.md) · [Français](readme/fr.md) · [Deutsch](readme/de.md)
 
 ## Using Mimi
 

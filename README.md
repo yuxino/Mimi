@@ -1,12 +1,12 @@
 <div align="center">
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>Mimi</h1>
-  <p>Live subtitles and translation for system audio or your microphone on macOS 13+ (Apple silicon and Intel) and Windows / Linux x86_64.</p>
+  <p>把电脑或麦克风声音转成实时翻译字幕。</p>
   <p>
-    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="Latest release"></a>
-    <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="Total downloads"></a>
-    <a href="https://github.com/yuxino/mimi/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/yuxino/mimi/ci.yml?style=flat&amp;logo=githubactions&amp;logoColor=white&amp;branch=main&amp;event=push&amp;label=CI" alt="CI status on main"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="MIT license"></a>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="最新版本"></a>
+    <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="总下载量"></a>
+    <a href="https://github.com/yuxino/mimi/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/yuxino/mimi/ci.yml?style=flat&amp;logo=githubactions&amp;logoColor=white&amp;branch=main&amp;event=push&amp;label=CI" alt="main 分支 CI 状态"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="MIT 许可证"></a>
   </p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/macOS-13%2B-555?style=flat&amp;logo=apple&amp;logoColor=white" alt="macOS 13+"></a>
@@ -15,75 +15,76 @@
     <a href="android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
   </p>
   <p>
-    <a href="README.md">English</a> · <a href="docs/readme/zh-CN.md">简体中文</a> · <a href="docs/readme/zh-TW.md">繁體中文</a> · <a href="docs/readme/ko.md">한국어</a> · <a href="docs/readme/fr.md">Français</a> · <a href="docs/readme/de.md">Deutsch</a>
+    <a href="README_EN.md"><strong>English</strong></a> · <a href="docs/readme/zh-CN.md">简体中文</a> · <a href="docs/readme/zh-TW.md">繁體中文</a> · <a href="docs/readme/ko.md">한국어</a> · <a href="docs/readme/fr.md">Français</a> · <a href="docs/readme/de.md">Deutsch</a>
   </p>
 </div>
 
-<p align="center">Mimi turns speech from your computer or microphone into live translated subtitles. Watch films, follow streams, or take lessons with subtitles floating over your screen.</p>
+<p align="center">Mimi 是实时字幕翻译工具，可翻译电脑或麦克风中的人声。看电影、直播或网课时，字幕会悬浮显示在屏幕上。</p>
 
-![Mimi's bilingual subtitle window over an original illustrated scene](docs/assets/readme-preview.png)
+![Mimi 双语字幕窗口，搭配原创插画与示例对白](docs/assets/readme-preview.png)
 
-## Features
+## 功能
 
-- Choose system audio, microphone, or both. System audio is the default; microphone capture requires explicit selection.
-- Translate audio from a selected app on macOS or Windows 11.
-- Show original text, translations, or both.
-- Adjust subtitle position, size, and color, or let mouse clicks pass through the window.
-- Save subtitles or audio locally and export TXT / WAV when needed. Saving and recording are off by default.
+- 选择系统声音、麦克风，或同时开启两路。默认使用系统声音，麦克风需要主动选择。
+- 选择要翻译的应用声音（macOS / Windows 11）。
+- 显示原文、译文，或双语字幕。
+- 调整字幕的位置、大小和颜色，也可让鼠标点击穿过字幕窗口。
+- 按需保存字幕或音频到本机，导出 TXT / WAV；默认不保存、不录音。
+- 支持 Apple 芯片和 Intel Mac（macOS 13+），以及 Windows / Linux x86_64。
 
-## Get started
+## 开始使用
 
-For your first setup, **we recommend starting with Alibaba Cloud or Google Gemini**. We’ve done more real-world testing with Alibaba Cloud; in my experience so far, Gemini has delivered the most consistent subtitle output.
+初次使用，**推荐先用阿里云或 Google Gemini**。我们对阿里云做了更多实际测试；目前个人用下来，Gemini 的字幕输出最稳定。
 
-For Google Gemini, use a stable network connection. Check your available quota, billing, and API keys in [Google AI Studio](https://aistudio.google.com/).
+使用 Google Gemini 时，请保持网络连接稳定，并在 [Google AI Studio](https://aistudio.google.com/) 查看可用额度、计费和获取 API Key。
 
-For activation links, credential instructions, and the models Mimi currently uses, see the **[provider setup guide](docs/provider-setup.md)**.
+各家服务的开通入口、凭证获取步骤，以及 Mimi 当前使用的模型，见[**服务开通指南**](docs/provider-setup.zh-CN.md)。
 
-1. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save.
-2. Choose the recognition and translation languages.
-3. Play something and turn on Live Subtitles under Subtitles. On macOS, allow Screen & System Audio Recording when asked.
+1. 打开「设置 → 语音与翻译」，添加配置，按提示填入服务商凭证并保存。
+2. 选择识别和翻译语言。
+3. 播放内容，在「字幕」页开启「实时字幕」。macOS 提示时，允许「屏幕与系统音频录制」。
 
-Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Remote text translation sends recognized text to your chosen service; Apple Translation keeps text on the Mac.
+云端识别需要自备服务商凭证，并将音频发送至该服务，调用可能产生费用。符合条件的 Mac 可用 Apple Speech 在本地识别；远程文字翻译会将识别文字发送至你选择的服务；Apple 翻译在 Mac 本地处理文字。
 
-[Setup & help](docs/usage.md) · [Android](android/README.md) · [Report a bug](https://github.com/yuxino/mimi/issues) · [Contributing](.github/CONTRIBUTING.md)
+[使用与常见问题](docs/usage.zh-CN.md) · [Android](android/README.md) · [反馈问题](https://github.com/yuxino/mimi/issues) · [贡献指南](.github/CONTRIBUTING.md)
 
-<a id="apple-local-recognition"></a>
+<a id="apple-本地识别"></a>
 
-### Apple local recognition
+### Apple 本地识别
 
-**Apple Speech** appears when the system supports it: Apple silicon, macOS 26 or later, and an available system transcriber. It needs no speech API key. Stop subtitles and choose the language under **Recognition Language**. If it is missing, click **Download and use**; Mimi downloads its Apple resources and selects that language when ready. For an already downloaded language, click **Set recognition language**, then start subtitles. No System Settings detour is needed. Automatic language detection is not offered. See [Apple Speech setup](docs/provider-setup.md#apple-speech).
+**Apple Speech** 只在系统支持时出现：Apple 芯片、macOS 26 或更新版本，且系统识别引擎可用。识别不需要 API Key。先停止字幕，在「识别语言」中选好语言；未下载时点击「下载并使用」，Mimi 会下载 Apple 资源，并在就绪后将它设为识别语言。已下载时点击「设为识别语言」，再启动字幕。无需前往系统设置。不提供自动识别语言。详见 [Apple Speech 配置步骤](docs/provider-setup.zh-CN.md#apple-speech)。
 
-**Apple Translation** is a separate on-device text service on supported Apple silicon Macs running macOS 26 or later. Select it under **Text Translation**, save the configuration, and choose an explicit source and target language. Mimi shows whether the pair is ready; use **Download or enable languages** to open Apple’s setup confirmation. Translation models are separate from speech models. Existing models are reused; Apple downloads missing models when you confirm. Checks and subtitle sessions never request a download. No text API key or text proxy is needed.
+**Apple 翻译**是独立的本地文字翻译服务，当前支持 Apple 芯片、macOS 26 或更新版本。在「文字翻译」中选择它并保存配置，再选择明确的识别语言和翻译语言。Mimi 会显示语言对是否就绪；点击「下载或启用语言包」，即可打开 Apple 的确认界面。翻译语言包和语音识别语言包分开；已有的会复用，缺少的由 Apple 在你确认后下载。检查连接、启动字幕不会触发下载。不需要文字翻译 API Key 或文字代理。
 
-To show only the original text with Apple Speech, select **No translation (original only)**. You can also use a remote text translator such as [Index-Translate](#try-index-translate); that service receives recognized text.
+Apple Speech 只看原文时，选择「不翻译（仅原文）」。也可搭配 [Index-Translate](#试试-index-translate) 等远程文字翻译服务；远程服务会收到识别文字。
 
-### Try Index-Translate
+### 试试 Index-Translate
 
-Bilibili's [Index-Translate](https://github.com/bilibili/Index-Translate#inference) currently offers a free public translation API (as of October 5, 2026). It can provide text translation for Alibaba Cloud or Apple Speech recognition.
+B 站的 [Index-Translate](https://github.com/bilibili/Index-Translate#inference) 目前提供免费的公开翻译 API（截至 2026 年 10 月 5 日）。可以作为文字翻译服务，搭配阿里云或 Apple 本地识别使用。
 
-In **Settings → Speech & Translation**, open an **Alibaba Cloud** or **Apple Speech** configuration and select **OpenAI-compatible API** under **Text translation**. Use the values from the [official example](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41):
+在「**设置 → 语音与翻译**」中打开「**Alibaba Cloud**」或「**Apple Speech**」配置，将「**文字翻译**」的服务切换为「**OpenAI 兼容接口**」，按[官方示例](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py#L40-L41)填写：
 
-| Field | Value |
+| 字段 | 填写内容 |
 | --- | --- |
-| Service address | `https://index-translate.bilibili.com/v1` |
-| Model name | `Index-Translate-35B-A3B` |
-| API Key | Leave empty; the public API currently requires no authentication. |
+| 服务地址 | `https://index-translate.bilibili.com/v1` |
+| 模型名称 | `Index-Translate-35B-A3B` |
+| API Key | 留空，公开接口目前不需要认证。 |
 
-Save, then run the connection check beside **Text translation**. If this address already has a saved key, remove it with **Remove translation key** and save again.
+保存后，点击「文字翻译」旁的连接检查。如果这个地址之前保存过 Key，选择「移除翻译密钥」后再保存。
 
-Index-Translate handles text translation only. When using Alibaba Cloud, keep its speech-recognition credentials configured; recognition may still incur charges. Apple Speech recognition needs no key. Free API availability is subject to the upstream service.
+Index-Translate 只负责文字翻译。搭配阿里云时，仍需配置语音识别凭证，识别服务可能产生费用；搭配 Apple Speech 时，本地识别不需要 Key。免费接口的后续可用性以上游为准。
 
-## FAQ
+## 常见问题
 
-**macOS keeps asking for recording permission even though it is enabled?** Quit Mimi, then remove and re-add only its entry in System Settings → Privacy & Security → Screen & System Audio Recording. Use `/Applications/mimi.app` for the release app or `/Applications/mimi-dev.app` for development, enable it, and reopen the same app. See [permission recovery](docs/usage.md#macos-permissions-after-an-update).
+**macOS 已开启录音权限，仍反复要求授权？** 先退出 Mimi，在「系统设置 → 隐私与安全性 → 录屏与系统录音」中，仅删除并重新添加对应应用：正式版为 `/Applications/mimi.app`，开发版为 `/Applications/mimi-dev.app`，开启权限后重新打开同一个应用。详见[权限恢复步骤](docs/usage.zh-CN.md#macos-更新后重复授权)。
 
-## Contributors
+## 贡献者
 
-Thanks to everyone who writes code, reports issues, tries Mimi, or shares it (๑•̀ㅂ•́)و✧
+感谢每一位写代码、提问题、试用和分享的朋友 (๑•̀ㅂ•́)و✧
 
-Special thanks to [@yebuwudong](https://github.com/yebuwudong) for the [Android app](https://github.com/yuxino/mimi/pull/37), and [@LLLin000](https://github.com/LLLin000) for [subtitle animation](https://github.com/yuxino/mimi/pull/67) and [Windows audio improvements](https://github.com/yuxino/mimi/pull/89).
+特别感谢 [@yebuwudong](https://github.com/yebuwudong) 贡献 [Android 版](https://github.com/yuxino/mimi/pull/37)，以及 [@LLLin000](https://github.com/LLLin000) 贡献[字幕动效](https://github.com/yuxino/mimi/pull/67)和 [Windows 音源改进](https://github.com/yuxino/mimi/pull/89)。
 
-Thanks also to [@Chtholly000](https://github.com/Chtholly000) for improving [Gemini's continuous captions and planned connection rotation](https://github.com/yuxino/Mimi/pull/176).
+也感谢 [@Chtholly000](https://github.com/Chtholly000) 改进 [Gemini 连续字幕和连接轮换](https://github.com/yuxino/Mimi/pull/176)。
 
 <p>
   <a href="https://github.com/yuxino"><img src="docs/assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
@@ -93,10 +94,10 @@ Thanks also to [@Chtholly000](https://github.com/Chtholly000) for improving [Gem
   <a href="https://github.com/inhome"><img src="docs/assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
 </p>
 
-[All contributors](https://github.com/yuxino/mimi/graphs/contributors)
+[查看所有贡献者](https://github.com/yuxino/mimi/graphs/contributors)
 
-## Community
+## 社区致谢
 
-Thanks to the people in [V2EX](https://www.v2ex.com/), [LINUX DO](https://linux.do/), [Appinn](https://meta.appinn.net/), [NodeLoc](https://www.nodeloc.com/), [Solo](https://solo.xin/), [Xinquji](https://xinquji.com/posts/859305), and [Eleduck](https://eleduck.com/) for trying Mimi, sharing feedback, and spreading the word.
+也感谢 [V2EX](https://www.v2ex.com/)、[LINUX DO](https://linux.do/)、[小众软件](https://meta.appinn.net/)、[NodeLoc](https://www.nodeloc.com/)、[Solo](https://solo.xin/)、[新趣集](https://xinquji.com/posts/859305)和[电鸭](https://eleduck.com/)社区朋友的试用、反馈与分享。
 
 [MIT](LICENSE) © 2026 yuxino
