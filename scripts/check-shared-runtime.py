@@ -72,13 +72,13 @@ def check(root=ROOT):
                 body = code(path.read_text(encoding="utf-8"))
                 declarations = re.findall(r"(?:pub\s+)?mod\s+(\w+)\s*;", body)
                 rest = re.sub(r"#\[(?:cfg|allow)\([^\]]*\)\]|(?:pub\s+)?mod\s+\w+\s*;", "", body)
-                require(not rest.strip(), f"desktop module list contains implementation: {relative}")
+                require(not rest.strip(), f"desktop module list contains implementation: {relative.as_posix()}")
                 for name in declarations:
                     require((shared.parent / f"{name}.rs").is_file()
                             or (shared.parent / name / "mod.rs").is_file(),
-                            f"desktop module has no shared implementation: {relative}::{name}")
+                            f"desktop module has no shared implementation: {relative.as_posix()}::{name}")
             else:
-                require(shared.is_file(), f"desktop module has no shared implementation: {relative}")
+                require(shared.is_file(), f"desktop module has no shared implementation: {relative.as_posix()}")
                 candidates.add(relative)
     for path in (desktop / "core").rglob("*.rs"):
         relative = path.relative_to(desktop)
@@ -95,7 +95,7 @@ def check(root=ROOT):
         module = "::".join(relative.with_suffix("").parts)
         expected = f"pub use mimi_runtime::{module}::*;"
         require(re.sub(r"\s+", "", body) == re.sub(r"\s+", "", expected),
-                f"desktop facade must only re-export shared code: {relative}")
+                f"desktop facade must only re-export shared code: {relative.as_posix()}")
 
     # Legacy Kotlin is retained for offline fixtures. Production must not call it.
     android = root / "android/app/src"

@@ -420,6 +420,8 @@ text with explicit UTF-8. Windows Python can default to cp1252: the shared-runti
 guard once failed on non-ASCII Kotlin before checking the architecture. Keep the
 legacy-locale regression in `scripts/check-shared-runtime-test.py`; setting UTF-8
 only in CI would leave direct Gradle/native build entry points broken.
+Format repository paths in guard diagnostics with `Path.as_posix()` as well;
+native Windows separators must not invalidate a correctly rejected mutation.
 
 Run `./scripts/check.sh`. For signing changes, additionally build with
 `./scripts/package-app.sh`, verify the bundle, and compare its designated
