@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 spec = importlib.util.spec_from_file_location("shared_runtime_guard", Path(__file__).with_name("check-shared-runtime.py"))
@@ -33,18 +34,37 @@ class SharedRuntimeBoundaryTests(unittest.TestCase):
 
     def edit(self, filename, transform):
         path = self.root / filename
-        path.write_text(transform(path.read_text()))
+        path.write_text(transform(path.read_text(encoding="utf-8")), encoding="utf-8")
 
     def add(self, filename, text):
         path = self.root / filename
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
 
     def rejected(self, message):
         self.assertTrue(any(message in error for error in guard.check(self.root)), message)
 
     def test_current_repository_passes(self):
         self.assertEqual(guard.check(), [])
+
+    def test_utf8_inputs_and_mutations_work_with_a_legacy_windows_locale(self):
+        original_open = Path.open
+
+        def legacy_locale_open(path, mode="r", buffering=-1, encoding=None,
+                               errors=None, newline=None):
+            if "b" not in mode and encoding is None:
+                encoding = "cp1252"
+            return original_open(path, mode, buffering, encoding, errors, newline)
+
+        with mock.patch.object(Path, "open", legacy_locale_open):
+            self.edit("src-tauri/src/clients/high_quality_client.rs",
+                      lambda text: text + "\n// 日本語の字幕・中文\n")
+            self.add("android/app/src/main/java/Utf8Fixture.kt",
+                     '// 日本語の字幕・中文\nclass Utf8Fixture { }\n')
+            self.assertEqual(guard.check(self.root), [])
+            self.edit("src-tauri/src/clients/high_quality_client.rs",
+                      lambda text: text + "\nfn local_deadline() -> u64 { 60 }\n")
+            self.rejected("desktop facade must only re-export shared code")
 
     def test_desktop_client_cannot_gain_local_business_logic(self):
         self.edit("src-tauri/src/clients/high_quality_client.rs", lambda text: text + "\nfn local_deadline() -> u64 { 60 }\n")
@@ -138,10 +158,10 @@ class SharedRuntimeBoundaryTests(unittest.TestCase):
         for pattern in ("src-tauri/**", "src/**", "shared/**"):
             with self.subTest(pattern=pattern):
                 path = self.root / ".github/workflows/android.yml"
-                original = path.read_text()
-                path.write_text(original.replace(f"      - '{pattern}'\n", ""))
+                original = path.read_text(encoding="utf-8")
+                path.write_text(original.replace(f"      - '{pattern}'\n", ""), encoding="utf-8")
                 self.rejected("Android CI must follow desktop/shared changes")
-                path.write_text(original)
+                path.write_text(original, encoding="utf-8")
 
     def test_build_and_ci_gates_cannot_be_removed(self):
         for filename, transform, message in (
@@ -153,10 +173,10 @@ class SharedRuntimeBoundaryTests(unittest.TestCase):
         ):
             with self.subTest(filename=filename):
                 path = self.root / filename
-                original = path.read_text()
-                path.write_text(transform(original))
+                original = path.read_text(encoding="utf-8")
+                path.write_text(transform(original), encoding="utf-8")
                 self.rejected(message)
-                path.write_text(original)
+                path.write_text(original, encoding="utf-8")
 
 
 if __name__ == "__main__":

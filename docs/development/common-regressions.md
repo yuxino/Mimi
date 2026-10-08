@@ -415,6 +415,12 @@ samples and [the run ledger](integration-runs.md) for this check's exact scope.
 
 ## Before handing off
 
+Python source guards and their mutation fixtures must read and write repository
+text with explicit UTF-8. Windows Python can default to cp1252: the shared-runtime
+guard once failed on non-ASCII Kotlin before checking the architecture. Keep the
+legacy-locale regression in `scripts/check-shared-runtime-test.py`; setting UTF-8
+only in CI would leave direct Gradle/native build entry points broken.
+
 Run `./scripts/check.sh`. For signing changes, additionally build with
 `./scripts/package-app.sh`, verify the bundle, and compare its designated
 requirement with any app that would be replaced. Before a commit, inspect the

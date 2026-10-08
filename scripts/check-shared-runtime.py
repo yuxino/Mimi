@@ -69,7 +69,7 @@ def check(root=ROOT):
             relative = path.relative_to(desktop)
             shared = runtime / relative
             if path.name == "mod.rs":
-                body = code(path.read_text())
+                body = code(path.read_text(encoding="utf-8"))
                 declarations = re.findall(r"(?:pub\s+)?mod\s+(\w+)\s*;", body)
                 rest = re.sub(r"#\[(?:cfg|allow)\([^\]]*\)\]|(?:pub\s+)?mod\s+\w+\s*;", "", body)
                 require(not rest.strip(), f"desktop module list contains implementation: {relative}")
@@ -111,7 +111,7 @@ def check(root=ROOT):
         relative = path.relative_to(root).as_posix()
         if relative in {PROVIDER + name for name in LEGACY_FILES}:
             continue
-        text = code(path.read_text(), hide_strings=True)
+        text = code(path.read_text(encoding="utf-8"), hide_strings=True)
         if relative == PROVIDER + "ServiceCatalog.kt":
             # These two legacy constants are metadata only, not executable clients.
             text = re.sub(r"OpenAIRealtimeEngine\s*\.\s*(?:ENDPOINT|MODEL)\b", "", text)
