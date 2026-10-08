@@ -28,3 +28,5 @@ pub mod deeplx_client;
 
 #[cfg(test)]
 mod translation_contract_tests;
+
+pub mod windows_live_captions_client;

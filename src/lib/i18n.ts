@@ -1,3 +1,4 @@
+import { WINDOWS_LIVE_CAPTIONS_COPY } from "./windowsLiveCaptionsCopy";
 /**
  * UI copy grouped by window. Tray strings, language/mode display names, and
  * the overlay copy follow the effective UI language. Overlay activity-phase
@@ -371,6 +372,7 @@ const OVERLAY_JA = {
 };
 
 const SETTINGS_ZH = {
+  ...WINDOWS_LIVE_CAPTIONS_COPY.zh,
   appleTranslationSameLanguage: "识别语言和翻译目标相同，将直接显示原文。",
   textTranslationApple: "Apple Translation",
   appleTranslationHelp: "在这台 Mac 上使用 Apple 的系统翻译，不需要 API 密钥。首次使用所选语言前，需在 Mimi 中下载或启用翻译语言包。",
@@ -910,6 +912,7 @@ export type SettingsCopy = {
 };
 
 const SETTINGS_EN = {
+  ...WINDOWS_LIVE_CAPTIONS_COPY.en,
   appleTranslationSameLanguage: "The recognition and target languages match. The original text is shown directly.",
   textTranslationApple: "Apple Translation",
   appleTranslationHelp: "Translate on this Mac using Apple’s system translation. No API key is required. Download or enable the translation languages in Mimi before first use.",
@@ -1447,6 +1450,7 @@ const SETTINGS_EN = {
 } satisfies SettingsCopy;
 
 const SETTINGS_JA = {
+  ...WINDOWS_LIVE_CAPTIONS_COPY.ja,
   appleTranslationSameLanguage: "認識言語と翻訳先が同じため、原文をそのまま表示します。",
   textTranslationApple: "Apple Translation",
   appleTranslationHelp: "この Mac 上で Apple のシステム翻訳を使用します。API キーは不要です。初回利用前に Mimi で翻訳用の言語パックをダウンロードまたは有効化してください。",
@@ -2026,6 +2030,8 @@ export const I18N = {
 
 export function providerDisplayName(provider: ServiceProvider): string {
   switch (provider) {
+    case "windowsLiveCaptions":
+      return I18N.settings.windowsLiveCaptions;
     case "appleSpeech":
       return I18N.settings.appleSpeech;
     case "customDashScopeASR":

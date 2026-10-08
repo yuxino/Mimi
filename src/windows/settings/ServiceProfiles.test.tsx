@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { diagnosticCopy, profileErrorMessage } from "../../lib/connectionDiagnostics";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { I18N, providerDisplayName, setStoredUiLanguage } from "../../lib/i18n";
-import { getAppleSpeechSupport, prepareAppleSpeechLanguage, profileCredentialEditorState, profileRevealCredential, testProfileConnection } from "../../lib/ipc";
+import { getAppleSpeechSupport, getWindowsLiveCaptionsSupport, prepareAppleSpeechLanguage, profileCredentialEditorState, profileRevealCredential, testProfileConnection } from "../../lib/ipc";
 import { SERVICE_PROVIDERS, sourceLanguagesForSettings, targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../lib/types";
 import type { AppleSpeechSupport, ServiceProfile, SettingsSnapshot } from "../../lib/types";
@@ -18,7 +18,7 @@ const actions = vi.hoisted(() => ({
 }));
 const boot = vi.hoisted(() => ({ initializationStatus: "ready" as "ready" | "loading" | "error", initializationError: null as "timeout" | "unavailable" | null, init: vi.fn(), nativeSettings: null as SettingsSnapshot | null }));
 vi.mock("../../lib/store", () => ({ useStore: (select: (state: typeof actions & typeof boot & { settings: { windowsAudioSource?: string }; session: { isActive: boolean; isPaused: boolean } }) => unknown) => select({ ...actions, ...boot, settings: boot.nativeSettings ?? { windowsAudioSource: "" }, session: { isActive: false, isPaused: false } }) }));
-vi.mock("../../lib/ipc", () => ({ isTauri: false, getAppleSpeechSupport: vi.fn(), prepareAppleSpeechLanguage: vi.fn(), testProfileConnection: vi.fn(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
+vi.mock("../../lib/ipc", () => ({ isTauri: false, getAppleSpeechSupport: vi.fn(), getWindowsLiveCaptionsSupport: vi.fn(), openWindowsLiveCaptions: vi.fn(), prepareAppleSpeechLanguage: vi.fn(), testProfileConnection: vi.fn(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "unavailable" };
 const settings: SettingsSnapshot = {
@@ -41,6 +41,7 @@ beforeEach(() => {
   vi.mocked(profileRevealCredential).mockReset();
   vi.mocked(profileCredentialEditorState).mockReset().mockResolvedValue({ savedFields: ["apiKey"] });
   vi.mocked(getAppleSpeechSupport).mockReset().mockResolvedValue({ available: false, languages: [] });
+  vi.mocked(getWindowsLiveCaptionsSupport).mockReset().mockResolvedValue({ available: false, status: "unsupported" });
   vi.mocked(prepareAppleSpeechLanguage).mockReset();
   boot.initializationStatus = "ready"; boot.initializationError = null; boot.init.mockReset().mockResolvedValue(undefined);
   boot.nativeSettings = null;
@@ -444,7 +445,7 @@ it.each(["zh", "en", "ja"] as const)("previews a provider and leaves settings un
   await render();
   await click(I18N.settings.addProfile);
   const options = [...host.querySelectorAll<HTMLButtonElement>(".provider-option")];
-  expect(options.map(option => option.dataset.provider)).toEqual(SERVICE_PROVIDERS.filter(provider => provider !== "appleSpeech"));
+  expect(options.map(option => option.dataset.provider)).toEqual(SERVICE_PROVIDERS.filter(provider => provider !== "appleSpeech" && provider !== "windowsLiveCaptions"));
   expect(options.slice(-2).map(option => option.dataset.provider)).toEqual(["customDashScopeASR", "customOpenAIASR"]);
   expect(host.querySelector(".provider-picker small, .provider-picker p")).toBeNull();
   expect(host.querySelector(".provider-picker__heading .settings-help-control__description")?.textContent).toBe(I18N.settings.chooseProviderDescription);
@@ -454,7 +455,7 @@ it.each(["zh", "en", "ja"] as const)("previews a provider and leaves settings un
   expect(actions.createProfile).not.toHaveBeenCalled();
   await click(I18N.settings.cancel);
   expect(document.querySelector(".provider-picker__preview")).toBeNull();
-  expect(host.querySelectorAll(".provider-option")).toHaveLength(SERVICE_PROVIDERS.length - 1);
+  expect(host.querySelectorAll(".provider-option")).toHaveLength(SERVICE_PROVIDERS.length - 2);
   await previewProvider("alibabaCloud");
   await click(I18N.settings.cancel);
   expect(document.querySelector('[role="alertdialog"], [role="dialog"]')).toBeNull();
@@ -1746,4 +1747,27 @@ it.each([true, false])("defers current-configuration navigation until a pending 
     await act(async () => navigate(2));
     expect(host.querySelector(".service-detail h2")?.textContent).toBe(current.name);
   }
+});
+
+it("offers Windows captions only after platform eligibility is confirmed", async () => {
+  vi.mocked(getWindowsLiveCaptionsSupport).mockResolvedValue({ available: true, status: "closed", buildNumber: 22621 });
+  await render(); await click(I18N.settings.addProfile);
+  expect([...host.querySelectorAll<HTMLButtonElement>(".provider-option")].map(node => node.dataset.provider))
+    .toEqual(SERVICE_PROVIDERS.filter(provider => provider !== "appleSpeech"));
+  await previewProvider("windowsLiveCaptions");
+  expect(document.querySelector(".provider-picker__preview h3")?.textContent).toBe(I18N.settings.windowsLiveCaptions);
+  expect(actions.createProfile).not.toHaveBeenCalled();
+});
+
+it("edits imported Windows captions on another OS with no recognition key or speech proxy", async () => {
+  const windows: ServiceProfile = { id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", credentialState: "missing" };
+  await render({ ...settings, profiles: [windows], activeProfileId: windows.id, sourceLanguage: "en", targetLanguage: "original" });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  expect(host.textContent).toContain(I18N.settings.windowsLiveCaptionsUnsupported);
+  expect(host.querySelector('input[type="password"]')).toBeNull();
+  expect(host.querySelectorAll(".service-proxies")).toHaveLength(0);
+  expect(host.querySelector('[role="combobox"][aria-label="'+I18N.settings.textTranslationLabel+'"]')).not.toBeNull();
+  expect(host.querySelector("fieldset")!.disabled).toBe(true);
+  expect(profileCredentialEditorState).not.toHaveBeenCalled();
+  expect(actions.selectProfile).not.toHaveBeenCalled();
 });

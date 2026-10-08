@@ -278,7 +278,7 @@ export function OverlayWindow() {
       <div className="overlay-status-row__leading">
         {sessionAction.pending || actionFailed ? <div role={sessionAction.pending ? "status" : "alert"} className="overlay-action-feedback">
           {sessionAction.pending ? I18N.overlay.connecting : actionFailureMessage}
-        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
+        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} showApiLatency={activeProvider !== "windowsLiveCaptions"} /> : null}
       </div>
       <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
         {visibleService && <OverlayTranslationService service={visibleService}

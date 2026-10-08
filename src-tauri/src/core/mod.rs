@@ -37,3 +37,5 @@ pub mod audio_source;
 pub mod support_diagnostics;
 
 pub mod system_audio_target;
+
+pub mod windows_caption_snapshots;

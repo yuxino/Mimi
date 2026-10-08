@@ -1,3 +1,4 @@
+import { WINDOWS_LIVE_CAPTIONS_COPY } from "../windowsLiveCaptionsCopy";
 import type { SettingsCopy } from '../i18n';
 
 export const TRAY = {
@@ -95,6 +96,7 @@ export const OVERLAY = {
 };
 
 export const SETTINGS = {
+  ...WINDOWS_LIVE_CAPTIONS_COPY["zh-TW"],
   appleTranslationSameLanguage: "辨識語言和翻譯目標相同，將直接顯示原文。",
   textTranslationApple: "Apple Translation",
   appleTranslationHelp: "在這台 Mac 上使用 Apple 的系統翻譯，不需要 API 金鑰。首次使用所選語言前，需在 Mimi 中下載或啟用翻譯語言套件。",

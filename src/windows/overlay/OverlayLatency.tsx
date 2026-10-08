@@ -4,8 +4,8 @@ import { formatLatency, latencyTone } from "./latencyFormat";
 import "./OverlayLatency.css";
 
 /** Actual observations plus explicit pending/recovery states, without polling. */
-export function OverlayLatency({ session, translationRequired = true }: { session: SessionStateEvent; translationRequired?: boolean }) {
-  if (!session.isActive) return null;
+export function OverlayLatency({ session, translationRequired = true, showApiLatency = true }: { session: SessionStateEvent; translationRequired?: boolean; showApiLatency?: boolean }) {
+  if (!session.isActive || (!showApiLatency && !translationRequired)) return null;
   const current = session.status.kind === "listening" && !session.isPaused;
   const follow = session.translationLatencyKind === "follow";
   const apiSample = formatLatency(current ? session.apiLatencyMs : null);
@@ -25,11 +25,11 @@ export function OverlayLatency({ session, translationRequired = true }: { sessio
   const description = (help: string, value: string) => `${help} ${value === "—" ? I18N.overlay.latencyUnavailable : value}`;
   return (
     <div className="overlay-latency" data-testid="overlay-latency">
-      <span title={description(I18N.overlay.apiLatencyHelp, api)} aria-label={`${I18N.overlay.apiLatency}: ${api}`}>
+      {showApiLatency && <span title={description(I18N.overlay.apiLatencyHelp, api)} aria-label={`${I18N.overlay.apiLatency}: ${api}`}>
         <span>{I18N.overlay.apiLatencyShort}</span><strong data-tone={apiTone}>{api}</strong>
-      </span>
+      </span>}
       {translationRequired && <>
-      <span className="overlay-latency__separator" aria-hidden="true">·</span>
+      {showApiLatency && <span className="overlay-latency__separator" aria-hidden="true">·</span>}
       <span role={recovery ? "status" : undefined} title={description(translationHelp, translation)} aria-label={`${translationLabel}: ${translation}`}>
         <span>{translationLabel}</span><strong data-tone={translationTone}>{translation}</strong>
       </span>

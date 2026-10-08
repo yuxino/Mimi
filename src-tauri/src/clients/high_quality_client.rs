@@ -1,7 +1,8 @@
 //! Bounded recognition + independently configured text-translation pipeline.
 //!
 //! Replaceable ASR drafts use a latest-only preview lane. Only authoritative
-//! server finals (plus a bounded session-finish fallback) enter the durable,
+//! server finals, explicitly heuristic Windows caption boundaries, and a bounded
+//! session-finish fallback enter the durable,
 //! serial final-translation queue.
 
 use crate::clients::provider_events::{
@@ -54,6 +55,7 @@ fn recognition_error(error: RecognitionClientError) -> QwenMTClientError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FinalBoundary {
     ServerFinal,
+    WindowsCaptionHeuristic,
     SessionFinish,
 }
 
@@ -61,6 +63,7 @@ impl FinalBoundary {
     fn label(self) -> &'static str {
         match self {
             Self::ServerFinal => "server-final",
+            Self::WindowsCaptionHeuristic => "windows-caption-heuristic",
             Self::SessionFinish => "session-finish",
         }
     }
@@ -776,8 +779,8 @@ impl HighQualityTranslationClient {
         self.events.content_revision()
     }
 
-    /// Discards local work without disconnecting ASR or refunding an already
-    /// started request's spacing, quota suppression or shared cooldown.
+    /// Discards local work and resets the recognizer's content boundary while
+    /// preserving request spacing, quota suppression and shared cooldown.
     pub async fn clear_content(&self) -> u64 {
         let _content = self.content_operation.lock().await;
         let revision = {
@@ -1019,7 +1022,11 @@ impl HighQualityTranslationClient {
         self.enqueue_final(
             text,
             language,
-            FinalBoundary::ServerFinal,
+            if matches!(&self.asr_client, RecognitionClient::Windows(_)) {
+                FinalBoundary::WindowsCaptionHeuristic
+            } else {
+                FinalBoundary::ServerFinal
+            },
             utterance_revision,
             source_utterance_id,
         )
@@ -1567,9 +1574,9 @@ impl HighQualityTranslationClient {
                 .iter_mut()
                 .find(|queued| queued.key().matches(&request))
             {
-                if boundary == FinalBoundary::ServerFinal {
+                if boundary != FinalBoundary::SessionFinish {
                     queued.language = request.language;
-                    queued.boundary = FinalBoundary::ServerFinal;
+                    queued.boundary = boundary;
                     queued.utterance_revision = request.utterance_revision;
                 }
                 return;
@@ -2600,8 +2607,19 @@ mod tests {
         for provider in [
             ProviderKind::CustomDashScopeASR,
             ProviderKind::CustomOpenAIASR,
+            ProviderKind::WindowsLiveCaptions,
         ] {
-            let configuration = custom_configuration(provider, TargetLanguage::Original);
+            let configuration = if provider == ProviderKind::WindowsLiveCaptions {
+                LiveTranslationConfiguration::with_credentials(
+                    provider,
+                    ProviderCredentials::WindowsLiveCaptions,
+                    SourceLanguage::English,
+                    TargetLanguage::Original,
+                    TranslationMode::Turbo,
+                )
+            } else {
+                custom_configuration(provider, TargetLanguage::Original)
+            };
             let (sender, mut events) = provider_event_channel();
             let client = HighQualityTranslationClient::new_custom(&configuration, sender).unwrap();
             assert!(matches!(

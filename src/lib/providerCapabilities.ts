@@ -57,6 +57,7 @@ export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
   "azureOpenAIRealtime",
   "xAIRealtime",
   "appleSpeech",
+  "windowsLiveCaptions",
   "customDashScopeASR",
   "customOpenAIASR",
 ];
@@ -64,6 +65,7 @@ export const SERVICE_PROVIDERS: readonly ServiceProvider[] = [
 const PROVIDER_CAPABILITIES: Readonly<
   Record<ServiceProvider, ProviderCapabilities>
 > = {
+  windowsLiveCaptions: { sourceLanguages: SOURCE_LANGUAGE_CODES, targetLanguages: ["original"], translationModes: ["turbo"] },
   appleSpeech: { sourceLanguages: [], targetLanguages: ["original"], translationModes: ["turbo"] },
   customDashScopeASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
   customOpenAIASR: { sourceLanguages: CUSTOM_CONFIGURABLE_SOURCES, targetLanguages: ["original"], translationModes: ["turbo"] },
@@ -144,10 +146,11 @@ function declaredCustomSources(profile: ServiceProfile, sources: readonly Source
 }
 
 export function isStandaloneAsrProvider(provider: ServiceProvider): boolean {
-  return provider === "appleSpeech" || isCustomSpeechProvider(provider);
+  return provider === "appleSpeech" || provider === "windowsLiveCaptions" || isCustomSpeechProvider(provider);
 }
 
 export function credentialStateForTarget(profile: ServiceProfile | undefined, target: TargetLanguage): CredentialState {
+  if (profile?.provider === "windowsLiveCaptions" && profile.windowsLiveCaptionsConsent !== true) return profile.credentialState === "unavailable" ? "unavailable" : "missing";
   return profile && isStandaloneAsrProvider(profile.provider) && target === "original"
     ? profile.speechCredentialState ?? profile.credentialState : profile?.credentialState ?? "missing";
 }
@@ -166,7 +169,7 @@ export function capabilitiesForProfile(
     // Only the native runtime can certify Apple's catalog. An unavailable or
     // not-yet-loaded catalog must not borrow a cloud provider's language list.
     return {
-      sourceLanguages: targetLanguage === "original" ? declaredCustomSources(profile, profile.provider === "appleSpeech" ? [] : isCustomSpeechProvider(profile.provider) ? CUSTOM_CONFIGURABLE_SOURCES : ALIBABA_RECOGNITION_SOURCES) : [],
+      sourceLanguages: targetLanguage === "original" ? declaredCustomSources(profile, profile.provider === "appleSpeech" ? [] : profile.provider === "windowsLiveCaptions" ? SOURCE_LANGUAGE_CODES : isCustomSpeechProvider(profile.provider) ? CUSTOM_CONFIGURABLE_SOURCES : ALIBABA_RECOGNITION_SOURCES) : [],
       targetLanguages: ["original"],
       translationModes: ["turbo"],
     };
@@ -218,7 +221,7 @@ function capabilitiesForSettings(
     native.targetLanguage === target &&
     Array.isArray(native.sourceLanguages) && (profile.provider === "appleSpeech" || appleTranslation || native.sourceLanguages.length > 0) &&
     Array.isArray(native.targetLanguages) && native.targetLanguages.length > 0 &&
-    native.sourceLanguages.every((code) => SOURCE_CODES.has(code) && ((profile.provider !== "appleSpeech" && (!appleTranslation || target === "original")) || code !== "auto")) &&
+    native.sourceLanguages.every((code) => SOURCE_CODES.has(code) && ((!["appleSpeech", "windowsLiveCaptions"].includes(profile.provider) && (!appleTranslation || target === "original")) || code !== "auto")) &&
     native.targetLanguages.every((code) => TARGET_CODES.has(code))
   ) {
     return {

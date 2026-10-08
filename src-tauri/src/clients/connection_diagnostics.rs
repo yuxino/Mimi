@@ -68,6 +68,10 @@ pub enum ConnectionCheckReason {
     AppleSpeechLanguageUnsupported,
     AppleSpeechUnavailable,
     AppleSpeechRecognitionFailed,
+    WindowsLiveCaptionsUnsupported,
+    WindowsLiveCaptionsClosed,
+    WindowsLiveCaptionsSetupRequired,
+    WindowsLiveCaptionsUnreadable,
     AppleTranslationAssetsMissing,
     AppleTranslationLanguageUnsupported,
     AppleTranslationUnavailable,
@@ -177,7 +181,8 @@ pub async fn check_speech_service(
         }
         ProviderKind::CustomDashScopeASR
         | ProviderKind::CustomOpenAIASR
-        | ProviderKind::AppleSpeech => {
+        | ProviderKind::AppleSpeech
+        | ProviderKind::WindowsLiveCaptions => {
             probe_custom_speech(configuration, include_translation).await
         }
         _ => {
@@ -412,7 +417,9 @@ async fn probe_text_translation(
                 .await
                 .map_err(|error| openai_compatible_reason(&error))?
         }
-        ProviderCredentials::CustomSpeech { .. } | ProviderCredentials::AppleSpeech => {
+        ProviderCredentials::CustomSpeech { .. }
+        | ProviderCredentials::AppleSpeech
+        | ProviderCredentials::WindowsLiveCaptions => {
             probe_independent_text_translation(
                 configuration
                     .text_credentials
@@ -440,7 +447,7 @@ async fn probe_custom_speech(
 ) -> Result<(), ConnectionCheckReason> {
     let mut asr =
         RecognitionClient::standalone(configuration).map_err(|error| recognition_reason(&error))?;
-    if configuration.provider != ProviderKind::AppleSpeech {
+    if !configuration.provider.is_local_speech() {
         let network = ProviderNetwork::resolve(&configuration.network_proxy)
             .map_err(|_| ConnectionCheckReason::InvalidConfiguration)?;
         asr.set_network(network)
@@ -625,6 +632,19 @@ fn apple_test_phrase(source: SourceLanguage) -> Option<&'static str> {
 }
 
 fn recognition_reason(error: &RecognitionClientError) -> ConnectionCheckReason {
+    if let RecognitionClientError::Windows(label) = error {
+        return match label.as_str() {
+            "windows_live_captions_unsupported" => {
+                ConnectionCheckReason::WindowsLiveCaptionsUnsupported
+            }
+            "windows_live_captions_closed" => ConnectionCheckReason::WindowsLiveCaptionsClosed,
+            "windows_live_captions_setup_required" => {
+                ConnectionCheckReason::WindowsLiveCaptionsSetupRequired
+            }
+            "windows_live_captions_setup_timeout" => ConnectionCheckReason::Timeout,
+            _ => ConnectionCheckReason::WindowsLiveCaptionsUnreadable,
+        };
+    }
     if let RecognitionClientError::Apple(label) = error {
         return match label.as_str() {
             "apple_speech_assets_missing" => ConnectionCheckReason::AppleSpeechAssetsMissing,
@@ -932,6 +952,37 @@ mod tests {
         ] {
             assert_eq!(connection_reason(&error), ConnectionCheckReason::AuthenticationRejected);
             assert_eq!(error.to_string(), "credential_authentication_failed");
+        }
+    }
+
+    #[test]
+    fn windows_live_captions_probe_reports_fixed_actionable_states() {
+        for (label, expected) in [
+            (
+                "windows_live_captions_unsupported",
+                ConnectionCheckReason::WindowsLiveCaptionsUnsupported,
+            ),
+            (
+                "windows_live_captions_closed",
+                ConnectionCheckReason::WindowsLiveCaptionsClosed,
+            ),
+            (
+                "windows_live_captions_setup_required",
+                ConnectionCheckReason::WindowsLiveCaptionsSetupRequired,
+            ),
+            (
+                "windows_live_captions_unreadable",
+                ConnectionCheckReason::WindowsLiveCaptionsUnreadable,
+            ),
+            (
+                "Synthetic private UIA exception",
+                ConnectionCheckReason::WindowsLiveCaptionsUnreadable,
+            ),
+        ] {
+            assert_eq!(
+                recognition_reason(&RecognitionClientError::Windows(label.into())),
+                expected
+            );
         }
     }
 

@@ -3,6 +3,7 @@ import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useStore } from "../../lib/store";
 import { I18N } from "../../lib/i18n";
 import { SessionExport } from "./SessionExport";
 
@@ -215,4 +216,18 @@ it("automatically uses the actual single microphone recording instead of assumin
   expect(host.querySelector('[role="combobox"]')).toBeNull();
   await click(button(I18N.settings.exportAudio));
   expect(ipc.sessionExport).toHaveBeenLastCalledWith("audio", "mic", "microphone");
+});
+
+it("disables audio recording for Windows captions while keeping transcript retention available", async () => {
+  const state = useStore.getState(); const previous = state.settings;
+  try {
+    state.settings = { ...previous, activeProfileId: "windows", recordSessionAudio: true,
+      profiles: [{ id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", credentialState: "present" }] };
+    await act(async () => root.render(<><SessionExport visible /><SettingsToastRegion /></>));
+    const record = host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="'+I18N.settings.recordSessionAudio+'"]')!;
+    expect(record.disabled).toBe(true); expect(record.getAttribute("aria-checked")).toBe("false");
+    expect(host.textContent).toContain(I18N.settings.windowsLiveCaptionsAudioUnavailable);
+    expect(host.querySelector<HTMLButtonElement>('[role="switch"][aria-label="'+I18N.settings.retainSessionHistory+'"]')!.disabled).toBe(false);
+    await click(record); expect(state.saveSettings).not.toHaveBeenCalled();
+  } finally { state.settings = previous; }
 });
