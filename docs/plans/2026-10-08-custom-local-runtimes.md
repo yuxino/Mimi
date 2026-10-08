@@ -14,6 +14,7 @@
 - Local programs require an absolute executable path, a supported adapter and valid model files. Arguments are separate values, never an interpolated shell command. Bound output/audio/queue lengths and inference time; stale generations/revisions cannot publish results. Stop cancels and reaps owned children. Do not log paths, arguments, speech, or raw process errors.
 - Windows and Linux reuse these Rust adapters; built-in MLX remains Apple-silicon-only. Native platform acceptance must be reported separately from compilation/CI.
 - Close the temporary WAV's writable handle before starting whisper.cpp. Keep a `TempPath` guard until the child is reaped so success, failure and cancellation all remove the private file. A Windows native run reproduced exit 11 while the writer stayed open and exit 0 for the same closed file; CI must exercise an exclusive reader to prevent this regression.
+- Local readiness checks have a separate bounded 100-second outer budget so the existing 45-second Whisper inference and 90-second worker-loading budgets can finish. Cloud connection checks retain their 20-second budget; every check still disconnects its temporary client. A Windows large-v3-turbo run completed standalone inference in 27.5 seconds but hit the old outer check timeout at 20 seconds.
 
 ## Implementation and acceptance
 

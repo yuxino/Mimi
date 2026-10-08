@@ -26,6 +26,9 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+// Local setup can include a 45-second silent CLI inference or a 90-second
+// worker load. Keep an outer bound without cutting those existing budgets short.
+const LOCAL_PROBE_TIMEOUT: Duration = Duration::from_secs(100);
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -184,7 +187,15 @@ pub async fn check_speech_service(
         _ => {
             let (events, _receiver) = provider_event_channel();
             match TranslationClient::new(configuration, events) {
-                Ok(client) => probe_realtime(&client, PROBE_TIMEOUT).await,
+                Ok(client) => {
+                    let timeout = match configuration.provider {
+                        ProviderKind::LocalSpeech | ProviderKind::LocalProgram => {
+                            LOCAL_PROBE_TIMEOUT
+                        }
+                        _ => PROBE_TIMEOUT,
+                    };
+                    probe_realtime(&client, timeout).await
+                }
                 Err(_) => Err(ConnectionCheckReason::InvalidConfiguration),
             }
         }
@@ -1465,6 +1476,41 @@ mod tests {
             serde_json::to_value(ConnectionCheckReason::UnsupportedLanguage).unwrap(),
             "unsupportedLanguage"
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn local_program_probe_allows_model_load_beyond_cloud_setup_budget() {
+        use crate::core::local_program::{LocalProgramConfiguration, LocalProgramEngine};
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let executable = root.path().join("slow model loader");
+        let model = root.path().join("model.bin");
+        std::fs::write(&model, b"synthetic model").unwrap();
+        // A real child stays in setup beyond the old 20-second network budget.
+        // An empty successful result is valid for the silent readiness inference.
+        std::fs::write(&executable, "#!/bin/sh\nsleep 21\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let configuration = LiveTranslationConfiguration::with_credentials(
+            ProviderKind::LocalProgram,
+            ProviderCredentials::LocalProgram {
+                configuration: LocalProgramConfiguration {
+                    engine: LocalProgramEngine::WhisperCpp,
+                    executable: executable.to_string_lossy().into_owned(),
+                    model_path: model.to_string_lossy().into_owned(),
+                    arguments: vec![],
+                },
+            },
+            SourceLanguage::English,
+            TargetLanguage::Original,
+            TranslationMode::Turbo,
+        );
+        let diagnostic = check_speech_service(&configuration, false).await;
+        assert_eq!(diagnostic.service, ServiceAvailability::Available);
+        assert_eq!(diagnostic.reason, None);
+        assert!(diagnostic.elapsed_ms.unwrap() >= PROBE_TIMEOUT.as_millis() as u64);
+        assert_eq!(std::fs::read(&model).unwrap(), b"synthetic model");
     }
 
     #[tokio::test]
