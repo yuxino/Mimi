@@ -28,10 +28,14 @@ Preserve these product constraints:
 - The product website lives in the separate `yuxino-labs/mimi-web`
   repository. Never add a website copy, subtree, or generated site assets to
   this application repository.
-- `README.md`: the single English entry point. Localized READMEs live in
-  `docs/readme/`; contribution and security guides live in `.github/`.
+- `README.md`: the Simplified Chinese entry point; `README_EN.md` is English.
+  Other localized READMEs live in `docs/readme/`; contribution and security
+  guides live in `.github/`.
 - `docs/plans/`: current accepted design records; completed checklists and
-  superseded designs stay in Git history.
+  superseded designs stay in Git history. Put reusable rules in the owning
+  development guide instead of duplicating task notes. Dated QA, release and
+  integration reports describe their tested revision, not current setup or
+  continuing authorization for later work.
 - `docs/development/common-regressions.md`: required macOS signing, permission,
   Keychain, overlay, and local-testing pitfalls. Read it before packaging or
   diagnosing a repeated system prompt.
@@ -65,7 +69,7 @@ Preserve these product constraints:
 - Do not introduce a dependency, external service, or credential requirement unless the task needs it and the trade-off is documented.
 - On macOS use `/Applications/mimi-dev.app` for all pre-push testing. Never overwrite `/Applications/mimi.app` with a locally signed package when its designated requirement differs from the installed GitHub Release. An intentional certificate migration must be explicit and is expected to require one final Screen Recording and Keychain authorization.
 - Normal credentials use the local file only, including missing or damaged values. Never fall back to native stores after migration. Keep a non-secret completion marker so a missing file cannot reopen OS authorization. Legacy import verifies each durable copy before deleting only its original Mimi-owned OS item; checkpoint deletion separately for interrupted cleanup.
-- Never delete and recreate a Keychain credential to refresh its ACL, widen an item or keychain to allow-all, or fabricate a Team ID for a self-signed build. Preserve the same service/account and update its secret in place. Password-free Keychain continuity across rebuilt binaries requires an Apple-issued signing identity with a stable Team ID; the current self-signed identities guarantee a stable designated requirement for TCC, not that stronger Keychain property.
+- For legacy Keychain import, never delete and recreate an item to refresh its ACL, widen an item or keychain to allow-all, or fabricate a Team ID for a self-signed build. Preserve the service/account until verified retirement; normal credential writes belong only in the local file. Password-free Keychain continuity across rebuilt binaries requires an Apple-issued signing identity with a stable Team ID; the current self-signed identities guarantee a stable designated requirement for TCC, not that stronger Keychain property.
 
 ## PC and Android parity
 
@@ -107,7 +111,7 @@ It runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, and the f
 Additional checks by change type:
 
 - UI changes: on macOS run `./scripts/dev-app.sh` and inspect the settings window, tray panel, and overlay in normal, empty, error, paused, collapsed, translating, and long-subtitle states. This launches a signed bundle from one canonical path so macOS does not treat every rebuild as a new app and repeat privacy prompts. Use `./scripts/dev-app.sh --ui-only` for credential-free UI smoke tests; UI-test mode must not access provider networks or start any audio capture. On Windows, use `npm run tauri:dev`.
-- Latency or streaming changes: measure against a real session for the affected provider (user-supplied OS-keychain credentials) and report timing diagnostics as well as correctness tests.
+- Latency or streaming changes: measure against a real session for the affected provider (authorized saved local-file credentials) and report timing diagnostics as well as correctness tests.
 - Packaging or signing changes: read `docs/development/common-regressions.md`, run `./scripts/package-app.sh`, and verify the resulting app opens without replacing an installed app of a different designated requirement. Windows packaging is verified on a Windows machine (or CI). Never commit `dist/`, `src-tauri/target/`, or signing identities.
 
 Before committing, inspect the diff for credentials, recordings, subtitle content, personal paths, and build artifacts.

@@ -2,12 +2,12 @@
 
 Issue: [#70](https://github.com/yuxino/mimi/issues/70).
 
-Add an OpenAI-compatible option beside Follow service, DeepL and DeepLX in
-the Alibaba profile's advanced text-translation selector. Alibaba Audio 3.0
-continues to recognize system playback; the selected HTTP service translates
-recognized sentences. This does not configure third-party ASR or Realtime.
+OpenAI-compatible Chat Completions is an independent text-translation route
+for speech profiles that support a separate text stage. It translates recognized
+sentences; this route alone does not configure third-party ASR or Realtime.
+See the [stage settings contract](2026-10-03-service-stage-settings.md).
 
-The minimal supported contract is Bearer authentication and non-streaming
+The supported contract uses optional Bearer authentication and non-streaming
 `POST /chat/completions`, with `model` and system/user `messages`, returning
 a nonempty string in `choices[0].message.content`. The settings form explains
 this contract, accepts a base URL or complete Chat Completions URL, and asks
@@ -25,16 +25,19 @@ session generation guards and ordered final translations. Confirmed history
 and optional system-audio files retain their existing default-off behavior.
 Diagnostics contain fixed errors, status codes, timings and counts only.
 
-`openAICompatible` is an Alibaba text-translation route. ASR credentials and
-the independent translation destinations remain in profile-scoped OS secure
-storage. Switching routes must preserve the saved DeepL, DeepLX and generic
-destination values separately. Empty editor fields may reuse saved values;
-credentials are never echoed in settings snapshots. The local development
-credential exception remains read-only and unchanged.
+`openAICompatible` identifies this independent text-translation route. ASR
+credentials and text destinations use separate profile-scoped slots in the
+[private local credential file](2026-10-04-local-credential-storage.md). Switching
+routes must preserve the saved DeepL, DeepLX and generic destination values
+separately. Empty editor fields may reuse saved values;
+credentials are never echoed in settings snapshots. Development uses ordinary
+editable profiles in its own private file.
 
-Connection checks require ASR setup and a translation of a fixed public test
-phrase to succeed. Synthetic local HTTP tests cover wire shape, authentication,
-invalid and empty responses, size limits, cancellation and proxy routing.
+Independent connection checks translate a fixed public test phrase without
+requiring or reading the ASR key. Complete editor drafts follow the
+[draft-check contract](2026-10-05-draft-connection-checks.md). Synthetic local HTTP
+tests cover wire shape, authentication, invalid and empty responses, size limits,
+cancellation and proxy routing.
 Core/store/UI tests cover persistence, route switching and field validation.
 Run the repository check and inspect the signed canonical development app.
 

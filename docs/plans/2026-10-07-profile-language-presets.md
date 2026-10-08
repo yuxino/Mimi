@@ -11,9 +11,10 @@ Temporary language changes never write profile metadata.
 The active configuration offers one “Remember current languages” action using the
 existing language controls. A saved pair is shown with explicit Update/Remove
 actions. Saving does not change current languages. Inactive profiles can remove a
-pair but cannot capture another profile's current languages. Local development
-credential presets remain read-only. Configuration lists and tray/overlay pickers
-show saved pairs alongside the existing names and provider icons.
+pair but cannot capture another profile's current languages. Independent
+development profiles follow the same editable rules. Configuration lists and
+tray/overlay pickers show saved pairs alongside the existing names and provider
+icons.
 
 Ordinary profile selection applies the exact saved pair through the guarded
 lifecycle. Settings can also reapply the active configuration after a temporary

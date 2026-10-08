@@ -7,7 +7,6 @@ Android adds an independent text stage after Alibaba realtime ASR: DeepL, DeepLX
 OpenAI-compatible/ChatMock, or original-only. Desktop adds explicit ChatMock compatibility
 to its existing OpenAI-compatible text route. Shared protocol fixtures and coordinated CI
 keep both implementations aligned. Existing integrated services keep their defaults.
-This PR does not merge or release automatically.
 
 A URL override alone cannot work. Overriding translations for every existing speech service
 would still pay for their integrated translations and imply untested recognition capabilities.
@@ -80,7 +79,7 @@ same bounds, cancellation behavior, and content-free diagnostics.
 Validation adds exact DeepL/DeepLX protocol and loopback transport tests, credential
 isolation/migration and draft tests, native editor screenshots, and existing ChatMock
 regressions. No real DeepL/DeepLX account or physical-device result is inferred from
-these fixtures. Delivery stays in PR #109 without merging main or publishing a release.
+these fixtures. Historical validation is recorded in PR #109.
 
 ## Scheduling and desktop ChatMock parity
 
@@ -98,7 +97,8 @@ synchronous callbacks defer cleanup until outside that lock.
 Desktop's existing OpenAI-compatible text entry also supports ChatMock: an optional
 translation key, no Authorization header without one, filtered complete leading reasoning
 blocks, and explicit rejection of incomplete final responses. Keep its existing scheduling,
-translation prompt, OS-keychain storage and localhost HTTP exception unchanged. A missing
+translation prompt and localhost HTTP exception unchanged. Desktop credentials use
+the [private local-file design](2026-10-04-local-credential-storage.md). A missing
 finish_reason remains accepted for existing compatible services; explicit non-stop reasons
 are rejected. A separate explicit clear-token flag distinguishes removing a saved key
 from leaving the write-only input blank to retain it. Requirements stay in the existing

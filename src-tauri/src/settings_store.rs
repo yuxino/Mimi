@@ -1669,7 +1669,7 @@ impl SettingsStore {
         if !field.allowed_for(&profile, text_translation) {
             return Err("credential_reveal_field_mismatch".into());
         }
-        // Read only the selected field's existing OS-store slot. In particular,
+        // Read only the selected field's existing local-file slot. In particular,
         // an unavailable MT destination must not prevent revealing the ASR key.
         if field == CredentialRevealField::Token {
             if let Some(value) = self.destination_value(&profile)? {

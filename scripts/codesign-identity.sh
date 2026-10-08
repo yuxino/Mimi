@@ -15,7 +15,7 @@
 # promise password-free access across every rebuilt binary. Selecting by
 # fingerprint also prevents two same-named certificates from being chosen
 # nondeterministically. See
-# docs/plans/2026-07-22-stable-local-signing-design.md.
+# docs/development/common-regressions.md.
 
 set -euo pipefail
 

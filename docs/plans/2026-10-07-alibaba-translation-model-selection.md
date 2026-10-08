@@ -3,9 +3,8 @@
 Add a model picker to the desktop Alibaba text-translation stage when its route
 follows the built-in service. Offer Qwen-MT Lite, Flash and Plus, with Lite as
 the backward-compatible default. Persist the choice as non-secret profile
-metadata, including the local-development preset; the preset's credentials and
-service type remain read-only. Independent text destinations keep their existing
-model configuration.
+metadata in ordinary production and independent development profiles.
+Independent text destinations keep their existing model configuration.
 
 Require subtitles to be stopped before saving a model change. Save quietly,
 report failure through the shared settings toast, and invalidate the text check
@@ -19,7 +18,7 @@ language catalogs are not exposed by this change. Lite and Flash stream results;
 Plus uses non-streaming translation for both previews and finals, including
 connection checks. Do not route Qwen-MT through the generic chat prompt.
 
-Verify legacy defaults, per-profile persistence, development-preset persistence,
+Verify legacy defaults, per-profile persistence, independent development-profile persistence,
 provider validation, session/probe model propagation, stream selection, stopped
 and active UI states, failed saves and signed native visibility. Live translation
 quality remains a user trial; opening the app is not provider acceptance.
@@ -33,7 +32,7 @@ selection guide; a quality-oriented label does not assert that Plus wins every
 sample. Keep timings out of the permanent option text because they depend on
 network, length and the particular run.
 
-Add an explicitly invoked, ignored, macOS-development-feature-only comparison
+Add an explicitly invoked, ignored, macOS `development-debugger` feature comparison
 beside existing private live checks. Reuse the production Qwen client and its
 unchanged model-specific hints/terms. Accept at most six English/Japanese synthetic
 inputs, two rounds and three models (36 serial requests), rotate model order and

@@ -19,7 +19,7 @@ validation of the new draft. Existing explicit timeouts and stage separation sta
 in place. UI-only builds still make no provider requests.
 
 Verify new and saved profiles, optional authentication, clear-token and changed
-address behavior, malformed inputs, readonly development presets, no storage writes,
+address behavior, malformed inputs, independent development profiles, no storage writes,
 no unrelated secret reads, failed/late requests and the actual signed settings UI.
 These are desktop configuration changes; provider wire and shared subtitle rules
 remain unchanged.

@@ -1,5 +1,5 @@
-//! Tauri command handlers exposed to the frontend. The IPC contract is
-//! documented in docs/plans/2026-08-22-multi-provider-professional-settings-design.md.
+//! Tauri command handlers exposed to the frontend. Keep payloads aligned with
+//! src/lib/ipc.ts, src/lib/types.ts and the scoped Tauri capability permissions.
 
 use crate::core::audio_input::AudioInput;
 use crate::core::credentials::{CredentialRevealField, ProviderCredentials};
@@ -2213,7 +2213,7 @@ pub async fn profile_credential_editor_state(
 }
 
 /// Returns one explicitly requested secret only to this invoke's requester.
-/// OS credential access runs off the IPC/main thread; no event is emitted.
+/// Credential-file access runs off the IPC/main thread; no event is emitted.
 #[tauri::command]
 pub async fn profile_reveal_credential(
     window: tauri::WebviewWindow,
