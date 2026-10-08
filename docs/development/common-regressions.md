@@ -473,3 +473,26 @@ actual JNI as well as Rust fixtures. Preserve raw spaces and subwords, and do
 not deduplicate by matching tails. Sentence breaks belong only to live display,
 never to transcript buffers or committed history. Keep preview clocks separate
 from local quiet checkpoints.
+
+Gemini's continuous model can omit `turnComplete` even after `audioStreamEnd`.
+Keep its Stop budget longer than the shared two-second paired-text quiet
+checkpoint, within the outer provider watchdog. Test a paired late tail without
+that terminal event, plus interruption, cancellation and unmatched timeout.
+Do not force drafts into history at the deadline. Native acceptance must observe
+the final snapshot notification: polling can miss a final and Stop acknowledgement
+delivered on the same UI tick.
+
+## Android current-caption visibility
+
+Growing confirmed history can push the current draft below a short landscape
+viewport even when that draft has not changed. Compute history changes before
+rendering, and follow the current pair when the reader is already at it. Preserve
+a reader's older-history scroll position. Exercise the actual JNI/native overlay
+in landscape and narrow large-font layouts, including a new draft after a final,
+immersive toggles and reopening; shared reducer tests alone cannot detect this.
+
+For provider comparisons, two sessions sharing a credential also share its
+remote quota. A 429 and backoff must not be labeled an ASR disconnect or native
+capture failure. Preserve the retry/final/render event chain, then run sequential
+sessions to avoid concurrent quota pressure. Counts and adapter timestamps do not
+establish semantic accuracy or cross-platform end-to-end latency.

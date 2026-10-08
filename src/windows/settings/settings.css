@@ -1829,6 +1829,9 @@
 .service-back svg {
   font-size: 16px;
 }
+.settings-diagnostics-back {
+  align-self: flex-start;
+}
 .service-detail__header {
   display: flex;
   align-items: center;

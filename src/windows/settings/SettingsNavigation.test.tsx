@@ -48,26 +48,31 @@ afterEach(async () => {
 
 async function mount() { await act(async () => root.render(<SettingsView />)); }
 async function select(category: string) {
+  if (category === "diagnostics") await select("general");
   const button = host.querySelector<HTMLButtonElement>(`#settings-category-${category}`)!;
   await act(async () => { button.focus(); button.click(); });
-  expect(document.activeElement).toBe(button);
-  expect(button.getAttribute("aria-current")).toBe("page");
+  expect(document.activeElement).toBe(category === "diagnostics" ? host.querySelector(".settings-diagnostics-back") : button);
+  const nav = category === "diagnostics" ? host.querySelector("#settings-category-general")! : button;
+  expect(nav.getAttribute("aria-current")).toBe("page");
   const panel = host.querySelector(`#${button.getAttribute("aria-controls")}`)!;
   expect(panel.classList.contains("is-inactive")).toBe(false);
 }
 
-it.each(["zh", "en", "ja"] as const)("offers five categories in the expected order and keeps subtitle operations in the relevant pages in %s", async (language) => {
+it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko"] as const)("keeps diagnostics under General's advanced section and subtitle operations in their relevant pages in %s", async (language) => {
   setStoredUiLanguage(language);
   await mount();
   expect([...host.querySelectorAll(".settings-category-nav button")].map((button) => button.textContent)).toEqual([
     I18N.settings.subtitleTitle, I18N.settings.serviceProfilesTitle, I18N.settings.sessionExportTitle,
-    I18N.settings.applicationTitle, I18N.settings.diagnosticsTitle,
+    I18N.settings.applicationTitle,
   ]);
   expect(host.querySelector("#subtitle-settings .source-language-grid")).toBeNull();
   expect(host.querySelector("#subtitle-settings [aria-label=\"" + I18N.settings.translateTo + "\"]")).toBeNull();
   expect(host.querySelector("#translation-languages")).toBeNull();
   expect(host.querySelector("#service-profiles-panel #network-proxy")).toBeNull();
   expect(host.querySelector(".settings-sidebar .settings-support-diagnostics")).toBeNull();
+  expect(host.querySelector(".settings-sidebar #settings-category-diagnostics")).toBeNull();
+  expect(host.querySelector("#advanced-settings h2")?.textContent).toBe(I18N.settings.advancedTitle);
+  expect(host.querySelector("#advanced-settings #settings-category-diagnostics")?.textContent).toBe(I18N.settings.openDiagnostics);
   for (const [category, description] of [
     ["subtitles", I18N.settings.subtitlePageDescription], ["service", I18N.settings.servicePageDescription],
     ["export", I18N.settings.exportPageDescription], ["general", I18N.settings.generalPageDescription],
@@ -80,6 +85,10 @@ it.each(["zh", "en", "ja"] as const)("offers five categories in the expected ord
     expect(host.querySelector(".settings-page-header p")).toBeNull();
   }
   expect(window.location.hash).toBe("#diagnostics");
+  await act(async () => host.querySelector<HTMLButtonElement>(".settings-diagnostics-back")!.click());
+  expect(window.location.hash).toBe("#application-settings");
+  expect(host.querySelector(".settings-page-header h1")?.textContent).toBe(I18N.settings.applicationTitle);
+  expect(document.activeElement).toBe(host.querySelector("#settings-category-diagnostics"));
   await act(async () => host.querySelector<HTMLButtonElement>(".settings-guide-entry")!.click());
   expect(host.querySelector(".quick-start-guide")).not.toBeNull();
   expect(host.querySelector(".settings-session-card")).toBeNull();
@@ -189,7 +198,7 @@ it("restores diagnostics from a deep link and follows hash navigation without lo
   window.history.replaceState(null, "", "#diagnostics");
   await mount();
   expect(host.querySelector(".settings-page-header h1")?.textContent).toBe(I18N.settings.diagnosticsTitle);
-  expect(host.querySelector("#settings-category-diagnostics")?.getAttribute("aria-current")).toBe("page");
+  expect(host.querySelector("#settings-category-general")?.getAttribute("aria-current")).toBe("page");
   expect(host.querySelector(".settings-session-card")).toBeNull();
   await act(async () => {
     window.history.replaceState(null, "", "#service-profiles");

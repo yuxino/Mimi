@@ -23,6 +23,8 @@ class ServiceSettingsActivity : AppCompatActivity() {
     private var storageUnavailable = false
     private var translationSettings: TextTranslationSettings? = null
     private lateinit var status: android.widget.TextView
+    private var sessionBlocked = false
+    private val sessionListener: () -> Unit = { runOnUiThread { refreshSessionUi() } }
     private fun dp(value:Int)=ServiceSettingsUi.dp(this,value)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,6 +69,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         status=ServiceSettingsUi.label(this,"",16f).apply {
             visibility=View.GONE; accessibilityLiveRegion=View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
+        if (MimiService.isRunning) { status.setText(R.string.service_stop_first); status.visibility=View.VISIBLE }
         if (storageUnavailable) { status.text=getString(R.string.guide_storage_unavailable); status.visibility=View.VISIBLE }
         content.addView(status,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(16) })
         if (provider == ServiceProvider.DASHSCOPE) content.addView(ServiceSettingsUi.label(this,getString(R.string.translation_speech_title),18f), LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(16) })
@@ -114,6 +117,17 @@ class ServiceSettingsActivity : AppCompatActivity() {
         return box to edit
     }
     override fun onDestroy() { translationSettings?.dispose(); super.onDestroy() }
+    override fun onStart() { super.onStart(); MimiService.addStateListener(sessionListener); refreshSessionUi() }
+    override fun onStop() { MimiService.removeStateListener(sessionListener); super.onStop() }
+    private fun refreshSessionUi() {
+        val running = MimiService.isRunning
+        inputs.values.forEach { (_, edit) -> edit.isEnabled = !running && !storageUnavailable }
+        translationSettings?.setEditingEnabled(!running && !storageUnavailable)
+        findViewById<View>(R.id.save).isEnabled = !running && !storageUnavailable
+        if (running) { status.setText(R.string.service_stop_first); status.visibility = View.VISIBLE }
+        else if (sessionBlocked && !storageUnavailable && status.text == getString(R.string.service_stop_first)) status.visibility = View.GONE
+        sessionBlocked = running
+    }
     private fun openHelp(url: String) {
         try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
         catch (_: android.content.ActivityNotFoundException) { Toast.makeText(this, R.string.guide_no_browser, Toast.LENGTH_SHORT).show() }
@@ -123,7 +137,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         if(storageUnavailable) return
         val textTranslation = translationSettings?.draft()
         if(translationSettings != null && textTranslation == null) { status.visibility=View.GONE; return }
-        if(MimiService.isRunning) { Toast.makeText(this,R.string.service_stop_first,Toast.LENGTH_SHORT).show(); return }
+        if(MimiService.isRunning) { status.setText(R.string.service_stop_first); Toast.makeText(this,R.string.service_stop_first,Toast.LENGTH_SHORT).show(); return }
         var valid=true
         val values=provider.fields.associate { field ->
             val (layout,edit)=inputs.getValue(field.id)

@@ -84,6 +84,66 @@ impl fmt::Debug for LiveTranslationConfiguration {
 }
 
 impl LiveTranslationConfiguration {
+    /// Display the selected models without retaining credentials in native UI state.
+    /// Model identifiers come from the same protocol constants as the factory.
+    pub fn model_names(&self) -> Vec<String> {
+        use crate::core::protocols::{
+            audio3::Audio3ASREndpoint, gemini_live::GeminiLiveEndpoint,
+            openai_realtime::OpenAIRealtimeEndpoint, xai_realtime::XAIRealtimeEndpoint,
+        };
+        let speech = match self.provider {
+            ProviderKind::AlibabaCloud | ProviderKind::DeepLX => Audio3ASREndpoint::MODEL,
+            ProviderKind::OpenAIRealtime => OpenAIRealtimeEndpoint::MODEL,
+            ProviderKind::GoogleGeminiLive => GeminiLiveEndpoint::MODEL,
+            ProviderKind::XAIRealtime => XAIRealtimeEndpoint::MODEL,
+            ProviderKind::CustomDashScopeASR | ProviderKind::CustomOpenAIASR => {
+                match &self.credentials {
+                    ProviderCredentials::CustomSpeech { model, .. } => model,
+                    _ => "",
+                }
+            }
+            ProviderKind::AzureOpenAIRealtime => match &self.credentials {
+                ProviderCredentials::AzureOpenAI { deployment, .. } => deployment,
+                _ => "",
+            },
+            _ => "",
+        };
+        let mut names = Vec::new();
+        if !speech.is_empty() {
+            names.push(speech.to_owned());
+        }
+        if self.target_language.translates_audio()
+            && matches!(
+                self.provider,
+                ProviderKind::AlibabaCloud
+                    | ProviderKind::DeepLX
+                    | ProviderKind::AppleSpeech
+                    | ProviderKind::CustomDashScopeASR
+                    | ProviderKind::CustomOpenAIASR
+            )
+        {
+            let text = match &self.text_credentials {
+                Some(
+                    TextTranslationCredentials::OpenAICompatible { model, .. }
+                    | TextTranslationCredentials::ChatMock { model, .. },
+                ) => model.as_str(),
+                Some(TextTranslationCredentials::DeepL { .. }) => "DeepL",
+                Some(TextTranslationCredentials::DeepLX { .. }) => "DeepLX",
+                Some(TextTranslationCredentials::Apple) => "Apple Translation",
+                None => match &self.credentials {
+                    ProviderCredentials::OpenAICompatible { model, .. }
+                    | ProviderCredentials::ChatMock { model, .. } => model,
+                    ProviderCredentials::DeepL { .. } => "DeepL",
+                    ProviderCredentials::DeepLX { .. } => "DeepLX",
+                    _ => self.qwen_mt_model.raw_name(),
+                },
+            };
+            if !text.is_empty() {
+                names.push(text.to_owned());
+            }
+        }
+        names
+    }
     /// Resolve the actual factory's endpoints before platform proxy selection.
     /// Constructors do not connect. Credentials in signed/query URLs are removed
     /// from this adapter-facing route snapshot; provider requests keep originals.
@@ -267,6 +327,50 @@ impl LiveTranslationConfiguration {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn model_names_follow_selected_route_and_never_include_secrets_or_legacy_modes() {
+        use super::*;
+        let mut config = LiveTranslationConfiguration::for_provider(
+            ProviderKind::AlibabaCloud,
+            "synthetic-private-key",
+            SourceLanguage::Automatic,
+            TargetLanguage::SimplifiedChinese,
+            TranslationMode::Turbo,
+        );
+        for model in [QwenMTModel::Lite, QwenMTModel::Flash, QwenMTModel::Plus] {
+            config.qwen_mt_model = model;
+            for mode in [
+                TranslationMode::Turbo,
+                TranslationMode::LowLatency,
+                TranslationMode::HighQuality,
+            ] {
+                config.translation_mode = mode;
+                assert_eq!(
+                    config.model_names(),
+                    ["qwen-audio-3.0-asr-flash-streaming", model.raw_name()]
+                );
+            }
+        }
+        config.text_credentials = Some(TextTranslationCredentials::OpenAICompatible {
+            endpoint: "https://synthetic.invalid/v1".into(),
+            model: "selected-text-model".into(),
+            api_key: "synthetic-private-text-key".into(),
+        });
+        assert_eq!(config.model_names().last().unwrap(), "selected-text-model");
+        config.target_language = TargetLanguage::Original;
+        assert_eq!(config.model_names(), ["qwen-audio-3.0-asr-flash-streaming"]);
+        for (provider, model) in [
+            (
+                ProviderKind::GoogleGeminiLive,
+                "gemini-3.5-live-translate-preview",
+            ),
+            (ProviderKind::OpenAIRealtime, "gpt-realtime-translate"),
+            (ProviderKind::XAIRealtime, "grok-voice-latest"),
+        ] {
+            config.provider = provider;
+            assert_eq!(config.model_names(), [model]);
+        }
+    }
     #[test]
     fn adapter_configuration_uses_the_actual_pipeline_and_original_has_no_text_stage() {
         let raw = serde_json::json!({

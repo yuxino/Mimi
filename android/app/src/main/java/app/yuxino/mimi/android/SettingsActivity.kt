@@ -43,6 +43,28 @@ class SettingsActivity : AppCompatActivity() {
         applySystemBarInsets()
         InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
         findViewById<View>(R.id.back).setOnClickListener { finish() }
+        findViewById<View>(R.id.copy_capture_diagnostics).setOnClickListener {
+            val observation = MimiService.captureObservation
+            val report = "mimi Android capture diagnostics v1\n" +
+                "androidApi=${android.os.Build.VERSION.SDK_INT}\n" +
+                "source=android_playback_capture\nusage=media,game,unknown\nmicrophone=false\n" +
+                "running=${MimiService.isRunning}\n" +
+                "observation=${observation?.state?.name ?: "STOPPED"}\n" +
+                "pcmAgeMs=${observation?.pcmAgeMs ?: "unknown"}\n" +
+                "soundAgeMs=${observation?.soundAgeMs ?: "unknown"}\n" +
+                "captureError=${MimiService.lastCaptureError ?: "none"}"
+            val copied = try {
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mimi capture diagnostics", report))
+                true
+            } catch (_: RuntimeException) {
+                false
+            }
+            Toast.makeText(this,
+                if (copied) R.string.capture_diagnostics_copied else R.string.capture_diagnostics_copy_failed,
+                if (copied) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+            ).show()
+        }
         val tabs = findViewById<RadioGroup>(R.id.settings_tabs)
         val stackedTabs = resources.configuration.fontScale >= 1.5f
         tabs.orientation = if (stackedTabs) RadioGroup.VERTICAL else RadioGroup.HORIZONTAL

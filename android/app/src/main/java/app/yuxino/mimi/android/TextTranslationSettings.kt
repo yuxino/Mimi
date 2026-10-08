@@ -259,6 +259,10 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity) 
         check.isEnabled = true; check.setText(R.string.translation_check); result.visibility = View.GONE
     }
     fun dispose() { invalidateCheck() }
+    fun setEditingEnabled(enabled: Boolean) {
+        if (!enabled) invalidateCheck()
+        listOf(mode, qwenModel, endpoint, model, key, localHttp, removeKey, check).forEach { it.isEnabled = enabled }
+    }
     private fun dp(value: Int) = ServiceSettingsUi.dp(activity, value)
     private fun field(title: Int, tag: String, secret: Boolean = false): TextInputEditText {
         val box = TextInputLayout(activity).apply {

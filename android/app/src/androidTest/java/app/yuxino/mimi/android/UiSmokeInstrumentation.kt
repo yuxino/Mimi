@@ -72,6 +72,22 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("model_selection") == "true") {
+            ModelSelectionChecks(this).run(captureArguments)
+            return
+        }
+        if (captureArguments?.getString("credential_match") == "true") {
+            CredentialMatchChecks(this).run()
+            return
+        }
+        if (captureArguments?.getString("live_acceptance") == "true") {
+            LiveAcceptanceChecks(this).run(captureArguments)
+            return
+        }
+        if (captureArguments?.getString("runtime_feedback") == "true") {
+            RuntimeFeedbackChecks(this).run(captureArguments)
+            return
+        }
         if (captureArguments?.getString("help_interaction") == "true") {
             HelpInteractionChecks(this).run(captureArguments)
             return
@@ -127,7 +143,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             putString("stream", if (failure == null && guideCopy)
                 "Guide copy UI passed ($guideLocale): $screenshots real emulator screenshots; synthetic stopped-sharing state, no credentials, permissions or provider session requested.\n"
             else if (failure == null && immersiveHelp)
-                "Immersive help passed ($guideLocale/$theme): $screenshots native screenshots; both entries, cancel, duplicate taps, acknowledgement, exit and service teardown; synthetic overlay only, no provider or capture started.\n"
+                "Immersive help passed ($guideLocale/$theme): $screenshots native screenshots; home, settings and overlay entries, cancel, duplicate taps, acknowledgement, exit and service teardown; synthetic overlay only, no provider or capture started.\n"
             else if (failure == null && firstRun)
                 "First-run UI passed ($theme): $screenshots real emulator screenshots; synthetic credential fixture only, no provider or capture session started. Clear the dedicated emulator app data after review.\n"
             else if (failure == null)
@@ -352,10 +368,42 @@ class UiSmokeInstrumentation : Instrumentation() {
         prefs.edit().putBoolean("seen", true).remove("immersive_seen").commit()
         SettingsStore.setImmersiveSubtitles(targetContext, false)
         val home = launchHome()
-        val settings = openSettings(home, appearance = true)
-        val toggle = settings.findViewById<MaterialSwitch>(R.id.immersive_subtitles)
+        var settings: SettingsActivity? = null
         try {
-            click(settings, R.id.immersive_subtitles)
+            val homeEntry = home.findViewById<View>(R.id.home_immersive)
+            onUi { check(homeEntry.performClick()) }
+            check(!SettingsStore.immersiveSubtitles(targetContext)) {
+                "Home entry enabled immersion before acknowledgement"
+            }
+            capture("immersive-home-before-confirm-$guideLocale-$theme")
+            checkImmersiveHelpContrast()
+            onUi { checkNotNull(immersiveHelpWindow()).findViewById<View>(android.R.id.button2).performClick() }
+            waitForIdleSync()
+            check(!prefs.getBoolean("immersive_seen", false) && !SettingsStore.immersiveSubtitles(targetContext)) {
+                "Cancelling home help changed the mode or acknowledgement"
+            }
+            onUi {
+                homeEntry.performClick(); homeEntry.performClick()
+                check(WindowInspector.getGlobalWindowViews().count {
+                    containsText(it, targetContext.getString(R.string.guide_immersive_hint))
+                } == 1) { "Repeated home taps did not share one explanation" }
+            }
+            acknowledgeImmersiveHelpIfShown()
+            check(prefs.getBoolean("immersive_seen", false) && SettingsStore.immersiveSubtitles(targetContext)) {
+                "Confirming home help did not enable immersion"
+            }
+            onUi {
+                check((homeEntry as TextView).text.toString() == home.getString(R.string.overlay_exit_immersive)) {
+                    "Home entry did not expose the active exit action"
+                }
+                check(homeEntry.performClick())
+            }
+            check(!SettingsStore.immersiveSubtitles(targetContext))
+            prefs.edit().remove("immersive_seen").commit()
+            val appearance = openSettings(home, appearance = true)
+            settings = appearance
+            val toggle = appearance.findViewById<MaterialSwitch>(R.id.immersive_subtitles)
+            click(appearance, R.id.immersive_subtitles)
             check(!SettingsStore.immersiveSubtitles(targetContext) && !toggle.isChecked) {
                 "First settings entry enabled immersion before acknowledgement"
             }
@@ -368,8 +416,8 @@ class UiSmokeInstrumentation : Instrumentation() {
             waitForIdleSync()
             check(!prefs.getBoolean("immersive_seen", false) && !toggle.isChecked)
             // Repeated taps share one pending explanation instead of changing the mode.
-            click(settings, R.id.immersive_subtitles)
-            click(settings, R.id.immersive_subtitles)
+            click(appearance, R.id.immersive_subtitles)
+            click(appearance, R.id.immersive_subtitles)
             onUi {
                 check(WindowInspector.getGlobalWindowViews().count {
                     containsText(it, targetContext.getString(R.string.guide_immersive_hint))
@@ -377,12 +425,12 @@ class UiSmokeInstrumentation : Instrumentation() {
             }
             acknowledgeImmersiveHelpIfShown()
             check(prefs.getBoolean("immersive_seen", false) && SettingsStore.immersiveSubtitles(targetContext))
-            click(settings, R.id.immersive_subtitles)
-            click(settings, R.id.immersive_subtitles)
+            click(appearance, R.id.immersive_subtitles)
+            click(appearance, R.id.immersive_subtitles)
             onUi { check(immersiveHelpWindow() == null) { "Acknowledged settings explanation repeated" } }
             check(toggle.isChecked)
-            click(settings, R.id.immersive_subtitles)
-            onUi { settings.finish() }
+            click(appearance, R.id.immersive_subtitles)
+            onUi { appearance.finish() }
             waitForIdleSync()
 
             prefs.edit().remove("immersive_seen").commit()
@@ -415,8 +463,9 @@ class UiSmokeInstrumentation : Instrumentation() {
             check(!SettingsStore.immersiveSubtitles(targetContext))
             val restored = checkNotNull(waitForOverlayTag("mimi-overlay"))
             onUi {
-                check(restored.findViewWithTag<View>("compact-subtitle").isShown)
-                restored.findViewWithTag<View>("compact-subtitle").performClick()
+                check(restored === overlay && restored.findViewWithTag<View>("expanded-subtitles").isShown) {
+                    "Help flow did not restore the expanded reading window"
+                }
                 restored.findViewWithTag<View>("enter-immersive").performClick()
                 check(immersiveHelpWindow() == null) { "Acknowledged overlay explanation repeated" }
             }
@@ -427,7 +476,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             prefs.edit().remove("immersive_seen").commit()
             val lastOverlay = checkNotNull(waitForOverlayTag("mimi-overlay"))
             onUi {
-                lastOverlay.findViewWithTag<View>("compact-subtitle").performClick()
+                check(lastOverlay.findViewWithTag<View>("expanded-subtitles").isShown)
                 lastOverlay.findViewWithTag<View>("enter-immersive").performClick()
                 check(immersiveHelpWindow() != null)
             }
@@ -437,7 +486,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             check(!MimiService.isRunning && !MimiService.firstRunEvidence.complete && !SettingsStore.immersiveSubtitles(targetContext))
         } finally {
             targetContext.startService(MimiService.stopIntent(targetContext))
-            onUi { settings.finish(); home.finish() }
+            onUi { settings?.finish(); home.finish() }
             waitForIdleSync()
         }
     }
@@ -445,7 +494,9 @@ class UiSmokeInstrumentation : Instrumentation() {
     private fun smoke() {
         val home = launchHome()
         onUi { WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull { it.findViewWithTag<View>("guide-skip") }?.performClick() }
-        click(home, R.id.copy_capture_diagnostics)
+        check(home.findViewById<View>(R.id.copy_capture_diagnostics) == null) { "Diagnostics must not be a home action" }
+        val diagnostics = openSettings(home, appearance = false)
+        click(diagnostics, R.id.copy_capture_diagnostics)
         onUi {
             val clipboard = targetContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val diagnostic = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: error("No diagnostic copied")
@@ -455,6 +506,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             check(diagnostic.lines().size == 10) { "Unexpected diagnostic fields" }
             clipboard.clearPrimaryClip()
         }
+        onUi { diagnostics.finish() }
         val originalTarget = SettingsStore.targetLang(targetContext)
         val testTarget = if (originalTarget == "ja") "en" else "ja"
         click(home, R.id.target_language_action)
@@ -582,6 +634,9 @@ class UiSmokeInstrumentation : Instrumentation() {
             waitForIdleSync()
             SystemClock.sleep(1200)
             if (expectLandscape) {
+                check(uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_90)) {
+                    "Could not rotate the dedicated UI fixture"
+                }
                 var wide = false
                 for (attempt in 0 until 30) {
                     val screenshot = checkNotNull(uiAutomation.takeScreenshot())
@@ -677,6 +732,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         } finally {
             targetContext.startService(MimiService.stopIntent(targetContext))
             waitForIdleSync()
+            if (expectLandscape) uiAutomation.setRotation(android.app.UiAutomation.ROTATION_UNFREEZE)
         }
     }
 

@@ -11,7 +11,7 @@ use mimi_runtime::{
     core::{
         audio_input::AudioSource,
         configuration::LiveTranslationConfiguration,
-        models::{SourceLanguage, TargetLanguage, TranslationMode},
+        models::{SessionStatus, SourceLanguage, TargetLanguage, TranslationMode},
         network_proxy::ProxyConfig,
         protocols::live_translate::LiveTranslateServerEvent,
         provider::{ProviderKind, ProviderPreferences, TextTranslation},
@@ -104,6 +104,19 @@ struct Session {
     budget: Mutex<MTBudgetContinuity>,
 }
 impl Session {
+    fn snapshot(&self) -> Value {
+        let controller = self.controller.lock().unwrap();
+        let state = &controller.state;
+        let connection_status = match state.status {
+            SessionStatus::Idle => "idle",
+            SessionStatus::Connecting => "connecting",
+            SessionStatus::Listening => "listening",
+            SessionStatus::Stopping => "stopping",
+            SessionStatus::Error(_) => "error",
+        };
+        json!({"version":self.version.load(Ordering::SeqCst),"connectionStatus":connection_status,"snapshot":state.subtitles,"atomicPreview":state.atomic_preview,"detectedLanguage":state.detected_language.as_ref().map(|language|language.code.as_str()),"isTranslationPending":state.is_translation_pending,"isTranslationPreviewPending":state.is_translation_preview_pending,"isTranslationTimedOut":state.is_translation_timed_out,"translationRecovery":state.translation_recovery,"finished":self.finished.load(Ordering::SeqCst),"errorCode":*self.error_code.lock().unwrap()})
+    }
+
     fn publish(&self, update: impl FnOnce(&mut TranslationSessionController)) {
         update(&mut self.controller.lock().unwrap());
         self.version.fetch_add(1, Ordering::SeqCst);
@@ -523,7 +536,7 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
             let (speech, text) = configuration
                 .network_endpoints()
                 .map_err(|_| "invalid_configuration")?;
-            json!({"speechEndpoint":speech,"textEndpoint":text})
+            json!({"speechEndpoint":speech,"textEndpoint":text,"modelNames":configuration.model_names()})
         }
         "create" => {
             let configuration: LiveTranslationConfiguration =
@@ -591,9 +604,7 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
                     .as_u64()
                     .ok_or("native_runtime_invalid_request")?,
             )?;
-            let controller = native.controller.lock().unwrap();
-            let state = &controller.state;
-            json!({"version":native.version.load(Ordering::SeqCst),"snapshot":state.subtitles,"atomicPreview":state.atomic_preview,"detectedLanguage":state.detected_language.as_ref().map(|language|language.code.as_str()),"isTranslationPending":state.is_translation_pending,"isTranslationPreviewPending":state.is_translation_preview_pending,"isTranslationTimedOut":state.is_translation_timed_out,"translationRecovery":state.translation_recovery,"finished":native.finished.load(Ordering::SeqCst),"errorCode":*native.error_code.lock().unwrap()})
+            native.snapshot()
         }
         "finish" => {
             let native = session(
@@ -671,6 +682,41 @@ mod tests {
     fn configuration() -> LiveTranslationConfiguration {
         serde_json::from_value(json!({"provider":"alibabaCloud","qwenMtModel":"lite","credentials":{"kind":"apiKey","apiKey":"synthetic-key"},"textCredentials":null,"sourceLanguage":"en","targetLanguage":"zh","translationMode":"turbo","networkProxy":{"mode":"direct"},"textNetworkProxy":{"mode":"direct"}})).unwrap()
     }
+    #[test]
+    fn native_snapshot_preserves_shared_connection_and_translation_recovery() {
+        use mimi_runtime::core::diagnostics::{TranslationRecovery, TranslationRecoveryReason};
+        let native = fixture(configuration());
+        native.publish(TranslationSessionController::begin_session);
+        assert_eq!(native.snapshot()["connectionStatus"], "connecting");
+        native.publish(TranslationSessionController::did_connect);
+        native.publish(|controller| {
+            controller.handle_from(
+                AudioSource::System,
+                LiveTranslateServerEvent::TranslationDeferred(TranslationRecovery {
+                    reason: TranslationRecoveryReason::RateLimited,
+                    retry_after_ms: 8000,
+                    retry_scheduled: false,
+                }),
+            );
+        });
+        let snapshot = native.snapshot();
+        assert_eq!(snapshot["connectionStatus"], "listening");
+        assert_eq!(snapshot["translationRecovery"]["reason"], "rateLimited");
+        assert_eq!(snapshot["translationRecovery"]["retryAfterMs"], 8000);
+        assert_eq!(snapshot["translationRecovery"]["retryScheduled"], false);
+        native.publish(|controller| {
+            controller.handle_from(
+                AudioSource::System,
+                LiveTranslateServerEvent::TranslationStarted,
+            )
+        });
+        assert!(native.snapshot()["translationRecovery"].is_null());
+        native.publish(TranslationSessionController::begin_stopping);
+        assert_eq!(native.snapshot()["connectionStatus"], "stopping");
+        native.publish(TranslationSessionController::did_stop);
+        assert_eq!(native.snapshot()["connectionStatus"], "idle");
+    }
+
     #[test]
     fn native_snapshot_uses_the_desktop_controller_for_identified_drafts() {
         let native = fixture(configuration());

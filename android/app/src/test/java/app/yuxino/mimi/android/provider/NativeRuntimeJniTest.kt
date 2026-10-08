@@ -16,6 +16,10 @@ class NativeRuntimeJniTest {
         assertEquals(60L, policy.getLong("snapshotPublishIntervalMs"))
         val providerFinish = SharedSubtitleCore.policy.getLong("provider_finish_timeout_ms")
         assertTrue(policy.getLong("sessionFinishTimeoutMs") > providerFinish + 1_000L + 2_000L)
+        val geminiFinish = SharedSubtitleCore.policy.getLong("gemini_finish_timeout_ms")
+        assertEquals(4_500L, geminiFinish)
+        assertTrue(geminiFinish > 2_000L)
+        assertTrue(geminiFinish < providerFinish)
     }
     private val network: JSONObject by lazy {
         val factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
@@ -47,6 +51,7 @@ class NativeRuntimeJniTest {
             try {
                 val state = NativeRuntimeConfiguration.command("poll", handle)
                 assertTrue(state.has("snapshot"))
+                assertEquals("connecting", state.getString("connectionStatus"))
                 assertFalse(state.getBoolean("finished"))
                 assertFalse(state.toString().contains("synthetic-apiKey"))
                 assertFalse(state.toString().contains("synthetic-secretKey"))
@@ -98,6 +103,12 @@ class NativeRuntimeJniTest {
         val builtIn = NativeRuntimeConfiguration.endpoints(configuration())
         assertEquals("wss://dashscope.aliyuncs.com/api-ws/v1/inference", builtIn.getString("speechEndpoint"))
         assertTrue(builtIn.getString("textEndpoint").contains("/compatible-mode/v1/chat/completions"))
+        assertEquals(listOf("qwen-audio-3.0-asr-flash-streaming", "qwen-mt-lite"),
+            app.yuxino.mimi.android.runtimeModelNames(configuration()))
+        for (model in listOf("lite", "flash", "plus")) {
+            assertEquals("qwen-mt-$model", app.yuxino.mimi.android.runtimeModelNames(
+                configuration().put("qwenMtModel", model)).last())
+        }
         val text = TranslationConfiguration(provider = TextTranslationProvider.OPENAI_COMPATIBLE,
             endpoint = "https://synthetic.example.invalid/v1", model = "synthetic-model", apiKey = "synthetic-text-key")
         val speech = ServiceConfiguration(ServiceProvider.DASHSCOPE, mapOf("apiKey" to "synthetic-speech-key"))
@@ -105,11 +116,13 @@ class NativeRuntimeJniTest {
         val endpoints = NativeRuntimeConfiguration.endpoints(independent)
         assertEquals(builtIn.getString("speechEndpoint"), endpoints.getString("speechEndpoint"))
         assertEquals("https://synthetic.example.invalid/v1/chat/completions", endpoints.getString("textEndpoint"))
+        assertEquals("synthetic-model", app.yuxino.mimi.android.runtimeModelNames(independent).last())
         val handle = create(independent)
         try { assertFalse(NativeRuntimeConfiguration.command("poll", handle).toString().contains("synthetic-text-key")) }
         finally { NativeRuntimeConfiguration.command("stop", handle) }
         val original = buildRuntimeConfiguration(speech, TranslationConfiguration(provider = TextTranslationProvider.NONE), "nl", "zh", "lite")
         assertTrue(NativeRuntimeConfiguration.endpoints(original).isNull("textEndpoint"))
+        assertEquals(listOf("qwen-audio-3.0-asr-flash-streaming"), app.yuxino.mimi.android.runtimeModelNames(original))
         val originalHandle = create(original)
         try { assertTrue(NativeRuntimeConfiguration.command("poll", originalHandle).has("snapshot")) }
         finally { NativeRuntimeConfiguration.command("stop", originalHandle) }

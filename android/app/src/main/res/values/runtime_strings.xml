@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">Connecting…</string>
+    <string name="runtime_rate_retry">Translation rate limited · waiting to retry</string>
+    <string name="runtime_rate_wait">Translation rate limited · waiting for new speech</string>
+    <string name="runtime_unavailable_retry">Translation unavailable · waiting to retry</string>
+    <string name="runtime_unavailable_wait">Translation unavailable · waiting for new speech</string>
+    <string name="runtime_translation_delayed">Translation delayed · listening continues</string>
+</resources>

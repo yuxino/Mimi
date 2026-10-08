@@ -1535,3 +1535,131 @@
   The smallest next runtime check is a pinned APK hash and the same short sample,
   with content-free PCM enqueue, draft arrival, MT start/end, snapshot and render
   timestamps on PC and Android. No numerical latency gap is claimed.
+
+### 2026-10-09 — PR #229 local Android acceptance and release candidate
+
+- Candidate base: `16cef77d6f7a132b541fea980752c1ed701acfc1`, plus the
+  reviewed native scroll/diagnostics/acceptance changes and 1.5.18 version bump
+  in this entry's commit. Native live binaries were debug/development builds
+  of that dirty source before the version-only bump, reporting 1.5.17. They
+  are not signed release APK acceptance. The existing Bilibili AVD and saved
+  configurations were preserved; desktop development preferences and profile
+  catalog returned to their exact pre-test hashes. No credentials were changed,
+  no microphone was enabled and no audio/transcript recording was enabled.
+- At the clean base, all remote desktop CI jobs (macOS, Linux, Windows x64 and
+  native ARM64), frontend and Android CI passed. Local canonical checks passed
+  core 85, runtime 686, actual JNI 4, desktop 555 and frontend 2,012 tests;
+  two manual Rust tests remain ignored. Android debug/release each passed 181
+  JVM tests with actual host JNI, lint with zero errors, and four-ABI native
+  symbols, 16 KB alignment and license gates. Windows encoding, diagnostic path
+  and CRLF inventory regressions were repaired with rejecting mutation tests.
+- Independent blank API 35 native fixtures exercised actual touch dragging,
+  three expand/immersive/restore cycles, reopened saved offsets, first-use help,
+  light/dark preview states, landscape, and 320 dp / 130% font / three-button
+  navigation. Landscape reproduced history growth pushing the current draft
+  below the viewport. Following the current pair now reacts to history growth;
+  the same landscape and narrow fixtures pass while older-history review keeps
+  its position. This was a native rendering boundary, not a shared reducer fork.
+- Saved Alibaba Cloud credentials matched read-only on the Bilibili API 35 AVD
+  and signed `/Applications/mimi-dev.app`; both used Audio3, Qwen-MT Lite,
+  auto → zh and disabled retained history. Android consent selected Bilibili
+  only. Public source: TED精选演讲, “TED Talk: Your phone is eating you alive”,
+  published 2026-10-07, played in installed Bilibili 9.13.0 without downloading
+  media. Two rounds observed 120,022 / 120,060 ms, source updates 60 / 66,
+  translation updates 59 / 65 and paired-final observations 8 / 15. Stop took
+  1,235 / 236 ms, with no automatic restart after stop; the second round required
+  fresh native consent. API/adapter observations are not unique sentence counts.
+- PC received the emulator's system playback and published source/translation
+  through the shared runtime. Its metadata trace contains a request-rate 429
+  (#58), 8,000 ms backoff (#60), final completion (#147, 8,373 ms including retry)
+  and overlay commit (#154, S:98/T:36). No ASR reconnect appeared in that bounded
+  trace. The PC session was then stopped so Android round two ran alone; its
+  largest source-update gap was 3,126 ms versus 18,013 ms in the concurrent first
+  round. Different speech intervals and shared quota prevent a latency comparison.
+- Content-free Android observations, PC trace and selected native screenshots
+  are kept outside Git in the task's PR #229 evidence directory. No general
+  accuracy, physical-device, forced network-loss recovery, battery/background,
+  sustained-session or numerical PC-versus-Android latency acceptance is claimed.
+  The silent PR #211 recording's full cause remains unproven. Release signing,
+  final candidate CI and public asset verification are separate gates.
+
+### 2026-10-09 — PR #229 model and provider acceptance, Gemini Stop repair
+
+- Candidate: `16cef77d6f7a132b541fea980752c1ed701acfc1` plus this entry's
+  committed follow-ups; 1.5.18 / Android 10518, debug APK SHA-256
+  `8935b26bb36227bcbfcc41fe6da856d13666a8b14f5342fa8e721d17683c20d9`.
+  Debug certificate SHA-256 remains
+  `12980d22cbe9193478321e760eb5e859fb234a8becb5a20f31525df0f9d32d4e`.
+  Installed by same-signature update on the user's API 35 Bilibili AVD
+  (1080×2400, density 420, font 1.0); no wipe, microphone or recording.
+- Android had dropped shared connection/retry/timeout state. JNI snapshots and
+  native presentation now retain localized allowlisted feedback; healthy state
+  clears guidance without clearing the pair. Actual JNI regression and API 35
+  compact/expanded native fixtures passed for en, zh-Hans, zh-Hant, ja, ko, de,
+  fr at 320 dp / 130% font. The first locale harness incorrectly relied on
+  AppCompat without an Activity; it was corrected to API 33 LocaleManager and
+  rerun. Earlier English-only screenshots are superseded, not seven-language
+  evidence. Screenshot capture also waits for the compositor's next frame.
+- Home and expanded controls show shared-factory active model names. The saved
+  model, active display and independent/original routes have real JNI coverage.
+  A running Android session disables configuration/model edits and its Save
+  handler rejects stale actions. PC live profile switching remains an intentional
+  difference; editing a model requires Stop. Session language/model labels are
+  frozen to the running route rather than mutable next-session preferences.
+- Same public Bilibili sample, sequential 60-second Android observations:
+  Flash S:30/T:29/final:4, Plus S:35/T:34/final:4, Lite S:33/T:33/final:5
+  on the model-display candidate; these precede the Gemini-specific close fix.
+  An initial Flash attempt captured SILENT because the playback harness had not
+  started the player. Native Play/Pause verification repaired the harness and
+  the same provider/sample passed; this was not a Flash transport regression.
+- Final APK Gemini: S:50/T:50/final:1, Stop 2,635 ms. Before repair it produced
+  S:51/T:50 but zero finals and lost the unconfirmed tail on Stop. Earliest
+  boundary: a two-second close deadline raced the shared two-second quiet
+  checkpoint while continuous translation omitted turnComplete. The shared
+  client now allows 4.5 seconds inside the six-second provider bound and closes
+  after the existing paired quiet checkpoint. It never forces an unmatched tail
+  into history. All 26 Gemini client regressions passed, including a late paired
+  tail without turnComplete, interruption, timeout, rotation and stale content.
+  Shared finish-budget fixtures run in Rust and actual Android JNI tests.
+- Final APK Volcano: S:38/T:37/final:18, Stop 331 ms; Tencent:
+  S:56/T:40/final:7, Stop 1,828 ms; Baidu: S:172/T:16/final:11, Stop 998 ms.
+  Each ran 60 seconds, stayed live and stopped without automatic restart.
+  Temporary authorized development credentials were supplied in memory to a
+  debug-only private-cache fixture, deleted before playback, and the original
+  provider configuration/credentials restored and verified in finally.
+- OpenAI's Android connection ended before recognition. A no-audio connection
+  against the exact configured endpoint confirmed server error type
+  `insufficient_quota`, code `credit_balance_exhausted`, close 1013. This saved
+  key cannot establish OpenAI translation acceptance; no billing change made.
+- Signed canonical PC dev Gemini used the same public system playback,
+  auto → zh, and no recordings. Metadata-only case `44c5dace-75ad-4f4e-b1a5-b9fbaaade0eb`
+  has 380 entries, zero eviction/frontend loss, no private content/audio.
+  Final pair #340/341 was accepted at 38,998 ms, then overlay snapshot #22–24
+  committed S:75/T:23 (#360–373). Stop completed in approximately 2.7 seconds.
+  Preferences/catalog returned to exact pre-test hashes. Provider sessionFinished
+  after retirement was correctly rejected; the reliable final arrived first.
+- Canonical strict check passed: core 86 across unit/fixture suites, runtime
+  688 plus one manual ignored, JNI 5, desktop 555 plus one manual ignored,
+  frontend 2,012 in 130 files, architecture 23 and packaging 10 mutation checks.
+  Android debug/release each passed 183 tests with actual JNI, lint, four ABI
+  native symbols, 16 KB ELF/ZIP alignment and license gates.
+- Final APK Alibaba Lite rerun used en → zh: S:34/T:34/final:5, Stop
+  3,139 ms. The real active-model label and disabled editor/stale-save guard
+  passed. Original Alibaba Lite / auto → zh / history off was then durably
+  restored; a fresh-process constant-time credential comparison passed and the
+  other seven original provider configurations remained unconfigured.
+  Temporary test restores now flush encrypted preference writes before the
+  instrumentation process exits; their earlier in-memory check was insufficient.
+- Current-APK native large-font interaction initially failed because its test
+  multiplied SP by scaledDensity, which is inaccurate with API 34+ nonlinear
+  font scaling. It now uses TypedValue with the caption's actual resources.
+  The same 320 dp / 130% font case passed empty state, native font control,
+  64 dp touch drag, three mode cycles, saved anchor and reopening. No product
+  font behavior was changed for this harness correction.
+- Counts are adapter snapshot changes, not unique sentences or semantic scores.
+  Final notifications are observed directly so Stop acknowledgement on the same
+  UI tick cannot hide a final from a 100 ms sampler. Physical-device TLS/capture,
+  sustained sessions, forced network-loss recovery, battery/background and
+  numerical PC/Android latency remain unaccepted. Existing Baidu silence-session
+  behavior is outside this normal-speech sample. Source screenshots and metadata
+  remain outside Git; final CI/release asset gates remain separate.

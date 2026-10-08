@@ -106,6 +106,7 @@ class MimiService : Service() {
     private var draggingCompact = false
     private var previewMode = false
     private var sessionSourceLanguage = "auto"
+    private var sessionTargetLanguage = "zh"
     private var sessionOriginalOnly = false
     private var statusView: TextView? = null
     private var historyView: TextView? = null
@@ -306,6 +307,8 @@ class MimiService : Service() {
         } else {
             val configuration = SettingsStore.runtimeConfiguration(this)
             sessionSourceLanguage = configuration.getString("sourceLanguage")
+            sessionTargetLanguage = configuration.getString("targetLanguage")
+            activeModelNames = app.yuxino.mimi.android.runtimeModelNames(configuration)
             sessionOriginalOnly = configuration.getString("targetLanguage") == "original"
             val listener = object : EngineListener {
                 override fun onRuntimeSnapshot(state: org.json.JSONObject, originalOnly: Boolean) = dispatch {
@@ -427,6 +430,7 @@ class MimiService : Service() {
         SubtitleBus.clear()
         hideOverlay()
         previewMode = false
+        activeModelNames = emptyList()
         setRunning(false)
     }
 
@@ -507,7 +511,7 @@ class MimiService : Service() {
         label("overlay-route", null, R.string.overlay_language_description)
         overlayView?.findViewWithTag<TextView>("overlay-route")?.text =
             if (sessionOriginalOnly) languageName(sessionSourceLanguage)
-            else "${languageName(sessionSourceLanguage)} → ${languageName(SettingsStore.targetLang(this))}"
+            else "${languageName(sessionSourceLanguage)} → ${languageName(sessionTargetLanguage)}"
         relayoutExpandedHeader?.invoke()
         renderBus()
         if (isRunning) {
@@ -765,7 +769,7 @@ class MimiService : Service() {
         }
         val route = panelButton(
             if (sessionOriginalOnly) languageName(sessionSourceLanguage)
-            else "${languageName(sessionSourceLanguage)} → ${languageName(SettingsStore.targetLang(this))}",
+            else "${languageName(sessionSourceLanguage)} → ${languageName(sessionTargetLanguage)}",
         ).apply {
             tag = "overlay-route"
             contentDescription = interfaceString(R.string.overlay_language_description)
@@ -818,6 +822,12 @@ class MimiService : Service() {
         }
         relayoutExpandedHeader?.invoke()
         panel.addView(header)
+        if (activeModelNames.isNotEmpty()) panel.addView(TextView(this).apply {
+            tag = "overlay-model"
+            text = app.yuxino.mimi.android.modelNamesLabel(activeModelNames)
+            textSize = 14f
+            setTextColor(0xFFDDDDDD.toInt())
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
         expandedStatusView = TextView(this).apply {
             setTextColor(0xFFB9B9B9.toInt())
@@ -1154,17 +1164,26 @@ class MimiService : Service() {
     }
 
     private fun renderBus() {
+        val maxHistory = if (previewMode) (if (previewHistoryEnabled) 3 else 0)
+            else SettingsStore.historyLines(this)
+        val history = if (maxHistory > 0) SubtitleBus.historySnapshot().takeLast(maxHistory) else emptyList()
+        val historyText = history.joinToString("\n\n") { pair ->
+            if (pair.translation.isEmpty()) pair.source else "${pair.source}\n${pair.translation}"
+        }
         // Keep a new completed sentence readable, but do not interrupt a reader
-        // who scrolled up into history. Streaming drafts retain their position.
+        // who scrolled up into history. History layout changes can move the same
+        // current pair below the viewport too. Streaming drafts retain their position.
         val currentPairChanged = expandedSourceView?.text?.toString() != SubtitleBus.displaySource ||
             expandedTranslationView?.text?.toString() != SubtitleBus.displayTranslation
-        if (expanded && currentPairChanged && SubtitleBus.displayPairFinal && readingCurrentCaption()) {
+        val historyChanged = historyView?.text?.toString() != historyText
+        if (expanded && (historyChanged || (currentPairChanged && SubtitleBus.displayPairFinal)) && readingCurrentCaption()) {
             scrollToCurrentOnLayout = true
         }
         val observation = captureObservation?.state
         val statusLine = if (observation == CaptureHealth.State.NO_PCM || observation == CaptureHealth.State.SILENT) {
             interfaceString(R.string.capture_no_sound_hint)
-        } else SubtitleBus.statusLine
+        } else app.yuxino.mimi.android.runtimeFeedbackResource(SubtitleBus.runtimeFeedback)
+            ?.let(::interfaceString) ?: SubtitleBus.statusLine
         statusView?.apply {
             visibility = if (statusLine.isEmpty()) View.GONE else View.VISIBLE
             text = statusLine
@@ -1173,15 +1192,10 @@ class MimiService : Service() {
             visibility = if (statusLine.isEmpty()) View.GONE else View.VISIBLE
             text = statusLine
         }
-        val maxHistory = if (previewMode) (if (previewHistoryEnabled) 3 else 0)
-            else SettingsStore.historyLines(this)
-        val history = if (maxHistory > 0) SubtitleBus.historySnapshot().takeLast(maxHistory) else emptyList()
         historyView?.apply {
             visibility = if (history.isEmpty()) View.GONE else View.VISIBLE
             maxLines = maxOf(maxHistory, 1) * 3
-            text = history.joinToString("\n\n") { pair ->
-                if (pair.translation.isEmpty()) pair.source else "${pair.source}\n${pair.translation}"
-            }
+            text = historyText
         }
         // Translation sessions keep their established bilingual display. Original-only
         // sessions always show the recognized text regardless of its language.
@@ -1252,6 +1266,8 @@ class MimiService : Service() {
         private const val AUTO_HIDE_MS = 600L
         private const val WATCHDOG_MS = 3_000L
         @Volatile var isRunning: Boolean = false
+            private set
+        @Volatile var activeModelNames: List<String> = emptyList()
             private set
         @Volatile var captureObservation: CaptureHealth.Snapshot? = null
             private set

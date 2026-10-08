@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">接続中…</string>
+    <string name="runtime_rate_retry">翻訳の利用制限 · 再試行を待機中</string>
+    <string name="runtime_rate_wait">翻訳の利用制限 · 次の音声を待機中</string>
+    <string name="runtime_unavailable_retry">翻訳を利用できません · 再試行を待機中</string>
+    <string name="runtime_unavailable_wait">翻訳を利用できません · 次の音声を待機中</string>
+    <string name="runtime_translation_delayed">翻訳が遅延 · 音声認識は継続中</string>
+</resources>

@@ -91,6 +91,7 @@ export function SettingsView() {
   const appleResourcesSequence = useRef(0);
   const [profileEditorRequest, setProfileEditorRequest] = useState(0);
   const profileEditorSequence = useRef(0);
+  const diagnosticNavigationFocus = useRef<string | null>(null);
 
   // Resolve the first native snapshot once. An empty catalog opens services;
   // later additions and credential changes preserve the user's current page.
@@ -102,7 +103,7 @@ export function SettingsView() {
   const categories: readonly {
     id: SettingsCategory;
     label: string;
-    icon: "captions-bubble" | "languages" | "gear" | "download" | "shield-check";
+    icon: "captions-bubble" | "languages" | "gear" | "download";
   }[] = [
     {
       id: "subtitles",
@@ -120,7 +121,6 @@ export function SettingsView() {
       label: I18N.settings.applicationTitle,
       icon: "gear",
     },
-    { id: "diagnostics", label: I18N.settings.diagnosticsTitle, icon: "shield-check" },
   ];
 
   const pageDescriptions: Record<SettingsCategory, string> = {
@@ -139,6 +139,12 @@ export function SettingsView() {
     contentScrollRef.current?.scrollTo({ top: 0 });
     window.history.replaceState(null, "", `#${CATEGORY_SECTION_IDS[category]}`);
   }, []);
+
+  useEffect(() => {
+    if (diagnosticNavigationFocus.current === null) return;
+    document.getElementById(diagnosticNavigationFocus.current)?.focus();
+    diagnosticNavigationFocus.current = null;
+  }, [activeCategory]);
 
   const navigateToSettings = useCallback((target: SettingsNavigationTarget = "service") => {
     const category = target === "export" ? "export" : "service";
@@ -201,7 +207,7 @@ export function SettingsView() {
             aria-label={I18N.settings.windowTitle}
           >
             {categories.map((category) => {
-              const selected = activeCategory === category.id;
+              const selected = activeCategory === category.id || (category.id === "general" && activeCategory === "diagnostics");
               return (
                 <button
                   key={category.id}
@@ -236,7 +242,7 @@ export function SettingsView() {
       <div className="settings-console__scroll" ref={contentScrollRef}>
         <div className="settings-console__frame">
           <header className="settings-page-header settings-page-header--help">
-            <h1>{activeCategory === "guide" ? I18N.settings.quickStartTitle : categories.find((category) => category.id === activeCategory)?.label}</h1>
+            <h1>{activeCategory === "guide" ? I18N.settings.quickStartTitle : activeCategory === "diagnostics" ? I18N.settings.diagnosticsTitle : categories.find((category) => category.id === activeCategory)?.label}</h1>
             <SettingsHelp text={pageDescriptions[activeCategory]} label={I18N.settings.helpLabel} />
           </header>
           {initializationReady && <SubtitleSessionControls visible={activeCategory === "subtitles"} onConfigure={navigateToSettings} />}
@@ -436,6 +442,12 @@ export function SettingsView() {
               </div>
 
             <div id="diagnostics-panel" className={`settings-category-panel${activeCategory !== "diagnostics" ? " is-inactive" : ""}`}>
+              <button id="settings-diagnostics-back" type="button" className="settings-button settings-button--quiet service-back settings-diagnostics-back" onClick={() => {
+                diagnosticNavigationFocus.current = "settings-category-diagnostics";
+                selectCategory("general");
+              }}>
+                <Icon name="chevron-left" />{I18N.settings.backToGeneral}
+              </button>
               <SupportDiagnostics visible={activeCategory === "diagnostics"} />
               {activeCategory === "diagnostics" && DevelopmentDebugger !== null && (
                 <Suspense fallback={null}><DevelopmentDebugger visible /></Suspense>
@@ -498,6 +510,16 @@ export function SettingsView() {
                 <DockPreference />
 
                 <SoftwareUpdate active={activeCategory === "general"} />
+              </SettingsSection>
+              <SettingsSection id="advanced-settings" title={I18N.settings.advancedTitle}>
+                <SettingsRow label={I18N.settings.diagnosticsTitle} description={I18N.settings.diagnosticsPageDescription}>
+                  <button id="settings-category-diagnostics" type="button" className="settings-button settings-button--quiet" aria-controls="diagnostics-panel" onClick={() => {
+                    diagnosticNavigationFocus.current = "settings-diagnostics-back";
+                    selectCategory("diagnostics");
+                  }}>
+                    {I18N.settings.openDiagnostics}<Icon name="chevron-right" />
+                  </button>
+                </SettingsRow>
               </SettingsSection>
             </div>
             <div

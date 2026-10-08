@@ -493,7 +493,13 @@ impl TranslationClient {
             Self::LowLatency(client) => client.finish(recognition).await,
             Self::HighQuality(client) => client.finish().await,
             Self::OpenAIRealtime(client) => client.finish(realtime).await,
-            Self::GeminiLive(client) => client.finish(realtime).await,
+            Self::GeminiLive(client) => {
+                client
+                    .finish(Duration::from_millis(
+                        mimi_core::translation_policy::GEMINI_FINISH_TIMEOUT_MS,
+                    ))
+                    .await
+            }
             Self::AzureOpenAIRealtime(client) => client.finish(realtime).await,
             Self::TencentCloud(client) => client.finish(realtime).await,
             Self::BaiduTranslate(client) => client.finish(realtime).await,

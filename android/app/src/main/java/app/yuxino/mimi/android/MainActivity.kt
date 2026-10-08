@@ -81,28 +81,6 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
-        findViewById<View>(R.id.copy_capture_diagnostics).setOnClickListener {
-            val observation = MimiService.captureObservation
-            val report = "mimi Android capture diagnostics v1\n" +
-                "androidApi=${Build.VERSION.SDK_INT}\n" +
-                "source=android_playback_capture\nusage=media,game,unknown\nmicrophone=false\n" +
-                "running=${MimiService.isRunning}\n" +
-                "observation=${observation?.state?.name ?: "STOPPED"}\n" +
-                "pcmAgeMs=${observation?.pcmAgeMs ?: "unknown"}\n" +
-                "soundAgeMs=${observation?.soundAgeMs ?: "unknown"}\n" +
-                "captureError=${MimiService.lastCaptureError ?: "none"}"
-            val copied = try {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("mimi capture diagnostics", report))
-                true
-            } catch (_: RuntimeException) {
-                false
-            }
-            Toast.makeText(this,
-                if (copied) R.string.capture_diagnostics_copied else R.string.capture_diagnostics_copy_failed,
-                if (copied) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
-            ).show()
-        }
         startStop.setOnClickListener {
             if (MimiService.isRunning) {
                 stopService()
@@ -215,6 +193,12 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.provider_summary).text = getString(
             if (keyOk) R.string.home_service_ready else R.string.home_service_unset, provider,
         )
+        findViewById<TextView>(R.id.model_summary).apply {
+            val models = if (running) MimiService.activeModelNames else if (keyOk)
+                runtimeModelNames(SettingsStore.runtimeConfiguration(this@MainActivity)) else emptyList()
+            text = modelNamesLabel(models)
+            visibility = if (models.isEmpty()) View.GONE else View.VISIBLE
+        }
         findViewById<SubtitlePreviewView>(R.id.subtitle_preview).configure(
             SettingsStore.fontSize(this), SettingsStore.translationColor(this),
             SettingsStore.overlayOpacity(this), SettingsStore.overlayBgAlpha(this), SettingsStore.targetLang(this),

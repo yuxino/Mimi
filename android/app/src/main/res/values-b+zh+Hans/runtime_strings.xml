@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">正在连接…</string>
+    <string name="runtime_rate_retry">翻译限流 · 等待重试</string>
+    <string name="runtime_rate_wait">翻译限流 · 等待新的语音</string>
+    <string name="runtime_unavailable_retry">翻译服务暂不可用 · 等待重试</string>
+    <string name="runtime_unavailable_wait">翻译服务暂不可用 · 等待新的语音</string>
+    <string name="runtime_translation_delayed">翻译延迟 · 仍在识别</string>
+</resources>

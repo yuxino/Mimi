@@ -103,6 +103,9 @@ back over saved preferences.
   This heuristic can delay confirmation during continuous speech;
   drafts stay bounded at 5,120 characters. Both platforms retain explicit turn
   boundaries with a shared 500 ms late-tail grace; interruptions discard buffers.
+  Gemini Stop allows 4.5 seconds inside the six-second provider budget so its
+  two-second paired quiet checkpoint can finish without `turnComplete`. A
+  deadline or one-sided tail is never promoted into a final pair.
 - Configuration changes are drafts until the explicit save action. Field labels and
   errors stay legible; protocol explanations use help controls. Provider artwork comes
   from the same existing desktop asset source.
@@ -120,6 +123,8 @@ Android production route.
 | Text service display names | Optional names per profile and independent route; shown in settings and subtitle service label | Existing provider labels |
 | Recognition selection | Eight built-in services plus custom DashScope/OpenAI ASR and Apple Speech on supported Apple silicon Macs running macOS 26+; optional per-profile user declaration narrows custom recognition languages | Eight built-in adapters; independent text currently pairs with Alibaba ASR; no custom speech profile/declaration editor |
 | Profile activation languages | Optional saved source/target pair per configuration; defaults to keeping current languages. Temporary session changes do not rewrite the pair | No saved profile-language pair editor |
+| Active configuration/model changes | Saved profiles can switch through reconnect; editing a model requires Stop | Service/model editors require Stop and reject stale Save actions; Home and expanded controls show the session's actual shared-factory model list |
+| Runtime recovery feedback | Shared connection/retry/timeout state in native UI | Same shared state, localized in floating subtitles; capture-no-audio guidance takes priority |
 | Apple local recognition | One language selector with runtime resource status; explicit Download and use prepares and applies a missing language, while ready languages can be applied directly; no speech API key; independent text translation keeps its own service and credentials | Not available; no Apple API or asset-management dependency |
 | Apple local text translation | Apple silicon with macOS 26+: runtime language-pair availability, explicit in-app model preparation, installed-only translation without API keys or a text proxy; pairs with Apple/custom/Alibaba recognition | Not available; Apple Translation is a native macOS adapter, not a shared HTTP provider |
 | Built-in Alibaba pipeline | Audio 3.0: 30 explicit recognition hints plus automatic detection; Qwen-MT retains its model-specific target catalog | Same Audio3 + Qwen-MT factory, models and capability normalization |

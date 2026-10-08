@@ -499,8 +499,8 @@ impl GeminiLiveClient {
     }
 
     /// Flushes the final PCM frame, sends `audioStreamEnd`, then waits for the
-    /// provider's real turn boundary and a short quiet period for transcript
-    /// fields that may legally arrive after that boundary.
+    /// provider's real turn boundary and its late transcript tail, or the shared
+    /// paired-text quiet checkpoint when continuous translation omits the boundary.
     pub async fn finish(&self, timeout: Duration) {
         if !self.inner.ready.load(Ordering::SeqCst) {
             return;
@@ -583,6 +583,7 @@ impl GeminiLiveClient {
         // Audio is closed to new sends. Let a prepared replacement acquire the
         // barrier, observe Stop, and return to receiving the old socket's tail.
         drop(_send_guard);
+        let closed_at = tokio::time::Instant::now();
         while self.is_current_generation(generation) {
             let completed = self.inner.final_turn_notify.notified();
             tokio::pin!(completed);
@@ -590,7 +591,29 @@ impl GeminiLiveClient {
             if self.inner.received_final_turn.load(Ordering::SeqCst) {
                 break;
             }
-            completed.await;
+            tokio::select! {
+                _ = completed => {},
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                    let _content = self.inner.content_lock.lock().await;
+                    if !self.is_current_generation(generation) {
+                        return Err(GeminiLiveClientError::NotConnected);
+                    }
+                    let mut committer = self.inner.committer.lock().await;
+                    // Use the same checkpoint as live captions, never force an
+                    // unconfirmed or one-sided tail into history at the deadline.
+                    if !committer.turn_complete_received {
+                        for event in committer.settle() {
+                            self.emit(event, generation);
+                        }
+                        if closed_at.elapsed() >= Duration::from_millis(
+                            mimi_core::openai_transcript_committer::GEMINI_TRANSCRIPT_QUIET_MS,
+                        ) && !committer.has_pending() {
+                            self.emit(LiveTranslateServerEvent::SessionFinished, generation);
+                            return Ok(());
+                        }
+                    }
+                }
+            }
         }
         publish_turn_after_transcript_quiet(
             &self.inner,
@@ -1488,6 +1511,58 @@ mod tests {
             finished |= matches!(event, LiveTranslateServerEvent::SessionFinished);
         }
         assert!(finished);
+    }
+
+    #[tokio::test]
+    async fn stop_checkpoints_a_late_paired_tail_without_turn_complete() {
+        let (client, mut events) = test_client(|mut socket| Box::pin(async move {
+            assert_setup(socket.next().await.unwrap().unwrap());
+            socket.send(Message::Text(r#"{"setupComplete":{}}"#.into())).await.unwrap();
+            socket.send(Message::Text(r#"{"serverContent":{"inputTranscription":{"text":"Synthetic source"},"outputTranscription":{"text":"合成"}}}"#.into())).await.unwrap();
+            while let Some(Ok(message)) = socket.next().await {
+                if message.to_text().ok().is_some_and(|text| text.contains("audioStreamEnd")) {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    socket.send(Message::Text(r#"{"serverContent":{"outputTranscription":{"text":"译文"}}}"#.into())).await.unwrap();
+                }
+            }
+        })).await;
+        client.connect().await.unwrap();
+        loop {
+            if matches!(
+                events.recv().await.unwrap(),
+                LiveTranslateServerEvent::TranslationDraft(_)
+            ) {
+                break;
+            }
+        }
+        let started = tokio::time::Instant::now();
+        client
+            .finish(Duration::from_millis(
+                mimi_core::translation_policy::GEMINI_FINISH_TIMEOUT_MS,
+            ))
+            .await;
+        assert!(started.elapsed() >= Duration::from_millis(2_100));
+        assert!(started.elapsed() < Duration::from_millis(4_000));
+        let mut pairs = Vec::new();
+        let mut finished = 0;
+        while let Ok(event) = events.try_recv() {
+            match event {
+                LiveTranslateServerEvent::SubtitleFinalPair {
+                    source,
+                    translation,
+                    ..
+                } => {
+                    pairs.push((source, translation));
+                }
+                LiveTranslateServerEvent::SessionFinished => finished += 1,
+                LiveTranslateServerEvent::Error { .. } => {
+                    panic!("paired quiet tail must finish cleanly")
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(pairs, vec![("Synthetic source".into(), "合成译文".into())]);
+        assert_eq!(finished, 1);
     }
 
     #[tokio::test]

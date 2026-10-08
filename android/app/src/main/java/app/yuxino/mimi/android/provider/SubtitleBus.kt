@@ -5,6 +5,10 @@ import org.json.JSONObject
 /** Native UI facade over the exact Rust reducer used by desktop. */
 object SubtitleBus {
     data class Pair(val source: String, val translation: String)
+    data class RuntimeFeedback(val connectionStatus: String = "idle", val recoveryReason: String? = null,
+        val retryScheduled: Boolean = false, val translationTimedOut: Boolean = false)
+    @Volatile var runtimeFeedback = RuntimeFeedback()
+        private set
     private val lock = Any()
     private val listeners = mutableListOf<Listener>()
     private var state: String? = null
@@ -69,6 +73,10 @@ object SubtitleBus {
             runtimeOwned = true
             atomicPreview = value.optBoolean("atomicPreview")
             snapshot = value.getJSONObject("snapshot")
+            val recovery = value.optJSONObject("translationRecovery")
+            runtimeFeedback = RuntimeFeedback(value.optString("connectionStatus", "idle"),
+                recovery?.optString("reason"), recovery?.optBoolean("retryScheduled") ?: false,
+                value.optBoolean("isTranslationTimedOut"))
             originalOnly = sourceOnly
             detectedSourceLanguage = value.optString("detectedLanguage").takeUnless { it.isBlank() || it == "null" }
             liveHidden = false
@@ -144,6 +152,7 @@ object SubtitleBus {
             state = null
             runtimeOwned = false
             atomicPreview = false
+            runtimeFeedback = RuntimeFeedback()
             snapshot = JSONObject()
             sourceId = 0; confirmationId = 0; draftId = null; originalOnly = false
             statusLine = ""; detectedSourceLanguage = null; liveHidden = false
