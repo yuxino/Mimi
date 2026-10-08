@@ -3,7 +3,7 @@
 Mimi builds a native C++17 worker against **sherpa-onnx 1.13.8**. Its fixed
 release archives, byte lengths and SHA-256 digests are in
 `runtime-assets.json`. The release's Linux x64 ONNX Runtime reports **1.28.2**.
-The C API header and nlohmann/json **3.12.0** header are separately hashed.
+The C API header is pinned to the v1.13.8 commit `11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf`; it and the nlohmann/json **3.12.0** header are hashed as exact upstream bytes, without newline normalization. No-network build-download regression tests run before native worker preparation.
 Python 3 and CMake are build tools only: neither is installed or invoked by
 the application. No model/export repository code is executed.
 

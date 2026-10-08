@@ -68,6 +68,12 @@ shared ONNX extension below has independent per-model availability.
   installed models remain deletable. Do not recommend all new models as faster
   or more accurate merely because upstream provides them.
 
+Dependency digests must be computed from raw upstream download bytes, never a
+text/API-rendered copy or newline-normalized buffer. A clean dependency fetch
+is required for acceptance; a previously seeded build cache is insufficient.
+Build-time download regressions verify failed integrity checks do not publish
+or leave staging files.
+
 ## Hy-MT2 follow-up boundary
 
 Hy-MT2 is text translation, never a speech model. The official 1.8B GGUF repo

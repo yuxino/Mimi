@@ -31,6 +31,7 @@ python3 -B "$SCRIPT_DIR/analyze-development-case-test.py"
 python3 -B "$SCRIPT_DIR/run-development-batch-test.py"
 python3 -B "$SCRIPT_DIR/ci-scope-test.py"
 python3 -B "$SCRIPT_DIR/prepare-macos-release-test.py"
+python3 -B "$PROJECT_DIR/src-tauri/local-speech-onnx/build-test.py"
 bash "$SCRIPT_DIR/check-shared-core.sh"
 
 echo "==> cargo fmt --check"

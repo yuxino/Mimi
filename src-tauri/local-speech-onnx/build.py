@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,7 +18,7 @@ import tempfile
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent
-HEADER = ("https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/v1.13.8/sherpa-onnx/c-api/c-api.h", "b224a0c25910507d5d1b8a46cae8816bf49724ff1198ca55c98d15f56f3406c2")
+HEADER = ("https://raw.githubusercontent.com/k2-fsa/sherpa-onnx/11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf/sherpa-onnx/c-api/c-api.h", "2a1b95084be8fd1deb3228fcad2fd3f7f0258b64582f7402281ec174c7b7f4ce")
 JSON_HEADER = ("https://raw.githubusercontent.com/nlohmann/json/v3.12.0/single_include/nlohmann/json.hpp", "aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63")
 
 def verified_download(url, destination, digest, size=None):
@@ -41,6 +42,8 @@ def verified_download(url, destination, digest, size=None):
         os.replace(partial, destination)
 
 def prepare(target):
+    if not re.fullmatch(r"[a-z0-9_]+(?:-[a-z0-9_]+){2,}", target):
+        raise ValueError("expected a Rust target triple")
     assets = json.loads((ROOT / "runtime-assets.json").read_text())
     destination = ROOT.parent / "binaries" / "local-speech-onnx"
     if target not in assets:

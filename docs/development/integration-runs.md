@@ -4,6 +4,13 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-08：ONNX 界面预览与干净 CI 依赖校验修复
+
+- 在 `9987979c` 用云端 Linux headless Chromium 渲染实际 React 页面及模拟平台 IPC：Windows／Linux 各显示 SenseVoiceSmall、Qwen ONNX 两项；Apple silicon Mac 另显示原有两项 MLX。三张中文深色截图均标明模拟平台、非原生验收；没有下载模型、访问凭据或采音。截图不提交仓库。
+- 同步核对 [CI 37804450765](https://github.com/yuxino/Mimi/actions/runs/37804450765)：frontend 和 Android 成功，但各 native／MSRV job 都在 C API 头文件 SHA 校验处失败。此前通过文本读取构造的头文件多出一个末尾换行，并对该缓存计算了校验值；本地缓存验证无法代替干净来源验证。
+- 改为固定 v1.13.8 的上游提交 `11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf`，下载原始字节 SHA-256 为 `2a1b95084be8fd1deb3228fcad2fd3f7f0258b64582f7402281ec174c7b7f4ce`。校验仍严格拒绝任何字节变化，没有删去或放宽哈希。新增七项无网络下载回归，覆盖多余换行、损坏缓存、截断、超长、HTTP 重定向、非法构建目标参数及验证后发布／失败临时清理；常规检查与 native build 均运行它们。
+- 清空目标缓存后重新下载运行库与原始头文件、构建 Linux worker、CTest 及两模型真实加载／正常释放通过。完整 `scripts/check.sh` 再次通过（Rust 1,243／13 ignored、前端 2,048）；最终新增目标参数保护后另跑严格 Clippy／七项下载回归并确认 worker 已生成。修复后的三端 CI 待重新核对；Windows／Mac 的真实系统声音、模型推理、签名与持续运行仍待原生验收。
+
 ## 2026-10-08：云端共享 ONNX 本地识别实现
 
 - 从功能分支 `feat/local-model-manager` 的 `888397873dbb92c87ed9b2b9bb7de5d5e5821caa` 继续，新增 SenseVoiceSmall int8、Qwen3-ASR 0.6B int8 受管目录与共享常驻 C++ worker。原 MLX 模型 ID、下载目录和配置不变，whisper.cpp／自带 worker 仍走原接口。没有新增采音入口或翻译服务。
