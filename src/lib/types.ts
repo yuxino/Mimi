@@ -194,7 +194,6 @@ export interface SettingsDraft {
 
 export type ServiceProvider =
   | "appleSpeech"
-  | "windowsLiveCaptions"
   | "alibabaCloud"
   | "openAIRealtime"
   | "googleGeminiLive"
@@ -253,8 +252,6 @@ export interface ServiceProfile {
   id: string;
   name: string;
   provider: ServiceProvider;
-  /** Explicit per-profile permission to read Windows Live Captions; absent means false. */
-  windowsLiveCaptionsConsent?: boolean;
   /** Built-in Alibaba translation; historical snapshots default to Lite. */
   qwenMtModel?: QwenMTModel;
   /** Applied on activation only; temporary session changes leave it intact. */
@@ -285,12 +282,6 @@ export interface ProviderCapabilities {
 }
 
 export type AppleSpeechResourceStatus = "unsupported" | "supported" | "downloading" | "installed" | "unknown";
-
-export interface WindowsLiveCaptionsSupport {
-  available: boolean;
-  status: "unsupported" | "closed" | "setupRequired" | "ready" | "unreadable";
-  buildNumber?: number | null;
-}
 
 export interface AppleSpeechSupport {
   available: boolean;

@@ -1187,30 +1187,6 @@ impl SettingsStore {
         })
     }
 
-    pub fn set_windows_live_captions_consent(
-        &self,
-        profile_id: &str,
-        consent: bool,
-    ) -> Result<(), String> {
-        self.mutate_catalog_with_normalization(None, |catalog| {
-            let profile = catalog
-                .profiles
-                .iter_mut()
-                .find(|profile| profile.id == profile_id)
-                .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
-            if profile.provider != ProviderKind::WindowsLiveCaptions {
-                return Err("windows_live_captions_profile_required".into());
-            }
-            profile.windows_live_captions_consent = consent;
-            Ok(())
-        })
-    }
-
-    pub fn validate_windows_live_captions_session(&self) -> Result<(), String> {
-        let profile = self.active_profile()?;
-        validate_windows_live_captions_preferences(&profile, &self.preferences(), true)
-    }
-
     #[cfg(test)]
     pub fn update_profile(&self, profile_id: &str, name: &str) -> Result<ServiceProfile, String> {
         self.update_profile_options(profile_id, Some(name), None, None, None, None, None, None)
@@ -1489,7 +1465,7 @@ impl SettingsStore {
     }
 
     fn retry_profile_credential_errors(&self, profile: &ServiceProfile, speech: bool, text: bool) {
-        let speech = speech && !profile.provider.is_local_speech();
+        let speech = speech && profile.provider != ProviderKind::AppleSpeech;
         let account = credential_account(profile);
         let retry_legacy = speech && is_default_alibaba(profile) && self.migrate_legacy_alibaba;
         self.secret_cache
@@ -1562,7 +1538,7 @@ impl SettingsStore {
     }
 
     fn speech_presence_for_snapshot(&self, profile: &ServiceProfile) -> CredentialState {
-        if profile.provider.is_local_speech() {
+        if profile.provider == ProviderKind::AppleSpeech {
             return CredentialState::Present;
         }
         let presence = (|| {
@@ -1996,9 +1972,6 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<Option<ProviderCredentials>, String> {
-        if profile.provider == ProviderKind::WindowsLiveCaptions {
-            return Ok(Some(ProviderCredentials::WindowsLiveCaptions));
-        }
         if profile.provider == ProviderKind::AppleSpeech {
             return Ok(Some(ProviderCredentials::AppleSpeech));
         }
@@ -2931,7 +2904,7 @@ impl SettingsStore {
         if source_language.is_some() && profile.provider != ProviderKind::AppleSpeech {
             return Err("apple_speech_source_override_invalid".into());
         }
-        if profile.provider.is_local_speech() {
+        if profile.provider == ProviderKind::AppleSpeech {
             if source_language == Some(SourceLanguage::Automatic) {
                 return Err("apple_speech_language_unsupported".into());
             }
@@ -2945,12 +2918,8 @@ impl SettingsStore {
                         translation_mode: prefs.translation_mode,
                     });
             return LiveTranslationConfiguration::with_credentials(
-                profile.provider,
-                if profile.provider == ProviderKind::WindowsLiveCaptions {
-                    ProviderCredentials::WindowsLiveCaptions
-                } else {
-                    ProviderCredentials::AppleSpeech
-                },
+                ProviderKind::AppleSpeech,
+                ProviderCredentials::AppleSpeech,
                 source_language.unwrap_or(normalized.source_language),
                 TargetLanguage::Original,
                 normalized.translation_mode,
@@ -3305,7 +3274,7 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
     ) -> Result<Option<String>, SecretStoreError> {
-        if profile.provider.is_local_speech() {
+        if profile.provider == ProviderKind::AppleSpeech {
             return Ok(None);
         }
         let account = credential_account(profile);
@@ -3375,7 +3344,7 @@ impl SettingsStore {
     }
 
     fn delete_api_key_for_profile(&self, profile: &ServiceProfile) -> Result<(), String> {
-        if profile.provider.is_local_speech() {
+        if profile.provider == ProviderKind::AppleSpeech {
             return Ok(());
         }
         if is_default_alibaba(profile) && self.migrate_legacy_alibaba {
@@ -3411,7 +3380,7 @@ impl SettingsStore {
         value: &str,
         allow_collection_creation: bool,
     ) -> Result<(), String> {
-        if profile.provider.is_local_speech() {
+        if profile.provider == ProviderKind::AppleSpeech {
             return Err(
                 crate::core::credentials::ProviderCredentialsError::ProviderMismatch.to_string(),
             );
@@ -3606,11 +3575,6 @@ fn profile_selection_preferences(
     if source_language.is_some() && profile.provider != ProviderKind::AppleSpeech {
         return Err("apple_speech_source_override_invalid".into());
     }
-    if profile.provider == ProviderKind::WindowsLiveCaptions {
-        prefs.audio_input = AudioInput::System;
-        prefs.system_audio_target = crate::core::system_audio_target::SystemAudioTarget::System;
-        prefs.record_session_audio = false;
-    }
     if source_language.is_none() {
         if let Some(preset) = profile.language_preset {
             profile.validate_language_preset(preset)?;
@@ -3637,35 +3601,7 @@ fn profile_selection_preferences(
     Ok(prefs)
 }
 
-pub(crate) fn validate_windows_live_captions_preferences(
-    profile: &ServiceProfile,
-    prefs: &Preferences,
-    consent_required: bool,
-) -> Result<(), String> {
-    if profile.provider != ProviderKind::WindowsLiveCaptions {
-        return Ok(());
-    }
-    if consent_required && !profile.windows_live_captions_consent {
-        return Err("windows_live_captions_consent_required".into());
-    }
-    if prefs.audio_input != AudioInput::System {
-        return Err("windows_live_captions_audio_input_unsupported".into());
-    }
-    if prefs.record_session_audio {
-        return Err("windows_live_captions_recording_unsupported".into());
-    }
-    if prefs.system_audio_target.application_id().is_some() {
-        return Err("windows_live_captions_application_target_unsupported".into());
-    }
-    Ok(())
-}
-
 fn normalize_preferences_value(prefs: &mut Preferences, profile: &ServiceProfile) {
-    if profile.provider == ProviderKind::WindowsLiveCaptions {
-        prefs.audio_input = AudioInput::System;
-        prefs.system_audio_target = crate::core::system_audio_target::SystemAudioTarget::System;
-        prefs.record_session_audio = false;
-    }
     let original_source = prefs.source_language;
     let normalized = profile.normalize_preferences(ProviderPreferences {
         source_language: prefs.source_language,
@@ -4417,104 +4353,6 @@ mod tests {
                 .unwrap()
                 .is_some());
         }
-    }
-
-    #[test]
-    fn windows_live_captions_has_no_speech_secret_and_requires_separate_consent() {
-        let fake = FakeSecretStore::default();
-        let store = settings(&fake);
-        let profile = store
-            .create_profile(ProviderKind::WindowsLiveCaptions, "Windows captions")
-            .unwrap();
-        let speech_account = credential_account(&profile);
-        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &speech_account);
-        store
-            .save_preferences(|prefs| {
-                prefs.audio_input = AudioInput::Both;
-                prefs.record_session_audio = true;
-                prefs.system_audio_target =
-                    crate::core::system_audio_target::SystemAudioTarget::Application {
-                        id: "synthetic.player".into(),
-                        name: "Synthetic player".into(),
-                    };
-            })
-            .unwrap();
-        store.select_profile(&profile.id).unwrap();
-        let prefs = store.preferences();
-        assert_eq!(prefs.audio_input, AudioInput::System);
-        assert!(!prefs.record_session_audio);
-        assert_eq!(
-            prefs.system_audio_target,
-            crate::core::system_audio_target::SystemAudioTarget::System
-        );
-        let configuration = store.configuration().unwrap();
-        assert_eq!(
-            configuration.credentials,
-            ProviderCredentials::WindowsLiveCaptions
-        );
-        assert_eq!(configuration.target_language, TargetLanguage::Original);
-        assert_ne!(configuration.source_language, SourceLanguage::Automatic);
-        assert_eq!(
-            store.validate_windows_live_captions_session(),
-            Err("windows_live_captions_consent_required".into())
-        );
-        store
-            .set_windows_live_captions_consent(&profile.id, true)
-            .unwrap();
-        assert!(store.validate_windows_live_captions_session().is_ok());
-        assert_eq!(
-            store.credential_state_for_snapshot(&profile),
-            CredentialState::Present
-        );
-        assert!(store.configuration_for_speech_probe(&profile).is_ok());
-        assert!(store
-            .save_credentials(&profile.id, &ProviderCredentials::WindowsLiveCaptions)
-            .is_err());
-        assert!(store
-            .save_api_key(&profile.id, "synthetic-unrelated")
-            .is_err());
-        assert_eq!(
-            fake.load_count(PROFILE_KEYCHAIN_SERVICE, &speech_account),
-            0
-        );
-        store
-            .set_windows_live_captions_consent(&profile.id, false)
-            .unwrap();
-        assert_eq!(
-            store.validate_windows_live_captions_session(),
-            Err("windows_live_captions_consent_required".into())
-        );
-    }
-
-    #[test]
-    fn windows_live_captions_rejects_incompatible_audio_preferences() {
-        let mut profile =
-            ServiceProfile::new("windows", "Windows", ProviderKind::WindowsLiveCaptions).unwrap();
-        profile.windows_live_captions_consent = true;
-        let mut prefs = Preferences {
-            audio_input: AudioInput::Both,
-            ..Preferences::default()
-        };
-        assert_eq!(
-            validate_windows_live_captions_preferences(&profile, &prefs, true),
-            Err("windows_live_captions_audio_input_unsupported".into())
-        );
-        prefs.audio_input = AudioInput::System;
-        prefs.record_session_audio = true;
-        assert_eq!(
-            validate_windows_live_captions_preferences(&profile, &prefs, true),
-            Err("windows_live_captions_recording_unsupported".into())
-        );
-        prefs.record_session_audio = false;
-        prefs.system_audio_target =
-            crate::core::system_audio_target::SystemAudioTarget::Application {
-                id: "synthetic.player".into(),
-                name: "Synthetic player".into(),
-            };
-        assert_eq!(
-            validate_windows_live_captions_preferences(&profile, &prefs, true),
-            Err("windows_live_captions_application_target_unsupported".into())
-        );
     }
 
     #[test]

@@ -55,7 +55,6 @@ pub struct ServiceProfilePayload {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
-    pub windows_live_captions_consent: bool,
     pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
     pub language_preset: Option<crate::core::provider::ProfileLanguagePreset>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -89,7 +88,6 @@ impl ServiceProfilePayload {
             id: profile.id,
             name: profile.name,
             provider: profile.provider,
-            windows_live_captions_consent: profile.windows_live_captions_consent,
             qwen_mt_model: profile.qwen_mt_model,
             language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
@@ -111,7 +109,6 @@ impl ServiceProfilePayload {
             id: profile.id,
             name: profile.name,
             provider: profile.provider,
-            windows_live_captions_consent: profile.windows_live_captions_consent,
             qwen_mt_model: profile.qwen_mt_model,
             language_preset: profile.language_preset,
             speech_recognition_name: profile.speech_recognition_name,
@@ -944,7 +941,6 @@ mod tests {
         let payload = SettingsSnapshotPayload {
             credential_storage: "keychain",
             profiles: vec![ServiceProfilePayload {
-                windows_live_captions_consent: false,
                 qwen_mt_model: Default::default(),
                 language_preset: None,
                 speech_network_proxy: None,
@@ -1423,62 +1419,6 @@ pub async fn settings_get(state: State<'_, AppState>) -> Result<SettingsSnapshot
 }
 
 #[tauri::command]
-pub async fn get_windows_live_captions_support() -> crate::windows_live_captions::Support {
-    if app_is_ui_test() {
-        let fixture = cfg!(target_os = "windows")
-            && std::env::var("MIMI_UI_TEST_WINDOWS_LIVE_CAPTIONS").as_deref() == Ok("1");
-        let status = std::env::var("MIMI_UI_TEST_WINDOWS_LIVE_CAPTIONS_STATUS").unwrap_or_default();
-        let status = if fixture {
-            match status.as_str() {
-                "closed" => "closed",
-                "setupRequired" => "setupRequired",
-                "unreadable" => "unreadable",
-                "unsupported" => "unsupported",
-                _ => "ready",
-            }
-        } else {
-            "unsupported"
-        };
-        return crate::windows_live_captions::Support {
-            available: status != "unsupported",
-            status: status.into(),
-            build_number: fixture.then_some(26200),
-        };
-    }
-    crate::windows_live_captions::support().await
-}
-
-#[tauri::command]
-pub fn open_windows_live_captions() -> Result<(), String> {
-    if app_is_ui_test() {
-        return Err("windows_live_captions_ui_test_unavailable".into());
-    }
-    crate::windows_live_captions::open()
-}
-
-#[tauri::command]
-pub async fn set_windows_live_captions_consent(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    profile_id: String,
-    consent: bool,
-) -> Result<SettingsSnapshotPayload, String> {
-    let _lifecycle = state.session.settings_mutation_guard(true).await?;
-    ensure_profile_mutation_allowed(state.session.has_active_session())?;
-    let failure = state.session.configuration_failure_snapshot();
-    state
-        .settings
-        .set_windows_live_captions_consent(&profile_id, consent)?;
-    let repairs_active = consent
-        && state
-            .settings
-            .active_profile()
-            .is_ok_and(|profile| profile.id == profile_id);
-    state.session.configuration_saved(failure, repairs_active);
-    emit_settings_snapshot(&app, &state.settings)
-}
-
-#[tauri::command]
 pub async fn get_apple_speech_support(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1571,11 +1511,6 @@ pub async fn prepare_apple_translation_languages(
 }
 
 async fn ensure_apple_provider_available(provider: ProviderKind) -> Result<(), String> {
-    if provider == ProviderKind::WindowsLiveCaptions
-        && !get_windows_live_captions_support().await.available
-    {
-        return Err("windows_live_captions_unsupported".into());
-    }
     if provider == ProviderKind::AppleSpeech
         && (app_is_ui_test() || !crate::apple_speech_support::refresh().await?.available)
     {
@@ -1838,19 +1773,6 @@ fn apply_settings_draft_guarded(
         return SettingsSnapshotPayload::try_from_store(&state.settings);
     }
 
-    let active_profile = state.settings.active_profile()?;
-    if active_profile.provider == ProviderKind::WindowsLiveCaptions {
-        let mut prefs = state.settings.preferences();
-        prefs.apply_audio_preferences(draft.audio_input, draft.record_session_audio);
-        if let Some(target) = &draft.system_audio_target {
-            prefs.system_audio_target = target.clone();
-        }
-        crate::settings_store::validate_windows_live_captions_preferences(
-            &active_profile,
-            &prefs,
-            false,
-        )?;
-    }
     if draft
         .system_audio_target
         .as_ref()

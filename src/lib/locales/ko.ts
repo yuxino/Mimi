@@ -1,4 +1,3 @@
-import { WINDOWS_LIVE_CAPTIONS_COPY } from "../windowsLiveCaptionsCopy";
 import type { SettingsCopy } from '../i18n';
 
 export const TRAY = {
@@ -96,7 +95,6 @@ export const OVERLAY = {
 };
 
 export const SETTINGS = {
-  ...WINDOWS_LIVE_CAPTIONS_COPY["ko"],
   appleTranslationSameLanguage: "인식 언어와 번역 언어가 같습니다. 원문을 그대로 표시합니다.",
   textTranslationApple: "Apple Translation",
   appleTranslationHelp: "Apple의 시스템 번역으로 이 Mac에서 번역합니다. API 키는 필요하지 않습니다. 처음 사용하기 전에 Mimi에서 번역 언어를 다운로드하거나 사용을 허용하세요.",

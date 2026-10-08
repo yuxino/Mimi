@@ -45,8 +45,6 @@ pub enum ProviderKind {
     CustomOpenAIASR,
     #[serde(rename = "appleSpeech")]
     AppleSpeech,
-    #[serde(rename = "windowsLiveCaptions")]
-    WindowsLiveCaptions,
 }
 
 impl ProviderKind {
@@ -83,7 +81,6 @@ impl ProviderKind {
             Self::CustomDashScopeASR => "customDashScopeASR",
             Self::CustomOpenAIASR => "customOpenAIASR",
             Self::AppleSpeech => "appleSpeech",
-            Self::WindowsLiveCaptions => "windowsLiveCaptions",
         }
     }
 
@@ -101,7 +98,6 @@ impl ProviderKind {
             Self::CustomDashScopeASR => "Custom DashScope ASR",
             Self::CustomOpenAIASR => "Custom OpenAI ASR",
             Self::AppleSpeech => "Apple Speech",
-            Self::WindowsLiveCaptions => "Windows Live Captions",
         }
     }
 
@@ -181,14 +177,13 @@ impl ProviderKind {
                     .collect::<Vec<_>>();
                 catalog_capabilities(&codes, &codes, 16_000, false)
             }
-            Self::CustomDashScopeASR
-            | Self::CustomOpenAIASR
-            | Self::AppleSpeech
-            | Self::WindowsLiveCaptions => custom_speech_capabilities(
-                self,
-                TextTranslation::FollowService,
-                TargetLanguage::Original,
-            ),
+            Self::CustomDashScopeASR | Self::CustomOpenAIASR | Self::AppleSpeech => {
+                custom_speech_capabilities(
+                    self,
+                    TextTranslation::FollowService,
+                    TargetLanguage::Original,
+                )
+            }
         }
     }
 
@@ -197,12 +192,7 @@ impl ProviderKind {
     }
 
     pub const fn is_standalone_asr(self) -> bool {
-        self.is_custom_speech() || self.is_local_speech()
-    }
-
-    /// Recognition is supplied by the operating system and stores no speech key.
-    pub const fn is_local_speech(self) -> bool {
-        matches!(self, Self::AppleSpeech | Self::WindowsLiveCaptions)
+        self.is_custom_speech() || matches!(self, Self::AppleSpeech)
     }
 
     pub const fn supports_text_translation(self) -> bool {
@@ -246,7 +236,8 @@ fn custom_speech_capabilities(
     if target == TargetLanguage::Original {
         capabilities.source_languages = SourceLanguage::ALL.to_vec();
     }
-    if provider.is_local_speech() || (route == TextTranslation::Apple && target.translates_audio())
+    if provider == ProviderKind::AppleSpeech
+        || (route == TextTranslation::Apple && target.translates_audio())
     {
         capabilities
             .source_languages
@@ -605,9 +596,6 @@ pub struct ServiceProfile {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
-    /// Explicit permission to read Windows captions, including microphone-off confirmation.
-    #[serde(default)]
-    pub windows_live_captions_consent: bool,
     /// Built-in Alibaba text translation only; historical profiles retain Lite.
     #[serde(default)]
     pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
@@ -662,7 +650,6 @@ impl ServiceProfile {
             id,
             name,
             provider,
-            windows_live_captions_consent: false,
             qwen_mt_model: Default::default(),
             language_preset: None,
             custom_speech_source_languages: None,
@@ -679,7 +666,6 @@ impl ServiceProfile {
             id: DEFAULT_ALIBABA_PROFILE_ID.to_string(),
             name: ProviderKind::AlibabaCloud.display_name().to_string(),
             provider: ProviderKind::AlibabaCloud,
-            windows_live_captions_consent: false,
             qwen_mt_model: Default::default(),
             language_preset: None,
             custom_speech_source_languages: None,
@@ -697,8 +683,6 @@ impl ServiceProfile {
         // reject activation, rather than rejecting the whole profile catalog.
         profile.language_preset = self.language_preset;
         profile.qwen_mt_model = self.qwen_mt_model;
-        profile.windows_live_captions_consent = self.provider == ProviderKind::WindowsLiveCaptions
-            && self.windows_live_captions_consent;
         if matches!(
             self.text_translation,
             Some(
@@ -896,29 +880,6 @@ impl Default for ServiceProfile {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn windows_live_captions_consent_defaults_off_and_source_is_explicit() {
-        let mut profile =
-            ServiceProfile::new("windows", "Windows", ProviderKind::WindowsLiveCaptions).unwrap();
-        assert!(!profile.windows_live_captions_consent);
-        let mut wire = serde_json::to_value(&profile).unwrap();
-        assert_eq!(wire["provider"], "windowsLiveCaptions");
-        wire.as_object_mut()
-            .unwrap()
-            .remove("windowsLiveCaptionsConsent");
-        assert!(
-            !serde_json::from_value::<ServiceProfile>(wire)
-                .unwrap()
-                .windows_live_captions_consent
-        );
-        assert!(!profile
-            .capabilities(TargetLanguage::Original)
-            .source_languages
-            .contains(&SourceLanguage::Automatic));
-        profile.windows_live_captions_consent = true;
-        assert!(profile.validated().unwrap().windows_live_captions_consent);
-    }
-
     #[test]
     fn qwen_model_metadata_defaults_for_legacy_profiles_and_round_trips() {
         use crate::core::protocols::qwen_mt::QwenMTModel;

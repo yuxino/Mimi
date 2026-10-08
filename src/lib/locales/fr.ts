@@ -1,4 +1,3 @@
-import { WINDOWS_LIVE_CAPTIONS_COPY } from "../windowsLiveCaptionsCopy";
 import type { SettingsCopy } from '../i18n';
 
 export const TRAY = {
@@ -96,7 +95,6 @@ export const OVERLAY = {
 };
 
 export const SETTINGS = {
-  ...WINDOWS_LIVE_CAPTIONS_COPY["fr"],
   appleTranslationSameLanguage: "La langue de reconnaissance et la langue cible sont identiques. Le texte original est affiché directement.",
   textTranslationApple: "Apple Translation",
   appleTranslationHelp: "Traduisez sur ce Mac avec le service de traduction d’Apple. Aucune clé API n’est nécessaire. Téléchargez ou activez les langues de traduction dans Mimi avant la première utilisation.",

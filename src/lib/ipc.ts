@@ -11,7 +11,6 @@ import { observeSessionWireReceived } from "./developmentTrace";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppleSpeechSupport,
-  WindowsLiveCaptionsSupport,
   AppleTranslationSupport,
   AppleTranslationStatus,
   ProfileOptionsDraft,
@@ -45,19 +44,6 @@ export const isTauri =
 // ---------------------------------------------------------------------------
 // Commands (frontend -> Rust)
 // ---------------------------------------------------------------------------
-
-export function getWindowsLiveCaptionsSupport(): Promise<WindowsLiveCaptionsSupport> {
-  return isTauri ? invoke<WindowsLiveCaptionsSupport>("get_windows_live_captions_support") : Promise.resolve({ available: false, status: "unsupported" });
-}
-
-/** Opening Windows UI is an explicit user action, never a status-query side effect. */
-export function openWindowsLiveCaptions(): Promise<void> {
-  return isTauri ? invoke<void>("open_windows_live_captions") : Promise.resolve();
-}
-
-export function setWindowsLiveCaptionsConsent(profileId: string, consent: boolean): Promise<SettingsSnapshot> {
-  return invoke<SettingsSnapshot>("set_windows_live_captions_consent", { profileId, consent });
-}
 
 export function getAppleSpeechSupport(): Promise<AppleSpeechSupport> {
   return isTauri ? invoke<AppleSpeechSupport>("get_apple_speech_support") : Promise.resolve({ available: false, languages: [] });

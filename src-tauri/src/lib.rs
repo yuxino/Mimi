@@ -36,7 +36,6 @@ mod session_history;
 mod session_manager;
 mod settings_store;
 mod windows;
-mod windows_live_captions;
 #[cfg(target_os = "windows")]
 mod windows_startup;
 
@@ -350,9 +349,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::settings_get,
             commands::get_apple_speech_support,
-            commands::get_windows_live_captions_support,
-            commands::open_windows_live_captions,
-            commands::set_windows_live_captions_consent,
             commands::prepare_apple_speech_language,
             commands::get_apple_translation_support,
             commands::get_apple_translation_status,

@@ -16,9 +16,6 @@ description = "Allows the settings window to manage the live-subtitle session, p
 commands.allow = [
   "settings_save",
   "installed_font_families",
-  "get_windows_live_captions_support",
-  "open_windows_live_captions",
-  "set_windows_live_captions_consent",
   "get_apple_speech_support",
   "prepare_apple_speech_language",
   "get_apple_translation_support",

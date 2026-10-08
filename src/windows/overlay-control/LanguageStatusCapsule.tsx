@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { Icon } from "../../components/Icon";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
-import { usesWindowsLiveCaptions } from "../../lib/windowsLiveCaptions";
 import { audioInputLabel } from "../../lib/audioInput";
 import { I18N } from "../../lib/i18n";
 import {
@@ -47,8 +46,7 @@ export function LanguageStatusCapsule({
     ? I18N.overlay.closeControls
     : I18N.overlay.openControls;
   const compact = capsuleLabels(settings, transientPhase);
-  const captionReader = usesWindowsLiveCaptions(settings);
-  const sources = captionReader ? I18N.settings.windowsLiveCaptions : audioInputLabel(settings.audioInput, settings.systemAudioTarget);
+  const sources = audioInputLabel(settings.audioInput, settings.systemAudioTarget);
   const phaseLabel = isStopping ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   const sourceLabel = compact.source === I18N.settings.recognitionServiceDefault ? compact.source : status.source;
   const fullLabel = `${sources} · ${phaseLabel} · ${sourceLabel} ${status.separator} ${status.target}`;
@@ -84,7 +82,7 @@ export function LanguageStatusCapsule({
       aria-controls={expanded ? undefined : "overlay-control-panel"}
     >
       <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
-      {!captionReader && <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />}
+      <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
       {transientPhase && (
         <span className="overlay-control-island__phase">{compact.phase}</span>
       )}

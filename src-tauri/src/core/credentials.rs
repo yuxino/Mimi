@@ -63,7 +63,8 @@ impl CredentialRevealField {
                     || profile.provider.is_custom_speech()
             }
             Self::AsrApiKey => {
-                profile.provider.supports_text_translation() && !profile.provider.is_local_speech()
+                profile.provider.supports_text_translation()
+                    && profile.provider != ProviderKind::AppleSpeech
             }
             Self::Token => {
                 profile.provider.supports_text_translation()
@@ -92,8 +93,6 @@ impl CredentialRevealField {
 pub enum ProviderCredentials {
     /// Local recognition has no persisted credential slot.
     AppleSpeech,
-    /// Windows captions are local and have no persisted recognition credential.
-    WindowsLiveCaptions,
     /// Write-only request. Empty api_key reuses the profile's existing key
     /// natively; this request variant is never stored or returned over IPC.
     AlibabaTranslation {
@@ -585,7 +584,6 @@ impl ProviderCredentials {
     pub const fn kind_label(&self) -> &'static str {
         match self {
             Self::AppleSpeech => "apple_speech",
-            Self::WindowsLiveCaptions => "windows_live_captions",
             Self::AlibabaTranslation { .. } => "alibaba_translation_update",
             Self::DeepLX { .. } => "deeplx",
             Self::DeepL { .. } => "deepl",
@@ -602,9 +600,6 @@ impl ProviderCredentials {
     pub fn validated_for(&self, provider: ProviderKind) -> Result<Self, ProviderCredentialsError> {
         match (provider, self) {
             (ProviderKind::AppleSpeech, Self::AppleSpeech) => Ok(Self::AppleSpeech),
-            (ProviderKind::WindowsLiveCaptions, Self::WindowsLiveCaptions) => {
-                Ok(Self::WindowsLiveCaptions)
-            }
             (
                 provider,
                 Self::CustomSpeech {
@@ -735,9 +730,7 @@ impl ProviderCredentials {
     ) -> Result<String, ProviderCredentialsError> {
         let credentials = self.validated_for(provider)?;
         match credentials {
-            Self::AppleSpeech | Self::WindowsLiveCaptions => {
-                Err(ProviderCredentialsError::ProviderMismatch)
-            }
+            Self::AppleSpeech => Err(ProviderCredentialsError::ProviderMismatch),
             Self::ApiKey { api_key } => Ok(api_key),
             other => serde_json::to_string(&other)
                 .map_err(|_| ProviderCredentialsError::InvalidStoredValue),
@@ -748,7 +741,7 @@ impl ProviderCredentials {
         provider: ProviderKind,
         value: &str,
     ) -> Result<Self, ProviderCredentialsError> {
-        if provider.is_local_speech() {
+        if provider == ProviderKind::AppleSpeech {
             return Err(ProviderCredentialsError::ProviderMismatch);
         }
         if value.trim().is_empty() {
@@ -808,7 +801,6 @@ impl ProviderCredentials {
             Self::AzureOpenAI { api_key, .. } => Some(api_key),
             Self::CustomSpeech { api_key, .. } => Some(api_key),
             Self::AppleSpeech
-            | Self::WindowsLiveCaptions
             | Self::AlibabaTranslation { .. }
             | Self::DeepLX { .. }
             | Self::DeepL { .. }
