@@ -1,7 +1,7 @@
 <div align="center">
   <img src="../../src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>Mimi</h1>
-  <p>系统声音或麦克风实时字幕与翻译，支持 Apple 芯片和 Intel Mac（macOS 13+），以及 Windows / Linux x86_64。</p>
+  <p>把电脑或麦克风声音转成实时翻译字幕。</p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="最新版本"></a>
     <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="总下载量"></a>
@@ -15,11 +15,11 @@
     <a href="../../android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
   </p>
   <p>
-    <a href="../../README.md">English</a> · <a href="zh-CN.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a>
+    <a href="../../README_EN.md"><strong>English</strong></a> · <a href="../../README.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a>
   </p>
 </div>
 
-<p align="center">Mimi 把电脑或麦克风中的人声翻译成实时字幕。看电影、直播或网课时，字幕会悬浮显示在屏幕上。</p>
+<p align="center">Mimi 是实时字幕翻译工具，可翻译电脑或麦克风中的人声。看电影、直播或网课时，字幕会悬浮显示在屏幕上。</p>
 
 ![Mimi 双语字幕窗口，搭配原创插画与示例对白](../assets/readme-preview.png)
 
@@ -30,6 +30,7 @@
 - 显示原文、译文，或双语字幕。
 - 调整字幕的位置、大小和颜色，也可让鼠标点击穿过字幕窗口。
 - 按需保存字幕或音频到本机，导出 TXT / WAV；默认不保存、不录音。
+- 支持 Apple 芯片和 Intel Mac（macOS 13+），以及 Windows / Linux x86_64。
 
 ## 开始使用
 
