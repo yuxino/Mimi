@@ -5,6 +5,12 @@
 //! readers for one-time upgrade import only. The dev preset file stays isolated.
 
 mod file_credentials;
+// Reuse the owner-only Windows directory policy for managed model staging.
+// This never reads, writes or migrates a credential.
+#[cfg(windows)]
+pub(crate) fn protect_local_model_directory(path: &std::path::Path) -> std::io::Result<()> {
+    file_credentials::private_windows_acl(path, true)
+}
 #[cfg(any(all(feature = "local-dev-credentials", target_os = "macos"), test))]
 mod local_dev_credentials;
 

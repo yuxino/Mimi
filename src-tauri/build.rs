@@ -7,8 +7,11 @@ mod development_build_permissions;
 
 #[path = "local-speech/build.rs"]
 mod local_speech_build;
+#[path = "local-speech-onnx/build.rs"]
+mod local_speech_onnx_build;
 
 fn main() {
+    local_speech_onnx_build::build();
     local_speech_build::build();
     apple_speech_build::build();
     apple_translation_build::build();

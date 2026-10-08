@@ -155,3 +155,9 @@ The macOS app bundles a pinned MLX Audio Swift helper. Its complete dependency
 licenses and notices are distributed in `LOCAL_SPEECH_NOTICES.md`; the source
 copy is `src-tauri/local-speech/THIRD_PARTY_NOTICES.md`. Qwen3-ASR and Voxtral
 model weights are optional downloads, licensed separately under Apache 2.0.
+
+The shared ONNX speech worker bundles sherpa-onnx (Apache 2.0), ONNX Runtime
+(MIT), and nlohmann/json (MIT). Full licenses ship in `LOCAL_ONNX_NOTICES.md`;
+source: `src-tauri/local-speech-onnx/THIRD_PARTY_NOTICES.md`. Optional SenseVoice
+and Qwen3-ASR ONNX weights have separate Apache 2.0 model provenance in the
+pinned model catalog.

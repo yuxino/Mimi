@@ -26,6 +26,6 @@ Choose **Mimi-compatible worker**, then an executable, a model file/folder, and 
 - Accept `clear` (discard current content), `ping` with integer `id` (reply `{"type":"pong","id":...}`), and `finish` (emit `{"type":"finished"}` and exit). Stale revisions are discarded by Mimi.
 - Emit `{"type":"error"}` on failure. Mimi displays a sanitized label, never the worker’s private output.
 
-These desktop adapters share the existing subtitle and independent translation pipeline on macOS, Windows and Linux. Bundled MLX/Qwen downloads require Apple silicon; native acceptance on one platform does not certify the others.
+These desktop adapters share the existing subtitle and independent translation pipeline on macOS, Windows and Linux. The managed library also includes SenseVoiceSmall and Qwen3-ASR 0.6B ONNX/int8 with a bundled persistent CPU worker for Linux x64, Windows x64/ARM64 and both Mac architectures. Existing MLX/Qwen downloads retain their Apple silicon/macOS 14 requirement. Availability is checked per engine; neither startup nor recognition downloads models. Native acceptance on one platform does not certify the others.
 
 Official CLI contract: [whisper.cpp CLI](https://github.com/ggml-org/whisper.cpp/tree/master/examples/cli). Worker reference: [bundled local helper](../src-tauri/local-speech/Sources/MimiLocalSpeech/main.swift).

@@ -24,6 +24,9 @@ Apple 芯片构建还需要 Xcode 26.4+（Swift 6.3+）和 Metal Toolchain：`xc
 
 Apple silicon builds also require Xcode 26.4+ (Swift 6.3+) and the Metal Toolchain: `xcodebuild -downloadComponent MetalToolchain`. See [local-speech/README.md](../src-tauri/local-speech/README.md) for runtime and acceptance details.
 
+The bundled ONNX worker also requires Python 3 at build time, alongside CMake and a C++17 compiler. Its pinned dependencies are verified by `src-tauri/local-speech-onnx/build.py`; app users need no Python environment. See [worker build and acceptance](../src-tauri/local-speech-onnx/README.md).
+
+
 ```bash
 git clone https://github.com/yuxino/mimi.git
 cd mimi

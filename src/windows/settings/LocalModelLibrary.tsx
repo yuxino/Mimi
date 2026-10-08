@@ -44,23 +44,24 @@ export function LocalModelLibrary({ only, visible = true, disabled = false, onUs
     {snapshot && !snapshot.available && <InlineFeedback tone="info">{copy.unavailable}</InlineFeedback>}
     {!snapshot && !failed && <p role="status">{I18N.settings.settingsSnapshotLoading}</p>}
     <div className="local-models__list">
-      {snapshot?.models.filter(model => (!only || model.id === only) && (snapshot.available || model.installed || busy(model))).map(model => {
+      {snapshot?.models.filter(model => (!only || model.id === only) && ((model.available ?? snapshot.available) || model.installed || busy(model) || model.id === only)).map(model => {
         const working = busy(model);
         const percent = Math.min(100, Math.floor(model.downloadedBytes / model.downloadBytes * 100));
         const status = working ? copy[model.phase as "downloading" | "verifying" | "cancelling" | "deleting"] : model.inUse ? copy.inUse : model.installed ? copy.installed : copy.missing;
         return <div className="local-models__row" key={model.id}>
-          <div className="local-models__info"><strong>{model.name}</strong><span>{model.id === "qwenSmall" ? copy.light : copy.standard} · {modelSize(model.downloadBytes)}</span>
+          <div className="local-models__info"><strong>{model.name}</strong><span>{model.id === "qwenStandard" ? `${copy.standard} · ` : model.id === "qwenSmall" ? `${copy.light} · ` : ""}{modelSize(model.downloadBytes)}</span>
             <span role="status">{status}{["downloading", "verifying"].includes(model.phase) ? ` · ${percent}%` : ""}</span>
           </div>
           <div className="local-models__actions">
             {working ? model.phase === "downloading" || model.phase === "verifying" ? <button type="button" className="settings-button settings-button--compact" disabled={pending !== null} onClick={() => void run(model.id, () => cancelLocalModelDownload(model.id))}>{I18N.settings.cancel}</button> : null
               : model.installed ? <>
-                {onUse && <button type="button" className="settings-button settings-button--primary settings-button--compact" aria-label={`${copy.use}: ${model.name}`} disabled={disabled || pending !== null || !snapshot.available} onClick={() => void run(model.id, () => onUse(model.id, model.name))}>{copy.use}</button>}
+                {onUse && <button type="button" className="settings-button settings-button--primary settings-button--compact" aria-label={`${copy.use}: ${model.name}`} disabled={disabled || pending !== null || !(model.available ?? snapshot.available)} onClick={() => void run(model.id, () => onUse(model.id, model.name))}>{copy.use}</button>}
                 <button type="button" className="settings-button settings-button--compact" aria-label={`${copy.delete}: ${model.name}`} disabled={pending !== null || model.inUse} onClick={() => setDeleting(model)}><Icon name="trash" /></button>
-              </> : <button type="button" className="settings-button settings-button--primary settings-button--compact" aria-label={`${model.phase === "error" ? copy.retry : copy.download}: ${model.name}`} disabled={!snapshot.available || pending !== null} onClick={() => void run(model.id, () => downloadLocalModel(model.id))}><Icon name="download" />{model.phase === "error" ? copy.retry : copy.download}</button>}
+              </> : <button type="button" className="settings-button settings-button--primary settings-button--compact" aria-label={`${model.phase === "error" ? copy.retry : copy.download}: ${model.name}`} disabled={!(model.available ?? snapshot.available) || pending !== null} onClick={() => void run(model.id, () => downloadLocalModel(model.id))}><Icon name="download" />{model.phase === "error" ? copy.retry : copy.download}</button>}
           </div>
           {working && <progress aria-label={`${model.name}: ${status}`} max={model.downloadBytes} value={model.downloadedBytes} />}
           {model.error && <InlineFeedback tone="error">{localModelError(model.error)}</InlineFeedback>}
+          {model.available === false && <InlineFeedback tone="info">{model.id === "qwenSmall" || model.id === "qwenStandard" ? copy.mlxUnavailable : copy.unavailable}</InlineFeedback>}
         </div>;
       })}
     </div>

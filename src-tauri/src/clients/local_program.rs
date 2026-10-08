@@ -22,6 +22,20 @@ impl LocalWorkerRuntime {
         match self {
             Self::Managed(model) => {
                 let lease = local_models::manager()?.acquire(*model)?;
+                if model.is_onnx() {
+                    if !model.source_languages().contains(&source) {
+                        return Err("local_model_runtime_failed");
+                    }
+                    return Ok(WorkerLaunch {
+                        executable: lease.helper.clone(),
+                        arguments: vec![
+                            model.directory().into(),
+                            lease.directory.to_string_lossy().into_owned(),
+                            source.raw_value().into(),
+                        ],
+                        lease: Some(lease),
+                    });
+                }
                 let metal = lease
                     .helper
                     .parent()

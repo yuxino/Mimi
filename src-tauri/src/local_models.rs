@@ -11,12 +11,18 @@ use tokio::io::AsyncWriteExt;
 
 static MANAGER: OnceLock<Arc<LocalModelManager>> = OnceLock::new();
 
-pub fn initialize(root: PathBuf, ui_test: bool) -> Result<(), &'static str> {
+pub fn initialize(root: PathBuf, resources: PathBuf, ui_test: bool) -> Result<(), &'static str> {
     let helper = std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(|dir| dir.join("mimi-local-speech")));
+    let mut manager = LocalModelManager::new(root, helper, ui_test);
+    manager.onnx_helper = Some(resources.join("local-speech-onnx").join(if cfg!(windows) {
+        "mimi-local-onnx.exe"
+    } else {
+        "mimi-local-onnx"
+    }));
     MANAGER
-        .set(Arc::new(LocalModelManager::new(root, helper, ui_test)))
+        .set(Arc::new(manager))
         .map_err(|_| "local_models_unavailable")
 }
 
@@ -48,6 +54,7 @@ pub struct LocalModelStatus {
     pub installed: bool,
     pub in_use: bool,
     pub error: Option<&'static str>,
+    pub available: bool,
 }
 
 #[derive(Serialize)]
@@ -69,6 +76,7 @@ struct Operation {
 pub struct LocalModelManager {
     root: PathBuf,
     helper: Option<PathBuf>,
+    onnx_helper: Option<PathBuf>,
     available: bool,
     ui_test: bool,
     operations: Mutex<BTreeMap<LocalSpeechModel, Operation>>,
@@ -88,6 +96,7 @@ impl LocalModelManager {
         Self {
             root,
             helper,
+            onnx_helper: None,
             available,
             ui_test,
             operations: Mutex::new(BTreeMap::new()),
@@ -96,6 +105,42 @@ impl LocalModelManager {
 
     fn directory(&self, model: LocalSpeechModel) -> PathBuf {
         self.root.join(model.directory())
+    }
+
+    fn available_for(&self, model: LocalSpeechModel) -> bool {
+        if model.is_onnx() {
+            self.onnx_helper.as_ref().is_some_and(|path| {
+                let Ok(metadata) = std::fs::metadata(path) else {
+                    return false;
+                };
+                if !metadata.is_file() {
+                    return false;
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if metadata.permissions().mode() & 0o111 == 0 {
+                        return false;
+                    }
+                }
+                let Some(directory) = path.parent() else {
+                    return false;
+                };
+                onnx_libraries()
+                    .iter()
+                    .all(|name| directory.join(name).is_file())
+            })
+        } else {
+            self.available
+        }
+    }
+
+    fn helper_for(&self, model: LocalSpeechModel) -> Option<PathBuf> {
+        if model.is_onnx() {
+            self.onnx_helper.clone()
+        } else {
+            self.helper.clone()
+        }
     }
 
     fn partial(&self, model: LocalSpeechModel) -> PathBuf {
@@ -107,9 +152,25 @@ impl LocalModelManager {
         if !safe_directory(&self.root) || !safe_directory(&directory) {
             return false;
         }
-        let receipt = std::fs::read_to_string(directory.join("installed-revision"));
+        let receipt_path = directory.join("installed-revision");
+        if !std::fs::symlink_metadata(&receipt_path).is_ok_and(|meta| {
+            meta.is_file()
+                && !meta.file_type().is_symlink()
+                && meta.len() == model.manifest().revision.len() as u64
+        }) {
+            return false;
+        }
+        let receipt = std::fs::read_to_string(receipt_path);
         receipt.is_ok_and(|revision| revision == model.manifest().revision)
             && model.manifest().files.iter().all(|file| {
+                let mut ancestor = directory.clone();
+                let components: Vec<_> = file.name.split('/').collect();
+                for component in &components[..components.len().saturating_sub(1)] {
+                    ancestor.push(component);
+                    if !safe_directory(&ancestor) {
+                        return false;
+                    }
+                }
                 std::fs::symlink_metadata(directory.join(&file.name)).is_ok_and(|meta| {
                     meta.is_file() && !meta.file_type().is_symlink() && meta.len() == file.bytes
                 })
@@ -119,7 +180,10 @@ impl LocalModelManager {
     pub fn snapshot(&self) -> LocalModelsSnapshot {
         let operations = self.operations.lock().unwrap();
         LocalModelsSnapshot {
-            available: self.available || self.ui_test,
+            available: self.ui_test
+                || LocalSpeechModel::ALL
+                    .into_iter()
+                    .any(|model| self.available_for(model)),
             models: LocalSpeechModel::ALL
                 .into_iter()
                 .map(|model| {
@@ -152,6 +216,7 @@ impl LocalModelManager {
                         installed,
                         in_use: operation.is_some_and(|op| op.leases > 0),
                         error: operation.and_then(|op| op.error),
+                        available: self.ui_test || self.available_for(model),
                     }
                 })
                 .collect(),
@@ -159,7 +224,7 @@ impl LocalModelManager {
     }
 
     pub fn download(self: &Arc<Self>, model: LocalSpeechModel) -> Result<(), &'static str> {
-        if self.ui_test || !self.available {
+        if self.ui_test || !self.available_for(model) {
             return Err("local_models_unavailable");
         }
         let mut operations = self.operations.lock().unwrap();
@@ -260,7 +325,7 @@ impl LocalModelManager {
     }
 
     pub fn acquire(self: &Arc<Self>, model: LocalSpeechModel) -> Result<ModelLease, &'static str> {
-        if self.ui_test || !self.available {
+        if self.ui_test || !self.available_for(model) {
             return Err("local_models_unavailable");
         }
         let mut operations = self.operations.lock().unwrap();
@@ -271,12 +336,13 @@ impl LocalModelManager {
         if !self.installed(model) {
             return Err("local_model_missing");
         }
+        let helper = self.helper_for(model).ok_or("local_models_unavailable")?;
         operation.leases += 1;
         Ok(ModelLease {
             manager: self.clone(),
             model,
             directory: self.directory(model),
-            helper: self.helper.clone().ok_or("local_models_unavailable")?,
+            helper,
         })
     }
 
@@ -305,6 +371,13 @@ impl LocalModelManager {
         let manifest = model.manifest();
         let mut total = 0u64;
         for file in &manifest.files {
+            if !crate::core::local_speech::safe_model_file_name(&file.name) {
+                return Err("local_model_integrity_failed");
+            }
+            let file_path = partial.join(&file.name);
+            if let Some(parent) = file_path.parent() {
+                create_private_directory(parent).await?;
+            }
             if *cancel.borrow() {
                 return Err("local_model_cancelled");
             }
@@ -325,7 +398,7 @@ impl LocalModelManager {
             let mut output = tokio::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(partial.join(&file.name))
+                .open(file_path)
                 .await
                 .map_err(|_| "local_model_storage_failed")?;
             let mut stream = response.bytes_stream();
@@ -420,8 +493,26 @@ impl Drop for ModelLease {
 }
 
 fn safe_directory(path: &Path) -> bool {
-    std::fs::symlink_metadata(path)
-        .is_ok_and(|meta| meta.is_dir() && !meta.file_type().is_symlink())
+    std::fs::symlink_metadata(path).is_ok_and(|meta| {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if meta.file_attributes() & 0x400 != 0 {
+                return false;
+            }
+        }
+        meta.is_dir() && !meta.file_type().is_symlink()
+    })
+}
+
+fn onnx_libraries() -> [&'static str; 2] {
+    if cfg!(windows) {
+        ["sherpa-onnx-c-api.dll", "onnxruntime.dll"]
+    } else if cfg!(target_os = "macos") {
+        ["libsherpa-onnx-c-api.dylib", "libonnxruntime.dylib"]
+    } else {
+        ["libsherpa-onnx-c-api.so", "libonnxruntime.so"]
+    }
 }
 
 async fn create_private_directory(path: &Path) -> Result<(), &'static str> {
@@ -435,7 +526,18 @@ async fn create_private_directory(path: &Path) -> Result<(), &'static str> {
     builder
         .create(path)
         .await
-        .map_err(|_| "local_model_storage_failed")
+        .map_err(|_| "local_model_storage_failed")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .await
+            .map_err(|_| "local_model_storage_failed")?;
+    }
+    #[cfg(windows)]
+    crate::settings_store::protect_local_model_directory(path)
+        .map_err(|_| "local_model_storage_failed")?;
+    Ok(())
 }
 
 async fn remove_managed_directory(path: &Path) -> Result<(), &'static str> {
@@ -507,7 +609,6 @@ mod tests {
     }
 
     // Explicit maintainer acceptance only: ordinary cargo test never downloads.
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[tokio::test]
     #[ignore = "downloads public model weights; requires explicit acceptance directory"]
     async fn accept_real_model_download() {
@@ -521,7 +622,19 @@ mod tests {
         .unwrap();
         let helper = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("binaries/mimi-local-speech-aarch64-apple-darwin");
-        let manager = Arc::new(LocalModelManager::new(root, Some(helper), false));
+        let mut manager = LocalModelManager::new(root, Some(helper), false);
+        if model.is_onnx() {
+            manager.onnx_helper = Some(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("binaries/local-speech-onnx")
+                    .join(if cfg!(windows) {
+                        "mimi-local-onnx.exe"
+                    } else {
+                        "mimi-local-onnx"
+                    }),
+            );
+        }
+        let manager = Arc::new(manager);
         if !manager.installed(model) {
             manager.download(model).unwrap();
             tokio::time::sleep(std::time::Duration::from_millis(150)).await;
@@ -572,5 +685,81 @@ mod tests {
             .iter()
             .all(|model| !model.installed && model.downloaded_bytes == 0));
         assert!(!manager.root.exists());
+    }
+
+    #[tokio::test]
+    async fn onnx_availability_is_independent_of_mlx_and_leases_release() {
+        let temporary = tempfile::tempdir().unwrap();
+        let helper = temporary.path().join("worker");
+        std::fs::write(&helper, b"fixture, never executed").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let mut manager = LocalModelManager::new(temporary.path().join("models"), None, false);
+        manager.onnx_helper = Some(helper);
+        assert!(!manager.available_for(LocalSpeechModel::QwenSmall));
+        assert!(!manager.available_for(LocalSpeechModel::SenseVoice));
+        for name in onnx_libraries() {
+            std::fs::write(temporary.path().join(name), b"fixture, never loaded").unwrap();
+        }
+        assert!(manager.available_for(LocalSpeechModel::SenseVoice));
+        let manager = Arc::new(manager);
+        let model = LocalSpeechModel::QwenOnnx;
+        assert!(matches!(manager.acquire(model), Err("local_model_missing")));
+        create_private_directory(&manager.root).await.unwrap();
+        create_private_directory(&manager.directory(model))
+            .await
+            .unwrap();
+        for file in &model.manifest().files {
+            let path = manager.directory(model).join(&file.name);
+            create_private_directory(path.parent().unwrap())
+                .await
+                .unwrap();
+            std::fs::File::create(path)
+                .unwrap()
+                .set_len(file.bytes)
+                .unwrap();
+        }
+        std::fs::write(
+            manager.directory(model).join("installed-revision"),
+            model.manifest().revision.as_bytes(),
+        )
+        .unwrap();
+        assert!(manager.installed(model));
+        let lease = manager.acquire(model).unwrap();
+        assert_eq!(manager.delete(model).await, Err("local_model_busy"));
+        drop(lease);
+        manager.delete(model).await.unwrap();
+        assert!(!manager.installed(model));
+        assert!(manager.onnx_helper.as_ref().unwrap().is_file());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn nested_tokenizer_symlink_is_not_an_installation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let manager = LocalModelManager::new(temporary.path().join("models"), None, false);
+        let model = LocalSpeechModel::QwenOnnx;
+        create_private_directory(&manager.root).await.unwrap();
+        create_private_directory(&manager.directory(model))
+            .await
+            .unwrap();
+        let outside = temporary.path().join("user-owned");
+        create_private_directory(&outside).await.unwrap();
+        std::fs::write(outside.join("vocab.json"), b"user file").unwrap();
+        std::os::unix::fs::symlink(&outside, manager.directory(model).join("tokenizer")).unwrap();
+        std::fs::write(
+            manager.directory(model).join("installed-revision"),
+            model.manifest().revision.as_bytes(),
+        )
+        .unwrap();
+        assert!(!manager.installed(model));
+        manager.delete(model).await.unwrap();
+        assert_eq!(
+            std::fs::read(outside.join("vocab.json")).unwrap(),
+            b"user file"
+        );
     }
 }

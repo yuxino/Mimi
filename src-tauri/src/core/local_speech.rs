@@ -10,6 +10,8 @@ pub enum LocalSpeechModel {
     #[default]
     QwenSmall,
     QwenStandard,
+    SenseVoice,
+    QwenOnnx,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,12 +34,23 @@ pub struct ModelManifest {
 }
 
 impl LocalSpeechModel {
-    pub const ALL: [Self; 2] = [Self::QwenSmall, Self::QwenStandard];
+    pub const ALL: [Self; 4] = [
+        Self::SenseVoice,
+        Self::QwenOnnx,
+        Self::QwenSmall,
+        Self::QwenStandard,
+    ];
+
+    pub const fn is_onnx(self) -> bool {
+        matches!(self, Self::SenseVoice | Self::QwenOnnx)
+    }
 
     pub const fn directory(self) -> &'static str {
         match self {
             Self::QwenSmall => "qwen-small",
             Self::QwenStandard => "qwen-standard",
+            Self::SenseVoice => "sense-voice",
+            Self::QwenOnnx => "qwen-onnx",
         }
     }
 
@@ -45,6 +58,8 @@ impl LocalSpeechModel {
         match self {
             Self::QwenSmall => "Qwen3-ASR 0.6B",
             Self::QwenStandard => "Qwen3-ASR 1.7B",
+            Self::SenseVoice => "SenseVoiceSmall · ONNX int8",
+            Self::QwenOnnx => "Qwen3-ASR 0.6B · ONNX int8",
         }
     }
 
@@ -74,6 +89,18 @@ impl LocalSpeechModel {
     }
 }
 
+/// Fixed manifests may contain tokenizer subdirectories, never traversal.
+pub fn safe_model_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.split('/').all(|component| {
+            !component.is_empty()
+                && !component.starts_with('.')
+                && component
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,18 +110,18 @@ mod tests {
     fn catalog_is_complete_pinned_and_path_safe() {
         for model in LocalSpeechModel::ALL {
             let manifest = model.manifest();
-            assert!(manifest.repository.starts_with("mlx-community/"));
+            assert!(
+                manifest.repository.starts_with("mlx-community/")
+                    || manifest.repository.starts_with("csukuangfj/")
+                    || manifest.repository.starts_with("csukuangfj2/")
+            );
             assert_eq!(manifest.revision.len(), 40);
             assert!(manifest.revision.bytes().all(|b| b.is_ascii_hexdigit()));
-            assert!(model.download_bytes() > 600_000_000);
+            assert!(model.download_bytes() > 200_000_000);
             let mut names = BTreeSet::new();
             for file in &manifest.files {
                 assert!(names.insert(&file.name));
-                assert!(!file.name.starts_with('.'));
-                assert!(file
-                    .name
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b)));
+                assert!(safe_model_file_name(&file.name));
                 assert!(file.bytes > 0);
                 assert_eq!(file.sha256.len(), 64);
                 assert!(file.sha256.bytes().all(|b| b.is_ascii_hexdigit()));
@@ -120,5 +147,32 @@ mod tests {
         assert!(LocalSpeechModel::QwenSmall
             .source_languages()
             .contains(&SourceLanguage::Vietnamese));
+    }
+
+    #[test]
+    fn onnx_inventory_and_file_paths_preserve_supported_models() {
+        assert!(LocalSpeechModel::QwenOnnx
+            .source_languages()
+            .contains(&SourceLanguage::English));
+        assert!(!LocalSpeechModel::SenseVoice
+            .source_languages()
+            .contains(&SourceLanguage::French));
+        for name in [
+            "",
+            "../model",
+            "/model",
+            "tokenizer/../model",
+            "tokenizer//model",
+            "C:\\model",
+            "tokenizer/.hidden",
+        ] {
+            assert!(!safe_model_file_name(name));
+        }
+        assert!(safe_model_file_name("tokenizer/vocab.json"));
+        assert_eq!(
+            serde_json::to_string(&LocalSpeechModel::QwenSmall).unwrap(),
+            "\"qwenSmall\""
+        );
+        assert_eq!(LocalSpeechModel::QwenSmall.directory(), "qwen-small");
     }
 }

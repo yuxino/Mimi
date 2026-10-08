@@ -1,0 +1,27 @@
+{
+  "x86_64-unknown-linux-gnu": {
+    "name": "sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib.tar.bz2",
+    "sha256": "bf2d998c8b07012cd5098f3b92673bc1333fd9b927767d7cb664be8190d8bc0b",
+    "bytes": 9249201
+  },
+  "aarch64-apple-darwin": {
+    "name": "sherpa-onnx-v1.13.8-osx-arm64-shared-no-tts-lib.tar.bz2",
+    "sha256": "f3e0cbd86cc3f38dad30c97921b40e9a8bcc6f2c943777eb76ad77176993e417",
+    "bytes": 8292111
+  },
+  "x86_64-apple-darwin": {
+    "name": "sherpa-onnx-v1.13.8-osx-x64-shared-no-tts-lib.tar.bz2",
+    "sha256": "c4d94cce92b6e04df1f17d247c3ac4e61b21359be80e940a0408e039e36a4d7e",
+    "bytes": 9538955
+  },
+  "x86_64-pc-windows-msvc": {
+    "name": "sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-no-tts-lib.tar.bz2",
+    "sha256": "a1253e665c4f236119c443c8932a8acfca32a546c78c05962d483c9a0eae21b7",
+    "bytes": 7536080
+  },
+  "aarch64-pc-windows-msvc": {
+    "name": "sherpa-onnx-v1.13.8-win-arm64-shared-MT-Release-no-tts-lib.tar.bz2",
+    "sha256": "99dfc042b3d8038cdada8f952faf09d4635c3707c174d2ecf4c16bd8c0e71feb",
+    "bytes": 7108814
+  }
+}

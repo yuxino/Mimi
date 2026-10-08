@@ -109,7 +109,7 @@ export function ServiceProfiles({
   const local = useLocalModels(visible);
   const canUseProfile = (profile: ServiceProfile) => profile.provider === "appleSpeech"
     ? apple.support?.available === true
-    : (profile.provider !== "localSpeech" || (local.snapshot?.available === true && local.snapshot.models.some(model => model.id === (profile.localSpeechModel ?? "qwenSmall") && model.installed))) && credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage) === "present";
+    : (profile.provider !== "localSpeech" || (local.snapshot?.available === true && local.snapshot.models.some(model => model.id === (profile.localSpeechModel ?? "qwenSmall") && model.installed && model.available !== false))) && credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage) === "present";
 
   const activeProfile =
     settings.profiles.find((profile) => profile.id === settings.activeProfileId) ??

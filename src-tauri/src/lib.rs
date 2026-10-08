@@ -126,6 +126,7 @@ pub fn run() {
             }
             local_models::initialize(
                 app.path().app_local_data_dir()?.join("local-models"),
+                app.path().resource_dir()?,
                 std::env::var("MIMI_UI_TEST").as_deref() == Ok("1"),
             )?;
             let is_ui_test = std::env::var("MIMI_UI_TEST").as_deref() == Ok("1");

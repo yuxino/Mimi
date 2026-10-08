@@ -50,9 +50,9 @@ Cloud speech services require your own credentials and receive your audio; usage
 
 ### Download local models
 
-On Apple silicon Macs with macOS 14+, open **Settings → Speech & Translation → Add configuration → Local models** and download Qwen3-ASR 0.6B (about 713 MB, lightweight and recommended) or 1.7B (about 1.6 GB). Click **Use model** when ready. Recognition needs no API key, Python, or local server. Downloads support progress, cancellation, retry, and deletion; stop subtitles before deleting a model in use. Configurations remain so you can download the model again.
+Open **Settings → Speech & Translation → Add configuration → Local models** to download SenseVoiceSmall ONNX int8 (about 240 MB) or Qwen3-ASR 0.6B ONNX int8 (about 987 MB). The bundled CPU worker targets Windows x64/ARM64, Linux x64 and Intel/Apple silicon Macs (macOS 13+); the app checks availability, with user-owned programs retained on other targets. Apple silicon Macs with macOS 14+ also retain the existing MLX Qwen3-ASR 0.6B (about 713 MB) and 1.7B (about 1.6 GB). Click **Use model** when ready. Recognition needs no API key, Python, or local server. Downloads support progress, cancellation, retry, and deletion; stop subtitles before deleting a model in use. Configurations remain so you can download the model again.
 
-Recognition audio stays on the Mac. Text translation is configured separately: original-only subtitles work immediately, while cloud text translation sends recognized text to that service.
+Recognition audio stays on the device. Text translation is configured separately: original-only subtitles work immediately, while cloud text translation sends recognized text to that service.
 
 <a id="apple-local-recognition"></a>
 

@@ -17,6 +17,24 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 const button = (text: string) => [...host.querySelectorAll("button")].find(button => button.textContent?.includes(text))!;
+it("uses per-model availability and retains incompatible installations for deletion", async () => {
+  vi.mocked(localModelsStatus).mockResolvedValue({ available: true, models: [
+    { ...base, available: false, installed: true, phase: "installed" },
+    { ...base, id: "senseVoice", name: "SenseVoiceSmall · ONNX int8", available: true },
+  ] });
+  await act(async () => root.render(<LocalModelLibrary onUse={vi.fn()} />));
+  expect(host.querySelector<HTMLButtonElement>('[aria-label^="Use model"]')!.disabled).toBe(true);
+  expect(host.querySelector<HTMLButtonElement>('[aria-label^="Delete model"]')!.disabled).toBe(false);
+  expect(host.textContent).toContain("Apple silicon");
+  await act(async () => button("Download").click());
+  expect(downloadLocalModel).toHaveBeenCalledExactlyOnceWith("senseVoice");
+});
+it("does not enable a missing incompatible model just because another engine is available", async () => {
+  vi.mocked(localModelsStatus).mockResolvedValue({ available: true, models: [{ ...base, available: false }] });
+  await act(async () => root.render(<LocalModelLibrary only="qwenSmall" />));
+  expect(button("Download").disabled).toBe(true);
+  expect(downloadLocalModel).not.toHaveBeenCalled();
+});
 it("downloads only after a click and exposes cancellation with progress", async () => {
   await act(async () => root.render(<LocalModelLibrary />));
   expect(downloadLocalModel).not.toHaveBeenCalled(); expect(host.textContent).toContain("713 MB");
@@ -51,7 +69,7 @@ it("guides unsupported devices to user-owned models without unusable downloads",
   vi.mocked(localModelsStatus).mockResolvedValue({ available: false, models: [{ ...base }] });
   const own = vi.fn();
   await act(async () => root.render(<LocalModelLibrary onUseOwn={own} />));
-  expect(host.textContent).toContain("Built-in Qwen models require");
+  expect(host.textContent).toContain("Built-in recognition is unavailable");
   expect(host.querySelector(".local-models__privacy")?.textContent).toContain("this computer");
   expect(host.querySelector(".local-models__row")).toBeNull();
   expect(host.querySelector('[aria-label^="Download"]')).toBeNull();

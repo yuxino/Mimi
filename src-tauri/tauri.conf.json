@@ -35,7 +35,9 @@
     "targets": "all",
     "category": "Utility",
     "resources": {
-      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md"
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "binaries/local-speech-onnx/": "local-speech-onnx/",
+      "local-speech-onnx/THIRD_PARTY_NOTICES.md": "LOCAL_ONNX_NOTICES.md"
     },
     "shortDescription": "Live translated subtitles for anything playing on your device.",
     "longDescription": "Turn Chinese, Japanese, English, or Korean audio playing on your device into live subtitles, with optional translation into Simplified Chinese, English, or Japanese.",

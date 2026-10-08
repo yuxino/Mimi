@@ -555,7 +555,7 @@ fn private_file(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 #[cfg(windows)]
-fn private_windows_acl(path: &Path, directory: bool) -> std::io::Result<()> {
+pub(super) fn private_windows_acl(path: &Path, directory: bool) -> std::io::Result<()> {
     use std::{ffi::c_void, os::windows::ffi::OsStrExt};
     #[link(name = "advapi32")]
     unsafe extern "system" {

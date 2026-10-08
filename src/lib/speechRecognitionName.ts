@@ -6,7 +6,7 @@ import type { ServiceProfile } from "./types";
 export function speechRecognitionDisplayName(profile: ServiceProfile): string {
   if (profile.provider === "localProgram") return profile.localProgram?.engine === "whisperCpp" ? "whisper.cpp" : providerDisplayName(profile.provider);
   if (profile.provider === "localSpeech") {
-    const names = { qwenSmall: "Qwen3-ASR 0.6B", qwenStandard: "Qwen3-ASR 1.7B" };
+    const names = { qwenSmall: "Qwen3-ASR 0.6B", qwenStandard: "Qwen3-ASR 1.7B", senseVoice: "SenseVoiceSmall · ONNX int8", qwenOnnx: "Qwen3-ASR 0.6B · ONNX int8" };
     const id = profile.localSpeechModel ?? "qwenSmall";
     return names[id];
   }

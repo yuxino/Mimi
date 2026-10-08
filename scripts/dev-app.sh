@@ -328,6 +328,8 @@ LOCAL_SPEECH_TARGET="$(rustc -vV | sed -n 's/^host: //p')"
 cp "src-tauri/binaries/mimi-local-speech-$LOCAL_SPEECH_TARGET" "$BUILD_APP/Contents/MacOS/mimi-local-speech"
 cp src-tauri/binaries/mlx.metallib "$BUILD_APP/Contents/Resources/"
 cp src-tauri/local-speech/THIRD_PARTY_NOTICES.md "$BUILD_APP/Contents/Resources/LOCAL_SPEECH_NOTICES.md"
+cp -R src-tauri/binaries/local-speech-onnx "$BUILD_APP/Contents/Resources/"
+cp src-tauri/local-speech-onnx/THIRD_PARTY_NOTICES.md "$BUILD_APP/Contents/Resources/LOCAL_ONNX_NOTICES.md"
 for resource in src-tauri/binaries/*.bundle; do
   [[ -d "$resource" ]] || continue
   cp -R "$resource" "$BUILD_APP/Contents/Resources/"

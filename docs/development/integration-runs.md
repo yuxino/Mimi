@@ -4,6 +4,19 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-08：云端共享 ONNX 本地识别实现
+
+- 从功能分支 `feat/local-model-manager` 的 `888397873dbb92c87ed9b2b9bb7de5d5e5821caa` 继续，新增 SenseVoiceSmall int8、Qwen3-ASR 0.6B int8 受管目录与共享常驻 C++ worker。原 MLX 模型 ID、下载目录和配置不变，whisper.cpp／自带 worker 仍走原接口。没有新增采音入口或翻译服务。
+- 固定 sherpa-onnx 1.13.8、nlohmann/json 3.12.0；Linux 包中 ONNX Runtime 实测为 1.28.2。运行库归档、头文件和模型文件均固定版本／修订及 SHA-256，详见 `src-tauri/local-speech-onnx/runtime-assets.json`、`build.py` 和 `src/core/local_speech_catalog.json`。所有模型文件在云端实际下载并核对校验；应用启动和识别不会下载运行组件或模型。
+- 云端 Linux x64、Xeon Platinum 8573C、8 核 CPU 配额；worker 使用 CPU 4 线程。Rust 1.99.0 的完整 `scripts/check.sh` 通过：应用 Rust 1,243 passed／13 ignored，前端 132 文件／2,048 项，以及严格 Clippy、fmt、lint、类型、生产构建、共享核心／JNI与差异检查。平台条件测试数与此前 Mac 不同，不能直接拿总数宣称覆盖增加。原生 CTest 有界协议测试通过，不默认下载模型。
+- 显式启用的后端真实下载验收分别通过：SenseVoice 31.35 秒、Qwen 92.87 秒，覆盖下载中取消、临时文件清理、重新下载、长度／SHA 校验、激活、会话占用时拒绝删除及释放。常规测试另覆盖 tokenizer 路径／符号链接、缺失运行库、模型独立平台门控与删除确认界面。
+- 官方英文短样本（7.152 秒，SHA-256 `eb1eb008904465b74c304aad8342e8c7d3c6e61ffe9f66adcaca9cf0f76a93f4`）：SenseVoice 加载约 1.0 秒，复用进程两轮推理 0.293／0.263 秒；Qwen 加载 4.291 秒，两轮 1.956／2.071 秒。官方中文短样本（5.592 秒，SHA-256 `b77f1794fe374a0ba1ee1dc458bfaf9349496cbbfc32780c50ba3c5a7ad8e373`）两模型均有非空结果；推理分别 0.227／1.745 秒。官方日文样本（5.08 秒，原始 44.1 kHz 文件 SHA-256 `d926ed0159a2d750d1ae7835e60a5cb5f8737629f7bb3de6cd111a3614d5dc67`）在仓库外重采样到 16 kHz 后，两模型推理分别 0.575／2.202 秒。验证了显式语言、复用、clear 后空结果、ping、finish 和正常退出；没有评估完整文字准确率，也不能据此承诺端到端实时字幕或游戏背景音乐效果。
+- Linux debug `.deb` 构建通过（仅本地验证关闭 updater artifact 签名，没有更改发布配置）。解包确认 worker、所有动态库与许可证存在、worker 可执行；直接运行包内 worker，两模型英文推理通过：SenseVoice 加载 0.963 秒／推理 0.204 秒，Qwen 加载 4.249 秒／推理 1.567 秒。此验收没有桌面会话，不代表系统声音采集或字幕 UI 通过。
+- Qwen 显式语言通过 upstream stream option 生效；固定版本的 auto 模式去掉生成语言前缀但不返回 `result.lang`，Mimi 不伪造检测语言。需要已知源语言的翻译配置应选择显式源语言。
+- Windows x64 固定 MT DLL 依赖检查无额外 VC runtime；worker 使用静态 CRT 与 Unicode 参数转换。Mac arm64 固定 dylib 架构／最低系统版本／相对加载路径检查通过。这些是依赖检查，不是 Windows 或 Mac 原生编译、签名或识别通过。Linux 尚未真实桌面系统声音验收，Windows ARM64、Intel Mac 和 Apple silicon Mac 均待原生验收；Linux ARM64 暂无内置包，保留自带程序入口。
+- Hy-MT2 仅记录独立文字翻译的后续范围，没有下载运行或暴露可用能力。普通 Q4_K_M GGUF 与 1.25-bit STQ 文件分开：STQ 依赖仍开放的 llama.cpp PR #22836，不能宣称稳定跨平台支持。见模型管理设计记录中的固定修订及验证条件。
+- 回到 Mac 后：实际模型库下载／取消／重试／确认删除；已有 MLX 模型兼容；真实系统声音中英日与目标语言；暂停／清空／停止和进程释放；字幕延迟、持续运行与背景音乐；检查运行、签名和 bundle 依赖。保持录音及历史默认关闭。
+
 ## 2026-10-08：自带本地程序与模型
 
 - PR #222 在内置 Qwen 模型管理之外增加自带程序配置：whisper.cpp CLI、Mimi JSON-lines 兼容程序，以及已有实时服务入口。七种界面语言同步，启动参数默认收起，程序和模型使用原生文件／文件夹选择器；用户自带文件不归下载模型的删除操作管理。

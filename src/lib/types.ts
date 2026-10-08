@@ -195,9 +195,9 @@ export interface SettingsDraft {
 export type LocalProgramEngine = "whisperCpp" | "mimiStdio";
 export interface LocalProgramConfiguration { engine: LocalProgramEngine; executable: string; modelPath: string; arguments: string[] }
 
-export type LocalSpeechModel = "qwenSmall" | "qwenStandard";
+export type LocalSpeechModel = "qwenSmall" | "qwenStandard" | "senseVoice" | "qwenOnnx";
 export interface LocalModelStatus {
-  id: LocalSpeechModel; name: string; downloadBytes: number; downloadedBytes: number;
+  id: LocalSpeechModel; available?: boolean; name: string; downloadBytes: number; downloadedBytes: number;
   phase: "missing" | "downloading" | "verifying" | "cancelling" | "installed" | "deleting" | "error";
   installed: boolean; inUse: boolean; error: string | null;
 }

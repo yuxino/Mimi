@@ -10,6 +10,7 @@ src-tauri/target/
 shared/**/target/
 src-tauri/gen/
 src-tauri/local-speech/.build/
+src-tauri/local-speech-onnx/.build/
 src-tauri/binaries/
 .cargo-home/
 dsh-blue-whale-maid/
