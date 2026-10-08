@@ -171,7 +171,7 @@ impl LiveTranslationConfiguration {
 
     /// Returns a trimmed, validated copy of the configuration.
     pub fn validated(&self) -> Result<Self, LiveTranslationConfigurationError> {
-        let network_proxy = if self.provider.is_local_speech() {
+        let network_proxy = if self.provider == ProviderKind::AppleSpeech {
             ProxyConfig {
                 mode: crate::core::network_proxy::ProxyMode::Direct,
                 url: None,
@@ -182,7 +182,7 @@ impl LiveTranslationConfiguration {
         let text_network_proxy = if matches!(
             self.text_credentials,
             Some(TextTranslationCredentials::Apple)
-        ) || (self.provider.is_local_speech()
+        ) || (self.provider == ProviderKind::AppleSpeech
             && !self.target_language.translates_audio())
         {
             ProxyConfig {
@@ -242,31 +242,6 @@ impl LiveTranslationConfiguration {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn windows_live_captions_original_mode_needs_no_text_destination_or_speech_key() {
-        let original = LiveTranslationConfiguration::with_credentials(
-            ProviderKind::WindowsLiveCaptions,
-            ProviderCredentials::WindowsLiveCaptions,
-            SourceLanguage::English,
-            TargetLanguage::Original,
-            TranslationMode::Turbo,
-        );
-        assert!(original.validated().is_ok());
-        let mut translated = original.clone();
-        translated.target_language = TargetLanguage::Japanese;
-        assert_eq!(
-            translated.validated(),
-            Err(LiveTranslationConfigurationError::Credentials(
-                ProviderCredentialsError::MissingTextTranslation
-            ))
-        );
-        translated.text_credentials = Some(TextTranslationCredentials::DeepLX {
-            endpoint: "http://localhost:1188/translate".into(),
-            token: String::new(),
-        });
-        assert!(translated.validated().is_ok());
-    }
-
     #[test]
     fn apple_text_credentials_are_local_and_keep_speech_network_independent() {
         use crate::core::network_proxy::ProxyMode;

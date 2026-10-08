@@ -26,16 +26,6 @@ async function render(overrides: Partial<SessionStateEvent> = {}) {
 }
 
 describe("overlay timing observations", () => {
-  it("omits recognition API timing for local captions while retaining actual translation timing", async () => {
-    await act(async () => root.render(<OverlayLatency session={session} showApiLatency={false} translationRequired={false} />));
-    expect(host.textContent).toBe("");
-    await act(async () => root.render(<OverlayLatency session={{ ...session, apiLatencyMs: 999, translationLatencyMs: 240 }} showApiLatency={false} />));
-    expect(host.textContent).not.toContain("API");
-    expect(host.textContent).not.toContain("999");
-    expect(host.querySelectorAll("strong")).toHaveLength(1);
-    expect(host.querySelector("strong")?.textContent).toBe("240 ms");
-    expect(host.querySelector(".overlay-latency__separator")).toBeNull();
-  });
   it("keeps unavailable and invalid samples distinct from a measured zero", () => {
     for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY, -1]) {
       expect(formatLatency(value)).toBe("—");

@@ -149,13 +149,3 @@ it.each([false, undefined])("hides the microphone and input switches when availa
   expect(host.querySelector('[data-output-selector]')).not.toBeNull();
   expect(switchInput).not.toHaveBeenCalled();
 });
-
-it("replaces audio capture and application/device controls with the Windows caption limitation", async () => {
-  useStore.setState(state => ({ settings: { ...state.settings, activeProfileId: "windows", audioInput: "both",
-    systemAudioTarget: { kind: "application", id: "synthetic.app", name: "Synthetic" },
-    profiles: [{ id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", credentialState: "present" }] } }));
-  await render();
-  expect(host.textContent).toContain(I18N.settings.windowsLiveCaptionsAudioUnavailable);
-  expect(host.querySelector('[role="switch"], [role="combobox"], [data-output-selector]')).toBeNull();
-  expect(switchInput).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
-});

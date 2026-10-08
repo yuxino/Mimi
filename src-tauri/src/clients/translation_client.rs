@@ -54,18 +54,19 @@ impl TranslationClient {
             mode: crate::core::network_proxy::ProxyMode::Direct,
             url: None,
         };
-        let network = ProviderNetwork::resolve(if configuration.provider.is_local_speech() {
-            &direct
-        } else {
-            &configuration.network_proxy
-        })?;
+        let network =
+            ProviderNetwork::resolve(if configuration.provider == ProviderKind::AppleSpeech {
+                &direct
+            } else {
+                &configuration.network_proxy
+            })?;
         let mut client = Self::new_without_network(configuration, events)?;
         if let Self::HighQuality(pipeline) = &mut client {
             let text = ProviderNetwork::resolve(
                 if matches!(
                     configuration.text_credentials,
                     Some(TextTranslationCredentials::Apple)
-                ) || (configuration.provider.is_local_speech()
+                ) || (configuration.provider == ProviderKind::AppleSpeech
                     && !configuration.target_language.translates_audio())
                 {
                     &direct
@@ -104,8 +105,7 @@ impl TranslationClient {
         match configuration.provider {
             ProviderKind::CustomDashScopeASR
             | ProviderKind::CustomOpenAIASR
-            | ProviderKind::AppleSpeech
-            | ProviderKind::WindowsLiveCaptions => {
+            | ProviderKind::AppleSpeech => {
                 return HighQualityTranslationClient::new_custom(configuration, events)
                     .map(Self::HighQuality)
                     .map_err(TranslationClientError::MT);
@@ -595,11 +595,9 @@ mod tests {
             ProviderKind::AlibabaCloud,
             ProviderKind::CustomOpenAIASR,
             ProviderKind::AppleSpeech,
-            ProviderKind::WindowsLiveCaptions,
         ] {
             let credentials = match provider {
                 ProviderKind::AppleSpeech => ProviderCredentials::AppleSpeech,
-                ProviderKind::WindowsLiveCaptions => ProviderCredentials::WindowsLiveCaptions,
                 ProviderKind::CustomOpenAIASR => ProviderCredentials::CustomSpeech {
                     endpoint: "wss://speech.example/realtime".into(),
                     model: "synthetic".into(),

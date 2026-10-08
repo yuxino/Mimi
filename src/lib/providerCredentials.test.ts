@@ -240,12 +240,3 @@ it("bounds OpenAI-compatible model names by bytes and rejects control characters
     expect(openAICompatibleModelIsValid(value), value).toBe(true);
   }
 });
-
-it("never requests recognition credentials for Windows captions, and keeps text credentials independent", () => {
-  const profile = { id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", credentialState: "missing", textCredentialState: "missing" } as const;
-  expect(credentialFieldsForProvider(profile.provider)).toEqual([]);
-  expect(buildProviderCredentials(profile.provider, { ...emptyCredentialDraft(), apiKey: "never-send" })).toBeNull();
-  expect(buildProviderProbeCredentials(profile.provider, emptyCredentialDraft())).toBeNull();
-  expect(buildAlibabaTranslationCredentials(profile, { ...emptyCredentialDraft(), endpoint: "http://127.0.0.1:18080/v1", model: "synthetic-model", apiKey: "never-send" }, "openAICompatible"))
-    .toMatchObject({ kind: "alibabaTranslation", apiKey: "", token: "", model: "synthetic-model" });
-});

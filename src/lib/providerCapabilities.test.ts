@@ -187,7 +187,7 @@ describe("provider capabilities", () => {
   });
 
   it("lists every provider exactly once with custom recognition protocols after built-in services", () => {
-    expect(new Set(SERVICE_PROVIDERS).size).toBe(12);
+    expect(new Set(SERVICE_PROVIDERS).size).toBe(11);
     expect(SERVICE_PROVIDERS).toEqual([
       "alibabaCloud",
       "googleGeminiLive",
@@ -198,7 +198,6 @@ describe("provider capabilities", () => {
       "azureOpenAIRealtime",
       "xAIRealtime",
       "appleSpeech",
-      "windowsLiveCaptions",
       "customDashScopeASR",
       "customOpenAIASR",
     ]);
@@ -501,24 +500,4 @@ it("keeps Volcano’s hub-language pairs and bilingual reversal separate from au
   expect(targetLanguagesForSettings({ ...settings, sourceLanguage: "zh_en" })).toEqual(["zh_en"]);
   expect(targetLanguageAfterSourceSwitch(settings, "zh_en")).toBe("zh_en");
   expect(targetLanguageAfterSourceSwitch({ ...settings, targetLanguage: "zh_en" }, "ja")).toBe("zh");
-});
-
-it("declares Windows caption language without auto recognition, and keeps Original independent from text translation", () => {
-  const profile = { id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", windowsLiveCaptionsConsent: true, credentialState: "missing", speechCredentialState: "present", textCredentialState: "missing", textTranslation: "deepL" } as const;
-  expect(capabilitiesForProvider(profile.provider).sourceLanguages).toEqual(SOURCE_LANGUAGE_CODES);
-  expect(capabilitiesForProvider(profile.provider).sourceLanguages).not.toContain("auto");
-  expect(capabilitiesForProfile({ ...profile, textTranslation: "followService" }).targetLanguages).toEqual(["original"]);
-  expect(capabilitiesForProfile(profile).targetLanguages).toEqual(["original", ...languageCatalogs.deepL.targetLanguages]);
-  expect(credentialStateForTarget(profile, "original")).toBe("present");
-  expect(credentialStateForTarget(profile, "zh")).toBe("missing");
-});
-
-it("does not infer Windows caption permission from stale credential metadata or accept an automatic language catalog", () => {
-  const profile = { id: "windows", name: "Windows captions", provider: "windowsLiveCaptions", credentialState: "present", speechCredentialState: "present" } as const;
-  expect(credentialStateForTarget(profile, "original")).toBe("missing");
-  expect(credentialStateForTarget({ ...profile, windowsLiveCaptionsConsent: false }, "zh")).toBe("missing");
-  const settings: SettingsSnapshot = { ...BASE_SETTINGS, profiles: [profile], activeProfileId: profile.id, targetLanguage: "original",
-    languageCapabilities: { profileId: profile.id, provider: profile.provider, textTranslation: "followService", targetLanguage: "original", sourceLanguages: ["auto"], targetLanguages: ["original"] } };
-  expect(sourceLanguagesForSettings(settings)).toEqual(SOURCE_LANGUAGE_CODES);
-  expect(capabilitiesForProfile({ ...profile, textTranslation: "apple" }, "original").sourceLanguages).toEqual(SOURCE_LANGUAGE_CODES);
 });

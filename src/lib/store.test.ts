@@ -475,20 +475,3 @@ it("rejects an incompatible saved pair without changing the active profile", asy
     expect(useStore.getState().settings).toBe(before);
   } finally { useStore.setState(original, true); }
 });
-
-it("defaults Windows captions to no permission and requires idle state for permission changes", async () => {
-  const original = useStore.getState();
-  try {
-    const added = await useStore.getState().createProfile("windowsLiveCaptions", "Windows captions");
-    const windows = added.profiles.at(-1)!;
-    expect(windows.windowsLiveCaptionsConsent === true).toBe(false);
-    useStore.setState({ session: { ...original.session, isActive: true, status: { kind: "listening" } } });
-    await expect(useStore.getState().setWindowsLiveCaptionsConsent(windows.id, true)).rejects.toThrow();
-    expect(useStore.getState().settings.profiles.at(-1)?.windowsLiveCaptionsConsent === true).toBe(false);
-    await useStore.getState().stop();
-    const allowed = await useStore.getState().setWindowsLiveCaptionsConsent(windows.id, true);
-    expect(allowed.profiles.at(-1)?.windowsLiveCaptionsConsent).toBe(true);
-    await useStore.getState().setWindowsLiveCaptionsConsent(windows.id, false);
-    expect(useStore.getState().settings.profiles.at(-1)?.windowsLiveCaptionsConsent).toBe(false);
-  } finally { useStore.setState(original, true); }
-});

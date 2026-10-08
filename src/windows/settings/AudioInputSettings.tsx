@@ -1,4 +1,3 @@
-import { usesWindowsLiveCaptions } from "../../lib/windowsLiveCaptions";
 import { useEffect, useRef, useState } from "react";
 import { I18N } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
@@ -15,7 +14,6 @@ import { useSettingsToast } from "./useSettingsToast";
 
 /** Uses the same idle, live and paused reconfiguration path as the overlay. */
 export function AudioInputSettings() {
-  const captionReader = useStore(state => usesWindowsLiveCaptions(state.settings));
   const selected = useStore(state => state.settings.audioInput) ?? "system";
   const microphoneAvailable = useStore(state => state.settings.microphoneInputAvailable === true);
   const target = useStore(state => state.settings.systemAudioTarget);
@@ -49,7 +47,6 @@ export function AudioInputSettings() {
       if (mounted.current) setBusy(false);
     }
   };
-  if (captionReader) return <SettingsSection id="audio-input" title={I18N.settings.audioInputTitle}><SettingsRow label={I18N.settings.windowsLiveCaptions} description={I18N.settings.windowsLiveCaptionsAudioUnavailable}>{null}</SettingsRow></SettingsSection>;
   return <SettingsSection id="audio-input" title={I18N.settings.audioInputTitle}>
     <SettingsRow label={I18N.settings.audioInputSystem} description={microphoneAvailable ? `${I18N.settings.audioInputHelp}\n${copy.switchHelp}` : I18N.settings.systemAudioHelp}
       hint={microphoneAvailable && selected === "system" ? I18N.settings.audioInputAtLeastOne : undefined}>

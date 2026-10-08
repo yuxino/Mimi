@@ -20,7 +20,7 @@ import {
 } from "../../lib/types";
 
 const ATOMIC_SUBTITLE_PROVIDERS = [
-  "alibabaCloud", "deepLX", "customDashScopeASR", "customOpenAIASR", "appleSpeech", "windowsLiveCaptions",
+  "alibabaCloud", "deepLX", "customDashScopeASR", "customOpenAIASR", "appleSpeech",
 ] as const satisfies readonly ServiceProvider[];
 type AtomicSubtitleProvider = typeof ATOMIC_SUBTITLE_PROVIDERS[number];
 

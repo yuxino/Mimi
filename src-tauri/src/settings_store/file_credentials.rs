@@ -71,7 +71,9 @@ impl FileCredentialStore {
         };
         let mut slots = Vec::new();
         for profile in profiles {
-            if super::is_local_dev_profile_id(&profile.id) || profile.provider.is_local_speech() {
+            if super::is_local_dev_profile_id(&profile.id)
+                || profile.provider == crate::core::provider::ProviderKind::AppleSpeech
+            {
                 continue;
             }
             slots.push(Slot {

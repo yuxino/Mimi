@@ -1,4 +1,3 @@
-import { usesWindowsLiveCaptions } from "../../lib/windowsLiveCaptions";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { capturePresentation, captureStatusForSource, captureSwitchCopy, type CaptureStatus } from "../../lib/captureStatus";
@@ -18,7 +17,6 @@ const SOURCES: AudioSource[] = ["system", "microphone"];
 
 /** Mounted only in the expanded panel. Status and device details stay in help. */
 export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
-  const captionReader = useStore(state => usesWindowsLiveCaptions(state.settings));
   const id = useId();
   const [snapshot, setSnapshot] = useState<{ stamp: object; value: CaptureStatus } | null>(null);
   const [pending, setPending] = useState(false);
@@ -40,7 +38,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
     return () => { disposed.current = true; };
   }, []);
   useEffect(() => {
-    if (!isTauri || captionReader) return;
+    if (!isTauri) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
@@ -53,7 +51,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
     };
     void refresh();
     return () => { disposed = true; clearTimeout(timer); };
-  }, [stamp, captionReader]);
+  }, [stamp]);
   // Invalidate observations synchronously on input and lifecycle changes.
   const current = snapshot?.stamp === stamp ? snapshot.value : null;
   const language = effectiveUiLanguage();
@@ -91,7 +89,6 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
     requiredSource ? `${requiredSource.text.source} · ${requiredSource.help}` : [copy.minimum, copy.switchHelp].join("\n"),
     copy.dualHelp,
   ].join("\n") : sources[0].help;
-  if (captionReader) return <div className="overlay-control-capture" aria-label={I18N.settings.windowsLiveCaptions}><div className="overlay-control-capture__heading"><span>{I18N.settings.windowsLiveCaptions}</span><SettingsHelp text={I18N.settings.windowsLiveCaptionsAudioUnavailable} label={I18N.settings.helpLabel} /></div></div>;
   return <div className="overlay-control-capture" aria-label={I18N.settings.audioInputTitle} aria-busy={pending || targetPending}>
     <div className="overlay-control-capture__heading">
       <span>{I18N.settings.audioInputTitle}</span>
