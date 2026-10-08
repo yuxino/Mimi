@@ -840,7 +840,9 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(!received.is_empty());
-        assert!(received.chunks_exact(2).all(|sample| sample == [0, 16]));
+        let (samples, remainder) = received.as_chunks::<2>();
+        assert!(remainder.is_empty(), "PCM ended with a partial sample");
+        assert!(samples.iter().all(|sample| *sample == [0, 16]));
         exchange(&json!({"operation":"stop","handle":HANDLE}).to_string()).unwrap();
         assert_eq!(
             pcm(HANDLE, vec![0, 0]).unwrap_err(),
