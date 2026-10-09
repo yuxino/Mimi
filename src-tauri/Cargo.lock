@@ -2753,7 +2753,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "mimi"
-version = "1.5.18"
+version = "1.5.19"
 dependencies = [
  "aec-rs-sys",
  "base64 0.23.1",
@@ -2767,12 +2767,15 @@ dependencies = [
  "hyper-util",
  "keyring",
  "keyring-core",
+ "libc",
  "libpulse-binding",
  "mimi-core",
  "mimi-runtime",
  "objc2",
  "objc2-app-kit",
+ "objc2-core-audio",
  "objc2-core-audio-types",
+ "objc2-core-foundation",
  "objc2-foundation",
  "reqwest",
  "rubato",

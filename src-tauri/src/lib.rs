@@ -68,6 +68,11 @@ pub fn run() {
         .init();
 
     let context = tauri::generate_context!();
+    #[cfg(all(target_os = "macos", feature = "development-debugger"))]
+    if let Some(options) = audio::macos_smoke::options_from_args() {
+        audio::macos_smoke::run(context, options);
+        return;
+    }
     #[cfg(target_os = "windows")]
     let startup_gate = windows_startup::StartupGate::acquire(context.config().identifier.as_str())
         .unwrap_or_else(|label| panic!("mimi startup gate failed: {label}"));
