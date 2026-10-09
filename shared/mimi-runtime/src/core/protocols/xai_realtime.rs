@@ -40,9 +40,6 @@ impl XAIRealtimeEndpoint {
     pub const CHANNEL_COUNT: u16 = 1;
     pub const BITS_PER_SAMPLE: u16 = 16;
     pub const FRAME_DURATION_MS: u32 = 200;
-    /// Keep the server-VAD boundary deterministic so `finish` can append a
-    /// matching amount of silence before it waits for the final response.
-    pub const SERVER_VAD_SILENCE_DURATION_MS: u32 = 400;
     pub const AUDIO_FRAME_BYTE_COUNT: usize = Self::SAMPLE_RATE_HZ as usize
         * Self::CHANNEL_COUNT as usize
         * (Self::BITS_PER_SAMPLE as usize / 8)
@@ -92,8 +89,7 @@ impl XAIRealtimeRequestEncoder {
                     "effort": "none"
                 },
                 "turn_detection": {
-                    "type": "server_vad",
-                    "silence_duration_ms": XAIRealtimeEndpoint::SERVER_VAD_SILENCE_DURATION_MS
+                    "type": "server_vad"
                 },
                 "audio": {
                     "input": {
@@ -190,6 +186,12 @@ pub enum XAIRealtimeServerEvent {
         item_id: Option<String>,
         language: Option<String>,
     },
+    SpeechStarted {
+        item_id: Option<String>,
+    },
+    SourceCommitted {
+        item_id: Option<String>,
+    },
     SourceTranscriptCompleted {
         transcript: String,
         item_id: Option<String>,
@@ -272,12 +274,31 @@ impl XAIRealtimeServerEvent {
                     language: optional_language(value),
                 })
             }
+            "input_audio_buffer.speech_started" => Ok(Self::SpeechStarted {
+                item_id: optional_identifier(value, "item_id"),
+            }),
+            "input_audio_buffer.committed" => Ok(Self::SourceCommitted {
+                item_id: optional_identifier(value, "item_id"),
+            }),
             "conversation.item.input_audio_transcription.completed" => {
-                Ok(Self::SourceTranscriptCompleted {
-                    transcript: required_one_of(value, &["transcript", "text"], "transcript")?,
-                    item_id: optional_identifier(value, "item_id"),
-                    language: optional_language(value),
-                })
+                let transcript = required_one_of(value, &["transcript", "text"], "transcript")?;
+                let item_id = optional_identifier(value, "item_id");
+                let language = optional_language(value);
+                // grok-transcribe also uses this event name for revised
+                // partials, as shown in the official live-interpreter example.
+                if value.get("status").and_then(Value::as_str) == Some("in_progress") {
+                    Ok(Self::SourceTranscriptUpdated {
+                        transcript,
+                        item_id,
+                        language,
+                    })
+                } else {
+                    Ok(Self::SourceTranscriptCompleted {
+                        transcript,
+                        item_id,
+                        language,
+                    })
+                }
             }
             "response.created" => Ok(Self::ResponseStarted {
                 response_id: response_identifier(value),
@@ -329,7 +350,14 @@ fn required_one_of(
     fields: &[&'static str],
     label: &'static str,
 ) -> Result<String, XAIRealtimeProtocolError> {
-    optional_nonempty_string(value, fields)
+    fields
+        .iter()
+        .find_map(|field| {
+            value
+                .get(*field)
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
         .ok_or(XAIRealtimeProtocolError::MissingEventField(label))
 }
 
@@ -347,8 +375,10 @@ fn optional_identifier(value: &Value, field: &str) -> Option<String> {
     value
         .get(field)
         .and_then(Value::as_str)
-        .map(|value| sanitize_label(value, 128, ""))
-        .filter(|value| !value.is_empty())
+        // These are identities, not diagnostic labels. Lossy sanitizing or
+        // truncating could make distinct input/response IDs compare equal.
+        .filter(|value| !value.is_empty() && value.len() <= 128)
+        .map(str::to_string)
 }
 
 fn response_identifier(value: &Value) -> Option<String> {
@@ -356,8 +386,8 @@ fn response_identifier(value: &Value) -> Option<String> {
         value
             .pointer("/response/id")
             .and_then(Value::as_str)
-            .map(|value| sanitize_label(value, 128, ""))
-            .filter(|value| !value.is_empty())
+            .filter(|value| !value.is_empty() && value.len() <= 128)
+            .map(str::to_string)
     })
 }
 
@@ -493,10 +523,7 @@ mod tests {
         let session = &value["session"];
         assert_eq!(value["type"], "session.update");
         assert_eq!(session["turn_detection"]["type"], "server_vad");
-        assert_eq!(
-            session["turn_detection"]["silence_duration_ms"],
-            XAIRealtimeEndpoint::SERVER_VAD_SILENCE_DURATION_MS
-        );
+        assert_eq!(session["turn_detection"], json!({"type":"server_vad"}));
         assert_eq!(session["reasoning"]["effort"], "none");
         assert_eq!(session["audio"]["input"]["format"]["type"], "audio/pcm");
         assert_eq!(session["audio"]["input"]["format"]["rate"], 24_000);
@@ -550,6 +577,70 @@ mod tests {
                 is_recoverable: false,
                 related_event_id: None,
             }
+        );
+    }
+
+    #[test]
+    fn completed_named_progress_events_remain_replaceable_source_updates() {
+        assert_eq!(
+            XAIRealtimeServerEvent::decode_value(&json!({
+                "type":"conversation.item.input_audio_transcription.completed",
+                "item_id":"source_a", "transcript":"Still growing", "status":"in_progress"
+            }))
+            .unwrap(),
+            XAIRealtimeServerEvent::SourceTranscriptUpdated {
+                item_id: Some("source_a".into()),
+                transcript: "Still growing".into(),
+                language: None
+            }
+        );
+    }
+
+    #[test]
+    fn input_boundaries_and_empty_transcripts_keep_their_exact_identities() {
+        for (kind, expected) in [
+            (
+                "input_audio_buffer.speech_started",
+                XAIRealtimeServerEvent::SpeechStarted {
+                    item_id: Some("item:a".into()),
+                },
+            ),
+            (
+                "input_audio_buffer.committed",
+                XAIRealtimeServerEvent::SourceCommitted {
+                    item_id: Some("item:a".into()),
+                },
+            ),
+        ] {
+            assert_eq!(
+                XAIRealtimeServerEvent::decode_value(&json!({"type":kind,"item_id":"item:a"}))
+                    .unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            XAIRealtimeServerEvent::decode_value(&json!({
+                "type":"conversation.item.input_audio_transcription.completed",
+                "item_id":"item:a", "transcript":""
+            }))
+            .unwrap(),
+            XAIRealtimeServerEvent::SourceTranscriptCompleted {
+                item_id: Some("item:a".into()),
+                transcript: String::new(),
+                language: None
+            }
+        );
+        assert_eq!(
+            response_identifier(&json!({"response":{"id":"response:a"}})),
+            Some("response:a".into())
+        );
+        assert_eq!(
+            response_identifier(&json!({"response_id":"r".repeat(129)})),
+            None
+        );
+        assert_eq!(
+            optional_identifier(&json!({"item_id":"i".repeat(129)}), "item_id"),
+            None
         );
     }
 }

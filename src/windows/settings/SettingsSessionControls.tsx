@@ -10,6 +10,7 @@ interface SettingsSessionControlsProps {
   status: SettingsSessionVisibleStatus;
   statusText: string;
   errorMessage?: string | null;
+  permissionRequired?: boolean;
   errorRequiresConfiguration?: boolean;
   isActive: boolean;
   isChanging: boolean;
@@ -56,7 +57,7 @@ export function SettingsSessionControls(props: SettingsSessionControlsProps) {
         <Switch checked={props.checked} disabled={props.disabled} aria-label={I18N.settings.liveSubtitles} aria-describedby="settings-session-status" onChange={enabled => enabled && props.errorRequiresConfiguration ? props.onConfigure() : props.onSessionChange(enabled)} />
       </div>
     </div>
-    {props.errorMessage && <SessionErrorFeedback message={props.errorMessage} onConfigure={props.onConfigure} configureLabel={props.configureLabel} disabled={props.isChanging} />}
+    {props.errorMessage && <SessionErrorFeedback permissionRequired={props.permissionRequired} message={props.errorMessage} onConfigure={props.onConfigure} configureLabel={props.configureLabel} disabled={props.isChanging} />}
     {!props.compact && <div className="settings-session-control">
       <div className="settings-session-control__copy">
         <div className="settings-session-control__heading">
@@ -76,6 +77,6 @@ export function SettingsSessionControls(props: SettingsSessionControlsProps) {
         <dt>{I18N.settings.subtitleDisplay}</dt><dd><code>{props.desktopShortcuts.cycleSubtitleDisplay}</code></dd>
       </dl>
     </details>}
-    {(props.actionFailed || props.resumeFailed) && <p className="settings-feedback" data-tone="error" role="alert">{props.resumeFailed ? props.resumeFailureMessage ?? I18N.settings.sessionResumeFailed : I18N.settings.sessionActionFailed}</p>}
+    {((props.actionFailed && !props.permissionRequired) || props.resumeFailed) && <p className="settings-feedback" data-tone="error" role="alert">{props.resumeFailed ? props.resumeFailureMessage ?? I18N.settings.sessionResumeFailed : I18N.settings.sessionActionFailed}</p>}
   </section>;
 }

@@ -25,12 +25,14 @@ enum Suite {
     FailedStart,
     Application,
     ApplicationExit,
+    ApplicationIsolation,
 }
 
 pub(crate) struct Options {
     output: PathBuf,
     backend: Option<bool>,
     suite: Suite,
+    application_id: Option<String>,
 }
 
 pub(crate) fn options_from_args() -> Option<Options> {
@@ -60,25 +62,37 @@ pub(crate) fn options_from_args() -> Option<Options> {
         Some("failed-start") => Suite::FailedStart,
         Some("application") => Suite::Application,
         Some("application-exit") => Suite::ApplicationExit,
+        Some("application-isolation") => Suite::ApplicationIsolation,
         _ => panic!("unknown native smoke suite"),
     };
     assert!(
         !matches!(
             suite,
-            Suite::MissingApplication | Suite::Application | Suite::ApplicationExit
+            Suite::MissingApplication
+                | Suite::Application
+                | Suite::ApplicationExit
+                | Suite::ApplicationIsolation
         ) || backend.is_none()
     );
     Some(Options {
         output,
         backend,
         suite,
+        application_id: args.get(index + 4).cloned(),
     })
 }
 
-fn target(suite: Suite, cycle: usize) -> SystemAudioTarget {
-    if matches!(suite, Suite::Application | Suite::ApplicationExit) && cycle == 0 {
+fn target(options: &Options) -> SystemAudioTarget {
+    if matches!(
+        options.suite,
+        Suite::Application | Suite::ApplicationExit | Suite::ApplicationIsolation
+    ) || options.application_id.is_some()
+    {
         SystemAudioTarget::Application {
-            id: "com.apple.QuickTimePlayerX".into(),
+            id: options
+                .application_id
+                .clone()
+                .unwrap_or_else(|| "com.apple.QuickTimePlayerX".into()),
             name: "Synthetic playback source".into(),
         }
     } else {
@@ -175,7 +189,6 @@ async fn capture(dispatcher: MainThreadDispatcher, options: &Options) -> Result<
     let screen_authorized = core_graphics2::window::preflight_screen_capture_access();
     let tap_available = super::macos_tap::is_available();
     let selected_tap = options.backend.unwrap_or(super::macos_tap::use_audio_tap(
-        &target(options.suite, 0),
         tap_available,
         screen_authorized,
     ));
@@ -187,7 +200,7 @@ async fn capture(dispatcher: MainThreadDispatcher, options: &Options) -> Result<
     let capture = MacSystemAudioCapture::for_smoke(dispatcher, options.backend);
     let metrics = Arc::new(Metrics::default());
     if options.suite == Suite::Cancel {
-        return cancellation(&capture, &metrics, &mut output).await;
+        return cancellation(&capture, &metrics, &mut output, target(options)).await;
     }
     if options.suite == Suite::FailedStart {
         return failed_start(&capture, &metrics, &mut output).await;
@@ -239,7 +252,10 @@ async fn capture(dispatcher: MainThreadDispatcher, options: &Options) -> Result<
     } else {
         Duration::from_secs(6)
     };
-    let expect_silence = matches!(options.suite, Suite::Silence | Suite::OwnPlayback);
+    let expect_silence = matches!(
+        options.suite,
+        Suite::Silence | Suite::OwnPlayback | Suite::ApplicationIsolation
+    );
     for cycle in 0..cycles {
         let rate = if cycle % 2 == 0 { 16_000 } else { 24_000 };
         metrics.first_buffer_us.store(0, Ordering::SeqCst);
@@ -252,7 +268,7 @@ async fn capture(dispatcher: MainThreadDispatcher, options: &Options) -> Result<
                 pipeline.ingress().unwrap(),
                 failure,
                 AudioCaptureFormat::pcm16_mono(rate).unwrap(),
-                target(options.suite, cycle),
+                target(options),
             )
             .await
         {
@@ -352,6 +368,7 @@ async fn cancellation(
     capture: &MacSystemAudioCapture,
     metrics: &Arc<Metrics>,
     output: &mut std::fs::File,
+    target: SystemAudioTarget,
 ) -> Result<(), String> {
     for delay_ms in [0, 1, 5, 20, 100, 250] {
         let pipeline = metrics.pipeline();
@@ -359,6 +376,7 @@ async fn cancellation(
         let ingress = pipeline.ingress().unwrap();
         let starting = capture.clone();
         let (entered, ready) = tokio::sync::oneshot::channel();
+        let target = target.clone();
         let task = tokio::spawn(async move {
             let _ = entered.send(());
             starting
@@ -366,7 +384,7 @@ async fn cancellation(
                     ingress,
                     failure,
                     AudioCaptureFormat::pcm16_mono(16_000).unwrap(),
-                    SystemAudioTarget::System,
+                    target,
                 )
                 .await
         });

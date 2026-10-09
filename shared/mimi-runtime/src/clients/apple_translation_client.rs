@@ -81,7 +81,7 @@ impl AppleTranslationClient {
 
     /// Apple's API rejects identical languages. Explicit selections can still
     /// preserve the input when an ASR omits its optional reported language.
-    fn passthrough(
+    pub(crate) fn passthrough(
         &self,
         text: &str,
         source: Option<SourceLanguage>,

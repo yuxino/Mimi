@@ -1,3 +1,4 @@
+import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SettingsNavigationTarget } from "../../lib/ipc";
 import { I18N } from "../../lib/i18n";
@@ -14,6 +15,7 @@ export function SubtitleSessionControls({ visible = true, compact = false, onCon
   const { nativeShortcuts, commands } = useDesktopShortcuts();
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
+  const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
   const errorSettingsTarget = useStore(state => state.session.status.kind === "error" ? sessionErrorSettingsTarget(state.session.status.message) : null);
   const errorRequiresConfiguration = errorSettingsTarget !== null;
   const sessionIsActive = useStore(state => state.session.isActive);
@@ -96,6 +98,7 @@ export function SubtitleSessionControls({ visible = true, compact = false, onCon
   }, [sessionActionCoordinator, clearResumeFailure]);
 
   return visible ? <SettingsSessionControls
+            permissionRequired={permissionRequired}
             compact={compact}
             retrying={sessionPendingAction === "start" && sessionStatusKind === "error"}
             resuming={sessionIsResuming}

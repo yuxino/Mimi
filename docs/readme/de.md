@@ -41,7 +41,7 @@ Links zur Freischaltung, Hinweise zu Zugangsdaten und die derzeit von Mimi verwe
 
 1. Öffne Einstellungen → Sprache & Übersetzung, füge eine Konfiguration hinzu, gib die angeforderten Anbieterzugangsdaten ein und speichere.
 2. Wähle die Erkennungs- und Übersetzungssprachen.
-3. Spiele etwas ab und aktiviere unter Untertitel die Live-Untertitel. Erlaube unter macOS die Bildschirm- und Systemaudioaufnahme, wenn du dazu aufgefordert wirst.
+3. Spiele etwas ab und aktiviere unter Untertitel die Live-Untertitel. Ab macOS 14.2 genügt „Nur Systemaudioaufnahme“ für alle Anwendungen oder eine ausgewählte Anwendung. Bestehende Bildschirmaufnahme-Berechtigungen werden weiterverwendet. Ältere macOS-Versionen benötigen „Bildschirm- und Systemaudioaufnahme“.
 
 Cloud-Sprachdienste erfordern deine eigenen Zugangsdaten und erhalten dein Audio; dabei können Nutzungsgebühren entstehen. Apple Speech erkennt Audio auf unterstützten Macs lokal. Eine externe Textübersetzung sendet den erkannten Text an den von dir gewählten Dienst; mit Apple Translation bleibt der Text auf dem Mac.
 

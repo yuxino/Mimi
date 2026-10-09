@@ -1607,6 +1607,25 @@ impl TencentSetupPage {
     }
 }
 
+/// Explicit navigation only: one fixed privacy page, no grant mutation.
+#[tauri::command]
+pub fn app_open_audio_privacy_settings(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        app.opener()
+            .open_url(
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+                None::<&str>,
+            )
+            .map_err(|_| "audio_privacy_settings_open_failed".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("audio_privacy_settings_unsupported".into())
+    }
+}
+
 /// Settings can open these public setup pages without supplying an arbitrary URL.
 #[tauri::command]
 pub fn open_tencent_setup_page(app: AppHandle, page: TencentSetupPage) -> Result<(), String> {

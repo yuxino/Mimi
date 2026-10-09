@@ -183,3 +183,27 @@ it("accepts reports up to 16KiB of UTF-8 and rejects oversized reads or feedback
   expect(host.querySelector('[role="alert"]')?.textContent).toContain("Could not open GitHub");
   expect(host.textContent).not.toContain(tooManyBytes);
 });
+
+
+it.each([
+  [{}, 1, false, false],
+  [{ api_round_trip_ms: 0 }, 2, true, false],
+  [{ translation_duration_ms: 0, translation_duration_kind: "request" }, 2, false, true],
+  [{ translation_duration_ms: 100, translation_duration_kind: "unknown" }, 1, false, false],
+  [{ api_round_trip_ms: 47, translation_duration_ms: 100, translation_duration_kind: "follow" }, 3, true, true],
+] as const)("shows only measured diagnostic rows for %j", async (service, rows, api, translation) => {
+  mocks.invoke.mockResolvedValue(JSON.stringify({ schema: "mimi.support.v2", session_status: "listening", service }));
+  await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
+  const summary = host.querySelector(".settings-diagnostic-summary")!;
+  expect(summary.querySelectorAll(":scope > div")).toHaveLength(rows);
+  expect(summary.textContent?.includes(I18N.overlay.apiLatency)).toBe(api);
+  expect(summary.textContent?.includes("translation_duration_kind" in service && service.translation_duration_kind === "follow" ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency)).toBe(translation);
+});
+
+
+it.each(["idle", "connecting", "stopping", "paused", "error"])("hides stale diagnostic timings in %s reports", async session_status => {
+  mocks.invoke.mockResolvedValue(JSON.stringify({ schema: "mimi.support.v2", session_status,
+    service: { api_round_trip_ms: 47, translation_duration_ms: 100, translation_duration_kind: "request" } }));
+  await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
+  expect(host.querySelectorAll(".settings-diagnostic-summary > div")).toHaveLength(1);
+});

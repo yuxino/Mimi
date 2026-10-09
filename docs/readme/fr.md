@@ -41,7 +41,7 @@ Pour les liens d’activation, les instructions concernant les identifiants et l
 
 1. Ouvrez Réglages → Parole et traduction, ajoutez une configuration, saisissez les identifiants demandés par le fournisseur et enregistrez.
 2. Choisissez les langues de reconnaissance et de traduction.
-3. Lancez du son et activez Sous-titres en direct dans Sous-titres. Sur macOS, autorisez l’enregistrement de l’écran et de l’audio du système lorsque cela vous est demandé.
+3. Lancez du son et activez Sous-titres en direct dans Sous-titres. Sous macOS 14.2 ou ultérieur, l’enregistrement de l’audio du système uniquement suffit pour toutes les applications ou une seule application. Les autorisations d’enregistrement de l’écran existantes restent valables. Les versions antérieures exigent l’enregistrement de l’écran et de l’audio du système.
 
 Les services vocaux cloud nécessitent vos propres identifiants et reçoivent votre audio ; des frais d’utilisation peuvent s’appliquer. Apple Speech reconnaît l’audio localement sur les Mac compatibles. La traduction du texte à distance envoie le texte reconnu au service de votre choix ; Apple Translation garde le texte sur le Mac.
 

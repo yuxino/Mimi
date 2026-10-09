@@ -622,6 +622,9 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
                 return true;
             }
             if is_recoverable {
+                // Recoverable provider errors keep the session open. A fixed
+                // diagnostic kind cannot expose provider text or error fields.
+                crate::pipeline_log!("openai_realtime recoverable_provider_error");
                 return false;
             }
             emit_if_current(
@@ -852,7 +855,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recoverable_error_does_not_stop_transcript_flow() {
+    async fn recoverable_error_is_diagnosed_without_stopping_transcript_flow() {
+        use crate::core::development_debug::{self, DebugEvent, TraceSink};
+
+        struct DiagnosticGuard;
+        impl Drop for DiagnosticGuard {
+            fn drop(&mut self) {
+                development_debug::initialize(false);
+            }
+        }
+        development_debug::initialize(true);
+        development_debug::set_enabled(true).unwrap();
+        let _diagnostic_guard = DiagnosticGuard;
+        let labels = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured_labels = Arc::clone(&labels);
+        development_debug::set_sink(Some(TraceSink::new(move |entry| {
+            if let DebugEvent::Pipeline { label } = entry.event {
+                if label.starts_with("openai_realtime ") {
+                    captured_labels.lock().unwrap().push(label);
+                }
+            }
+        })))
+        .unwrap();
+
         let (client, mut events) = test_client(|mut socket| {
             Box::pin(async move {
                 let _ = socket.next().await;
@@ -860,7 +885,7 @@ mod tests {
                     r#"{"type":"session.updated","session":{"audio":{"input":{"transcription":{"model":"gpt-realtime-whisper"}},"output":{"language":"ja"}}}}"#.into()
                 )).await.unwrap();
                 socket.send(Message::Text(
-                    r#"{"type":"error","error":{"type":"invalid_request_error","code":"invalid_event","message":"private"}}"#.into()
+                    r#"{"type":"error","error":{"type":"invalid_request_error","code":"private_error_code","message":"private provider body"}}"#.into()
                 )).await.unwrap();
                 socket.send(Message::Text(
                     r#"{"type":"session.input_transcript.delta","delta":"Hello."}"#.into()
@@ -880,8 +905,11 @@ mod tests {
             .connect_with_timeout(Duration::from_millis(500))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(20)).await;
         client.finish(Duration::from_millis(500)).await;
+        assert_eq!(
+            *labels.lock().unwrap(),
+            ["openai_realtime recoverable_provider_error"]
+        );
 
         let mut received = Vec::new();
         while let Ok(event) = events.try_recv() {
@@ -892,9 +920,89 @@ mod tests {
             LiveTranslateServerEvent::SubtitleFinalPair { source, translation, .. }
                 if source == "Hello." && translation == "こんにちは。"
         )));
+        assert!(received
+            .iter()
+            .any(|event| matches!(event, LiveTranslateServerEvent::SessionFinished)));
         assert!(!received
             .iter()
             .any(|event| matches!(event, LiveTranslateServerEvent::Error { .. })));
+    }
+
+    #[tokio::test]
+    async fn a_recoverable_error_for_session_setup_still_rejects_the_connection() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let update = socket.next().await.unwrap().unwrap();
+                let update: Value = serde_json::from_str(update.to_text().unwrap()).unwrap();
+                let error = serde_json::json!({
+                    "type": "error",
+                    "error": {
+                        "type": "invalid_request_error",
+                        "code": "invalid_event",
+                        "message": "private setup details",
+                        "event_id": update["event_id"],
+                    },
+                });
+                socket
+                    .send(Message::Text(error.to_string().into()))
+                    .await
+                    .unwrap();
+                while socket.next().await.is_some() {}
+            })
+        })
+        .await;
+
+        assert_eq!(
+            client
+                .connect_with_timeout(Duration::from_millis(500))
+                .await
+                .unwrap_err(),
+            OpenAIRealtimeClientError::SessionSetupRejected
+        );
+        assert!(!client.inner.ready.load(Ordering::SeqCst));
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn a_fatal_provider_error_still_stops_transcript_flow() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(Message::Text(
+                    r#"{"type":"session.updated","session":{"audio":{"input":{"transcription":{"model":"gpt-realtime-whisper"}},"output":{"language":"ja"}}}}"#.into()
+                )).await.unwrap();
+                socket.send(Message::Text(
+                    r#"{"type":"error","error":{"type":"authentication_error","code":"invalid_api_key","message":"private authentication details"}}"#.into()
+                )).await.unwrap();
+                socket.send(Message::Text(
+                    r#"{"type":"session.input_transcript.delta","delta":"must not be processed"}"#.into()
+                )).await.unwrap();
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client
+            .connect_with_timeout(Duration::from_millis(500))
+            .await
+            .unwrap();
+        let event = tokio::time::timeout(Duration::from_millis(500), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            event,
+            LiveTranslateServerEvent::Error {
+                code: "openai_provider_error.invalid_api_key".into(),
+                message: GENERIC_PROVIDER_ERROR.into(),
+            }
+        );
+        let receive_task = client.inner.receive_task.lock().await.take().unwrap();
+        tokio::time::timeout(Duration::from_millis(500), receive_task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(client.inner.committer.lock().await.finish().is_empty());
+        assert!(events.try_recv().is_err());
+        client.disconnect().await;
     }
 
     #[tokio::test]

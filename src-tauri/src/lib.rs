@@ -397,6 +397,7 @@ pub fn run() {
             commands::app_is_linux_package,
             desktop_shortcuts::app_desktop_shortcut_commands,
             commands::app_open_releases,
+            commands::app_open_audio_privacy_settings,
             commands::open_tencent_setup_page,
             commands::settings_save,
             commands::profile_create,

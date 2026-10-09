@@ -2195,9 +2195,19 @@ impl HighQualityTranslationClient {
                     inner.mt_cooldown = None;
                     inner.mt_failure_streak = 0;
                     inner.preview_request_pacer.set_shared_cooldown(None);
+                    // Apple can return the source without invoking translation.
+                    // Preserve that result but do not report it as request work.
+                    let request_ms = match self.mt.as_ref() {
+                        TextTranslationClient::Apple(client)
+                            if client.passthrough(text, source_override)?.is_some() =>
+                        {
+                            None
+                        }
+                        _ => Some(first_request_at.elapsed().as_millis() as u64),
+                    };
                     return Ok(MeasuredTranslation {
                         text: translation,
-                        request_ms: Some(first_request_at.elapsed().as_millis() as u64),
+                        request_ms,
                     });
                 }
                 Err(error) => {
@@ -4905,6 +4915,11 @@ mod tests {
             ),
             (TargetLanguage::English, Some("en"), None),
             (TargetLanguage::English, None, None),
+            (
+                TargetLanguage::Japanese,
+                None,
+                Some(SourceLanguage::English),
+            ),
         ] {
             let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
             let observed = requests.clone();
@@ -4924,6 +4939,10 @@ mod tests {
                         Ok("Synthetic translated final.".into())
                     }),
             ));
+            *client.translation_latency.lock().unwrap() = Some(TranslationLatency {
+                milliseconds: 123,
+                kind: TranslationLatencyKind::Request,
+            });
             client
                 .handle_asr_event(LiveTranslateServerEvent::SourceFinal {
                     text: "Synthetic source final.".into(),
@@ -4956,6 +4975,11 @@ mod tests {
                 } else {
                     "Synthetic source final."
                 }
+            );
+            assert_eq!(
+                client.translation_latency().map(|sample| sample.kind),
+                expected_request_source.map(|_| TranslationLatencyKind::Request),
+                "target={target:?}, reported={reported:?}"
             );
             client.disconnect().await;
         }

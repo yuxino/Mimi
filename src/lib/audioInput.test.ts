@@ -24,3 +24,13 @@ it("identifies the selected app and keeps the microphone independent", () => {
   expect(audioInputLabel("both", target)).toBe(`Player + ${I18N.settings.audioInputMicrophone}`);
   expect(audioInputLabel("microphone", target)).toBe(I18N.settings.audioInputMicrophone);
 });
+
+it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr"] as const)("keeps system permission denial distinct from microphone or provider errors in %s", language => {
+  setStoredUiLanguage(language);
+  const message = audioInputErrorMessage("System audio capture permission was denied.");
+  expect(message).toBeTruthy();
+  expect(message).toContain("Mimi");
+  expect(message).toContain("→");
+  expect(message).not.toBe(audioInputErrorMessage("Microphone capture permission was denied."));
+  expect(audioInputErrorMessage("System audio capture permission was denied. private-native-detail")).toBeNull();
+});

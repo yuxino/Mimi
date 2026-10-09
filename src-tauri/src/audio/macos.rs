@@ -490,7 +490,6 @@ impl MacSystemAudioCapture {
         }
 
         let use_tap = super::macos_tap::use_audio_tap(
-            &target,
             super::macos_tap::is_available(),
             core_graphics2::window::preflight_screen_capture_access(),
         );
@@ -511,6 +510,7 @@ impl MacSystemAudioCapture {
                 audio_ingress,
                 failure_tx,
                 format,
+                target,
                 self.generation.clone(),
                 generation_token,
                 self.pending_teardown.begin(),

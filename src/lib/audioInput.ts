@@ -1,3 +1,4 @@
+import { isSystemAudioPermissionDenied, systemAudioPermissionCopy } from "./systemAudioPermissions";
 import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
 import { supplemental } from "./locales/supplemental";
 import { effectiveUiLanguage, I18N } from "./i18n";
@@ -67,6 +68,7 @@ const errors: Record<string, keyof typeof copy.en> = {
 
 /** Match only safe native labels; never reinterpret arbitrary provider messages. */
 export function audioInputErrorMessage(message: string): string | null {
+  if (isSystemAudioPermissionDenied(message)) return systemAudioPermissionCopy().denied;
   const key = errors[message];
   return key ? copy[effectiveUiLanguage()][key] : null;
 }

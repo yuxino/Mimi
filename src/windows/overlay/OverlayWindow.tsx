@@ -1,3 +1,4 @@
+import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { subtitleBackgroundColor } from "../../lib/subtitleColor";
 import { I18N } from "../../lib/i18n";
@@ -54,6 +55,7 @@ export function OverlayWindow() {
   const sessionErrorSummary = useStore(selectSessionErrorSummary);
   const [controlMode] = useOverlayControlMode();
   const hasSessionError = session.status.kind === "error";
+  const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
   const errorSettingsTarget = session.status.kind === "error" ? sessionErrorSettingsTarget(session.status.message) : null;
   const errorRequiresConfiguration = errorSettingsTarget !== null;
   const settings = useStore((state) => state.settings);
@@ -490,7 +492,7 @@ export function OverlayWindow() {
               height: "100%",
             }}
           >
-          {hasSessionError && <SessionErrorFeedback
+          {hasSessionError && <SessionErrorFeedback permissionRequired={permissionRequired}
             message={sessionErrorMessage ?? I18N.settings.sessionError}
             summary={sessionErrorSummary ?? I18N.settings.sessionError}
             actionsHidden={controlMode === "panel"}

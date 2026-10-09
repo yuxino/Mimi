@@ -56,6 +56,7 @@ interface OverlayControlPanelProps {
   isChangingSession: boolean;
   isStopping?: boolean;
   sessionErrorMessage?: string | null;
+  permissionRequired?: boolean;
   errorSettingsTarget?: SettingsNavigationTarget | null;
   onRetrySession?: () => Promise<void>;
   onDismiss: () => void;
@@ -82,6 +83,7 @@ export function OverlayControlPanel({
   isChangingSession,
   isStopping = false,
   sessionErrorMessage,
+  permissionRequired = false,
   errorSettingsTarget,
   onRetrySession,
   onDismiss,
@@ -201,7 +203,7 @@ export function OverlayControlPanel({
           onToggle={onDismiss}
         />
 
-        {sessionErrorMessage && <SessionErrorFeedback
+        {sessionErrorMessage && <SessionErrorFeedback permissionRequired={permissionRequired}
           message={sessionErrorMessage}
           configureLabel={errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : undefined}
           onConfigure={() => performAction("settings", () => onShowSettings(errorSettingsTarget ?? "service"))}

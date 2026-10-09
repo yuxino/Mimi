@@ -399,3 +399,8 @@ export type ConnectionCheckStage = "speech" | "text";
 export function testProfileConnection(profileId: string, stage?: ConnectionCheckStage, credentials?: ProviderCredentialsInput, sourceLanguage?: SourceLanguage): Promise<ConnectionDiagnostic> {
   return invoke("profile_test_connection", { profileId, ...(stage ? { stage } : {}), ...(credentials ? { credentials } : {}), ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
+
+/** Opens one fixed macOS privacy page; never changes a grant. */
+export function appOpenAudioPrivacySettings(): Promise<void> {
+  return invoke("app_open_audio_privacy_settings");
+}
