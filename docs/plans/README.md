@@ -32,6 +32,8 @@ provider, merge or publish a later change.
 
 ## Streaming and audio
 
+- [Subtitle quality training with existing services](2026-10-10-subtitle-quality-training.md)
+  — fixed samples, accuracy and timing evidence, and native reading acceptance.
 - [Shared subtitle core](2026-10-03-shared-subtitle-core.md)
   — desktop/Android pairing and finalization ownership.
 - [Runtime reliability](2026-08-24-runtime-reliability-and-release-design.md)
