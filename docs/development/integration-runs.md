@@ -1755,3 +1755,38 @@
   account-funding details and internal test coverage. Kept update instructions
   and known product restrictions. This editorial change does not extend the
   acceptance recorded above or alter the immutable release assets.
+
+
+### 2026-10-09 — PR #235 provider timing and realtime contract audit
+
+- Candidate: measured-only UI `03d5272142928668ca7b4fa8b5261cb780afdb60`
+  and provider fixes `f3021acc`, based on PR #235's `70c08201664c45c708ad4bf7fcdeda8d262b246b`.
+  Endpoint, model, authentication, PCM format, update/append/close events and
+  region constraints were checked against the providers' official references
+  and xAI's official live-interpreter cookbook. The combined Microsoft and
+  OpenAI contract establishes Azure's deployment-name transcription field and
+  dedicated close lifecycle. See [protocol audit](../plans/2026-10-09-provider-protocol-audit.md).
+- Final canonical `./scripts/check.sh` passed: app 82 tests, shared runtime
+  710 tests (1 ignored), minimal runtime 567 tests (1 ignored), frontend
+  131 files / 2,056 tests, plus strict lint/build and the production debugger
+  boundary. Focused suites passed: Grok 34, Azure client 9, OpenAI client 13.
+  Localhost protocol tests are synthetic service contracts, not live provider
+  acceptance. Independent final review found no remaining ownership blocker.
+- On the signed macOS 26.3.1 Apple silicon development app, a real Volcano
+  session showed speech WebSocket RTT at 45 ms and no fabricated translation
+  measurement. Pause removed stale measurements; Resume first showed none,
+  then a fresh 51 ms sample. These values measure transport RTT, not translation
+  quality or audio-to-screen delay. The session was stopped before the update.
+- Rebuilt the canonical development app with the final provider source in
+  normal, non-auto-start mode. Exact executable and stable designated
+  requirement verified. Native UI confirmed idle, the prior Volcano profile
+  and selected application preserved, system audio enabled, microphone disabled.
+  Session history and audio recording remained disabled. No system grants or
+  credential values were changed and the installed formal app was not replaced.
+- The saved OpenAI profile's native connection check returned `serviceRejected`
+  in 1,537 ms. This generic result does not identify a specific provider reason
+  and does not establish live caption acceptance. The profile was not selected
+  or edited. Azure/Grok live output, sustained sessions, numerical end-to-end
+  latency and different-region comparisons remain outside this run's evidence.
+- All changes are delivered through a child PR into PR #235's branch. The
+  parent remains Draft, issue #230 remains open, and no release is published.
