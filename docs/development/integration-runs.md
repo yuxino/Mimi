@@ -1740,8 +1740,9 @@
 - Physical devices, sustained playback, forced network-loss recovery, semantic
   accuracy, numerical PC/Android latency, Intel Mac runtime and desktop installed
   updater transitions remain outside acceptance. OpenAI actual translation
-  remains blocked by the saved account's exhausted quota. Public release notes
-  summarize the limits and link to the detailed PR evidence.
+  remains blocked by the saved account's exhausted quota. Acceptance details
+  stay in this ledger and the PR evidence; release notes describe product changes
+  and restrictions that directly affect users.
 - After publication, simplified `docs/releases/v1.5.18.md` into ordinary
   user-facing changes, update instructions and brief known limits, and updated
   the GitHub release body. GitHub reports this release as immutable, so its
@@ -1750,3 +1751,7 @@
   unchanged. Rechecked the public body against this reviewed document and
   the updater notes against the original tagged document. Future releases
   should use the concise reviewed notes for both surfaces before publication.
+- Refined the public notes after the user's copy correction: removed personal
+  account-funding details and internal test coverage. Kept update instructions
+  and known product restrictions. This editorial change does not extend the
+  acceptance recorded above or alter the immutable release assets.
