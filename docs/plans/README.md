@@ -48,6 +48,8 @@ provider, merge or publish a later change.
 
 ## Service and language contracts
 
+- [Local recognition first-stage research](2026-10-10-local-recognition-first-stage.md)
+  — draft product goal, limited initial scope and runtime choices awaiting review.
 - [Custom speech recognition](2026-10-03-custom-speech-recognition.md)
   and [recognition/translation settings](2026-10-03-service-stage-settings.md)
   — independent stages, credentials and explicit checks.
