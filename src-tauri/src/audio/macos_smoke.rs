@@ -145,9 +145,8 @@ impl Metrics {
                 );
                 counters.buffers.fetch_add(1, Ordering::SeqCst);
                 counters.bytes.fetch_add(pcm.len() as u64, Ordering::SeqCst);
-                for sample in pcm.chunks_exact(2) {
-                    let value =
-                        i32::from(i16::from_le_bytes([sample[0], sample[1]])).unsigned_abs() as u64;
+                for sample in pcm.as_chunks::<2>().0 {
+                    let value = i32::from(i16::from_le_bytes(*sample)).unsigned_abs() as u64;
                     if value > 32 {
                         counters.audible.fetch_add(1, Ordering::SeqCst);
                     }

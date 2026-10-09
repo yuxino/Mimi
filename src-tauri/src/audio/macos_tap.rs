@@ -771,8 +771,8 @@ mod tests {
                     .all(|pcm| !pcm.is_empty() && pcm.len().is_multiple_of(2)));
                 assert!(buffers
                     .iter()
-                    .flat_map(|pcm| pcm.chunks_exact(2))
-                    .any(|bytes| i32::from(i16::from_le_bytes([bytes[0], bytes[1]])).abs() > 100));
+                    .flat_map(|pcm| pcm.as_chunks::<2>().0.iter())
+                    .any(|bytes| i32::from(i16::from_le_bytes(*bytes)).abs() > 100));
             }
             for rate in [0.0, -48_000.0, f64::NAN, f64::INFINITY, 48_000.5, 192_001.0] {
                 assert!(validate_format(&AudioStreamBasicDescription {
