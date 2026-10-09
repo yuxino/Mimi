@@ -45,22 +45,22 @@ This table describes the desktop app's configured requests on the main branch as
 
 Alibaba Cloud on desktop currently uses `qwen-mt-lite` by default. It does not automatically switch to `qwen-mt-flash` or `qwen-mt-plus` for different recognition languages. The default recognition service receives a continuous audio stream over WebSocket, while remote independent text translation sends recognized text over HTTP. Apple Translation runs locally. Changing text translation does not change the recognition model.
 
-Model and routing references: [Desktop service selection](../src-tauri/src/clients/translation_client.rs) · [Current translation modes](../src-tauri/src/core/configuration.rs) · [Provider protocols](../src-tauri/src/core/protocols/) · [Default Qwen-MT model](../src-tauri/src/core/protocols/qwen_mt.rs)
+Model and routing references: [Shared service selection](../shared/mimi-runtime/src/clients/translation_client.rs) · [Current translation modes](../shared/mimi-runtime/src/core/configuration.rs) · [Provider protocols](../shared/mimi-runtime/src/core/protocols/) · [Default Qwen-MT model](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
 
 ### Alibaba Cloud on Android
 
 | Android mode | Current default models and requests |
 | --- | --- |
-| Built-in recognition + translation | Connects to `qwen3.5-livetranslate-flash-realtime` and selects `qwen3-asr-flash-realtime` within the same session for original transcription |
-| Independent text translation / no translation | Uses `qwen3-asr-flash-realtime` for recognition only, then calls the selected text service if translation is needed |
+| Built-in recognition + translation | Uses the shared Audio3 recognizer (`qwen-audio-3.0-asr-flash-streaming`) and Qwen-MT; Lite is the default |
+| Independent text translation / no translation | Uses the same Audio3 recognizer, then the selected text service if translation is enabled |
 
-This differs from the desktop Audio 3.0 + Qwen-MT setup. Some Android services also offer advanced endpoint / model overrides. Alibaba Cloud's independent text translation and no-translation modes still use `qwen3-asr-flash-realtime`, regardless of a saved model override. See [Android DashScopeEngine](../android/app/src/main/java/app/yuxino/mimi/android/provider/DashScopeEngine.kt) and [platform parity](development/platform-parity.md).
+Production Android sessions use the same shared Rust provider factory as desktop. Historical Kotlin transport classes remain for offline regressions; their models are not the current production defaults. Saved advanced preferences do not override unsupported built-in transports. See [shared provider selection](../shared/mimi-runtime/src/clients/translation_client.rs) and [platform parity](development/platform-parity.md).
 
 ### Models used for independent text translation
 
 | Text translation service | What Mimi selects |
 | --- | --- |
-| Alibaba Cloud (desktop default) | `qwen-mt-lite` |
+| Alibaba Cloud (desktop and Android default) | `qwen-mt-lite` |
 | Apple Translation | macOS Translation framework and downloaded system resources; no cloud model ID |
 | DeepL | Official text translation API; Mimi does not specify `model_type` or a model ID |
 | DeepLX | The `/translate` service at the configured address; Mimi does not select its upstream model |
@@ -94,12 +94,12 @@ Links: [Beijing API Key management](https://bailian.console.aliyun.com/cn-beijin
 | --- | --- |
 | Desktop default recognition + translation | `qwen-audio-3.0-asr-flash-streaming` and `qwen-mt-lite` |
 | Desktop with independent text translation or Skip translation | Recognition still uses `qwen-audio-3.0-asr-flash-streaming`; configure translation for the selected service |
-| Android default recognition + translation | `qwen3.5-livetranslate-flash-realtime`, with `qwen3-asr-flash-realtime` transcribing the original in the same session |
-| Android with independent text translation or no translation | `qwen3-asr-flash-realtime`; configure translation for the selected service |
+| Android default recognition + translation | `qwen-audio-3.0-asr-flash-streaming` and `qwen-mt-lite` (same shared default as desktop) |
+| Android with independent text translation or no translation | `qwen-audio-3.0-asr-flash-streaming`; configure translation for the selected service |
 
-Use a **Model Studio / DashScope API key**, not an Alibaba Cloud AccessKey ID / AccessKey Secret pair. The built-in desktop configuration uses `dashscope.aliyuncs.com` and has no region or endpoint field; keys from other regions cannot be used interchangeably. See the [official region guidance](https://help.aliyun.com/zh/model-studio/regions) and [platform parity](development/platform-parity.md) for the model differences between Mimi's two platforms.
+Use a **Model Studio / DashScope API key**, not an Alibaba Cloud AccessKey ID / AccessKey Secret pair. The built-in configuration uses `dashscope.aliyuncs.com` and has no region or endpoint field; keys from other regions cannot be used interchangeably. See the [official region guidance](https://help.aliyun.com/zh/model-studio/regions) and [platform parity](development/platform-parity.md) for the shared behavior and remaining platform differences.
 
-Billing: the default desktop setup includes both speech recognition and text translation. Changing the text translation service still generates cloud recognition usage; whether it is charged depends on the recognition model's remaining trial allowance and billing status. Check [Model Studio pricing](https://help.aliyun.com/zh/model-studio/model-pricing) and the trial status of the models you use.
+Billing: the default setup on both platforms includes both speech recognition and text translation. Changing the text translation service still generates cloud recognition usage; whether it is charged depends on the recognition model's remaining trial allowance and billing status. Check [Model Studio pricing](https://help.aliyun.com/zh/model-studio/model-pricing) and the trial status of the models you use.
 
 <a id="volcano-engine"></a>
 
@@ -198,7 +198,7 @@ Links: [Azure Portal](https://portal.azure.com/) · [Microsoft Foundry](https://
 | Transcription Deployment | The actual deployment name for a compatible realtime transcription model in the same resource |
 | API Key | The key for this Azure OpenAI resource |
 
-**A deployment name can differ from the model name.** Copy the name from the deployment list. Enter only the resource root URL; do not append `/openai/v1` or an API path. Mimi currently accepts resource domains ending in `*.openai.azure.com`, `*.openai.azure.cn`, or `*.openai.azure.us`. An accepted domain does not mean the corresponding cloud or region offers the required models.
+**A deployment name can differ from the model name.** Copy the name from the deployment list. Azure also requires an existing deployment name for input transcription; see the [Azure-specific Realtime rule](https://learn.microsoft.com/en-us/azure/foundry/openai/realtime-audio-reference). Enter only the resource root URL; do not append `/openai/v1` or an API path. Mimi currently accepts resource domains ending in `*.openai.azure.com`, `*.openai.azure.cn`, or `*.openai.azure.us`. An accepted domain does not mean the corresponding cloud or region offers the required models.
 
 This service connects to **Azure OpenAI**, not an Azure Speech resource. A normal OpenAI API key, Speech key, or Azure subscription ID cannot replace the resource key here. Usage is billed to the Azure subscription; see [Azure OpenAI pricing](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/).
 
@@ -325,7 +325,7 @@ In configurations that support independent text translation, enable **Skip trans
 
 ## Android setup notes
 
-Android's eight built-in cloud speech services use the corresponding credentials described above. Android has no Apple Speech or custom recognition configuration options. See the [Alibaba Cloud table](#alibaba-cloud) for its model differences. Use other advanced endpoint or model overrides only when the service documentation explicitly confirms compatibility.
+Android's eight built-in cloud speech services use the corresponding credentials described above. Android has no Apple Speech or custom recognition configuration options. The [Alibaba Cloud table](#alibaba-cloud) describes the shared production models. Saved advanced settings do not imply that a built-in transport supports an override.
 
 On a phone, `127.0.0.1` refers to the phone itself. To connect to ChatMock or DeepLX on a computer, normally use that computer's HTTPS service address. Local HTTP on Android requires explicit opt-in. For emulator and USB development connections, see the [Android guide](../android/README.md#independent-text-translation).
 

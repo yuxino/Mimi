@@ -45,22 +45,22 @@
 
 桌面阿里当前默认使用 `qwen-mt-lite`，不会因识别语言不同自动切换到 `qwen-mt-flash` 或 `qwen-mt-plus`。默认识别经 WebSocket 持续送入音频，远程独立文字翻译通过 HTTP 发送识别文字，Apple 翻译则在本地执行；更换文字翻译不会更换识别模型。
 
-模型与路由依据：[桌面服务选择](../src-tauri/src/clients/translation_client.rs) · [当前翻译模式](../src-tauri/src/core/configuration.rs) · [各家协议实现](../src-tauri/src/core/protocols/) · [Qwen-MT 默认模型](../src-tauri/src/core/protocols/qwen_mt.rs)
+模型与路由依据：[共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/configuration.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols/) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
 
 ### Android 的阿里云链路
 
 | Android 使用方式 | 当前默认模型与调用方式 |
 | --- | --- |
-| 内置识别 + 翻译 | 连接 `qwen3.5-livetranslate-flash-realtime`，在同一会话中指定 `qwen3-asr-flash-realtime` 提供原文转写 |
-| 独立文字翻译 / 不翻译 | 以 `qwen3-asr-flash-realtime` 做纯识别；需要译文时，再调用所选文字服务 |
+| 内置识别 + 翻译 | 共享 Audio3 识别（`qwen-audio-3.0-asr-flash-streaming`）＋Qwen-MT，默认 Lite |
+| 独立文字翻译 / 不翻译 | 使用同一 Audio3 识别；启用翻译时调用所选文字服务 |
 
-这与桌面的 Audio 3.0 + Qwen-MT 链路不同。Android 部分服务提供高级端点 / 模型覆盖；阿里独立文字翻译或不翻译模式仍固定使用 `qwen3-asr-flash-realtime`，不采用保存的模型覆盖值。实现见 [Android DashScopeEngine](../android/app/src/main/java/app/yuxino/mimi/android/provider/DashScopeEngine.kt) 和[平台差异](development/platform-parity.md)。
+Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotlin 传输类保留用于离线回归，其中的模型不是当前正式链路的默认模型。保存的高级设置不会覆盖内置链路不支持的端点或模型。实现见[共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs)和[平台差异](development/platform-parity.md)。
 
 ### 独立文字翻译用什么模型
 
 | 文字翻译服务 | Mimi 实际选择 |
 | --- | --- |
-| Alibaba Cloud（桌面默认） | `qwen-mt-lite` |
+| Alibaba Cloud（桌面与 Android 默认） | `qwen-mt-lite` |
 | Apple 翻译 | macOS Translation 框架与已下载的系统资源；无云端模型 ID |
 | DeepL | 官方文本翻译 API；Mimi 不指定 `model_type` 或模型 ID |
 | DeepLX | 配置地址提供的 `/translate` 服务；Mimi 不选择其上游模型 |
@@ -94,12 +94,12 @@
 | --- | --- |
 | 桌面端默认识别 + 翻译 | `qwen-audio-3.0-asr-flash-streaming` 和 `qwen-mt-lite` |
 | 桌面端使用独立文字翻译或跳过翻译 | 识别仍使用 `qwen-audio-3.0-asr-flash-streaming`；翻译按所选服务配置 |
-| Android 默认识别 + 翻译 | `qwen3.5-livetranslate-flash-realtime`，同一会话用 `qwen3-asr-flash-realtime` 转写原文 |
-| Android 使用独立文字翻译或不翻译 | `qwen3-asr-flash-realtime`；翻译按所选服务配置 |
+| Android 默认识别 + 翻译 | `qwen-audio-3.0-asr-flash-streaming` 和 `qwen-mt-lite`（与桌面共享默认链路） |
+| Android 使用独立文字翻译或不翻译 | `qwen-audio-3.0-asr-flash-streaming`；翻译按所选服务配置 |
 
-这里需要的是**百炼 / DashScope API Key**，不要填阿里云 AccessKey ID / AccessKey Secret。桌面内置配置使用 `dashscope.aliyuncs.com`，没有地域或端点输入框；其他地域的 Key 不能直接混用。地域对应关系见[官方地域说明](https://help.aliyun.com/zh/model-studio/regions)，Mimi 两个平台的模型差异见[平台差异](development/platform-parity.md)。
+这里需要的是**百炼 / DashScope API Key**，不要填阿里云 AccessKey ID / AccessKey Secret。内置配置使用 `dashscope.aliyuncs.com`，没有地域或端点输入框；其他地域的 Key 不能直接混用。地域对应关系见[官方地域说明](https://help.aliyun.com/zh/model-studio/regions)，共享链路及剩余平台差异见[平台差异](development/platform-parity.md)。
 
-计费：默认桌面链路包含语音识别和文字翻译两部分。更换文字翻译服务后，云端识别仍会产生用量，是否扣费取决于识别模型的试用余量和计费状态。查看[百炼模型计费](https://help.aliyun.com/zh/model-studio/model-pricing)及所用模型的试用状态。
+计费：两个平台的默认链路均包含语音识别和文字翻译两部分。更换文字翻译服务后，云端识别仍会产生用量，是否扣费取决于识别模型的试用余量和计费状态。查看[百炼模型计费](https://help.aliyun.com/zh/model-studio/model-pricing)及所用模型的试用状态。
 
 <a id="volcano-engine"></a>
 
@@ -198,7 +198,7 @@ Mimi 当前调用 `gpt-realtime-translate`，同时使用 `gpt-realtime-whisper`
 | 转写部署名称 | 同一资源内兼容实时转写模型的实际部署名 |
 | API Key | 该 Azure OpenAI 资源的 Key |
 
-**部署名可以与模型名不同**，请复制部署列表中的名称。端点只填资源根地址，不要附加 `/openai/v1` 或 API 路径。Mimi 当前接受 `*.openai.azure.com`、`*.openai.azure.cn`、`*.openai.azure.us` 资源域名；域名被接受不代表该云或地域已经开放对应模型。
+**部署名可以与模型名不同**，请复制部署列表中的名称。原文转写也必须使用实际部署名，见[微软的 Azure Realtime 专用规则](https://learn.microsoft.com/en-us/azure/foundry/openai/realtime-audio-reference)。端点只填资源根地址，不要附加 `/openai/v1` 或 API 路径。Mimi 当前接受 `*.openai.azure.com`、`*.openai.azure.cn`、`*.openai.azure.us` 资源域名；域名被接受不代表该云或地域已经开放对应模型。
 
 Mimi 这项服务接的是 **Azure OpenAI**，不是 Azure Speech 资源。普通 OpenAI API Key、Speech Key 或 Azure 订阅 ID 都不能代替这里的资源 Key。用量计入 Azure 订阅，见[Azure OpenAI 定价](https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/)。
 
@@ -325,7 +325,7 @@ Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引�
 
 ## Android 配置时注意
 
-Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple Speech 或两种自定义识别配置入口。阿里的模型差异见[阿里云表格](#alibaba-cloud)；其他高级端点或模型覆盖仅在服务文档明确兼容时使用。
+Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple Speech 或两种自定义识别配置入口。[阿里云表格](#alibaba-cloud)列出当前共享模型；保存的高级设置不代表内置链路支持覆盖端点或模型。
 
 手机里的 `127.0.0.1` 指手机自己。连接电脑上的 ChatMock / DeepLX 时，通常使用电脑的 HTTPS 服务地址；Android 的本机 HTTP 需要主动允许。模拟器和 USB 开发连接方法见 [Android 指南](../android/README.md#independent-text-translation)。
 

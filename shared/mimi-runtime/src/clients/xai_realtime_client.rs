@@ -1,7 +1,7 @@
 //! xAI Grok Voice WebSocket adapter for turn-based translation.
 
 use crate::clients::provider_events::ProviderEventSender;
-use crate::core::models::TargetLanguage;
+use crate::core::models::{TargetLanguage, UtteranceRole};
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use crate::core::protocols::xai_realtime::{
     XAIRealtimeEndpoint, XAIRealtimeRequestEncoder, XAIRealtimeServerEvent,
@@ -26,9 +26,11 @@ const GENERIC_FINISH_TIMEOUT_ERROR: &str = "xAI Grok Voice did not finish the fi
 const GENERIC_RESPONSE_FAILED_ERROR: &str = "xAI Grok Voice did not complete the current turn.";
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAXIMUM_TRANSCRIPT_BYTES: usize = 128 * 1_024;
-const SERVER_VAD_TAIL_FRAME_COUNT: usize = (XAIRealtimeEndpoint::SERVER_VAD_SILENCE_DURATION_MS
-    as usize)
-    .div_ceil(XAIRealtimeEndpoint::FRAME_DURATION_MS as usize);
+// The official live-interpreter cookbook sends 1.5 seconds of trailing audio.
+// This is a local finish strategy, not a configured/known server-VAD threshold.
+const FINISH_TAIL_SILENCE_MS: u32 = 1_500;
+const FINISH_TAIL_FRAME_COUNT: usize =
+    (FINISH_TAIL_SILENCE_MS as usize).div_ceil(XAIRealtimeEndpoint::FRAME_DURATION_MS as usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum XAIRealtimeClientError {
@@ -65,12 +67,19 @@ struct GrokTurnState {
     source: String,
     source_language: Option<String>,
     source_complete: bool,
+    source_committed: bool,
+    speech_active: bool,
     response_id: Option<String>,
     translation: String,
     translation_complete: bool,
+    response_complete: bool,
     discard_current_turn: bool,
     discarded_item_id: Option<String>,
     pending_next_source: Option<PendingGrokSource>,
+    retired_source_ids: std::collections::VecDeque<String>,
+    retired_response_ids: std::collections::VecDeque<String>,
+    pairing_ambiguous: bool,
+    discarded_pending_response: bool,
 }
 
 struct PendingGrokSource {
@@ -78,11 +87,23 @@ struct PendingGrokSource {
     transcript: String,
     language: Option<String>,
     completed: bool,
+    committed: bool,
+    speech_active: bool,
 }
 
 impl GrokTurnState {
     fn reset(&mut self) {
         *self = Self::default();
+    }
+
+    fn reset_content(&mut self) {
+        let retired_source_ids = std::mem::take(&mut self.retired_source_ids);
+        let retired_response_ids = std::mem::take(&mut self.retired_response_ids);
+        let discarded_pending_response = self.discarded_pending_response;
+        self.reset();
+        self.retired_source_ids = retired_source_ids;
+        self.retired_response_ids = retired_response_ids;
+        self.discarded_pending_response = discarded_pending_response;
     }
 
     fn clear_content(&mut self) {
@@ -95,7 +116,10 @@ impl GrokTurnState {
             .item_id
             .clone()
             .or_else(|| self.discarded_item_id.clone());
-        self.reset();
+        let response_id = self.response_id.clone();
+        self.retire_pending_source();
+        self.reset_content();
+        self.response_id = response_id;
         self.discard_current_turn = discard;
         self.discarded_item_id = item_id;
     }
@@ -107,13 +131,25 @@ impl GrokTurnState {
         language: Option<String>,
         completed: bool,
     ) -> Vec<LiveTranslateServerEvent> {
+        if item_id
+            .as_ref()
+            .is_some_and(|id| self.retired_source_ids.contains(id))
+        {
+            return Vec::new();
+        }
+        if self.reject_source_while_discarded_response_is_pending(item_id.as_deref()) {
+            return Vec::new();
+        }
         if self.discard_current_turn {
             return self.update_pending_next_source(transcript, item_id, language, completed);
         }
         if identifiers_conflict(self.item_id.as_deref(), item_id.as_deref()) {
-            // Grok turns are sequential. A new item means an incomplete old
-            // pair can no longer be aligned safely, so discard it.
-            self.reset();
+            // VAD may start the next input before the preceding response ends.
+            // Keep its source separate until that response's terminal event.
+            if self.response_id.is_some() || self.source_committed || self.source_complete {
+                return self.update_pending_next_source(transcript, item_id, language, completed);
+            }
+            self.advance_turn();
         }
         if item_id.is_some() {
             self.item_id = item_id;
@@ -123,36 +159,68 @@ impl GrokTurnState {
             self.source_language = language;
         }
         self.source_complete |= completed;
+        self.source_committed |= completed;
+        if completed {
+            self.speech_active = false;
+        }
 
         if self.exceeded_safety_limit() {
             return self.safety_limit_error();
         }
 
-        let mut events = if self.source.is_empty() {
-            Vec::new()
-        } else {
-            vec![LiveTranslateServerEvent::SourceDraft {
-                text: self.source.clone(),
-                language: self.source_language.clone(),
-            }]
-        };
+        let mut events = self
+            .item_id
+            .as_ref()
+            .filter(|_| !self.source.is_empty())
+            .map(|item_id| {
+                vec![LiveTranslateServerEvent::UtteranceText {
+                    utterance_id: item_id.clone(),
+                    role: UtteranceRole::Source,
+                    text: self.source.clone(),
+                    is_final: false,
+                    language: self.source_language.clone(),
+                }]
+            })
+            .unwrap_or_default();
         if let Some(pair) = self.take_pair_if_complete() {
             events.push(pair);
         }
         events
     }
 
-    fn response_started(&mut self, response_id: Option<String>) {
-        if self.discard_current_turn {
-            return;
+    fn response_started(&mut self, response_id: Option<String>) -> bool {
+        let Some(response_id) = response_id else {
+            return false;
+        };
+        if self.retired_response_ids.contains(&response_id) {
+            return false;
         }
-        if identifiers_conflict(self.response_id.as_deref(), response_id.as_deref()) {
-            self.translation.clear();
-            self.translation_complete = false;
+        if identifiers_conflict(self.response_id.as_deref(), Some(&response_id)) {
+            self.advance_turn();
         }
-        if response_id.is_some() {
-            self.response_id = response_id;
+        self.response_id = Some(response_id);
+        if self.item_id.is_none() {
+            // The response carries no input item identity. Without a known
+            // input boundary it cannot safely borrow a later source transcript.
+            self.discard_current_turn = true;
         }
+        !self.discard_current_turn
+    }
+
+    fn accepts_response(&mut self, response_id: Option<String>) -> bool {
+        let Some(id) = response_id else { return false };
+        if self.retired_response_ids.contains(&id)
+            || identifiers_conflict(self.response_id.as_deref(), Some(&id))
+        {
+            return false;
+        }
+        if self.response_id.is_none() {
+            self.response_id = Some(id);
+        }
+        if self.item_id.is_none() {
+            self.discard_current_turn = true;
+        }
+        !self.discard_current_turn
     }
 
     fn append_translation(
@@ -160,10 +228,9 @@ impl GrokTurnState {
         delta: String,
         response_id: Option<String>,
     ) -> Vec<LiveTranslateServerEvent> {
-        if self.discard_current_turn {
+        if !self.accepts_response(response_id) {
             return Vec::new();
         }
-        self.response_started(response_id);
         if delta.is_empty() {
             return Vec::new();
         }
@@ -171,9 +238,7 @@ impl GrokTurnState {
         if self.exceeded_safety_limit() {
             return self.safety_limit_error();
         }
-        vec![LiveTranslateServerEvent::TranslationDraft(
-            self.translation.clone(),
-        )]
+        self.translation_preview().into_iter().collect()
     }
 
     fn complete_translation(
@@ -181,10 +246,9 @@ impl GrokTurnState {
         final_transcript: Option<String>,
         response_id: Option<String>,
     ) -> Vec<LiveTranslateServerEvent> {
-        if self.discard_current_turn {
+        if !self.accepts_response(response_id) {
             return Vec::new();
         }
-        self.response_started(response_id);
         let mut events = Vec::new();
         if let Some(final_transcript) = final_transcript.filter(|text| !text.is_empty()) {
             if self.translation != final_transcript {
@@ -192,9 +256,7 @@ impl GrokTurnState {
                 if self.exceeded_safety_limit() {
                     return self.safety_limit_error();
                 }
-                events.push(LiveTranslateServerEvent::TranslationDraft(
-                    self.translation.clone(),
-                ));
+                events.extend(self.translation_preview());
             }
         }
         self.translation_complete = true;
@@ -204,65 +266,190 @@ impl GrokTurnState {
         events
     }
 
+    fn translation_preview(&self) -> Option<LiveTranslateServerEvent> {
+        self.item_id
+            .as_ref()
+            .map(|item_id| LiveTranslateServerEvent::UtteranceText {
+                utterance_id: item_id.clone(),
+                role: UtteranceRole::Translation,
+                text: self.translation.clone(),
+                // Transcript completion is still a preview until response.done
+                // confirms success. Marking this final would bypass that gate.
+                is_final: false,
+                language: None,
+            })
+    }
+
+    #[cfg(test)]
     fn response_done(&mut self, response_id: Option<String>) -> Vec<LiveTranslateServerEvent> {
-        if self.discard_current_turn {
+        self.finish_response(response_id, true).unwrap_or_default()
+    }
+
+    fn finish_response(
+        &mut self,
+        response_id: Option<String>,
+        successful: bool,
+    ) -> Option<Vec<LiveTranslateServerEvent>> {
+        let response_id = response_id?;
+        if self.retired_response_ids.contains(&response_id)
+            || identifiers_conflict(self.response_id.as_deref(), Some(&response_id))
+        {
+            return None;
+        }
+        self.response_id = Some(response_id);
+        if self.item_id.is_none() {
+            self.discard_current_turn = true;
+        }
+        if self.discard_current_turn || !successful {
             // A new source item can arrive before the discarded response has
             // finished. Promote that source only after the provider's
             // definitive response boundary so late translation events from the
             // oversized turn can never be paired with it.
-            let pending_next_source = self.pending_next_source.take();
-            self.reset();
-            if let Some(pending) = pending_next_source {
-                self.item_id = Some(pending.item_id);
-                self.source = pending.transcript;
-                self.source_language = pending.language;
-                self.source_complete = pending.completed;
+            // The active/discarded A boundary comes first. The next discarded
+            // response, which has no retained input, resolves discarded B.
+            if self.item_id.is_none() && self.discarded_item_id.is_none() {
+                self.discarded_pending_response = false;
             }
-            return Vec::new();
+            self.advance_turn();
+            return Some(Vec::new());
         }
-        self.response_started(response_id);
         self.translation_complete = true;
-        self.take_pair_if_complete().into_iter().collect()
+        self.response_complete = true;
+        Some(self.take_pair_if_complete().into_iter().collect())
     }
 
     fn take_pair_if_complete(&mut self) -> Option<LiveTranslateServerEvent> {
         if !self.source_complete
             || !self.translation_complete
-            || !is_meaningful(&self.source)
-            || !is_meaningful(&self.translation)
+            || !self.response_complete
+            || self.item_id.is_none()
         {
             return None;
         }
-        let event = LiveTranslateServerEvent::SubtitleFinalPair {
-            source: self.source.trim().to_string(),
-            language: self.source_language.clone(),
-            translation: self.translation.trim().to_string(),
-        };
-        self.reset();
-        Some(event)
+        let event = (is_meaningful(&self.source) && is_meaningful(&self.translation)).then(|| {
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: self.item_id.clone().unwrap(),
+                source: self.source.trim().to_string(),
+                language: self.source_language.clone(),
+                translation: self.translation.trim().to_string(),
+            }
+        });
+        self.advance_turn();
+        event
     }
 
     fn exceeded_safety_limit(&self) -> bool {
         self.source.len().saturating_add(self.translation.len()) > MAXIMUM_TRANSCRIPT_BYTES
     }
 
-    fn awaits_response_for_promoted_source(&self) -> bool {
-        self.item_id.is_some()
-            && self.source_complete
-            && is_meaningful(&self.source)
-            && self.response_id.is_none()
-            && self.translation.is_empty()
+    fn has_unfinished_turn(&self) -> bool {
+        self.speech_active
+            || self.discarded_pending_response
+            || self.source_committed
+            || self.response_id.is_some()
+            || self.pending_next_source.is_some()
+    }
+
+    fn advance_turn(&mut self) {
+        let pending = self.pending_next_source.take();
+        if let Some(id) = self
+            .item_id
+            .take()
+            .or_else(|| self.discarded_item_id.take())
+        {
+            remember_retired_id(&mut self.retired_source_ids, id);
+        }
+        if let Some(id) = self.response_id.take() {
+            remember_retired_id(&mut self.retired_response_ids, id);
+        }
+        self.reset_content();
+        if let Some(pending) = pending {
+            self.item_id = Some(pending.item_id);
+            self.source = pending.transcript;
+            self.source_language = pending.language;
+            self.source_complete = pending.completed;
+            self.source_committed = pending.committed;
+            self.speech_active = pending.speech_active;
+        }
+    }
+
+    fn input_boundary(&mut self, item_id: Option<String>, committed: bool) {
+        let Some(item_id) = item_id else { return };
+        if self.retired_source_ids.contains(&item_id) {
+            return;
+        }
+        if self.reject_source_while_discarded_response_is_pending(Some(&item_id)) {
+            return;
+        }
+        if self.item_id.as_deref() == Some(&item_id) {
+            self.source_committed |= committed;
+            self.speech_active = !committed;
+            return;
+        }
+        if self.discard_current_turn
+            || self.response_id.is_some()
+            || self.source_committed
+            || self.source_complete
+        {
+            self.update_pending_next_source(String::new(), Some(item_id.clone()), None, false);
+            if let Some(pending) = self
+                .pending_next_source
+                .as_mut()
+                .filter(|pending| pending.item_id == item_id)
+            {
+                pending.committed |= committed;
+                pending.speech_active = !committed;
+            }
+        } else {
+            self.advance_turn();
+            self.item_id = Some(item_id);
+            self.source_committed = committed;
+            self.speech_active = !committed;
+        }
     }
 
     fn safety_limit_error(&mut self) -> Vec<LiveTranslateServerEvent> {
         let discarded_item_id = self.item_id.clone();
-        self.reset();
+        let response_id = self.response_id.clone();
+        self.retire_pending_source();
+        self.reset_content();
+        self.response_id = response_id;
         self.discard_current_turn = true;
         self.discarded_item_id = discarded_item_id;
         vec![LiveTranslateServerEvent::Error {
             code: "xai_transcript_safety_limit".into(),
             message: "xAI Grok Voice transcript buffering exceeded its safety limit.".into(),
         }]
+    }
+
+    fn retire_pending_source(&mut self) {
+        if let Some(pending) = self.pending_next_source.take() {
+            self.discarded_pending_response = true;
+            remember_retired_id(&mut self.retired_source_ids, pending.item_id);
+        }
+    }
+
+    fn reject_source_while_discarded_response_is_pending(&mut self, item_id: Option<&str>) -> bool {
+        if !self.discarded_pending_response {
+            return false;
+        }
+        let Some(item_id) = item_id else {
+            return true;
+        };
+        if self.item_id.as_deref() == Some(item_id) {
+            return false;
+        }
+        if self.discarded_item_id.as_deref() == Some(item_id)
+            || self.retired_source_ids.iter().any(|id| id == item_id)
+        {
+            return true;
+        }
+        // C precedes a response for discarded B. Since responses carry no input
+        // identity, borrowing C would be a guess. Recover once with no text.
+        self.reset_content();
+        self.discard_current_turn = true;
+        self.pairing_ambiguous = true;
+        true
     }
 
     fn update_pending_next_source(
@@ -275,14 +462,28 @@ impl GrokTurnState {
         let Some(item_id) = item_id else {
             return Vec::new();
         };
-        let Some(discarded_item_id) = self.discarded_item_id.as_deref() else {
+        if (self.discard_current_turn && self.discarded_item_id.is_none())
+            || self.discarded_item_id.as_deref() == Some(&item_id)
+            || self.retired_source_ids.contains(&item_id)
+        {
             return Vec::new();
-        };
-        if item_id == discarded_item_id {
+        }
+        if self
+            .pending_next_source
+            .as_ref()
+            .is_some_and(|pending| pending.item_id != item_id)
+        {
+            // Check identity before size: an oversized second pending item
+            // cannot be collapsed into a single discarded-response tombstone.
+            self.reset_content();
+            self.discard_current_turn = true;
+            self.pairing_ambiguous = true;
             return Vec::new();
         }
         if transcript.len() > MAXIMUM_TRANSCRIPT_BYTES {
-            self.pending_next_source = None;
+            self.retire_pending_source();
+            self.discarded_pending_response = true;
+            remember_retired_id(&mut self.retired_source_ids, item_id);
             return vec![LiveTranslateServerEvent::Error {
                 code: "xai_transcript_safety_limit".into(),
                 message: "xAI Grok Voice transcript buffering exceeded its safety limit.".into(),
@@ -290,12 +491,18 @@ impl GrokTurnState {
         }
 
         match self.pending_next_source.as_mut() {
-            Some(pending) if pending.item_id == item_id => {
-                pending.transcript = transcript;
+            Some(pending) => {
+                if !transcript.is_empty() || completed {
+                    pending.transcript = transcript;
+                }
                 if language.is_some() {
                     pending.language = language;
                 }
                 pending.completed |= completed;
+                pending.committed |= completed;
+                if completed {
+                    pending.speech_active = false;
+                }
             }
             _ => {
                 self.pending_next_source = Some(PendingGrokSource {
@@ -303,6 +510,8 @@ impl GrokTurnState {
                     transcript,
                     language,
                     completed,
+                    committed: completed,
+                    speech_active: !completed,
                 });
             }
         }
@@ -311,13 +520,23 @@ impl GrokTurnState {
             .as_ref()
             .filter(|pending| !pending.transcript.is_empty())
             .map(|pending| {
-                vec![LiveTranslateServerEvent::SourceDraft {
+                vec![LiveTranslateServerEvent::UtteranceText {
+                    utterance_id: pending.item_id.clone(),
+                    role: UtteranceRole::Source,
                     text: pending.transcript.clone(),
+                    is_final: false,
                     language: pending.language.clone(),
                 }]
             })
             .unwrap_or_default()
     }
+}
+
+fn remember_retired_id(ids: &mut std::collections::VecDeque<String>, id: String) {
+    if ids.len() == 4 {
+        ids.pop_front();
+    }
+    ids.push_back(id);
 }
 
 fn identifiers_conflict(current: Option<&str>, incoming: Option<&str>) -> bool {
@@ -339,7 +558,6 @@ struct Inner {
     turn: Mutex<GrokTurnState>,
     ready: AtomicBool,
     is_closing: AtomicBool,
-    has_unfinished_turn: AtomicBool,
     last_response_failed: AtomicBool,
     finish_transport_failed: AtomicBool,
     response_done_notify: Notify,
@@ -421,7 +639,6 @@ impl XAIRealtimeClient {
                 turn: Mutex::new(GrokTurnState::default()),
                 ready: AtomicBool::new(false),
                 is_closing: AtomicBool::new(false),
-                has_unfinished_turn: AtomicBool::new(false),
                 last_response_failed: AtomicBool::new(false),
                 finish_transport_failed: AtomicBool::new(false),
                 response_done_notify: Notify::new(),
@@ -477,9 +694,6 @@ impl XAIRealtimeClient {
         *self.inner.sink.lock().await = Some(sink);
         self.inner.ready.store(false, Ordering::SeqCst);
         self.inner.is_closing.store(false, Ordering::SeqCst);
-        self.inner
-            .has_unfinished_turn
-            .store(false, Ordering::SeqCst);
         self.inner
             .last_response_failed
             .store(false, Ordering::SeqCst);
@@ -558,9 +772,6 @@ impl XAIRealtimeClient {
             pending.extend_from_slice(pcm_data);
             take_complete_audio_messages(&mut pending)?
         };
-        if !messages.is_empty() {
-            self.inner.has_unfinished_turn.store(true, Ordering::SeqCst);
-        }
         for message in messages {
             self.send_text(message).await?;
         }
@@ -594,9 +805,10 @@ impl XAIRealtimeClient {
     }
 
     /// In server-VAD mode xAI explicitly disallows
-    /// `input_audio_buffer.commit`. Drain the local frame buffer, append enough
-    /// silence to trigger the configured VAD boundary, then wait a bounded
-    /// amount of time for the current turn's `response.done` before closing.
+    /// `input_audio_buffer.commit`. Drain the local frame buffer, append the
+    /// cookbook's bounded silence tail, then wait a bounded
+    /// amount of time for trailing VAD/input/response events before closing.
+    /// A preceding `response.done` cannot acknowledge subsequently sent audio.
     pub async fn finish(&self, timeout: Duration) {
         if !self.inner.ready.load(Ordering::SeqCst)
             || self.inner.is_closing.swap(true, Ordering::SeqCst)
@@ -618,14 +830,22 @@ impl XAIRealtimeClient {
                     false
                 }
                 Err(_) if self.is_current_generation(generation) => {
-                    self.emit(
-                        LiveTranslateServerEvent::Error {
-                            code: "xai_session_finish_timeout".into(),
-                            message: GENERIC_FINISH_TIMEOUT_ERROR.into(),
-                        },
-                        generation,
-                    );
-                    false
+                    // A PCM frame does not imply a VAD speech turn. Keep the
+                    // socket alive for the existing deadline so a preceding
+                    // response.done cannot hide late events for trailing audio.
+                    let unfinished = self.inner.turn.lock().await.has_unfinished_turn();
+                    if unfinished {
+                        self.emit(
+                            LiveTranslateServerEvent::Error {
+                                code: "xai_session_finish_timeout".into(),
+                                message: GENERIC_FINISH_TIMEOUT_ERROR.into(),
+                            },
+                            generation,
+                        );
+                    }
+                    !unfinished
+                        && !self.inner.last_response_failed.load(Ordering::SeqCst)
+                        && !self.inner.finish_transport_failed.load(Ordering::SeqCst)
                 }
                 _ => false,
             };
@@ -648,7 +868,6 @@ impl XAIRealtimeClient {
             take_padded_audio_message(&mut pending)?
         };
         if let Some(message) = partial {
-            self.inner.has_unfinished_turn.store(true, Ordering::SeqCst);
             self.send_text(message).await?;
         }
         let silence = XAIRealtimeRequestEncoder::audio_append(&vec![
@@ -657,18 +876,19 @@ impl XAIRealtimeClient {
         ])
         .map_err(|_| XAIRealtimeClientError::TransportFailure)?
         .to_string();
-        for _ in 0..SERVER_VAD_TAIL_FRAME_COUNT {
+        for _ in 0..FINISH_TAIL_FRAME_COUNT {
             self.send_text(silence.clone()).await?;
         }
 
-        while self.is_current_generation(generation)
-            && self.inner.has_unfinished_turn.load(Ordering::SeqCst)
-        {
+        while self.is_current_generation(generation) {
             let done = self.inner.response_done_notify.notified();
             tokio::pin!(done);
             done.as_mut().enable();
-            if !self.inner.has_unfinished_turn.load(Ordering::SeqCst) {
+            if !self.is_current_generation(generation) {
                 break;
+            }
+            if self.inner.finish_transport_failed.load(Ordering::SeqCst) {
+                return Err(XAIRealtimeClientError::TransportFailure);
             }
             done.await;
         }
@@ -682,9 +902,6 @@ impl XAIRealtimeClient {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
         self.inner.ready.store(false, Ordering::SeqCst);
         self.inner.is_closing.store(false, Ordering::SeqCst);
-        self.inner
-            .has_unfinished_turn
-            .store(false, Ordering::SeqCst);
         self.inner
             .last_response_failed
             .store(false, Ordering::SeqCst);
@@ -822,10 +1039,6 @@ async fn fail_receive_loop(context: &ReceiveContext, code: &str, message: &str) 
             .finish_transport_failed
             .store(true, Ordering::SeqCst);
     }
-    context
-        .inner
-        .has_unfinished_turn
-        .store(false, Ordering::SeqCst);
     context.inner.response_done_notify.notify_waiters();
     if *context.setup.borrow() == SetupState::Awaiting {
         let _ = context.setup.send(SetupState::Rejected);
@@ -854,6 +1067,8 @@ async fn handle_server_event(context: &ReceiveContext, event: XAIRealtimeServerE
                 | XAIRealtimeServerEvent::ResponseStarted { .. }
                 | XAIRealtimeServerEvent::TranslationDelta { .. }
                 | XAIRealtimeServerEvent::TranslationDone { .. }
+                | XAIRealtimeServerEvent::SpeechStarted { .. }
+                | XAIRealtimeServerEvent::SourceCommitted { .. }
         )
     {
         return false;
@@ -898,6 +1113,22 @@ async fn handle_server_event(context: &ReceiveContext, event: XAIRealtimeServerE
                 .update_source(transcript, item_id, language, false);
             emit_all_if_current(context, events);
         }
+        XAIRealtimeServerEvent::SpeechStarted { item_id } => {
+            context
+                .inner
+                .turn
+                .lock()
+                .await
+                .input_boundary(item_id, false);
+        }
+        XAIRealtimeServerEvent::SourceCommitted { item_id } => {
+            context
+                .inner
+                .turn
+                .lock()
+                .await
+                .input_boundary(item_id, true);
+        }
         XAIRealtimeServerEvent::SourceTranscriptCompleted {
             transcript,
             item_id,
@@ -912,13 +1143,12 @@ async fn handle_server_event(context: &ReceiveContext, event: XAIRealtimeServerE
             emit_all_if_current(context, events);
         }
         XAIRealtimeServerEvent::ResponseStarted { response_id } => {
-            context
-                .inner
-                .last_response_failed
-                .store(false, Ordering::SeqCst);
             let mut turn = context.inner.turn.lock().await;
-            turn.response_started(response_id);
-            if !turn.discard_current_turn {
+            if turn.response_started(response_id) {
+                context
+                    .inner
+                    .last_response_failed
+                    .store(false, Ordering::SeqCst);
                 emit_if_current(context, LiveTranslateServerEvent::TranslationStarted);
             }
         }
@@ -948,25 +1178,24 @@ async fn handle_server_event(context: &ReceiveContext, event: XAIRealtimeServerE
             response_id,
             status,
         } => {
-            let successful = status.as_deref().is_none_or(|status| status == "completed");
-            if successful {
-                let (events, has_followup_turn) = {
-                    let mut turn = context.inner.turn.lock().await;
-                    let events = turn.response_done(response_id);
-                    let has_followup_turn = turn.awaits_response_for_promoted_source();
-                    (events, has_followup_turn)
-                };
-                emit_all_if_current(context, events);
+            let successful = status.as_deref() == Some("completed");
+            let cancelled = status.as_deref() == Some("cancelled");
+            let events = context
+                .inner
+                .turn
+                .lock()
+                .await
+                .finish_response(response_id, successful);
+            let Some(events) = events else {
+                return false;
+            };
+            emit_all_if_current(context, events);
+            if successful || cancelled {
                 context
                     .inner
                     .last_response_failed
                     .store(false, Ordering::SeqCst);
-                context
-                    .inner
-                    .has_unfinished_turn
-                    .store(has_followup_turn, Ordering::SeqCst);
             } else {
-                context.inner.turn.lock().await.reset();
                 context
                     .inner
                     .last_response_failed
@@ -978,10 +1207,6 @@ async fn handle_server_event(context: &ReceiveContext, event: XAIRealtimeServerE
                         message: GENERIC_RESPONSE_FAILED_ERROR.into(),
                     },
                 );
-                context
-                    .inner
-                    .has_unfinished_turn
-                    .store(false, Ordering::SeqCst);
             }
             context.inner.response_done_notify.notify_waiters();
         }
@@ -1011,6 +1236,10 @@ async fn handle_server_event(context: &ReceiveContext, event: XAIRealtimeServerE
         XAIRealtimeServerEvent::Ignored { kind } => {
             emit_if_current(context, LiveTranslateServerEvent::Ignored { kind });
         }
+    }
+    if context.inner.turn.lock().await.pairing_ambiguous {
+        fail_receive_loop(context, "transport_error", GENERIC_PROTOCOL_ERROR).await;
+        return true;
     }
     false
 }
@@ -1101,9 +1330,14 @@ mod tests {
         assert!(turn.response_done(Some("old-response".into())).is_empty());
         assert!(!turn.discard_current_turn);
         turn.response_started(Some("new-response".into()));
-        let events =
+        let previews =
             turn.complete_translation(Some("new translation".into()), Some("new-response".into()));
-        assert!(events.iter().any(|event| matches!(event, LiveTranslateServerEvent::SubtitleFinalPair {source,translation,..}
+        assert!(!previews.iter().any(|event| matches!(
+            event,
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. }
+        )));
+        let events = turn.response_done(Some("new-response".into()));
+        assert!(events.iter().any(|event| matches!(event, LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {source,translation,..}
             if source == "new source" && translation == "new translation")));
         drop(turn);
         assert!(matches!(
@@ -1153,6 +1387,115 @@ mod tests {
         )
     }
 
+    #[tokio::test]
+    async fn interrupted_response_cannot_pair_its_translation_with_the_next_source() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"First source."}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"response.output_audio_transcript.delta","response_id":"response_a","delta":"First translation."}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_b","transcript":"Second source."}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_a","transcript":"First translation."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_a","status":"cancelled"}}"#,
+                    r#"{"type":"response.created","response":{"id":"response_b"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_b","transcript":"Second translation."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_b","status":"completed"}}"#,
+                ] {
+                    socket.send(Message::Text(event.into())).await.unwrap();
+                }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client.connect().await.unwrap();
+        let mut pairs = Vec::new();
+        let mut errors = Vec::new();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            match event {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                    source,
+                    translation,
+                    ..
+                } => {
+                    pairs.push((source, translation));
+                }
+                LiveTranslateServerEvent::Error { code, .. } => errors.push(code),
+                _ => {}
+            }
+        }
+        client.disconnect().await;
+        assert_eq!(
+            pairs,
+            [("Second source.".into(), "Second translation.".into())]
+        );
+        assert!(
+            errors.is_empty(),
+            "normal VAD cancellation must not fail the session"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_response_does_not_confirm_its_completed_transcript() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"First source."}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_a","transcript":"Unconfirmed translation."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_a","status":"failed"}}"#,
+                ] {
+                    socket.send(Message::Text(event.into())).await.unwrap();
+                }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client.connect().await.unwrap();
+        let mut pairs = Vec::new();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            if let LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. } = event {
+                pairs.push(event);
+            }
+        }
+        client.disconnect().await;
+        assert!(pairs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn silence_only_audio_finishes_without_a_response_timeout_error() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                while socket.next().await.is_some() {}
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        client
+            .send_audio(&vec![0; XAIRealtimeEndpoint::AUDIO_FRAME_BYTE_COUNT])
+            .await
+            .unwrap();
+        client.finish(Duration::from_millis(40)).await;
+        let mut received = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            received.push(event);
+        }
+        assert!(received
+            .iter()
+            .any(|event| matches!(event, LiveTranslateServerEvent::SessionFinished)));
+        assert!(!received
+            .iter()
+            .any(|event| matches!(event, LiveTranslateServerEvent::Error { .. })));
+    }
+
     #[test]
     fn transcript_safety_limit_discards_same_turn_residue_without_cross_pairing() {
         let mut turn = GrokTurnState::default();
@@ -1191,8 +1534,9 @@ mod tests {
         );
         assert!(matches!(
             source_events.as_slice(),
-            [LiveTranslateServerEvent::SourceDraft { text, language }]
+            [LiveTranslateServerEvent::UtteranceText { text, language, utterance_id, role: UtteranceRole::Source, is_final: false }]
                 if text == "Next sentence." && language.as_deref() == Some("en")
+                    && utterance_id == "next_source"
         ));
         assert!(turn.discard_current_turn);
         assert!(turn.source.is_empty());
@@ -1211,16 +1555,19 @@ mod tests {
         assert!(!turn.discard_current_turn);
         assert_eq!(turn.item_id.as_deref(), Some("next_source"));
         assert_eq!(turn.source, "Next sentence.");
-        assert!(turn.awaits_response_for_promoted_source());
+        assert!(turn.has_unfinished_turn());
 
         turn.response_started(Some("next_response".into()));
-        let pair = turn.complete_translation(Some("次の文。".into()), Some("next_response".into()));
+        let previews =
+            turn.complete_translation(Some("次の文。".into()), Some("next_response".into()));
+        assert!(
+            matches!(previews.as_slice(), [LiveTranslateServerEvent::UtteranceText { text, utterance_id, role: UtteranceRole::Translation, is_final: false, .. }] if text == "次の文。" && utterance_id == "next_source")
+        );
+        let pair = turn.response_done(Some("next_response".into()));
         assert!(matches!(
             pair.as_slice(),
-            [LiveTranslateServerEvent::TranslationDraft(translation),
-             LiveTranslateServerEvent::SubtitleFinalPair { source, language, translation: final_translation }]
-                if translation == "次の文。"
-                    && source == "Next sentence."
+            [LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { source, language, translation: final_translation, .. }]
+                if source == "Next sentence."
                     && language.as_deref() == Some("en")
                     && final_translation == "次の文。"
         ));
@@ -1243,7 +1590,7 @@ mod tests {
         ));
         assert!(turn.source.is_empty());
         assert!(turn.translation.is_empty());
-        assert!(turn.response_id.is_none());
+        assert_eq!(turn.response_id.as_deref(), Some("combined_response"));
         assert!(turn.discard_current_turn);
         assert_eq!(turn.discarded_item_id.as_deref(), Some("combined_turn"));
 
@@ -1274,6 +1621,631 @@ mod tests {
                 true,
             )
             .is_empty());
+    }
+
+    #[test]
+    fn successful_response_waits_for_its_source_and_cannot_clear_the_next_turn() {
+        let mut turn = GrokTurnState::default();
+        turn.input_boundary(Some("source_a".into()), true);
+        turn.response_started(Some("response_a".into()));
+        assert!(turn
+            .complete_translation(Some("Translation A.".into()), Some("response_a".into()))
+            .iter()
+            .all(|event| !matches!(
+                event,
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. }
+            )));
+        assert!(turn.response_done(Some("response_a".into())).is_empty());
+        turn.input_boundary(Some("source_b".into()), false);
+        let events = turn.update_source("Source A.".into(), Some("source_a".into()), None, true);
+        assert!(events.iter().any(|event| matches!(event,
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {source, translation, ..}
+                if source == "Source A." && translation == "Translation A.")));
+        assert_eq!(turn.item_id.as_deref(), Some("source_b"));
+        assert!(turn.has_unfinished_turn());
+        assert!(turn.response_done(Some("response_a".into())).is_empty());
+        assert!(!turn.response_started(Some("response_a".into())));
+        assert_eq!(turn.item_id.as_deref(), Some("source_b"));
+        assert!(turn.source.is_empty() && turn.translation.is_empty());
+        assert!(turn.has_unfinished_turn());
+    }
+
+    #[test]
+    fn a_response_without_a_known_input_boundary_cannot_borrow_a_later_source() {
+        let mut turn = GrokTurnState::default();
+        assert!(turn
+            .append_translation("Unknown translation.".into(), Some("response_a".into()))
+            .is_empty());
+        assert!(turn
+            .update_source("Later source.".into(), Some("source_b".into()), None, true)
+            .is_empty());
+        assert!(turn.response_done(Some("response_a".into())).is_empty());
+        assert!(turn.source.is_empty() && turn.translation.is_empty());
+    }
+
+    #[test]
+    fn identified_lanes_project_early_previews_without_crossing_overlapping_turns() {
+        let mut turn = GrokTurnState::default();
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        controller.set_atomic_preview(false);
+        controller.did_connect();
+        let apply = |controller: &mut crate::core::session::TranslationSessionController,
+                     events: Vec<LiveTranslateServerEvent>| {
+            for event in events {
+                controller.handle(event);
+            }
+        };
+        apply(
+            &mut controller,
+            turn.update_source(
+                "Source A.".into(),
+                Some("source_a".into()),
+                Some("en".into()),
+                true,
+            ),
+        );
+        turn.response_started(Some("response_a".into()));
+        apply(
+            &mut controller,
+            turn.append_translation("Translation A".into(), Some("response_a".into())),
+        );
+        let early = controller
+            .state
+            .subtitles
+            .realtime_preview
+            .as_ref()
+            .unwrap();
+        assert_eq!(early.source.text, "Source A.");
+        assert_eq!(early.translation.text, "Translation A");
+        assert!(controller.state.subtitles.history.is_empty());
+
+        apply(
+            &mut controller,
+            turn.update_source(
+                "Source B growing".into(),
+                Some("source_b".into()),
+                Some("ko".into()),
+                false,
+            ),
+        );
+        let overlapping = controller
+            .state
+            .subtitles
+            .realtime_preview
+            .as_ref()
+            .unwrap();
+        assert_eq!(overlapping.source.text, "Source B growing");
+        assert!(
+            overlapping.translation.text.is_empty(),
+            "A translation cannot accompany B source"
+        );
+        apply(
+            &mut controller,
+            turn.complete_translation(Some("Translation A.".into()), Some("response_a".into())),
+        );
+        assert_eq!(controller.state.subtitles.source.text, "Source B growing");
+        apply(
+            &mut controller,
+            turn.response_done(Some("response_a".into())),
+        );
+        assert_eq!(
+            controller.state.subtitles.source.text, "Source B growing",
+            "late A final must preserve B's current lane"
+        );
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        assert_eq!(
+            controller.state.detected_language.as_ref().unwrap().code,
+            "ko"
+        );
+
+        apply(
+            &mut controller,
+            turn.update_source(
+                "Source B.".into(),
+                Some("source_b".into()),
+                Some("ko".into()),
+                true,
+            ),
+        );
+        turn.response_started(Some("response_b".into()));
+        apply(
+            &mut controller,
+            turn.append_translation("Translation B".into(), Some("response_b".into())),
+        );
+        let early_b = controller
+            .state
+            .subtitles
+            .realtime_preview
+            .as_ref()
+            .unwrap();
+        assert_eq!(early_b.source.utterance_id.as_deref(), Some("source_b"));
+        assert_eq!(
+            early_b.translation.utterance_id.as_deref(),
+            Some("source_b")
+        );
+        assert_eq!(early_b.translation.text, "Translation B");
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        apply(
+            &mut controller,
+            turn.complete_translation(Some("Translation B.".into()), Some("response_b".into())),
+        );
+        apply(
+            &mut controller,
+            turn.response_done(Some("response_b".into())),
+        );
+        assert_eq!(controller.state.subtitles.history.len(), 2);
+        let pair = controller.state.subtitles.display_pair.as_ref().unwrap();
+        assert_eq!(pair.utterance_id.as_deref(), Some("source_b"));
+        assert_eq!(pair.source, "Source B.");
+        assert_eq!(pair.translation, "Translation B.");
+    }
+
+    #[test]
+    fn clear_retires_pending_input_before_late_completions_reach_the_real_projection() {
+        let mut turn = GrokTurnState::default();
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        controller.set_atomic_preview(false);
+        controller.did_connect();
+        let apply = |controller: &mut crate::core::session::TranslationSessionController,
+                     events: Vec<LiveTranslateServerEvent>| {
+            for event in events {
+                controller.handle(event);
+            }
+        };
+        apply(
+            &mut controller,
+            turn.update_source("Source A.".into(), Some("source_a".into()), None, true),
+        );
+        turn.response_started(Some("response_a".into()));
+        apply(
+            &mut controller,
+            turn.append_translation("Translation A".into(), Some("response_a".into())),
+        );
+        turn.input_boundary(Some("source_b".into()), false);
+        apply(
+            &mut controller,
+            turn.update_source(
+                "Source B growing".into(),
+                Some("source_b".into()),
+                None,
+                false,
+            ),
+        );
+        turn.clear_content();
+        controller.clear_subtitles();
+
+        assert!(
+            turn.update_source("Source B.".into(), Some("source_b".into()), None, true)
+                .is_empty(),
+            "cleared pending B must not be admitted again"
+        );
+        apply(
+            &mut controller,
+            turn.response_done(Some("response_a".into())),
+        );
+        turn.response_started(Some("response_b".into()));
+        apply(
+            &mut controller,
+            turn.complete_translation(Some("Translation B.".into()), Some("response_b".into())),
+        );
+        apply(
+            &mut controller,
+            turn.response_done(Some("response_b".into())),
+        );
+        assert!(controller.state.subtitles.history.is_empty());
+        assert!(controller.state.subtitles.source.text.is_empty());
+        assert!(controller.state.subtitles.translation.text.is_empty());
+
+        apply(
+            &mut controller,
+            turn.update_source("Source C.".into(), Some("source_c".into()), None, true),
+        );
+        turn.response_started(Some("response_c".into()));
+        apply(
+            &mut controller,
+            turn.complete_translation(Some("Translation C.".into()), Some("response_c".into())),
+        );
+        apply(
+            &mut controller,
+            turn.response_done(Some("response_c".into())),
+        );
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        let pair = controller.state.subtitles.display_pair.as_ref().unwrap();
+        assert_eq!(pair.source, "Source C.");
+        assert_eq!(pair.translation, "Translation C.");
+        assert!(
+            turn.source.is_empty()
+                && turn.translation.is_empty()
+                && turn.pending_next_source.is_none()
+        );
+        assert!(turn.retired_source_ids.len() <= 4 && turn.retired_response_ids.len() <= 4);
+    }
+
+    #[tokio::test]
+    async fn discarded_pending_input_never_lends_its_response_after_a_safety_limit() {
+        for scenario in [
+            "current_translation",
+            "pending_source",
+            "extra_pending_source",
+        ] {
+            let (client, mut events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    let _ = socket.next().await;
+                    socket.send(setup_ack()).await.unwrap();
+                    for event in [
+                        r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Source A."}"#,
+                        r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                        r#"{"type":"conversation.item.input_audio_transcription.updated","item_id":"source_b","transcript":"Source B growing"}"#,
+                    ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                    let oversized = "s".repeat(MAXIMUM_TRANSCRIPT_BYTES + 1);
+                    let oversized_event = if scenario == "current_translation" {
+                        serde_json::json!({"type":"response.output_audio_transcript.delta", "response_id":"response_a", "delta":oversized})
+                    } else {
+                        let id = if scenario == "pending_source" {"source_b"} else {"source_c"};
+                        serde_json::json!({"type":"conversation.item.input_audio_transcription.updated", "item_id":id, "transcript":oversized})
+                    };
+                    socket.send(Message::Text(oversized_event.to_string().into())).await.unwrap();
+                    for event in [
+                        r#"{"type":"response.done","response":{"id":"response_a","status":"completed"}}"#,
+                        r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_c","transcript":"Source C."}"#,
+                        r#"{"type":"response.created","response":{"id":"response_b"}}"#,
+                        r#"{"type":"response.output_audio_transcript.done","response_id":"response_b","transcript":"Translation B."}"#,
+                        r#"{"type":"response.done","response":{"id":"response_b","status":"completed"}}"#,
+                    ] { if socket.send(Message::Text(event.into())).await.is_err() { break; } }
+                    while socket.next().await.is_some() {}
+                })
+            }).await;
+            client.connect().await.unwrap();
+            let mut controller = crate::core::session::TranslationSessionController::default();
+            controller.did_connect();
+            let mut recovery_errors = 0;
+            while let Ok(Some(event)) =
+                tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+            {
+                if let LiveTranslateServerEvent::Error { code, .. } = &event {
+                    if code == "transport_error" {
+                        recovery_errors += 1;
+                    } else {
+                        assert_eq!(code, "xai_transcript_safety_limit");
+                    }
+                }
+                controller.handle(event);
+            }
+            assert!(
+                controller.state.subtitles.history.is_empty(),
+                "{scenario}: C must never borrow discarded B's response"
+            );
+            assert_eq!(
+                recovery_errors, 1,
+                "{scenario}: recover once when response ownership is ambiguous"
+            );
+            let turn = client.inner.turn.lock().await;
+            assert!(
+                turn.source.is_empty()
+                    && turn.translation.is_empty()
+                    && turn.pending_next_source.is_none()
+            );
+            drop(turn);
+            client.disconnect().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn progress_transcripts_wait_for_actual_completion_after_response_done() {
+        let (complete_sent, complete_received) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"input_audio_buffer.committed","item_id":"source_a"}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Partial","status":"in_progress"}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_a","transcript":"Complete translation."}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Partial source","status":"in_progress"}"#,
+                    r#"{"type":"response.done","response":{"id":"response_a","status":"completed"}}"#,
+                ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                complete_received.await.unwrap();
+                socket.send(Message::Text(r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Actual complete source.","status":"completed"}"#.into())).await.unwrap();
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        controller.set_atomic_preview(false);
+        controller.did_connect();
+        client.connect().await.unwrap();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            controller.handle(event);
+        }
+        assert!(
+            controller.state.subtitles.history.is_empty(),
+            "in_progress source must not confirm at response.done"
+        );
+        assert!(!client.inner.turn.lock().await.source_complete);
+        complete_sent.send(()).unwrap();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            controller.handle(event);
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        let pair = controller.state.subtitles.display_pair.as_ref().unwrap();
+        assert_eq!(pair.source, "Actual complete source.");
+        assert_eq!(pair.translation, "Complete translation.");
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn progress_only_sources_never_become_durable_when_finishing() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"input_audio_buffer.committed","item_id":"source_a"}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Partial","status":"in_progress"}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Partial source","status":"in_progress"}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_a","transcript":"Unconfirmed translation."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_a","status":"completed"}}"#,
+                ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client.connect().await.unwrap();
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        controller.did_connect();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            controller.handle(event);
+        }
+        client.finish(Duration::from_millis(40)).await;
+        while let Ok(event) = events.try_recv() {
+            controller.handle(event);
+        }
+        assert!(controller.state.subtitles.history.is_empty());
+        assert!(matches!(
+            controller.state.status,
+            crate::core::models::SessionStatus::Error(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn clear_with_a_new_source_before_the_cleared_response_recovers_without_cross_pairing() {
+        let (clear_sent, clear_received) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"Source A."}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"input_audio_buffer.speech_started","item_id":"source_b"}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.updated","item_id":"source_b","transcript":"Source B growing"}"#,
+                ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                clear_received.await.unwrap();
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_c","transcript":"Source C."}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_b","transcript":"Source B."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_a","status":"completed"}}"#,
+                    r#"{"type":"response.created","response":{"id":"response_b"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_b","transcript":"Translation B."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_b","status":"completed"}}"#,
+                ] { if socket.send(Message::Text(event.into())).await.is_err() { break; } }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        controller.set_atomic_preview(false);
+        controller.did_connect();
+        client.connect().await.unwrap();
+        loop {
+            let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let pending_b = matches!(&event, LiveTranslateServerEvent::UtteranceText { utterance_id, role:UtteranceRole::Source, .. } if utterance_id == "source_b");
+            controller.handle(event);
+            if pending_b {
+                break;
+            }
+        }
+        client.clear_content().await;
+        controller.clear_subtitles();
+        clear_sent.send(()).unwrap();
+        let mut recovery_errors = 0;
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            if let LiveTranslateServerEvent::Error { code, message } = &event {
+                assert_eq!(code, "transport_error");
+                assert_eq!(message, GENERIC_PROTOCOL_ERROR);
+                recovery_errors += 1;
+            }
+            controller.handle(event);
+        }
+        assert!(
+            controller.state.subtitles.history.is_empty(),
+            "C cannot borrow the cleared B response"
+        );
+        assert_eq!(recovery_errors, 1);
+        client.disconnect().await;
+
+        // The normal reconnect resets only bounded provider state. The same
+        // real C item can then preview and confirm with its own response.
+        let (reconnected, mut new_events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_c","transcript":"Source C."}"#,
+                    r#"{"type":"response.created","response":{"id":"response_c"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_c","transcript":"Translation C."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_c","status":"completed"}}"#,
+                ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        controller.begin_connecting();
+        controller.did_connect();
+        reconnected.connect().await.unwrap();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), new_events.recv()).await
+        {
+            controller.handle(event);
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        let pair = controller.state.subtitles.display_pair.as_ref().unwrap();
+        assert_eq!(pair.utterance_id.as_deref(), Some("source_c"));
+        assert_eq!(pair.source, "Source C.");
+        assert_eq!(pair.translation, "Translation C.");
+        reconnected.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn ambiguous_following_items_trigger_one_recovery_without_publishing_a_wrong_final() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"First source."}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_b","transcript":"Second source."}"#,
+                    r#"{"type":"input_audio_buffer.speech_started","item_id":"source_c"}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_a","transcript":"First translation."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_a","status":"completed"}}"#,
+                ] {
+                    if socket.send(Message::Text(event.into())).await.is_err() { break; }
+                }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client.connect().await.unwrap();
+        let mut recovery_errors = 0;
+        let mut pairs = Vec::new();
+        while let Ok(Some(event)) =
+            tokio::time::timeout(Duration::from_millis(50), events.recv()).await
+        {
+            match event {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. } => pairs.push(event),
+                LiveTranslateServerEvent::Error { code, message } => {
+                    assert_eq!(code, "transport_error");
+                    assert_eq!(message, GENERIC_PROTOCOL_ERROR);
+                    assert!(crate::core::recovery::provider_error_is_retryable(&code));
+                    recovery_errors += 1;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(recovery_errors, 1);
+        assert!(pairs.is_empty());
+        let turn = client.inner.turn.lock().await;
+        assert!(turn.source.is_empty() && turn.translation.is_empty());
+        assert!(turn.pending_next_source.is_none());
+        drop(turn);
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn an_old_response_done_cannot_close_before_trailing_audio_gets_its_input_boundary() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                let _first_audio = socket.next().await;
+                for event in [
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_a","transcript":"First source."}"#,
+                    r#"{"type":"response.created","response":{"id":"response_a"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_a","transcript":"First translation."}"#,
+                ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                let _trailing_audio = socket.next().await;
+                socket.send(Message::Text(r#"{"type":"response.done","response":{"id":"response_a","status":"completed"}}"#.into())).await.unwrap();
+                // Sending audio and completing A do not prove the server has
+                // delivered B's VAD/input events. Delay them until after tail.
+                for _ in 0..FINISH_TAIL_FRAME_COUNT {
+                    let _tail = socket.next().await;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                for event in [
+                    r#"{"type":"input_audio_buffer.speech_started","item_id":"source_b"}"#,
+                    r#"{"type":"input_audio_buffer.committed","item_id":"source_b"}"#,
+                    r#"{"type":"response.created","response":{"id":"response_b"}}"#,
+                    r#"{"type":"response.output_audio_transcript.done","response_id":"response_b","transcript":"Second translation."}"#,
+                    r#"{"type":"response.done","response":{"id":"response_b","status":"completed"}}"#,
+                    r#"{"type":"conversation.item.input_audio_transcription.completed","item_id":"source_b","transcript":"Second source."}"#,
+                ] { socket.send(Message::Text(event.into())).await.unwrap(); }
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client.connect().await.unwrap();
+        client
+            .send_audio(&vec![1; XAIRealtimeEndpoint::AUDIO_FRAME_BYTE_COUNT * 2])
+            .await
+            .unwrap();
+        client.finish(Duration::from_millis(250)).await;
+        let mut pairs = Vec::new();
+        let mut finished = false;
+        while let Ok(event) = events.try_recv() {
+            match event {
+                LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                    source,
+                    translation,
+                    ..
+                } => pairs.push((source, translation)),
+                LiveTranslateServerEvent::SessionFinished => finished = true,
+                LiveTranslateServerEvent::Error { code, .. } => panic!("unexpected error: {code}"),
+                _ => {}
+            }
+        }
+        assert_eq!(
+            pairs,
+            [
+                ("First source.".into(), "First translation.".into()),
+                ("Second source.".into(), "Second translation.".into())
+            ]
+        );
+        assert!(finished);
+    }
+
+    #[tokio::test]
+    async fn disconnect_cancels_a_finish_wait_without_waiting_for_its_deadline() {
+        let (tails_sent, tails_received) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.send(setup_ack()).await.unwrap();
+                for _ in 0..FINISH_TAIL_FRAME_COUNT {
+                    let _ = socket.next().await;
+                }
+                let _ = tails_sent.send(());
+                while socket.next().await.is_some() {}
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        let finishing_client = client.clone();
+        let finish = tokio::spawn(async move {
+            finishing_client.finish(Duration::from_secs(5)).await;
+        });
+        tails_received.await.unwrap();
+        tokio::time::timeout(Duration::from_millis(500), async {
+            client.disconnect().await;
+            finish.await.unwrap();
+        })
+        .await
+        .expect("cancellation must release the finish wait immediately");
+        while let Ok(event) = events.try_recv() {
+            assert!(!matches!(
+                event,
+                LiveTranslateServerEvent::Error { .. }
+                    | LiveTranslateServerEvent::SessionFinished
+                    | LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. }
+            ));
+        }
     }
 
     #[tokio::test]
@@ -1330,10 +2302,7 @@ mod tests {
                 )
                 .unwrap();
                 assert_eq!(update["session"]["turn_detection"]["type"], "server_vad");
-                assert_eq!(
-                    update["session"]["turn_detection"]["silence_duration_ms"],
-                    XAIRealtimeEndpoint::SERVER_VAD_SILENCE_DURATION_MS
-                );
+                assert!(update["session"]["turn_detection"].get("silence_duration_ms").is_none());
                 assert_eq!(
                     update["session"]["audio"]["input"]["transcription"]["model"],
                     "grok-transcribe"
@@ -1411,7 +2380,7 @@ mod tests {
         }
         assert!(received.iter().any(|event| matches!(
             event,
-            LiveTranslateServerEvent::SubtitleFinalPair { source, translation, .. }
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { source, translation, .. }
                 if source == "Ice cream." && translation == "アイスクリーム。"
         )));
         assert!(received
@@ -1435,7 +2404,7 @@ mod tests {
                     .unwrap();
                 assert!(speech.iter().any(|byte| *byte != 0));
 
-                for _ in 0..SERVER_VAD_TAIL_FRAME_COUNT {
+                for _ in 0..FINISH_TAIL_FRAME_COUNT {
                     let silence: Value = serde_json::from_str(
                         socket.next().await.unwrap().unwrap().to_text().unwrap(),
                     )
@@ -1491,7 +2460,7 @@ mod tests {
         }
         assert!(received.iter().any(|event| matches!(
             event,
-            LiveTranslateServerEvent::SubtitleFinalPair { source, translation, .. }
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { source, translation, .. }
                 if source == "Last sentence." && translation == "最後の文。"
         )));
         assert!(received
@@ -1591,6 +2560,7 @@ mod tests {
             Box::pin(async move {
                 let _ = socket.next().await;
                 socket.send(setup_ack()).await.unwrap();
+                socket.send(Message::Text(r#"{"type":"input_audio_buffer.speech_started","item_id":"unfinished_source"}"#.into())).await.unwrap();
                 while socket.next().await.is_some() {}
             })
         })
