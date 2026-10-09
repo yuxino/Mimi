@@ -2410,7 +2410,8 @@ impl SessionManager {
             .iter()
             .find(|profile| profile.id == profile_id)
             .ok_or_else(|| "The service profile does not exist.".to_string())?;
-        let selection = self
+        let mut source_language = source_language;
+        let mut selection = self
             .settings
             .preferences_for_profile_selection(profile, source_language)?;
         let apple_support = if profile.provider == ProviderKind::AppleSpeech {
@@ -2434,6 +2435,24 @@ impl SessionManager {
         } else {
             None
         };
+        if source_language.is_none()
+            && profile.language_preset.is_none()
+            && self.settings.preferences().source_language == SourceLanguage::Automatic
+        {
+            if let Some(support) = apple_support.as_ref() {
+                if let Some(source) = crate::apple_speech_support::ready_source_for_profile(
+                    support,
+                    profile,
+                    selection.target_language,
+                    selection.source_language,
+                ) {
+                    source_language = Some(source);
+                    selection = self
+                        .settings
+                        .preferences_for_profile_selection(profile, source_language)?;
+                }
+            }
+        }
         let live = action != ProfileSwitchAction::SelectOnly;
         if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
             if self.is_ui_test() && selection.target_language.translates_audio() {
@@ -2474,13 +2493,24 @@ impl SessionManager {
         };
         if let Some(support) = apple_support {
             crate::apple_speech_support::validate_refreshed_profile_source(
-                Ok(support),
+                Ok(support.clone()),
                 profile,
                 selection.source_language,
                 selection.target_language,
                 live || source_language.is_some() || profile.language_preset.is_some(),
                 || self.publish_settings(),
             )?;
+            if live || source_language.is_some() || profile.language_preset.is_some() {
+                let language = crate::apple_speech_support::validate_source(
+                    &support,
+                    selection.source_language,
+                    true,
+                )?;
+                crate::apple_speech_support::ensure_locale_ready(&language.locale).await?;
+                if !self.is_lifecycle_request_current(switch_epoch) {
+                    return Err("profile_switch_superseded".into());
+                }
+            }
         }
         if live {
             let target = self.settings.preferences().target_language;
@@ -2579,13 +2609,19 @@ impl SessionManager {
             let support = crate::apple_speech_support::refresh().await;
             let installed_required = self.has_active_session() || self.is_paused();
             crate::apple_speech_support::validate_refreshed_profile_source(
-                support,
+                support.clone(),
                 &profile,
                 language,
                 prefs.target_language,
                 installed_required,
                 || self.publish_settings(),
             )?;
+            if installed_required {
+                let support = support?;
+                let locale =
+                    &crate::apple_speech_support::validate_source(&support, language, true)?.locale;
+                crate::apple_speech_support::ensure_locale_ready(locale).await?;
+            }
             if !self.is_lifecycle_request_current(switch_epoch) {
                 return Err("source_switch_superseded".into());
             }

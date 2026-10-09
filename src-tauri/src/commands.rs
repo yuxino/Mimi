@@ -17,7 +17,7 @@ use crate::windows::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
@@ -245,6 +245,25 @@ pub struct SettingsSnapshotPayload {
 mod tests {
     use super::*;
     use crate::apple_speech::AppleSpeechResourceStatus;
+
+    #[test]
+    fn profile_switch_feedback_never_broadcasts_private_error_details() {
+        for label in [
+            "apple_speech_status_failed",
+            "apple_speech_assets_missing",
+            "profile_switch_busy",
+        ] {
+            assert_eq!(profile_switch_feedback_label(label), label);
+            assert_eq!(
+                profile_switch_feedback_label(&format!("{label}: private-native-content")),
+                "profile_switch_failed"
+            );
+        }
+        assert_eq!(
+            profile_switch_feedback_label("private-provider-body"),
+            "profile_switch_failed"
+        );
+    }
 
     #[test]
     fn profile_snapshots_keep_speech_names_when_credentials_are_unavailable() {
@@ -2117,16 +2136,64 @@ pub async fn profile_select(
     profile_id: String,
     source_language: Option<SourceLanguage>,
 ) -> Result<SettingsSnapshotPayload, String> {
-    match source_language {
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let request_id = SEQUENCE.fetch_add(1, Ordering::SeqCst) + 1;
+    let publish = |error: Option<&str>, pending: bool| {
+        if SEQUENCE.load(Ordering::SeqCst) == request_id {
+            // Only fixed labels reach the subtitle canvas. No provider bodies,
+            // credential errors, native paths or subtitle content are broadcast.
+            let error = error.map(profile_switch_feedback_label);
+            let _ = app.emit_to(
+                "overlay",
+                "profile-switch-feedback",
+                serde_json::json!({ "requestId": request_id, "pending": pending, "error": error }),
+            );
+        }
+    };
+    publish(None, true);
+    let result = match source_language {
         Some(source) => {
             state
                 .session
                 .switch_profile_with_source(&profile_id, Some(source))
-                .await?
+                .await
         }
-        None => state.session.switch_profile(&profile_id).await?,
-    }
+        None => state.session.switch_profile(&profile_id).await,
+    };
+    publish(
+        result
+            .as_ref()
+            .err()
+            .map(String::as_str)
+            .filter(|error| *error != "profile_switch_superseded"),
+        false,
+    );
+    result?;
     emit_settings_snapshot(&app, &state.settings)
+}
+
+fn profile_switch_feedback_label(error: &str) -> &str {
+    match error {
+        "apple_speech_assets_missing"
+        | "apple_speech_preparing"
+        | "apple_speech_status_failed"
+        | "apple_speech_language_unsupported"
+        | "apple_speech_translation_language_unsupported"
+        | "apple_speech_unavailable"
+        | "apple_speech_setup_timeout"
+        | "apple_speech_start_failed"
+        | "apple_speech_service_unavailable"
+        | "apple_translation_assets_missing"
+        | "apple_translation_source_required"
+        | "apple_translation_language_unsupported"
+        | "apple_translation_status_failed"
+        | "apple_translation_unavailable"
+        | "profile_switch_busy"
+        | "profile_switch_superseded"
+        | "profile_switch_recording_requires_stop"
+        | "profile_language_preset_unsupported" => error,
+        _ => "profile_switch_failed",
+    }
 }
 
 #[tauri::command]

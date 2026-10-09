@@ -172,6 +172,11 @@ export function profileSelect(profileId: string, sourceLanguage?: SourceLanguage
   return invoke<SettingsSnapshot>("profile_select", { profileId, ...(sourceLanguage ? { sourceLanguage } : {}) });
 }
 
+export interface ProfileSwitchFeedback { requestId: number; pending: boolean; error: string | null; }
+export function listenProfileSwitchFeedback(callback: (feedback: ProfileSwitchFeedback) => void): Promise<UnlistenFn> {
+  return listen<ProfileSwitchFeedback>("profile-switch-feedback", event => callback(event.payload));
+}
+
 export function profileDelete(profileId: string): Promise<SettingsSnapshot> {
   return invoke<SettingsSnapshot>("profile_delete", { profileId });
 }

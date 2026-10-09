@@ -3476,7 +3476,8 @@ fn normalize_preferences_value(prefs: &mut Preferences, profile: &ServiceProfile
         target_language: prefs.target_language,
         translation_mode: prefs.translation_mode,
     });
-    prefs.source_language = if profile.text_translation() == TextTranslation::Apple
+    prefs.source_language = if profile.provider != ProviderKind::AppleSpeech
+        && profile.text_translation() == TextTranslation::Apple
         && normalized.target_language.translates_audio()
         && original_source == SourceLanguage::Automatic
     {
@@ -3993,6 +3994,38 @@ mod tests {
             store.configuration().unwrap().source_language,
             SourceLanguage::Japanese
         );
+    }
+
+    #[test]
+    fn apple_speech_with_apple_translation_never_preserves_automatic_source() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let profile = store
+            .create_profile(ProviderKind::AppleSpeech, "Local speech")
+            .unwrap();
+        store
+            .save_credentials(
+                &profile.id,
+                &translation_request(TextTranslation::Apple, "", "", ""),
+            )
+            .unwrap();
+        store
+            .save_preferences(|prefs| {
+                prefs.source_language = SourceLanguage::Automatic;
+                prefs.target_language = TargetLanguage::SimplifiedChinese;
+            })
+            .unwrap();
+        let profile = store.profile(&profile.id).unwrap();
+        let proposed = store
+            .preferences_for_profile_selection(&profile, None)
+            .unwrap();
+        assert_ne!(proposed.source_language, SourceLanguage::Automatic);
+        store.select_profile(&profile.id).unwrap();
+        assert_eq!(
+            store.preferences().source_language,
+            proposed.source_language
+        );
+        assert!(store.configuration().is_ok());
     }
 
     #[test]

@@ -11,7 +11,7 @@ import { LanguageSelect } from "../../components/LanguageSelect";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
-import { languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage } from "../../lib/connectionDiagnostics";
+import { languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage, sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
   isTauri,
   overlayControlSetPanelHeight,
@@ -113,6 +113,7 @@ export function OverlayControlPanel({
   const actionInFlight = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [operationSettingsTarget, setOperationSettingsTarget] = useState<SettingsNavigationTarget | null>(null);
   const canChangeSessionSettings = !isChangingSession && pendingAction === null;
 
   useLayoutEffect(() => {
@@ -166,11 +167,13 @@ export function OverlayControlPanel({
     actionInFlight.current = true;
     setPendingAction(name);
     setOperationError(null);
+    setOperationSettingsTarget(null);
     void operation()
       .then(() => {
         if (dismissAfter) onDismiss();
       })
       .catch((error: unknown) => {
+        setOperationSettingsTarget(sessionErrorSettingsTarget(error));
         setOperationError(
           name === "profile" ? profileErrorMessage(error)
             : name === "source" || name === "target" || name === "translation" ? languageActionErrorMessage(error, failureMessage)
@@ -203,6 +206,17 @@ export function OverlayControlPanel({
           onToggle={onDismiss}
         />
 
+        {pendingAction === "profile" && <div className="overlay-control-alert" role="status"><span className="settings-spinner" aria-hidden="true" />{I18N.overlay.connecting}</div>}
+        {operationError && <div className="overlay-control-alert" role="alert">
+          <Icon name="exclamation-triangle" />
+          <div><span>{operationError}</span>
+            {operationSettingsTarget && <button type="button" className="speech-resources-link"
+              disabled={pendingAction !== null}
+              onClick={() => performAction("settings", () => onShowSettings(operationSettingsTarget), false)}>
+              <Icon name="gear" />{operationSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : I18N.overlay.moreSettings}
+            </button>}
+          </div>
+        </div>}
         {sessionErrorMessage && <SessionErrorFeedback permissionRequired={permissionRequired}
           message={sessionErrorMessage}
           configureLabel={errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : undefined}
@@ -405,12 +419,7 @@ export function OverlayControlPanel({
           <span>{I18N.overlay.moreSettings}</span>
         </button>
 
-        {operationError && (
-          <div className="overlay-control-alert" role="alert">
-            <Icon name="exclamation-triangle" />
-            <span>{operationError}</span>
-          </div>
-        )}
+
       </div>
     </section>
   );

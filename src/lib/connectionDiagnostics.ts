@@ -405,7 +405,7 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
     "apple_speech_assets_missing", "apple_speech_preparing", "apple_speech_prepare_failed",
     "apple_speech_service_unavailable", "apple_speech_reservation_limit", "apple_speech_download_cancelled",
     "apple_speech_download_timeout", "apple_speech_download_network", "apple_speech_download_storage",
-    "apple_speech_resources_unavailable",
+    "apple_speech_resources_unavailable", "apple_speech_status_failed",
   ].includes(label)) {
     return "appleSpeechResources";
   }

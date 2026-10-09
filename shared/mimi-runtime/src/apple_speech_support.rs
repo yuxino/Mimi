@@ -132,7 +132,7 @@ pub fn is_loaded() -> bool {
 
 pub async fn refresh() -> Result<AppleSpeechSupport, String> {
     let _refreshing = REFRESHING.lock().await;
-    let native = apple_speech::capabilities()
+    let native = query_capabilities_with_retry(apple_speech::capabilities)
         .await
         .map_err(|_| "apple_speech_status_failed".to_string());
     let support = native.map(map_capabilities);
@@ -143,6 +143,41 @@ pub async fn refresh() -> Result<AppleSpeechSupport, String> {
         .unwrap()
         .replace(support.clone().unwrap_or_default());
     support
+}
+
+// A cold/disconnected Speech service may fail once even when its assets exist.
+// Requery once without downloading, reserving locales, or trusting cached flags.
+async fn query_capabilities_with_retry<F, Fut>(
+    mut query: F,
+) -> Result<AppleSpeechCapabilities, AppleSpeechError>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<AppleSpeechCapabilities, AppleSpeechError>>,
+{
+    let first = query().await;
+    let retry = match &first {
+        Err(
+            AppleSpeechError::Timeout
+            | AppleSpeechError::ServiceUnavailable
+            | AppleSpeechError::StatusUnavailable,
+        ) => true,
+        Ok(native) => map_capabilities(native.clone())
+            .languages
+            .iter()
+            .any(|language| {
+                matches!(
+                    language.status,
+                    AppleSpeechResourceStatus::Unsupported | AppleSpeechResourceStatus::Unknown
+                )
+            }),
+        _ => false,
+    };
+    if !retry {
+        return first;
+    }
+    tracing::info!("Apple Speech resource query retry");
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    query().await
 }
 
 pub async fn locale_for_source(source: SourceLanguage) -> Result<String, String> {
@@ -241,6 +276,48 @@ fn prepare_error_label(error: &AppleSpeechError) -> &'static str {
         AppleSpeechError::Timeout => "apple_speech_download_timeout",
         _ => "apple_speech_prepare_failed",
     }
+}
+
+/// Resolve an automatic source only against confirmed installed native languages.
+/// An explicit source/preset is validated unchanged by the owning session.
+pub fn ready_source_for_profile(
+    support: &AppleSpeechSupport,
+    profile: &ServiceProfile,
+    target: TargetLanguage,
+    preferred: SourceLanguage,
+) -> Option<SourceLanguage> {
+    support
+        .languages
+        .iter()
+        .filter(|language| {
+            language.status == AppleSpeechResourceStatus::Installed
+                && profile
+                    .capabilities(target)
+                    .source_languages
+                    .contains(&language.source_language)
+        })
+        .map(|language| language.source_language)
+        .min_by_key(|source| *source != preferred)
+}
+
+/// Same installed-only native setup used by recognition checks. No capture,
+/// translation connection, locale reservation or download is started here.
+pub async fn ensure_locale_ready(locale: &str) -> Result<(), String> {
+    let (mut session, _events) = apple_speech::start(locale).await.map_err(|error| {
+        match error {
+            AppleSpeechError::Timeout => "apple_speech_setup_timeout",
+            AppleSpeechError::StatusUnavailable => "apple_speech_status_failed",
+            AppleSpeechError::AssetsNotInstalled => "apple_speech_assets_missing",
+            AppleSpeechError::AssetsDownloading => "apple_speech_preparing",
+            AppleSpeechError::Unavailable => "apple_speech_unavailable",
+            AppleSpeechError::ServiceUnavailable => "apple_speech_service_unavailable",
+            AppleSpeechError::InvalidLocale => "apple_speech_language_unsupported",
+            _ => "apple_speech_start_failed",
+        }
+        .to_string()
+    })?;
+    session.cancel();
+    Ok(())
 }
 
 /// A saved idle selection may precede an explicit download, but a live or
@@ -367,6 +444,130 @@ mod tests {
                 AppleSpeechResourceStatus::Supported
             },
         }
+    }
+
+    #[tokio::test]
+    async fn resource_query_recovers_once_without_retaining_stale_readiness() {
+        let ready = AppleSpeechCapabilities {
+            available: true,
+            locales: vec![locale("en-US", true)],
+        };
+        let uncertain = AppleSpeechCapabilities {
+            available: true,
+            locales: vec![AppleSpeechLocale {
+                identifier: "en-US".into(),
+                status: AppleSpeechResourceStatus::Unsupported,
+            }],
+        };
+        for first in [
+            Err(AppleSpeechError::Timeout),
+            Err(AppleSpeechError::ServiceUnavailable),
+            Ok(uncertain.clone()),
+        ] {
+            let mut responses = std::collections::VecDeque::from([first, Ok(ready.clone())]);
+            let result = query_capabilities_with_retry(|| {
+                std::future::ready(responses.pop_front().unwrap())
+            })
+            .await
+            .unwrap();
+            assert!(responses.is_empty());
+            assert!(
+                validate_source(&map_capabilities(result), SourceLanguage::English, true).is_ok()
+            );
+        }
+        let mut attempts = 0;
+        let result = query_capabilities_with_retry(|| {
+            attempts += 1;
+            std::future::ready(Ok(uncertain.clone()))
+        })
+        .await
+        .unwrap();
+        assert_eq!(attempts, 2);
+        assert_eq!(
+            validate_source(&map_capabilities(result), SourceLanguage::English, true).unwrap_err(),
+            "apple_speech_status_failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn resource_query_does_not_retry_missing_downloading_or_unavailable_assets() {
+        for response in [
+            Ok(AppleSpeechCapabilities {
+                available: true,
+                locales: vec![locale("en-US", false)],
+            }),
+            Ok(AppleSpeechCapabilities {
+                available: true,
+                locales: vec![AppleSpeechLocale {
+                    identifier: "en-US".into(),
+                    status: AppleSpeechResourceStatus::Downloading,
+                }],
+            }),
+            Ok(AppleSpeechCapabilities::default()),
+            Err(AppleSpeechError::InvalidLocale),
+        ] {
+            let mut attempts = 0;
+            let _ = query_capabilities_with_retry(|| {
+                attempts += 1;
+                std::future::ready(response.clone())
+            })
+            .await;
+            assert_eq!(attempts, 1);
+        }
+        let mut attempts = 0;
+        assert!(query_capabilities_with_retry(|| {
+            attempts += 1;
+            std::future::ready(Err(AppleSpeechError::Timeout))
+        })
+        .await
+        .is_err());
+        assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn automatic_selection_uses_only_installed_route_compatible_languages() {
+        let mut profile = ServiceProfile::new(
+            "local",
+            "Local",
+            crate::core::provider::ProviderKind::AppleSpeech,
+        )
+        .unwrap();
+        profile.text_translation = Some(crate::core::provider::TextTranslation::Apple);
+        let support = map_capabilities(AppleSpeechCapabilities {
+            available: true,
+            locales: vec![locale("en-US", false), locale("zh-CN", true)],
+        });
+        assert_eq!(
+            ready_source_for_profile(
+                &support,
+                &profile,
+                TargetLanguage::SimplifiedChinese,
+                SourceLanguage::English
+            ),
+            Some(SourceLanguage::Chinese)
+        );
+        assert_eq!(
+            ready_source_for_profile(
+                &support,
+                &profile,
+                TargetLanguage::English,
+                SourceLanguage::Chinese
+            ),
+            Some(SourceLanguage::Chinese)
+        );
+        let missing = map_capabilities(AppleSpeechCapabilities {
+            available: true,
+            locales: vec![locale("en-US", false)],
+        });
+        assert_eq!(
+            ready_source_for_profile(
+                &missing,
+                &profile,
+                TargetLanguage::English,
+                SourceLanguage::English
+            ),
+            None
+        );
     }
 
     #[test]

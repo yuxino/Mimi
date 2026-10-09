@@ -7,10 +7,12 @@ import { useStore } from "../../lib/store";
 import { OverlayWindow } from "./OverlayWindow";
 import { audioInputLabel } from "../../lib/audioInput";
 
+const nativeFeedback = vi.hoisted(() => ({ callback: undefined as ((event: import("../../lib/ipc").ProfileSwitchFeedback) => void) | undefined }));
 vi.mock("../../lib/ipc", async (original) => ({
   ...await original<typeof import("../../lib/ipc")>(),
   isTauri: true,
   listenOverlayPointerMotion: async () => () => {},
+  listenProfileSwitchFeedback: async (callback: (event: import("../../lib/ipc").ProfileSwitchFeedback) => void) => { nativeFeedback.callback = callback; return () => { nativeFeedback.callback = undefined; }; },
 }));
 vi.mock("./PulseRing", () => ({ PulseRing: () => null }));
 vi.mock("./ResizeHandles", () => ({ ResizeHandles: () => null }));
@@ -178,4 +180,21 @@ it("retains direct close at the minimum width without overlapping the capsule", 
   expect(button(I18N.overlay.closeSubtitles)).not.toBeNull();
   expect(button(I18N.overlay.pause)).toBeNull();
   expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(1);
+});
+
+
+it.each(["normal", "immersive", "collapsed"])("shows rejected profile selection on the %s canvas after the popover closes", async mode => {
+  useStore.setState(state => ({ settings: { ...state.settings, activeProfileId: "test", subtitleBlendsWithBackground: mode === "immersive" },
+    session: { ...state.session, isOverlayCollapsed: mode === "collapsed" } }));
+  await act(async () => root.render(<OverlayWindow />));
+  await act(async () => nativeFeedback.callback?.({ requestId: 1, pending: true, error: null }));
+  expect(host.querySelector('.overlay-action-feedback')?.getAttribute('role')).toBe('status');
+  await act(async () => nativeFeedback.callback?.({ requestId: 1, pending: false, error: "apple_speech_status_failed" }));
+  expect(host.querySelector('.overlay-action-feedback[role="alert"]')?.textContent).toBe(I18N.settings.appleSpeechLoadFailed);
+  expect(useStore.getState().settings.activeProfileId).toBe("test");
+  expect(useStore.getState().session.status.kind).toBe("listening");
+  await act(async () => nativeFeedback.callback?.({ requestId: 2, pending: true, error: null }));
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => nativeFeedback.callback?.({ requestId: 2, pending: false, error: null }));
+  expect(host.querySelector('.overlay-action-feedback')).toBeNull();
 });

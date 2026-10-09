@@ -454,7 +454,7 @@ it("keeps the persisted profile visible when its reconnect fails", async () => {
   await act(async () => reject(error));
   expect(picker(I18N.settings.currentProfile).textContent).toBe("My recognition model");
   expect(picker(I18N.settings.currentProfile).disabled).toBe(false);
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(profileErrorMessage(error));
+  expect(host.querySelector('[role="alert"]')?.textContent).toContain(profileErrorMessage(error));
   expect(host.textContent).not.toContain(error);
   expect(props.onDismiss).not.toHaveBeenCalled();
   expect(props.onSelectProfile).toHaveBeenCalledExactlyOnceWith("custom");
@@ -526,4 +526,19 @@ it.each(["zh", "en", "ja"] as const)("keeps duplicate pause/close actions out of
   expect(host.querySelector(".overlay-control-session-action")).toBeNull();
   expect(host.querySelector(`button[aria-label="${I18N.overlay.pause}"]`)).toBeNull();
   expect(host.querySelector(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)).toBeNull();
+});
+
+
+it.each(["apple_speech_assets_missing", "apple_speech_status_failed"])("keeps %s above the profile picker and opens resource settings", async error => {
+  configureProfiles();
+  props.onSelectProfile = vi.fn().mockRejectedValue(error);
+  await mount();
+  await chooseProfile("My recognition model");
+  const alert = host.querySelector<HTMLElement>('.overlay-control-alert')!;
+  expect(alert.textContent).toContain(profileErrorMessage(error));
+  expect(alert.compareDocumentPosition(picker(I18N.settings.currentProfile)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(props.onDismiss).not.toHaveBeenCalled();
+  expect(props.settings.activeProfileId).not.toBe("custom");
+  await act(async () => alert.querySelector<HTMLButtonElement>('button')!.click());
+  expect(props.onShowSettings).toHaveBeenCalledExactlyOnceWith("appleSpeechResources");
 });

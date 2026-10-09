@@ -1,3 +1,4 @@
+import { useProfileSwitchFeedback } from "./useProfileSwitchFeedback";
 import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { subtitleBackgroundColor } from "../../lib/subtitleColor";
@@ -69,14 +70,18 @@ export function OverlayWindow() {
   const showSettings = useStore((state) => state.showSettings);
   const sessionAction = useSessionAction();
   const controlAction = useSessionAction();
-  const actionFailureMessage = sessionAction.failureMessage ?? controlAction.failureMessage ?? I18N.overlay.controlActionFailed;
+  const profileAction = useProfileSwitchFeedback();
+  const { clearFailure: clearProfileFailure } = profileAction;
+  const actionPending = sessionAction.pending || profileAction.pending;
+  const actionFailureMessage = sessionAction.failureMessage ?? controlAction.failureMessage ?? profileAction.failureMessage ?? I18N.overlay.controlActionFailed;
   const { run: runGuardedControl, clearFailure: clearControlFailure } = controlAction;
   const [pendingControl, setPendingControl] = useState<ControlAction | null>(null);
   const { clearFailure } = sessionAction;
   useEffect(() => {
     clearFailure();
     clearControlFailure();
-  }, [session.status.kind, session.isActive, session.isPaused, clearFailure, clearControlFailure]);
+    clearProfileFailure();
+  }, [session.status.kind, session.isActive, session.isPaused, clearFailure, clearControlFailure, clearProfileFailure]);
 
   const runControlAction = (action: ControlAction, operation: () => Promise<void>) => {
     void runGuardedControl(async () => {
@@ -139,7 +144,7 @@ export function OverlayWindow() {
   const collapsed = session.isOverlayCollapsed;
   // Native geometry temporarily expands an error surface too. Preserve both
   // presentation preferences so recovery restores the user's reading mode.
-  const blendsWithBackground = settings.subtitleBlendsWithBackground && !hasSessionError;
+  const blendsWithBackground = settings.subtitleBlendsWithBackground && !hasSessionError && !profileAction.failed && !profileAction.pending;
   const presentationLocked = settings.isOverlayLocked && !hasSessionError;
   // Resolved once per render: an explicit switch overrides the system, and the
   // body class is what the CSS animations key off.
@@ -149,7 +154,7 @@ export function OverlayWindow() {
     document.body.classList.toggle("motion-reduced", !motionOn);
     document.body.classList.toggle("pulse-off", !pulseOn);
   }, [motionOn, pulseOn]);
-  const presentationCollapsed = collapsed && !blendsWithBackground && !hasSessionError;
+  const presentationCollapsed = collapsed && !blendsWithBackground && !hasSessionError && !profileAction.failed && !profileAction.pending;
   const phase = computeActivityPhase(session, settings);
   const activeProvider = settings.profiles.find(profile => profile.id === settings.activeProfileId)?.provider;
   const atomicProvider = session.atomicPreview ?? usesAtomicSubtitlePreview(activeProvider);
@@ -272,14 +277,14 @@ export function OverlayWindow() {
   function renderStatusLine() {
     const returnToLive = readingHistory && blocks.length > 0 && !presentationCollapsed;
     const showTiming = session.isActive && !blendsWithBackground;
-    const actionFailed = sessionAction.failed || controlAction.failed;
+    const actionFailed = sessionAction.failed || controlAction.failed || profileAction.failed;
     const visibleService = blendsWithBackground ? null : service;
-    if (!showTiming && !sessionAction.pending && !actionFailed && !returnToLive && !visibleService) return null;
+    if (!showTiming && !actionPending && !actionFailed && !returnToLive && !visibleService) return null;
     return <div className={`overlay-status-row${separateMetadataRow ? " overlay-status-row--narrow" : ""}`}
       style={{ top: contentTopBandHeight - 14, columnGap: separateMetadataRow || blendsWithBackground ? 8 : topChromeLayout.dragHandleWidth + 16 }}>
       <div className="overlay-status-row__leading">
-        {sessionAction.pending || actionFailed ? <div role={sessionAction.pending ? "status" : "alert"} className="overlay-action-feedback">
-          {sessionAction.pending ? I18N.overlay.connecting : actionFailureMessage}
+        {actionPending || actionFailed ? <div role={actionPending ? "status" : "alert"} title={actionPending ? I18N.overlay.connecting : actionFailureMessage} className="overlay-action-feedback">
+          {actionPending ? I18N.overlay.connecting : actionFailureMessage}
         </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
       </div>
       <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
@@ -591,11 +596,11 @@ export function OverlayWindow() {
           <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
           <span
             className="truncate"
-            role={sessionAction.failed || controlAction.failed ? "alert" : undefined}
-            title={sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
+            role={sessionAction.failed || controlAction.failed || profileAction.failed ? "alert" : undefined}
+            title={sessionAction.failed || controlAction.failed || profileAction.failed ? actionFailureMessage : phaseLabel}
             style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.76)" }}
           >
-            {sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
+            {sessionAction.failed || controlAction.failed || profileAction.failed ? actionFailureMessage : phaseLabel}
           </span>
           <span className="flex-1" style={{ minWidth: 4 }} />
           <ControlButton
