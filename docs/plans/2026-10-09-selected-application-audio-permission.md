@@ -19,7 +19,9 @@ Apple requirement for this capability.
   existing error surfaces offer a fixed OS privacy-page action and manual Retry;
   they never mutate a permission or redirect users to provider credentials.
 - Update the re-openable macOS guide without a special screen-recording warning
-  for selected apps. It performs no capture, credential or grant action.
+  for selected apps. Its explicit settings button opens the same fixed privacy
+  page, with a localized manual fallback if the OS opener fails. It performs
+  no capture, credential or grant action.
 
 Apple references:
 - https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps
@@ -58,9 +60,10 @@ enabled. Evidence contains counts and state only, never PCM or subtitles.
 | Selected application exits | ApplicationUnavailable, drained/idle, zero post-stop buffers |
 | Missing selected application, then system capture | Unavailable with zero buffers; next start succeeds |
 | Native permission error UI fixture | Localized reason, OS-settings action, retry returns to usable error state |
+| Guide privacy action in seven languages | Explicit click invokes the fixed command; opener failure keeps a safe manual path |
 | Native OS-settings action | Opens the correct privacy page; does not change either grant |
 | Seven languages at the minimum settings width | Guide/error text and buttons fit; no horizontal overflow |
-| Canonical check.sh | Rust fmt/clippy/tests and 131 frontend files / 2,038 tests pass |
+| Canonical check.sh | Rust fmt/clippy/tests and 131 frontend files / 2,039 tests pass |
 
 The permission-error screenshot uses the credential-free UI-only fixture.
 Actual denial/regrant was not repeated in this follow-up, to preserve the

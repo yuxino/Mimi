@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { appOpenAudioPrivacySettings } from "../../lib/ipc";
 import { systemAudioPermissionCopy } from "../../lib/systemAudioPermissions";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -6,6 +7,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { SettingsView } from "./SettingsView";
+
+vi.mock("../../lib/ipc", async importOriginal => ({
+  ...await importOriginal<typeof import("../../lib/ipc")>(),
+  appOpenAudioPrivacySettings: vi.fn(),
+}));
 
 let host: HTMLDivElement;
 let root: Root;
@@ -15,6 +21,7 @@ const saveSettings = vi.fn().mockResolvedValue(undefined);
 const saveProfileCredentials = vi.fn().mockResolvedValue(undefined);
 
 beforeEach(() => {
+  vi.mocked(appOpenAudioPrivacySettings).mockReset().mockResolvedValue(undefined);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Element.prototype.scrollTo = vi.fn();
@@ -146,6 +153,12 @@ it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr"] as const)("explains macOS 
   await mount();
   expect(host.textContent).toContain(systemAudioPermissionCopy().guide);
   expect(host.textContent).toContain("14.2");
+  const button = host.querySelector<HTMLButtonElement>(".quick-start-guide li:nth-child(2) button")!;
+  expect(button.textContent).toBe(systemAudioPermissionCopy().open);
+  expect(appOpenAudioPrivacySettings).not.toHaveBeenCalled();
+  await act(async () => button.click());
+  expect(appOpenAudioPrivacySettings).toHaveBeenCalledExactlyOnceWith();
+  expect(saveProfileCredentials).not.toHaveBeenCalled();
   expect(start).not.toHaveBeenCalled();
   expect(saveSettings).not.toHaveBeenCalled();
   vi.restoreAllMocks();
@@ -156,6 +169,23 @@ it.each(["Windows NT 10.0", "Linux"])("omits the macOS permission guide on %s", 
   window.history.replaceState(null, "", "#getting-started");
   await mount();
   expect(host.textContent).not.toContain(systemAudioPermissionCopy().guide);
+  expect(host.querySelector(".quick-start-guide li:nth-child(2) button")).toBeNull();
   expect(start).not.toHaveBeenCalled();
+  vi.restoreAllMocks();
+});
+
+it("keeps a manual privacy path if opening settings from the guide fails", async () => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh");
+  vi.mocked(appOpenAudioPrivacySettings).mockRejectedValueOnce(new Error("private-opener-detail"));
+  window.history.replaceState(null, "", "#getting-started");
+  await mount();
+  const button = host.querySelector<HTMLButtonElement>(".quick-start-guide li:nth-child(2) button")!;
+  await act(async () => button.click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(systemAudioPermissionCopy().failed);
+  expect(host.textContent).not.toContain("private-opener-detail");
+  expect(button.disabled).toBe(false);
+  expect(start).not.toHaveBeenCalled();
+  expect(saveSettings).not.toHaveBeenCalled();
+  expect(saveProfileCredentials).not.toHaveBeenCalled();
   vi.restoreAllMocks();
 });
