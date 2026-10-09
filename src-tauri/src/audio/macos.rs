@@ -1,6 +1,7 @@
 //! macOS system-audio capture (audio only, own process audio excluded,
-//! provider-rate PCM16 mono). The system mix uses Core Audio taps on macOS
-//! 14.2+; older systems and application capture use ScreenCaptureKit.
+//! provider-rate PCM16 mono). Without an existing screen grant, the system mix
+//! uses Core Audio taps on macOS 14.2+; existing screen grants, older systems
+//! and application capture use ScreenCaptureKit.
 //!
 //! ScreenCaptureKit types are main-thread-only (!Send). All stream, handler,
 //! and content objects are therefore created, used, and destroyed inside
@@ -354,13 +355,17 @@ impl Drop for PendingTeardownGuard {
 async fn finish_failed_capture_start<F>(
     generation: &CaptureGeneration,
     started: &AtomicBool,
+    transition: &Mutex<()>,
     generation_token: u64,
     teardown: F,
 ) where
     F: std::future::Future<Output = ()>,
 {
-    if generation.invalidate_if_current(generation_token) {
-        started.store(false, Ordering::SeqCst);
+    {
+        let _transition = transition.lock().unwrap();
+        if generation.invalidate_if_current(generation_token) {
+            started.store(false, Ordering::SeqCst);
+        }
     }
     // Phase 2 can install and start the stream immediately before the setup
     // acknowledgement loses a timeout race. The failing start must therefore
@@ -372,6 +377,7 @@ async fn finish_failed_capture_start<F>(
 pub struct MacSystemAudioCapture {
     dispatcher: MainThreadDispatcher,
     started: Arc<AtomicBool>,
+    transition: Arc<Mutex<()>>,
     generation: CaptureGeneration,
     pending_teardown: PendingTeardown,
     #[cfg(feature = "development-debugger")]
@@ -383,6 +389,7 @@ impl MacSystemAudioCapture {
         Self {
             dispatcher,
             started: Arc::new(AtomicBool::new(false)),
+            transition: Arc::new(Mutex::new(())),
             generation: CaptureGeneration::default(),
             pending_teardown: PendingTeardown::default(),
             #[cfg(feature = "development-debugger")]
@@ -457,10 +464,16 @@ impl MacSystemAudioCapture {
         format: AudioCaptureFormat,
         target: SystemAudioTarget,
     ) -> Result<(), SystemAudioCaptureError> {
-        if self.started.swap(true, Ordering::SeqCst) {
-            return Err(SystemAudioCaptureError::AlreadyRunning);
-        }
-        let generation_token = self.generation.begin();
+        // Claiming active state and assigning its token must be one transition.
+        // A concurrent stop between them could otherwise invalidate the old
+        // token, after which this stopped start would create a fresh generation.
+        let generation_token = {
+            let _transition = self.transition.lock().unwrap();
+            if self.started.swap(true, Ordering::SeqCst) {
+                return Err(SystemAudioCaptureError::AlreadyRunning);
+            }
+            self.generation.begin()
+        };
         if tokio::time::timeout(
             CAPTURE_START_TIMEOUT,
             self.pending_teardown.wait_until_clear(),
@@ -644,10 +657,13 @@ impl MacSystemAudioCapture {
     }
 
     pub async fn stop(&self) {
-        if !self.started.swap(false, Ordering::SeqCst) {
-            return;
-        }
-        let generation_token = self.generation.invalidate();
+        let generation_token = {
+            let _transition = self.transition.lock().unwrap();
+            if !self.started.swap(false, Ordering::SeqCst) {
+                return;
+            }
+            self.generation.invalidate()
+        };
         pipeline_log!("capture stop requested");
         self.teardown_generation(generation_token).await;
     }
@@ -735,6 +751,7 @@ impl MacSystemAudioCapture {
         finish_failed_capture_start(
             &self.generation,
             &self.started,
+            &self.transition,
             generation_token,
             self.teardown_generation(generation_token),
         )
@@ -1594,12 +1611,18 @@ mod resampler_tests {
         phase_two_installed_rx.await.unwrap();
 
         let teardown_slot = Arc::clone(&installed_stream);
-        finish_failed_capture_start(&generation, &started, timed_out_token, async move {
-            let mut slot = teardown_slot.lock().unwrap();
-            if *slot == Some(timed_out_token) {
-                *slot = None;
-            }
-        })
+        finish_failed_capture_start(
+            &generation,
+            &started,
+            &Mutex::new(()),
+            timed_out_token,
+            async move {
+                let mut slot = teardown_slot.lock().unwrap();
+                if *slot == Some(timed_out_token) {
+                    *slot = None;
+                }
+            },
+        )
         .await;
 
         assert!(!started.load(Ordering::SeqCst));
@@ -1610,6 +1633,20 @@ mod resampler_tests {
         assert!(slot.is_none(), "stale stream would reject a retry");
         *slot = Some(retry_token);
         assert_eq!(*slot, Some(retry_token));
+    }
+
+    #[tokio::test]
+    async fn stale_start_failure_preserves_a_new_active_generation() {
+        let generation = CaptureGeneration::default();
+        let started = AtomicBool::new(true);
+        let transition = Mutex::new(());
+        let old = generation.begin();
+        generation.invalidate();
+        let current = generation.begin();
+        finish_failed_capture_start(&generation, &started, &transition, old, async {}).await;
+        assert!(started.load(Ordering::SeqCst));
+        assert!(generation.is_current(current));
+        assert!(!generation.is_current(old));
     }
 
     #[tokio::test]

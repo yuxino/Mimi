@@ -129,6 +129,7 @@ pub(super) async fn start(
                 // The context and teardown reservation already exist before
                 // starting IO. A late success after cancellation is destroyed
                 // by this worker before another source can start.
+                pipeline_log!("capture tap setup stage=start_device");
                 let result = status(unsafe { AudioDeviceStart(native.device, native.io_proc) });
                 if let Err(error) = result {
                     let _ = ready_tx.send(Err(error));
@@ -308,6 +309,7 @@ impl NativeTap {
         };
         check_current()?;
         let pid = std::process::id() as libc::pid_t;
+        pipeline_log!("capture tap setup stage=translate_process");
         let own_process: AudioObjectID = property(
             kAudioObjectSystemObject as AudioObjectID,
             kAudioHardwarePropertyTranslatePIDToProcessObject,
@@ -320,6 +322,7 @@ impl NativeTap {
             return Err(SystemAudioCaptureError::NativeStartFailed);
         }
         let excluded = NSArray::from_retained_slice(&[NSNumber::new_u32(own_process)]);
+        pipeline_log!("capture tap setup stage=create_description");
         // SAFETY: This is called only after both 14.2 tap symbols are found.
         let description = unsafe {
             let description = CATapDescription::initMonoGlobalTapButExcludeProcesses(
@@ -332,8 +335,10 @@ impl NativeTap {
             description
         };
         check_current()?;
+        pipeline_log!("capture tap setup stage=create_tap");
         status(unsafe { (self.api.create)(Some(&description), &mut self.tap) })?;
         check_current()?;
+        pipeline_log!("capture tap setup stage=read_tap_format");
         let asbd: AudioStreamBasicDescription = property(
             self.tap,
             kAudioTapPropertyFormat,
@@ -341,6 +346,7 @@ impl NativeTap {
             None,
         )?;
         validate_format(&asbd)?;
+        pipeline_log!("capture tap setup stage=read_output_device");
         self.output_device = property(
             kAudioObjectSystemObject as AudioObjectID,
             kAudioHardwarePropertyDefaultOutputDevice,
@@ -362,7 +368,10 @@ impl NativeTap {
             (kAudioAggregateDeviceUIDKey, &aggregate_uid),
             (kAudioAggregateDeviceIsPrivateKey, &enabled),
             (kAudioAggregateDeviceIsStackedKey, &disabled),
-            (kAudioAggregateDeviceTapAutoStartKey, &enabled),
+            // The SDK documents that true waits for the first tapped audio.
+            // Starting subtitles while the computer is quiet must not block
+            // native setup or consume its timeout before playback begins.
+            (kAudioAggregateDeviceTapAutoStartKey, &disabled),
             (kAudioAggregateDeviceTapListKey, &taps),
         ]);
         // SAFETY: NSDictionary is toll-free bridged to CFDictionary. The keys
@@ -370,10 +379,12 @@ impl NativeTap {
         let aggregate_cf = unsafe {
             &*((&*aggregate as *const NSDictionary<NSString, AnyObject>).cast::<CFDictionary>())
         };
+        pipeline_log!("capture tap setup stage=create_aggregate");
         status(unsafe {
             AudioHardwareCreateAggregateDevice(aggregate_cf, NonNull::from(&mut self.device))
         })?;
         check_current()?;
+        pipeline_log!("capture tap setup stage=read_aggregate_format");
         let device_format: AudioStreamBasicDescription = property(
             self.device,
             kAudioDevicePropertyStreamFormat,
@@ -392,6 +403,7 @@ impl NativeTap {
             bytes_per_frame: asbd.mBytesPerFrame as usize,
         }));
         let context = self.context.as_deref_mut().unwrap() as *mut CallbackState;
+        pipeline_log!("capture tap setup stage=create_ioproc");
         status(unsafe {
             AudioDeviceCreateIOProcID(
                 self.device,
@@ -616,6 +628,14 @@ mod tests {
     }
 
     fn deliver(state: &mut CallbackState, bytes: &mut [u8]) {
+        deliver_with_buffer(state, bytes, |_| {});
+    }
+
+    fn deliver_with_buffer(
+        state: &mut CallbackState,
+        bytes: &mut [u8],
+        configure: impl FnOnce(&mut AudioBufferList),
+    ) {
         use objc2_core_audio_types::AudioBuffer;
         let mut input = AudioBufferList {
             mNumberBuffers: 1,
@@ -625,6 +645,7 @@ mod tests {
                 mData: bytes.as_mut_ptr().cast(),
             }],
         };
+        configure(&mut input);
         let mut output = AudioBufferList {
             mNumberBuffers: 0,
             mBuffers: [AudioBuffer {
@@ -646,6 +667,140 @@ mod tests {
                 NonNull::from(&mut timestamp),
                 (state as *mut CallbackState).cast(),
             );
+        }
+    }
+
+    #[test]
+    fn callback_ignores_empty_disabled_input_without_reading_or_failing() {
+        let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
+        let (failure, mut failures) = CaptureFailureSender::channel();
+        let mut state = CallbackState {
+            sender,
+            failure,
+            generation: CaptureGeneration::default(),
+            token: 0,
+            bytes_per_frame: 4,
+        };
+        let mut bytes = [1, 2, 3, 4];
+        deliver_with_buffer(&mut state, &mut bytes, |input| input.mNumberBuffers = 0);
+        deliver_with_buffer(&mut state, &mut bytes, |input| {
+            input.mBuffers[0].mData = std::ptr::null_mut();
+        });
+        deliver(&mut state, &mut []);
+        assert!(receiver.try_recv().is_err());
+        assert!(failures.try_recv().is_err());
+    }
+
+    #[test]
+    fn malformed_native_callback_fails_closed_and_reports_only_once() {
+        for invalid in 0..4 {
+            let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            let mut state = CallbackState {
+                sender,
+                failure,
+                generation: CaptureGeneration::default(),
+                token: 0,
+                bytes_per_frame: 4,
+            };
+            let mut bytes = [1, 2, 3, 4];
+            deliver_with_buffer(&mut state, &mut bytes, |input| match invalid {
+                0 => input.mNumberBuffers = 2,
+                1 => input.mBuffers[0].mNumberChannels = 2,
+                2 => input.mBuffers[0].mDataByteSize = MAX_CALLBACK_BYTES as u32 + 4,
+                _ => input.mBuffers[0].mDataByteSize = 3,
+            });
+            deliver(&mut state, &mut bytes);
+            assert!(receiver.try_recv().is_err());
+            assert_eq!(
+                failures.try_recv().unwrap(),
+                SystemAudioCaptureFailure::AudioProcessingFailed
+            );
+            assert!(failures.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn native_permission_error_is_distinct_from_other_setup_failures() {
+        assert_eq!(status(0), Ok(()));
+        assert_eq!(
+            status(kAudioDevicePermissionsError),
+            Err(SystemAudioCaptureError::PermissionDenied)
+        );
+        assert_eq!(status(-1), Err(SystemAudioCaptureError::NativeStartFailed));
+    }
+
+    #[test]
+    fn supported_tap_formats_decode_and_resample_at_both_provider_rates() {
+        for (bits, flags) in [
+            (32, kAudioFormatFlagIsFloat),
+            (16, kAudioFormatFlagIsSignedInteger),
+            (32, kAudioFormatFlagIsSignedInteger),
+        ] {
+            let asbd = AudioStreamBasicDescription {
+                mSampleRate: 48_000.0,
+                mFormatID: kAudioFormatLinearPCM,
+                mFormatFlags: flags,
+                mBitsPerChannel: bits,
+                mBytesPerFrame: bits / 8,
+                mChannelsPerFrame: 1,
+                mBytesPerPacket: bits / 8,
+                mFramesPerPacket: 1,
+                mReserved: 0,
+            };
+            validate_format(&asbd).unwrap();
+            let mut bytes = Vec::new();
+            for frame in 0..4096 {
+                let sample = (frame as f32 * std::f32::consts::TAU * 440.0 / 48_000.0).sin() * 0.5;
+                if flags == kAudioFormatFlagIsFloat {
+                    bytes.extend_from_slice(&sample.to_le_bytes());
+                } else if bits == 16 {
+                    bytes.extend_from_slice(&((sample * i16::MAX as f32) as i16).to_le_bytes());
+                } else {
+                    bytes.extend_from_slice(&((sample * i32::MAX as f32) as i32).to_le_bytes());
+                }
+            }
+            let samples = decode_to_f32_mono(&bytes, &asbd).unwrap();
+            assert_eq!(samples.len(), 4096);
+            for rate in [16_000, 24_000] {
+                let mut resampler = StreamingPcm16Resampler::new(48_000, rate, 1).unwrap();
+                let buffers = resampler.push_interleaved(&samples).unwrap();
+                assert!(!buffers.is_empty());
+                assert!(buffers
+                    .iter()
+                    .all(|pcm| !pcm.is_empty() && pcm.len().is_multiple_of(2)));
+                assert!(buffers
+                    .iter()
+                    .flat_map(|pcm| pcm.chunks_exact(2))
+                    .any(|bytes| i32::from(i16::from_le_bytes([bytes[0], bytes[1]])).abs() > 100));
+            }
+            for rate in [0.0, -48_000.0, f64::NAN, f64::INFINITY, 48_000.5, 192_001.0] {
+                assert!(validate_format(&AudioStreamBasicDescription {
+                    mSampleRate: rate,
+                    ..asbd
+                })
+                .is_err());
+            }
+            for flags in [
+                asbd.mFormatFlags | kAudioFormatFlagIsBigEndian,
+                asbd.mFormatFlags | kAudioFormatFlagIsAlignedHigh,
+            ] {
+                assert!(validate_format(&AudioStreamBasicDescription {
+                    mFormatFlags: flags,
+                    ..asbd
+                })
+                .is_err());
+            }
+            assert!(validate_format(&AudioStreamBasicDescription {
+                mBytesPerPacket: 1,
+                ..asbd
+            })
+            .is_err());
+            assert!(validate_format(&AudioStreamBasicDescription {
+                mFramesPerPacket: 2,
+                ..asbd
+            })
+            .is_err());
         }
     }
 
