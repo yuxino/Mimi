@@ -45,7 +45,8 @@ beforeEach(() => {
   setStoredUiLanguage("en");
   useStore.setState({ ...original,
     session: { ...original.session, subtitles, status: { kind: "listening" }, isActive: true, isPaused: false,
-      isOverlayCollapsed: false, isTranslationPending: false, detectedLanguage: "en" },
+      isOverlayCollapsed: false, isTranslationPending: false, detectedLanguage: "en",
+      apiLatencyMs: 120, translationLatencyMs: 700, translationLatencyKind: "request" },
     settings: { ...original.settings, activeProfileId: "configured", profiles: [{ id: "configured", provider: "alibabaCloud", name: "Configured service", credentialState: "present" }], subtitleDisplayMode: "bilingual", sourceLanguage: "en", targetLanguage: "zh",
       subtitleBlendsWithBackground: false, isOverlayLocked: false, pulseAnimation: false, subtitleAnimation: false },
     clearSubtitles: async () => useStore.setState(state => ({ session: { ...state.session, subtitles: empty } })),
