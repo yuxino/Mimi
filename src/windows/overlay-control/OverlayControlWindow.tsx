@@ -1,3 +1,4 @@
+import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
 import { useCallback, useEffect, useRef } from "react";
 import { targetLanguagesForSettings } from "../../lib/providerCapabilities";
@@ -31,6 +32,7 @@ import "./overlay-control.css";
 export function OverlayControlWindow() {
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
+  const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
   const errorSettingsTarget = useStore(state => state.session.status.kind === "error" ? sessionErrorSettingsTarget(state.session.status.message) : null);
   const errorRequiresConfiguration = errorSettingsTarget !== null;
   const start = useStore(state => state.start);
@@ -138,6 +140,7 @@ export function OverlayControlWindow() {
           isWaitingForFinalTranslation={isWaiting}
           isChangingSession={isChangingSession}
           isStopping={sessionStatusKind === "stopping"}
+          permissionRequired={permissionRequired}
           sessionErrorMessage={sessionErrorMessage}
           errorSettingsTarget={errorSettingsTarget}
           onRetrySession={errorRequiresConfiguration ? undefined : start}

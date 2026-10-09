@@ -105,3 +105,30 @@ it.each(["zh", "en", "ja"] as const)("offers an explicit keyboard-reachable resu
     await act(async () => root.unmount()); host.remove(); setStoredUiLanguage("en"); vi.unstubAllGlobals();
   }
 });
+
+it("keeps the permission cause and manual retry without a duplicate generic failure", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const onSessionChange = vi.fn(), onConfigure = vi.fn();
+  const base = { checked: false, disabled: false, status: "error" as const, statusText: I18N.settings.sessionActionFailed,
+    errorMessage: "Synthetic permission cause", permissionRequired: true, actionFailed: true, isActive: false, isChanging: false,
+    immersive: false, canConfigure: false, nativeShortcuts: false, desktopShortcuts: null,
+    onSessionChange, onResume: vi.fn(), onImmersiveChange: vi.fn(), onConfigure };
+  try {
+    await act(async () => root.render(<SettingsSessionControls {...base} />));
+    expect(host.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(base.errorMessage);
+    expect(host.querySelector('.session-error-feedback__action')?.textContent).not.toContain(I18N.settings.openSpeechSettings);
+    const retry = host.querySelector<HTMLButtonElement>('.settings-session-control__actions .settings-button')!;
+    expect(retry.disabled).toBe(false);
+    expect(onSessionChange).not.toHaveBeenCalled();
+    await act(async () => retry.click());
+    expect(onSessionChange).toHaveBeenCalledExactlyOnceWith(true);
+    expect(onConfigure).not.toHaveBeenCalled();
+    await act(async () => root.render(<SettingsSessionControls {...base} permissionRequired={false} />));
+    expect(host.querySelectorAll('[role="alert"]')).toHaveLength(2);
+  } finally {
+    await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals();
+  }
+});

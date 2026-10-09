@@ -2,6 +2,7 @@
 identifier = "app-bootstrap"
 description = "Allows every bundled window to hydrate public settings and session snapshots."
 commands.allow = [
+  "app_open_audio_privacy_settings",
   "settings_get",
   "session_get_state",
   "app_desktop_shortcut_commands",

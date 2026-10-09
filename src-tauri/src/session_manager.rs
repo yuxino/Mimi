@@ -1618,7 +1618,7 @@ impl SessionManager {
         // settings because that resolution reads the OS credential store.
         if self.is_ui_test() {
             if self.is_generation_current(request_generation) {
-                self.establish_ui_test_session();
+                return self.establish_ui_test_session();
             }
             return Ok(());
         }
@@ -1666,8 +1666,7 @@ impl SessionManager {
         self.ensure_generation_current(generation)?;
 
         if self.is_ui_test() {
-            self.establish_ui_test_session();
-            return Ok(());
+            return self.establish_ui_test_session();
         }
 
         // A language/mode switch may land while connecting (the picker stays
@@ -4587,11 +4586,25 @@ impl SessionManager {
         self.settings.is_ui_test()
     }
 
-    fn establish_ui_test_session(self: &Arc<Self>) {
+    fn establish_ui_test_session(self: &Arc<Self>) -> Result<(), String> {
         self.cancel_translation_timeout();
         self.clear_active_settings();
         self.controller.lock().unwrap().begin_connecting();
         self.publish_state();
+        #[cfg(all(target_os = "macos", feature = "development-debugger"))]
+        if std::env::var("MIMI_UI_TEST_AUDIO_PERMISSION_DENIED").as_deref() == Ok("1") {
+            // Only this credential-free UI-test path may synthesize an error.
+            // No actual grant, capture or service configuration is touched.
+            let generation = self.active_generation.load(Ordering::SeqCst);
+            if self.invalidate_generation(generation) {
+                self.controller
+                    .lock()
+                    .unwrap()
+                    .did_fail(crate::audio::SystemAudioCaptureError::PermissionDenied.to_string());
+                self.publish_state();
+            }
+            return Err(crate::audio::SystemAudioCaptureError::PermissionDenied.to_string());
+        }
         self.controller.lock().unwrap().did_connect();
         // Exercise the real archive and native save dialog in credential-free
         // UI QA. These are explicitly synthetic samples, never captured audio.
@@ -4650,6 +4663,7 @@ impl SessionManager {
         }
         self.publish_state();
         pipeline_log!("ui-test synthetic session listening");
+        Ok(())
     }
 }
 

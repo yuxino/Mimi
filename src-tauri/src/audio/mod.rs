@@ -104,6 +104,8 @@ mod macos_block_buffer;
 
 #[cfg(target_os = "macos")]
 mod macos_tap;
+#[cfg(target_os = "macos")]
+mod macos_tap_target;
 
 #[cfg(all(target_os = "macos", feature = "development-debugger"))]
 pub(crate) mod macos_smoke;

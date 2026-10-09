@@ -1,10 +1,11 @@
-//! Audio-only system mix via Core Audio process taps (macOS 14.2+).
+//! Audio-only system and selected-application capture via Core Audio process taps (macOS 14.2+).
 //!
 //! A worker owns all native resources. The IOProc only copies a bounded mono
 //! buffer into a bounded queue; decoding and resampling happen off the audio
 //! thread. No ScreenCaptureKit enumeration or microphone device is involved.
 
 use super::macos::{decode_to_f32_mono, CaptureGeneration, PendingTeardownGuard};
+use super::macos_tap_target::ApplicationTapTarget;
 use super::send_pipeline::{AudioIngress, AudioIngressError};
 use super::streaming_resampler::StreamingPcm16Resampler;
 use super::{
@@ -77,20 +78,17 @@ pub(super) fn is_available() -> bool {
     TapApi::load().is_some()
 }
 
-pub(super) fn use_audio_tap(
-    target: &SystemAudioTarget,
-    available: bool,
-    screen_capture_authorized: bool,
-) -> bool {
+pub(super) fn use_audio_tap(available: bool, screen_capture_authorized: bool) -> bool {
     // Preserve existing authorization rather than moving an already working
     // installation to a separately permissioned API. Preflight never prompts.
-    available && !screen_capture_authorized && target.application_id().is_none()
+    available && !screen_capture_authorized
 }
 
 pub(super) async fn start(
     ingress: AudioIngress,
     failure: CaptureFailureSender,
     format: AudioCaptureFormat,
+    target: SystemAudioTarget,
     generation: CaptureGeneration,
     token: u64,
     teardown: PendingTeardownGuard,
@@ -103,7 +101,7 @@ pub(super) async fn start(
             objc2::rc::autoreleasepool(|_| {
                 let mut native = NativeTap::new(api, teardown);
                 let setup = objc2::exception::catch(std::panic::AssertUnwindSafe(|| {
-                    native.prepare(&generation, token, failure.clone())
+                    native.prepare(&generation, token, failure.clone(), &target)
                 }))
                 .unwrap_or(Err(SystemAudioCaptureError::NativeStartFailed));
                 let (asbd, receiver) = match setup {
@@ -148,6 +146,7 @@ pub(super) async fn start(
                     asbd.mSampleRate
                 );
                 let mut health_at = Instant::now();
+                let mut target_at = Instant::now();
                 while generation.is_current(token) && !failure.has_reported() {
                     match receiver.recv_timeout(POLL_INTERVAL) {
                         Ok(bytes) => {
@@ -187,6 +186,19 @@ pub(super) async fn start(
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => {}
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    }
+                    if target_at.elapsed() >= POLL_INTERVAL {
+                        if let Err(error) = native.refresh_target() {
+                            failure.report(
+                                if error == SystemAudioCaptureError::ApplicationUnavailable {
+                                    SystemAudioCaptureFailure::ApplicationUnavailable
+                                } else {
+                                    SystemAudioCaptureFailure::NativeStopped
+                                },
+                            );
+                            break;
+                        }
+                        target_at = Instant::now();
                     }
                     if health_at.elapsed() >= HEALTH_INTERVAL {
                         // A changed route/format must reconnect rather than
@@ -278,6 +290,9 @@ struct NativeTap {
     started: bool,
     context: Option<Box<CallbackState>>,
     teardown: Option<PendingTeardownGuard>,
+    application: Option<ApplicationTapTarget>,
+    description: Option<Retained<CATapDescription>>,
+    process_ids: Vec<AudioObjectID>,
 }
 
 impl NativeTap {
@@ -291,6 +306,9 @@ impl NativeTap {
             started: false,
             context: None,
             teardown: Some(teardown),
+            application: None,
+            description: None,
+            process_ids: Vec::new(),
         }
     }
 
@@ -299,6 +317,7 @@ impl NativeTap {
         generation: &CaptureGeneration,
         token: u64,
         failure: CaptureFailureSender,
+        target: &SystemAudioTarget,
     ) -> Result<(AudioStreamBasicDescription, Receiver<Vec<u8>>), SystemAudioCaptureError> {
         let check_current = || {
             if generation.is_current(token) {
@@ -321,14 +340,31 @@ impl NativeTap {
             // playback merely because process translation was unavailable.
             return Err(SystemAudioCaptureError::NativeStartFailed);
         }
-        let excluded = NSArray::from_retained_slice(&[NSNumber::new_u32(own_process)]);
+        self.application = target
+            .application_id()
+            .map(ApplicationTapTarget::new)
+            .transpose()?;
+        self.process_ids = match &self.application {
+            Some(application) => application.processes()?,
+            None => vec![own_process],
+        };
+        let numbers: Vec<_> = self
+            .process_ids
+            .iter()
+            .map(|id| NSNumber::new_u32(*id))
+            .collect();
+        let processes = NSArray::from_retained_slice(&numbers);
         pipeline_log!("capture tap setup stage=create_description");
         // SAFETY: This is called only after both 14.2 tap symbols are found.
         let description = unsafe {
-            let description = CATapDescription::initMonoGlobalTapButExcludeProcesses(
-                CATapDescription::alloc(),
-                &excluded,
-            );
+            let description = if self.application.is_some() {
+                CATapDescription::initMonoMixdownOfProcesses(CATapDescription::alloc(), &processes)
+            } else {
+                CATapDescription::initMonoGlobalTapButExcludeProcesses(
+                    CATapDescription::alloc(),
+                    &processes,
+                )
+            };
             description.setPrivate(true);
             description.setMuteBehavior(CATapMuteBehavior::Unmuted);
             description.setName(&NSString::from_str("Mimi system audio"));
@@ -337,6 +373,7 @@ impl NativeTap {
         check_current()?;
         pipeline_log!("capture tap setup stage=create_tap");
         status(unsafe { (self.api.create)(Some(&description), &mut self.tap) })?;
+        self.description = Some(description.clone());
         check_current()?;
         pipeline_log!("capture tap setup stage=read_tap_format");
         let asbd: AudioStreamBasicDescription = property(
@@ -434,6 +471,59 @@ impl NativeTap {
             && running.is_ok_and(|running| running != 0)
     }
 
+    fn refresh_target(&mut self) -> Result<(), SystemAudioCaptureError> {
+        let Some(application) = &self.application else {
+            return Ok(());
+        };
+        let scan_started = Instant::now();
+        let processes = application.processes()?;
+        let scan_ms = scan_started.elapsed().as_millis();
+        if scan_ms >= 20 {
+            pipeline_log!("capture tap application_scan slow_ms={scan_ms}");
+        }
+        if processes == self.process_ids {
+            return Ok(());
+        }
+        pipeline_log!(
+            "capture tap application_processes previous_count={} count={} scan_ms={scan_ms}",
+            self.process_ids.len(),
+            processes.len()
+        );
+        let update_started = Instant::now();
+        let numbers: Vec<_> = processes.iter().map(|id| NSNumber::new_u32(*id)).collect();
+        let description = self
+            .description
+            .as_ref()
+            .ok_or(SystemAudioCaptureError::NativeStartFailed)?;
+        unsafe {
+            description.setProcesses(&NSArray::from_retained_slice(&numbers));
+        }
+        let mut raw = &**description as *const CATapDescription;
+        let mut address = AudioObjectPropertyAddress {
+            mSelector: kAudioTapPropertyDescription,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain,
+        };
+        // Core Audio copies the retained description. An empty inclusion list
+        // remains empty; it must never expand to the system mix on a race.
+        status(unsafe {
+            AudioObjectSetPropertyData(
+                self.tap,
+                NonNull::from(&mut address),
+                0,
+                std::ptr::null(),
+                std::mem::size_of_val(&raw) as u32,
+                NonNull::from(&mut raw).cast(),
+            )
+        })?;
+        pipeline_log!(
+            "capture tap application_update duration_ms={}",
+            update_started.elapsed().as_millis()
+        );
+        self.process_ids = processes;
+        Ok(())
+    }
+
     fn format_matches(&self, expected: &AudioStreamBasicDescription) -> bool {
         let format: Result<AudioStreamBasicDescription, _> = property(
             self.device,
@@ -499,7 +589,7 @@ fn dictionary(entries: &[(&CStr, &AnyObject)]) -> Retained<NSDictionary<NSString
     NSDictionary::from_slices(&keys, &values)
 }
 
-fn property<T: Copy>(
+pub(super) fn property<T: Copy>(
     object: AudioObjectID,
     selector: AudioObjectPropertySelector,
     scope: AudioObjectPropertyScope,
@@ -532,7 +622,7 @@ fn property<T: Copy>(
     Ok(unsafe { value.assume_init() })
 }
 
-fn status(code: i32) -> Result<(), SystemAudioCaptureError> {
+pub(super) fn status(code: i32) -> Result<(), SystemAudioCaptureError> {
     if code == 0 {
         Ok(())
     } else if code == kAudioDevicePermissionsError {
@@ -588,18 +678,11 @@ mod tests {
     }
 
     #[test]
-    fn only_system_mix_uses_taps_when_available() {
-        let system = SystemAudioTarget::default();
-        assert!(use_audio_tap(&system, true, false));
-        assert!(!use_audio_tap(&system, false, false));
-        assert!(!use_audio_tap(&system, true, true));
-        assert!(!use_audio_tap(&system, false, true));
-        let application = SystemAudioTarget::Application {
-            id: "com.example.player".into(),
-            name: "Player".into(),
-        };
-        assert!(!use_audio_tap(&application, true, false));
-        assert!(!use_audio_tap(&application, true, true));
+    fn taps_cover_both_targets_but_preserve_existing_screen_grants() {
+        assert!(use_audio_tap(true, false));
+        assert!(!use_audio_tap(false, false));
+        assert!(!use_audio_tap(true, true));
+        assert!(!use_audio_tap(false, true));
     }
 
     #[test]

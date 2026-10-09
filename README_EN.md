@@ -42,7 +42,7 @@ For activation links, credential instructions, and the models Mimi currently use
 
 1. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save.
 2. Choose the recognition and translation languages.
-3. Play something and turn on Live Subtitles under Subtitles. On macOS 14.2+, capturing All Applications supports System Audio Recording Only; existing screen grants are reused. Capturing a selected app or using an older macOS still requires Screen & System Audio Recording.
+3. Play something and turn on Live Subtitles under Subtitles. On macOS 14.2+, capturing All Applications or a selected application supports System Audio Recording Only; existing screen grants are reused. Older macOS versions require Screen & System Audio Recording.
 
 Cloud speech services require your own credentials and receive your audio; usage charges may apply. Apple Speech recognizes audio locally on supported Macs. Remote text translation sends recognized text to your chosen service; Apple Translation keeps text on the Mac.
 

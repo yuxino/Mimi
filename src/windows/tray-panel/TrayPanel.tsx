@@ -1,3 +1,4 @@
+import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { profileLanguagePresetLabel } from "../../lib/profileLanguagePreset";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
@@ -64,6 +65,7 @@ export function TrayPanel() {
   // each selector returns only the primitive state rendered by the tray.
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
+  const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
   const errorSettingsTarget = useStore(state => state.session.status.kind === "error" ? sessionErrorSettingsTarget(state.session.status.message) : null);
   const errorRequiresConfiguration = errorSettingsTarget !== null;
   const isPaused = useStore((state) => state.session.isPaused);
@@ -256,7 +258,7 @@ export function TrayPanel() {
         </span>
       </header>
 
-      {sessionStatusKind === "error" && <SessionErrorFeedback
+      {sessionStatusKind === "error" && <SessionErrorFeedback permissionRequired={permissionRequired}
         message={sessionErrorMessage ?? I18N.settings.sessionError}
         configureLabel={errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : undefined}
         onConfigure={() => performAction("settings", () => showSettings(errorSettingsTarget ?? "service"))}

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { systemAudioPermissionCopy } from "../../lib/systemAudioPermissions";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -136,4 +137,25 @@ it.each(["zh", "en", "ja"] as const)("keeps session recovery out of the settings
   await act(async () => useStore.setState({ session: { ...useStore.getState().session, isPaused: false, translationRecovery: null } }));
   expect(host.querySelector("#settings-session-status, .settings-session-card")).toBeNull();
   expect(start).not.toHaveBeenCalled();
+});
+
+it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr"] as const)("explains macOS audio-only and existing grants without starting a session in %s", async language => {
+  setStoredUiLanguage(language);
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh");
+  window.history.replaceState(null, "", "#getting-started");
+  await mount();
+  expect(host.textContent).toContain(systemAudioPermissionCopy().guide);
+  expect(host.textContent).toContain("14.2");
+  expect(start).not.toHaveBeenCalled();
+  expect(saveSettings).not.toHaveBeenCalled();
+  vi.restoreAllMocks();
+});
+
+it.each(["Windows NT 10.0", "Linux"])("omits the macOS permission guide on %s", async userAgent => {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+  window.history.replaceState(null, "", "#getting-started");
+  await mount();
+  expect(host.textContent).not.toContain(systemAudioPermissionCopy().guide);
+  expect(start).not.toHaveBeenCalled();
+  vi.restoreAllMocks();
 });

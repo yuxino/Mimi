@@ -10,7 +10,7 @@ Choose the desktop interface language in Settings → General: Simplified Chines
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.
 2. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save. Choose the recognition and translation languages.
-3. Play something and turn on Live Subtitles under Subtitles. You can also start from the mimi menu bar/system tray icon. On macOS 14.2+, capturing All Applications supports System Audio Recording Only. Existing screen grants are reused without requesting a separate audio-only grant. Capturing a selected app or using macOS 13–14.1 still requires Screen & System Audio Recording.
+3. Play something and turn on Live Subtitles under Subtitles. You can also start from the mimi menu bar/system tray icon. On macOS 14.2+, capturing All Applications or a selected application supports System Audio Recording Only. Existing screen grants are reused without requesting a separate audio-only grant. macOS 13–14.1 requires Screen & System Audio Recording.
 
 Bring your own provider API credentials; usage charges may apply. Desktop credentials are stored in a private plaintext file protected by local file permissions.
 
@@ -30,7 +30,7 @@ See [speech-service setup and language parameters](speech-language-setup.md) for
 
 ### macOS system-audio permissions
 
-For All Applications on macOS 14.2+, new installations request System Audio Recording Only. To switch an existing installation, quit Mimi, remove or disable its Screen & System Audio Recording entry in System Settings → Privacy & Security, then reopen Mimi and start subtitles. Allow System Audio Recording Only when asked, or enable Mimi under that section. Restart Mimi if macOS requests it. Switching is optional; existing screen authorization continues to work. Selected-application capture still requires the broader grant.
+For All Applications and selected applications on macOS 14.2+, new installations request System Audio Recording Only. To switch an existing installation, quit Mimi, remove or disable its Screen & System Audio Recording entry in System Settings → Privacy & Security, then reopen Mimi and start subtitles. Allow System Audio Recording Only when asked, or enable Mimi under that section. Restart Mimi if macOS requests it. Switching is optional; existing screen authorization continues to work. If audio permission is missing, open the system privacy page from the error message, allow Mimi, follow any system restart instructions, and retry.
 
 ### macOS permissions after an update
 
