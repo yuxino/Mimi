@@ -10,7 +10,7 @@ Choose the desktop interface language in Settings → General: Simplified Chines
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.
 2. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save. Choose the recognition and translation languages.
-3. Play something and turn on Live Subtitles under Subtitles. You can also start from the mimi menu bar/system tray icon. macOS asks for Screen & System Audio Recording access to capture system audio.
+3. Play something and turn on Live Subtitles under Subtitles. You can also start from the mimi menu bar/system tray icon. On macOS 14.2+, capturing All Applications supports System Audio Recording Only. Existing screen grants are reused without requesting a separate audio-only grant. Capturing a selected app or using macOS 13–14.1 still requires Screen & System Audio Recording.
 
 Bring your own provider API credentials; usage charges may apply. Desktop credentials are stored in a private plaintext file protected by local file permissions.
 
@@ -27,6 +27,10 @@ See [speech-service setup and language parameters](speech-language-setup.md) for
 - Windows x64: Unsigned preview EXE / MSI installers and, since v1.4.3, a portable ZIP are available; SmartScreen may warn. Extract `mimi_<version>_x64-portable.zip` and launch `mimi.exe` without installation. WebView2 must already be installed (it is normally present on Windows 11). The ZIP does not move settings, service credentials, or exported files into its folder; those remain in their existing user-selected or OS-managed locations. Update this copy by quitting Mimi and replacing it with a new ZIP from Releases. The portable build does not run the in-app installer updater.
 
 - Linux x86_64 preview (Ubuntu 22.04+ baseline): Use the `.deb` package or AppImage. Requires PulseAudio or PipeWire with `pipewire-pulse`, a working default output device, and private local credential-file access. System audio uses only the output monitor. Restart the session after changing output devices. X11 is recommended; Wayland compositors may restrict positioning, always-on-top, and click-through. For Wayland keyboard shortcuts, use the commands shown in Settings to create system shortcuts. Use Settings if your desktop does not show a tray icon. Minimize it to keep subtitles running; closing it exits Mimi on Linux. Linux ARM64 packages are not provided. See [Linux setup and verification](development/linux.md).
+
+### macOS system-audio permissions
+
+For All Applications on macOS 14.2+, new installations request System Audio Recording Only. To switch an existing installation, quit Mimi, remove or disable its Screen & System Audio Recording entry in System Settings → Privacy & Security, then reopen Mimi and start subtitles. Allow System Audio Recording Only when asked, or enable Mimi under that section. Restart Mimi if macOS requests it. Switching is optional; existing screen authorization continues to work. Selected-application capture still requires the broader grant.
 
 ### macOS permissions after an update
 

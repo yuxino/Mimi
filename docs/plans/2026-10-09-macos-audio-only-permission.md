@@ -1,6 +1,6 @@
 # Audio-only permission for macOS system mix
 
-Refs #230. Draft implementation; audio-only native acceptance remains pending.
+Refs #230. Accepted for v1.5.19 after audio-only and legacy-grant native acceptance.
 
 The current ScreenCaptureKit backend enumerates shareable screen content even
 though Mimi installs only an audio output. macOS therefore requires Screen &
@@ -13,7 +13,7 @@ Core Audio process taps, available from macOS 14.2.
   when screen capture has not already been authorized.
   Exclude Mimi's own Core Audio process object and leave playback unmuted.
 - Keep ScreenCaptureKit on macOS 13–14.1 and for explicitly selected applications.
-  Application capture still needs Screen & System Audio Recording in this draft.
+  Application capture still needs Screen & System Audio Recording.
 - Resolve the new tap functions at runtime; retain the macOS 13 deployment target.
   Apply the same lookup to the existing vendored cpal loopback implementation:
   its strongly imported tap APIs can prevent the executable loading on 13,
@@ -49,8 +49,7 @@ format trigger the existing recoverable reconnect path.
 Native setup diagnostics name only fixed stages. The aggregate uses explicit
 start rather than `tapautostart`: the SDK documents that enabling that key waits
 for the first tapped audio. This wait is unsuitable for starting subtitles while
-the computer is quiet. The tap's quiet-start behavior still requires native
-acceptance once its separate permission case can be tested.
+the computer is quiet. Quiet startup has passed with audio-only authorization at both provider rates.
 
 Capture active-state changes and generation assignment/invalidation share a
 short synchronous transition lock. Otherwise a concurrent stop between claiming
@@ -69,14 +68,14 @@ that they cannot clear a newer start. No transition lock is held across awaits.
   ScreenCaptureKit without requesting a new grant; audible 16/24 kHz, stop/start.
 - [x] Native: selected-application capture, source restart, and application exit
   under the existing screen authorization.
-- [ ] Native: screen permission denied + audio-only allowed; audible 16/24 kHz
-  output, own-playback exclusion, stop/start/pause/source switching.
+- [x] Native: screen grant off + audio-only allowed; audible 16/24 kHz output,
+  own-playback exclusion, quiet start, 12 repeated starts/stops and startup cancellation.
+  The maintainer also confirmed ordinary product subtitles work after changing grants.
 - [ ] Native: deny/revoke audio access, cancel while permission is pending,
   output-device changes and sleep/wake; confirm no ghost capture.
 - [ ] Older macOS launch/fallback; selected-application authorization without
   an existing screen grant.
-- [ ] After native acceptance, update user-facing permission instructions for
-  system mix versus application capture before marking the PR ready.
+- [x] Update English/Chinese permission instructions for system mix versus application capture.
 
 Native tests must use the stable signed /Applications/mimi-dev.app. Do not alter
 permissions without explicit user approval or replace the formal release
@@ -99,7 +98,7 @@ newer macOS. Do not describe the scopes as exclusive old/new OS permissions.
 | macOS 13–14.1 | ScreenCaptureKit | Runtime pending; API routing tested |
 | 14.2+, screen grant on, audio-only absent | ScreenCaptureKit | Native passed on 26.3.1(a), no new grant |
 | 14.2+, both grants on | ScreenCaptureKit | Routing tested; native grant case pending |
-| 14.2+, screen grant off, audio-only on | Core Audio tap | Native pending |
+| 14.2+, screen grant off, audio-only on | Core Audio tap | Native passed on 26.3.1(a) |
 | 14.2+, neither grant on | Core Audio tap, request audio access | Prompt/denial native cases pending |
 | Explicit application source | ScreenCaptureKit | Native source/exit passed with screen grant; separate grant case pending |
 
@@ -123,13 +122,10 @@ or captured audio file was created.
   out during setup. This does not establish that the old permission satisfies
   the tap API, or identify the exact failure cause. Production routing preserves
   the working ScreenCaptureKit path for this grant state.
-- Audio-only permission with screen access disabled is still a separate required
-  acceptance case. Changing only the development app's grants and restoring
-  them afterward was authorized, but System Settings requires the user's
-  Touch ID/password authentication before the temporary change can complete.
-  The pending operation was canceled; verified the dev and formal screen grants
-  remain enabled and the audio-only list remains empty, matching the initial
-  state. The formal release application's grants were not changed.
+- Initial automated grant changes could not complete because System Settings
+  required user authentication. The maintainer later completed the change
+  personally: dev screen grant off, dev audio-only on. The formal app's screen
+  grant remained enabled. Successful audio-only results are recorded below.
 
 ## Expanded native matrix (2026-10-09)
 
@@ -165,15 +161,15 @@ changing the first-audio-wait flag and starting only after Tauri Ready did not
 resolve it under the existing screen grant. No Apple/permission inheritance
 conclusion is drawn from this failure.
 
-Permission cases still required: screen disabled/audio-only enabled; both scopes;
+Permission cases still required: both scopes;
 neither scope; user denies the first prompt; grant revoked while capturing; stop
 or quit while a permission decision is pending. The routing and native-error
 classification have automated coverage, but changing these grants still needs
-user Touch ID/password authentication on this Mac. Both broad grants remain on
-and the audio-only list is still empty after canceled verification attempts.
+user Touch ID/password authentication on this Mac. The maintainer subsequently
+completed the audio-only case below; the formal application was untouched.
 
-Other native cases still required: macOS 13/14.1/14.2 runtime behavior, tap-own
-playback exclusion, physical device disconnect/default route changes, sleep/wake,
+Other native cases still required: macOS 13/14.1/14.2 runtime behavior,
+physical device disconnect/default route changes, sleep/wake,
 and complete product pause/resume/reconnect. This smoke mode deliberately avoids
 SessionManager/providers; backend stop/start proof is not full product pause or
 provider acceptance.
@@ -185,6 +181,31 @@ quiet output; own-playback generates and counts its own test signal. Application
 cases use a task-owned synthetic file in QuickTime; exit testing closes only
 that task-owned player after the capturing marker. These suites do not save PCM
 or read product profiles/API credentials.
+
+## Audio-only native acceptance (2026-10-09)
+
+The maintainer disabled the development app's Screen & System Audio Recording
+permission and enabled System Audio Recording Only, restarted the app, and
+confirmed normal subtitles work. System Settings independently showed those
+grants; formal Mimi retained its existing screen grant. Native suites at source
+`50ebc71eb1545ede461949c8d4893fc1476da875` reported `screenAuthorized=false`
+and production `auto` routing selected the tap. No additional permission prompt
+appeared during these granted-path runs.
+
+| Audio-only case | Result |
+| --- | --- |
+| Audible system mix, six seconds each at 16/24 kHz; restart after stop | Passed: 281 buffers at each rate, 93,041 / 139,692 audible samples, first PCM 107 / 53 ms; idle/drain true and post-stop buffers zero |
+| 12 alternating 16/24 kHz two-second captures, duplicate start, double stop | Passed: audible PCM in every cycle, first PCM 52–79 ms; clean stop and no post-stop ingress |
+| Startup cancellation at 0/1/5/20/100/250 ms | Passed: canceled or already-started resources cleaned up; no post-stop ingress |
+| Mimi's own synthetic output | Passed: 613,376 output frames; audible input samples zero at both rates |
+| Quiet startup at 16/24 kHz | Passed: quiet PCM received, clean stop, no startup timeout |
+
+The earlier forced-tap timeout occurred under the old grant state. With the
+separate audio-only scope enabled, production routing and all five suites now
+pass. This supports both working granted paths; it does not establish the exact
+Core Audio cause of that earlier timeout or cover every historical OS version,
+first-prompt denial, permission revocation, physical route change, sleep/wake or
+provider reconnect. Those remain explicitly outside this release's native proof.
 
 ## References
 
