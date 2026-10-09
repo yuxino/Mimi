@@ -110,8 +110,9 @@ impl AzureOpenAIRealtimeRequestEncoder {
         if transcription_deployment.is_empty() {
             return Err(AzureOpenAIRealtimeProtocolError::MissingDeployment);
         }
-        // Azure requires the existing transcription deployment name here;
-        // the translation deployment remains selected in the WebSocket URL.
+        // Azure's Realtime reference requires an existing transcription
+        // deployment name rather than the upstream model ID. The translation
+        // deployment remains selected in the WebSocket URL.
         let mut value = json!({
             "type": "session.update",
             "session": {

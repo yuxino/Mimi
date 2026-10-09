@@ -26,6 +26,7 @@ const GENERIC_PROTOCOL_ERROR: &str =
     "Azure OpenAI Realtime Translation returned an invalid response.";
 const GENERIC_TRANSPORT_ERROR: &str = "The Azure OpenAI Realtime Translation connection failed.";
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_RESPONSE_TEXT_BYTES: usize = 4_096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AzureOpenAIRealtimeClientError {
@@ -66,12 +67,14 @@ enum SetupState {
 struct TranslationStreamState {
     selected: Option<AzureTranslationStream>,
     current_text: String,
+    response_text_overflowed: bool,
 }
 
 impl TranslationStreamState {
     fn reset(&mut self) {
         self.selected = None;
         self.current_text.clear();
+        self.response_text_overflowed = false;
     }
 
     fn append_delta(&mut self, stream: AzureTranslationStream, delta: &str) -> Option<String> {
@@ -81,7 +84,16 @@ impl TranslationStreamState {
         if self.selected != Some(stream) || delta.is_empty() {
             return None;
         }
-        self.current_text.push_str(delta);
+        // Dedicated translation deltas are append-only for the entire session,
+        // without a per-response done boundary. Never retain that transcript.
+        if stream == AzureTranslationStream::ResponseText && !self.response_text_overflowed {
+            if delta.len() <= MAX_RESPONSE_TEXT_BYTES.saturating_sub(self.current_text.len()) {
+                self.current_text.push_str(delta);
+            } else {
+                self.current_text.clear();
+                self.response_text_overflowed = true;
+            }
+        }
         Some(delta.to_string())
     }
 
@@ -96,17 +108,27 @@ impl TranslationStreamState {
         if self.selected != Some(stream) {
             return None;
         }
-        let suffix = final_text.and_then(|final_text| {
-            if self.current_text.is_empty() {
-                Some(final_text)
-            } else {
-                final_text
-                    .strip_prefix(&self.current_text)
-                    .filter(|suffix| !suffix.is_empty())
-                    .map(str::to_string)
-            }
-        });
+        if stream == AzureTranslationStream::DedicatedSession {
+            return None;
+        }
+        // Every delta has already been forwarded. If its prefix exceeded the
+        // bound, a final-only tail cannot be checked safely: omit that tail
+        // rather than replay the response or guess a suffix. The next response
+        // resumes exact prefix matching after this done event.
+        let suffix = final_text
+            .filter(|_| !self.response_text_overflowed)
+            .and_then(|final_text| {
+                if self.current_text.is_empty() {
+                    Some(final_text)
+                } else {
+                    final_text
+                        .strip_prefix(&self.current_text)
+                        .filter(|suffix| !suffix.is_empty())
+                        .map(str::to_string)
+                }
+            });
         self.current_text.clear();
+        self.response_text_overflowed = false;
         suffix
     }
 }
@@ -871,6 +893,125 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use serde_json::Value;
     use tokio::net::TcpListener;
+
+    #[test]
+    fn continuous_translation_deltas_do_not_retain_session_text() {
+        let mut state = TranslationStreamState::default();
+        for _ in 0..10_000 {
+            assert_eq!(
+                state.append_delta(AzureTranslationStream::DedicatedSession, "译文 fragment。"),
+                Some("译文 fragment。".into())
+            );
+            assert!(state.current_text.is_empty());
+        }
+        assert_eq!(
+            state.finish(
+                AzureTranslationStream::DedicatedSession,
+                Some("译文 fragment。".into())
+            ),
+            None,
+            "a compatibility done event must not replay append-only deltas"
+        );
+    }
+
+    #[test]
+    fn response_text_overflow_keeps_deltas_and_resumes_exact_final_tail_matching() {
+        let mut state = TranslationStreamState::default();
+        let delta = "译文".repeat(128);
+        let mut streamed = String::new();
+        for _ in 0..100 {
+            streamed.push_str(
+                &state
+                    .append_delta(AzureTranslationStream::ResponseText, &delta)
+                    .unwrap(),
+            );
+            assert!(state.current_text.len() <= 4_096);
+        }
+        assert_eq!(streamed, delta.repeat(100));
+        assert_eq!(
+            state.finish(
+                AzureTranslationStream::ResponseText,
+                Some(format!("{streamed}final-only tail"))
+            ),
+            None,
+            "after the prefix exceeds its bound, do not guess or replay final text"
+        );
+        assert!(state.current_text.is_empty());
+        assert_eq!(
+            state.append_delta(AzureTranslationStream::ResponseText, "普通"),
+            Some("普通".into())
+        );
+        assert_eq!(
+            state.finish(
+                AzureTranslationStream::ResponseText,
+                Some("普通补尾。".into())
+            ),
+            Some("补尾。".into())
+        );
+    }
+
+    #[test]
+    fn selected_translation_stream_avoids_replays_and_preserves_normal_final_tails() {
+        for selected in [
+            AzureTranslationStream::DedicatedSession,
+            AzureTranslationStream::ResponseText,
+        ] {
+            let other = match selected {
+                AzureTranslationStream::DedicatedSession => AzureTranslationStream::ResponseText,
+                AzureTranslationStream::ResponseText => AzureTranslationStream::DedicatedSession,
+            };
+            let mut state = TranslationStreamState::default();
+            assert_eq!(
+                state.append_delta(selected, "Bonjour"),
+                Some("Bonjour".into())
+            );
+            assert_eq!(state.append_delta(other, "Bonjour"), None);
+            assert_eq!(state.finish(other, Some("Bonjour.".into())), None);
+            let expected_tail =
+                (selected == AzureTranslationStream::ResponseText).then(|| ".".to_string());
+            assert_eq!(
+                state.finish(selected, Some("Bonjour.".into())),
+                expected_tail
+            );
+            assert_eq!(state.selected, Some(selected));
+            assert!(state.current_text.is_empty());
+        }
+        let mut state = TranslationStreamState::default();
+        assert_eq!(
+            state.finish(
+                AzureTranslationStream::ResponseText,
+                Some("Done only.".into())
+            ),
+            Some("Done only.".into())
+        );
+    }
+
+    #[test]
+    fn response_text_exact_limit_preserves_tail_and_clear_resets_overflow() {
+        let mut state = TranslationStreamState::default();
+        let prefix = "a".repeat(4_096);
+        assert_eq!(
+            state.append_delta(AzureTranslationStream::ResponseText, &prefix),
+            Some(prefix.clone())
+        );
+        assert_eq!(
+            state.finish(
+                AzureTranslationStream::ResponseText,
+                Some(format!("{prefix} tail"))
+            ),
+            Some(" tail".into())
+        );
+        state.append_delta(AzureTranslationStream::ResponseText, &"译".repeat(2_000));
+        assert!(state.current_text.is_empty());
+        state.reset();
+        assert_eq!(
+            state.finish(
+                AzureTranslationStream::ResponseText,
+                Some("After clear.".into())
+            ),
+            Some("After clear.".into())
+        );
+    }
 
     async fn test_client(
         server: impl FnOnce(
