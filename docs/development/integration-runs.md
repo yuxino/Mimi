@@ -1799,3 +1799,33 @@
   latency and different-region comparisons remain outside this run's evidence.
 - All changes are delivered through a child PR into PR #235's branch. The
   parent remains Draft, issue #230 remains open, and no release is published.
+
+
+### 2026-10-11 — Thai interface and documentation
+
+- Implementation tree `95fcda4`: desktop settings/tray/overlay and native menu
+  copy, Apple translation preparation UI, Android resources and the Thai README.
+  Thai recognition/translation codes already existed; provider capabilities and
+  audio protocols are unchanged.
+- Canonical local checks passed: Rust/Swift/shared-runtime and actual JNI
+  regression checks, frontend lint, 132 files / 2,072 tests, production build and
+  debugger boundary. Android resources have 263/263 translated keys with valid
+  XML and preserved placeholders. Independent review found no missing locale
+  dispatch, persistence or native preparation branch.
+- Signed canonical `/Applications/mimi-dev.app`, v1.5.22, UI-only mode on the
+  Apple silicon Mac: changing the interface to Thai immediately updated native
+  WebKit settings, service configuration, permission help and the Thai subtitle
+  preview. Adding/saving an in-memory test profile and starting synthetic
+  subtitles displayed Thai success/status labels. No production credentials,
+  provider network or audio capture were used; history/recording stayed off.
+- The separate website change `bf88b1c` passed production build, 139 Node tests,
+  four voice tests and 16-page prerender verification. Thai desktop and mobile
+  homepage/theater, manual selection and saved preference were inspected in
+  Ego Lite. English prerecorded dialogue displayed Thai subtitles; manual
+  response loaded the expected English reply. Background-tab pauses prevented
+  a claim of uninterrupted full-story playback.
+- Browser settings/layout regression coverage and exact-head cross-platform CI
+  remain delivery gates in PR #245; website delivery is PR #37. This host has
+  no Android SDK/JDK, so Android builds/tests run in CI. Physical Android and
+  Windows/Linux native Thai layout, live Thai recognition/translation quality,
+  Intel hardware, notarization and updater-install acceptance are not claimed.
