@@ -87,12 +87,15 @@ Index-Translate는 텍스트 번역만 처리합니다. Alibaba Cloud를 사용�
 
 [Gemini 연속 자막과 계획된 연결 교체](https://github.com/yuxino/Mimi/pull/176)를 개선해 주신 [@Chtholly000](https://github.com/Chtholly000)께도 감사드립니다.
 
+[Wayland에서 자막 창을 이동할 때 컨트롤이 따라오지 않는 문제](https://github.com/yuxino/Mimi/pull/242)를 수정해 주신 [@EmmetZ](https://github.com/EmmetZ)께 감사드립니다.
+
 <p>
   <a href="https://github.com/yuxino"><img src="../assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
   <a href="https://github.com/LLLin000"><img src="../assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
   <a href="https://github.com/yebuwudong"><img src="../assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
   <a href="https://github.com/Chtholly000"><img src="../assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
   <a href="https://github.com/inhome"><img src="../assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
+  <a href="https://github.com/EmmetZ"><img src="../assets/contributors/EmmetZ.svg" width="64" height="64" alt="@EmmetZ"></a>
 </p>
 
 [모든 기여자](https://github.com/yuxino/mimi/graphs/contributors)

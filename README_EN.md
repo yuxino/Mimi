@@ -86,12 +86,15 @@ Special thanks to [@yebuwudong](https://github.com/yebuwudong) for the [Android 
 
 Thanks also to [@Chtholly000](https://github.com/Chtholly000) for improving [Gemini's continuous captions and planned connection rotation](https://github.com/yuxino/Mimi/pull/176).
 
+Thanks to [@EmmetZ](https://github.com/EmmetZ) for fixing [overlay controls not following the subtitle window on Wayland](https://github.com/yuxino/Mimi/pull/242).
+
 <p>
   <a href="https://github.com/yuxino"><img src="docs/assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
   <a href="https://github.com/LLLin000"><img src="docs/assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
   <a href="https://github.com/yebuwudong"><img src="docs/assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
   <a href="https://github.com/Chtholly000"><img src="docs/assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
   <a href="https://github.com/inhome"><img src="docs/assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
+  <a href="https://github.com/EmmetZ"><img src="docs/assets/contributors/EmmetZ.svg" width="64" height="64" alt="@EmmetZ"></a>
 </p>
 
 [All contributors](https://github.com/yuxino/mimi/graphs/contributors)

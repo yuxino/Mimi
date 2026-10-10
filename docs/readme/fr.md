@@ -87,12 +87,15 @@ Un grand merci à [@yebuwudong](https://github.com/yebuwudong) pour l’[applica
 
 Merci aussi à [@Chtholly000](https://github.com/Chtholly000) pour les améliorations des [sous-titres continus de Gemini et du renouvellement planifié des connexions](https://github.com/yuxino/Mimi/pull/176).
 
+Merci à [@EmmetZ](https://github.com/EmmetZ) d’avoir corrigé [les commandes qui ne suivaient pas la fenêtre de sous-titres sous Wayland](https://github.com/yuxino/Mimi/pull/242).
+
 <p>
   <a href="https://github.com/yuxino"><img src="../assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
   <a href="https://github.com/LLLin000"><img src="../assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
   <a href="https://github.com/yebuwudong"><img src="../assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
   <a href="https://github.com/Chtholly000"><img src="../assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
   <a href="https://github.com/inhome"><img src="../assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
+  <a href="https://github.com/EmmetZ"><img src="../assets/contributors/EmmetZ.svg" width="64" height="64" alt="@EmmetZ"></a>
 </p>
 
 [Tous les contributeurs](https://github.com/yuxino/mimi/graphs/contributors)

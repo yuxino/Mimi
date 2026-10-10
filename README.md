@@ -86,12 +86,15 @@ Index-Translate 只负责文字翻译。搭配阿里云时，仍需配置语音�
 
 也感谢 [@Chtholly000](https://github.com/Chtholly000) 改进 [Gemini 连续字幕和连接轮换](https://github.com/yuxino/Mimi/pull/176)。
 
+感谢 [@EmmetZ](https://github.com/EmmetZ) 修复 [Wayland 下字幕浮窗与控制组件不同步移动的问题](https://github.com/yuxino/Mimi/pull/242)。
+
 <p>
   <a href="https://github.com/yuxino"><img src="docs/assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
   <a href="https://github.com/LLLin000"><img src="docs/assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
   <a href="https://github.com/yebuwudong"><img src="docs/assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
   <a href="https://github.com/Chtholly000"><img src="docs/assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
   <a href="https://github.com/inhome"><img src="docs/assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
+  <a href="https://github.com/EmmetZ"><img src="docs/assets/contributors/EmmetZ.svg" width="64" height="64" alt="@EmmetZ"></a>
 </p>
 
 [查看所有贡献者](https://github.com/yuxino/mimi/graphs/contributors)
