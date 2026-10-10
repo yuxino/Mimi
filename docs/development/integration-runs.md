@@ -4,6 +4,93 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-10：Qwen 四例直接 ASR 基线与探针编译修复
+
+- 受测基线 `d807458f335aac65e2b6fa7a5b14f36af6fb42e4` 加本轮探针与检查
+  修改（构建时 dirty），私有 `build.json` 保留实际测试二进制 SHA256。
+  用户明确允许四个既有样本串行发送给 Alibaba Qwen；源 PCM 共 106.30 秒，
+  每例另有两秒尾部静音，发送共 114.30 秒。无翻译请求、原生播放或采音。
+- 模型 `qwen-audio-3.0-asr-flash-streaming`、语言 `auto`、输入 `bypass`。
+  四例 PCM hash 和 request payload 与旧基线一致，全部成功且收到 finish；
+  missing sentence ID 和 final revision 计数均为零。独立临时配置只使用
+  一个已保存 Dev 凭据槽，原 Dev 偏好与服务目录 hash 未变，未访问正式版。
+- `fleurs-ja_jp-long-row1-id1608`：1 lexical final、15 lexical drafts，
+  归一化参考为 0 删除／0 插入／0 替换；旧结果四处替换为汉字／假名写法。
+  本次对应不能归因于探针修复，也不能从单例推广为模型准确度提升。
+- `fleurs-english-1527`：2 lexical finals、28 lexical drafts，0 删除／
+  0 插入／5 词替换（旧为 6）。两处是等值数字写法，两处姓氏候选差异重复
+  出现，另有一处人名罗马字写法差异。IPC 的[赛事报道](https://www.paralympic.org/news/krezel-sweeps-europa-cup-slalom-giant-slalom)
+  和[队伍资料](https://www.paralympic.org/feature/korea-10-facts-sochi-2014-paralympics)
+  支持参考拼写，但尚未听审原音频；不把字词差异当语义错误率。
+  候选偏差已出现在直接 ASR，尚无证据
+  指向 Mimi 后端丢字；不增加硬编码替换或修改服务提示词。
+- `sintel-action-bgm-negative`：0 lexical finals、1 lexical draft（旧为 2）；
+  `sintel-action-bgm-digital-silence`：final/draft 均为零。音乐尚未独立听审，
+  无 final 不能声称没有暂态误识别或完成阴性验收。
+- 直接服务 `elapsedMs - endTimeMs` 的确认延迟：日语 739 ms（旧 713），
+  英语两段 920／1,197 ms（旧 676／1,183）。该边界不是原生采音到字幕延迟，
+  单轮输出不足以判断总体性能变化；本轮未测翻译或实际显示时间。
+- 实际发现 `development-debugger` 测试构建失败：桌面 Gemini 探针调用依赖
+  crate 仅在自身测试中存在的 `recv`／`try_recv`。改用公开 revision-aware
+  接口并读取同一 event，保留原消费语义；canonical 和 macOS CI 增加
+  feature 的 `--no-run` 编译检查。没有修改生产字幕、共享业务或服务协议。
+- 完整 `./scripts/check.sh` 通过：共享核心及契约 86 项、共享运行时
+  710 passed／1 ignored、桌面 567 passed／1 ignored、前端 131 文件／
+  2,056 项，以及实际主机 JNI、fmt、严格 Clippy、lint、类型、生产构建、
+  架构边界和新的探针编译检查。未执行 Windows、Linux 或 Android 原生验收。
+- 本轮输入、结果、旧新对照、非秘密隔离回执和检查日志已持久归档到私有
+  catalog `2026-10-10-qwen-quality-baseline`：45 个文件、约 8.08 MB，
+  逐项 SHA256 复核；引用已重定位，临时凭据副本在请求结束后删除。
+- 下一项：独立听审英语两个原服务语音时段，确认两处重复姓氏偏差是否成立，
+  再决定是否只调整识别语言作对照。参考听审、翻译语义和原生阅读仍未完成；
+  #241 保留草稿，未把基线重跑或工具修复描述为字幕质量改善。
+
+## 2026-10-10：训练样本与旧结果重开（离线）
+
+- 分支 revision `1154018e01481d55d1e2498a71703a5c8fc0ab71`，开始时干净；
+  #241 的文档范围 CI 已通过。当前 Dev 证据目录为空，但旧 Dev 私有备份
+  保存了原 catalog；未恢复旧配置或凭据，也未修改产品行为。
+- 原 `2026-10-04-semantic-8814` 的 86 个文件、`2026-10-04-quality-cycle-1`
+  的 142 个文件均通过原 SHA256 清单。只读重定位引用，保留原文件与参考；
+  不将新的分析结果当成新服务实测。
+- 本轮四例：`fleurs-ja_jp-long-row1-id1608`、`fleurs-english-1527`、
+  `sintel-action-bgm-negative`、`sintel-action-bgm-digital-silence`，共 106.30 秒。
+  原模型为 `qwen-audio-3.0-asr-flash-streaming`，识别 `auto`、输入 `bypass`。
+  既有 runner 无 `--run`、单 worker 准备通过；WAV/PCM 一致、来源与 reference
+  要求通过，未读取凭据或执行服务请求。
+- 重新使用当前 analyzer 的归一化核对旧直接服务结果：日语 0 删除／0 插入／
+  4 字符替换，均是同一词的汉字／假名差异；英语 0 删除／0 插入／6 词替换，
+  两处等值数字写法、四个专名 token 涉及三个人。数字和书写差异不作语义
+  错误，专名尚需独立听审；未据此修改提示词、加入替换规则或计算准确率。
+  音乐和数字静音旧结果均无 lexical final；音乐的两次 lexical draft 仍待听审。
+- 重开旧原生 case `8d974297-9027-4968-8529-7d9cf10c4e6f` 并完成离线分析：
+  1,700 条 trace 完整，84 快照，content/frontend 丢失为零，三条翻译身份链
+  可关联。仅证明原受测记录仍可读，不替代本轮原生正文观察或质量复测。
+- 本轮准备与分析保存到新私有 catalog `2026-10-10-subtitle-quality-training`：
+  27 个文件、约 6.97 MB，归档后逐项 hash 复核；矩阵引用已改为持久目录。
+  独立听审未执行，未启动应用、采音、播放或请求服务。
+- 下一步：先听审英语样本的两个原服务语音时段，确认专名参考。当前 Dev
+  选中 Apple Speech＋DeepL，与旧 Alibaba 基线不同；服务选择待确定后，
+  才执行同输入／同配置的服务与原生复测，不据旧结果声称当前模型更准确。
+
+## 2026-10-10：字幕质量训练重新开工（准备阶段）
+
+- 从在线 main `8add41638f99e005a8a5c2b503c6f80f5f34775d` 新开草稿工作分支，
+  目标转回现有服务的准确度、字幕延迟和阅读体验；不沿用本地识别实验的改动。
+  范围见 [本轮训练目标](../plans/2026-10-10-subtitle-quality-training.md)。
+- 读取已有训练、重放与取证流程；离线 analyzer 37 项、batch runner 9 项回归通过。
+  当前常规 Dev 的默认证据目录为空，在本次核对的目录中尚未定位旧私有 corpus
+  与结果 catalog。未重开输入、核对归档 hash、校订 reference 或准备真实矩阵。
+- 本机 canonical 使用已有全局 Cargo 缓存离线运行，共享核心 86 项（含契约）通过。
+  共享运行时测试首次被沙盒禁止绑定 localhost，单例定位为 `TcpListener::bind`
+  的 `PermissionDenied`；允许本机端口后，同一测试二进制 710 passed／1 ignored。
+  原 canonical 已在该阶段中止，JNI、桌面和前端后续阶段未在本机执行，不能称
+  完整检查通过。文档链接与 diff 空白检查通过。
+- 本条只有开工与离线工具证据；没有启动应用、采音、录制、服务请求、模型微调
+  或新的语义评分，不能描述为质量提升。旧记录仍只代表其原受测 revision。
+- 下一步：恢复原固定日语长句和英语专名句，核对出处与输入 hash，先听审参考，
+  再准备同一服务配置的短基线和原生字幕复测；逐轮只修最早已证实的失败边界。
+
 ## 2026-10-09：#237 macOS 字幕拖动排查（待复现）
 
 - 报告为 macOS 27.0.1 解锁后无法自由拖动，系统 Window → Move & Resize 可移动；未提供 Mimi 版本、具体按下区域或原生事件证据。本机 macOS 26.3.1 (a)，起点在线 main 与受测源码均为 `3bbc7e6e6d58ddf139fd9a04c7aef8988ddfdb75`。没有升级系统、回复或关闭 issue，也没有修改产品实现。

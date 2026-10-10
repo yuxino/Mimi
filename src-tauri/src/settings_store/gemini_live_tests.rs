@@ -165,12 +165,12 @@ async fn manual_gemini_translation_audio() {
             let mut evidence = Evidence::default();
             loop {
                 tokio::select! {
-                    event = receiver.recv() => match event {
-                        Some(event) => evidence.observe(event, started),
+                    event = receiver.recv_with_revision() => match event {
+                        Some(event) => evidence.observe(event.event, started),
                         None => break,
                     },
                     _ = &mut stop_rx => {
-                        while let Ok(event) = receiver.try_recv() { evidence.observe(event, started); }
+                        while let Ok(event) = receiver.try_recv_with_revision() { evidence.observe(event.event, started); }
                         break;
                     }
                 }

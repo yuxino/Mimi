@@ -42,6 +42,11 @@ cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D w
 echo "==> cargo test"
 cargo test --locked --manifest-path src-tauri/Cargo.toml
 
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "==> compile development service probes (no service requests)"
+  cargo test --locked --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
+fi
+
 # Windows compile-level verification when explicitly requested (the MSVC
 # target's C dependencies cannot cross-compile from macOS without an external
 # Windows SDK; CI runs the full Rust suite on native x64 and ARM64 Windows).

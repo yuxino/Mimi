@@ -38,8 +38,12 @@ Alibaba 或 Gemini 配置，并停止原生应用中的服务会话。
 普通自动检查不发送真实服务请求。
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
+cargo test --locked --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
 ```
+
+macOS 的 `./scripts/check.sh` 和 CI 包含这项仅编译检查，防止默认测试
+遗漏被 feature 隐藏的手动探针。跨 crate 的探针使用共享 crate 的公开接口；
+依赖 crate 自身 `#[cfg(test)]` 方法不会在桌面测试构建中启用。
 
 ASR 比较和批次执行方法见 [ASR benchmark](../plans/2026-10-02-audio3-repeatable-benchmark.md)
 及 [audio replay](audio-quality-replay.md)。签名私钥访问和系统录音权限独立于服务凭据存储。

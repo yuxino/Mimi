@@ -124,6 +124,10 @@ jobs:
       - name: Test
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
+      - name: Compile development service probes without running them
+        if: runner.os == 'macOS'
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
+
       - name: Shared subtitle core and JNI adapter
         shell: bash
         run: bash scripts/check-shared-core.sh
