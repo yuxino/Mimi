@@ -175,6 +175,7 @@ pub fn run() {
                 overlay: Arc::clone(&overlay),
             });
             app.manage(windows::OverlayControlState::default());
+            app.manage(windows::OverlayControlHost::detect());
             app.manage(windows::OverlayPresentationState::default());
             windows::OverlayWindowManager::ensure_overlay(&app_handle, &overlay);
             #[cfg(target_os = "macos")]
@@ -277,6 +278,18 @@ pub fn run() {
                     windows::OverlayControlWindowManager::schedule_dismiss(app);
                 }
                 WindowEvent::Focused(true) if window.label() == "overlay-control" => {
+                    windows::OverlayControlWindowManager::cancel_scheduled_dismiss(app);
+                }
+                WindowEvent::Focused(false)
+                    if window.label() == "overlay"
+                        && windows::OverlayControlWindowManager::is_embedded(app) =>
+                {
+                    windows::OverlayControlWindowManager::schedule_dismiss(app);
+                }
+                WindowEvent::Focused(true)
+                    if window.label() == "overlay"
+                        && windows::OverlayControlWindowManager::is_embedded(app) =>
+                {
                     windows::OverlayControlWindowManager::cancel_scheduled_dismiss(app);
                 }
                 WindowEvent::CloseRequested { api, .. } if window.label() == "settings" => {
@@ -434,6 +447,7 @@ pub fn run() {
             commands::overlay_popover_toggle,
             commands::overlay_popover_hide,
             commands::overlay_control_state,
+            commands::overlay_control_set_popup_bounds,
             commands::overlay_control_set_panel_height,
             commands::overlay_control_set_island_width,
             commands::session_get_state,

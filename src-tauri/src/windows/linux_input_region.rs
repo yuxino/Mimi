@@ -47,6 +47,33 @@ pub(super) fn apply(window: &impl IsA<gtk::Window>, enabled: bool) {
     window.input_shape_combine_region(input_region(enabled).as_ref());
 }
 
+/// Embedded Wayland controls, pickers and notifications remain interactive
+/// while the subtitle canvas passes input through. Hidden controls supply no rectangle.
+pub(super) fn apply_with_control(
+    window: &impl IsA<gtk::Window>,
+    enabled: bool,
+    control: Option<gtk::cairo::RectangleInt>,
+    popups: &[gtk::cairo::RectangleInt],
+) {
+    if let (true, Some(control)) = (enabled, control) {
+        let region = control_input_region(control, popups);
+        window.as_ref().input_shape_combine_region(Some(&region));
+    } else {
+        apply(window, enabled);
+    }
+}
+
+fn control_input_region(
+    control: gtk::cairo::RectangleInt,
+    popups: &[gtk::cairo::RectangleInt],
+) -> gtk::cairo::Region {
+    let region = gtk::cairo::Region::create_rectangle(&control);
+    for popup in popups {
+        region.union_rectangle(popup).expect("valid control region");
+    }
+    region
+}
+
 pub(super) fn restore_on_surface_change(
     window: &impl IsA<gtk::Window>,
     restore: impl Fn(&gtk::Window) + 'static,
@@ -64,6 +91,40 @@ pub(super) fn restore_on_surface_change(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn locked_embedded_controls_and_picker_accept_input_without_blocking_the_canvas() {
+        use gtk::cairo::RectangleInt;
+        let control = RectangleInt::new(18, 16, 200, 30);
+        let popup = RectangleInt::new(220, 100, 280, 200);
+        let island = control_input_region(control, &[]);
+        assert!(island.contains_point(18, 16));
+        assert!(island.contains_point(217, 45));
+        assert!(!island.contains_point(18, 46));
+        let expanded = control_input_region(control, &[popup]);
+        assert!(expanded.contains_point(240, 120));
+        assert!(!expanded.contains_point(0, 0));
+        assert!(!expanded.contains_point(400, 350));
+        assert!(!expanded.contains_point(100, 80));
+    }
+
+    #[test]
+    fn locked_notification_close_button_accepts_input_without_filling_the_gaps() {
+        use gtk::cairo::RectangleInt;
+        let control = RectangleInt::new(18, 16, 280, 270);
+        let menu = RectangleInt::new(220, 100, 280, 200);
+        let notification = RectangleInt::new(260, 400, 360, 62);
+        let region = control_input_region(control, &[menu, notification]);
+        // The review fixture's dismiss button is outside the control panel.
+        assert!(region.contains_point(583, 420));
+        assert!(region.contains_point(606, 443));
+        assert!(region.contains_point(400, 200));
+        assert!(!region.contains_point(400, 350));
+        assert!(!region.contains_point(620, 420));
+        assert!(!region.contains_point(0, 0));
+        let dismissed = control_input_region(control, &[menu]);
+        assert!(!dismissed.contains_point(583, 420));
+    }
 
     #[test]
     fn locked_region_is_fully_empty_including_the_origin() {

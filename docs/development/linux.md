@@ -31,6 +31,18 @@ always-on-top, and click-through depend on the compositor. On Wayland,
 configure system keyboard shortcuts as described below or use Settings controls. No Linux ARM64 package
 is currently produced.
 
+Overlay controls use the actual GDK backend, not the desktop session type.
+Native Wayland embeds the existing controls in the subtitle WebView so native
+dragging moves them together without global coordinates. X11/XWayland keeps
+the mapped GTK geometry path for its separate control window. Preserve the
+latest input-region intent on map/realize/recreation when changing either path.
+Locked embedded controls must include viewport-positioned notifications and
+portaled pickers in their native input region. Keep their rectangles separate
+so the gaps still pass input through; verify manual notification dismissal
+outside the panel, not only DOM click handlers or panel bounds.
+Record backend and compositor separately in native tests; KDE movement does
+not establish GNOME/wlroots placement, always-on-top or all-workspace support.
+
 ## Keyboard shortcuts
 
 On X11, Mimi registers Ctrl+Shift+Space (start/stop), Ctrl+Shift+M (Immersive

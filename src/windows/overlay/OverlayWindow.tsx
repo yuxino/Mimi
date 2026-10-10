@@ -6,7 +6,8 @@ import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import { audioInputLabel } from "../../lib/audioInput";
-import { isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
+import { hasEmbeddedOverlayControls, isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
+import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../../lib/store";
 import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
@@ -254,7 +255,9 @@ export function OverlayWindow() {
   );
 
   if (isTauri) {
-    return <div className="relative h-full w-full">{content}</div>;
+    return <div className="relative h-full w-full">{content}
+      {hasEmbeddedOverlayControls && <OverlayControlWindow embedded />}
+    </div>;
   }
 
   // Plain `vite dev` preview: a fixed box anchored near the bottom-center.
