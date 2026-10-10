@@ -19,6 +19,8 @@ formats cap this at 768,000 bytes. Packet destruction releases reservations on
 normal processing, disconnected/full queues and session cancellation. The slot
 bound also limits allocations for unusually small callbacks. Keep genuine
 overload fail-closed and recover through the existing session controller.
+Use a compare-exchange reservation loop compatible with Rust 1.88 and current
+stable; do not depend on the deprecated `fetch_update` API or its newer rename.
 
 Do not drop arbitrary audio, change provider protocols, mix inputs, or expand
 capture targets. Label callback byte/slot exhaustion in content-free diagnostics

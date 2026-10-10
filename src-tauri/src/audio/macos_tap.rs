@@ -245,6 +245,27 @@ impl Drop for CallbackPacket {
 }
 
 impl CallbackState {
+    fn reserve_bytes(&self, byte_count: usize) -> bool {
+        let mut queued = self.queued_bytes.load(Ordering::Relaxed);
+        loop {
+            let Some(total) = queued
+                .checked_add(byte_count)
+                .filter(|total| *total <= self.byte_limit)
+            else {
+                return false;
+            };
+            match self.queued_bytes.compare_exchange_weak(
+                queued,
+                total,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return true,
+                Err(current) => queued = current,
+            }
+        }
+    }
+
     fn report_backpressure(&self, limit: &str) {
         pipeline_log!(
             "capture tap callback queue full limit={} queued_bytes={} byte_limit={} slots={}",
@@ -295,15 +316,7 @@ unsafe extern "C-unwind" fn audio_callback(
             .report(SystemAudioCaptureFailure::AudioProcessingFailed);
         return 0;
     }
-    if state
-        .queued_bytes
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |queued| {
-            queued
-                .checked_add(byte_count)
-                .filter(|total| *total <= state.byte_limit)
-        })
-        .is_err()
-    {
+    if !state.reserve_bytes(byte_count) {
         state.report_backpressure("bytes");
         return 0;
     }
