@@ -1,7 +1,7 @@
 {
   "name": "mimi",
   "private": true,
-  "version": "1.5.21",
+  "version": "1.5.22",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24.0.0"

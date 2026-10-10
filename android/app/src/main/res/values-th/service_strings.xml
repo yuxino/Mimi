@@ -1,0 +1,20 @@
+<resources>
+    <string name="services_heading">บริการแปล</string>
+    <string name="services_hint">แตะบริการที่ตั้งค่าไว้เพื่อสลับ</string>
+    <string name="services_key_note">ใช้ข้อมูลรับรองของคุณเอง ผู้ให้บริการคิดค่าบริการตามการใช้งาน ข้อมูลรับรองเก็บในพื้นที่เข้ารหัสบนอุปกรณ์นี้</string>
+    <string name="service_active">ใช้งานอยู่</string>
+    <string name="service_configured">ตั้งค่าแล้ว · แตะเพื่อสลับ</string>
+    <string name="service_missing">ต้องตั้งค่า</string>
+    <string name="service_edit">การตั้งค่า</string>
+    <string name="service_configure">ตั้งค่า</string>
+    <string name="service_edit_named">ตั้งค่า %1$s</string>
+    <string name="service_stop_first">หยุดคำบรรยายก่อนเปลี่ยนบริการหรือข้อมูลรับรอง</string>
+    <string name="service_secret_saved">บันทึกแล้ว · เว้นว่างเพื่อใช้ค่าเดิม</string>
+    <string name="service_endpoint">ปลายทางกำหนดเอง (ไม่บังคับ)</string>
+    <string name="service_model">โมเดลกำหนดเอง (ไม่บังคับ)</string>
+    <string name="service_glossary">อภิธานศัพท์ (ไม่บังคับ)</string>
+    <string name="service_save_use">บันทึกและเลือก</string>
+    <string name="service_required">จำเป็น</string>
+    <string name="service_invalid">การตั้งค่าไม่ถูกต้อง ตรวจสอบปลายทางและช่องข้อมูลรับรอง</string>
+    <string name="service_save_failed">บันทึกไม่ได้ ลองอีกครั้ง</string>
+</resources>

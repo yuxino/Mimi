@@ -38,7 +38,7 @@ These project rules apply to implementation and review.
   visual acceptance: inspect the screenshot for touching control borders,
   vertical rhythm and heading/section separation before presenting it.
 - Check all supported interface languages (Simplified/Traditional Chinese, English, Japanese, Korean,
-  French and German) at the default and minimum window widths.
+  French, German and Thai) at the default and minimum window widths.
   Include Windows-only output choices and Linux-only recovery states even when
   developing on macOS. A hidden native capability must have an explicit local
   fixture; a successful macOS screen alone cannot cover that control. Reuse
@@ -159,7 +159,7 @@ saved integer or preview alone does not establish a live update. Preserve
 subtitle history and the reader's position for ordinary appearance changes.
 An empty live-caption flag is insufficient to show a padded overlay: require a
 nonblank displayed caption or actionable status, while retaining expanded
-controls and the immersive exit during silence. Check all seven interface
+controls and the immersive exit during silence. Check all eight interface
 languages at normal and large font scales; fixed-height labels and a nominal
 two-row toolbar can still clip long translations. Language resources, picker
 and system locale configuration must match the owning desktop language catalog.

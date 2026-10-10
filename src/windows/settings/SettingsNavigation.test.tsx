@@ -58,7 +58,7 @@ async function select(category: string) {
   expect(panel.classList.contains("is-inactive")).toBe(false);
 }
 
-it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko"] as const)("keeps diagnostics under General's advanced section and subtitle operations in their relevant pages in %s", async (language) => {
+it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"] as const)("keeps diagnostics under General's advanced section and subtitle operations in their relevant pages in %s", async (language) => {
   setStoredUiLanguage(language);
   await mount();
   expect([...host.querySelectorAll(".settings-category-nav button")].map((button) => button.textContent)).toEqual([

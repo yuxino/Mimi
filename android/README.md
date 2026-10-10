@@ -56,8 +56,8 @@ Rust subtitle/provider runtime as desktop through JNI.
   scoped by provider.
 - **History privacy** — disabled by default; opting into history retains only a bounded
   in-memory list. Disabling it or stopping the session clears retained subtitles.
-- **Interface language** — Settings offers Follow system and the same seven interface
-  languages as desktop: 简体中文, 繁體中文, English, 日本語, Deutsch, 한국어 and Français.
+- **Interface language** — Settings offers Follow system and the same eight interface
+  languages as desktop: 简体中文, 繁體中文, English, 日本語, Deutsch, 한국어, Français and ภาษาไทย.
   Changes apply immediately and persist after restart, independently of subtitle
   source and target languages. Android 13+ also exposes this choice in system App languages.
   Unsupported system languages fall back to English.

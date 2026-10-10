@@ -498,6 +498,7 @@ enum NativeMenuLanguage {
     German,
     French,
     Korean,
+    Thai,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -620,7 +621,7 @@ fn effective_native_menu_language(
 ) -> NativeMenuLanguage {
     let language = match override_language {
         Some("zh") | Some("zh-TW") | Some("en") | Some("ja") | Some("de") | Some("fr")
-        | Some("ko") => override_language,
+        | Some("ko") | Some("th") => override_language,
         _ => system_language,
     }
     .unwrap_or("en")
@@ -650,6 +651,8 @@ fn effective_native_menu_language(
         NativeMenuLanguage::French
     } else if language.starts_with("ko") {
         NativeMenuLanguage::Korean
+    } else if language.starts_with("th") {
+        NativeMenuLanguage::Thai
     } else {
         NativeMenuLanguage::English
     }
@@ -730,6 +733,17 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             display_modes: ["번역만", "원문과 번역", "원문만"],
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Dock에 표시",
+        },
+        NativeMenuLanguage::Thai => NativeMenuLabels {
+            start_subtitles: "เริ่มคำบรรยาย",
+            stop_subtitles: "หยุดคำบรรยาย",
+            toggle_devtools: "เปิดเครื่องมือสำหรับนักพัฒนา",
+            settings: "การตั้งค่า…",
+            quit: "ออกจาก mimi",
+            subtitle_display: "การแสดงคำบรรยาย",
+            display_modes: ["คำแปลเท่านั้น", "ต้นฉบับและคำแปล", "ต้นฉบับเท่านั้น"],
+            #[cfg(any(target_os = "macos", test))]
+            show_in_dock: "แสดงใน Dock",
         },
         NativeMenuLanguage::English => NativeMenuLabels {
             start_subtitles: "Start Subtitles",
@@ -1320,6 +1334,7 @@ mod tests {
             ("de", "de-DE", NativeMenuLanguage::German, "Einstellungen…"),
             ("fr", "fr-CA", NativeMenuLanguage::French, "Réglages…"),
             ("ko", "ko-KR", NativeMenuLanguage::Korean, "설정…"),
+            ("th", "TH_th", NativeMenuLanguage::Thai, "การตั้งค่า…"),
         ] {
             assert_eq!(
                 effective_native_menu_language(Some(code), Some("en-US")),

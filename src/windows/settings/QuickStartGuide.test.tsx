@@ -146,7 +146,7 @@ it.each(["zh", "en", "ja"] as const)("keeps session recovery out of the settings
   expect(start).not.toHaveBeenCalled();
 });
 
-it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr"] as const)("explains macOS audio-only and existing grants without starting a session in %s", async language => {
+it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th"] as const)("explains macOS audio-only and existing grants without starting a session in %s", async language => {
   setStoredUiLanguage(language);
   vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Macintosh");
   window.history.replaceState(null, "", "#getting-started");

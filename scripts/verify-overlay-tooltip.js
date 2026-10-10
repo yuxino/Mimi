@@ -7,7 +7,7 @@ export default async function verifyOverlayTooltip(page, baseUrl = "http://127.0
   let checked = 0;
   for (const width of [280, 360]) for (const compact of [true, false]) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: compact ? 54 : 136, deviceScaleFactor: 1, mobile: false });
-    for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko"]) for (const audioInput of ["system", "microphone", "both"]) {
+    for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"]) for (const audioInput of ["system", "microphone", "both"]) {
       await page.evaluate(({ language, compact, audioInput }) => window.renderTooltipFixture(language, compact, audioInput), { language, compact, audioInput });
       await page.waitForFunction(compact => document.querySelector('[data-testid="drag-handle"]')?.getBoundingClientRect().height === (compact ? 30 : 18), compact);
       await page.hover('[data-testid="drag-handle"]');

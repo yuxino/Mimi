@@ -81,9 +81,10 @@ const localizedExamples = {
   de: { english: "Englisch" },
   fr: { english: "anglais" },
   ko: { english: "영어" },
+  th: { english: "อังกฤษ" },
 } as const;
 
-it.each(["zh-TW", "de", "fr", "ko"] as const)("switches every surface and language labels to %s without reload", language => {
+it.each(["zh-TW", "de", "fr", "ko", "th"] as const)("switches every surface and language labels to %s without reload", language => {
   setStoredUiLanguage("en");
   const english = { tray: I18N.tray.settings, settings: I18N.settings.applicationTitle, overlay: I18N.overlay.phaseIdle, modes: I18N.modes.lowLatencyHelp };
   const listener = vi.fn();
@@ -102,7 +103,7 @@ it.each(["zh-TW", "de", "fr", "ko"] as const)("switches every surface and langua
 
 it.each([
   ["zh-TW", "zh-TW"], ["zh-HK", "zh-TW"], ["zh-MO", "zh-TW"], ["zh-Hant", "zh-TW"], ["zh_Hant_CN", "zh-TW"], ["zh-Hans-HK", "zh"], ["zh-CN", "zh"], ["zh-SG", "zh"], ["zh", "zh"],
-  ["de-DE", "de"], ["DE_at", "de"], ["fr-CA", "fr"], ["ko-KR", "ko"], ["es-ES", "en"],
+  ["de-DE", "de"], ["DE_at", "de"], ["fr-CA", "fr"], ["ko-KR", "ko"], ["th-TH", "th"], ["TH_th", "th"], ["es-ES", "en"],
 ] as const)("resolves system locale %s to %s and honors the override", (system, expected) => {
   vi.stubGlobal("navigator", { language: system });
   setStoredUiLanguage("system");
@@ -112,7 +113,7 @@ it.each([
 });
 
 it("keeps language choices in their own native spelling", () => {
-  expect(UI_LANGUAGE_OPTIONS.map(option => option.label)).toEqual(["简体中文", "繁體中文", "English", "日本語", "Deutsch", "한국어", "Français"]);
+  expect(UI_LANGUAGE_OPTIONS.map(option => option.label)).toEqual(["简体中文", "繁體中文", "English", "日本語", "Deutsch", "한국어", "Français", "ภาษาไทย"]);
 });
 
 it("keeps all primary locale keys, functions and values complete", () => {

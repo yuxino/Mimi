@@ -3,6 +3,7 @@ import { DEVELOPMENT as DEVELOPMENT_EN } from "../../lib/locales/en-development"
 import { DEVELOPMENT as DEVELOPMENT_DE } from "../../lib/locales/de-development";
 import { DEVELOPMENT as DEVELOPMENT_FR } from "../../lib/locales/fr-development";
 import { DEVELOPMENT as DEVELOPMENT_KO } from "../../lib/locales/ko-development";
+import { DEVELOPMENT as DEVELOPMENT_TH, DEVELOPMENT_EXTRAS as DEVELOPMENT_EXTRAS_TH } from "../../lib/locales/th-development";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "../../components/Icon";
@@ -29,6 +30,7 @@ interface SavedCase { id: string; createdAtUnixMs: number; snapshots: number; pr
 interface PrivateEvent { elapsedMs: number; event: { kind: string; [field: string]: unknown } }
 const additionalDebuggerCopy = {
   "zh-TW": DEVELOPMENT_EXTRAS,
+  th: DEVELOPMENT_EXTRAS_TH,
   de: {
     errors: ["Der lokale Fallspeicher ist voll. Exportiere und entferne nicht mehr benötigte Fälle.", "Ein anderer Debugvorgang läuft. Versuche es gleich erneut.", "Ereignisse werden noch gespeichert; der Fall bleibt erhalten. Versuche das Beenden der Aufzeichnung gleich erneut.", "Stoppe die Untertitel und beende die Aufzeichnung vor diesem Vorgang.", "Der Fall wurde gewechselt oder seine Dateien sind ungültig. Öffne ihn erneut.", "Falldateien konnten nicht gespeichert werden. Prüfe Speicherplatz und Dateiberechtigungen und versuche es erneut."],
     trace: { saved: "Gespeicherte Ereignisse", load: "Ereignisse laden", recent: "Letzte Ereignisse", help: "Im Speicher bleiben nur die letzten Ereignisse. Entfernte Einträge fehlen deshalb nicht im gespeicherten Fall. Seiten werden nach Dateiposition geladen und nach Ereignis-ID sortiert; die vollständige Analyse ordnet alle IDs. Fehlende Ereignisse, Grenzen und Speicherfehler werden separat gemeldet." },
@@ -50,7 +52,7 @@ const additionalDebuggerCopy = {
 };
 function debuggerExtras() {
   const language = effectiveUiLanguage();
-  return language === "zh-TW" || language === "de" || language === "fr" || language === "ko" ? additionalDebuggerCopy[language] : undefined;
+  return language === "zh-TW" || language === "de" || language === "fr" || language === "ko" || language === "th" ? additionalDebuggerCopy[language] : undefined;
 }
 
 function failureMessage(error: unknown, fallback: string): string {
@@ -70,7 +72,7 @@ const copy = {
   zh: { title: "开发调试器", start: "开始追踪", evidence: "录制音频与字幕", stop: "停止追踪", export: "导出案例", help: "仅 dev 可用。追踪记录不含正文；录制按钮会明确保存选中输入发给服务的音频及字幕快照到私有本地文件。重启后默认关闭。", live: "当前识别与译文", timeline: "事件时间线", all: "全部阶段", provider: "服务事件", reduced: "字幕处理", frontend: "前端", pipeline: "音频与请求", snapshot: "快照", loss: "证据缺失", audio: "发送给服务的音频", listen: "载入试听", audioHelp: "从实际音频消息解码，包含本机 socket 发送完成的 PCM。未证明服务收到或消费。失败、取消及取证丢失需查看发送记录。停止字幕后试听，避免播放声再次被采集。", system: "系统声音", microphone: "麦克风", stopFirst: "停止字幕后可试听", replay: "字幕快照回放", previous: "上一步", next: "下一步", raw: "原文", translated: "译文", empty: "尚无记录", idle: "已停止", active: "追踪中", saved: "案例已导出", failed: "操作失败，请重试。", details: "事件字段", workspace: "工作区", route: "本次配置", recordHelp: "音频与字幕取证默认关闭，案例包含私人内容；不会自动分享。每次录制生成独立文件，不覆盖旧案例。", replayHelp: "离线重放记录的后端快照，使用相同的字幕选择与排版逻辑。逐步查看不会模拟当时的稳定器时间；原始提交时序和裁切以时间线为准。", final: "已确认字幕", clear: "清空", pause: "暂停", pending: "等待翻译", events: "事件", noSubtitles: "暂无识别或译文" },
   en: DEVELOPMENT_EN,
   ja: { title: "開発デバッガー", start: "追跡を開始", evidence: "音声と字幕を記録", stop: "追跡を停止", export: "ケースをエクスポート", help: "dev 専用。追跡に本文は含みません。記録では選択入力から送信した音声と字幕をローカルに保存します。再起動後は無効です。", live: "現在の認識と翻訳", timeline: "イベント時系列", all: "全段階", provider: "サービスイベント", reduced: "字幕処理", frontend: "フロントエンド", pipeline: "音声とリクエスト", snapshot: "スナップショット", loss: "欠落した証拠", audio: "サービスへ送信した音声", listen: "音声を読み込む", audioHelp: "ローカル socket の送信が完了した音声メッセージから PCM を復元します。サーバーの受信を証明するものではありません。失敗、取消、記録の欠落を確認してください。再取得を防ぐため字幕を停止してから試聴します。", system: "システム音声", microphone: "マイク", stopFirst: "試聴するには字幕を停止", replay: "字幕の再生", previous: "前へ", next: "次へ", raw: "原文", translated: "翻訳", empty: "記録なし", idle: "停止", active: "追跡中", saved: "エクスポート完了", failed: "操作に失敗しました。再試行してください。", details: "イベント詳細", workspace: "ワークスペース", route: "記録時の設定", recordHelp: "音声と字幕の記録は初期状態で無効です。個人の内容を含み、自動共有しません。毎回別のファイルを作成し、以前のケースを保持します。", replayHelp: "記録済みの状態を同じ字幕選択とレイアウトで表示します。ステップ操作では当時の安定化時間を再現しません。元の描画と切り取りは時系列で確認してください。", final: "確定字幕", clear: "消去", pause: "一時停止", pending: "翻訳待ち", events: "イベント", noSubtitles: "認識・翻訳はまだありません" },
-  de: DEVELOPMENT_DE, fr: DEVELOPMENT_FR, ko: DEVELOPMENT_KO, "zh-TW": DEVELOPMENT_ZH_TW,
+  de: DEVELOPMENT_DE, fr: DEVELOPMENT_FR, ko: DEVELOPMENT_KO, th: DEVELOPMENT_TH, "zh-TW": DEVELOPMENT_ZH_TW,
 };
 
 function traceEntryLabel(entry: DebugEntry): string {

@@ -25,7 +25,7 @@ it("identifies the selected app and keeps the microphone independent", () => {
   expect(audioInputLabel("microphone", target)).toBe(I18N.settings.audioInputMicrophone);
 });
 
-it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr"] as const)("keeps system permission denial distinct from microphone or provider errors in %s", language => {
+it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th"] as const)("keeps system permission denial distinct from microphone or provider errors in %s", language => {
   setStoredUiLanguage(language);
   const message = audioInputErrorMessage("System audio capture permission was denied.");
   expect(message).toBeTruthy();

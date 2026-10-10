@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 pub(crate) const MAX_TEXT_BYTES: usize = 65_536;
 
 pub(crate) fn supports_preparation_ui_language(language: &str) -> bool {
-    matches!(language, "en" | "zh" | "zh-TW" | "ja" | "de" | "fr" | "ko")
+    matches!(
+        language,
+        "en" | "zh" | "zh-TW" | "ja" | "de" | "fr" | "ko" | "th"
+    )
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -422,7 +425,7 @@ mod tests {
 
     #[test]
     fn preparation_accepts_resolved_interface_languages_only() {
-        for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"] {
+        for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"] {
             assert!(supports_preparation_ui_language(language), "{language}");
         }
         for language in ["system", "zh-Hant", "zh_tw", "fr-CA", "", "invalid"] {

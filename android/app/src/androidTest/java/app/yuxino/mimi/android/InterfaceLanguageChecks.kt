@@ -68,7 +68,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                 capture("persisted-$expected-$theme")
             } else {
                 // Check every self-name, including rows below a narrow popup's viewport.
-                val names = listOf("简体中文", "繁體中文", "English", "日本語", "Deutsch", "한국어", "Français")
+                val names = listOf("简体中文", "繁體中文", "English", "日本語", "Deutsch", "한국어", "Français", "ภาษาไทย")
                 onUi { check((1 until picker().adapter.count).map { picker().adapter.getItem(it).toString() } == names) }
                 onUi { picker().performClick() }
                 instrumentation.waitForIdleSync()
@@ -78,7 +78,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                     list.setSelection(list.adapter.count - 1)
                 }
                 instrumentation.waitForIdleSync()
-                onUi { check(WindowInspector.getGlobalWindowViews().any { containsText(it, "Français") }) }
+                onUi { check(WindowInspector.getGlobalWindowViews().any { containsText(it, "ภาษาไทย") }) }
                 capture("picker-$theme")
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 onUi { settings!!.findViewById<View>(R.id.tab_appearance).performClick() }
@@ -221,6 +221,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                 "de" -> "Oberflächensprache"
                 "ko" -> "화면 언어"
                 "fr" -> "Langue de l’interface"
+                "th" -> "ภาษาอินเทอร์เฟซ"
                 else -> "Interface language"
             }
             check(containsText(settings!!.window.decorView, label)) { "Interface copy did not follow the chosen language" }

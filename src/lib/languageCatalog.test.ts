@@ -13,7 +13,7 @@ import {
 
 afterEach(() => setStoredUiLanguage("en"));
 
-it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko"] as const)("localizes every selectable wire code in %s", (locale) => {
+it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"] as const)("localizes every selectable wire code in %s", (locale) => {
   setStoredUiLanguage(locale);
   expect(Object.keys(SOURCE_LANGUAGE_DISPLAY_NAMES)).toEqual(["auto", ...SOURCE_LANGUAGE_CODES]);
   expect(Object.keys(TARGET_LANGUAGE_DISPLAY_NAMES)).toEqual(["original", ...TARGET_LANGUAGE_CODES]);
