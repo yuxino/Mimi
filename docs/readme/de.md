@@ -87,12 +87,15 @@ Besonderer Dank gilt [@yebuwudong](https://github.com/yebuwudong) für die [Andr
 
 Danke auch an [@Chtholly000](https://github.com/Chtholly000) für die Verbesserungen an [Geminis fortlaufenden Untertiteln und dem geplanten Verbindungswechsel](https://github.com/yuxino/Mimi/pull/176).
 
+Danke an [@EmmetZ](https://github.com/EmmetZ) für die [Korrektur der Untertitelsteuerung, die unter Wayland dem Untertitelfenster nicht folgte](https://github.com/yuxino/Mimi/pull/242).
+
 <p>
   <a href="https://github.com/yuxino"><img src="../assets/contributors/yuxino.svg" width="64" height="64" alt="@yuxino"></a>
   <a href="https://github.com/LLLin000"><img src="../assets/contributors/LLLin000.svg" width="64" height="64" alt="@LLLin000"></a>
   <a href="https://github.com/yebuwudong"><img src="../assets/contributors/yebuwudong.svg" width="64" height="64" alt="@yebuwudong"></a>
   <a href="https://github.com/Chtholly000"><img src="../assets/contributors/Chtholly000.svg" width="64" height="64" alt="@Chtholly000"></a>
   <a href="https://github.com/inhome"><img src="../assets/contributors/inhome.svg" width="64" height="64" alt="@inhome"></a>
+  <a href="https://github.com/EmmetZ"><img src="../assets/contributors/EmmetZ.svg" width="64" height="64" alt="@EmmetZ"></a>
 </p>
 
 [Alle Mitwirkenden](https://github.com/yuxino/mimi/graphs/contributors)
