@@ -37,7 +37,7 @@ Pour votre première configuration, **nous recommandons Alibaba Cloud ou Google 
 
 Pour Google Gemini, utilisez une connexion réseau stable. Consultez votre quota disponible, la facturation et vos clés API dans [Google AI Studio](https://aistudio.google.com/).
 
-Pour les liens d’activation, les instructions concernant les identifiants et les modèles actuellement utilisés par Mimi, consultez le **[guide de configuration des fournisseurs](../provider-setup.md)**.
+Pour les liens d’activation, les instructions concernant les identifiants et les modèles actuellement utilisés par Mimi, consultez le **[guide de configuration des fournisseurs (anglais)](../provider-setup.md)**.
 
 1. Ouvrez Réglages → Parole et traduction, ajoutez une configuration, saisissez les identifiants demandés par le fournisseur et enregistrez.
 2. Choisissez les langues de reconnaissance et de traduction.
@@ -45,13 +45,13 @@ Pour les liens d’activation, les instructions concernant les identifiants et l
 
 Les services vocaux cloud nécessitent vos propres identifiants et reçoivent votre audio ; des frais d’utilisation peuvent s’appliquer. Apple Speech reconnaît l’audio localement sur les Mac compatibles. La traduction du texte à distance envoie le texte reconnu au service de votre choix ; Apple Translation garde le texte sur le Mac.
 
-[Configuration et aide](../usage.md) · [Android](../../android/README.md) · [Signaler un bug](https://github.com/yuxino/mimi/issues) · [Contribuer](../../.github/CONTRIBUTING.md)
+[Configuration et aide](../usage.fr.md) · [Android (anglais)](../../android/README.md) · [Signaler un bug](https://github.com/yuxino/mimi/issues) · [Contribuer (chinois/anglais)](../../.github/CONTRIBUTING.md)
 
 <a id="apple-local-recognition"></a>
 
 ### Reconnaissance locale Apple
 
-**Apple Speech** apparaît lorsque le système le permet : puce Apple, macOS 26 ou version ultérieure et moteur de transcription système disponible. Aucune clé API de reconnaissance vocale n’est nécessaire. Arrêtez les sous-titres et choisissez la langue dans **Langue de reconnaissance**. Si elle est manquante, cliquez sur **Télécharger et utiliser** ; Mimi télécharge les ressources Apple et sélectionne cette langue une fois prête. Pour une langue déjà téléchargée, cliquez sur **Définir la langue de reconnaissance**, puis démarrez les sous-titres. Inutile d’ouvrir les Réglages Système. La détection automatique de la langue n’est pas proposée. Consultez la [configuration d’Apple Speech](../provider-setup.md#apple-speech).
+**Apple Speech** apparaît lorsque le système le permet : puce Apple, macOS 26 ou version ultérieure et moteur de transcription système disponible. Aucune clé API de reconnaissance vocale n’est nécessaire. Arrêtez les sous-titres et choisissez la langue dans **Langue de reconnaissance**. Si elle est manquante, cliquez sur **Télécharger et utiliser** ; Mimi télécharge les ressources Apple et sélectionne cette langue une fois prête. Pour une langue déjà téléchargée, cliquez sur **Définir la langue de reconnaissance**, puis démarrez les sous-titres. Inutile d’ouvrir les Réglages Système. La détection automatique de la langue n’est pas proposée. Consultez la [configuration d’Apple Speech (anglais)](../provider-setup.md#apple-speech).
 
 **Apple Translation** est un service distinct de traduction du texte sur l’appareil, disponible sur les Mac compatibles avec puce Apple sous macOS 26 ou version ultérieure. Sélectionnez-le dans **Traduction du texte**, enregistrez la configuration, puis choisissez une langue source et une langue cible précises. Mimi indique si la paire est prête ; **Télécharger ou activer les langues** ouvre la confirmation de configuration d’Apple. Les modèles de traduction sont séparés des modèles de reconnaissance vocale. Les modèles existants sont réutilisés ; Apple télécharge les modèles manquants après votre confirmation. Les vérifications et les sessions de sous-titres ne demandent jamais de téléchargement. Aucune clé API ni aucun proxy de traduction du texte n’est nécessaire.
 
@@ -77,7 +77,7 @@ Index-Translate assure uniquement la traduction du texte. Avec Alibaba Cloud, co
 
 ## Questions fréquentes
 
-**macOS redemande l’autorisation d’enregistrement alors qu’elle est activée ?** Quittez Mimi, puis supprimez et ajoutez de nouveau uniquement son entrée dans Réglages Système → Confidentialité et sécurité → Enregistrement de l’écran et de l’audio du système. Utilisez `/Applications/mimi.app` pour la version publique ou `/Applications/mimi-dev.app` pour le développement, activez l’autorisation et rouvrez la même application. Consultez la [récupération des autorisations](../usage.md#macos-permissions-after-an-update).
+**macOS redemande l’autorisation d’enregistrement alors qu’elle est activée ?** Quittez Mimi, puis supprimez et ajoutez de nouveau uniquement son entrée dans Réglages Système → Confidentialité et sécurité → Enregistrement de l’écran et de l’audio du système. Utilisez `/Applications/mimi.app` pour la version publique ou `/Applications/mimi-dev.app` pour le développement, activez l’autorisation et rouvrez la même application. Consultez la [récupération des autorisations](../usage.fr.md#macos-permissions-after-an-update).
 
 ## Contributeurs
 

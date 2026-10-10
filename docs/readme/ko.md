@@ -37,7 +37,7 @@
 
 Google Gemini는 안정적인 네트워크 연결을 사용하세요. [Google AI Studio](https://aistudio.google.com/)에서 사용 가능량, 결제 정보와 API 키를 확인하세요.
 
-서비스 활성화 링크, 인증 정보 안내와 Mimi가 현재 사용하는 모델은 **[서비스 설정 안내](../provider-setup.md)**를 참고하세요.
+서비스 활성화 링크, 인증 정보 안내와 Mimi가 현재 사용하는 모델은 **[서비스 설정 안내(영어)](../provider-setup.md)**를 참고하세요.
 
 1. 설정 → 음성 및 번역에서 구성을 추가하고 필요한 서비스 인증 정보를 입력한 다음 저장하세요.
 2. 인식 언어와 번역 언어를 선택하세요.
@@ -45,13 +45,13 @@ Google Gemini는 안정적인 네트워크 연결을 사용하세요. [Google AI
 
 클라우드 음성 서비스에는 본인의 인증 정보가 필요하며 오디오가 해당 서비스로 전송됩니다. 사용 요금이 발생할 수 있습니다. Apple Speech는 지원되는 Mac에서 오디오를 로컬로 인식합니다. 원격 텍스트 번역은 인식한 텍스트를 선택한 서비스로 전송하며, Apple Translation은 텍스트를 Mac 안에서 처리합니다.
 
-[설정 및 도움말](../usage.md) · [Android](../../android/README.md) · [버그 신고](https://github.com/yuxino/mimi/issues) · [기여 안내](../../.github/CONTRIBUTING.md)
+[설정 및 도움말](../usage.ko.md) · [Android(영어)](../../android/README.md) · [버그 신고](https://github.com/yuxino/mimi/issues) · [기여 안내(중국어/영어)](../../.github/CONTRIBUTING.md)
 
 <a id="apple-local-recognition"></a>
 
 ### Apple 로컬 인식
 
-**Apple Speech**는 Apple silicon, macOS 26 이상, 사용 가능한 시스템 전사 기능 등 시스템 조건이 충족되면 표시됩니다. 음성 API 키는 필요하지 않습니다. 자막을 중지하고 **인식 언어**에서 언어를 선택하세요. 언어 팩이 없다면 **다운로드 후 사용**을 누르세요. Mimi가 Apple 리소스를 다운로드하고 준비되면 해당 언어를 선택합니다. 이미 다운로드한 언어라면 **인식 언어로 설정**을 누른 다음 자막을 시작하세요. 시스템 설정을 따로 열 필요는 없습니다. 언어 자동 감지는 제공하지 않습니다. [Apple Speech 설정](../provider-setup.md#apple-speech)을 참고하세요.
+**Apple Speech**는 Apple silicon, macOS 26 이상, 사용 가능한 시스템 전사 기능 등 시스템 조건이 충족되면 표시됩니다. 음성 API 키는 필요하지 않습니다. 자막을 중지하고 **인식 언어**에서 언어를 선택하세요. 언어 팩이 없다면 **다운로드 후 사용**을 누르세요. Mimi가 Apple 리소스를 다운로드하고 준비되면 해당 언어를 선택합니다. 이미 다운로드한 언어라면 **인식 언어로 설정**을 누른 다음 자막을 시작하세요. 시스템 설정을 따로 열 필요는 없습니다. 언어 자동 감지는 제공하지 않습니다. [Apple Speech 설정(영어)](../provider-setup.md#apple-speech)을 참고하세요.
 
 **Apple Translation**은 macOS 26 이상이 설치된 지원 대상 Apple silicon Mac에서 사용하는 별도의 기기 내 텍스트 번역 서비스입니다. **텍스트 번역**에서 선택하고 구성을 저장한 다음 입력 언어와 번역 언어를 직접 지정하세요. Mimi가 언어 조합의 준비 상태를 표시합니다. **언어 다운로드 또는 허용**을 누르면 Apple 설정 확인 창이 열립니다. 번역 모델은 음성 모델과 별개입니다. 기존 모델은 재사용하며, 확인하면 없는 모델만 Apple에서 다운로드합니다. 연결 확인이나 자막 세션에서는 다운로드를 요청하지 않습니다. 텍스트 API 키나 텍스트 프록시는 필요하지 않습니다.
 
@@ -77,7 +77,7 @@ Index-Translate는 텍스트 번역만 처리합니다. Alibaba Cloud를 사용�
 
 ## 자주 묻는 질문
 
-**macOS에서 녹음 권한을 허용했는데도 계속 권한을 요청하나요?** Mimi를 종료한 다음 시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 기록에서 Mimi 항목만 제거하고 다시 추가하세요. 정식 앱은 `/Applications/mimi.app`, 개발 앱은 `/Applications/mimi-dev.app`을 사용하세요. 권한을 켠 다음 같은 앱을 다시 여세요. [권한 복구 안내](../usage.md#macos-permissions-after-an-update)를 참고하세요.
+**macOS에서 녹음 권한을 허용했는데도 계속 권한을 요청하나요?** Mimi를 종료한 다음 시스템 설정 → 개인정보 보호 및 보안 → 화면 및 시스템 오디오 기록에서 Mimi 항목만 제거하고 다시 추가하세요. 정식 앱은 `/Applications/mimi.app`, 개발 앱은 `/Applications/mimi-dev.app`을 사용하세요. 권한을 켠 다음 같은 앱을 다시 여세요. [권한 복구 안내](../usage.ko.md#macos-permissions-after-an-update)를 참고하세요.
 
 ## 기여자
 

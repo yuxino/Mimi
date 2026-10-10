@@ -37,7 +37,7 @@ Für die erste Einrichtung **empfehlen wir Alibaba Cloud oder Google Gemini**. M
 
 Verwende für Google Gemini eine stabile Netzwerkverbindung. Prüfe dein verfügbares Kontingent, die Abrechnung und deine API-Schlüssel in [Google AI Studio](https://aistudio.google.com/).
 
-Links zur Freischaltung, Hinweise zu Zugangsdaten und die derzeit von Mimi verwendeten Modelle findest du in der **[Anleitung zur Anbietereinrichtung](../provider-setup.md)**.
+Links zur Freischaltung, Hinweise zu Zugangsdaten und die derzeit von Mimi verwendeten Modelle findest du in der **[Anleitung zur Anbietereinrichtung (Englisch)](../provider-setup.md)**.
 
 1. Öffne Einstellungen → Sprache & Übersetzung, füge eine Konfiguration hinzu, gib die angeforderten Anbieterzugangsdaten ein und speichere.
 2. Wähle die Erkennungs- und Übersetzungssprachen.
@@ -45,13 +45,13 @@ Links zur Freischaltung, Hinweise zu Zugangsdaten und die derzeit von Mimi verwe
 
 Cloud-Sprachdienste erfordern deine eigenen Zugangsdaten und erhalten dein Audio; dabei können Nutzungsgebühren entstehen. Apple Speech erkennt Audio auf unterstützten Macs lokal. Eine externe Textübersetzung sendet den erkannten Text an den von dir gewählten Dienst; mit Apple Translation bleibt der Text auf dem Mac.
 
-[Einrichtung & Hilfe](../usage.md) · [Android](../../android/README.md) · [Fehler melden](https://github.com/yuxino/mimi/issues) · [Mitwirken](../../.github/CONTRIBUTING.md)
+[Einrichtung & Hilfe](../usage.de.md) · [Android (Englisch)](../../android/README.md) · [Fehler melden](https://github.com/yuxino/mimi/issues) · [Mitwirken (Chinesisch/Englisch)](../../.github/CONTRIBUTING.md)
 
 <a id="apple-local-recognition"></a>
 
 ### Lokale Erkennung mit Apple
 
-**Apple Speech** wird angezeigt, wenn das System die Voraussetzungen erfüllt: Apple-Chip, macOS 26 oder neuer und eine verfügbare Systemtranskription. Ein API-Schlüssel für die Spracherkennung ist nicht nötig. Stoppe die Untertitel und wähle unter **Erkennungssprache** die Sprache. Falls sie fehlt, klicke auf **Laden und verwenden**; Mimi lädt die Ressourcen von Apple und wählt die Sprache aus, sobald sie bereit ist. Klicke bei einer bereits geladenen Sprache auf **Erkennungssprache festlegen** und starte anschließend die Untertitel. Du musst dafür nicht in die Systemeinstellungen wechseln. Eine automatische Spracherkennung wird nicht angeboten. Siehe [Apple Speech einrichten](../provider-setup.md#apple-speech).
+**Apple Speech** wird angezeigt, wenn das System die Voraussetzungen erfüllt: Apple-Chip, macOS 26 oder neuer und eine verfügbare Systemtranskription. Ein API-Schlüssel für die Spracherkennung ist nicht nötig. Stoppe die Untertitel und wähle unter **Erkennungssprache** die Sprache. Falls sie fehlt, klicke auf **Laden und verwenden**; Mimi lädt die Ressourcen von Apple und wählt die Sprache aus, sobald sie bereit ist. Klicke bei einer bereits geladenen Sprache auf **Erkennungssprache festlegen** und starte anschließend die Untertitel. Du musst dafür nicht in die Systemeinstellungen wechseln. Eine automatische Spracherkennung wird nicht angeboten. Siehe [Apple Speech einrichten (Englisch)](../provider-setup.md#apple-speech).
 
 **Apple Translation** ist ein separater lokaler Textübersetzungsdienst auf unterstützten Macs mit Apple-Chip und macOS 26 oder neuer. Wähle ihn unter **Textübersetzung**, speichere die Konfiguration und wähle eine konkrete Ausgangs- und Zielsprache. Mimi zeigt an, ob das Paar bereit ist; mit **Sprachen laden oder aktivieren** öffnest du Apples Einrichtungsbestätigung. Übersetzungsmodelle sind von Spracherkennungsmodellen getrennt. Vorhandene Modelle werden wiederverwendet; fehlende lädt Apple nach deiner Bestätigung. Verbindungsprüfungen und Untertitelsitzungen fordern nie einen Download an. Ein Text-API-Schlüssel oder Textproxy ist nicht nötig.
 
@@ -77,7 +77,7 @@ Index-Translate übernimmt ausschließlich die Textübersetzung. Lass bei Alibab
 
 ## Häufige Fragen
 
-**macOS fragt trotz aktivierter Berechtigung immer wieder nach der Aufnahmeerlaubnis?** Beende Mimi und entferne ausschließlich seinen Eintrag unter Systemeinstellungen → Datenschutz & Sicherheit → Bildschirm- & Systemaudioaufnahme. Füge ihn anschließend erneut hinzu. Verwende für die veröffentlichte App `/Applications/mimi.app` oder für die Entwicklung `/Applications/mimi-dev.app`, aktiviere den Eintrag und öffne dieselbe App erneut. Siehe [Berechtigungen wiederherstellen](../usage.md#macos-permissions-after-an-update).
+**macOS fragt trotz aktivierter Berechtigung immer wieder nach der Aufnahmeerlaubnis?** Beende Mimi und entferne ausschließlich seinen Eintrag unter Systemeinstellungen → Datenschutz & Sicherheit → Bildschirm- & Systemaudioaufnahme. Füge ihn anschließend erneut hinzu. Verwende für die veröffentlichte App `/Applications/mimi.app` oder für die Entwicklung `/Applications/mimi-dev.app`, aktiviere den Eintrag und öffne dieselbe App erneut. Siehe [Berechtigungen wiederherstellen](../usage.de.md#macos-permissions-after-an-update).
 
 ## Mitwirkende
 
