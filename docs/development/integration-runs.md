@@ -1917,3 +1917,28 @@
   Physical Android, Windows/Linux capture under this exact video, Intel hardware,
   notarization and installed-updater acceptance are not established by these
   macOS runs or CI.
+
+- PR [#248](https://github.com/yuxino/Mimi/pull/248) merged to main
+  `3bb1819e5038bc5c811c7657a580b603755eaf0b` after final-head desktop
+  [38078704661](https://github.com/yuxino/Mimi/actions/runs/38078704661) and
+  Android [38078704572](https://github.com/yuxino/Mimi/actions/runs/38078704572)
+  passed. Both release-shaped macOS architectures were built from that clean
+  revision and verified against the pinned identity, signed source/version,
+  DMG and safely extracted updater app. No installed production app was replaced.
+- [mimi v1.5.23](https://github.com/yuxino/Mimi/releases/tag/v1.5.23) was
+  published as Latest at 2026-10-10 19:42:18 UTC, tag/source `3bb1819e`.
+  Unified release [38079663362](https://github.com/yuxino/Mimi/actions/runs/38079663362)
+  and independent Android [38079663233](https://github.com/yuxino/Mimi/actions/runs/38079663233)
+  passed. CI inspected the compiled Android manifest for 1.5.23 / 10523,
+  verified the pinned non-debug signing certificate and shared native libraries,
+  and passed Windows/Linux package startup and Windows ARM64 startup checks.
+- Independent anonymous downloads of all 17 public assets matched GitHub
+  SHA-256 digests and all 16 checksum entries. All five updater signatures
+  verified cryptographically against the repository public key. Four updater
+  mappings and the public Latest endpoint resolved to the same verified manifest;
+  release and updater bilingual notes match the tagged source. All four public
+  macOS assets matched the local prepared digests. The public native Contributors
+  section includes @yuxino with a loadable avatar. Private content-free evidence
+  is retained; completed temporary diagnostics, downloads and task-only build
+  artifacts are cleaned after validation. The native/physical verification limits
+  above remain unchanged.
