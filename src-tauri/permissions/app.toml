@@ -108,6 +108,7 @@ commands.allow = [
   "overlay_popover_toggle",
   "overlay_popover_hide",
   "overlay_control_state",
+  "overlay_control_set_popup_bounds",
   "overlay_control_set_panel_height",
   "overlay_control_set_island_width",
 ]

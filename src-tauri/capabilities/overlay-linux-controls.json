@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "overlay-linux-controls",
+  "description": "Linux may embed the existing live controls in the subtitle canvas when GDK uses Wayland.",
+  "platforms": ["linux"],
+  "windows": ["overlay"],
+  "permissions": ["app-overlay-control"]
+}

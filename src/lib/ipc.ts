@@ -40,6 +40,11 @@ export const isTauri =
   (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
     undefined;
 
+/** Set by native window creation after detecting GDK's actual display backend. */
+export const hasEmbeddedOverlayControls = typeof window !== "undefined"
+  && (window as unknown as { __MIMI_EMBEDDED_OVERLAY_CONTROL__?: boolean })
+    .__MIMI_EMBEDDED_OVERLAY_CONTROL__ === true;
+
 // ---------------------------------------------------------------------------
 // Commands (frontend -> Rust)
 // ---------------------------------------------------------------------------
@@ -260,6 +265,13 @@ export function overlayControlSetPanelHeight(height: number): Promise<void> {
 
 export function overlayControlSetIslandWidth(width: number): Promise<void> {
   return invoke("overlay_control_set_island_width", { width });
+}
+
+export function overlayControlSetPopupBounds(
+  bounds: { x: number; y: number; width: number; height: number } | null,
+  notification: { x: number; y: number; width: number; height: number } | null = null,
+): Promise<void> {
+  return invoke("overlay_control_set_popup_bounds", { bounds, notification });
 }
 
 /** Fetches the current session state snapshot (for windows that boot after

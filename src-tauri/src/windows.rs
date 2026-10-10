@@ -77,7 +77,7 @@ use crate::core::overlay_layout::{minimum_overlay_height, BASE_MINIMUM_HEIGHT};
 use crate::pipeline_log;
 use crate::settings_store::{OverlayFrame, Preferences, SettingsStore};
 use crate::windows::resize::{apply_drag, ResizeRegion};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -381,11 +381,7 @@ impl OverlayPresentationState {
                 let Ok(native) = window.gtk_window() else {
                     return;
                 };
-                if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
-                    presentation.0.lock().unwrap().reconcile(false, |enabled| {
-                        linux_input_region::apply(&native, enabled);
-                    });
-                }
+                reconcile_linux_overlay_input(&app, &native, false);
             })
             .is_err()
         {
@@ -683,6 +679,11 @@ impl OverlayWindowManager {
                 .shadow(false)
                 .resizable(true)
                 .visible(false);
+        let builder = if OverlayControlWindowManager::is_embedded(app) {
+            builder.initialization_script("window.__MIMI_EMBEDDED_OVERLAY_CONTROL__ = true;")
+        } else {
+            builder
+        };
         #[cfg(not(target_os = "windows"))]
         let builder = builder
             .position(frame.x, frame.y)
@@ -1789,11 +1790,23 @@ fn overlay_frame_from_window(app: &AppHandle) -> Option<OverlayFrame> {
                 if !window.is_mapped() {
                     return None;
                 }
-                let (x, y) = window.position();
+                let (x, y) = if OverlayControlWindowManager::is_embedded(native_window.app_handle())
+                {
+                    // Wayland reports a synthetic origin, not the compositor's
+                    // placement. Preserve the saved origin while observing size.
+                    let app_state = native_window
+                        .app_handle()
+                        .state::<crate::commands::AppState>();
+                    let frame = app_state.overlay.lock().unwrap().effective_frame();
+                    (frame.x, frame.y)
+                } else {
+                    let (x, y) = window.position();
+                    (x as f64, y as f64)
+                };
                 let (width, height) = window.size();
                 Some(OverlayFrame {
-                    x: x as f64,
-                    y: y as f64,
+                    x,
+                    y,
                     width: width as f64,
                     height: height as f64,
                 })
@@ -1805,6 +1818,61 @@ fn overlay_frame_from_window(app: &AppHandle) -> Option<OverlayFrame> {
 }
 
 #[cfg(target_os = "linux")]
+fn reconcile_linux_overlay_input(
+    app: &AppHandle,
+    window: &impl gtk::glib::IsA<gtk::Window>,
+    force: bool,
+) {
+    use gtk::prelude::*;
+    let control = if OverlayControlWindowManager::is_embedded(app) {
+        let (width, height) = window.as_ref().size();
+        app.try_state::<OverlayControlState>().and_then(|state| {
+            let (island_width, panel_height) = state.dimensions();
+            embedded_control_geometry(state.mode(), island_width, panel_height, width, height).map(
+                |geometry| {
+                    gtk::cairo::RectangleInt::new(
+                        geometry.x as i32,
+                        geometry.y as i32,
+                        geometry.width as i32,
+                        geometry.height as i32,
+                    )
+                },
+            )
+        })
+    } else {
+        None
+    };
+    let popups: Vec<_> = app
+        .try_state::<OverlayControlHost>()
+        .and_then(|host| {
+            (host.embedded && OverlayControlWindowManager::mode(app) == OverlayControlMode::Panel)
+                .then(|| *host.popups.lock().unwrap())
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .flatten()
+        .map(|bounds| {
+            let (width, height) = window.as_ref().size();
+            let x = bounds.x.floor().clamp(0.0, width as f64);
+            let y = bounds.y.floor().clamp(0.0, height as f64);
+            let right = (bounds.x + bounds.width).ceil().clamp(x, width as f64);
+            let bottom = (bounds.y + bounds.height).ceil().clamp(y, height as f64);
+            gtk::cairo::RectangleInt::new(
+                x as i32,
+                y as i32,
+                (right - x) as i32,
+                (bottom - y) as i32,
+            )
+        })
+        .collect();
+    if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
+        presentation.0.lock().unwrap().reconcile(force, |enabled| {
+            linux_input_region::apply_with_control(window, enabled, control, &popups);
+        });
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn follow_linux_overlay_on_map(window: &tauri::WebviewWindow) {
     use gtk::prelude::*;
     let native_window = window.clone();
@@ -1813,11 +1881,7 @@ fn follow_linux_overlay_on_map(window: &tauri::WebviewWindow) {
         if let Ok(window) = native_window.gtk_window() {
             let input_app = app.clone();
             linux_input_region::restore_on_surface_change(&window, move |window| {
-                if let Some(presentation) = input_app.try_state::<OverlayPresentationState>() {
-                    presentation.0.lock().unwrap().reconcile(true, |enabled| {
-                        linux_input_region::apply(window, enabled);
-                    });
-                }
+                reconcile_linux_overlay_input(&input_app, window, true);
             });
             window.connect_map_event(move |_, _| {
                 // Wait until GTK has processed the mapping event, without a
@@ -2413,8 +2477,8 @@ fn default_overlay_origin_in_work_area(
     (frame.x, frame.y)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct OverlayControlGeometry {
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct OverlayControlGeometry {
     x: f64,
     y: f64,
     width: f64,
@@ -2428,7 +2492,63 @@ const OVERLAY_CONTROL_MODE_EVENT: &str = "overlay-control-mode";
 /// clicks from the video underneath.
 pub struct OverlayControlWindowManager;
 
+/// Native Wayland toplevels have no application-controlled global position.
+/// Render controls in the subtitle WebView there, using the actual GDK backend
+/// rather than XDG_SESSION_TYPE (a Wayland desktop may run Mimi via XWayland).
+pub struct OverlayControlHost {
+    embedded: bool,
+    popups: std::sync::Mutex<[Option<OverlayControlGeometry>; 2]>,
+}
+
+impl OverlayControlHost {
+    pub fn detect() -> Self {
+        #[cfg(target_os = "linux")]
+        {
+            use gtk::prelude::*;
+            Self {
+                embedded: gtk::gdk::Display::default()
+                    .is_some_and(|display| display.type_().name() == "GdkWaylandDisplay"),
+                popups: std::sync::Mutex::new([None; 2]),
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        Self {
+            embedded: false,
+            popups: std::sync::Mutex::new([None; 2]),
+        }
+    }
+}
+
 impl OverlayControlWindowManager {
+    pub fn is_embedded(app: &AppHandle) -> bool {
+        app.try_state::<OverlayControlHost>()
+            .is_some_and(|host| host.embedded)
+    }
+
+    pub fn set_popup_bounds(
+        app: &AppHandle,
+        bounds: Option<OverlayControlGeometry>,
+        notification: Option<OverlayControlGeometry>,
+    ) {
+        let Some(host) = app.try_state::<OverlayControlHost>() else {
+            return;
+        };
+        if !host.embedded {
+            return;
+        }
+        *host.popups.lock().unwrap() = [bounds, notification].map(|bounds| {
+            bounds.filter(|bounds| {
+                Self::mode(app) == OverlayControlMode::Panel
+                    && [bounds.x, bounds.y, bounds.width, bounds.height]
+                        .into_iter()
+                        .all(f64::is_finite)
+                    && bounds.width > 0.0
+                    && bounds.height > 0.0
+            })
+        });
+        Self::apply_geometry(app, Self::mode(app));
+    }
+
     pub const DEFAULT_ISLAND_WIDTH: f64 = 200.0;
     pub const ISLAND_HEIGHT: f64 = 30.0;
     const MIN_ISLAND_WIDTH: f64 = 80.0;
@@ -2445,6 +2565,9 @@ impl OverlayControlWindowManager {
     const WORK_AREA_MARGIN: f64 = 8.0;
 
     pub fn ensure(app: &AppHandle) {
+        if Self::is_embedded(app) {
+            return;
+        }
         if app.get_webview_window("overlay-control").is_some() {
             return;
         }
@@ -2516,6 +2639,7 @@ impl OverlayControlWindowManager {
         let mode_changed = state.set_mode(next);
         let visible_surface_needs_restore = !mode_changed
             && next != OverlayControlMode::Hidden
+            && !Self::is_embedded(app)
             && app
                 .get_webview_window("overlay-control")
                 .and_then(|window| window.is_visible().ok())
@@ -2650,6 +2774,18 @@ impl OverlayControlWindowManager {
     }
 
     fn apply_mode_now(app: &AppHandle, mode: OverlayControlMode, focus: bool) {
+        if Self::is_embedded(app) {
+            if mode != OverlayControlMode::Panel {
+                if let Some(host) = app.try_state::<OverlayControlHost>() {
+                    *host.popups.lock().unwrap() = [None; 2];
+                }
+            }
+            if let Some(window) = app.get_webview_window("overlay") {
+                let _ = window.emit(OVERLAY_CONTROL_MODE_EVENT, mode);
+                Self::apply_geometry(app, mode);
+            }
+            return;
+        }
         #[cfg(target_os = "macos")]
         macos_control_dismiss::sync(app);
         let Some(window) = app.get_webview_window("overlay-control") else {
@@ -2687,6 +2823,20 @@ impl OverlayControlWindowManager {
     }
 
     fn apply_geometry(app: &AppHandle, mode: OverlayControlMode) -> bool {
+        #[cfg(target_os = "linux")]
+        if Self::is_embedded(app) {
+            let current_app = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let Some(window) = current_app.get_webview_window("overlay") else {
+                    return;
+                };
+                let Ok(native) = window.gtk_window() else {
+                    return;
+                };
+                reconcile_linux_overlay_input(&current_app, &native, true);
+            });
+            return true;
+        }
         let Some(window) = app.get_webview_window("overlay-control") else {
             return false;
         };
@@ -2817,6 +2967,37 @@ fn measured_island_width(width: f64) -> Option<f64> {
             OverlayControlWindowManager::MIN_ISLAND_WIDTH,
             OverlayControlWindowManager::MAX_ISLAND_WIDTH,
         )
+    })
+}
+
+/// Keep the embedded controls within the canvas; Wayland cannot supply a
+/// global work-area origin. The panel scrolls inside these bounds.
+#[cfg(any(target_os = "linux", test))]
+fn embedded_control_geometry(
+    mode: OverlayControlMode,
+    island_width: f64,
+    panel_height: f64,
+    canvas_width: i32,
+    canvas_height: i32,
+) -> Option<OverlayControlGeometry> {
+    if mode == OverlayControlMode::Hidden {
+        return None;
+    }
+    let width = match mode {
+        OverlayControlMode::Panel => OverlayControlWindowManager::PANEL_WIDTH,
+        _ => island_width.min(OverlayControlWindowManager::PANEL_WIDTH),
+    }
+    .min((canvas_width as f64 - 36.0).max(0.0));
+    let height = match mode {
+        OverlayControlMode::Panel => panel_height,
+        _ => OverlayControlWindowManager::ISLAND_HEIGHT,
+    }
+    .min((canvas_height as f64 - 24.0).max(0.0));
+    (width > 0.0 && height > 0.0).then_some(OverlayControlGeometry {
+        x: OverlayControlWindowManager::ANCHOR_OFFSET_X,
+        y: OverlayControlWindowManager::ANCHOR_OFFSET_Y,
+        width,
+        height,
     })
 }
 
@@ -3174,6 +3355,32 @@ pub fn install_active_space_observer(
 #[cfg(test)]
 mod geometry_tests {
     use super::*;
+
+    #[test]
+    fn embedded_controls_fit_the_canvas_and_hidden_controls_have_no_input() {
+        assert_eq!(
+            embedded_control_geometry(OverlayControlMode::Hidden, 200.0, 270.0, 640, 482),
+            None
+        );
+        let island =
+            embedded_control_geometry(OverlayControlMode::Island, 180.0, 270.0, 640, 482).unwrap();
+        assert_eq!(
+            (island.x, island.y, island.width, island.height),
+            (18.0, 16.0, 180.0, 30.0)
+        );
+        let panel =
+            embedded_control_geometry(OverlayControlMode::Panel, 180.0, 520.0, 256, 136).unwrap();
+        assert_eq!(
+            (panel.x, panel.y, panel.width, panel.height),
+            (18.0, 16.0, 220.0, 112.0)
+        );
+        assert!(panel.x + panel.width <= 256.0);
+        assert!(panel.y + panel.height <= 136.0);
+        assert_eq!(
+            embedded_control_geometry(OverlayControlMode::Island, 200.0, 270.0, 0, 0),
+            None
+        );
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

@@ -832,6 +832,19 @@ mod tests {
     }
 
     #[test]
+    fn embedded_control_capability_is_linux_only_and_does_not_grant_settings_access() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/overlay-linux-controls.json"))
+                .unwrap();
+        assert_eq!(capability["platforms"], serde_json::json!(["linux"]));
+        assert_eq!(capability["windows"], serde_json::json!(["overlay"]));
+        assert_eq!(
+            capability["permissions"],
+            serde_json::json!(["app-overlay-control"])
+        );
+    }
+
+    #[test]
     fn frontend_readiness_markers_are_test_only_and_window_scoped() {
         let directory =
             std::env::temp_dir().join(format!("mimi-ui-ready-{}", uuid::Uuid::new_v4()));
@@ -2462,6 +2475,16 @@ pub fn overlay_popover_hide(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn overlay_control_state(app: AppHandle) -> Result<OverlayControlMode, String> {
     Ok(OverlayControlWindowManager::mode(&app))
+}
+
+/// Pickers and notifications remain interactive when Wayland subtitles are locked.
+#[tauri::command]
+pub fn overlay_control_set_popup_bounds(
+    app: AppHandle,
+    bounds: Option<crate::windows::OverlayControlGeometry>,
+    notification: Option<crate::windows::OverlayControlGeometry>,
+) {
+    OverlayControlWindowManager::set_popup_bounds(&app, bounds, notification);
 }
 
 /// Applies a tightly-fitted panel height measured by the control WebView.

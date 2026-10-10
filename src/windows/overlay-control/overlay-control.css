@@ -58,6 +58,35 @@
   opacity: 1;
 }
 
+/* Native Wayland controls share the subtitle surface, so compositor movement
+   is atomic and requires neither global coordinates nor a second toplevel. */
+.overlay-control-embedded {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  z-index: 50;
+  width: max-content;
+  max-width: calc(100% - 36px);
+  max-height: calc(100% - 24px);
+}
+
+.overlay-control-embedded[data-mode="hidden"] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.overlay-control-embedded[data-mode="panel"] {
+  width: 280px;
+}
+
+.overlay-control-embedded > .overlay-control-panel {
+  max-height: min(520px, calc(100vh - 24px));
+}
+
+.overlay-control-embedded .overlay-control-island {
+  max-width: 100%;
+}
+
 .overlay-control-island-measure {
   position: absolute;
   top: 0;

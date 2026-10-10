@@ -6,6 +6,7 @@ import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
   isTauri,
   overlayControlSetIslandWidth,
+  overlayControlSetPopupBounds,
   overlayPopoverHide,
   overlayPopoverToggle,
   type OverlayControlMode,
@@ -28,7 +29,8 @@ import { overlayControlPanelModel } from "./overlayControlModel";
 import "./overlay-control.css";
 
 /** Child window that morphs between a compact status island and its panel. */
-export function OverlayControlWindow() {
+export function OverlayControlWindow({ embedded = false }: { embedded?: boolean }) {
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
   const errorSettingsTarget = useStore(state => state.session.status.kind === "error" ? sessionErrorSettingsTarget(state.session.status.message) : null);
@@ -103,6 +105,44 @@ export function OverlayControlWindow() {
     return () => window.removeEventListener("keydown", dismissOnEscape);
   }, [dismiss, mode]);
 
+  useEffect(() => {
+    if (!embedded || mode !== "panel") return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest(".mimi-select__menu, .settings-toast")) return;
+      if (event.target instanceof Node && !surfaceRef.current?.contains(event.target)) dismiss();
+    };
+    window.addEventListener("pointerdown", dismissOutside, true);
+    return () => window.removeEventListener("pointerdown", dismissOutside, true);
+  }, [dismiss, embedded, mode]);
+
+  useEffect(() => {
+    if (!embedded || mode !== "panel") return;
+    let frame = 0;
+    let previous = "";
+    const measure = () => {
+      frame = 0;
+      const rect = document.querySelector(".mimi-select__menu")?.getBoundingClientRect();
+      const bounds = rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+      const toastRect = surfaceRef.current?.querySelector(".settings-toast")?.getBoundingClientRect();
+      const notification = toastRect ? { x: toastRect.x, y: toastRect.y, width: toastRect.width, height: toastRect.height } : null;
+      const key = JSON.stringify([bounds, notification]);
+      if (key === previous) return;
+      previous = key;
+      void overlayControlSetPopupBounds(bounds, notification).catch(() => {});
+    };
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+    window.addEventListener("resize", schedule);
+    schedule();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (frame) window.cancelAnimationFrame(frame);
+      void overlayControlSetPopupBounds(null).catch(() => {});
+    };
+  }, [embedded, mode]);
+
   const phase = computeActivityPhaseFromSignals(
     {
       statusKind: sessionStatusKind,
@@ -127,7 +167,8 @@ export function OverlayControlWindow() {
     sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
 
   return (
-    <>
+    <div ref={surfaceRef} className={embedded ? "overlay-control-embedded" : undefined}
+      data-mode={embedded ? mode : undefined}>
       {mode === "panel" && (
         <OverlayControlPanel
           phase={phase}
@@ -177,7 +218,7 @@ export function OverlayControlWindow() {
           onWidthChange={isTauri ? reportIslandWidth : undefined}
         />
       </div>
-    </>
+    </div>
   );
 }
 
