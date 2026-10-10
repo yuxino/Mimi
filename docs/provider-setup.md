@@ -1,6 +1,6 @@
 # Service setup guide
 
-[Back to README](../README.md) · [简体中文](provider-setup.zh-CN.md) · [Usage & FAQ](usage.md)
+[Back to README](../README_EN.md) · [简体中文](provider-setup.zh-CN.md) · [Usage & FAQ](usage.md)
 
 This guide explains where to enable each service, where to get its credentials, and what to enter in Mimi. Configure only the services you plan to use. For a first setup, you can start with Alibaba Cloud or Google Gemini, as recommended in the README.
 

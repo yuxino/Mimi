@@ -1,6 +1,6 @@
 # 服务开通指南
 
-[返回 README](readme/zh-CN.md) · [English](provider-setup.md) · [使用与常见问题](usage.zh-CN.md)
+[返回 README](../README.md) · [English](provider-setup.md) · [使用与常见问题](usage.zh-CN.md)
 
 这份指南说明各项服务去哪里开通、凭证从哪里拿，以及在 Mimi 里填写什么。只需配置你要使用的服务，不必全部开通。首次使用可以从 README 推荐的阿里云或 Google Gemini 开始。
 
@@ -54,7 +54,7 @@
 | 内置识别 + 翻译 | 共享 Audio3 识别（`qwen-audio-3.0-asr-flash-streaming`）＋Qwen-MT，默认 Lite |
 | 独立文字翻译 / 不翻译 | 使用同一 Audio3 识别；启用翻译时调用所选文字服务 |
 
-Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotlin 传输类保留用于离线回归，其中的模型不是当前正式链路的默认模型。保存的高级设置不会覆盖内置链路不支持的端点或模型。实现见[共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs)和[平台差异](development/platform-parity.md)。
+Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotlin 传输类保留用于离线回归，其中的模型不是当前正式链路的默认模型。保存的高级设置不会覆盖内置链路不支持的端点或模型。实现见[共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs)和[平台差异（英文）](development/platform-parity.md)。
 
 ### 独立文字翻译用什么模型
 
@@ -97,7 +97,7 @@ Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotli
 | Android 默认识别 + 翻译 | `qwen-audio-3.0-asr-flash-streaming` 和 `qwen-mt-lite`（与桌面共享默认链路） |
 | Android 使用独立文字翻译或不翻译 | `qwen-audio-3.0-asr-flash-streaming`；翻译按所选服务配置 |
 
-这里需要的是**百炼 / DashScope API Key**，不要填阿里云 AccessKey ID / AccessKey Secret。内置配置使用 `dashscope.aliyuncs.com`，没有地域或端点输入框；其他地域的 Key 不能直接混用。地域对应关系见[官方地域说明](https://help.aliyun.com/zh/model-studio/regions)，共享链路及剩余平台差异见[平台差异](development/platform-parity.md)。
+这里需要的是**百炼 / DashScope API Key**，不要填阿里云 AccessKey ID / AccessKey Secret。内置配置使用 `dashscope.aliyuncs.com`，没有地域或端点输入框；其他地域的 Key 不能直接混用。地域对应关系见[官方地域说明](https://help.aliyun.com/zh/model-studio/regions)，共享链路及剩余平台差异见[平台差异（英文）](development/platform-parity.md)。
 
 计费：两个平台的默认链路均包含语音识别和文字翻译两部分。更换文字翻译服务后，云端识别仍会产生用量，是否扣费取决于识别模型的试用余量和计费状态。查看[百炼模型计费](https://help.aliyun.com/zh/model-studio/model-pricing)及所用模型的试用状态。
 
@@ -225,7 +225,7 @@ Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引�
 3. 已下载的语言点击「**设为识别语言**」，再开始字幕。无需到 macOS 系统设置中寻找语言包入口；下载或保存失败时，错误与重试操作会留在当前语言旁。
 4. 只看原文可选择「不翻译（仅原文）」；需要译文时，单独配置下方文字翻译服务。
 
-不支持自动识别语言。设置中的语言列表显示本机支持的语种及下载状态；只有资源就绪且与当前翻译配置兼容的语言才能应用。托盘和悬浮窗使用同一已保存的识别语言，只提供已就绪且兼容的选项。Apple Speech 本身不提供文字翻译，可搭配独立的 Apple 翻译；使用远程翻译服务时，文字仍会发到该服务。平台条件见[平台差异](development/platform-parity.md)，语言参数见[语言设置](speech-language-setup.md#中文)。
+不支持自动识别语言。设置中的语言列表显示本机支持的语种及下载状态；只有资源就绪且与当前翻译配置兼容的语言才能应用。托盘和悬浮窗使用同一已保存的识别语言，只提供已就绪且兼容的选项。Apple Speech 本身不提供文字翻译，可搭配独立的 Apple 翻译；使用远程翻译服务时，文字仍会发到该服务。平台条件见[平台差异（英文）](development/platform-parity.md)，语言参数见[语言设置](speech-language-setup.md#中文)。
 
 <a id="custom-recognition"></a>
 
@@ -327,7 +327,7 @@ Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引�
 
 Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple Speech 或两种自定义识别配置入口。[阿里云表格](#alibaba-cloud)列出当前共享模型；保存的高级设置不代表内置链路支持覆盖端点或模型。
 
-手机里的 `127.0.0.1` 指手机自己。连接电脑上的 ChatMock / DeepLX 时，通常使用电脑的 HTTPS 服务地址；Android 的本机 HTTP 需要主动允许。模拟器和 USB 开发连接方法见 [Android 指南](../android/README.md#independent-text-translation)。
+手机里的 `127.0.0.1` 指手机自己。连接电脑上的 ChatMock / DeepLX 时，通常使用电脑的 HTTPS 服务地址；Android 的本机 HTTP 需要主动允许。模拟器和 USB 开发连接方法见 [Android 指南（英文）](../android/README.md#independent-text-translation)。
 
 ## 配好后还是不能用？
 

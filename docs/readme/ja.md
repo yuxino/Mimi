@@ -46,7 +46,7 @@ Google Gemini を使う場合は、安定したネットワーク接続を用意
 
 クラウド音声認識には自分で用意したサービスの認証情報が必要で、音声はそのサービスに送信されます。利用料金が発生する場合があります。対応する Mac では、Apple Speech で端末内の音声認識を行えます。外部の文字翻訳サービスを使う場合は、認識したテキストがそのサービスに送信されます。Apple Translation は Mac 内でテキストを処理します。
 
-[使い方とよくある質問（英語）](../usage.md) · [Android](../../android/README.md) · [不具合を報告](https://github.com/yuxino/mimi/issues) · [開発への参加](../../.github/CONTRIBUTING.md)
+[使い方とよくある質問](../usage.ja.md) · [Android（英語）](../../android/README.md) · [不具合を報告](https://github.com/yuxino/mimi/issues) · [開発への参加（中国語・英語）](../../.github/CONTRIBUTING.md)
 
 <a id="apple-local-recognition"></a>
 
@@ -78,7 +78,7 @@ Index-Translate は文字翻訳のみを行います。Alibaba Cloud と組み�
 
 ## よくある質問
 
-**録音の権限を許可しているのに、macOS が何度も許可を求める場合は？** Mimi を終了し、「システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音」で、Mimi の項目だけを削除して追加し直してください。正式版は `/Applications/mimi.app`、開発版は `/Applications/mimi-dev.app` を使用します。権限をオンにしてから、同じアプリを開き直してください。詳しくは[権限の復旧手順（英語）](../usage.md#macos-permissions-after-an-update)をご覧ください。
+**録音の権限を許可しているのに、macOS が何度も許可を求める場合は？** Mimi を終了し、「システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音」で、Mimi の項目だけを削除して追加し直してください。正式版は `/Applications/mimi.app`、開発版は `/Applications/mimi-dev.app` を使用します。権限をオンにしてから、同じアプリを開き直してください。詳しくは[権限の復旧手順](../usage.ja.md#macos-permissions-after-an-update)をご覧ください。
 
 ## 貢献者
 

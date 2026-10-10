@@ -46,7 +46,7 @@
 
 云端识别需要自备服务商凭证，并将音频发送至该服务，调用可能产生费用。符合条件的 Mac 可用 Apple Speech 在本地识别；远程文字翻译会将识别文字发送至你选择的服务；Apple 翻译在 Mac 本地处理文字。
 
-[使用与常见问题](docs/usage.zh-CN.md) · [Android](android/README.md) · [反馈问题](https://github.com/yuxino/mimi/issues) · [贡献指南](.github/CONTRIBUTING.md)
+[使用与常见问题](docs/usage.zh-CN.md) · [Android（英文）](android/README.md) · [反馈问题](https://github.com/yuxino/mimi/issues) · [贡献指南（中英）](.github/CONTRIBUTING.md)
 
 <a id="apple-本地识别"></a>
 

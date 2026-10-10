@@ -37,7 +37,7 @@
 
 使用 Google Gemini 時，請保持網路連線穩定，並在 [Google AI Studio](https://aistudio.google.com/) 查看可用額度與費用，並取得 API 金鑰。
 
-各家服務的啟用入口、認證資訊取得步驟，以及 Mimi 目前使用的模型，見[**服務開通指南**](../provider-setup.zh-CN.md)。
+各家服務的啟用入口、認證資訊取得步驟，以及 Mimi 目前使用的模型，見[**服務開通指南（簡體中文）**](../provider-setup.zh-CN.md)。
 
 1. 開啟「設定 → 語音與翻譯」，新增設定，按提示填入服務供應商認證資訊並儲存。
 2. 選擇辨識和翻譯語言。
@@ -45,13 +45,13 @@
 
 雲端辨識需要自備服務供應商認證資訊，並將音訊傳送至該服務，呼叫可能產生費用。符合條件的 Mac 可用 Apple Speech 在本機辨識；遠端文字翻譯會將辨識文字傳送至你選擇的服務；Apple Translation 在 Mac 本機處理文字。
 
-[使用與常見問題](../usage.zh-CN.md) · [Android](../../android/README.md) · [回報問題](https://github.com/yuxino/mimi/issues) · [貢獻指南](../../.github/CONTRIBUTING.md)
+[使用與常見問題](../usage.zh-TW.md) · [Android（英文）](../../android/README.md) · [回報問題](https://github.com/yuxino/mimi/issues) · [貢獻指南（簡體中文／英文）](../../.github/CONTRIBUTING.md)
 
 <a id="apple-本地识别"></a>
 
 ### Apple 本機辨識
 
-**Apple Speech** 只在系統支援時出現：Apple 晶片、macOS 26 或更新版本，且系統辨識引擎可用。辨識不需要 API 金鑰。先停止字幕，在「辨識語言」中選好語言；未下載時按一下「下載並使用」，Mimi 會下載 Apple 資源，並在就緒後將它設為辨識語言。已下載時按一下「設為辨識語言」，再啟動字幕。無需前往系統設定。不提供自動辨識語言。詳見 [Apple Speech 設定步驟](../provider-setup.zh-CN.md#apple-speech)。
+**Apple Speech** 只在系統支援時出現：Apple 晶片、macOS 26 或更新版本，且系統辨識引擎可用。辨識不需要 API 金鑰。先停止字幕，在「辨識語言」中選好語言；未下載時按一下「下載並使用」，Mimi 會下載 Apple 資源，並在就緒後將它設為辨識語言。已下載時按一下「設為辨識語言」，再啟動字幕。無需前往系統設定。不提供自動辨識語言。詳見 [Apple Speech 設定步驟（簡體中文）](../provider-setup.zh-CN.md#apple-speech)。
 
 **Apple Translation** 是獨立的本機文字翻譯服務，目前支援 Apple 晶片、macOS 26 或更新版本。在「文字翻譯」中選擇它並儲存設定，再選擇明確的辨識語言和翻譯語言。Mimi 會顯示語言組合是否就緒；按一下「下載或啟用語言套件」，即可開啟 Apple 的確認介面。翻譯語言套件和語音辨識語言套件分開；會沿用已下載的套件，缺少的由 Apple 在你確認後下載。檢查連線、啟動字幕不會觸發下載。不需要文字翻譯 API 金鑰或文字代理伺服器。
 
@@ -77,7 +77,7 @@ Index-Translate 只負責文字翻譯。搭配阿里雲時，仍需設定語音�
 
 ## 常見問題
 
-**macOS 已開啟音訊錄製權限，仍反覆要求授權？** 先結束 Mimi，在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中，僅刪除並重新新增對應應用程式：正式版為 `/Applications/mimi.app`，開發版為 `/Applications/mimi-dev.app`，開啟權限後重新開啟同一個應用程式。詳見[權限恢復步驟](../usage.zh-CN.md#macos-更新后重复授权)。
+**macOS 已開啟音訊錄製權限，仍反覆要求授權？** 先結束 Mimi，在「系統設定 → 隱私權與安全性 → 螢幕與系統音訊錄製」中，僅刪除並重新新增對應應用程式：正式版為 `/Applications/mimi.app`，開發版為 `/Applications/mimi-dev.app`，開啟權限後重新開啟同一個應用程式。詳見[權限恢復步驟](../usage.zh-TW.md#macos-permissions-after-an-update)。
 
 ## 貢獻者
 

@@ -1,5 +1,7 @@
 # Speech services and language setup
 
+[English README](../README_EN.md) · [中文 README](../README.md) · [English](#english) · [中文](#中文)
+
 ## English
 
 A third-party service can use a language selected in Mimi **only if its endpoint, protocol and model accept the parameter Mimi sends**. Choosing a language does not add it to a model. Speech recognition and text translation are separate stages.

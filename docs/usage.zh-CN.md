@@ -1,6 +1,8 @@
 # Mimi 使用说明
 
-[返回 README](readme/zh-CN.md) · [English](usage.md)
+[返回 README](../README.md)
+
+[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
 
 各家服务的开通入口、凭证字段和当前模型，见[服务开通指南](provider-setup.zh-CN.md)。
 
@@ -23,9 +25,9 @@ Windows 安装完成后会重新打开 Mimi；macOS 和 Linux AppImage 可点击
 ### 平台支持
 
 - macOS 13+（Apple 芯片和 Intel）：Apple 芯片选择 `_aarch64.dmg`，Intel 选择 `_x64.dmg`。从 v1.4.4 起提供 Intel 包，已通过构建和签名检查，Intel 实机采集和权限行为仍待验证。提供未经 Apple 公证的 DMG；若首次打开被拦截，请在「系统设置 → 隐私与安全性」中选择「仍要打开」。从旧版本升级时，请留意下方的权限说明。
-- Windows x64：提供未签名的预览版 EXE / MSI；从 v1.4.3 起还提供绿色版 ZIP。SmartScreen 可能显示提示。下载 `mimi_<version>_x64-portable.zip` 解压后，直接运行 `mimi.exe`。电脑需已安装 WebView2（Windows 11 通常自带）。ZIP 不会把设置、服务凭证或已导出文件搬到自身目录；它们仍保存在原来的用户目录、系统凭据管理器或用户选择的位置。更新绿色版时，先退出 Mimi，再从 Releases 下载新版 ZIP 替换；绿色版不会运行应用内安装器更新。
+- Windows x64：提供未签名的预览版 EXE / MSI；从 v1.4.3 起还提供绿色版 ZIP。SmartScreen 可能显示提示。下载 `mimi_<version>_x64-portable.zip` 解压后，直接运行 `mimi.exe`。电脑需已安装 WebView2（Windows 11 通常自带）。ZIP 不会把设置、服务凭证或已导出文件搬到自身目录；设置和私有凭据文件仍保存在应用的用户目录，导出文件保存在你选择的位置。更新绿色版时，先退出 Mimi，再从 Releases 下载新版 ZIP 替换；绿色版不会运行应用内安装器更新。
 
-- Linux x86_64 预览版（以 Ubuntu 22.04+ 为基线）：提供 `.deb` 和 AppImage。需要 PulseAudio 或启用了 `pipewire-pulse` 的 PipeWire、可用的默认输出设备，以及对本机私有凭据文件的访问权限。系统音频只使用输出设备的监听源。切换输出设备后请重新开始会话。建议使用 X11；Wayland 的窗口定位、置顶和点击穿透可能受桌面环境限制；快捷键请使用 Mimi 设置里显示的命令，在系统键盘设置中配置。没有托盘图标时可从设置窗口操作；最小化会继续运行，关闭设置窗口则退出 Mimi。暂不提供 Linux ARM64 安装包。详见 [Linux 安装与验证](development/linux.md)。
+- Linux x86_64 预览版（以 Ubuntu 22.04+ 为基线）：提供 `.deb` 和 AppImage。需要 PulseAudio 或启用了 `pipewire-pulse` 的 PipeWire、可用的默认输出设备，以及对本机私有凭据文件的访问权限。系统音频只使用输出设备的监听源。切换输出设备后请重新开始会话。建议使用 X11；Wayland 的窗口定位、置顶和点击穿透可能受桌面环境限制；快捷键请使用 Mimi 设置里显示的命令，在系统键盘设置中配置。没有托盘图标时可从设置窗口操作；最小化会继续运行，关闭设置窗口则退出 Mimi。暂不提供 Linux ARM64 安装包。详见 [Linux 安装与验证（英文）](development/linux.md)。
 
 ### macOS 系统录音权限
 
@@ -85,4 +87,4 @@ macOS 使用 ⌘⇧B，Windows/Linux X11 使用 Ctrl+Shift+B 快速切换，不�
 
 ## 更多文档
 
-[贡献指南](../.github/CONTRIBUTING.md) · [安全与隐私](../.github/SECURITY.md) · [平台差异与验证范围](development/platform-parity.md)
+[贡献指南（中英）](../.github/CONTRIBUTING.md) · [安全与隐私（中英）](../.github/SECURITY.md) · [平台差异与验证范围（英文）](development/platform-parity.md)

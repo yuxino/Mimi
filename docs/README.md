@@ -4,10 +4,15 @@
 
 ## Using Mimi
 
-- [Usage & FAQ](usage.md) · [使用与常见问题](usage.zh-CN.md)
+- Usage & FAQ: [English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
 - [Provider setup](provider-setup.md) · [服务商配置](provider-setup.zh-CN.md)
 - [Android](../android/README.md)
 - [Platform differences and verification](development/platform-parity.md)
+
+Usage guides are available in all eight desktop interface languages. Detailed
+provider setup guides are available in English and Simplified Chinese. Android
+documentation is in English; contributing and security guides include Chinese
+and English. Development guides are primarily in English.
 
 ## Development
 

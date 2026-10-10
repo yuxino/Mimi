@@ -1,6 +1,8 @@
 # Using Mimi
 
-[Back to README](../README.md) · [简体中文](usage.zh-CN.md)
+[Back to README](../README_EN.md)
+
+[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
 
 Provider activation links, credential fields, and current models are in the [provider setup guide](provider-setup.md).
 
@@ -19,12 +21,12 @@ update with progress, then lets you install it. Windows reopens Mimi after
 installation; macOS and Linux AppImage offer a separate Restart and Finish Update action.
 Versions older than v1.3.8 need one manual installation to enable in-app updates.
 
-See [speech-service setup and language parameters](speech-language-setup.md) for custom WebSocket examples, automatic detection versus hints, and each integration’s current language range.
+See [speech-service setup and language parameters](speech-language-setup.md#english) for custom WebSocket examples, automatic detection versus hints, and each integration’s current language range.
 
 ### Platform support
 
 - macOS 13+ (Apple silicon and Intel): Choose the `_aarch64.dmg` for Apple silicon or `_x64.dmg` for Intel. Intel packages are available from v1.4.4; build and signing checks passed, but Intel hardware capture and permission behavior remain unverified. DMG installers are not Apple-notarized. If first launch is blocked, choose Open Anyway in System Settings → Privacy & Security. See the permission notes below when upgrading from an older build.
-- Windows x64: Unsigned preview EXE / MSI installers and, since v1.4.3, a portable ZIP are available; SmartScreen may warn. Extract `mimi_<version>_x64-portable.zip` and launch `mimi.exe` without installation. WebView2 must already be installed (it is normally present on Windows 11). The ZIP does not move settings, service credentials, or exported files into its folder; those remain in their existing user-selected or OS-managed locations. Update this copy by quitting Mimi and replacing it with a new ZIP from Releases. The portable build does not run the in-app installer updater.
+- Windows x64: Unsigned preview EXE / MSI installers and, since v1.4.3, a portable ZIP are available; SmartScreen may warn. Extract `mimi_<version>_x64-portable.zip` and launch `mimi.exe` without installation. WebView2 must already be installed (it is normally present on Windows 11). The ZIP does not move settings, service credentials, or exported files into its folder; settings and private credential files stay in the app's user directory, and exports stay where you saved them. Update this copy by quitting Mimi and replacing it with a new ZIP from Releases. The portable build does not run the in-app installer updater.
 
 - Linux x86_64 preview (Ubuntu 22.04+ baseline): Use the `.deb` package or AppImage. Requires PulseAudio or PipeWire with `pipewire-pulse`, a working default output device, and private local credential-file access. System audio uses only the output monitor. Restart the session after changing output devices. X11 is recommended; Wayland compositors may restrict positioning, always-on-top, and click-through. For Wayland keyboard shortcuts, use the commands shown in Settings to create system shortcuts. Use Settings if your desktop does not show a tray icon. Minimize it to keep subtitles running; closing it exits Mimi on Linux. Linux ARM64 packages are not provided. See [Linux setup and verification](development/linux.md).
 
