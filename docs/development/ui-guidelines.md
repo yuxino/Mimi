@@ -44,6 +44,12 @@ These project rules apply to implementation and review.
   fixture; a successful macOS screen alone cannot cover that control. Reuse
   `scripts/fixtures/settings-layout.html` and `scripts/verify-settings-layout.js`
   for actual browser geometry, and keep the native-device evidence separate.
+  In a fresh checkout, load the Vite root page once before opening fixtures
+  that import optimized dependencies from `/node_modules/.vite/deps/`.
+  Keep hover, animation and media checks in the foreground, with one browser
+  controller at a time. Inspecting another page or native app can pause frames
+  or playback; restore focus before retrying and record interrupted playback
+  as incomplete acceptance.
   Memoized children that read localized copy must subscribe to the locale or
   receive it as a prop. Check paused/static content too; do not remount subtitle
   history to refresh labels and lose the reader's scroll position.
