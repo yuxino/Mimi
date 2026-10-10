@@ -48,7 +48,7 @@ export function SettingsToastRegion({ scopeKey }: { scopeKey?: string }) {
     };
   }, []);
   if (!current) return null;
-  const close = { "zh-TW": "關閉提示", zh: "关闭提示", en: "Dismiss notification", ja: "通知を閉じる", de: "Meldung schließen", fr: "Fermer la notification", ko: "알림 닫기" }[effectiveUiLanguage()];
+  const close = { "zh-TW": "關閉提示", zh: "关闭提示", en: "Dismiss notification", ja: "通知を閉じる", de: "Meldung schließen", fr: "Fermer la notification", ko: "알림 닫기", th: "ปิดการแจ้งเตือน" }[effectiveUiLanguage()];
   const notification = <div className="settings-toast" data-tone={current.failure ? "error" : "success"} role={current.failure ? "alert" : "status"} aria-live={current.failure ? "assertive" : "polite"} aria-atomic="true">
     {current.failure ? <AlertCircle size={16} aria-hidden="true" /> : <Check size={16} aria-hidden="true" />}
     <span>{current.message}</span>

@@ -17,11 +17,12 @@ import java.util.Locale
 
 /** AppCompat owns persistence before API 33; Android owns it from API 33 onward. */
 internal object InterfaceLanguage {
-    val tags = listOf("", "zh-Hans", "zh-Hant", "en", "ja", "de", "ko", "fr")
+    val tags = listOf("", "zh-Hans", "zh-Hant", "en", "ja", "de", "ko", "fr", "th")
     private val labelIds = listOf(
         R.string.settings_language_system, R.string.settings_language_chinese,
         R.string.settings_language_traditional, R.string.lang_en, R.string.lang_ja,
         R.string.settings_language_german, R.string.lang_ko, R.string.settings_language_french,
+        R.string.settings_language_thai,
     )
     private val listeners = CopyOnWriteArraySet<() -> Unit>()
 

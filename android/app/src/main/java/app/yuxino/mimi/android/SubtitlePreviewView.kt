@@ -68,10 +68,15 @@ class SubtitlePreviewView @JvmOverloads constructor(
 
     fun configure(fontSize: Int, color: Int, opacity: Int, backgroundAlpha: Int, targetLang: String, immersive: Boolean, originalOnly: Boolean = false) {
         translation.visibility = if (originalOnly) GONE else VISIBLE
-        source.setText(if (targetLang == "en") R.string.preview_zh else R.string.preview_source)
+        source.setText(when (targetLang) {
+            "en" -> R.string.preview_zh
+            "th" -> R.string.preview_en
+            else -> R.string.preview_source
+        })
         translation.setText(when (targetLang) {
             "en" -> R.string.preview_en
             "ja" -> R.string.preview_ja
+            "th" -> R.string.preview_th
             else -> R.string.preview_zh
         })
         source.textSize = fontSize.coerceIn(12, 24).toFloat()

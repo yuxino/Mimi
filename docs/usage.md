@@ -4,7 +4,7 @@
 
 Provider activation links, credential fields, and current models are in the [provider setup guide](provider-setup.md).
 
-Choose the desktop interface language in Settings → General: Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean or French. The system option follows your system language; changing the interface language keeps current edits and subtitle state. Recognition and translation languages are separate choices.
+Choose the desktop interface language in Settings → General: Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean, French or Thai. The system option follows your system language; changing the interface language keeps current edits and subtitle state. Recognition and translation languages are separate choices.
 
 ## Install and update
 

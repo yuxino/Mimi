@@ -6,7 +6,7 @@ await page.waitForFunction(()=>window.layoutReady===true);
 const rows=[];
 for(const surface of ["overlay","tray"]) for(const width of [320,420]) {
   await page.cdp("Emulation.setDeviceMetricsOverride",{width,height:1000,deviceScaleFactor:1,mobile:false});
-  for(const language of ["zh","zh-TW","en","ja","de","fr","ko"]) for(const theme of ["dark","light"]) for(const long of [false,true]) {
+  for(const language of ["zh","zh-TW","en","ja","de","fr","ko", "th"]) for(const theme of ["dark","light"]) for(const long of [false,true]) {
     await page.cdp("Emulation.setEmulatedMedia",{features:[{name:"prefers-color-scheme",value:theme}]});
     rows.push(await page.evaluate(async next=>{
       const name=next.long?"Long configuration name / 長い設定名 / 很长的配置名称 ".repeat(3).trim():"哈哈";

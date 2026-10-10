@@ -1,0 +1,34 @@
+<resources>
+    <string name="settings_heading">การตั้งค่า</string>
+    <string name="settings_interface_language">ภาษาอินเทอร์เฟซ</string>
+    <string name="settings_language_system">ตามระบบ</string>
+    <string name="settings_language_failed">เปลี่ยนภาษาอินเทอร์เฟซไม่ได้ ลองอีกครั้ง</string>
+    <string name="settings_back">กลับ</string>
+    <string name="settings_tab_service">บริการแปล</string>
+    <string name="settings_tab_appearance">รูปแบบคำบรรยาย</string>
+    <string name="settings_advanced">การตั้งค่าขั้นสูง</string>
+    <string name="settings_font">ขนาดคำบรรยาย</string>
+    <string name="settings_color">สีคำบรรยาย</string>
+    <string name="settings_opacity">ความทึบคำบรรยาย</string>
+    <string name="settings_background">ความทึบพื้นหลัง</string>
+    <string name="settings_immersive">คำบรรยายเฉพาะข้อความ</string>
+    <string name="settings_immersive_help">แสดงเฉพาะข้อความและยังใช้ตัวควบคุมวิดีโอได้ มีผลทันที กดออกข้างคำบรรยาย หรือปิดโหมดนี้ที่หน้าหลัก</string>
+    <string name="settings_history">เก็บประวัติคำบรรยาย</string>
+    <string name="settings_history_help">ปิดไว้ตามค่าเริ่มต้น เก็บประวัติเฉพาะเซสชันนี้ และล้างเมื่อปิดตัวเลือกหรือหยุดเซสชัน</string>
+    <string name="settings_reset">รีเซ็ตตำแหน่งคำบรรยาย</string>
+    <string name="settings_reset_done">คืนตำแหน่งกึ่งกลางด้านล่างแล้ว</string>
+    <string name="settings_save">บันทึกการตั้งค่าบริการ</string>
+    <string name="settings_saved">บันทึกแล้ว</string>
+    <string name="settings_font_value">%1$d sp</string>
+    <string name="settings_percent_value">%1$d%%</string>
+    <string name="settings_history_off">ปิด</string>
+    <string name="settings_history_value">%1$d บรรทัด</string>
+    <string name="settings_color_white">ขาว (ค่าเริ่มต้น)</string>
+    <string name="settings_color_teal">เขียวน้ำทะเล</string>
+    <string name="settings_color_yellow">เหลือง</string>
+    <string name="settings_color_green">เขียว</string>
+    <string name="settings_color_pink">ชมพู</string>
+    <string name="settings_advanced_collapse">ย่อการตั้งค่าขั้นสูง</string>
+    <string name="settings_more">ตัวเลือกเพิ่มเติม</string>
+    <string name="settings_more_collapse">ตัวเลือกน้อยลง</string>
+</resources>

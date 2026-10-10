@@ -4,6 +4,7 @@
     <string name="settings_language_traditional" translatable="false">繁體中文</string>
     <string name="settings_language_german" translatable="false">Deutsch</string>
     <string name="settings_language_french" translatable="false">Français</string>
+    <string name="settings_language_thai" translatable="false">ภาษาไทย</string>
     <string name="settings_interface_language">Interface language</string>
     <string name="settings_language_system">Follow system</string>
     <string name="settings_language_failed">Could not change the interface language. Try again.</string>

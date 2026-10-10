@@ -1,0 +1,8 @@
+<resources>
+    <string name="runtime_connecting">กำลังเชื่อมต่อ…</string>
+    <string name="runtime_rate_retry">การแปลถูกจำกัดอัตรา · กำลังรอลองอีกครั้ง</string>
+    <string name="runtime_rate_wait">การแปลถูกจำกัดอัตรา · กำลังรอเสียงพูดใหม่</string>
+    <string name="runtime_unavailable_retry">การแปลไม่พร้อมใช้งาน · กำลังรอลองอีกครั้ง</string>
+    <string name="runtime_unavailable_wait">การแปลไม่พร้อมใช้งาน · กำลังรอเสียงพูดใหม่</string>
+    <string name="runtime_translation_delayed">การแปลล่าช้า · ยังฟังเสียงต่อ</string>
+</resources>

@@ -114,7 +114,7 @@ describe("overlay timing observations", () => {
       await render({ ...measured, isTranslationPending: true, ...state }); expect(host.firstElementChild).toBeNull();
     }
   });
-  it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de"] as const)("localizes both boundaries and independent statuses in %s", async language => {
+  it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "th"] as const)("localizes both boundaries and independent statuses in %s", async language => {
     setStoredUiLanguage(language);
     await render(measured); expect(host.textContent).toContain(I18N.overlay.translationLatency);
     await render({ ...measured, translationLatencyKind: "follow" });

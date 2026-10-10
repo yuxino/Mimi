@@ -1,6 +1,12 @@
 import { effectiveUiLanguage } from "./i18n";
 
 const copy = {
+  th: {
+    denied: "ยังไม่ได้รับสิทธิ์บันทึกเสียงระบบ ให้สิทธิ์ Mimi ในการตั้งค่าระบบ → ความเป็นส่วนตัวและความปลอดภัย → การบันทึกหน้าจอและเสียงระบบ จากนั้นเปิดแอปใหม่ตามคำแนะนำของระบบแล้วลองอีกครั้ง",
+    open: "เปิดสิทธิ์เสียงระบบ",
+    failed: "เปิดการตั้งค่าระบบไม่ได้ โปรดเปิดความเป็นส่วนตัวและความปลอดภัย → การบันทึกหน้าจอและเสียงระบบด้วยตนเอง",
+    guide: "macOS 14.2 ขึ้นไปใช้สิทธิ์บันทึกเฉพาะเสียงระบบได้ หากมีสิทธิ์บันทึกหน้าจออยู่แล้ว ไม่ต้องอนุญาตใหม่ macOS รุ่นก่อนหน้านั้นต้องใช้สิทธิ์บันทึกหน้าจอและเสียงระบบ Mimi รับเฉพาะเสียงและไม่บันทึกภาพหน้าจอ",
+  },
   "en": {
     "denied": "System audio recording permission is missing. In System Settings → Privacy & Security → Screen & System Audio Recording, allow Mimi to record system audio, then follow the system’s restart instructions and try again.",
     "open": "Open system audio permissions",

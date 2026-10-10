@@ -12,6 +12,7 @@ const copy = {
   de: { lite: "schnell · Stream", flash: "ausgewogen · Stream", plus: "Qualität · komplett", label: "Übersetzungsmodell", help: "Lite und Flash liefern Text schrittweise; Plus liefert die vollständige Übersetzung. Zum Wechseln Untertitel stoppen.", failed: "Übersetzungsmodell konnte nicht gespeichert werden. Bitte erneut versuchen." },
   ko: { lite: "저지연·스트리밍", flash: "균형·스트리밍", plus: "고품질·전체", label: "번역 모델", help: "Lite와 Flash는 텍스트를 순차적으로 표시하고 Plus는 전체 번역을 반환합니다. 자막을 중지한 후 변경하세요.", failed: "번역 모델을 저장하지 못했습니다. 다시 시도하세요." },
   fr: { lite: "rapide · flux", flash: "équilibré · flux", plus: "qualité · texte entier", label: "Modèle de traduction", help: "Lite et Flash affichent le texte progressivement ; Plus renvoie une traduction complète. Arrêtez les sous-titres pour changer de modèle.", failed: "Impossible d’enregistrer le modèle de traduction. Réessayez." },
+  th: { lite: "รวดเร็ว · สตรีม", flash: "สมดุล · สตรีม", plus: "เน้นคุณภาพ · ข้อความทั้งหมด", label: "โมเดลแปล", help: "Lite และ Flash แสดงข้อความทีละส่วน ส่วน Plus ส่งคำแปลทั้งหมดในครั้งเดียว หยุดคำบรรยายก่อนเปลี่ยนโมเดล", failed: "บันทึกโมเดลแปลไม่สำเร็จ ลองอีกครั้ง" },
 };
 
 export function QwenMTModelSettings({ profile, disabled, onSave }: {

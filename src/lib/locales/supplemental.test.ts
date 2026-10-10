@@ -4,6 +4,7 @@ import { SUPPLEMENTAL_EN } from "./supplemental-schema";
 import { SUPPLEMENTAL as de } from "./de-supplemental";
 import { SUPPLEMENTAL as fr } from "./fr-supplemental";
 import { SUPPLEMENTAL as ko } from "./ko-supplemental";
+import { SUPPLEMENTAL as th } from "./th-supplemental";
 
 function assertComplete(actual: object, expected: object, path: string) {
   expect(Object.keys(actual).sort(), path).toEqual(Object.keys(expected).sort());
@@ -15,7 +16,7 @@ function assertComplete(actual: object, expected: object, path: string) {
   }
 }
 
-it.each([["zh-TW", zhTW], ["de", de], ["fr", fr], ["ko", ko]] as const)("keeps audio, diagnostics and control-panel copy complete in %s", (locale, copy) => {
+it.each([["zh-TW", zhTW], ["de", de], ["fr", fr], ["ko", ko], ["th", th]] as const)("keeps audio, diagnostics and control-panel copy complete in %s", (locale, copy) => {
   assertComplete(copy, SUPPLEMENTAL_EN, locale);
   expect(copy.applicationAudio_copy.title).not.toBe(SUPPLEMENTAL_EN.applicationAudio_copy.title);
   expect(copy.connectionDiagnostics_copy.reasons.credentialsMissing).not.toBe(SUPPLEMENTAL_EN.connectionDiagnostics_copy.reasons.credentialsMissing);

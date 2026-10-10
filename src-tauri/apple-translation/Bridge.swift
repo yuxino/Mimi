@@ -167,6 +167,7 @@ private func preparationInstruction(_ uiLanguage: String) -> String {
     case "de": "Folgen Sie dem macOS-Dialog, um Übersetzungssprachen zu laden oder zu aktivieren."
     case "fr": "Suivez les indications de macOS pour télécharger ou activer les langues de traduction."
     case "ko": "macOS 안내에 따라 번역 언어를 다운로드하거나 활성화하세요."
+    case "th": "ทำตามคำแนะนำของ macOS เพื่อดาวน์โหลดหรือเปิดใช้ภาษาสำหรับการแปล"
     default: "Follow the macOS prompt to download or enable translation languages."
     }
 }
@@ -179,6 +180,7 @@ private func preparationCancelLabel(_ uiLanguage: String) -> String {
     case "de": "Abbrechen"
     case "fr": "Annuler"
     case "ko": "취소"
+    case "th": "ยกเลิก"
     default: "Cancel"
     }
 }
@@ -432,7 +434,7 @@ public func mimiAppleTranslationStatus(_ identifier: UInt64, _ source: UnsafePoi
 }
 
 private func supportsPreparationUiLanguage(_ language: String) -> Bool {
-    ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"].contains(language)
+    ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"].contains(language)
 }
 
 @_cdecl("mimi_apple_translation_prepare")
@@ -474,7 +476,7 @@ private let testCallback: MimiTranslationCallback = { _, bytes, length in
 // TranslationSession, showing UI, querying assets, or accessing the network.
 @MainActor
 func runTranslationBridgeInvariantTests() throws {
-    for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko"] {
+    for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"] {
         precondition(supportsPreparationUiLanguage(language))
     }
     for language in ["system", "zh-Hant", "zh_tw", "fr-CA", "invalid", ""] {
@@ -483,6 +485,8 @@ func runTranslationBridgeInvariantTests() throws {
     precondition(preparationInstruction("zh-TW") == "請依照系統提示下載或啟用翻譯語言套件。")
     precondition(preparationInstruction("zh-TW") != preparationInstruction("zh"))
     precondition(preparationCancelLabel("zh-TW") == "取消")
+    precondition(preparationInstruction("th") != preparationInstruction("en"))
+    precondition(preparationCancelLabel("th") == "ยกเลิก")
     let registry = TranslationRequests()
     let requests = (1...8).map { TranslationRequest(UInt64($0), .query, testCallback) }
     for request in requests { precondition(registry.insert(request)) }
