@@ -4,6 +4,47 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-10：Qwen 四例直接 ASR 基线与探针编译修复
+
+- 受测基线 `d807458f335aac65e2b6fa7a5b14f36af6fb42e4` 加本轮探针与检查
+  修改（构建时 dirty），私有 `build.json` 保留实际测试二进制 SHA256。
+  用户明确允许四个既有样本串行发送给 Alibaba Qwen；源 PCM 共 106.30 秒，
+  每例另有两秒尾部静音，发送共 114.30 秒。无翻译请求、原生播放或采音。
+- 模型 `qwen-audio-3.0-asr-flash-streaming`、语言 `auto`、输入 `bypass`。
+  四例 PCM hash 和 request payload 与旧基线一致，全部成功且收到 finish；
+  missing sentence ID 和 final revision 计数均为零。独立临时配置只使用
+  一个已保存 Dev 凭据槽，原 Dev 偏好与服务目录 hash 未变，未访问正式版。
+- `fleurs-ja_jp-long-row1-id1608`：1 lexical final、15 lexical drafts，
+  归一化参考为 0 删除／0 插入／0 替换；旧结果四处替换为汉字／假名写法。
+  本次对应不能归因于探针修复，也不能从单例推广为模型准确度提升。
+- `fleurs-english-1527`：2 lexical finals、28 lexical drafts，0 删除／
+  0 插入／5 词替换（旧为 6）。两处是等值数字写法，两处姓氏候选差异重复
+  出现，另有一处人名罗马字写法差异。IPC 的[赛事报道](https://www.paralympic.org/news/krezel-sweeps-europa-cup-slalom-giant-slalom)
+  和[队伍资料](https://www.paralympic.org/feature/korea-10-facts-sochi-2014-paralympics)
+  支持参考拼写，但尚未听审原音频；不把字词差异当语义错误率。
+  候选偏差已出现在直接 ASR，尚无证据
+  指向 Mimi 后端丢字；不增加硬编码替换或修改服务提示词。
+- `sintel-action-bgm-negative`：0 lexical finals、1 lexical draft（旧为 2）；
+  `sintel-action-bgm-digital-silence`：final/draft 均为零。音乐尚未独立听审，
+  无 final 不能声称没有暂态误识别或完成阴性验收。
+- 直接服务 `elapsedMs - endTimeMs` 的确认延迟：日语 739 ms（旧 713），
+  英语两段 920／1,197 ms（旧 676／1,183）。该边界不是原生采音到字幕延迟，
+  单轮输出不足以判断总体性能变化；本轮未测翻译或实际显示时间。
+- 实际发现 `development-debugger` 测试构建失败：桌面 Gemini 探针调用依赖
+  crate 仅在自身测试中存在的 `recv`／`try_recv`。改用公开 revision-aware
+  接口并读取同一 event，保留原消费语义；canonical 和 macOS CI 增加
+  feature 的 `--no-run` 编译检查。没有修改生产字幕、共享业务或服务协议。
+- 完整 `./scripts/check.sh` 通过：共享核心及契约 86 项、共享运行时
+  710 passed／1 ignored、桌面 567 passed／1 ignored、前端 131 文件／
+  2,056 项，以及实际主机 JNI、fmt、严格 Clippy、lint、类型、生产构建、
+  架构边界和新的探针编译检查。未执行 Windows、Linux 或 Android 原生验收。
+- 本轮输入、结果、旧新对照、非秘密隔离回执和检查日志已持久归档到私有
+  catalog `2026-10-10-qwen-quality-baseline`：45 个文件、约 8.08 MB，
+  逐项 SHA256 复核；引用已重定位，临时凭据副本在请求结束后删除。
+- 下一项：独立听审英语两个原服务语音时段，确认两处重复姓氏偏差是否成立，
+  再决定是否只调整识别语言作对照。参考听审、翻译语义和原生阅读仍未完成；
+  #241 保留草稿，未把基线重跑或工具修复描述为字幕质量改善。
+
 ## 2026-10-10：训练样本与旧结果重开（离线）
 
 - 分支 revision `1154018e01481d55d1e2498a71703a5c8fc0ab71`，开始时干净；
