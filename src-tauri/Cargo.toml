@@ -1,6 +1,6 @@
 [package]
 name = "mimi"
-version = "1.5.22"
+version = "1.5.23"
 description = "Live translated subtitles for anything playing on your Mac or PC."
 authors = ["yuxino <nbsawz@gmail.com>"]
 edition = "2021"

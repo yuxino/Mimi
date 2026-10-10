@@ -80,6 +80,11 @@ Rules:
   verify that the exact executable's process exited with a read-only process
   check; a successful AX click alone does not prove shutdown. Use the explicit
   launcher mode before querying the next test instance.
+- After browser interaction, a CUA click can move the pointer over a WebKit
+  control without activating the settings window or invoking its action.
+  If navigation remains unchanged, use Mimi's native menu → Settings to
+  activate the window, then observe and retry the intended control. A window
+  Raise alone did not restore input in the macOS 27 continuous-audio test.
 - All worktrees install to the same development path. A later launch from
   another worktree can replace the package, including with an older UI-only
   build, even when the application name, version and signing identity match.
@@ -149,6 +154,14 @@ agent-created task tabs. Check the output boundary separately; extracting
 nonzero audio from an element does not prove the browser played it to the OS.
 If using a verified local clip as a playback control, record that source change
 and do not claim a causal before/after fix from it.
+
+Core Audio's native callback queue needs a PCM-duration bound as well as a
+packet-count bound. Four observed 1024-frame callbacks at 48 kHz provided only
+about 85 ms of scheduling tolerance and repeatedly triggered capture recovery.
+Keep reservations through processing and release them when packets are dropped,
+including queue closure and cancellation. Diagnose native callback byte/slot
+exhaustion separately from the portable provider-send queue; enlarging one does
+not establish that the other is healthy.
 
 ## Know which prompt appeared
 
