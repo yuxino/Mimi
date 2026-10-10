@@ -26,13 +26,17 @@ use objc2_core_foundation::CFDictionary;
 use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString, NSUUID};
 use std::ffi::{c_void, CStr};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
 const MAX_CALLBACK_BYTES: usize = 64 * 1024;
-const CALLBACK_QUEUE_CAPACITY: usize = 4;
+// Absorb short worker scheduling pauses without restarting capture. The byte
+// budget separately limits queued + processing PCM to one second at the
+// negotiated format; the slot limit also bounds tiny callback allocations.
+const CALLBACK_QUEUE_CAPACITY: usize = 256;
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const HEALTH_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -149,7 +153,7 @@ pub(super) async fn start(
                 let mut target_at = Instant::now();
                 while generation.is_current(token) && !failure.has_reported() {
                     match receiver.recv_timeout(POLL_INTERVAL) {
-                        Ok(bytes) => {
+                        Ok(packet) => {
                             if !generation.is_current(token) {
                                 break;
                             }
@@ -157,7 +161,7 @@ pub(super) async fn start(
                                 failure.report(SystemAudioCaptureFailure::NativeStopped);
                                 break;
                             }
-                            let result = decode_to_f32_mono(&bytes, &asbd)
+                            let result = decode_to_f32_mono(&packet.bytes, &asbd)
                                 .and_then(|samples| resampler.push_interleaved(&samples));
                             match result {
                                 Ok(buffers) => {
@@ -219,11 +223,38 @@ pub(super) async fn start(
 }
 
 struct CallbackState {
-    sender: SyncSender<Vec<u8>>,
+    sender: SyncSender<CallbackPacket>,
+    queued_bytes: Arc<AtomicUsize>,
+    byte_limit: usize,
     failure: CaptureFailureSender,
     generation: CaptureGeneration,
     token: u64,
     bytes_per_frame: usize,
+}
+
+struct CallbackPacket {
+    bytes: Vec<u8>,
+    queued_bytes: Arc<AtomicUsize>,
+}
+
+impl Drop for CallbackPacket {
+    fn drop(&mut self) {
+        self.queued_bytes
+            .fetch_sub(self.bytes.len(), Ordering::Relaxed);
+    }
+}
+
+impl CallbackState {
+    fn report_backpressure(&self, limit: &str) {
+        pipeline_log!(
+            "capture tap callback queue full limit={} queued_bytes={} byte_limit={} slots={}",
+            limit,
+            self.queued_bytes.load(Ordering::Relaxed),
+            self.byte_limit,
+            CALLBACK_QUEUE_CAPACITY
+        );
+        self.failure.report(SystemAudioCaptureFailure::Backpressure);
+    }
 }
 
 unsafe extern "C-unwind" fn audio_callback(
@@ -264,12 +295,27 @@ unsafe extern "C-unwind" fn audio_callback(
             .report(SystemAudioCaptureFailure::AudioProcessingFailed);
         return 0;
     }
+    if state
+        .queued_bytes
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |queued| {
+            queued
+                .checked_add(byte_count)
+                .filter(|total| *total <= state.byte_limit)
+        })
+        .is_err()
+    {
+        state.report_backpressure("bytes");
+        return 0;
+    }
     let bytes =
         unsafe { std::slice::from_raw_parts(buffer.mData.cast::<u8>(), byte_count) }.to_vec();
-    if let Err(TrySendError::Full(_)) = state.sender.try_send(bytes) {
-        state
-            .failure
-            .report(SystemAudioCaptureFailure::Backpressure);
+    let packet = CallbackPacket {
+        bytes,
+        queued_bytes: Arc::clone(&state.queued_bytes),
+    };
+    if let Err(TrySendError::Full(packet)) = state.sender.try_send(packet) {
+        drop(packet);
+        state.report_backpressure("slots");
     }
     0
 }
@@ -318,7 +364,8 @@ impl NativeTap {
         token: u64,
         failure: CaptureFailureSender,
         target: &SystemAudioTarget,
-    ) -> Result<(AudioStreamBasicDescription, Receiver<Vec<u8>>), SystemAudioCaptureError> {
+    ) -> Result<(AudioStreamBasicDescription, Receiver<CallbackPacket>), SystemAudioCaptureError>
+    {
         let check_current = || {
             if generation.is_current(token) {
                 Ok(())
@@ -434,6 +481,8 @@ impl NativeTap {
         let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
         self.context = Some(Box::new(CallbackState {
             sender,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            byte_limit: asbd.mSampleRate as usize * asbd.mBytesPerFrame as usize,
             failure,
             generation: generation.clone(),
             token,
@@ -759,6 +808,8 @@ mod tests {
         let (failure, mut failures) = CaptureFailureSender::channel();
         let mut state = CallbackState {
             sender,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            byte_limit: 48_000 * 4,
             failure,
             generation: CaptureGeneration::default(),
             token: 0,
@@ -781,6 +832,8 @@ mod tests {
             let (failure, mut failures) = CaptureFailureSender::channel();
             let mut state = CallbackState {
                 sender,
+                queued_bytes: Arc::new(AtomicUsize::new(0)),
+                byte_limit: 48_000 * 4,
                 failure,
                 generation: CaptureGeneration::default(),
                 token: 0,
@@ -888,11 +941,91 @@ mod tests {
     }
 
     #[test]
+    fn callback_preserves_a_short_native_burst_until_worker_resumes() {
+        let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
+        let (failure, mut failures) = CaptureFailureSender::channel();
+        let mut state = CallbackState {
+            sender,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            byte_limit: 48_000 * 4,
+            failure,
+            generation: CaptureGeneration::default(),
+            token: 0,
+            bytes_per_frame: 4,
+        };
+        // Six 1024-frame callbacks at 48 kHz: a 128 ms scheduling pause.
+        for sequence in 0..6 {
+            deliver(&mut state, &mut vec![sequence; 4096]);
+        }
+        assert!(failures.try_recv().is_err());
+        assert_eq!(state.queued_bytes.load(Ordering::Relaxed), 6 * 4096);
+        let packets: Vec<_> = receiver.try_iter().collect();
+        assert_eq!(packets.len(), 6);
+        for (sequence, packet) in packets.iter().enumerate() {
+            assert!(packet.bytes.iter().all(|byte| *byte == sequence as u8));
+        }
+        drop(packets);
+        assert_eq!(state.queued_bytes.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn callback_byte_budget_bounds_pcm_and_releases_received_and_disconnected_packets() {
+        for (rate, frame_bytes) in [(8_000, 2), (48_000, 4), (192_000, 4)] {
+            let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
+            let (failure, mut failures) = CaptureFailureSender::channel();
+            let mut state = CallbackState {
+                sender,
+                queued_bytes: Arc::new(AtomicUsize::new(0)),
+                byte_limit: rate * frame_bytes,
+                failure,
+                generation: CaptureGeneration::default(),
+                token: 0,
+                bytes_per_frame: frame_bytes,
+            };
+            let mut bytes = vec![0; 4096];
+            deliver(&mut state, &mut bytes);
+            let processing = receiver.try_recv().unwrap();
+            assert_eq!(state.queued_bytes.load(Ordering::Relaxed), 4096);
+            drop(processing);
+            assert_eq!(state.queued_bytes.load(Ordering::Relaxed), 0);
+            let capacity = state.byte_limit / bytes.len();
+            for _ in 0..capacity + 2 {
+                deliver(&mut state, &mut bytes);
+            }
+            assert_eq!(state.queued_bytes.load(Ordering::Relaxed), capacity * 4096);
+            assert_eq!(
+                failures.try_recv().unwrap(),
+                SystemAudioCaptureFailure::Backpressure
+            );
+            assert!(failures.try_recv().is_err());
+            drop(receiver);
+            assert_eq!(state.queued_bytes.load(Ordering::Relaxed), 0);
+        }
+        let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
+        drop(receiver);
+        let (failure, mut failures) = CaptureFailureSender::channel();
+        let mut state = CallbackState {
+            sender,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            byte_limit: 48_000 * 4,
+            failure,
+            generation: CaptureGeneration::default(),
+            token: 0,
+            bytes_per_frame: 4,
+        };
+        deliver(&mut state, &mut [0; 4096]);
+        assert_eq!(state.queued_bytes.load(Ordering::Relaxed), 0);
+        assert!(failures.try_recv().is_err());
+    }
+
+    #[test]
     fn callback_owns_queued_bytes_discards_stale_generation_and_reports_overflow_once() {
         let (sender, receiver) = mpsc::sync_channel(CALLBACK_QUEUE_CAPACITY);
         let (failure, mut failures) = CaptureFailureSender::channel();
         let mut state = CallbackState {
             sender,
+            queued_bytes: Arc::new(AtomicUsize::new(0)),
+            byte_limit: 48_000 * 4,
             failure,
             generation: CaptureGeneration::default(),
             token: 1,
@@ -904,7 +1037,7 @@ mod tests {
         state.token = 0;
         deliver(&mut state, &mut bytes);
         bytes.fill(0);
-        assert_eq!(receiver.try_recv().unwrap(), [1, 2, 3, 4]);
+        assert_eq!(receiver.try_recv().unwrap().bytes, [1, 2, 3, 4]);
         for _ in 0..CALLBACK_QUEUE_CAPACITY + 2 {
             deliver(&mut state, &mut bytes);
         }
