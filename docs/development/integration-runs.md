@@ -1849,3 +1849,71 @@
   Android and
   Windows/Linux native Thai layout, live Thai recognition/translation quality,
   Intel hardware, notarization and updater-install acceptance are not claimed.
+
+
+### 2026-10-11 — Continuous macOS audio capture, v1.5.23
+
+- Baseline `fd8e6dbd`, signed canonical live development build, Gemini Live,
+  system audio only, auto → Simplified Chinese, Turbo. Metadata-only case
+  `b1cb481c-7887-4f8d-b6d9-7e67dd21a0d6` contains native
+  `capture.backpressure` at 261,017 / 290,223 / 345,436 ms, followed by
+  recovery, without the portable send queue's overflow marker. Its PCM was
+  silent (-96 dBFS), so this establishes native queue failure, not speech
+  acceptance. A later audible baseline run of the reported Stanford video
+  updated subtitles but visibly reconnected around 280 s; its in-memory trace
+  was lost during the rebuild and is not a persisted case.
+- The four-packet native queue covered about 85 ms at the observed 48 kHz,
+  1,024-frame cadence. A six-packet / 128 ms order-and-ownership regression
+  fails before the fix and passes after it. The adapter now allows one second
+  of negotiated PCM bytes, including a packet being processed, with a separate
+  256-packet cap. Reservations release on processing, closure and cancellation;
+  stale generation, malformed input and genuine overload remain fail-closed.
+  No provider protocol or shared runtime behavior changed.
+- Full audible run: 2026-10-10 18:48–19:03 UTC, reported video
+  `UF8uR6Z6KLc` from 0:00 to its actual 904.241 s end, same Gemini settings.
+  Canonical signed development app v1.5.23 was built from dirty `fd8e6dbd`
+  with the implementation committed as `bbce5f27`; it was not a clean build of
+  that later commit. Continuous content-free console diagnostics contain no
+  native/portable queue-full marker, runtime stream failure or automatic
+  recovery during playback. Sent PCM advanced to 42,400 buffers / 28,945,020
+  bytes at the end; native capture stayed at 48 kHz and nonzero speech peaks
+  were observed. Mid-run snapshots continued beyond the reported 8:40 point,
+  and the actual native overlay displayed the closing speech and video outro.
+- Metadata-only export `720c5c5c-8a7b-4f49-ab0d-d573042a62b9` retains
+  2,048 of 26,420 events (24,372 evicted, zero frontend drops/rejected stale
+  observations). Full-run tail contains 59 matched published → first overlay
+  commits: median 53 ms, p95 56 ms, maximum 181 ms, ending at snapshot #1665.
+  These are local publication-to-render timings, not speech-to-translation
+  latency. Connections during post-video native UI interactions are outside
+  the continuous-playback window. No audio, subtitle-content recording or
+  saved-history opt-in was enabled; the bounded trace cannot prove every
+  earlier semantic/render event.
+- Canonical `./scripts/check.sh` passed: shared core 82, shared runtime 710
+  (one ignored), actual JNI fixtures, desktop Rust 571 (one ignored), frontend
+  132 files / 2,072 tests, fmt, strict Clippy, lint, production build and
+  debugger/architecture boundaries. Current stable CI deprecated
+  `fetch_update`; `fb7ef55d` replaces that operation with its equivalent
+  compare-exchange reservation loop, retaining Rust 1.88 compatibility.
+  All 11 native tap tests, desktop Rust suite and strict Clippy passed again.
+  Initial Android CI passed; final revision checks and release packaging are
+  recorded separately when completed.
+
+- Final adapter implementation `fb7ef55d`, canonical signed live development
+  rebuild (dirty only for release/ledger documentation): Alibaba Audio 3.0
+  recognition with independent DeepL text translation, same system-only
+  auto → Chinese / Turbo configuration. The opening video was played again
+  from 0:00; the capture session ran 98.5 s and the paused media position was
+  97.34 s after stop/export. Metadata-only case
+  `a95bd613-a269-490e-b5fc-c109d25f6b83` recorded 3,418 events, retaining
+  2,048 with zero frontend drops/stale rejections. Recognition, independent
+  final translation and native overlay commits advanced; console diagnostics
+  show no queue overflow, runtime failure or recovery. This is a second-provider
+  short check, not its full-video or translation-quality acceptance. Restored
+  the original Alibaba development profile and stopped capture/trace; microphone,
+  saved history and audio recording stayed off throughout.
+- Shared subtitle/provider behavior already reaches Android through the same
+  crates and JNI. This change is the macOS native capture adapter; Android has
+  no copy of that backend to patch. Both version files advance to 1.5.23 / 10523.
+  Physical Android, Windows/Linux capture under this exact video, Intel hardware,
+  notarization and installed-updater acceptance are not established by these
+  macOS runs or CI.
