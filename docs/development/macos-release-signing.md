@@ -55,7 +55,7 @@ gh release create "$tag" --draft --target "$revision" \
   src-tauri/target/release/bundle/macos/mimi.app.tar.gz \
   "src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/mimi_${version}_x64.dmg" \
   src-tauri/target/x86_64-apple-darwin/release/bundle/macos/mimi_x64.app.tar.gz
-gh release view "$tag" --json isDraft,assets
+gh release view "$tag" --json databaseId,tagName,targetCommitish,isDraft,assets
 # Confirm all four uploads completed before triggering tag CI.
 git tag "$tag" "$revision"
 git push origin "$tag"
@@ -66,6 +66,12 @@ reviewed replacements with `gh release upload ... --clobber`; never overwrite
 an already published release. If a tag already exists, verify it resolves to
 the exact source revision, finish staging, then rerun its failed workflow.
 Never move a published tag.
+
+A new draft's HTML URL may use an `untagged-*` suffix even when its requested
+`tagName` and `targetCommitish` are correct. The REST tag endpoint can also return
+404 while the draft is unpublished. Inspect it with `gh release view "$tag"`
+or the release database ID (`gh api "repos/yuxino/Mimi/releases/$release_id"`);
+do not create a second draft or change the release tag based on that URL alone.
 
 The tag-only macOS job needs `contents: write` because GitHub hides unpublished
 drafts from read-only tokens. Ordinary CI remains read-only; the final publish

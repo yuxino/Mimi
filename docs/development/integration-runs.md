@@ -1824,8 +1824,28 @@
   Ego Lite. English prerecorded dialogue displayed Thai subtitles; manual
   response loaded the expected English reply. Background-tab pauses prevented
   a claim of uninterrupted full-story playback.
-- Browser settings/layout regression coverage and exact-head cross-platform CI
-  remain delivery gates in PR #245; website delivery is PR #37. This host has
-  no Android SDK/JDK, so Android builds/tests run in CI. Physical Android and
+- Actual React browser fixtures passed 1,152 settings cases, 96 Qwen model
+  cases, 352 language-catalog layouts, 96 tooltip cases and 128 profile menus
+  across eight languages, narrow/default widths, light/dark themes and platform
+  states. Hover checks were rerun with a sole foreground browser controller
+  after other page/native inspection interrupted frames. The rendered Thai
+  README had no broken images; all 72 README language links resolved.
+- PR #245 merged as `aab942f4cb210898f135d2ec7efdbc939a261104` after exact-head
+  frontend, Rust macOS/Windows/Linux, Windows ARM64, MSRV and Android checks
+  passed. Website PR #37 deployed `8c5e85fa51d470fc9029eb3c53d907f25e692fe6`
+  as version 94. Production Thai homepage/theater passed desktop 1440×1000 and
+  mobile 390×844 layout, reciprocal locale/navigation and resource checks.
+- Published as Latest: [mimi v1.5.22](https://github.com/yuxino/Mimi/releases/tag/v1.5.22),
+  2026-10-10 17:33:13 UTC, tag/source `aab942f4`. Unified release workflow
+  [38070824245](https://github.com/yuxino/Mimi/actions/runs/38070824245) and Android
+  [38070824264](https://github.com/yuxino/Mimi/actions/runs/38070824264) passed.
+  Anonymous downloads of all 17 public assets matched GitHub SHA-256 digests and
+  all 16 checksum entries. All five updater signatures verified cryptographically
+  against the repository public key, and all four updater platforms resolved.
+  Public release/updater bilingual notes match the reviewed tagged source.
+  CI verified the Android APK signature, Linux installation/startup, Windows
+  release/portable and ARM64 startup, and both macOS signed identities/source.
+- This host has no Android SDK/JDK, so Android builds/tests run in CI. Physical
+  Android and
   Windows/Linux native Thai layout, live Thai recognition/translation quality,
   Intel hardware, notarization and updater-install acceptance are not claimed.
