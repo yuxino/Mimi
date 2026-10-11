@@ -218,7 +218,16 @@ fields and are written to the app's external `files/ui-preview` directory. Pass
 `-e overlay_interaction true` on a blank idle device for actual two-dimensional
 resize/drag, live quick settings without a duplicate preview, all alignments,
 stable history height, both provider badge cases and repeated immersive restoration.
+Quick settings keep the full live caption frame, including its route, provider
+badges, controls and current status/content. Those caption actions and gestures
+are decorative during editing; closing restores the same window. Limited space
+scales the complete frame rather than hiding its toolbar/footer.
 The `interaction-*.png` screenshots show the actual panel and edits.
+On a blank, idle API 35 device, `-e preview_parity true` compares both preview
+entries with the native frame across all eight languages plus System, waiting,
+no-sound/connection feedback, long captions, history and appearance endpoints.
+Use `-e locale ja` (or another supported tag) for one language. Normalized pixels,
+wrapping and frame geometry must match; quick editing preserves frame pixels.
 `overlay_preview` also captures long-caption reading and restored normal mode. These
 are synthetic native fixtures, not a real provider or audio latency measurement.
 Pass

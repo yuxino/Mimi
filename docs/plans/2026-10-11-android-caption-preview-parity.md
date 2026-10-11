@@ -35,3 +35,18 @@ remain capture/provider-free and restore the development app's private settings.
 The transparent immersive preview uses a neutral dark stage as a video-like
 reference surface so white text stays visible on the light settings page. This
 is outside the shared caption frame and does not change its transparent paint.
+
+The floating quick editor also previews the complete frame. Keep the existing
+live window, route, drag mark, provider identities, action appearances and current
+subtitle/status/history; opening the editor must not hide its toolbar or footer.
+Temporarily intercept preview gestures and remove action accessibility/focus
+without dimming the controls. Closing or failing to open the editor restores
+normal interactions on the same views. This applies to the quick entry as well
+as the primary Captions section; checking only one entry cannot establish parity.
+
+Measure the live panel at its ordinary saved width/height while editing. If the
+editor leaves too little room, scale that complete drawing uniformly above it
+rather than reducing its reading viewport or clipping chrome. Do not persist
+temporary scaling or positioning. Cover live waiting/error/content updates,
+inert home/service/style/immersion/drag/resize gestures, restored actions, both
+provider badge cases and narrow/landscape large-font layouts in native checks.
