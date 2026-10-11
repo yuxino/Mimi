@@ -2343,3 +2343,52 @@
   complete preview down; the actual floating frame retains native typography.
   Exact-head CI, installed Dev identity and main merge are verified separately
   before delivery. No existing public release assets are replaced.
+
+## 2026-10-12: Complete live frame in Android quick appearance
+
+- Product/test revision: `be4c1b94e37b48238059f805e477a05436429952`, based
+  on main `f8e231dc`. The floating quick editor previously hid the actual
+  caption toolbar/footer; the primary Captions preview already showed them.
+  Keep the same live frame, route, drag mark, provider identities, action
+  appearances, status, current captions and bounded history. Make actions,
+  focus/accessibility actions and drag/resize gestures inert during editing;
+  restore the same views on dismissal. Immersive restoration is also decorative
+  while its editor is open. Preserve the ordinary reading viewport and scale
+  the complete panel uniformly into the space above the editor without saving
+  temporary geometry or changing opacity.
+- API 35 ARM64, 280 dpi: 264 native frame/state comparisons passed on that
+  revision. All eight interface languages plus System at 720 x 1600/font scale
+  1 contribute 216 cases; Japanese 540 x 1200/dark/font scale 2 and English
+  1280 x 720/light/font scale 2 contribute 24 each. Both preview entries match
+  native pixels, wrapping and frame geometry. Opening/closing the quick editor
+  preserves the entire frame's intrinsic pixels and dimensions through waiting,
+  no-PCM, connecting, long captions, history and display/appearance endpoints.
+- Final native touch fixtures passed default Chinese, narrow dark Chinese and
+  wide light English layouts. Real taps plus programmatic actions cannot
+  navigate home/services, change immersion or move/resize the preview. Live
+  status/content and style controls update the existing frame; closing restores
+  ordinary gestures and geometry. Cover immersion switching inside the editor,
+  both provider badge cases, direct size gestures, history and own-page hiding.
+  The large-font landscape movement fixture now drags toward available space
+  when the frame is already at its top clamp, and verifies the saved movement.
+- A narrow run was interrupted by the emulator host exiting with status 139
+  after software graphics context errors. It is not a passing run or an app
+  crash claim. Cold-booted the same AVD without wiping data or loading an old
+  snapshot; verified the private original backup hashes, then used the host GPU
+  with guest Vulkan disabled. The interrupted narrow case, default touch case
+  and narrow/wide frame checks passed after recovery. This does not establish
+  the original host failure's cause or physical-device performance.
+- Canonical checks passed (including 2,093 frontend tests); their execution
+  started at `1a118c36`, and subsequent product changes were Android-only.
+  Final Android Debug/Release each passed 184 JVM/JNI tests, both lint variants,
+  app/instrumentation assembly and both four-ABI APK checks. Fixtures start no
+  capture/provider session. Restored the original private preferences byte for
+  byte, original app locale, display/font/night settings; removed the device
+  backup and temporary test package. Verified the installed fixed-signature Dev
+  APK hash against the final tested build, leaving one Mimi package and no
+  capture. Synthetic screenshots and source/package receipts remain outside Git.
+- Physical devices, API 29, split-screen and live audio/provider quality were
+  not rerun. All-language large-font acceptance from the earlier preview run
+  remains historical evidence; this follow-up's large-font frame comparisons
+  cover Japanese and English. Exact-head CI and main merge are checked before
+  delivery. No public version or existing release assets are changed.
