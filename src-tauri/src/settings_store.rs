@@ -1188,6 +1188,12 @@ impl SettingsStore {
                         "profile duplicate rollback failed label=new_credential_cleanup"
                     );
                 }
+                // The failed copy never enters the catalog. Its random UUID's
+                // cached missing/error slots cannot be reused on a retry.
+                self.secret_cache
+                    .lock()
+                    .unwrap()
+                    .remove(&cache_key(self.profile_keychain_service, &account));
             }
             return Err(error);
         }
@@ -3754,16 +3760,38 @@ mod tests {
                 .unwrap();
             let catalog = store.profile_catalog().unwrap();
             let values = fake.state.lock().unwrap().values.clone();
+            let cached_slots = store.secret_cache.lock().unwrap().clone();
             if catalog_failure {
                 std::fs::remove_file(&store.catalog_path).unwrap();
                 std::fs::create_dir(&store.catalog_path).unwrap();
-            } else {
-                // The first private slot saves; the second one fails.
-                fake.state.lock().unwrap().saves_before_failure = Some(1);
             }
-            assert!(store.duplicate_profile(&source.id, "Copy").is_err());
-            assert_eq!(store.profile_catalog().unwrap(), catalog);
-            assert_eq!(fake.state.lock().unwrap().values, values);
+            for _ in 0..16 {
+                if !catalog_failure {
+                    // The first private slot saves; the second one fails.
+                    fake.state.lock().unwrap().saves_before_failure = Some(1);
+                }
+                assert!(store.duplicate_profile(&source.id, "Copy").is_err());
+                assert_eq!(store.profile_catalog().unwrap(), catalog);
+                assert_eq!(fake.state.lock().unwrap().values, values);
+                assert_eq!(*store.secret_cache.lock().unwrap(), cached_slots);
+            }
+            if catalog_failure {
+                std::fs::remove_dir(&store.catalog_path).unwrap();
+            } else {
+                fake.state.lock().unwrap().saves_before_failure = None;
+            }
+            let copy = store
+                .duplicate_profile(&source.id, "Recovered copy")
+                .unwrap();
+            assert_ne!(copy.id, source.id);
+            assert_eq!(
+                store.profile_catalog().unwrap().1.len(),
+                catalog.1.len() + 1
+            );
+            assert_eq!(
+                store.load_api_key_for_profile(&source).unwrap().as_deref(),
+                Some("synthetic-original-key")
+            );
         }
     }
 

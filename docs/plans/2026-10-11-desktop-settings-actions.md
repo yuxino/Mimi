@@ -2,11 +2,11 @@
 
 Make repeated service setup easier without adding a second configuration flow.
 
-- Duplicate a saved profile from its editor, then open the independent copy.
+- Duplicate a saved profile from its list row or editor, then open the independent copy.
   Keep the current active profile and session preferences unchanged. Copy names,
   model, language preset, custom language declarations, proxies, and both private
   credential slots natively. No credential payload crosses IPC or the clipboard.
-  Explain this next to the action with the existing contextual help.
+  Keep the copy action plain; it does not need a separate help paragraph.
 - Generate a localized, unique copy name within the 64-character limit. Enforce
   the existing 20-profile limit and stopped-session mutation guard on both sides.
   Validate before writing; if private storage or catalog persistence fails,
@@ -15,8 +15,15 @@ Make repeated service setup easier without adding a second configuration flow.
   proxy fields. Copy the visible value, including an unsaved draft; empty fields
   cannot copy their placeholder. Secret inputs never opt in, including when
   revealed. Use native clipboard access and the shared transient toast.
-- Put Duplicate and Use near the configuration heading. Keep deletion at the
-  end and retain its existing confirmation. Give list editing a visible label.
+- Expose Use, Edit, Copy and Delete on every list row with short visible labels.
+  Mark the current configuration In Use independently of the Use button, which
+  can reapply its saved languages after a temporary change. Unusable profiles
+  cannot be applied.
+  Keep the identity area informational instead of switching on a row click.
+  At narrow widths, wrap the actions below the identity without clipping names.
+  Reuse the same handlers in the editor. Retain deletion confirmation and the
+  last-profile guard, and target the requested row even if another profile was
+  previously opened. Copies open for editing without becoming active.
 - Keep existing independent connection checks, appearance preview, tray and
   overlay settings entry points; avoid duplicating controls already present.
 

@@ -2146,3 +2146,31 @@
   capture were not accepted in this run. Private logs and synthetic pixels are
   archived outside Git; no production credential, audio or subtitle data was
   used. CI and merge review remain separate from these local results.
+
+### 2026-10-11 configuration list actions and merge regression
+
+- Follow-up on `feat/desktop-settings-actions`: every desktop configuration row
+  exposes Use, Edit, Copy and Delete. The identity area is informational; the
+  current profile keeps a separate In Use marker when its saved language
+  combination can be reapplied. Copy opens its own independent editor without
+  activation. List deletion confirms the requested row rather than the editor's
+  last selection. The copy help paragraph was removed in all eight locales.
+- UI regression passed `check.sh` with 2,093 frontend tests. New cases cover
+  inactive-row copying, sanitized failures, repeated clicks, delete/cancel,
+  the last-profile/20-profile limits, active/paused/connecting/stopping guards,
+  applying the current profile's saved languages, and a session starting while
+  a deletion confirmation is already open.
+- Review found that failed copies left missing/error cache entries for fresh
+  UUIDs. Rollback now evicts only those unreachable entries. The focused native
+  store regression passed 16 repeated partial-credential failures and 16 catalog
+  failures, preserved the source/catalog/slots/cache, then successfully retried
+  after each failure was resolved.
+- Browser geometry passed 288 list-action/confirmation cases plus 1,184 adjacent
+  settings cases: eight locales, both themes, 520/952 widths and macOS, Windows
+  and Linux layout fixtures. These are component/layout checks, not native
+  acceptance of those platforms. The normal signed macOS development app's
+  configuration list was inspected with saved development profiles; no provider
+  requests, capture or credential reveal was needed for this follow-up.
+- The user authorized merging after regression. Prior native/UI-only acceptance
+  and its Windows/Linux, full tray/overlay and live-provider limits still apply.
+  Final-source local checks and CI are verified separately before merge.

@@ -1741,24 +1741,24 @@
   border-top: 1px solid var(--settings-border);
 }
 .service-row {
-  display: flex;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
   border-bottom: 1px solid var(--settings-border);
   transition: background-color 140ms ease;
 }
 .service-row__main {
-  flex: 1;
   min-width: 0;
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 8px 12px;
   align-items: center;
   padding: 15px 8px;
   border: 0;
   background: transparent;
   color: inherit;
   text-align: left;
-  cursor: pointer;
 }
 .service-row:has(button:not(:disabled):hover) {
   background: var(--settings-selection-soft);
@@ -1788,40 +1788,50 @@
 .service-row__copy .service-row__provider {
   font-size: 13px;
   color: var(--settings-text-faint);
+  overflow-wrap: anywhere;
 }
 .service-row__state {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px;
 }
 .service-row__state .profile-active-badge {
   color: var(--settings-text-muted);
   font-weight: 500;
 }
-.service-row__edit {
+.service-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 12px 8px;
+}
+.service-row__action {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 10px;
+  min-height: 32px;
+  padding: 6px 8px;
   flex: 0 0 auto;
   white-space: nowrap;
   font: inherit;
   font-size: 13px;
-  align-self: stretch;
   margin: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: 6px;
   background: transparent;
-  color: var(--settings-text-faint);
+  color: var(--settings-text-muted);
   cursor: pointer;
 }
-.service-row__edit:hover:not(:disabled) {
+.service-row__action:hover:not(:disabled) {
   color: var(--settings-text);
-  background: transparent;
+  background: var(--settings-selection-soft);
 }
+.service-row__delete:hover:not(:disabled) { color: var(--settings-danger); }
 .service-row button:focus-visible {
   outline: 2px solid var(--settings-text);
   outline-offset: 2px;
@@ -2045,6 +2055,8 @@
   background: transparent;
 }
 @media (max-width: 900px) {
+  .service-row { grid-template-columns: minmax(0, 1fr); }
+  .service-row__actions { padding-top: 0; }
   .service-row__main {
     gap: 10px;
   }
@@ -2641,6 +2653,8 @@
   gap: 5px;
   color: var(--settings-text-muted);
   font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .service-row__translation .provider-icon {
   width: 16px !important;
@@ -3042,8 +3056,7 @@
 @media (max-width: 700px) {
   .service-detail__header { flex-wrap: wrap; gap: 12px; }
   .service-detail__identity { flex-basis: 100%; }
-  .service-row__main { grid-template-columns: 32px minmax(0, 1fr); gap: 8px 10px; }
-  .service-row__state { grid-column: 2; justify-content: flex-start; }
+  .service-row__main { gap: 8px 10px; }
 }
 
 /* User-declared custom ASR languages are expanded only while editing. */

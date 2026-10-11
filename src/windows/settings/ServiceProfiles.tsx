@@ -336,11 +336,11 @@ export function ServiceProfiles({
     } finally { creationInFlight.current = false; }
   };
 
-  const handleDuplicate = async () => {
-    if (!selectedProfile || mutationsDisabled || atProfileLimit) return;
+  const handleDuplicate = async (profile: ServiceProfile) => {
+    if (mutationsDisabled || atProfileLimit) return;
     const previousIds = new Set(settings.profiles.map(profile => profile.id));
-    const name = profileCopyName(selectedProfile.name, I18N.settings.profileCopySuffix, settings.profiles);
-    const snapshot = await perform("duplicate", () => duplicateProfile(selectedProfile.id, name), I18N.settings.profileDuplicated);
+    const name = profileCopyName(profile.name, I18N.settings.profileCopySuffix, settings.profiles);
+    const snapshot = await perform("duplicate", () => duplicateProfile(profile.id, name), I18N.settings.profileDuplicated);
     if (!snapshot || !mounted.current) return;
     // The command appends its own copy last and the store returns that exact
     // response, even if another window published newer settings meanwhile.
@@ -426,27 +426,27 @@ export function ServiceProfiles({
     );
   };
 
-  const requestProfileDelete = () => {
-    if (!selectedProfile || settings.profiles.length <= 1) return;
+  const requestProfileDelete = (profile: ServiceProfile) => {
+    if (mutationsDisabled || mutationInFlight.current || settings.profiles.length <= 1) return;
     setPendingConfirmation({
       kind: "profile",
-      profileId: selectedProfile.id,
-      name: selectedProfile.name,
+      profileId: profile.id,
+      name: profile.name,
     });
   };
 
   const confirmProfileDelete = async () => {
     if (
-      !selectedProfile ||
+      mutationsDisabled ||
       settings.profiles.length <= 1 ||
       pendingConfirmation?.kind !== "profile" ||
-      pendingConfirmation.profileId !== selectedProfile.id
+      !settings.profiles.some(profile => profile.id === pendingConfirmation.profileId)
     )
       return;
     setPendingConfirmation(null);
     const snapshot = await perform(
       "delete",
-      () => deleteProfile(selectedProfile.id),
+      () => deleteProfile(pendingConfirmation.profileId),
       I18N.settings.profileDeleted,
     );
     if (snapshot) {
@@ -607,8 +607,7 @@ export function ServiceProfiles({
             <span className="service-detail__use">
               <button type="button" className="settings-button settings-button--quiet settings-button--compact"
                 disabled={mutationsDisabled || atProfileLimit} aria-busy={pendingAction === "duplicate" || undefined}
-                onClick={() => void handleDuplicate()}><Icon name="copy" />{I18N.settings.duplicateProfile}</button>
-              <SettingsHelp text={I18N.settings.duplicateProfileHelp} label={I18N.settings.helpLabel} />
+                onClick={() => void handleDuplicate(selectedProfile)}><Icon name="copy" />{I18N.settings.duplicateProfile}</button>
             </span>
             {canUseProfile(selectedProfile) &&
               profileSelectionChangesSettings(selectedProfile, settings) && (
@@ -716,21 +715,12 @@ export function ServiceProfiles({
               type="button"
               className="settings-button settings-button--danger settings-button--compact"
               disabled={mutationsDisabled || settings.profiles.length <= 1}
-              onClick={requestProfileDelete}
+              onClick={() => requestProfileDelete(selectedProfile)}
             >
               <Icon name="trash" />
               {I18N.settings.deleteProfile}
             </button>
           </div>
-          {pendingConfirmation?.kind === "profile" &&
-            pendingConfirmation.profileId === selectedProfile.id && (
-              <DestructiveConfirmation
-                message={I18N.settings.deleteProfileConfirm(pendingConfirmation.name)}
-                disabled={mutationsDisabled}
-                onCancel={() => setPendingConfirmation(null)}
-                onConfirm={() => void confirmProfileDelete()}
-              />
-            )}
           </div>
         </div>
       ) : (
@@ -761,19 +751,10 @@ export function ServiceProfiles({
                 key={profile.id}
                 data-active={profile.id === settings.activeProfileId}
               >
-                <button
-                  type="button"
+                <div
                   className="service-row__main"
-                  disabled={selectionDisabled}
-                  onClick={() => {
-                    if (
-                      canUseProfile(profile) &&
-                      profileSelectionChangesSettings(profile, settings)
-                    )
-                      void handleSelect(profile.id);
-                    else openEditor(profile.id);
-                  }}
-                  aria-label={`${profile.name}${isCustomSpeechProvider(profile.provider) && profile.speechRecognitionName?.trim() ? `, ${I18N.settings.speechRecognition}: ${speechRecognitionDisplayName(profile)}` : ""}, ${credentialStateText(credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage), profile.provider === "appleSpeech")}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}: ${canUseProfile(profile) && profileSelectionChangesSettings(profile, settings) ? I18N.settings.useProfile : I18N.settings.editProfile}`}
+                  role="group"
+                  aria-label={`${profile.name}${isCustomSpeechProvider(profile.provider) && profile.speechRecognitionName?.trim() ? `, ${I18N.settings.speechRecognition}: ${speechRecognitionDisplayName(profile)}` : ""}, ${credentialStateText(credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage), profile.provider === "appleSpeech")}${textTranslationForProfile(profile) !== "followService" ? `, ${I18N.settings.textTranslationLabel}: ${textTranslationDisplayName(profile)}` : ""}`}
                 >
                   <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
@@ -784,22 +765,48 @@ export function ServiceProfiles({
                   </span>
                   <span className="service-row__state">
                     <CredentialBadge state={credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage)} nativeSpeech={profile.provider === "appleSpeech"} />
-                    {profile.id === settings.activeProfileId && (
-                      <span className="profile-active-badge">
-                        {I18N.settings.activeProfile}
-                      </span>
-                    )}
+                    {profile.id === settings.activeProfileId && <span className="profile-active-badge">{I18N.settings.activeProfile}</span>}
                   </span>
-                </button>
-                <button
-                  type="button"
-                  className="service-row__edit"
-                  disabled={pendingAction !== null}
-                  aria-label={`${I18N.settings.editProfile}: ${profile.name}`}
-                  onClick={() => openEditor(profile.id)}
-                >
-                  {I18N.settings.editProfile}<Icon name="chevron-right" />
-                </button>
+                </div>
+                <div className="service-row__actions" role="group" aria-label={profile.name}>
+                  <button
+                    type="button"
+                    className="service-row__action service-row__use"
+                    disabled={selectionDisabled || !canUseProfile(profile) || !profileSelectionChangesSettings(profile, settings)}
+                    aria-label={`${I18N.settings.useProfile}: ${profile.name}`}
+                    onClick={() => void handleSelect(profile.id)}
+                  >
+                    <Icon name="checkmark" />{I18N.settings.profileActionUse}
+                  </button>
+                  <button
+                    type="button"
+                    className="service-row__action service-row__edit"
+                    disabled={pendingAction !== null}
+                    aria-label={`${I18N.settings.editProfile}: ${profile.name}`}
+                    onClick={() => openEditor(profile.id)}
+                  >
+                    <Icon name="gear" />{I18N.settings.profileActionEdit}
+                  </button>
+                  <button
+                    type="button"
+                    className="service-row__action service-row__duplicate"
+                    disabled={mutationsDisabled || atProfileLimit}
+                    aria-label={`${I18N.settings.duplicateProfile}: ${profile.name}`}
+                    aria-busy={pendingAction === "duplicate" || undefined}
+                    onClick={() => void handleDuplicate(profile)}
+                  >
+                    <Icon name="copy" />{I18N.settings.profileActionCopy}
+                  </button>
+                  <button
+                    type="button"
+                    className="service-row__action service-row__delete"
+                    disabled={mutationsDisabled || settings.profiles.length <= 1}
+                    aria-label={`${I18N.settings.deleteProfile}: ${profile.name}`}
+                    onClick={() => requestProfileDelete(profile)}
+                  >
+                    <Icon name="trash" />{I18N.settings.profileActionDelete}
+                  </button>
+                </div>
               </div>
             ))}
           </div>}
@@ -810,6 +817,14 @@ export function ServiceProfiles({
       )}
       {feedback && !showsProviderPicker && !(showsEditor && selectedProfile) && <InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback>}
     </SettingsSection>
+    {pendingConfirmation?.kind === "profile" && settings.profiles.some(profile => profile.id === pendingConfirmation.profileId) && (
+      <DestructiveConfirmation
+        message={I18N.settings.deleteProfileConfirm(pendingConfirmation.name)}
+        disabled={mutationsDisabled}
+        onCancel={() => setPendingConfirmation(null)}
+        onConfirm={() => void confirmProfileDelete()}
+      />
+    )}
     </>
   );
 }

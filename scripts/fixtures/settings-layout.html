@@ -104,6 +104,14 @@ window.__TAURI_INTERNALS__ = {
       useStore.setState({ settings: snapshot });
       return snapshot;
     }
+    if (command === "profile_select" || command === "profile_delete") {
+      const current = useStore.getState().settings;
+      const profiles = command === "profile_delete" ? current.profiles.filter(profile => profile.id !== args.profileId) : current.profiles;
+      const snapshot = { ...current, profiles, activeProfileId: command === "profile_select" ? args.profileId
+        : profiles.some(profile => profile.id === current.activeProfileId) ? current.activeProfileId : profiles[0].id };
+      useStore.setState({ settings: snapshot });
+      return snapshot;
+    }
     if (command === "plugin:clipboard-manager|write_text") {
       if (fixture.failCopy) throw new Error("fixture_private_clipboard_error");
       window.layoutCopiedValue = args.text;
@@ -173,7 +181,9 @@ window.applyLayoutCase = async next => {
     initializationStatus: "ready",
     settings: { ...initial.settings, uiLanguage: next.language, microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
       sourceLanguage, targetLanguage,
-      ...(next.editor || next.surface || next.listProfiles ? { profiles: [profile], activeProfileId: profile.id } : {}),
+      ...(next.editor || next.surface || next.listProfiles ? { profiles: next.listProfiles
+        ? [profile, { ...profile, id: "layout-other", name: next.profileName ?? "Other configuration" }]
+        : [profile], activeProfileId: profile.id } : {}),
       ...(next.emptyProfiles ? { profiles: [], activeProfileId: "" } : {}),
       ...(appleProfile || next.textTranslation === "apple" ? { languageCapabilities: { profileId: profile.id, provider: profile.provider, textTranslation: profile.textTranslation, targetLanguage,
         sourceLanguages: next.sourceLanguages ?? next.appleSupport?.languages.filter(language => language.installed).map(language => language.sourceLanguage) ?? next.appleTranslationSupport?.sourceLanguages ?? [],
@@ -184,6 +194,10 @@ window.applyLayoutCase = async next => {
   });
   flushSync(() => root.render(React.createElement(next.surface === "tray" ? TrayPanel : next.surface === "overlay" ? FixtureOverlayControl : SettingsView, { key: ++generation })));
   await settle();
+  if (next.profileDeleteConfirmation) {
+    document.querySelectorAll(".service-row__delete")[1].click();
+    await settle();
+  }
   if (next.editor && !next.surface) {
     document.querySelector(".service-row__edit").click();
     await settle();

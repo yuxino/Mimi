@@ -34,6 +34,10 @@ Rules:
   when Cargo target directories differ. Concurrent writes can remove a CSS or
   JavaScript asset while Tauri embeds it; finish the first build before retrying
   the second, without clearing shared caches.
+- Focused Rust checks use the same local registry as `check.sh`: set
+  `CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"` before `cargo test` or Clippy.
+  A bare Cargo invocation can switch registry source paths and rebuild otherwise
+  reusable dependencies. Keep the existing cache rather than clearing it.
 - `./scripts/package-app.sh` creates a local QA package without updater
   artifacts, using the `local-package` profile with ThinLTO and parallel code
   generation. Public builds retain the size-focused `release` profile. Set

@@ -1,6 +1,55 @@
 // Browser geometry regression. Serve the repository with npm run dev, then
 // import this function from an ego-browser nodejs round with its managed Page.
 // Platform bridges and device state are fixtures, not native-device evidence.
+export async function verifyProfileActionsLayout(page, baseUrl = "http://127.0.0.1:1420") {
+  await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
+  await page.waitForFunction(() => window.layoutReady === true);
+  await page.cdp("Page.bringToFront", {});
+  await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
+  const failures = [];
+  let checked = 0;
+  for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"]) for (const theme of ["light", "dark"]) {
+    await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
+    for (const platform of ["macos", "windows", "linux"]) for (const state of ["idle", "paused", "confirmation"]) {
+      const next = { width, language, theme, platform, state: state === "paused" ? "paused" : "idle", listProfiles: true,
+        profileName: "Long configuration 名称 音声設定 ".repeat(6), deviceName: "Fixture headphones", profileDeleteConfirmation: state === "confirmation" };
+      const issues = await page.evaluate(async next => {
+        await window.applyLayoutCase(next);
+        const issues = [];
+        const rect = node => node.getBoundingClientRect();
+        const overlaps = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+        for (const row of document.querySelectorAll(".service-row")) {
+          const identity = row.querySelector(".service-row__main"), actions = row.querySelector(".service-row__actions");
+          if (row.scrollWidth > row.clientWidth + 1 || overlaps(rect(identity), rect(actions))) issues.push("row identity/actions overflow or overlap");
+          const buttons = [...actions.querySelectorAll("button")];
+          if (buttons.length !== 4 || identity.tagName !== "DIV") issues.push("four explicit actions missing");
+          if (Boolean(row.querySelector(".profile-active-badge")) !== (row.dataset.active === "true")) issues.push("current configuration marker missing");
+          for (let index = 0; index < buttons.length; index++) {
+            const button = buttons[index], bounds = rect(button);
+            if (!button.getAttribute("aria-label")?.includes(next.profileName) || !button.textContent.trim()) issues.push("unlabeled row action");
+            if (button.scrollWidth > button.clientWidth + 1 || bounds.left < rect(row).left - 1 || bounds.right > rect(row).right + 1) issues.push("row action clipped");
+            if (bounds.height < 32) issues.push("row action too small");
+            for (const other of buttons.slice(index + 1)) if (overlaps(bounds, rect(other))) issues.push("row actions overlap");
+            if (!button.disabled && getComputedStyle(button).cursor !== "pointer") issues.push("row action cursor");
+          }
+          if (row.querySelector(".service-row__duplicate").disabled !== (next.state === "paused")
+            || row.querySelector(".service-row__delete").disabled !== (next.state === "paused")) issues.push("row mutation stop guard");
+          const name = row.querySelector("strong");
+          if (!name.title || rect(name).width < 100) issues.push("long profile name squeezed");
+        }
+        const dialog = document.querySelector('[role="alertdialog"]');
+        if (Boolean(dialog) !== next.profileDeleteConfirmation) issues.push("row deletion dialog missing");
+        if (dialog && (dialog.scrollWidth > dialog.clientWidth + 1 || rect(dialog).left < 0 || rect(dialog).right > innerWidth + 1)) issues.push("row deletion dialog clipped");
+        return issues;
+      }, next);
+      checked++;
+      if (issues.length) failures.push({ width, language, theme, platform, state, issues });
+    }
+  }
+  return { checked, failures };
+}
+
 export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:1420", { storageModes = ["localFile"] } = {}) {
   await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);
