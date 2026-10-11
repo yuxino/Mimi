@@ -25,3 +25,5 @@ the repository check, real-component browser geometry in eight languages and
 both themes, plus signed `/Applications/mimi-dev.app` checks in Chinese,
 English and Japanese at normal/minimum widths. UI-only checks prove local UI
 and synthetic configuration behavior, not provider connectivity or capture.
+Native minimum-size QA uses `MIMI_UI_TEST_COMPACT_SETTINGS=1` with
+`./scripts/dev-app.sh --ui-only`. Live launches explicitly reset the fixture.

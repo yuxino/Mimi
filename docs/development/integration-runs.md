@@ -2130,14 +2130,18 @@
 - Final signed `/Applications/mimi-dev.app` used UI-only mode and the unchanged
   `app.yuxino.mimi.dev` designated requirement. Native Chinese, English and
   Japanese editors, empty/list states, long names and an English deletion/cancel
-  dialog were inspected at the normal 760-point width. Native clipboard content,
+  dialog were inspected at normal 760-point and minimum 520-point widths. Native clipboard content,
   successful duplication with a synthetic saved credential, independent rename,
   unchanged activation and explicit Use passed. A synthetic session started;
   subsequent settings interactions were not verified because the UI automation
   did not reach them. The development app was normally quit and the production
   app reopened with the user's authorization.
-- Native edge-drag attempts did not resize the settings window, so minimum-width
-  acceptance remains browser-only. Windows/Linux native UI, running/paused
+- Native edge-drag attempts did not resize the settings window. An explicit
+  UI-only compact-settings fixture then opened at 520 × 560; all three language
+  editors and the long-name English deletion/cancel dialog passed visual review.
+  Japanese minimum-width subtitle and save/export pages were also inspected.
+  Live launches explicitly reset the fixture, covered by the launch-mode test.
+  Windows/Linux native UI, running/paused
   native mutation guards, full tray/overlay states, live provider connectivity and
   capture were not accepted in this run. Private logs and synthetic pixels are
   archived outside Git; no production credential, audio or subtitle data was
