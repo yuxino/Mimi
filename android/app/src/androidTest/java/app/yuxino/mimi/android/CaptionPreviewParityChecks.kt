@@ -198,7 +198,18 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW_HISTORY))
                 await { SubtitleBus.historySnapshot().isNotEmpty() }
                 compare(home, "$prefix-history", true)
-                ui { SettingsStore.setImmersiveSubtitles(context, true); SettingsStore.setDisplayMode(context, CaptionDisplayMode.BILINGUAL) }; compare(home, "$prefix-immersive-long", true)
+                ui {
+                    SettingsStore.setImmersiveSubtitles(context, true); SettingsStore.setDisplayMode(context, CaptionDisplayMode.BILINGUAL)
+                    SubtitleBus.onSourceDraft("Synthetic immersion caption with enough words to overflow the compact viewport. ".repeat(5), "ja")
+                    SubtitleBus.onTranslationDraft("合成沉浸字幕用于检查最后三行，与真实透明字幕窗口保持相同换行。".repeat(6))
+                }
+                compare(home, "$prefix-immersive-long", true)
+                ui {
+                    val compact = preview.frame as CompactCaptionView
+                    check(compact.source.lineCount > compact.source.maxLines && compact.translation.lineCount > compact.translation.maxLines) {
+                        "Long immersion fixture did not overflow both viewports"
+                    }
+                }
                 ui { SubtitleBus.clear() }; compare(home, "$prefix-immersive-waiting")
                 context.stopService(Intent(context, MimiService::class.java)); await { root() == null }; ui { running(false); home.finish() }
             }

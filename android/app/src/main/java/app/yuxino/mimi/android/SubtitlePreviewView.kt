@@ -129,7 +129,9 @@ internal class CaptionPreviewStage(context: Context) : ViewGroup(context) {
         val height = resolveSize(dp(230), heightMeasureSpec)
         setMeasuredDimension(width, height)
         val frame = getChildAt(0) ?: return
-        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        // An activity can occupy only part of the display. The floating service
+        // uses the application display frame, so the preview must do the same.
+        val wm = context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val extent = if (Build.VERSION.SDK_INT >= 30) {
             val metrics = wm.currentWindowMetrics
             val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
