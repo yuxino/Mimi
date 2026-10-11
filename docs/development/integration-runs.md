@@ -2300,3 +2300,46 @@
   acceptance were not rerun. Extremely narrow panels with large system fonts
   still wrap action labels and use a scrolling caption viewport. Exact-head
   CI and merge are verified separately before delivery.
+
+## 2026-10-12: Android caption preview and desktop black background
+
+- Final product/test revision: `e7a00864a4e8278eb39ce05accc7a8877d930d3e`
+  on `fix/android-caption-preview-parity`, based on main `a171013d`. The normal
+  and immersive system windows and Captions preview now instantiate the same
+  native frame Views. Preview measures the service/application display extent,
+  real saved width/height and chrome, then uniformly scales the whole frame into
+  a bounded pinned stage. Decorative preview controls cannot navigate.
+- Pure black matches desktop; new-install background/window defaults are
+  80%/100%. Explicit saved values remain intact. Background 100% is solid black,
+  font-only edits preserve both alpha values, and the transparent immersive
+  preview has a neutral reference stage outside its actual caption frame.
+- On API 35 ARM64 at 280 dpi, all eight interface languages plus System passed
+  351 native comparisons on the final revision: 720 x 1600/font scale 1,
+  540 x 1200/font scale 2 and 1280 x 720/font scale 2. Normalized frame pixels,
+  measured dimensions, chrome positions, font/color/typeface/alignment, wrapping
+  and scroll offsets match. Cover waiting, no-PCM and connecting feedback,
+  bounded history, long current captions, both display/alpha endpoints and all
+  display/alignment modes. Long immersion explicitly overflows both two-source
+  and three-translation-line viewports. Preview and slider positions stay fixed.
+- Native gestures, direct width/height resizing, history, quick style edits,
+  immersion restoration and one/two provider identities passed three layouts;
+  the normal-layout case was rerun on the final revision. Narrow dark and wide
+  light all-language picker/editor/help/overlay sweeps passed on `afb41d77`;
+  the final viewport-context change was then covered by the 351 comparisons.
+  Service-window selectors are scoped to the actual overlay because the preview
+  now contains the same tags. The initial gesture/locale attempt was rejected by
+  its blank-configuration guard; isolated blank fixtures passed without weakening
+  that guard. The long immersion fixture was reseeded after history setup so it
+  truly tests overflowing text rather than a short current history caption.
+- Final `scripts/check.sh` passed. Android Debug/Release each passed 184 JVM/JNI
+  tests, both lint variants, application/instrumentation assembly and both
+  four-ABI APK checks. UI fixtures start no provider or capture. Private original
+  preferences are kept only in device-private backup during testing and restored
+  with per-file hash verification; the user's requested 80%/100% surface is then
+  applied to Dev. Display/font overrides and temporary test package are removed.
+  Synthetic screenshots and source/package receipts stay outside Git.
+- Physical devices, API 29, split-screen, audio performance and live-provider
+  acceptance were not rerun. Very large system fonts/small viewports scale the
+  complete preview down; the actual floating frame retains native typography.
+  Exact-head CI, installed Dev identity and main merge are verified separately
+  before delivery. No existing public release assets are replaced.
