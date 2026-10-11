@@ -34,6 +34,7 @@ internal class CaptionPanelView(
     val history: TextView
     val transcriptScroll: ScrollView
     private var followCurrentOnLayout = false
+    private var interactive = actions.home != null
 
     init {
         tag = "expanded-subtitles"
@@ -45,7 +46,7 @@ internal class CaptionPanelView(
         header.addView(FrameLayout(context).apply {
             tag = "overlay-drag"; isClickable = true; isFocusable = true
             contentDescription = interfaceString(R.string.overlay_drag)
-            setOnClickListener { actions.home?.invoke() }
+            setOnClickListener { if (interactive) actions.home?.invoke() }
             addView(View(context).apply {
                 tag = "overlay-drag-mark"
                 background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(0xFF858585.toInt()) }
@@ -62,19 +63,19 @@ internal class CaptionPanelView(
             })
         }, FrameLayout.LayoutParams(-1, dp(48)))
         header.addView(panelIcon(R.drawable.ic_settings, R.string.caption_style_controls).apply {
-            tag = "overlay-font"; setOnClickListener { actions.style?.invoke() }
+            tag = "overlay-font"; setOnClickListener { if (interactive) actions.style?.invoke() }
         }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END))
         panel.addView(header, LinearLayout.LayoutParams(-1, dp(48)))
         val immersion = panelButton(interfaceString(R.string.overlay_enter_immersive)).apply {
             contentDescription = text; tooltipText = text
-            tag = "enter-immersive"; setOnClickListener { actions.immerse?.invoke() }
+            tag = "enter-immersive"; setOnClickListener { if (interactive) actions.immerse?.invoke() }
         }
         val immersionMark = immersion.compoundDrawablesRelative[0]
         val providerRow = LinearLayout(context).apply {
             gravity = Gravity.CENTER; tag = "overlay-providers"
             isClickable = true; isFocusable = true; minimumHeight = dp(48); minimumWidth = dp(48)
             contentDescription = serviceLabel
-            setOnClickListener { actions.services?.invoke() }
+            setOnClickListener { if (interactive) actions.services?.invoke() }
         }
         fun mark(resource: Int) = ImageView(context).apply {
             setImageResource(resource); scaleType = ImageView.ScaleType.FIT_CENTER
@@ -90,7 +91,7 @@ internal class CaptionPanelView(
         }
         providerRow.addView(providerModel, LinearLayout.LayoutParams(-2, -2))
         val resize = panelIcon(R.drawable.ic_overlay_resize, R.string.overlay_resize).apply {
-            tag = "overlay-resize"; setOnClickListener { actions.style?.invoke() }
+            tag = "overlay-resize"; setOnClickListener { if (interactive) actions.style?.invoke() }
         }
         val footer = object : FrameLayout(context) {
             override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -182,13 +183,18 @@ internal class CaptionPanelView(
         scroll.addView(transcript)
         panel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
         panel.addView(footer, LinearLayout.LayoutParams(-1, -2))
-        if (actions.home == null) {
-            listOf("overlay-drag", "overlay-font", "enter-immersive", "overlay-providers", "overlay-resize").forEach { tag ->
-                findViewWithTag<View>(tag).apply {
-                    setOnClickListener(null); isClickable = false; isFocusable = false
-                    tooltipText = null
-                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                }
+        setPreviewOnly(actions.home == null)
+    }
+
+    /** Disable actions without dimming or changing the frame's visible appearance. */
+    fun setPreviewOnly(preview: Boolean) {
+        interactive = !preview && actions.home != null
+        listOf("overlay-drag", "overlay-font", "enter-immersive", "overlay-providers", "overlay-resize").forEach { tag ->
+            findViewWithTag<View>(tag).apply {
+                isClickable = interactive; isFocusable = interactive
+                tooltipText = if (interactive) contentDescription else null
+                importantForAccessibility = if (interactive) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    else View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
         }
     }

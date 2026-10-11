@@ -39,9 +39,10 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
     private fun backgroundPixel(): Int {
         idle(); SystemClock.sleep(350)
         val frame = checkNotNull(nativeFrame(root()))
+        val scale = root().findViewWithTag<View>("expanded-subtitles").scaleY
         val image = checkNotNull(test.uiAutomation.takeScreenshot())
         return try {
-            image.getPixel(frame.centerX(), frame.top + (4 * context.resources.displayMetrics.density).toInt())
+            image.getPixel(frame.centerX(), frame.top + (4 * context.resources.displayMetrics.density * scale).toInt().coerceAtLeast(1))
         } finally { image.recycle() }
     }
     private fun nativeFrame(view: View): android.graphics.Rect? {
@@ -192,6 +193,54 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         }
         onUi { check(editor().findViewById<View>(R.id.subtitle_preview) == null) { "Quick settings duplicated the preview" } }
     }
+
+    private fun assertCompleteInertPreview() {
+        assertEditorAndCaptionSeparated()
+        val window = root()
+        val dialog = editor()
+        val panel = window.findViewWithTag<CaptionPanelView>("expanded-subtitles")
+        val geometry = nativeFrame(window)
+        val bounds = listOf(SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
+            SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context))
+        onUi {
+            for (tag in listOf("overlay-toolbar", "overlay-drag-mark", "overlay-route", "overlay-actions", "overlay-providers")) {
+                check(panel.findViewWithTag<View>(tag).isShown) { "Quick preview hides $tag" }
+            }
+            check(panel.scaleX == panel.scaleY && panel.scaleY > 0f && panel.scaleY <= 1f)
+            check(panel.height * panel.scaleY <= window.height + 1) { "Quick preview clips the complete frame" }
+            check(panel.transcriptScroll.height >= (64 * context.resources.displayMetrics.density).toInt()) {
+                "Quick preview changed the native reading viewport"
+            }
+        }
+        for (tag in listOf("overlay-drag", "overlay-font", "enter-immersive", "overlay-providers", "overlay-resize")) {
+            val control = panel.findViewWithTag<View>(tag)
+            var x = 0f; var y = 0f
+            onUi {
+                check(control.isShown && control.isEnabled && !control.isClickable && !control.isFocusable) {
+                    "Quick preview action $tag is not decorative"
+                }
+                val origin = nativeOrigin(control)
+                x = origin[0] + control.width * panel.scaleX / 2
+                y = origin[1] + control.height * panel.scaleY / 2
+            }
+            val time = SystemClock.uptimeMillis()
+            for ((action, offset) in listOf(MotionEvent.ACTION_DOWN to 0f, MotionEvent.ACTION_MOVE to 12f,
+                MotionEvent.ACTION_UP to 12f)) {
+                val delta = if (tag == "overlay-drag" || tag == "overlay-resize") offset * context.resources.displayMetrics.density else 0f
+                val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x + delta, y - delta, 0)
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                try { check(test.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
+            }
+            idle()
+            onUi { control.performClick() } // Also gate programmatic/accessibility actions.
+            check(root() === window && editor() === dialog && nativeFrame(window) == geometry &&
+                !SettingsStore.immersiveSubtitles(context)) { "Quick preview action $tag changed a window or mode" }
+            check(bounds == listOf(SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
+                SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context))) {
+                "Quick preview gesture changed saved bounds"
+            }
+        }
+    }
     private fun providerMarkChecks(home: MainActivity) {
         val provider = app.yuxino.mimi.android.provider.ServiceProvider.DASHSCOPE
         val saved = SettingsStore.configuration(context, provider)
@@ -235,6 +284,12 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                     checkOverlayChromeAlignment(root())
                 }
                 capture(if (independent) "two-provider-marks" else "one-provider-mark")
+                tapVisible(root().findViewWithTag("overlay-font"))
+                waitFor { !root().findViewWithTag<View>("overlay-font").isClickable }
+                assertCompleteInertPreview()
+                capture(if (independent) "quick-two-provider-marks" else "quick-one-provider-mark")
+                tapVisible(editor().findViewById(android.R.id.button1))
+                waitFor { root().findViewWithTag<View>("overlay-providers").isClickable }
                 tapVisible(root().findViewWithTag("overlay-providers"))
                 waitFor { home.hasWindowFocus() && home.findViewById<android.widget.RadioGroup>(R.id.settings_tabs)
                     .checkedRadioButtonId == R.id.tab_service }
@@ -298,13 +353,34 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 "First caption frame ignored saved background/opacity"
             }
             val initialPixel = backgroundPixel()
+            val panel = root().findViewWithTag<CaptionPanelView>("expanded-subtitles")
+            val route = panel.findViewWithTag<TextView>("overlay-route").text.toString()
+            val provider = panel.findViewWithTag<View>("overlay-providers").contentDescription
+            val ordinaryHeight = panel.height
             capture("panel-waiting")
             tapVisible(root().findViewWithTag("overlay-font"))
             capture("quick-settings-open")
             waitFor { WindowInspector.getGlobalWindowViews().any { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } }
-            waitFor { !root().findViewWithTag<View>("overlay-toolbar").isShown }
-            assertEditorAndCaptionSeparated()
+            waitFor { !root().findViewWithTag<View>("overlay-font").isClickable }
+            assertCompleteInertPreview()
+            check(panel === root().findViewWithTag<View>("expanded-subtitles") && panel.height == ordinaryHeight &&
+                panel.findViewWithTag<TextView>("overlay-route").text.toString() == route &&
+                panel.findViewWithTag<View>("overlay-providers").contentDescription == provider) {
+                "Opening quick settings replaced or altered the live frame"
+            }
             val status = root().findViewWithTag<TextView>("expanded-status")
+            onUi { SubtitleBus.onStatus("Synthetic status fixture.") }
+            waitFor { status.text.toString() == "Synthetic status fixture." }
+            capture("quick-settings-live-status")
+            onUi {
+                SubtitleBus.onSourceDraft("Synthetic live preview.", "en")
+                SubtitleBus.onTranslationDraft("合成实时预览。")
+            }
+            waitFor { panel.source.text.toString() == "Synthetic live preview." && panel.translation.text.toString() == "合成实时预览。" }
+            capture("quick-settings-live-content")
+            assertCompleteInertPreview()
+            onUi { SubtitleBus.clear() }
+            waitFor { status.text.toString() == InterfaceLanguage.context(context).getString(R.string.overlay_listening_empty) }
             for (value in listOf(12, 24, 17)) {
                 setSlider(R.id.font_size, value)
                 waitFor { SettingsStore.fontSize(context) == value && abs(status.textSize - captionPixels(value)) < 1 }
@@ -331,13 +407,14 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             waitFor { root().width == initialWidth }
             setSlider(R.id.overlay_height, 20)
             waitFor { SettingsStore.overlayHeightPercent(context) == 20 }
-            val shortHeight = root().height
+            val shortHeight = panel.height
             setSlider(R.id.overlay_height, 70)
             waitFor { SettingsStore.overlayHeightPercent(context) == 70 }
             onUi {
-                test.sendStatus(0, Bundle().apply { putString("stream", "HEIGHT_GEOMETRY short=$shortHeight tall=${root().height}\n") })
+                test.sendStatus(0, Bundle().apply { putString("stream", "HEIGHT_GEOMETRY short=$shortHeight tall=${panel.height}\n") })
             }
-            waitFor { root().height > shortHeight }
+            waitFor { panel.height > shortHeight }
+            assertCompleteInertPreview()
             setSlider(R.id.overlay_height, 30)
             for (choice in CaptionAlignment.entries) {
                 val spinner = editor().findViewById<android.widget.Spinner>(R.id.caption_alignment)
@@ -355,7 +432,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             setSlider(R.id.overlay_opacity, 60)
             waitFor { abs(root().findViewWithTag<View>("expanded-subtitles").alpha - .6f) < .01f }
             tapVisible(editor().findViewById(android.R.id.button1))
-            waitFor { root().findViewWithTag<View>("overlay-toolbar").isShown }
+            waitFor { root().findViewWithTag<View>("overlay-font").isClickable && panel.scaleX == 1f && panel.scaleY == 1f }
             check(root() === window && SettingsStore.expandedYOffset(context) == 0) { "Closing editor changed saved placement or window" }
             capture("panel-style-applied")
             onUi {

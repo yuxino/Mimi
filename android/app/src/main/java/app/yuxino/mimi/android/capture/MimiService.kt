@@ -567,7 +567,7 @@ class MimiService : Service() {
         val status = compact.status; val source = compact.source; val translation = compact.translation
         compact.applyStyle(app.yuxino.mimi.android.CaptionFrameStyle.saved(this, sessionOriginalOnly), immersiveSession)
         val panel = buildExpandedPanel()
-        val root = FrameLayout(this).apply {
+        val root = app.yuxino.mimi.android.CaptionOverlayHost(this).apply {
             tag = "mimi-overlay"
             addView(compact, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER,
@@ -603,6 +603,7 @@ class MimiService : Service() {
             var touchX = 0f
             var dragged = false
             control.setOnTouchListener { _, event ->
+                if (appearanceDialog?.isShowing == true) return@setOnTouchListener true
                 if (immersiveSession) return@setOnTouchListener false
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
@@ -648,6 +649,7 @@ class MimiService : Service() {
         var resizeStartOffsetX = 0
         var resizeStartOffsetY = 0
         panel.findViewWithTag<View>("overlay-resize").setOnTouchListener { control, event ->
+            if (appearanceDialog?.isShowing == true) return@setOnTouchListener true
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     resizeStartWidth = root.width; resizeStartHeight = root.height
@@ -893,11 +895,10 @@ class MimiService : Service() {
     }
 
     private fun updateEditorPresentation() {
-        // The live caption window is the preview. Hide its duplicate actions
-        // while the bottom editor is open, then restore them in the same window.
-        val visibility = if (appearanceDialog?.isShowing == true) View.GONE else View.VISIBLE
-        expandedView?.findViewWithTag<View>("overlay-toolbar")?.visibility = visibility
-        expandedView?.findViewWithTag<View>("overlay-actions")?.visibility = visibility
+        // This is the actual live window, including its chrome and current
+        // state. Editing only makes it inert; never strip its visible controls.
+        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)
+            ?.setPreviewOnly(appearanceDialog?.isShowing == true)
     }
 
     private fun editorOffset(): Int {
@@ -1001,7 +1002,10 @@ class MimiService : Service() {
             if (it != null && it.maxWidth != textWidth) it.maxWidth = textWidth
         }
         val desiredWidth = windowWidth
-        val desiredHeight = if (expanded) expandedPanelHeight() else WindowManager.LayoutParams.WRAP_CONTENT
+        val frameHeight = if (expanded) expandedPanelHeight() else WindowManager.LayoutParams.WRAP_CONTENT
+        val editing = expanded && appearanceDialog?.isShowing == true
+        val desiredHeight = if (editing) minOf(frameHeight, (height - editorOffset()).coerceAtLeast(1)) else frameHeight
+        (root as app.yuxino.mimi.android.CaptionOverlayHost).showPreview(if (editing) frameHeight else null)
         val captionHeight = compactView?.height ?: 0
         val preferredY = when {
             draggingOverlay -> OverlayPlacement.clampY(params.y, height, if (expanded) desiredHeight else captionHeight)
@@ -1036,15 +1040,12 @@ class MimiService : Service() {
     private fun expandedPanelHeight(): Int {
         val availableHeight = overlayAvailableSize().second
         val panel = expandedView
-        val editing = appearanceDialog?.isShowing == true
-        val chrome = if (editing) dp(20) else
-            (panel?.paddingTop ?: dp(10)) + (panel?.paddingBottom ?: dp(10)) + dp(8) +
+        val chrome = (panel?.paddingTop ?: dp(10)) + (panel?.paddingBottom ?: dp(10)) + dp(8) +
                 (panel?.findViewWithTag<View>("overlay-toolbar")?.height?.takeIf { it > 0 } ?: dp(48)) +
                 (panel?.findViewWithTag<View>("overlay-actions")?.height?.takeIf { it > 0 } ?: dp(48))
         val lineHeight = expandedTranslationView?.paint?.fontSpacing?.toInt() ?: dp(24)
-        val limit = if (editing) (availableHeight - editorOffset()).coerceAtLeast(1) else availableHeight
         return app.yuxino.mimi.android.captionPanelHeight(availableHeight,
-            resizeHeightPercent ?: SettingsStore.overlayHeightPercent(this), chrome, lineHeight, resources.displayMetrics.density, limit)
+            resizeHeightPercent ?: SettingsStore.overlayHeightPercent(this), chrome, lineHeight, resources.displayMetrics.density)
     }
 
     private fun hideOverlay() {

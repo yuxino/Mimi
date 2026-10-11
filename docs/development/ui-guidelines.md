@@ -219,7 +219,12 @@ into duplicate primary tabs or add another preview. Keep common controls
 visible without an accordion. Keep the single preview pinned while settings
 scroll, above the controls in portrait and alongside them on wide screens. The
 floating appearance dialog edits the actual caption window and has no duplicate
-preview. Fit captions visibly above that editor without changing saved bounds.
+preview. Keep its complete toolbar, provider footer, action appearances and live
+content/status visible, but disable preview clicks, scrolling, dragging, resizing
+and accessibility actions without dimming it. Fit the complete frame above the
+editor, scaling uniformly when necessary; restore interactions and ordinary
+geometry on dismissal without changing saved bounds. Inspect both this entry
+and the primary Captions preview when checking frame parity.
 Direct color swatches
 wrap before their touch targets shrink below 48dp. Retain section scroll positions and
 selection through recreation. Keep status and Start/Stop visible in every
