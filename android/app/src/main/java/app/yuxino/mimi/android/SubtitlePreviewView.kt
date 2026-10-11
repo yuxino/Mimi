@@ -1,166 +1,168 @@
 package app.yuxino.mimi.android
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.util.AttributeSet
-import android.util.TypedValue
-import android.text.StaticLayout
-import android.text.TextPaint
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import app.yuxino.mimi.android.capture.OverlayPlacement
 
-/** Clearly marked sample content; never starts capture or opens a provider session. */
-class SubtitlePreviewView @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-) : LinearLayout(context, attrs) {
-    private val exampleLabel = TextView(context)
+/** A scaled view of the actual native caption window; never starts capture or a provider. */
+class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : LinearLayout(context, attrs) {
+    private val labels = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
+    private var heightLimit = Int.MAX_VALUE
     private val previewLabel = TextView(context)
-    private var livePreview = false
-    private var widthPercent = 92
+    private val exampleLabel = TextView(context)
+    internal val stage = CaptionPreviewStage(context)
+    internal var frame: View = View(context)
+        private set
+    private var identity = ""
     private var displayMode = CaptionDisplayMode.BILINGUAL
-    private val status = TextView(context).apply { textSize = 16f; setTextColor(Color.LTGRAY); visibility = GONE }
-    private val source = app.yuxino.mimi.android.capture.LatestCaptionTextView(context).apply { maxLines = 1 }
-    private val translation = app.yuxino.mimi.android.capture.LatestCaptionTextView(context).apply { maxLines = 1 }
-    private val subtitle = LinearLayout(context)
+    private lateinit var source: TextView
+    private lateinit var translation: TextView
+    private lateinit var status: TextView
 
     init {
         orientation = VERTICAL
-        minimumHeight = dp(152)
-        setPadding(dp(18), dp(16), dp(18), dp(18))
-        background = GradientDrawable().apply {
-            setColor(ContextCompat.getColor(context, R.color.mimi_preview_bg))
-            cornerRadius = dp(14).toFloat()
-        }
-        val labelRow = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        labelRow.addView(previewLabel.apply {
-            setText(R.string.preview_label)
-            setTextColor(Color.rgb(184, 184, 184))
-            textSize = 11f
-        }, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
-        labelRow.addView(exampleLabel.apply {
-            setText(R.string.preview_example)
-            setTextColor(Color.rgb(145, 145, 145))
-            textSize = 11f
-        })
-        addView(labelRow)
-        subtitle.orientation = VERTICAL
-        subtitle.setPadding(dp(12), dp(9), dp(12), dp(10))
-        source.setTextColor(Color.rgb(203, 203, 203))
-        source.textSize = 14f
-        source.setLineSpacing(dp(3).toFloat(), 1f)
-        translation.setTextColor(Color.WHITE)
-        translation.textSize = 19f
-        translation.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        translation.setLineSpacing(dp(4).toFloat(), 1f)
-        // Reserve one readable line at the largest supported size for each
-        // language. Width, font and live-text changes must not move the sliders
-        // under the user's finger. Full captions remain in the reading panel.
-        source.minimumHeight = maximumLineHeight(source, 24f)
-        translation.minimumHeight = maximumLineHeight(translation, 27f)
-        subtitle.minimumHeight = source.minimumHeight + translation.minimumHeight + dp(27)
-        subtitle.gravity = Gravity.CENTER_VERTICAL
-        subtitle.addView(status, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        subtitle.addView(source, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
-        subtitle.addView(translation, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(8)
-        })
-        addView(subtitle, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(14)
-        })
-        configure(16, Color.WHITE, 100, 65, "zh", false)
+        listOf(previewLabel, exampleLabel).forEach { it.textSize = 14f; it.setTextColor(ContextCompat.getColor(context, R.color.mimi_muted)) }
+        labels.addView(previewLabel, LayoutParams(0, -2, 1f))
+        labels.addView(exampleLabel)
+        addView(labels)
+        addView(stage, LayoutParams(-1, dp(230)).apply { topMargin = dp(8); bottomMargin = dp(8) })
+        configure(16, android.graphics.Color.WHITE, 100, 80, "zh", false)
     }
 
-    fun configure(fontSize: Int, color: Int, opacity: Int, backgroundAlpha: Int, targetLang: String, immersive: Boolean, originalOnly: Boolean = false, mode: CaptionDisplayMode = CaptionDisplayMode.BILINGUAL, widthPercent: Int = 92, live: Boolean = false, alignment: CaptionAlignment = CaptionAlignment.CENTER) {
-        livePreview = live
-        if (!live) {
-            previewLabel.setText(R.string.preview_label)
-            exampleLabel.setText(R.string.preview_example)
-            status.visibility = GONE
+    fun configure(fontSize: Int, color: Int, opacity: Int, backgroundAlpha: Int, targetLang: String,
+                  immersive: Boolean, originalOnly: Boolean = false, mode: CaptionDisplayMode = CaptionDisplayMode.BILINGUAL,
+                  widthPercent: Int = 92, live: Boolean = false, alignment: CaptionAlignment = CaptionAlignment.CENTER,
+                  heightPercent: Int = 30) {
+        displayMode = if (originalOnly) CaptionDisplayMode.ORIGINAL else mode
+        val localized = InterfaceLanguage.context(context.applicationContext)
+        val route = languageDisplayName(localized, SettingsStore.sourceLang(context)).let {
+            if (originalOnly) it else "$it → ${languageDisplayName(localized, targetLang)}"
         }
-        val effective = if (originalOnly) CaptionDisplayMode.ORIGINAL else mode
-        displayMode = effective
-        source.visibility = if (effective.sourceVisible) VISIBLE else GONE
-        translation.visibility = if (effective.translationVisible) VISIBLE else GONE
-        this.widthPercent = widthPercent.coerceIn(55, 100)
-        updateWidth()
+        val label = overlayServiceLabel(localized)
+        val marks = captionProviderMarks(context)
+        val nextIdentity = "$immersive|${localized.resources.configuration.locales}|$route|$label|$marks"
+        if (identity != nextIdentity) {
+            identity = nextIdentity
+            frame = if (immersive) CompactCaptionView(localized) else CaptionPanelView(localized, route, label, marks)
+            stage.replaceFrame(frame)
+            when (val current = frame) {
+                is CaptionPanelView -> { source = current.source; translation = current.translation; status = current.status }
+                is CompactCaptionView -> { source = current.source; translation = current.translation; status = current.status }
+            }
+        }
+        val style = CaptionFrameStyle(fontSize, color, opacity.coerceIn(20, 100), backgroundAlpha, displayMode, alignment)
+        when (val current = frame) {
+            is CaptionPanelView -> current.applyStyle(style)
+            is CompactCaptionView -> current.applyStyle(style, true)
+        }
+        stage.configure(widthPercent, heightPercent, immersive)
+        previewLabel.setText(if (live) R.string.home_title else R.string.preview_label)
+        exampleLabel.visibility = if (live) GONE else VISIBLE
+        exampleLabel.setText(R.string.preview_example)
         if (!live) {
-            source.setText(when (targetLang) {
+            val original = context.getString(when (targetLang) {
                 "en" -> R.string.preview_zh
                 "th" -> R.string.preview_en
                 else -> R.string.preview_source
             })
-            translation.setText(when (targetLang) {
+            val translated = context.getString(when (targetLang) {
                 "en" -> R.string.preview_en
                 "ja" -> R.string.preview_ja
                 "th" -> R.string.preview_th
                 else -> R.string.preview_zh
             })
-        }
-        CaptionTypography.apply(source, translation, fontSize, immersive, effective == CaptionDisplayMode.ORIGINAL)
-        CaptionTypography.applyContrast(status, immersive)
-        status.textSize = fontSize.toFloat()
-        status.setTextColor(color)
-        listOf(status, source, translation).forEach { it.gravity = alignment.gravity }
-        translation.setTextColor(color)
-        source.setTextColor(if (effective == CaptionDisplayMode.ORIGINAL) color else Color.rgb(203, 203, 203))
-        subtitle.alpha = if (immersive) 0.8f else opacity.coerceIn(20, 100) / 100f
-        subtitle.background = GradientDrawable().apply {
-            setColor(Color.argb(if (immersive) 0 else backgroundAlpha.coerceIn(0, 90) * 255 / 100, 16, 16, 16))
-            cornerRadius = dp(12).toFloat()
+            showContent(CaptionFrameContent(original, translated))
         }
     }
 
-    fun showLive(original: String, translated: String, hidden: Boolean, waiting: String) {
-        livePreview = true
-        previewLabel.setText(R.string.home_title)
-        exampleLabel.text = ""
-        source.text = if (hidden) "" else original
-        translation.text = if (hidden) "" else translated
-        source.visibility = if (displayMode.sourceVisible && source.text.isNotEmpty()) VISIBLE else GONE
-        translation.visibility = if (displayMode.translationVisible && translation.text.isNotEmpty()) VISIBLE else GONE
-        status.text = waiting
-        status.visibility = if ((source.visibility != VISIBLE || source.text.isNullOrBlank()) &&
-            (translation.visibility != VISIBLE || translation.text.isNullOrBlank())) VISIBLE else GONE
-    }
+    internal fun limitHeight(pixels: Int) { heightLimit = pixels.coerceAtLeast(0) }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        updateWidth()
-    }
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val compact = MeasureSpec.getSize(widthMeasureSpec) < dp(320)
-        // A narrow preview needs one sample/live label, not two wrapped headings.
-        previewLabel.visibility = if (!compact || livePreview) VISIBLE else GONE
-        exampleLabel.visibility = if (livePreview) GONE else VISIBLE
-        minimumHeight = dp(if (compact) 132 else 152)
-        setPadding(dp(18), dp(if (compact) 8 else 16), dp(18), dp(if (compact) 8 else 18))
-        subtitle.setPadding(dp(12), dp(if (compact) 6 else 9), dp(12), dp(if (compact) 6 else 10))
-        (subtitle.layoutParams as LayoutParams).topMargin = dp(if (compact) 8 else 14)
+        labels.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        val stageHeight = (heightLimit - labels.measuredHeight - dp(16)).coerceIn(0, dp(230))
+        (stage.layoutParams as LayoutParams).height = stageHeight
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
-    private fun updateWidth() {
-        if (width <= 0) return
-        val desired = ((width - paddingLeft - paddingRight).coerceAtLeast(1) * widthPercent / 100f).toInt().coerceAtLeast(1)
-        val params = subtitle.layoutParams as? LayoutParams ?: return
-        if (params.width != desired) subtitle.layoutParams = params.apply { width = desired; gravity = Gravity.CENTER_HORIZONTAL }
+
+    internal fun showContent(content: CaptionFrameContent) {
+        when (val current = frame) {
+            is CaptionPanelView -> current.showContent(content, displayMode)
+            is CompactCaptionView -> content.applyRows(current.source, current.translation, current.status, displayMode)
+        }
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
-    private fun maximumLineHeight(view: TextView, sizeSp: Float): Int {
-        val paint = TextPaint(view.paint).apply {
-            textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sizeSp, resources.displayMetrics)
-        }
-        // Include the supported scripts' fallback metrics, including Thai marks.
-        val glyphs = "Agé中文あ한กำลังฟัง"
-        return StaticLayout.Builder.obtain(glyphs, 0, glyphs.length, paint, 4096)
-            .setIncludePad(view.includeFontPadding).setUseLineSpacingFromFallbacks(true).build().height
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+}
+
+/** Measure the entire real frame before scaling it uniformly into a fixed stage. */
+internal class CaptionPreviewStage(context: Context) : ViewGroup(context) {
+    private var widthPercent = 92
+    private var heightPercent = 30
+    private var immersive = false
+    internal var frameScale = 1f
+        private set
+    private var offsetX = 0f
+    private var offsetY = 0f
+
+    init { clipChildren = false; clipToPadding = false }
+    fun replaceFrame(frame: View) { removeAllViews(); addView(frame) }
+    fun configure(widthPercent: Int, heightPercent: Int, immersive: Boolean) {
+        this.widthPercent = widthPercent; this.heightPercent = heightPercent; this.immersive = immersive
+        // Match WindowManager's touch-through opacity without changing the frame style.
+        alpha = if (immersive) .8f else 1f
+        // Transparent white captions need a neutral video-like reference surface
+        // on the light settings page. This belongs to the stage, never the frame.
+        setBackgroundColor(if (immersive) 0xFF333333.toInt() else android.graphics.Color.TRANSPARENT)
+        requestLayout()
     }
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val width = MeasureSpec.getSize(widthMeasureSpec)
+        val height = resolveSize(dp(230), heightMeasureSpec)
+        setMeasuredDimension(width, height)
+        val frame = getChildAt(0) ?: return
+        // An activity can occupy only part of the display. The floating service
+        // uses the application display frame, so the preview must do the same.
+        val wm = context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val extent = if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = wm.currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            OverlayPlacement.availableExtent(metrics.bounds.width(), insets.left, insets.right) to
+                OverlayPlacement.availableExtent(metrics.bounds.height(), insets.top, insets.bottom)
+        } else {
+            val bounds = android.graphics.Rect().also(::getWindowVisibleDisplayFrame)
+            if (!bounds.isEmpty) bounds.width() to bounds.height()
+            else resources.displayMetrics.widthPixels to resources.displayMetrics.heightPixels
+        }
+        val nativeWidth = OverlayPlacement.windowWidth(extent.first, widthPercent, dp(if (immersive) 160 else 176), dp(8))
+        val exactWidth = MeasureSpec.makeMeasureSpec(nativeWidth, MeasureSpec.EXACTLY)
+        frame.measure(exactWidth, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        if (frame is CaptionPanelView) {
+            val nativeHeight = captionPanelHeight(extent.second, heightPercent, frame.chromeHeight(),
+                frame.translation.paint.fontSpacing.toInt(), resources.displayMetrics.density)
+            frame.measure(exactWidth, MeasureSpec.makeMeasureSpec(nativeHeight, MeasureSpec.EXACTLY))
+        }
+        frameScale = minOf(1f, width.toFloat() / frame.measuredWidth.coerceAtLeast(1), height.toFloat() / frame.measuredHeight.coerceAtLeast(1))
+        offsetX = (width - frame.measuredWidth * frameScale) / 2
+        offsetY = (height - frame.measuredHeight * frameScale) / 2
+    }
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        getChildAt(0)?.let {
+            it.pivotX = 0f; it.pivotY = 0f; it.scaleX = frameScale; it.scaleY = frameScale
+            val x = offsetX.toInt(); val y = offsetY.toInt()
+            it.layout(x, y, x + it.measuredWidth, y + it.measuredHeight)
+        }
+    }
+    // This is a preview: decorative home/style/provider buttons must never navigate.
+    override fun onInterceptTouchEvent(event: android.view.MotionEvent) = true
+    override fun onTouchEvent(event: android.view.MotionEvent) = true
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }

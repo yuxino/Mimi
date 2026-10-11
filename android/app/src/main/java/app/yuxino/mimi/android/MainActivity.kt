@@ -315,7 +315,7 @@ class MainActivity : AppCompatActivity() {
             SettingsStore.overlayOpacity(this), SettingsStore.overlayBgAlpha(this), SettingsStore.targetLang(this),
             SettingsStore.immersiveSubtitles(this), SettingsStore.originalTextOnly(this),
             SettingsStore.displayMode(this), SettingsStore.overlayWidthPercent(this), live = running,
-            alignment = SettingsStore.captionAlignment(this),
+            alignment = SettingsStore.captionAlignment(this), heightPercent = SettingsStore.overlayHeightPercent(this),
         )
         if (running) {
             refreshLivePreview()
@@ -323,9 +323,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshLivePreview() {
-        val bus = app.yuxino.mimi.android.provider.SubtitleBus
-        findViewById<SubtitlePreviewView>(R.id.subtitle_preview).showLive(
-            bus.displaySource, bus.displayTranslation, bus.liveHidden, getString(R.string.overlay_listening_empty))
+        val mode = if (SettingsStore.originalTextOnly(this)) CaptionDisplayMode.ORIGINAL else SettingsStore.displayMode(this)
+        findViewById<SubtitlePreviewView>(R.id.subtitle_preview).showContent(CaptionFrameContent.live(this, mode,
+            SettingsStore.historyLines(this), MimiService.captureObservation?.state, MimiService.isRunning, MimiService.isStopping))
     }
 
     private fun languageLabel(code: String): String = languageDisplayName(this, code)

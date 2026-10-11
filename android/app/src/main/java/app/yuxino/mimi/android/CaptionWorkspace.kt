@@ -23,6 +23,8 @@ class CaptionWorkspace @JvmOverloads constructor(context: Context, attrs: Attrib
         } ?: availableHeight
         val sideBySide = showsPreview && width >= dp(480) && width > height
         orientation = if (sideBySide) HORIZONTAL else VERTICAL
+        preview.findViewById<SubtitlePreviewView>(R.id.subtitle_preview)?.limitHeight(
+            if (sideBySide) height else (height - dp(128)).coerceAtLeast(0))
         if (sideBySide) {
             preview.layoutParams = LayoutParams((width * .4f).toInt().coerceAtMost(dp(400)), -1)
             controls.layoutParams = LayoutParams(0, -1, 1f)

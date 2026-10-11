@@ -229,7 +229,7 @@ object SettingsStore {
 
     /** Overlay window opacity, 20..100 (percent). */
     fun overlayOpacity(context: Context): Int =
-        get(context).getInt(KEY_OVERLAY_OPACITY, 80).coerceIn(20, 100)
+        get(context).getInt(KEY_OVERLAY_OPACITY, 100).coerceIn(20, 100)
 
     fun setOverlayOpacity(context: Context, value: Int) =
         writeAppearance(get(context).edit().putInt(KEY_OVERLAY_OPACITY, value.coerceIn(20, 100)))
@@ -267,12 +267,12 @@ object SettingsStore {
     fun setHotwords(context: Context, value: String) =
         get(context).edit().putString(KEY_HOTWORDS, value.trim()).apply()
 
-    /** Subtitle card background alpha, 0 (invisible) .. 90 (nearly solid). */
+    /** Pure black subtitle background, matching desktop: 0 (clear) .. 100 (solid). */
     fun overlayBgAlpha(context: Context): Int =
-        get(context).getInt(KEY_OVERLAY_BG_ALPHA, 65).coerceIn(0, 90)
+        get(context).getInt(KEY_OVERLAY_BG_ALPHA, 80).coerceIn(0, 100)
 
     fun setOverlayBgAlpha(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_BG_ALPHA, value.coerceIn(0, 90)))
+        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_BG_ALPHA, value.coerceIn(0, 100)))
 
     /** Plain, touch-through subtitles; appearance updates the active views immediately. */
     fun immersiveSubtitles(context: Context): Boolean =

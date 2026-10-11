@@ -7,7 +7,6 @@
     <color name="mimi_border">#E3E3E1</color>
     <color name="mimi_primary">#171717</color>
     <color name="mimi_on_primary">#FDFDFC</color>
-    <color name="mimi_preview_bg">#464646</color>
     <color name="mimi_launcher_bg">#FFFFFF</color>
     <bool name="mimi_light_bars">true</bool>
 </resources>
