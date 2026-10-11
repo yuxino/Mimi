@@ -1,9 +1,9 @@
 # UI consistency and feedback / 界面一致性与操作反馈
 
-修改设置、托盘面板或字幕浮窗前，先阅读此规范。修复重复的界面问题时，
+修改设置、系统托盘菜单或字幕浮窗前，先阅读此规范。修复重复的界面问题时，
 必须排查其他页面的同类控件，同时检查成功、失败、弹窗和异步结果迟到的路径。
 
-Read this before changing settings, the tray panel or the subtitle overlay.
+Read this before changing settings, the native tray menu or the subtitle overlay.
 These project rules apply to implementation and review.
 
 ## Layout
@@ -135,7 +135,7 @@ disappearing notification.
 
 Before calling a UI consistency fix complete:
 
-1. Find sibling instances across settings categories, tray panel and overlay.
+1. Find sibling instances across settings categories, native tray menu and overlay.
    Search shared components, callers, inline feedback, alert/status elements,
    save handlers and catches. Include platform-specific controls and hidden
    editors; a single screenshot is not the scope of the audit.

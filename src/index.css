@@ -317,5 +317,4 @@ input:focus-visible,
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
-.tray-card > .recognition-language-notice { padding: 0 12px 10px; }
 .overlay-control-panel .recognition-language-notice { padding: 4px 0; }

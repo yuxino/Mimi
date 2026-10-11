@@ -21,18 +21,12 @@ const SettingsView = lazy(() =>
     default: module.SettingsView,
   })),
 );
-const TrayPanel = lazy(() =>
-  import("./windows/tray-panel/TrayPanel").then((module) => ({
-    default: module.TrayPanel,
-  })),
-);
-
-type WindowLabel = "overlay" | "overlay-control" | "tray-panel" | "settings";
+type WindowLabel = "overlay" | "overlay-control" | "settings";
 
 /**
  * Every window loads the shared entry, then lazily loads only the component
- * matching its label: "overlay" (floating subtitles), "tray-panel" (menu-bar
- * style control panel), "settings" (main settings window), or
+ * matching its label: "overlay" (floating subtitles), "settings" (main settings
+ * window), or
  * "overlay-control" (the child status island and control panel). Outside
  * Tauri a `?window=` query parameter selects the preview (defaults to
  * "settings").
@@ -57,7 +51,6 @@ export default function App() {
   let windowContent;
   if (label === "overlay") windowContent = <OverlayWindow />;
   else if (label === "overlay-control") windowContent = <OverlayControlWindow />;
-  else if (label === "tray-panel") windowContent = <TrayPanel />;
   else windowContent = <SettingsView />;
 
   return (
@@ -120,7 +113,6 @@ function resolveInitialLabel(): WindowLabel {
   const param = new URLSearchParams(window.location.search).get("window");
   return param === "overlay" ||
     param === "overlay-control" ||
-    param === "tray-panel" ||
     param === "settings"
     ? param
     : "settings";

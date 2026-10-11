@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SessionStateEvent } from "./types";
 
-export type DebugWindow = "settings" | "overlay" | "tray-panel" | "overlay-control";
+export type DebugWindow = "settings" | "overlay" | "overlay-control";
 export interface FrontendDebugObservation {
   stage: "wireReceived" | "storeApplied" | "overlayCommitted";
   window: DebugWindow;
@@ -46,7 +46,7 @@ function validSnapshotId(id: number | null | undefined): id is number {
 function safeObservation(value: FrontendDebugObservation): FrontendDebugObservation | null {
   if (!validSnapshotId(value.snapshotId) ||
     !["wireReceived", "storeApplied", "overlayCommitted"].includes(value.stage) ||
-    !["settings", "overlay", "tray-panel", "overlay-control"].includes(value.window)) return null;
+    !["settings", "overlay", "overlay-control"].includes(value.window)) return null;
   const result: FrontendDebugObservation = {
     stage: value.stage, window: value.window, snapshotId: value.snapshotId,
     sourceCharacters: 0, translationCharacters: 0, historyEntries: 0,
@@ -203,7 +203,7 @@ function nativeWindowLabel(): DebugWindow | null {
     (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ === undefined) return null;
   try {
     const label = getCurrentWindow().label;
-    return label === "settings" || label === "overlay" || label === "tray-panel" || label === "overlay-control"
+    return label === "settings" || label === "overlay" || label === "overlay-control"
       ? label : null;
   } catch { return null; }
 }

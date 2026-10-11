@@ -28,7 +28,6 @@ mimi-runtime = { path = "../shared/mimi-runtime", features = ["apple-native"] }
 tauri = { version = "2", default-features = false, features = ["wry", "compression", "common-controls-v6", "tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
-tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = "2.11.0"
 serde = { version = "1", features = ["derive"] }

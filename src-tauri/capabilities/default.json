@@ -2,7 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Shared baseline capability for mimi windows.",
-  "windows": ["settings", "overlay", "tray-panel", "overlay-control"],
+  "windows": [
+    "settings",
+    "overlay",
+    "overlay-control"
+  ],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",

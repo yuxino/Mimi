@@ -2,7 +2,7 @@
 
 Reuse Mimi's actual desktop identity: the existing pink character artwork and
 lowercase wordmark, surrounded by the restrained grayscale UI from
-`src/windows/settings/settings.css` and `src/windows/tray-panel/tray-panel.css`.
+`src/windows/settings/settings.css`.
 Keep the original character pixels intact. Adapt them as an Android adaptive
 launcher foreground, with a separate caption glyph for monochrome notifications.
 

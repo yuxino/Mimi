@@ -134,13 +134,11 @@ const { SOURCE_LANGUAGE_DISPLAY_NAMES } = await import("/src/lib/types.ts");
 const { audioSourceCopy } = await import("/src/lib/windowsAudioSource.ts");
 const { setStoredUiLanguage, I18N } = await import("/src/lib/i18n.ts");
 const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
-const { TrayPanel } = await import("/src/windows/tray-panel/TrayPanel.tsx");
 const { OverlayControlPanel } = await import("/src/windows/overlay-control/OverlayControlPanel.tsx");
 const { overlayControlPanelModel } = await import("/src/windows/overlay-control/overlayControlModel.ts");
 const { languageStatus } = await import("/src/windows/overlay/overlayModel.ts");
 const { targetLanguageAfterSourceSwitch } = await import("/src/lib/providerCapabilities.ts");
 await import("/src/windows/overlay-control/overlay-control.css");
-await import("/src/windows/tray-panel/tray-panel.css");
 function FixtureOverlayControl() {
   const settings = useStore(state => state.settings);
   const noop = async () => {};
@@ -166,13 +164,13 @@ window.applyLayoutCase = async next => {
   window.layoutFixtureRequests = { translationStatus: 0, translationPrepare: 0, speechPrepare: 0, speechSave: 0 };
   Object.defineProperty(navigator, "userAgent", { configurable: true, value: next.platform === "windows" ? "Windows NT 10.0" : next.platform === "macos" ? "Macintosh" : "Linux x86_64" });
   const active = ["receiving", "silent", "noData"].includes(next.state);
-  document.body.dataset.window = next.surface === "overlay" ? "overlay-control" : next.surface === "tray" ? "tray-panel" : "settings";
+  document.body.dataset.window = next.surface === "overlay" ? "overlay-control" : "settings";
   document.documentElement.dataset.platform = next.platform;
   document.documentElement.lang = next.language === "zh" ? "zh-CN" : next.language;
   location.hash = next.category ?? "service-profiles";
   localStorage.setItem("mimi.settings-theme", next.theme);
   setStoredUiLanguage(next.language);
-  window.layoutFixtureLabels = { source: I18N.settings.sourceLanguage, target: I18N.settings.translateTo, traySource: I18N.tray.sourceLanguage, overlaySource: I18N.overlay.sourceLanguage, output: audioSourceCopy().title, appleReady: I18N.settings.appleTranslationReady, appleNeedsSetup: I18N.settings.appleTranslationNeedsSetup };
+  window.layoutFixtureLabels = { source: I18N.settings.sourceLanguage, target: I18N.settings.translateTo, overlaySource: I18N.overlay.sourceLanguage, output: audioSourceCopy().title, appleReady: I18N.settings.appleTranslationReady, appleNeedsSetup: I18N.settings.appleTranslationNeedsSetup };
   const appleProfile = next.editor && next.provider === "appleSpeech";
   const sourceLanguage = next.sourceLanguage ?? (appleProfile ? "en" : initial.settings.sourceLanguage);
   const targetLanguage = next.targetLanguage ?? (appleProfile ? "original" : initial.settings.targetLanguage);
@@ -192,7 +190,7 @@ window.applyLayoutCase = async next => {
     },
     session: { ...initial.session, isActive: active || next.state === "paused", isPaused: next.state === "paused", status: { kind: active ? "listening" : next.state === "paused" ? "paused" : "idle" } },
   });
-  flushSync(() => root.render(React.createElement(next.surface === "tray" ? TrayPanel : next.surface === "overlay" ? FixtureOverlayControl : SettingsView, { key: ++generation })));
+  flushSync(() => root.render(React.createElement(next.surface === "overlay" ? FixtureOverlayControl : SettingsView, { key: ++generation })));
   await settle();
   if (next.profileDeleteConfirmation) {
     document.querySelectorAll(".service-row__delete")[1].click();

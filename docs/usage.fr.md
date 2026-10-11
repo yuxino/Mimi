@@ -14,6 +14,8 @@ Choisissez la langue de l’interface dans Réglages → Général : chinois sim
 2. Ouvrez Réglages → Parole et traduction, ajoutez une configuration, saisissez les identifiants demandés et enregistrez. Choisissez les langues de reconnaissance et de traduction.
 3. Lancez un contenu audio et activez les sous-titres en direct dans Sous-titres, ou démarrez depuis l’icône mimi de la barre de menus ou de la zone de notification. Sous macOS 14.2 et ultérieur, toutes les applications et une application sélectionnée peuvent utiliser l’autorisation d’enregistrement de l’audio système uniquement. Les autorisations de capture d’écran existantes sont réutilisées sans autre demande. macOS 13–14.1 exige l’enregistrement de l’écran et de l’audio système.
 
+L’icône mimi utilise le menu système pour démarrer/arrêter les sous-titres, choisir leur affichage, ouvrir les réglages et quitter ; macOS propose aussi l’affichage dans le Dock. Configurez les services, langues, verrouillage et mode immersif dans les réglages. Les Mac compatibles peuvent utiliser gratuitement la reconnaissance vocale locale Apple, sans clé API. Préparez les ressources linguistiques et choisissez la traduction séparément.
+
 Vous devez fournir vos propres identifiants API ; leur utilisation peut être facturée. Les identifiants de l’application de bureau sont stockés en clair dans un fichier privé local protégé par les permissions du fichier.
 
 macOS, les installations Windows et Linux AppImage proposent les mises à jour dans Réglages → Général → Mise à jour du logiciel. Mimi affiche la progression puis permet l’installation. Windows rouvre Mimi après l’installation ; macOS et Linux AppImage proposent un redémarrage pour terminer. Les versions antérieures à v1.3.8 nécessitent une installation manuelle avant de pouvoir se mettre à jour dans l’application.
@@ -50,7 +52,7 @@ Les anciens identifiants du système sont importés une seule fois, puis supprim
 
 Chaque configuration de bureau peut mémoriser les langues de reconnaissance et de traduction. Activez la configuration, choisissez les langues, puis ouvrez ses détails dans Réglages → Parole et traduction et choisissez **Mémoriser les langues actuelles**. Pour modifier ou supprimer cette paire, choisissez explicitement **Utiliser les langues actuelles** ou **Supprimer la paire enregistrée**.
 
-Changer ou réappliquer une configuration restaure sa paire enregistrée. Une modification temporaire ne l’écrase pas. Les menus de notification et les commandes flottantes affichent la paire sous le nom de la configuration. Cliquez sur les informations du service en haut des sous-titres pour ouvrir ses détails.
+Changer ou réappliquer une configuration restaure sa paire enregistrée. Une modification temporaire ne l’écrase pas. Les commandes flottantes affichent la paire sous le nom de la configuration. Cliquez sur les informations du service en haut des sous-titres pour ouvrir ses détails.
 
 ## Audio et sessions enregistrées
 

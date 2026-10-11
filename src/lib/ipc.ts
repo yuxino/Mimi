@@ -287,10 +287,6 @@ export function sessionGetState(): Promise<SessionStateEvent> {
   });
 }
 
-export function trayPanelHide(): Promise<void> {
-  return invoke("tray_panel_hide");
-}
-
 export function appQuit(): Promise<void> {
   return invoke("app_quit");
 }

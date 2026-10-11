@@ -14,6 +14,8 @@ Wähle die Oberflächensprache unter Einstellungen → Allgemein: vereinfachtes 
 2. Öffne Einstellungen → Sprache & Übersetzung, füge eine Konfiguration hinzu, gib die angeforderten Zugangsdaten ein und speichere. Wähle Erkennungs- und Übersetzungssprache.
 3. Spiele Audio ab und aktiviere die Live-Untertitel unter Untertitel oder starte über das mimi-Symbol in der Menüleiste bzw. Taskleiste. Ab macOS 14.2 unterstützen alle Anwendungen und eine ausgewählte Anwendung die Berechtigung nur für Systemaudio. Bestehende Bildschirmaufnahme-Berechtigungen werden ohne zusätzliche Audio-Berechtigung weiterverwendet. macOS 13–14.1 benötigt Bildschirm- und Systemaudioaufnahme.
 
+Das mimi-Tray-Symbol verwendet das Systemmenü für Start/Stopp, Untertitelanzeige, Einstellungen und Beenden; macOS bietet zusätzlich die Dock-Anzeige. Dienste, Sprachen, Sperre und immersiven Modus stellst du in den Einstellungen ein. Unterstützte Macs können die kostenlose lokale Apple-Spracherkennung ohne API-Schlüssel nutzen. Bereite die Sprachressourcen vor und wähle die Textübersetzung separat.
+
 Du benötigst eigene API-Zugangsdaten; die Nutzung kann kostenpflichtig sein. Desktop-Zugangsdaten liegen in einer privaten Klartextdatei, geschützt durch lokale Dateiberechtigungen.
 
 macOS, Windows-Installationen und Linux AppImage lassen sich unter Einstellungen → Allgemein → Softwareupdate aktualisieren. Mimi zeigt den Downloadfortschritt und bietet danach die Installation an. Windows öffnet Mimi nach der Installation erneut; macOS und Linux AppImage bieten einen gesonderten Neustart zum Abschluss an. Versionen vor v1.3.8 benötigen einmal eine manuelle Installation, um Updates in der App zu ermöglichen.
@@ -50,7 +52,7 @@ Alte Betriebssystem-Zugangsdaten werden einmal importiert und erst nach Prüfung
 
 Jede Desktop-Konfiguration kann ein Erkennungs-/Übersetzungssprachpaar speichern. Aktiviere die Konfiguration, wähle die Sprachen und öffne ihre Details unter Einstellungen → Sprache & Übersetzung. Wähle **Aktuelle Sprachen merken**. Änderungen oder Entfernen erfolgen ausdrücklich mit **Mit aktuellen Sprachen aktualisieren** oder **Gespeichertes Paar entfernen**.
 
-Beim Wechsel oder erneuten Anwenden wird das gespeicherte Paar wiederhergestellt. Vorübergehende Sprachänderungen überschreiben es nicht. Taskleisten- und schwebende Menüs zeigen das Paar unter dem Konfigurationsnamen. Über die Dienstinformation oben im Untertitel öffnest du die aktuellen Konfigurationsdetails.
+Beim Wechsel oder erneuten Anwenden wird das gespeicherte Paar wiederhergestellt. Vorübergehende Sprachänderungen überschreiben es nicht. Die schwebenden Steuerelemente zeigen das Paar unter dem Konfigurationsnamen. Über die Dienstinformation oben im Untertitel öffnest du die aktuellen Konfigurationsdetails.
 
 ## Audio und gespeicherte Sitzungen
 

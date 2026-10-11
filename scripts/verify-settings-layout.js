@@ -293,14 +293,14 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
   return { checked, failures };
 }
 
-/** Actual settings, tray and floating controls; catalogs and native actions are fixtures. */
+/** Actual settings and floating controls; catalogs and native actions are fixtures. */
 export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0.0.1:1420") {
   await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);
   const failures = [];
   let checked = 0;
-  for (const surface of ["settings", "overlay", "tray"]) {
-    for (const width of surface === "settings" ? [520, 952] : surface === "tray" ? [320, 420] : [360, 420]) {
+  for (const surface of ["settings", "overlay"]) {
+    for (const width of surface === "settings" ? [520, 952] : [360, 420]) {
       await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
       for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"]) for (const theme of ["light", "dark"]) {
         await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
@@ -318,10 +318,10 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
               editor: surface === "settings", platform: "macos", language, theme, state: "idle",
               profileName: entry.provider, textTranslation: "followService" });
             const label = entry.targetMenu ? window.layoutFixtureLabels.target : surface === "overlay" ? window.layoutFixtureLabels.overlaySource
-              : surface === "tray" ? window.layoutFixtureLabels.traySource : window.layoutFixtureLabels.source;
+              : window.layoutFixtureLabels.source;
             const trigger = [...document.querySelectorAll('button[role="combobox"]')].find(button => button.getAttribute("aria-label") === label);
             if (!trigger) return ["language picker missing"];
-            const sourceLabel = surface === "overlay" ? window.layoutFixtureLabels.overlaySource : surface === "tray" ? window.layoutFixtureLabels.traySource : window.layoutFixtureLabels.source;
+            const sourceLabel = surface === "overlay" ? window.layoutFixtureLabels.overlaySource : window.layoutFixtureLabels.source;
             const pickers = [...document.querySelectorAll('button[role="combobox"]')];
             const source = pickers.find(button => button.getAttribute("aria-label") === sourceLabel);
             const target = pickers.find(button => button.getAttribute("aria-label") === window.layoutFixtureLabels.target);

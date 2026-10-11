@@ -43,7 +43,6 @@ import {
   sessionTogglePaused,
   settingsGet,
   settingsSave,
-  trayPanelHide,
   type SettingsNavigationTarget,
 } from "./ipc";
 import { I18N, setStoredUiLanguage } from "./i18n";
@@ -182,7 +181,6 @@ interface StoreState {
   setOverlayCollapsed: (collapsed: boolean) => Promise<void>;
   setOverlayLocked: (locked: boolean) => Promise<void>;
   showOverlay: () => Promise<void>;
-  hideTrayPanel: () => Promise<void>;
   showSettings: (target?: SettingsNavigationTarget) => Promise<void>;
   quit: () => Promise<void>;
 }
@@ -776,10 +774,6 @@ export const useStore = create<StoreState>()((set, get) => ({
 
   showOverlay: async () => {
     if (isTauri) await overlayShow();
-  },
-
-  hideTrayPanel: async () => {
-    if (isTauri) await trayPanelHide();
   },
 
   showSettings: async (target) => {

@@ -10,7 +10,6 @@ import { I18N, setStoredUiLanguage } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import { OverlayWindow } from "./overlay/OverlayWindow";
 import { OverlayControlWindow } from "./overlay-control/OverlayControlWindow";
-import { TrayPanel } from "./tray-panel/TrayPanel";
 import { SubtitleSessionControls } from "./settings/SubtitleSessionControls";
 
 const native = vi.hoisted(() => ({
@@ -44,7 +43,7 @@ vi.mock("./overlay/Timeline", () => ({ Timeline: ({ blocks }: { blocks: { source
 const initial = useStore.getState();
 const unsupportedLanguage = "audio3_error.setup.unsupported_language.UNSUPPORTED_LANGUAGE";
 const timeout = "audio3_error.recognition.timeout.LOCAL_TIMEOUT";
-const surfaces = ["overlay", "history", "immersive", "collapsed", "locked", "control", "tray", "settings", "compact-settings"] as const;
+const surfaces = ["overlay", "history", "immersive", "collapsed", "locked", "control", "settings", "compact-settings"] as const;
 type Surface = typeof surfaces[number];
 const isOverlaySurface = (surface: Surface) => ["overlay", "history", "immersive", "collapsed", "locked"].includes(surface);
 let host: HTMLDivElement, root: Root;
@@ -86,7 +85,7 @@ async function mount(surface: Surface) {
     }));
   }
   await act(async () => root.render(
-    surface === "control" ? <OverlayControlWindow /> : surface === "tray" ? <TrayPanel />
+    surface === "control" ? <OverlayControlWindow />
       : surface === "settings" || surface === "compact-settings"
         ? <SubtitleSessionControls compact={surface === "compact-settings"} onConfigure={target => void showSettings(target)} />
         : <OverlayWindow />,
@@ -135,7 +134,7 @@ it.each(surfaces)("clears only the error presentation when %s recovers", async s
   if (surface === "immersive") expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
 });
 
-it.each(["overlay", "control", "tray", "settings", "compact-settings"] as const)("retains retry for a transient failure in %s", async surface => {
+it.each(["overlay", "control", "settings", "compact-settings"] as const)("retains retry for a transient failure in %s", async surface => {
   setStoredUiLanguage("en");
   useStore.setState(state => ({ session: { ...state.session, status: { kind: "error", message: timeout } } }));
   await mount(surface);
@@ -147,7 +146,7 @@ it.each(["overlay", "control", "tray", "settings", "compact-settings"] as const)
   expect(showSettings).not.toHaveBeenCalled();
 });
 
-it.each(["overlay", "control", "tray"] as const)("guards configuration actions and sanitizes their failures in %s", async surface => {
+it.each(["overlay", "control"] as const)("guards configuration actions and sanitizes their failures in %s", async surface => {
   let reject!: (error: Error) => void;
   showSettings.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
   await mount(surface);
@@ -170,7 +169,7 @@ it("routes the settings start switch to configuration while a configuration erro
   expect(start).not.toHaveBeenCalled();
 });
 
-it.each(["overlay", "control", "tray", "settings", "compact-settings"] as const)("never exposes an unrecognized provider message in %s", async surface => {
+it.each(["overlay", "control", "settings", "compact-settings"] as const)("never exposes an unrecognized provider message in %s", async surface => {
   useStore.setState(state => ({ session: { ...state.session, status: { kind: "error", message: "provider-private-text synthetic-key" } } }));
   await mount(surface);
   expect(feedback().querySelector("p")?.textContent).toBe(I18N.settings.sessionError);
@@ -227,7 +226,7 @@ it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("ke
   }
 });
 
-it.each(["zh", "en", "ja"] as const)("assigns detailed recovery to the open panel while keeping the %s tray independent", async language => {
+it.each(["zh", "en", "ja"] as const)("assigns detailed %s recovery to the open overlay control panel", async language => {
   setStoredUiLanguage(language);
   native.enabled = true;
   useStore.setState(state => ({ session: { ...state.session, status: { kind: "error", message: timeout } } }));
@@ -247,9 +246,6 @@ it.each(["zh", "en", "ja"] as const)("assigns detailed recovery to the open pane
   expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')?.disabled).toBe(false);
 
   await mount("control");
-  expect(feedback().querySelector("p")?.textContent).toBe(fullMessage);
-  expect(feedback().querySelectorAll("button")).toHaveLength(2);
-  await mount("tray");
   expect(feedback().querySelector("p")?.textContent).toBe(fullMessage);
   expect(feedback().querySelectorAll("button")).toHaveLength(2);
 
@@ -295,7 +291,7 @@ it.each(["apple_speech_preparing", "apple_speech_prepare_failed"])("opens the re
   expect(start).not.toHaveBeenCalled();
 });
 
-it.each(["control", "tray"] as const)("keeps Apple resources discoverable with zero or one ready language in %s", async surface => {
+it.each(["control"] as const)("keeps Apple resources discoverable with zero or one ready language in %s", async surface => {
   const stop = vi.fn().mockResolvedValue(undefined);
   const switchSourceLanguage = vi.fn().mockResolvedValue(undefined);
   const saveSettings = vi.fn().mockResolvedValue(undefined);
@@ -324,7 +320,7 @@ it.each(["control", "tray"] as const)("keeps Apple resources discoverable with z
   }
 });
 
-it.each(["control", "tray"] as const)("shows the compact resource entry only for Apple and handles a failed open in %s", async surface => {
+it.each(["control"] as const)("shows the compact resource entry only for Apple and handles a failed open in %s", async surface => {
   await mount(surface);
   expect(host.querySelector(".speech-resources-link")).toBeNull();
   await act(async () => useStore.setState(state => ({ settings: { ...state.settings,
@@ -386,7 +382,7 @@ it.each(["en", "zh", "ja"] as const)("retains retry for built-in timeouts and un
     "Baidu realtime translation rejected the session configuration.",
     "Baidu realtime translation rejected the session configuration (code 31003).",
   ]) {
-    for (const surface of ["overlay", "control", "tray", "settings", "compact-settings"] as const) {
+    for (const surface of ["overlay", "control", "settings", "compact-settings"] as const) {
       await act(async () => root.render(null));
       useStore.setState(state => ({ session: { ...state.session, status: { kind: "error", message: error } } }));
       start.mockClear();

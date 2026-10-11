@@ -114,22 +114,3 @@ commands.allow = [
   "overlay_control_set_panel_height",
   "overlay_control_set_island_width",
 ]
-
-[[permission]]
-identifier = "app-tray-panel"
-description = "Allows the tray panel to operate sessions, presentation preferences, and app actions."
-commands.allow = [
-  "profile_select",
-  "session_start",
-  "session_stop",
-  "session_toggle_paused",
-  "session_clear_subtitles",
-  "session_switch_source_language",
-  "session_switch_target_language",
-  "settings_save",
-  "overlay_set_locked",
-  "overlay_show",
-  "tray_panel_hide",
-  "app_show_settings",
-  "app_quit",
-]

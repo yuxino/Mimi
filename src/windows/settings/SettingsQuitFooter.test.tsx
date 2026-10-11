@@ -75,9 +75,9 @@ it("shows exit progress immediately, blocks rapid duplicate requests and allows 
   await act(async () => reject(new Error("synthetic retry failure")));
 });
 
-it("authorizes normal quitting from settings and tray without granting the subtitle overlay an exit action", () => {
+it("authorizes normal quitting only from the settings webview", () => {
   const granted = permissions.split("[[permission]]")
     .filter((entry) => entry.includes('"app_quit"'));
-  expect(granted).toHaveLength(2);
-  expect(granted.every((entry) => entry.includes('identifier = "app-settings"') || entry.includes('identifier = "app-tray-panel"'))).toBe(true);
+  expect(granted).toHaveLength(1);
+  expect(granted.every((entry) => entry.includes('identifier = "app-settings"'))).toBe(true);
 });

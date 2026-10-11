@@ -5,7 +5,6 @@ import { expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { shareUnchangedSubtitleHistory } from "../../lib/sessionSnapshot";
 import { useStore } from "../../lib/store";
-import { TrayPanel } from "../tray-panel/TrayPanel";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { SettingsView } from "./SettingsView";
 
@@ -23,11 +22,10 @@ it.each([false, true])("keeps non-subtitle windows and an unsaved credential dra
   } }, true);
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
-  const commits = { settings: 0, tray: 0, control: 0 };
+  const commits = { settings: 0, control: 0 };
   try {
     await act(async () => root.render(<>
       <Profiler id="settings" onRender={() => commits.settings++}><SettingsView /></Profiler>
-      <Profiler id="tray" onRender={() => commits.tray++}><TrayPanel /></Profiler>
       <Profiler id="control" onRender={() => commits.control++}><OverlayControlWindow /></Profiler>
     </>));
     await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());

@@ -15,7 +15,6 @@ html[data-platform="linux"]:lang(ja) {
 /* These surfaces declare their own macOS/Windows stacks in lazy stylesheets. */
 html[data-platform="linux"] :is(
   .settings-console,
-  .tray-panel,
   .overlay-control-island,
   .overlay-control-header,
   .overlay-control-panel

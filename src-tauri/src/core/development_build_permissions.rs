@@ -53,7 +53,7 @@ mod tests {
             "app-bootstrap",
             "app-settings",
             "app-overlay",
-            "app-tray-panel",
+            "app-overlay-control",
         ] {
             assert!(permissions.contains(&format!("identifier = \"{permission}\"")));
         }

@@ -12,9 +12,7 @@ use crate::core::provider::{
 };
 use crate::session_manager::{SessionManager, SessionStateEvent};
 use crate::settings_store::{CredentialState, PulseStyle, SettingsStore, SubtitleAlignment};
-use crate::windows::{
-    OverlayControlMode, OverlayControlWindowManager, OverlayWindowManager, TrayPanelManager,
-};
+use crate::windows::{OverlayControlMode, OverlayControlWindowManager, OverlayWindowManager};
 use serde::{Deserialize, Serialize};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -799,14 +797,14 @@ mod tests {
     }
 
     #[test]
-    fn target_switch_is_scoped_to_settings_control_and_tray_windows() {
+    fn target_switch_is_scoped_to_settings_and_control_windows() {
         let permissions = include_str!("../permissions/app.toml");
         let permitted: Vec<_> = permissions
             .split("[[permission]]")
             .filter(|entry| entry.contains("\"session_switch_target_language\""))
             .collect();
-        assert_eq!(permitted.len(), 3);
-        for identifier in ["app-settings", "app-overlay-control", "app-tray-panel"] {
+        assert_eq!(permitted.len(), 2);
+        for identifier in ["app-settings", "app-overlay-control"] {
             assert!(permitted
                 .iter()
                 .any(|entry| entry.contains(&format!("identifier = \"{identifier}\""))));
@@ -869,16 +867,14 @@ mod tests {
     }
 
     #[test]
-    fn dock_preference_is_settings_and_tray_panel_scoped() {
+    fn dock_preference_is_settings_scoped() {
         for show in [false, true] {
             let draft = SettingsDraft {
                 show_in_dock: Some(show),
                 ..SettingsDraft::default()
             };
-            for label in ["settings", "tray-panel"] {
-                assert!(ensure_settings_draft_window_allowed(label, &draft).is_ok());
-            }
-            for label in ["overlay", "overlay-control", "unknown"] {
+            assert!(ensure_settings_draft_window_allowed("settings", &draft).is_ok());
+            for label in ["overlay", "overlay-control", "tray-panel", "unknown"] {
                 assert!(ensure_settings_draft_window_allowed(label, &draft).is_err());
             }
         }
@@ -898,7 +894,7 @@ mod tests {
             assert_eq!(draft.show_intermediate_subtitles, Some(enabled));
             assert!(ensure_settings_draft_allowed(&draft, true).is_ok());
             assert!(ensure_settings_draft_window_allowed("settings", &draft).is_ok());
-            assert!(ensure_settings_draft_window_allowed("tray-panel", &draft).is_ok());
+            assert!(ensure_settings_draft_window_allowed("overlay-control", &draft).is_ok());
         }
     }
 
@@ -1665,10 +1661,8 @@ fn ensure_settings_draft_window_allowed(label: &str, draft: &SettingsDraft) -> R
     {
         return Err("These preferences can only be changed in settings.".into());
     }
-    if draft.show_in_dock.is_some() && !matches!(label, "settings" | "tray-panel") {
-        return Err(
-            "The Dock preference can only be changed in settings or the tray panel.".into(),
-        );
+    if draft.show_in_dock.is_some() && label != "settings" {
+        return Err("The Dock preference can only be changed in settings.".into());
     }
     Ok(())
 }
@@ -1958,7 +1952,7 @@ fn apply_settings_draft_guarded(
     Ok(payload)
 }
 
-/// Serializes a native Dock toggle with settings and tray-panel saves.
+/// Serializes a native Dock toggle with settings saves.
 #[cfg(target_os = "macos")]
 pub(crate) async fn toggle_dock_visibility(app: AppHandle) -> Result<(), String> {
     let state = app
@@ -2577,12 +2571,6 @@ pub fn resize_end(app: AppHandle, state: State<'_, AppState>) -> Result<(), Stri
     Ok(())
 }
 
-#[tauri::command]
-pub fn tray_panel_hide(app: AppHandle) -> Result<(), String> {
-    TrayPanelManager::hide(&app);
-    Ok(())
-}
-
 fn emit_settings_navigation(app: &AppHandle, target: SettingsNavigationTarget) {
     if let Some(window) = app.get_webview_window("settings") {
         let _ = window.emit(SETTINGS_NAVIGATION_EVENT, target);
@@ -2594,10 +2582,7 @@ pub fn app_show_settings(
     app: AppHandle,
     target: Option<SettingsNavigationTarget>,
 ) -> Result<(), String> {
-    // Close the tray panel first: it is always-on-top, so the settings
-    // window would otherwise open behind it and the click would look like a
-    // no-op. Collapse the overlay control panel for the same reason.
-    TrayPanelManager::hide(&app);
+    // Collapse the always-on-top overlay control panel so it cannot obscure Settings.
     OverlayControlWindowManager::dismiss_panel(&app);
 
     // The settings window normally exists for the whole app lifetime and is

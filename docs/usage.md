@@ -12,7 +12,9 @@ Choose the desktop interface language in Settings → General: Simplified Chines
 
 1. Download the macOS Apple silicon or Intel DMG, a Windows x64 EXE, MSI, or portable ZIP, or a Linux x86_64 .deb / AppImage from the [latest release](https://github.com/yuxino/mimi/releases/latest), or build from source.
 2. Open Settings → Speech & Translation, add a configuration, enter the requested provider credentials, and save. Choose the recognition and translation languages.
-3. Play something and turn on Live Subtitles under Subtitles. You can also start from the mimi menu bar/system tray icon. On macOS 14.2+, capturing All Applications or a selected application supports System Audio Recording Only. Existing screen grants are reused without requesting a separate audio-only grant. macOS 13–14.1 requires Screen & System Audio Recording.
+3. Play something and turn on Live Subtitles under Subtitles. You can also start from the native menu of the mimi menu bar/system tray icon. On macOS 14.2+, capturing All Applications or a selected application supports System Audio Recording Only. Existing screen grants are reused without requesting a separate audio-only grant. macOS 13–14.1 requires Screen & System Audio Recording.
+
+The mimi tray icon uses the system menu for starting/stopping subtitles, display mode, Settings and Quit; macOS also offers Show in Dock. Configure services, languages, locking and immersive mode in Settings. Supported Macs can use free local Apple speech recognition without an API key; prepare its language resources and choose text translation separately.
 
 Bring your own provider API credentials; usage charges may apply. Desktop credentials are stored in a private plaintext file protected by local file permissions.
 
@@ -52,7 +54,7 @@ Desktop credentials are stored in a private plaintext file protected by file per
 
 Each desktop service configuration can remember a recognition/translation language pair. Activate the configuration and choose the languages, then open its details in Settings → Speech & Translation and use **Remember current languages**. To change or remove the saved pair, use **Update to current languages** or **Remove saved pair** explicitly.
 
-Switching to or reapplying a configuration restores its saved pair. Temporary language changes do not overwrite it. Tray and floating menus show the saved pair below the configuration name. Click the service information in the subtitle header to open the current configuration details.
+Switching to or reapplying a configuration restores its saved pair. Temporary language changes do not overwrite it. The floating controls show the saved pair below the configuration name. Click the service information in the subtitle header to open the current configuration details.
 
 ## Audio and saved sessions
 

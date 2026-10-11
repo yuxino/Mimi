@@ -51,7 +51,7 @@ use tauri::menu::{
     CheckMenuItem, CheckMenuItemBuilder, MenuBuilder, MenuItem, MenuItemBuilder, Submenu,
     SubmenuBuilder,
 };
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Listener, Manager, WindowEvent};
 
 /// Runs the mimi Tauri application.
@@ -99,7 +99,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
     // X11 grabs cannot act as desktop shortcuts in a Wayland session.
@@ -188,7 +187,6 @@ pub fn run() {
                 &app_handle,
                 preferences.overlay_locked || preferences.subtitle_blends_with_background,
             );
-            windows::TrayPanelManager::ensure(&app_handle);
             windows::OverlayControlWindowManager::ensure(&app_handle);
             #[cfg(target_os = "windows")]
             app.manage(windows::install_windows_workspace_follower(&app_handle));
@@ -271,9 +269,6 @@ pub fn run() {
                     #[cfg(not(target_os = "macos"))]
                     windows::OverlayControlWindowManager::follow_overlay(app);
                 }
-                WindowEvent::Focused(false) if window.label() == "tray-panel" => {
-                    windows::TrayPanelManager::hide(app);
-                }
                 // An expanded control panel returns to its compact island on
                 // focus loss. The island itself remains available even while
                 // the subtitle canvas is click-through.
@@ -349,9 +344,7 @@ pub fn run() {
                     }
                 }
                 WindowEvent::CloseRequested { api, .. }
-                    if window.label() == "overlay"
-                        || window.label() == "overlay-control"
-                        || window.label() == "tray-panel" =>
+                    if window.label() == "overlay" || window.label() == "overlay-control" =>
                 {
                     api.prevent_close();
                     #[cfg(target_os = "macos")]
@@ -458,7 +451,6 @@ pub fn run() {
             commands::resize_start,
             commands::resize_move,
             commands::resize_end,
-            commands::tray_panel_hide,
             commands::app_show_settings,
             commands::app_quit,
         ])
@@ -831,7 +823,7 @@ fn system_language_code() -> Option<String> {
     None
 }
 
-/// Tray icon with a compact native menu and a left-click popup control panel.
+/// Tray icon with the same compact native menu for both mouse buttons.
 /// Copy follows the saved UI override, falling back to the system language.
 fn tray_icon_bytes(is_windows: bool) -> &'static [u8] {
     if is_windows {
@@ -932,7 +924,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         .icon_as_template(cfg!(target_os = "macos"))
         .tooltip(windows::dev_title("mimi"))
         .menu(&menu)
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(true)
         .on_menu_event(move |app, event| {
             let Some(state) = app.try_state::<AppState>() else {
                 return;
@@ -1018,28 +1010,6 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 _ => {}
             }
         })
-        .on_tray_icon_event(|tray, event| {
-            // Preserve the positioner fallback state as well as passing the
-            // click rectangle to the edge-aware primary placement path.
-            tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
-            if let TrayIconEvent::Click {
-                rect,
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                let app = tray.app_handle();
-                windows::TrayPanelManager::toggle(app, &rect);
-                // Refresh the panel's snapshots so its pickers and check
-                // states always match the current session, even if its
-                // webview missed events while hidden.
-                if let Some(state) = app.try_state::<AppState>() {
-                    state.session.publish_settings();
-                    state.session.publish_state();
-                }
-            }
-        })
         .build(app)?;
 
     app.manage(NativeTrayMenuItems {
@@ -1054,7 +1024,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     });
 
     // Session broadcasts already cover every start/stop path (native menu,
-    // tray panel, settings, shortcut, recovery). Update the native action
+    // settings, shortcut, recovery). Update the native action
     // only when activity changes instead of polling all menu state.
     let app_for_session = app.clone();
     let session_was_active = AtomicBool::new(session_is_active);
