@@ -427,6 +427,19 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             waitFor { SettingsStore.translationColorIndex(context) == 3 && status.currentTextColor == SettingsStore.translationColor(context) }
             assertEditorAndCaptionSeparated()
             capture("quick-settings-live-green")
+            val immersionSwitch = editor().findViewById<View>(R.id.immersive_subtitles)
+            bringIntoView(immersionSwitch); tapVisible(immersionSwitch)
+            waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+            val restore = WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" }
+            waitFor { !restore.isClickable && !restore.isFocusable }
+            tapVisible(restore)
+            onUi { restore.performClick() }
+            check(SettingsStore.immersiveSubtitles(context)) { "Quick preview restore action changed immersion" }
+            assertEditorAndCaptionSeparated()
+            capture("quick-settings-immersive")
+            tapVisible(immersionSwitch)
+            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
+            assertCompleteInertPreview()
             setSlider(R.id.overlay_bg_alpha, 90)
             waitFor { SettingsStore.overlayBgAlpha(context) == 90 }
             setSlider(R.id.overlay_opacity, 60)

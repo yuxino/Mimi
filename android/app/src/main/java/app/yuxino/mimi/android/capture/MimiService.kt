@@ -747,7 +747,7 @@ class MimiService : Service() {
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
             minimumWidth = dp(48); minimumHeight = dp(48)
-            setOnClickListener { setImmersiveMode(false) }
+            setOnClickListener { if (appearanceDialog?.isShowing != true) setImmersiveMode(false) }
             addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 if (immersiveExitView === this) updateOverlayGeometry()
             }
@@ -897,8 +897,13 @@ class MimiService : Service() {
     private fun updateEditorPresentation() {
         // This is the actual live window, including its chrome and current
         // state. Editing only makes it inert; never strip its visible controls.
-        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)
-            ?.setPreviewOnly(appearanceDialog?.isShowing == true)
+        val editing = appearanceDialog?.isShowing == true
+        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)?.setPreviewOnly(editing)
+        immersiveExitView?.apply {
+            isClickable = !editing; isFocusable = !editing
+            importantForAccessibility = if (editing) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
     }
 
     private fun editorOffset(): Int {
@@ -949,6 +954,7 @@ class MimiService : Service() {
         overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
         updateOverlayGeometry()
         expandedView?.requestLayout()
+        updateEditorPresentation()
         renderBus()
     }
 
