@@ -16,7 +16,7 @@ Wähle die Oberflächensprache unter Einstellungen → Allgemein: vereinfachtes 
 
 Das mimi-Tray-Symbol verwendet das Systemmenü für Start/Stopp, Untertitelanzeige, Einstellungen und Beenden; macOS bietet zusätzlich die Dock-Anzeige. Dienste, Sprachen, Sperre und immersiven Modus stellst du in den Einstellungen ein. Unterstützte Macs können die kostenlose lokale Apple-Spracherkennung ohne API-Schlüssel nutzen. Bereite die Sprachressourcen vor und wähle die Textübersetzung separat.
 
-Du benötigst eigene API-Zugangsdaten; die Nutzung kann kostenpflichtig sein. Desktop-Zugangsdaten liegen in einer privaten Klartextdatei, geschützt durch lokale Dateiberechtigungen.
+Für Cloud-Dienste benötigst du eigene API-Zugangsdaten; die Nutzung kann kostenpflichtig sein. Desktop-Zugangsdaten liegen in einer privaten Klartextdatei, geschützt durch lokale Dateiberechtigungen.
 
 macOS, Windows-Installationen und Linux AppImage lassen sich unter Einstellungen → Allgemein → Softwareupdate aktualisieren. Mimi zeigt den Downloadfortschritt und bietet danach die Installation an. Windows öffnet Mimi nach der Installation erneut; macOS und Linux AppImage bieten einen gesonderten Neustart zum Abschluss an. Versionen vor v1.3.8 benötigen einmal eine manuelle Installation, um Updates in der App zu ermöglichen.
 

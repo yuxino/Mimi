@@ -16,7 +16,7 @@ Choose the desktop interface language in Settings → General: Simplified Chines
 
 The mimi tray icon uses the system menu for starting/stopping subtitles, display mode, Settings and Quit; macOS also offers Show in Dock. Configure services, languages, locking and immersive mode in Settings. Supported Macs can use free local Apple speech recognition without an API key; prepare its language resources and choose text translation separately.
 
-Bring your own provider API credentials; usage charges may apply. Desktop credentials are stored in a private plaintext file protected by local file permissions.
+Cloud services require your own provider API credentials; usage charges may apply. Desktop credentials are stored in a private plaintext file protected by local file permissions.
 
 For macOS, Windows installer copies, and Linux AppImage, open Settings → General → Software Update. Mimi downloads the
 update with progress, then lets you install it. Windows reopens Mimi after

@@ -16,7 +16,7 @@ Choisissez la langue de l’interface dans Réglages → Général : chinois sim
 
 L’icône mimi utilise le menu système pour démarrer/arrêter les sous-titres, choisir leur affichage, ouvrir les réglages et quitter ; macOS propose aussi l’affichage dans le Dock. Configurez les services, langues, verrouillage et mode immersif dans les réglages. Les Mac compatibles peuvent utiliser gratuitement la reconnaissance vocale locale Apple, sans clé API. Préparez les ressources linguistiques et choisissez la traduction séparément.
 
-Vous devez fournir vos propres identifiants API ; leur utilisation peut être facturée. Les identifiants de l’application de bureau sont stockés en clair dans un fichier privé local protégé par les permissions du fichier.
+Pour les services cloud, vous devez fournir vos propres identifiants API ; leur utilisation peut être facturée. Les identifiants de l’application de bureau sont stockés en clair dans un fichier privé local protégé par les permissions du fichier.
 
 macOS, les installations Windows et Linux AppImage proposent les mises à jour dans Réglages → Général → Mise à jour du logiciel. Mimi affiche la progression puis permet l’installation. Windows rouvre Mimi après l’installation ; macOS et Linux AppImage proposent un redémarrage pour terminer. Les versions antérieures à v1.3.8 nécessitent une installation manuelle avant de pouvoir se mettre à jour dans l’application.
 
