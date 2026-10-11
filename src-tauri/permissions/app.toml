@@ -53,6 +53,7 @@ commands.allow = [
   "app_open_releases",
   "open_tencent_setup_page",
   "profile_create",
+  "profile_duplicate",
   "profile_update",
   "profile_select",
   "profile_delete",

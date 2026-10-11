@@ -58,12 +58,13 @@ import { AutoSaveNameField } from "./AutoSaveNameField";
 import { AppleSpeechSettings } from "./AppleSpeechSettings";
 import { useAppleSpeechSupport } from "./useAppleSpeechSupport";
 import { TencentSetupHelp } from "./TencentSetupHelp";
+import { profileCopyName } from "../../lib/profileCopyName";
 import { QwenMTModelSettings } from "./QwenMTModelSettings";
 
 const CONNECTION_CHECK_TIMEOUT_MS = 30_000;
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
-type PendingAction = "create" | "select" | "delete" | "save-key" | "save-model" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "switch-language" | "prepare-resource" | "prepare-apple-translation" | null;
+type PendingAction = "duplicate" | "create" | "select" | "delete" | "save-key" | "save-model" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "switch-language" | "prepare-resource" | "prepare-apple-translation" | null;
 type CheckStage = ConnectionCheckStage | "combined";
 type CheckOutcome = { profileId: string; input: symbol; result: ConnectionDiagnostic | null; error: string | null };
 type PendingConfirmation =
@@ -90,6 +91,7 @@ export function ServiceProfiles({
   appleResourcesRequest?: number;
   profileEditorRequest?: number;
 }) {
+  const duplicateProfile = useStore((state) => state.duplicateProfile);
   const createProfile = useStore((state) => state.createProfile);
   const updateProfile = useStore((state) => state.updateProfile);
   const selectProfile = useStore((state) => state.selectProfile);
@@ -304,7 +306,7 @@ export function ServiceProfiles({
     } catch (error) {
       // Keep unsaved edits actionable in their form; list operations have no field to correct.
       if (action === "save-key") setFeedback({ tone: "error", message: profileErrorMessage(error) });
-      else notify(profileErrorMessage(error), true);
+      else notify(profileErrorMessage(error, action === "duplicate" ? I18N.settings.profileDuplicateFailed : undefined), true);
       return null;
     } finally {
       mutationInFlight.current = false;
@@ -332,6 +334,18 @@ export function ServiceProfiles({
     }
     setShowsProviderPicker(false);
     } finally { creationInFlight.current = false; }
+  };
+
+  const handleDuplicate = async () => {
+    if (!selectedProfile || mutationsDisabled || atProfileLimit) return;
+    const previousIds = new Set(settings.profiles.map(profile => profile.id));
+    const name = profileCopyName(selectedProfile.name, I18N.settings.profileCopySuffix, settings.profiles);
+    const snapshot = await perform("duplicate", () => duplicateProfile(selectedProfile.id, name), I18N.settings.profileDuplicated);
+    if (!snapshot || !mounted.current) return;
+    // The command appends its own copy last and the store returns that exact
+    // response, even if another window published newer settings meanwhile.
+    const copy = snapshot.profiles.at(-1);
+    if (copy && !previousIds.has(copy.id)) { setSelectedProfileId(copy.id); setShowsEditor(true); }
   };
 
   const handleRename = async (profileId: string, name: string) => {
@@ -589,6 +603,30 @@ export function ServiceProfiles({
               </div>
             </div>
           </div>
+          <div className="service-detail__quick-actions">
+            <span className="service-detail__use">
+              <button type="button" className="settings-button settings-button--quiet settings-button--compact"
+                disabled={mutationsDisabled || atProfileLimit} aria-busy={pendingAction === "duplicate" || undefined}
+                onClick={() => void handleDuplicate()}><Icon name="copy" />{I18N.settings.duplicateProfile}</button>
+              <SettingsHelp text={I18N.settings.duplicateProfileHelp} label={I18N.settings.helpLabel} />
+            </span>
+            {canUseProfile(selectedProfile) &&
+              profileSelectionChangesSettings(selectedProfile, settings) && (
+                <span className="service-detail__use">
+                <button
+                  type="button"
+                  className="settings-button settings-button--quiet settings-button--compact"
+                  disabled={selectionDisabled}
+                  onClick={() => void handleSelect(selectedProfile.id)}
+                >
+                  <Icon name="checkmark" />
+                  {I18N.settings.useProfile}
+                </button>
+                <SettingsHelp text={I18N.settings.profileSwitchHelp} label={I18N.settings.helpLabel} />
+                </span>
+              )}
+          </div>
+          {atProfileLimit && <InlineFeedback tone="info">{I18N.settings.profileLimitReached}</InlineFeedback>}
           <div className="service-detail__configuration">
           <div className="profile-form service-detail__name">
             <AutoSaveNameField key={selectedProfile.id} id={`profile-name-${selectedProfile.id}`}
@@ -674,21 +712,6 @@ export function ServiceProfiles({
           <ProfileLanguagePresetSettings key={`${selectedProfile.id}-language-preset`} profile={selectedProfile} settings={settings}
             disabled={mutationsDisabled} onSave={handleSaveLanguagePreset} />
           <div className="service-detail__actions">
-            {canUseProfile(selectedProfile) &&
-              profileSelectionChangesSettings(selectedProfile, settings) && (
-                <span className="service-detail__use">
-                <button
-                  type="button"
-                  className="settings-button settings-button--quiet settings-button--compact"
-                  disabled={selectionDisabled}
-                  onClick={() => void handleSelect(selectedProfile.id)}
-                >
-                  <Icon name="checkmark" />
-                  {I18N.settings.useProfile}
-                </button>
-                <SettingsHelp text={I18N.settings.profileSwitchHelp} label={I18N.settings.helpLabel} />
-                </span>
-              )}
             <button
               type="button"
               className="settings-button settings-button--danger settings-button--compact"
@@ -754,7 +777,7 @@ export function ServiceProfiles({
                 >
                   <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} />
                   <span className="service-row__copy">
-                    <strong key={profile.name}>{profileTitle(profile)}</strong>
+                    <strong key={profile.name} title={profile.name}>{profileTitle(profile)}</strong>
                     {profile.languagePreset && <span className="service-row__provider">{SOURCE_LANGUAGE_DISPLAY_NAMES[profile.languagePreset.sourceLanguage]} → {TARGET_LANGUAGE_DISPLAY_NAMES[profile.languagePreset.targetLanguage]}</span>}
                     {profileSecondaryLabel(profile) && <span className="service-row__provider">{profileSecondaryLabel(profile)}</span>}
                     {textTranslationForProfile(profile) !== "followService" && <span className="service-row__translation"><ProviderIcon provider={textTranslationForProfile(profile) as "deepL" | "deepLX" | "openAICompatible" | "chatMock" | "apple"} size={32} /><span>{I18N.settings.textTranslationLabel} · {textTranslationDisplayName(profile)}</span></span>}
@@ -775,7 +798,7 @@ export function ServiceProfiles({
                   aria-label={`${I18N.settings.editProfile}: ${profile.name}`}
                   onClick={() => openEditor(profile.id)}
                 >
-                  <Icon name="chevron-right" />
+                  {I18N.settings.editProfile}<Icon name="chevron-right" />
                 </button>
               </div>
             ))}
@@ -993,7 +1016,7 @@ function CredentialEditor({
                     setChangedFields((current) => ({ ...current, [field]: true }));
                     setDraft((current) => ({ ...current, [field]: value }));
                   }}
-                /> : <ConfigInput expandable
+                /> : <ConfigInput copyable expandable
                   id={fieldId}
                   ref={profile.provider === "deepLX" && field === "endpoint" ? endpointRef : undefined}
                   aria-invalid={field === "endpoint" && endpointInvalid ? true : undefined}

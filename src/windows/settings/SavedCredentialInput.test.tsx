@@ -41,6 +41,15 @@ async function render(props: Props = {}) { await act(() => root.render(<Draft {.
 const input = () => host.querySelector<HTMLInputElement>("input")!;
 const eye = () => host.querySelector<HTMLButtonElement>(".saved-credential-input__toggle")!;
 async function clickEye() { await act(async () => eye().click()); }
+
+it("never offers field copying for revealed credentials, even if a caller opts in", async () => {
+  vi.mocked(profileRevealCredential).mockResolvedValue("synthetic-saved-key");
+  await render({ copyable: true });
+  expect(host.querySelector(".config-input__copy")).toBeNull();
+  await clickEye();
+  expect(input().type).toBe("text");
+  expect(host.querySelector(".config-input__copy")).toBeNull();
+});
 async function type(value: string) {
   await act(() => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input(), value);

@@ -1125,6 +1125,76 @@ impl SettingsStore {
         })
     }
 
+    /// Copy private slots natively; callers receive only the public catalog.
+    /// The original profile, active selection and preferences are never changed.
+    pub fn duplicate_profile(
+        &self,
+        profile_id: &str,
+        name: &str,
+    ) -> Result<ServiceProfile, String> {
+        if self.catalog_write_blocked {
+            return Err(PROFILE_CATALOG_UNAVAILABLE.to_string());
+        }
+        let mut catalog = self.catalog.lock().unwrap();
+        if catalog.profiles.len() >= MAXIMUM_PROFILE_COUNT {
+            return Err("No more service profiles can be added.".to_string());
+        }
+        let source = catalog
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .ok_or_else(|| PROFILE_NOT_FOUND.to_string())?;
+        let mut copy = source.clone();
+        let identity = ServiceProfile::new(
+            format!("profile-{}", uuid::Uuid::new_v4().simple()),
+            name,
+            source.provider,
+        )
+        .map_err(|error| error.to_string())?;
+        copy.id = identity.id;
+        copy.name = identity.name;
+        let copy = copy.validated().map_err(|error| error.to_string())?;
+        let mut next = catalog.clone();
+        next.profiles.push(copy.clone());
+        next.clone()
+            .validated()
+            .map_err(|_| PROFILE_CATALOG_UNAVAILABLE.to_string())?;
+
+        // Read all source slots before creating any destination. Retained text
+        // routes are copied together so changing route in the copy stays useful.
+        self.retry_profile_credential_errors(source, true, true);
+        let speech = self
+            .load_api_key_for_profile(source)
+            .map_err(SecretStoreError::public_error)?;
+        let text = self.destination_value(source)?;
+        let result = (|| {
+            if let Some(value) = &speech {
+                self.save_api_key_for_profile(&copy, value, true)?;
+            }
+            if let Some(value) = &text {
+                self.write_destination_value(&copy, Some(value), true)?;
+            }
+            self.persist_catalog_value(&next)
+        })();
+        if let Err(error) = result {
+            // A failed write/readback may already have created a slot. Delete
+            // only the fresh UUID's slots, never delete or recreate the source.
+            for account in [credential_account(&copy), Self::destination_account(&copy)] {
+                if self
+                    .delete_secret(self.profile_keychain_service, &account)
+                    .is_err()
+                {
+                    tracing::warn!(
+                        "profile duplicate rollback failed label=new_credential_cleanup"
+                    );
+                }
+            }
+            return Err(error);
+        }
+        *catalog = next;
+        Ok(copy)
+    }
+
     #[cfg(test)]
     pub fn update_profile(&self, profile_id: &str, name: &str) -> Result<ServiceProfile, String> {
         self.update_profile_options(profile_id, Some(name), None, None, None, None, None, None)
@@ -3607,6 +3677,131 @@ mod tests {
             PROFILE_KEYCHAIN_SERVICE,
             false,
         )
+    }
+
+    #[test]
+    fn duplicate_profile_copies_private_slots_and_metadata_without_selecting() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = fresh_store(directory.path(), &fake);
+        let source = store
+            .create_profile(ProviderKind::AlibabaCloud, "Original")
+            .unwrap();
+        store
+            .save_api_key(&source.id, "synthetic-original-key")
+            .unwrap();
+        store
+            .write_destination_value(&source, Some("synthetic-retained-destination"), false)
+            .unwrap();
+        let mut preset = source.clone();
+        preset.language_preset = Some(crate::core::provider::ProfileLanguagePreset {
+            source_language: SourceLanguage::Japanese,
+            target_language: TargetLanguage::SimplifiedChinese,
+        });
+        preset.qwen_mt_model = crate::core::protocols::qwen_mt::QwenMTModel::Flash;
+        store
+            .mutate_catalog_with_normalization(None, |catalog| {
+                catalog.profiles[0] = preset.clone();
+                Ok(())
+            })
+            .unwrap();
+        let before = store.preferences();
+        let copy = store
+            .duplicate_profile(&source.id, "Original (copy)")
+            .unwrap();
+        assert_ne!(copy.id, source.id);
+        assert_eq!(copy.language_preset, preset.language_preset);
+        assert_eq!(copy.qwen_mt_model, preset.qwen_mt_model);
+        assert_eq!(store.active_profile().unwrap().id, source.id);
+        assert_eq!(store.preferences(), before);
+        assert_eq!(
+            store.load_api_key_for_profile(&copy).unwrap().as_deref(),
+            Some("synthetic-original-key")
+        );
+        assert_eq!(
+            store.destination_value(&copy).unwrap().as_deref(),
+            Some("synthetic-retained-destination")
+        );
+        store.save_api_key(&copy.id, "synthetic-copy-key").unwrap();
+        assert_eq!(
+            store.load_api_key_for_profile(&source).unwrap().as_deref(),
+            Some("synthetic-original-key")
+        );
+        let public =
+            std::fs::read_to_string(directory.path().join("service-profiles.json")).unwrap();
+        assert!(!public.contains("synthetic-original-key"));
+        assert!(!public.contains("synthetic-retained-destination"));
+        drop(store);
+        let reopened = fresh_store(directory.path(), &fake);
+        assert_eq!(reopened.profile_catalog().unwrap().1.len(), 2);
+        assert_eq!(reopened.active_profile().unwrap().id, source.id);
+    }
+
+    #[test]
+    fn duplicate_profile_failure_keeps_original_and_removes_partial_new_slots() {
+        for catalog_failure in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let fake = FakeSecretStore::default();
+            let store = fresh_store(directory.path(), &fake);
+            let source = store
+                .create_profile(ProviderKind::AlibabaCloud, "Original")
+                .unwrap();
+            store
+                .save_api_key(&source.id, "synthetic-original-key")
+                .unwrap();
+            store
+                .write_destination_value(&source, Some("synthetic-destination"), false)
+                .unwrap();
+            let catalog = store.profile_catalog().unwrap();
+            let values = fake.state.lock().unwrap().values.clone();
+            if catalog_failure {
+                std::fs::remove_file(&store.catalog_path).unwrap();
+                std::fs::create_dir(&store.catalog_path).unwrap();
+            } else {
+                // The first private slot saves; the second one fails.
+                fake.state.lock().unwrap().saves_before_failure = Some(1);
+            }
+            assert!(store.duplicate_profile(&source.id, "Copy").is_err());
+            assert_eq!(store.profile_catalog().unwrap(), catalog);
+            assert_eq!(fake.state.lock().unwrap().values, values);
+        }
+    }
+
+    #[test]
+    fn duplicate_profile_bounds_and_unavailable_source_fail_before_writing() {
+        let fake = FakeSecretStore::default();
+        let store = settings(&fake);
+        let source = store.active_profile().unwrap();
+        let before = store.profile_catalog().unwrap();
+        assert!(store.duplicate_profile("missing", "Copy").is_err());
+        assert!(store.duplicate_profile(&source.id, "").is_err());
+        assert!(store
+            .duplicate_profile(&source.id, &"長".repeat(65))
+            .is_err());
+        assert_eq!(store.profile_catalog().unwrap(), before);
+        let copy = store
+            .duplicate_profile(&source.id, "Incomplete copy")
+            .unwrap();
+        assert!(store.load_api_key_for_profile(&copy).unwrap().is_none());
+        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, &credential_account(&source));
+        store.secret_cache.lock().unwrap().clear();
+        assert!(store
+            .duplicate_profile(&source.id, "Unavailable copy")
+            .is_err());
+        fake.state.lock().unwrap().unavailable.clear();
+        assert!(store
+            .duplicate_profile(&source.id, "Recovered copy")
+            .is_ok());
+        for index in store.profile_catalog().unwrap().1.len()..MAXIMUM_PROFILE_COUNT {
+            store
+                .create_profile(ProviderKind::OpenAIRealtime, &format!("Profile {index}"))
+                .unwrap();
+        }
+        assert!(store.duplicate_profile(&copy.id, "Over limit").is_err());
+        assert_eq!(
+            store.profile_catalog().unwrap().1.len(),
+            MAXIMUM_PROFILE_COUNT
+        );
     }
 
     #[test]
@@ -6792,6 +6987,7 @@ mod tests {
         unavailable: HashSet<SecretCacheKey>,
         unavailable_deletes: HashSet<SecretCacheKey>,
         loads: Vec<SecretCacheKey>,
+        saves_before_failure: Option<usize>,
     }
 
     #[derive(Clone, Default)]
@@ -6873,6 +7069,12 @@ mod tests {
         fn save(&self, service: &str, account: &str, value: &str) -> Result<(), SecretStoreError> {
             let key = cache_key(service, account);
             let mut state = self.state.lock().unwrap();
+            if let Some(remaining) = &mut state.saves_before_failure {
+                if *remaining == 0 {
+                    return Err(SecretStoreError::Unavailable);
+                }
+                *remaining -= 1;
+            }
             if let Some(error) = state.failures.get(&key) {
                 return Err(*error);
             }

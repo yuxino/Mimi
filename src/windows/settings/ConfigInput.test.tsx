@@ -7,6 +7,7 @@ import { ConfigInput, type ConfigInputElement } from "./ConfigInput";
 import { I18N } from "../../lib/i18n";
 let host: HTMLDivElement, root: Root;
 const read = vi.fn<() => Promise<string>>();
+const write = vi.fn<(value: string) => Promise<void>>();
 const changed = vi.fn();
 function Draft({ disabled = false }: { disabled?: boolean }) {
   const [value, setValue] = useState("");
@@ -18,11 +19,44 @@ function ExpandableDraft({ initial = "", ...props }: Omit<ComponentProps<typeof 
 }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: read } });
-  read.mockReset(); changed.mockReset();
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: read, writeText: write } });
+  read.mockReset(); write.mockReset().mockResolvedValue(); changed.mockReset();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); Reflect.deleteProperty(navigator, "clipboard"); vi.unstubAllGlobals(); });
+it("copies the visible draft without saving it and never copies a placeholder", async () => {
+  await act(() => root.render(<><ExpandableDraft copyable initial="visible-draft" /><SettingsToastRegion /></>));
+  await act(async () => host.querySelector<HTMLButtonElement>(".config-input__copy")!.click());
+  expect(write).toHaveBeenCalledExactlyOnceWith("visible-draft");
+  expect(changed).not.toHaveBeenCalled();
+  expect(read).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(I18N.settings.valueCopied);
+  await act(() => root.render(<ExpandableDraft key="empty" copyable placeholder="example" />));
+  expect(host.querySelector<HTMLButtonElement>(".config-input__copy")!.disabled).toBe(true);
+  await act(() => host.querySelector<HTMLButtonElement>(".config-input__copy")!.click());
+  expect(write).toHaveBeenCalledOnce();
+});
+
+it("deduplicates pending copies and sanitizes clipboard failures", async () => {
+  let reject!: (error: Error) => void;
+  write.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  await act(() => root.render(<><ExpandableDraft copyable initial="visible-draft" /><SettingsToastRegion /></>));
+  const button = host.querySelector<HTMLButtonElement>(".config-input__copy")!;
+  await act(() => { button.click(); button.click(); });
+  expect(write).toHaveBeenCalledOnce();
+  await act(async () => reject(new Error("private-clipboard-error")));
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.copyFailed);
+  expect(host.textContent).not.toContain("private-clipboard-error");
+});
+
+it("keeps copy opt-in and excludes password fields", async () => {
+  await act(() => root.render(<ExpandableDraft initial="ordinary" />));
+  expect(host.querySelector(".config-input__copy")).toBeNull();
+  await act(() => root.render(<ExpandableDraft copyable type="password" initial="synthetic-key" />));
+  expect(host.querySelector(".config-input__copy")).toBeNull();
+  expect(write).not.toHaveBeenCalled();
+});
+
 it("reads only on a paste click, updates the draft, and retains normal password input", async () => {
   read.mockResolvedValue("synthetic-pasted-key");
   await act(() => root.render(<><Draft /><SettingsToastRegion /></>));

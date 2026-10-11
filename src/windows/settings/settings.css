@@ -1780,6 +1780,10 @@
   font-size: 14px;
   font-weight: 600;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .service-row__copy .service-row__provider {
   font-size: 13px;
@@ -1797,8 +1801,15 @@
   font-weight: 500;
 }
 .service-row__edit {
-  width: 32px;
-  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 13px;
   align-self: stretch;
   margin: 0;
   border: 0;
@@ -3014,6 +3025,26 @@
 .config-input--expanded > textarea::placeholder { color: var(--settings-text-faint); }
 .config-input--expanded > textarea:focus { border-color: var(--settings-text-muted); }
 .config-input--expanded > textarea:disabled { opacity: .55; }
+
+.config-input__copy {
+  position: absolute; top: 6px; right: 41px; display: flex; padding: 4px;
+  border: 0; border-radius: 4px; background: transparent;
+  color: var(--settings-text-muted); cursor: pointer;
+}
+.config-input__copy:disabled { opacity: .4; cursor: default; }
+.config-input__copy:focus-visible { outline: 2px solid var(--settings-text-muted); outline-offset: 2px; }
+.config-input--copyable > input { padding-right: 74px; }
+.config-input--copyable.config-input--expandable > input { padding-right: 106px; }
+.config-input--copyable.config-input--expandable .config-input__expand { right: 73px; }
+.config-input--copyable.config-input--expanded > textarea { padding-right: 106px; }
+.service-detail__quick-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+.service-detail__quick-actions + .service-detail__configuration { margin-top: 16px; }
+@media (max-width: 700px) {
+  .service-detail__header { flex-wrap: wrap; gap: 12px; }
+  .service-detail__identity { flex-basis: 100%; }
+  .service-row__main { grid-template-columns: 32px minmax(0, 1fr); gap: 8px 10px; }
+  .service-row__state { grid-column: 2; justify-content: flex-start; }
+}
 
 /* User-declared custom ASR languages are expanded only while editing. */
 .custom-speech-languages .settings-row__control { flex-wrap: wrap; gap: 8px; }

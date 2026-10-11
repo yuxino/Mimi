@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FocusEventHandler, type InputHTMLAttributes, type ReactNode, type Ref } from "react";
-import { readClipboardText } from "../../lib/clipboard";
+import { readClipboardText, writeClipboardText } from "../../lib/clipboard";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { useSettingsToast } from "./useSettingsToast";
 
-/** Clipboard access happens only on the user's paste action; the owning field decides when to commit. */
+/** Clipboard access happens only on explicit field actions; the owning field decides when to commit. */
 export type ConfigInputElement = HTMLInputElement | HTMLTextAreaElement;
 
-export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, expandable = false, ref, type, onKeyDown, ...props }: Omit<InputHTMLAttributes<ConfigInputElement>, "onChange"> & {
+export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, expandable = false, copyable = false, ref, type, onKeyDown, ...props }: Omit<InputHTMLAttributes<ConfigInputElement>, "onChange"> & {
   onValueChange: (value: string) => void;
   onPasteValue?: (value: string) => void;
   onGroupBlur?: FocusEventHandler<HTMLSpanElement>;
   action?: ReactNode;
   expandable?: boolean;
+  copyable?: boolean;
   ref?: Ref<ConfigInputElement>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -26,6 +27,7 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
   const selection = useRef<{ start: number; end: number; direction: "forward" | "backward" | "none" } | null>(null);
   const canExpand = expandable && (type === undefined || type === "text" || type === "url" || type === "email" || type === "tel" || type === "search");
   const isExpanded = canExpand && expanded;
+  const canCopy = copyable && type !== "password";
   const assignField = useCallback((element: ConfigInputElement | null) => {
     field.current = element;
     if (typeof ref === "function") return ref(element);
@@ -88,8 +90,24 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
       if (mounted.current) setBusy(false);
     }
   };
+  const copy = async () => {
+    const value = field.current?.value ?? "";
+    if (!canCopy || props.disabled || !value || pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    const notify = beginToast();
+    try {
+      await writeClipboardText(value);
+      notify(I18N.settings.valueCopied);
+    } catch {
+      notify(I18N.settings.copyFailed, true);
+    } finally {
+      pending.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
   return <span className="config-input-group" onBlur={event => { if (!switchingField.current) onGroupBlur?.(event); }}>
-    <span className={`config-input${action ? " config-input--with-action" : ""}${canExpand ? " config-input--expandable" : ""}${isExpanded ? " config-input--expanded" : ""}`}>
+    <span className={`config-input${action ? " config-input--with-action" : ""}${canCopy ? " config-input--copyable" : ""}${canExpand ? " config-input--expandable" : ""}${isExpanded ? " config-input--expanded" : ""}`}>
       {isExpanded ? <textarea {...props} ref={assignField} rows={3} wrap="soft" onChange={event => change(event.target.value)} onKeyDown={event => {
         const composing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
         if (!composing && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); toggle(); }
@@ -97,6 +115,8 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
         onKeyDown?.(event);
       }} /> : <input {...props} type={type} ref={assignField} onKeyDown={onKeyDown} onChange={event => change(event.target.value)} />}
       {action}
+      {canCopy && <button type="button" className="config-input__copy" aria-label={I18N.settings.copyValue} title={I18N.settings.copyValue}
+        disabled={props.disabled || !String(props.value ?? "") || busy} onClick={() => { void copy(); }}><Icon name="copy" /></button>}
       {canExpand && <button type="button" className="config-input__expand" aria-label={isExpanded ? I18N.settings.collapseField : I18N.settings.expandField} title={isExpanded ? I18N.settings.collapseField : I18N.settings.expandField}
         aria-expanded={isExpanded} aria-controls={props.id} disabled={props.disabled} onMouseDown={event => event.preventDefault()} onClick={toggle}><Icon name={isExpanded ? "chevron-up" : "chevron-down"} /></button>}
       <button type="button" className="config-input__paste" aria-label={I18N.settings.pasteFromClipboard} title={I18N.settings.pasteFromClipboard}

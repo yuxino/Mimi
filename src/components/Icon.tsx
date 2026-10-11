@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   ClipboardPaste,
+  Copy,
   Eraser,
   Download,
   Key,
@@ -80,6 +81,7 @@ export type IconName =
   | "eye"
   | "eye-off"
   | "clipboard"
+  | "copy"
   | "download";
 
 const ICONS: Record<IconName, LucideIcon> = {
@@ -118,6 +120,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   eye: Eye,
   "eye-off": EyeOff,
   clipboard: ClipboardPaste,
+  copy: Copy,
   download: Download,
 };
 

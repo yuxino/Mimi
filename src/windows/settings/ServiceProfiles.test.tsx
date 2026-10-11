@@ -13,7 +13,7 @@ import type { AppleSpeechSupport, ServiceProfile, SettingsSnapshot } from "../..
 import { ServiceProfiles } from "./ServiceProfiles";
 
 const actions = vi.hoisted(() => ({
-  createProfile: vi.fn(), updateProfile: vi.fn(), selectProfile: vi.fn(),
+  createProfile: vi.fn(), duplicateProfile: vi.fn(), updateProfile: vi.fn(), selectProfile: vi.fn(),
   saveSettings: vi.fn(), deleteProfile: vi.fn(), saveProfileCredentials: vi.fn(), deleteProfileAPIKey: vi.fn(),
 }));
 const boot = vi.hoisted(() => ({ initializationStatus: "ready" as "ready" | "loading" | "error", initializationError: null as "timeout" | "unavailable" | null, init: vi.fn(), nativeSettings: null as SettingsSnapshot | null }));
@@ -53,6 +53,53 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 async function render(snapshot = settings, sessionStatusKind: "idle" | "error" = "idle") { await act(async () => root.render(<><ServiceProfiles settings={snapshot} sessionIsActive={false} sessionStatusKind={sessionStatusKind} /><SettingsToastRegion /></>)); }
+
+it("opens a distinct configuration copy without selecting or revealing credentials", async () => {
+  const copy = { ...profile, id: "synthetic-copy", name: "Alibaba (copy)" };
+  const snapshot = { ...settings, profiles: [profile, copy] };
+  actions.duplicateProfile.mockResolvedValue(snapshot);
+  await render();
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  await click(I18N.settings.duplicateProfile);
+  expect(actions.duplicateProfile).toHaveBeenCalledExactlyOnceWith(profile.id, copy.name);
+  expect(actions.selectProfile).not.toHaveBeenCalled();
+  expect(actions.saveProfileCredentials).not.toHaveBeenCalled();
+  expect(profileRevealCredential).not.toHaveBeenCalled();
+  await render(snapshot);
+  expect(host.querySelector<HTMLInputElement>(`#profile-name-${copy.id}`)!.value).toBe(copy.name);
+  expect(document.body.textContent).toContain(I18N.settings.profileDuplicated);
+});
+
+it("deduplicates a pending configuration copy and keeps the editor on failure", async () => {
+  let reject!: (error: Error) => void;
+  actions.duplicateProfile.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  await render();
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.duplicateProfile)!;
+  await act(() => { button.click(); button.click(); });
+  expect(actions.duplicateProfile).toHaveBeenCalledOnce();
+  await act(async () => reject(new Error("private-copy-error")));
+  expect(host.querySelector<HTMLInputElement>(`#profile-name-${profile.id}`)!.value).toBe(profile.name);
+  expect(document.querySelector('[role="alert"]')).not.toBeNull();
+  expect(document.body.textContent).toContain(I18N.settings.profileDuplicateFailed);
+  expect(document.body.textContent).not.toContain("private-copy-error");
+});
+
+it.each([false, true])("blocks configuration copies during active or paused sessions (paused=%s)", async paused => {
+  await act(async () => root.render(<ServiceProfiles settings={settings} sessionIsActive={!paused} sessionIsPaused={paused} profileEditorRequest={1} />));
+  const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.duplicateProfile)!;
+  expect(button.disabled).toBe(true);
+  await act(() => button.click());
+  expect(actions.duplicateProfile).not.toHaveBeenCalled();
+});
+
+it("keeps copying disabled at the profile limit", async () => {
+  await render({ ...settings, profiles: Array.from({ length: 20 }, (_, index) => ({ ...profile, id: index === 0 ? profile.id : `p-${index}` })) });
+  await act(async () => host.querySelector<HTMLButtonElement>(".service-row__edit")!.click());
+  const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.duplicateProfile)!;
+  expect(button.disabled).toBe(true);
+  expect(host.textContent).toContain(I18N.settings.profileLimitReached);
+});
 
 it.each([undefined, "localFile"] as const)("saves the Alibaba text model for %s profiles without changing credentials", async credentialStorage => {
   const ready = { ...profile, credentialState: "present" as const, credentialStorage };
@@ -835,8 +882,8 @@ it("does not edit the active service's global languages from another profile's d
   await act(async () => host.querySelectorAll<HTMLButtonElement>(".service-row__edit")[1].click());
   expect(host.querySelector("#translation-languages")).toBeNull();
   expect(host.querySelector(".service-detail__language-note")).toBeNull();
-  expect(host.querySelector(".service-detail__actions .settings-help-control__description")?.textContent).toBe(I18N.settings.profileSwitchHelp);
-  expect(host.querySelector(".service-detail__actions")?.textContent).toContain(I18N.settings.useProfile);
+  expect(host.querySelectorAll(".service-detail__quick-actions .settings-help-control__description")[1]?.textContent).toBe(I18N.settings.profileSwitchHelp);
+  expect(host.querySelector(".service-detail__quick-actions")?.textContent).toContain(I18N.settings.useProfile);
   expect(actions.saveSettings).not.toHaveBeenCalled();
 });
 
@@ -850,7 +897,7 @@ it("keeps profile rename and delete actions reachable without opening another pa
   await act(async () => { host.querySelector<HTMLInputElement>(".service-detail__name input")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
   expect(actions.updateProfile).toHaveBeenCalledExactlyOnceWith("other", "Renamed");
   const management = host.querySelector(".service-detail__actions")!;
-  expect(management.textContent).toContain(I18N.settings.useProfile);
+  expect(host.querySelector(".service-detail__quick-actions")!.textContent).toContain(I18N.settings.useProfile);
   expect(management.textContent).toContain(I18N.settings.deleteProfile);
   const deleteButton = [...management.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.deleteProfile)!;
   expect(deleteButton.classList.contains("settings-button--danger")).toBe(true);

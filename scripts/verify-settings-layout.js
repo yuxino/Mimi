@@ -79,6 +79,8 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
           }
         }
         if (platform === "windows") {
+          cases.push({ width, language, theme, platform, state: "idle", listProfiles: true,
+            profileName: "Long configuration 名称 音声設定 ".repeat(6), deviceName: "Fixture headphones" });
           for (const provider of ["alibabaCloud", "customDashScopeASR", "openAIRealtime"]) {
             cases.push({ width, language, theme, platform, state: "idle", editor: true, provider, deviceName: "Fixture headphones" });
             cases.push({ width, language, theme, platform, state: "idle", editor: true, provider, reveal: true, deviceName: "Fixture headphones" });
@@ -124,6 +126,16 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
             for (const group of document.querySelectorAll(".config-input")) {
               const input = group.querySelector("input");
               if (!input || input.disabled || rect(group).width === 0) continue;
+              const actions = [...group.querySelectorAll("button")];
+              for (let index = 0; index < actions.length; index++) {
+                const bounds = rect(actions[index]);
+                if (bounds.left < rect(group).left || bounds.right > rect(group).right + 1) issues.push("field action outside input");
+                for (const other of actions.slice(index + 1)) {
+                  const next = rect(other);
+                  if (bounds.left < next.right && next.left < bounds.right) issues.push("field actions overlap");
+                }
+              }
+              if (group.querySelector(".saved-credential-input__toggle") && group.querySelector(".config-input__copy")) issues.push("secret has copy action");
               input.focus({ preventScroll: true });
               if (!hasOutline(group)) issues.push("compound field missing focus outline");
               if (hasOutline(input)) issues.push("compound field inner focus outline");

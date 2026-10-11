@@ -102,7 +102,7 @@ function CredentialInput({ profileId, field, textTranslation, label, hasSavedVal
     : value ? shown ? I18N.settings.hideCredential : I18N.settings.showCredential
     : shown ? I18N.settings.hideSavedCredential : I18N.settings.revealSavedCredential;
 
-  return <ConfigInput {...inputProps} expandable={false} disabled={disabled || !active}
+  return <ConfigInput {...inputProps} expandable={false} copyable={false} disabled={disabled || !active}
     value={value || (shown && hasSavedValue ? preview.saved ?? "" : "")} type={shown ? "text" : "password"}
     placeholder={hasSavedValue && !value ? "••••••••" : inputProps.placeholder}
     aria-description={inputProps["aria-description"] ?? (hasSavedValue && !value ? I18N.settings.savedCredential : undefined)}

@@ -158,6 +158,10 @@ export function profileCreate(
   return invoke<SettingsSnapshot>("profile_create", { provider, name });
 }
 
+export function profileDuplicate(profileId: string, name: string): Promise<SettingsSnapshot> {
+  return invoke<SettingsSnapshot>("profile_duplicate", { profileId, name });
+}
+
 export function profileUpdate(
   profileId: string,
   name: string | undefined,

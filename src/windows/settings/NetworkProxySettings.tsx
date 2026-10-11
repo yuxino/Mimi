@@ -102,7 +102,7 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
       </SettingsRow>
       {mode === "custom" && <div className="settings-field network-proxy-address">
         <label htmlFor={addressId}>{I18N.settings.networkProxyAddress}</label>
-        <ConfigInput expandable id={addressId} value={address} type="text" inputMode="url" maxLength={2_048} autoComplete="off" spellCheck={false}
+        <ConfigInput copyable expandable id={addressId} value={address} type="text" inputMode="url" maxLength={2_048} autoComplete="off" spellCheck={false}
           disabled={locked} aria-invalid={!!error && "error" in validated || undefined}
           aria-describedby={`${addressId}-help${error ? ` ${addressId}-error` : ""}`} placeholder={I18N.settings.proxyAddressPlaceholder}
           onValueChange={(value) => { setAddress(value); setError(null); }}

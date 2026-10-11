@@ -25,6 +25,7 @@ import {
   overlaySetLocked,
   overlayShow,
   profileCreate,
+  profileDuplicate,
   profileDelete,
   profileDeleteAPIKey,
   profileSaveCredentials,
@@ -165,6 +166,7 @@ interface StoreState {
     provider: ServiceProvider,
     name: string,
   ) => Promise<SettingsSnapshot>;
+  duplicateProfile: (profileId: string, name: string) => Promise<SettingsSnapshot>;
   updateProfile: (
     profileId: string,
     name: string | undefined,
@@ -521,6 +523,29 @@ export const useStore = create<StoreState>()((set, get) => ({
         { id, name, provider, credentialState: "missing", ...(isCustomSpeechProvider(provider) ? { speechCredentialState: "missing" as const, textCredentialState: "missing" as const } : {}) },
       ],
     };
+    set({ settings: snapshot });
+    return snapshot;
+  },
+
+  duplicateProfile: async (profileId, name) => {
+    ensureProfileMutationsAllowed(get().session);
+    if (isTauri) {
+      const revision = settingsResponseGate.capture();
+      const snapshot = await profileDuplicate(profileId, name);
+      if (settingsResponseGate.applyIfCurrent(revision)) {
+        settingsSaveCoordinator.invalidate();
+        set({ settings: snapshot });
+      }
+      return snapshot;
+    }
+    const current = get().settings;
+    if (current.profiles.length >= 20) throw new Error("profile-limit");
+    const source = current.profiles.find(profile => profile.id === profileId);
+    if (!source) throw new Error("profile-not-found");
+    const copy = structuredClone(source);
+    copy.id = `mock-copy-${crypto.randomUUID()}`;
+    copy.name = name;
+    const snapshot = { ...current, profiles: [...current.profiles, copy] };
     set({ settings: snapshot });
     return snapshot;
   },

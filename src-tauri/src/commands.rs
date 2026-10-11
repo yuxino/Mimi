@@ -588,6 +588,7 @@ mod tests {
             "app_open_support_issue",
             "profile_reveal_credential",
             "profile_credential_editor_state",
+            "profile_duplicate",
             "open_tencent_setup_page",
         ] {
             assert!(include_str!("lib.rs").contains(&format!("commands::{command},")));
@@ -2080,6 +2081,19 @@ pub async fn profile_create(
             let _ = emit_settings_snapshot(&app, &state.settings);
         })?;
     state.settings.create_profile(provider, &name)?;
+    emit_settings_snapshot(&app, &state.settings)
+}
+
+#[tauri::command]
+pub async fn profile_duplicate(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    name: String,
+) -> Result<SettingsSnapshotPayload, String> {
+    let _lifecycle = state.session.settings_mutation_guard(true).await?;
+    ensure_profile_mutation_allowed(state.session.has_active_session())?;
+    state.settings.duplicate_profile(&profile_id, &name)?;
     emit_settings_snapshot(&app, &state.settings)
 }
 
