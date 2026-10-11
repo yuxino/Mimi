@@ -56,6 +56,45 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
         is CompactCaptionView -> listOf(view.status, view.source, view.translation)
         else -> error("Unexpected frame type")
     }
+    private fun quickEditor(actual: CaptionPanelView, name: String, screenshot: Boolean) {
+        location = "$name-quick-editor"
+        val ordinaryWidth = actual.width; val ordinaryHeight = actual.height
+        val scrollbar = actual.transcriptScroll.isVerticalScrollBarEnabled
+        ui { actual.transcriptScroll.isVerticalScrollBarEnabled = false }
+        val before = bitmap(actual)
+        try {
+            ui { actual.findViewWithTag<View>("overlay-font").performClick() }
+            fun editor() = WindowInspector.getGlobalWindowViews().firstOrNull {
+                it.findViewWithTag<View>("overlay-font-slider") != null
+            }
+            await { editor() != null && !actual.findViewWithTag<View>("overlay-font").isClickable && actual.scaleX == actual.scaleY }
+            ui {
+                check(actual.width == ordinaryWidth && actual.height == ordinaryHeight) { "Quick editor rewrapped the native frame" }
+                check(actual.scaleX > 0f && actual.scaleX <= 1f && actual.height * actual.scaleY <= root()!!.height + 1)
+                for (tag in listOf("overlay-toolbar", "overlay-drag-mark", "overlay-route", "overlay-actions", "overlay-model")) {
+                    check(actual.findViewWithTag<View>(tag).isShown) { "Quick editor hides $tag" }
+                }
+                val after = bitmap(actual)
+                try {
+                    check(before.sameAs(after)) { "Opening quick editor changed native frame pixels at $name" }
+                } finally { after.recycle() }
+            }
+            if (screenshot) {
+                SystemClock.sleep(350)
+                val image = checkNotNull(test.uiAutomation.takeScreenshot())
+                File(context.getExternalFilesDir("ui-preview"), "parity-$name-quick-screen.png").outputStream().use {
+                    check(image.compress(Bitmap.CompressFormat.PNG, 100, it))
+                }
+                image.recycle()
+            }
+            ui { editor()!!.findViewById<View>(android.R.id.button1).performClick() }
+            await { editor() == null && actual.findViewWithTag<View>("overlay-font").isClickable && actual.scaleX == 1f && actual.scaleY == 1f }
+            cases++
+        } finally {
+            before.recycle()
+            ui { actual.transcriptScroll.isVerticalScrollBarEnabled = scrollbar }
+        }
+    }
     private fun compare(home: MainActivity, name: String, screenshot: Boolean = false) {
         location = name
         context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
@@ -116,6 +155,7 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             File(context.getExternalFilesDir("ui-preview"), "parity-$name-screen.png").outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }; bitmap.recycle()
         }
         cases++
+        (actual() as? CaptionPanelView)?.let { quickEditor(it, name, screenshot) }
     }
     fun run(arguments: Bundle?) {
         if (arguments?.getString("apply_desktop_surface") == "true") {

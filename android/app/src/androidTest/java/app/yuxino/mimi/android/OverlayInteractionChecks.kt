@@ -459,8 +459,11 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             waitFor { root().width > beforeWidth && root().height > beforeHeight }
             check(SettingsStore.overlayWidthPercent(context) > 55 && SettingsStore.overlayHeightPercent(context) > 30)
             val beforeY = SettingsStore.expandedYOffset(context)
-            move(root().findViewWithTag("overlay-drag"), 0, -32)
-            waitFor { SettingsStore.expandedYOffset(context) > beforeY }
+            // Large-font landscape frames can already be at the top clamp.
+            // Drag toward the available space, then verify the actual saved move.
+            val direction = if (beforeY > 0) 32 else -32
+            move(root().findViewWithTag("overlay-drag"), 0, direction)
+            waitFor { SettingsStore.expandedYOffset(context) != beforeY }
             onUi { checkOverlayChromeAlignment(root()) }
             capture("panel-direct-resize-and-drag")
             val captionPair = SubtitleBus.displaySource to SubtitleBus.displayTranslation

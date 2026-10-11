@@ -191,6 +191,7 @@ internal class CaptionPanelView(
         interactive = !preview && actions.home != null
         listOf("overlay-drag", "overlay-font", "enter-immersive", "overlay-providers", "overlay-resize").forEach { tag ->
             findViewWithTag<View>(tag).apply {
+                if (actions.home == null) setOnClickListener(null)
                 isClickable = interactive; isFocusable = interactive
                 tooltipText = if (interactive) contentDescription else null
                 importantForAccessibility = if (interactive) View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
