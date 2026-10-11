@@ -444,7 +444,7 @@ export const SETTINGS = {
   alignCenter: "Centrer",
   alignRight: "Aligner à droite",
   blendBackground: "Mode immersif",
-  blendBackgroundHelp: "Masquer l’arrière-plan des sous-titres et les mesures de temps. Quittez ce mode ici ou depuis la zone de notification.",
+  blendBackgroundHelp: "Masquer l’arrière-plan des sous-titres et les commandes. Désactivez ce mode ici pour retrouver la fenêtre flottante.",
   immersiveStartFirst: "Activez d’abord les sous-titres en direct.",
   lockPosition: "Verrouiller la position des sous-titres",
   lockHelp: "Lorsque la position est déverrouillée, faites glisser le haut des sous-titres pour les déplacer, ou redimensionnez-les depuis un bord ou un coin.",

@@ -444,7 +444,7 @@ export const SETTINGS = {
   alignCenter: "Zentriert",
   alignRight: "Rechtsbündig",
   blendBackground: "Immersiver Modus",
-  blendBackgroundHelp: "Blendet Untertitelhintergrund und Zeitmessungen aus. Hier oder über das Menüleistenfenster beenden.",
+  blendBackgroundHelp: "Blendet Untertitelhintergrund und Bedienelemente aus. Hier ausschalten, um das schwebende Fenster wiederherzustellen.",
   immersiveStartFirst: "Aktiviere zuerst Live-Untertitel.",
   lockPosition: "Untertitelposition sperren",
   lockHelp: "Ziehe im entsperrten Zustand den oberen Untertitelbereich zum Verschieben oder einen Rand bzw. eine Ecke zum Ändern der Größe.",

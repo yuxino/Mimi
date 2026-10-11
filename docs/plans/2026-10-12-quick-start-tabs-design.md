@@ -29,6 +29,12 @@ plugin and unused UI copy. Retain the overlay's own controls and all detailed
 configuration in Settings. Update the guide to name the native menu and direct
 locking/immersive-mode changes to Subtitles.
 
+Remove dedicated tray tests and the obsolete film-recorder harness that depended
+on the retired window. Preserve published-video attribution and response
+provenance, and historical design/release records. Keep tests that reject the
+retired window label at the IPC boundary. Remove its unused debugger window
+variant and non-macOS Space-following wrappers after their caller is removed.
+
 Verify both guide panels across languages, themes, minimum/default widths and
 platform layout fixtures, including confirmed and unavailable Apple support.
 Review and embed screenshots in the PR. Run the canonical automated checks.

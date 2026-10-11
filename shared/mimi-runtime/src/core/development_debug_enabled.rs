@@ -254,7 +254,6 @@ pub enum FrontendStage {
 pub enum DebugWindow {
     Settings,
     Overlay,
-    TrayPanel,
     OverlayControl,
 }
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]

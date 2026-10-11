@@ -444,7 +444,7 @@ export const SETTINGS = {
   alignCenter: "가운데 정렬",
   alignRight: "오른쪽 정렬",
   blendBackground: "몰입 모드",
-  blendBackgroundHelp: "자막 배경과 지연 시간을 숨깁니다. 여기 또는 트레이에서 해제할 수 있습니다.",
+  blendBackgroundHelp: "자막 배경과 컨트롤을 숨깁니다. 여기서 끄면 자막 창이 복원됩니다.",
   immersiveStartFirst: "먼저 실시간 자막을 켜세요.",
   lockPosition: "자막 위치 고정",
   lockHelp: "고정을 해제하면 자막 상단을 드래그하여 이동하거나 가장자리와 모서리에서 크기를 조정할 수 있습니다.",

@@ -856,6 +856,7 @@ impl OverlayWindowManager {
     /// explicit show request. This is deliberately separate from ordinary
     /// streaming state broadcasts so subtitle updates never reorder windows or
     /// disturb focus.
+    #[cfg(target_os = "macos")]
     pub fn reassert_on_active_space(app: &AppHandle) {
         let Some(overlay) = app.get_webview_window("overlay") else {
             return;
@@ -939,15 +940,6 @@ impl OverlayWindowManager {
         if should_apply {
             Self::apply_if_geometry_current(app, overlay_state, expected_state, false);
         }
-        Self::reassert_on_active_space(app);
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    pub fn follow_active_space(
-        app: &AppHandle,
-        _overlay_state: &Arc<std::sync::Mutex<OverlayState>>,
-        _settings: &Arc<SettingsStore>,
-    ) {
         Self::reassert_on_active_space(app);
     }
 
@@ -1530,6 +1522,7 @@ fn show_overlay_control_window(app: &AppHandle, window: &tauri::WebviewWindow) {
 /// `isVisible` remains true for an ordered-in window on another Space, so a
 /// plain Tauri `show()` would otherwise be skipped without restoring it to the
 /// active full-screen Space.
+#[cfg(target_os = "macos")]
 fn reassert_overlay_window_on_active_space(window: &tauri::WebviewWindow) {
     configure_overlay_window_impl(window, true);
 }

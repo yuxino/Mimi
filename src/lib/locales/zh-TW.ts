@@ -447,7 +447,7 @@ export const SETTINGS = {
   alignCenter: "置中對齊",
   alignRight: "右對齊",
   blendBackground: "沉浸模式",
-  blendBackgroundHelp: "隱藏字幕背景與時間資訊。可從這裡或系統匣關閉此模式。",
+  blendBackgroundHelp: "隱藏字幕背景與控制項。在此關閉可恢復浮窗。",
   immersiveStartFirst: "先開啟即時字幕。",
   lockPosition: "鎖定字幕位置",
   lockHelp: "關閉鎖定後，可拖曳字幕頂部來移動位置，也可從邊緣或四角調整大小。",

@@ -1,14 +1,7 @@
-# English film documentation capture
+# Historical English film demonstration
 
-These files are an isolated documentation harness, not application code or a supported native test mode. They load the unchanged production frontend and the attributed film response fixture; they never call a provider or accept credentials.
+`response.json` preserves the attributed public film response used by the September 6, 2026 demonstration. Mimi never loads this fixture. The published video, source hashes and recording boundaries remain documented in the [parent README](../README.md).
 
-Use the frontend and 31-second Sintel excerpt from preparation run 34038261225, artifact 9990866707. The preparation source is recorded in Git history at b048092cbe76d5d4fb5836400c7e377a1e3e273e. The exact movie hash is retained in response.json. If rebuilding the film excerpt produces different bytes, review that source and its timing before changing any hash guard.
+The obsolete recorder, browser IPC bridge, stage and presentation tests were removed with the custom tray panel. They depended on that retired window and are not current application acceptance tests. Their historical source remains in Git history; the preparation source is recorded at `b048092cbe76d5d4fb5836400c7e377a1e3e273e` (run 34038261225, artifact 9990866707).
 
-Install Python 3.12, Playwright 1.55.0, Chrome, ffmpeg and Noto Sans CJK. From the repository root, set MIMI_PREPARED to the prepared directory containing dist/, sintel-excerpt.mp4 and source-commit.txt. Set MIMI_RESPONSE to the absolute path of docs/demos/english-film/response.json, then run python -I docs/demos/english-film/record.py. Outputs are written to english-film-review/ and english-film-delivery/.
-
-The recorder verifies the sample hashes, normal and transparent overlay states, pause/resume, full film playback, final immersive mode, media decoding and output dimensions. Only local fixture URLs are allowed in the browser. Captured compositor frames are ordered by timestamp; the source video is not replaced or edited into the UI afterward. The original film audio is aligned to measured playback start.
-
-See the parent README for film credit, licensing and recording boundaries.
-
-
-The corrected recorder hides the entire native-control surrogate in Immersive Mode, not only the subtitle-panel background. It exercises the keyboard toggle and verifies that late control events cannot restore hidden controls. Run `node --test docs/demos/english-film/presentation-check.cjs` for isolated presentation regression checks. No production code, application defaults, credential path or provider fixture is changed.
+The exact movie hash remains in `response.json`. Preserve the original response and timing as provenance for the published video. See the parent README for film credit and licensing.
