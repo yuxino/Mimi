@@ -50,7 +50,7 @@ internal class AppearanceControls(
         picker(R.id.caption_alignment, R.string.settings_alignment, CaptionAlignment.entries.map { context.getString(it.label) },
             { SettingsStore.captionAlignment(context).ordinal }, { SettingsStore.setCaptionAlignment(context, CaptionAlignment.entries[it]) }, styles)
         colorPalette(styles)
-        val background = slider(R.id.overlay_bg_alpha, R.id.overlay_bg_alpha_value, R.string.settings_background, 0, 90,
+        val background = slider(R.id.overlay_bg_alpha, R.id.overlay_bg_alpha_value, R.string.settings_background, 0, 100,
             { SettingsStore.overlayBgAlpha(context) }, { SettingsStore.setOverlayBgAlpha(context, it) }, parent = styles)
         val opacity = slider(R.id.overlay_opacity, R.id.overlay_opacity_value, R.string.settings_opacity, 20, 100,
             { SettingsStore.overlayOpacity(context) }, { SettingsStore.setOverlayOpacity(context, it) }, parent = styles)

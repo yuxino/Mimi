@@ -254,12 +254,18 @@ calling a run landscape acceptance; rotation settings alone are
 insufficient when the launcher requests a fixed orientation. Check the caption
 reading viewport as well as the panel's outer bounds at large fonts.
 
-Android appearance previews reserve a stable viewport at the supported maximum
-font metrics, including script fallback. Width, font and streaming text changes
-must not move the sliders during a drag. Preview one latest line per language;
-keep full captions in the reading panel. Native acceptance must reach both
-slider endpoints and compare the control's screen position before and after,
-then restore width and display mode as well as the older appearance preferences.
+Android appearance previews reuse the actual normal/immersive caption Views.
+Measure at the real safe window width and height, then scale the complete frame
+uniformly into a stable pinned stage; never independently restyle or rewrap a
+sample card. Include the actual toolbar, provider row, typography, alignment,
+waiting/error feedback and opted-in bounded history. Decorative preview actions
+must not navigate or start capture. Width, height, font and streaming changes
+must not move the sliders under the user's finger. Verify native frame geometry
+and normalized pixels, both slider endpoints and the control's screen position.
+The desktop/Android subtitle background is pure black, with default background
+opacity 80% and Android whole-window opacity 100%. Preserve explicitly saved
+values; background opacity must reach solid black at 100%. Font-only changes
+must not alter either alpha. Restore all fixture preferences after acceptance.
 
 Live native checks inspect external overlay labels only after their window is
 visible. Mimi intentionally hides the overlay over its own activities; checking

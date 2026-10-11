@@ -86,7 +86,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                 instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
                 onUi { openCaptionStyles(settings!!) }
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW))
-                await { WindowInspector.getGlobalWindowViews().any { it.findViewWithTag<View>("compact-subtitle") != null } }
+                await { WindowInspector.getGlobalWindowViews().any { it.tag == "mimi-overlay" && it.findViewWithTag<View>("compact-subtitle") != null } }
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW_HISTORY))
                 await { SubtitleBus.historySnapshot().isNotEmpty() }
                 val history = SubtitleBus.historySnapshot()
@@ -97,9 +97,8 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                         openCaptionStyles(settings!!)
                         check(settings!!.findViewById<RadioGroup>(R.id.settings_tabs).checkedRadioButtonId == R.id.tab_caption)
                         check(WindowInspector.getGlobalWindowViews().none { it.findViewWithTag<View>("collapse-overlay") != null })
-                        val immersion = WindowInspector.getGlobalWindowViews().firstNotNullOf {
-                            it.findViewWithTag<TextView>("enter-immersive")
-                        }
+                        val immersion = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                            .findViewWithTag<TextView>("enter-immersive")
                         check(immersion.text.toString() == settings!!.getString(R.string.overlay_enter_immersive)) {
                             "Immersion needs a visible localized label"
                         }
@@ -143,9 +142,8 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
             val tab = settings!!.findViewById<TextView>(id)
             check(tab.layout.height <= tab.height - tab.paddingTop - tab.paddingBottom) { "Settings tab clips vertically" }
         }
-        val panel = WindowInspector.getGlobalWindowViews().firstNotNullOf {
-            it.findViewWithTag<View>("expanded-subtitles")
-        }
+        val panel = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+            .findViewWithTag<View>("expanded-subtitles")
         check(panel.isShown && panel.width > 0 && panel.height > 0) { "Overlay must be laid out before checking controls" }
         checkOverlayChromeAlignment(panel)
         val origin = IntArray(2)

@@ -228,6 +228,10 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 onUi {
                     val marks = root().findViewWithTag<android.widget.LinearLayout>("overlay-providers")
                     check(marks.childCount == if (independent) 3 else 2)
+                    val preview = home.findViewById<SubtitlePreviewView>(R.id.subtitle_preview).frame as CaptionPanelView
+                    val previewMarks = preview.findViewWithTag<android.widget.LinearLayout>("overlay-providers")
+                    check(previewMarks.childCount == marks.childCount && previewMarks.contentDescription == marks.contentDescription)
+                    check(previewMarks.width == marks.width) { "Preview provider group differs from the floating frame" }
                     checkOverlayChromeAlignment(root())
                 }
                 capture(if (independent) "two-provider-marks" else "one-provider-mark")
@@ -290,7 +294,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             check(root().findViewWithTag<View>("collapse-overlay") == null)
             onUi { checkOverlayChromeAlignment(root()) }
             val initialSurface = surface()
-            check(initialSurface == (android.graphics.Color.argb(37 * 255 / 100, 16, 16, 16) to .6f)) {
+            check(initialSurface == (android.graphics.Color.argb(37 * 255 / 100, 0, 0, 0) to .6f)) {
                 "First caption frame ignored saved background/opacity"
             }
             val initialPixel = backgroundPixel()

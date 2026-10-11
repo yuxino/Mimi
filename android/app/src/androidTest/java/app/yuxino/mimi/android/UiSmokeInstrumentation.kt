@@ -66,12 +66,16 @@ class UiSmokeInstrumentation : Instrumentation() {
         restoreFont = arguments?.getString("restore_font")?.toIntOrNull()?.takeIf { it in 12..24 }
         restoreColor = arguments?.getString("restore_color")?.toIntOrNull()?.takeIf { it in 0..4 }
         restoreSource = arguments?.getString("restore_source")?.takeIf { it in listOf("auto", "zh", "en", "ja", "ko") }
-        restoreBackground = arguments?.getString("restore_background")?.toIntOrNull()?.takeIf { it in 0..90 }
+        restoreBackground = arguments?.getString("restore_background")?.toIntOrNull()?.takeIf { it in 0..100 }
         start()
     }
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("preview_parity") == "true") {
+            CaptionPreviewParityChecks(this).run(captureArguments)
+            return
+        }
         if (captureArguments?.getString("overlay_listening") == "true") {
             OverlayListeningChecks(this).run(captureArguments)
             return
