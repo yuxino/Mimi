@@ -238,10 +238,6 @@ export function overlaySetLocked(locked: boolean): Promise<void> {
   return invoke("overlay_set_locked", { locked });
 }
 
-export function overlayShow(): Promise<void> {
-  return invoke("overlay_show");
-}
-
 export function overlayMoveStart(): Promise<void> {
   return invoke("overlay_move_start");
 }

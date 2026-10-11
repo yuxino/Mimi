@@ -23,7 +23,6 @@ import {
   listenSettingsChanged,
   overlaySetCollapsed,
   overlaySetLocked,
-  overlayShow,
   profileCreate,
   profileDuplicate,
   profileDelete,
@@ -180,7 +179,6 @@ interface StoreState {
   deleteProfileAPIKey: (profileId: string) => Promise<SettingsSnapshot>;
   setOverlayCollapsed: (collapsed: boolean) => Promise<void>;
   setOverlayLocked: (locked: boolean) => Promise<void>;
-  showOverlay: () => Promise<void>;
   showSettings: (target?: SettingsNavigationTarget) => Promise<void>;
   quit: () => Promise<void>;
 }
@@ -770,10 +768,6 @@ export const useStore = create<StoreState>()((set, get) => ({
     set((state) => ({
       settings: { ...state.settings, isOverlayLocked: locked },
     }));
-  },
-
-  showOverlay: async () => {
-    if (isTauri) await overlayShow();
   },
 
   showSettings: async (target) => {

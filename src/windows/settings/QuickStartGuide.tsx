@@ -118,8 +118,6 @@ export function QuickStartGuide({
             <dt>{I18N.settings.quickStartCollapseTitle}</dt>
             <dd>{I18N.settings.quickStartCollapseBody}</dd>
           </div>
-        </dl>
-        <dl className="quick-start-mode-help">
           <div>
             <dt>{I18N.settings.lockPosition}</dt>
             <dd>{I18N.settings.quickStartLockBody}</dd>

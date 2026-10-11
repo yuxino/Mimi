@@ -10,9 +10,10 @@ and the obvious pause/resume instruction. A neutral diagram identifies the top
 drag bar. Explain unlocking and leaving immersive mode beside those modes.
 
 Follow the existing settings font and neutral theme tokens. Use text tabs with a
-thin selected underline and separated instruction rows. On wider windows, place
-the two mode explanations side by side; stack them and the drag diagram at
-narrow widths. Use tab/tabpanel semantics, one tab stop, wrapping arrow keys and
+thin selected underline and separated instruction rows. All five instructions
+use one column with the same spacing and separators at every width. Stack the
+drag diagram below its instruction at narrow widths. Use tab/tabpanel semantics,
+one tab stop, wrapping arrow keys and
 Home/End. Localize all eight desktop languages.
 
 Only offer free local Apple speech recognition on macOS when the existing native

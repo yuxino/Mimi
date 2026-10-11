@@ -439,7 +439,6 @@ pub fn run() {
             commands::overlay_set_collapsed,
             commands::overlay_set_locked,
             commands::overlay_set_pointer_cursor,
-            commands::overlay_show,
             commands::overlay_move_start,
             commands::overlay_popover_toggle,
             commands::overlay_popover_hide,

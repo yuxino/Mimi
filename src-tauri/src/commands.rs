@@ -2445,22 +2445,6 @@ pub async fn overlay_set_pointer_cursor(
     }
 }
 
-#[tauri::command]
-pub fn overlay_show(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    if state.session.should_show_overlay() {
-        let preferences = state.settings.preferences();
-        OverlayWindowManager::sync_presentation(
-            &app,
-            true,
-            state.session.is_overlay_collapsed(),
-            preferences.overlay_locked || preferences.subtitle_blends_with_background,
-            preferences.subtitle_blends_with_background,
-        );
-        OverlayWindowManager::follow_active_space(&app, &state.overlay, &state.settings);
-    }
-    Ok(())
-}
-
 /// Marks an explicit user drag before Tauri hands the gesture to AppKit.
 #[tauri::command]
 pub fn overlay_move_start(

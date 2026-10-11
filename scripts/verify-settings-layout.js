@@ -138,6 +138,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
           cases.push({ width, language, theme, platform, state: "idle", providerConfirmation: true, deviceName: "Fixture headphones" });
           for (const category of ["subtitle-settings", "application-settings", "session-export", "diagnostics", "getting-started"]) {
             cases.push({ width, language, theme, platform, category, state: "idle", deviceName: "Fixture headphones" });
+            if (category === "getting-started") cases.push({ width, language, theme, platform, category, guideTab: "operations", state: "idle" });
           }
         }
         const results = [];
@@ -147,8 +148,20 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
           const results = [];
           for (const next of candidates) {
             await window.applyLayoutCase(next);
+            if (next.guideTab === "operations") document.querySelector("#quick-start-tab-operations").click();
+            await new Promise(resolve => setTimeout(resolve, 0));
             const issues = [];
             const rect = node => node.getBoundingClientRect();
+            if (next.guideTab === "operations") {
+              const panel = document.querySelector("#quick-start-panel-operations");
+              const rows = [...panel.querySelectorAll("dl > div")];
+              if (panel.hidden || rows.length !== 5) issues.push("common actions missing");
+              for (let index = 0; index < rows.length; index++) {
+                const bounds = rect(rows[index]);
+                if (Math.abs(bounds.left - rect(panel).left) > 1 || Math.abs(bounds.right - rect(panel).right) > 1) issues.push("inconsistent common-action columns");
+                if (index > 0 && Math.abs(bounds.top - rect(rows[index - 1]).bottom) > 1) issues.push("inconsistent common-action row spacing");
+              }
+            }
             const frame = document.querySelector(".settings-console__frame");
             if (frame.scrollWidth > frame.clientWidth + 1) issues.push("frame overflow");
             const brand = document.querySelector(".settings-brand");
