@@ -61,6 +61,28 @@ export function QuickStartGuide({
           </div>
         </li>
       </ol>
+      <section className="quick-start-operations" aria-labelledby="quick-start-operations-title">
+        <h2 id="quick-start-operations-title">{I18N.settings.quickStartOperationsTitle}</h2>
+        <p>{I18N.settings.quickStartOperationsBody}</p>
+        <dl>
+          <div>
+            <dt>{I18N.settings.quickStartMoveTitle}</dt>
+            <dd>{I18N.settings.quickStartMoveBody}</dd>
+          </div>
+          <div>
+            <dt>{I18N.settings.quickStartResizeTitle}</dt>
+            <dd>{I18N.settings.quickStartResizeBody}</dd>
+          </div>
+          <div>
+            <dt>{I18N.settings.quickStartCollapseTitle}</dt>
+            <dd>{I18N.settings.quickStartCollapseBody}</dd>
+          </div>
+          <div>
+            <dt>{I18N.settings.quickStartPauseTitle}</dt>
+            <dd>{I18N.settings.quickStartPauseBody}</dd>
+          </div>
+        </dl>
+      </section>
     </section>
   );
 }

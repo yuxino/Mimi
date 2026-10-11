@@ -311,6 +311,46 @@
   margin-top: 14px;
 }
 
+.quick-start-operations {
+  margin-top: 8px;
+  padding-top: 22px;
+  border-top: 1px solid var(--settings-border);
+}
+
+.quick-start-operations h2 {
+  font-size: 15px;
+  font-weight: 620;
+  line-height: 1.5;
+}
+
+.quick-start-operations p,
+.quick-start-operations dd {
+  color: var(--settings-text-muted);
+  font-size: 13px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.quick-start-operations p {
+  margin-top: 9px;
+}
+
+.quick-start-operations dl {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.quick-start-operations dt {
+  font-size: 13px;
+  font-weight: 620;
+  line-height: 1.5;
+}
+
+.quick-start-operations dd {
+  margin: 4px 0 0;
+}
+
 .settings-spinner {
   box-sizing: border-box;
   width: 12px;
