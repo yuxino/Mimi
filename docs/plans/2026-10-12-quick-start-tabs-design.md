@@ -1,7 +1,8 @@
 # Getting started and the system tray menu
 
 Issue #237 identified an undiscovered subtitle drag handle. Present this work in
-an unmerged draft PR and leave that issue open for follow-up acceptance.
+PR #255 and leave that issue open for follow-up acceptance. After reviewing the
+native menu, the user authorized merging once checks pass on 2026-10-12.
 
 Use two tabs inside Getting started. Get started retains three setup steps;
 Common actions explains moving, resizing and collapsing subtitles, then the
