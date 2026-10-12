@@ -34,7 +34,7 @@
 
 ## 开始使用
 
-初次使用，**推荐先用阿里云或 Google Gemini**。我们对阿里云做了更多实际测试；目前个人用下来，Gemini 的字幕输出最稳定。
+初次使用，**推荐依次选择火山引擎、Google Gemini、阿里云**。
 
 使用 Google Gemini 时，请保持网络连接稳定，并在 [Google AI Studio](https://aistudio.google.com/) 查看可用额度、计费和获取 API Key。
 

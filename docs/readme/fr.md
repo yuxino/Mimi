@@ -33,7 +33,7 @@
 
 ## Premiers pas
 
-Pour votre première configuration, **nous recommandons Alibaba Cloud ou Google Gemini**. Nous avons davantage testé Alibaba Cloud en conditions réelles ; dans mon expérience jusqu’ici, Gemini a fourni les sous-titres les plus réguliers.
+Pour votre première configuration, **nous recommandons, dans cet ordre, Volcano Engine, Google Gemini et Alibaba Cloud**.
 
 Pour Google Gemini, utilisez une connexion réseau stable. Consultez votre quota disponible, la facturation et vos clés API dans [Google AI Studio](https://aistudio.google.com/).
 

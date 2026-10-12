@@ -34,7 +34,7 @@
 
 ## はじめに
 
-初めて使う場合は、**Alibaba Cloud または Google Gemini をおすすめします**。Alibaba Cloud は実際の利用環境でより多くの検証を行っています。私がこれまで使った範囲では、Gemini の字幕出力が最も安定していました。
+初めて使う場合は、**Volcano Engine、Google Gemini、Alibaba Cloud の順におすすめします**。
 
 Google Gemini を使う場合は、安定したネットワーク接続を用意してください。利用可能な割り当て、料金、API キーは [Google AI Studio](https://aistudio.google.com/) で確認できます。
 

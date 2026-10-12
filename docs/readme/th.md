@@ -34,7 +34,7 @@
 
 ## เริ่มใช้งาน
 
-สำหรับการตั้งค่าครั้งแรก **เราแนะนำให้เริ่มด้วย Alibaba Cloud หรือ Google Gemini** เราทดสอบ Alibaba Cloud ในการใช้งานจริงมากกว่า จากประสบการณ์ของผมจนถึงตอนนี้ Gemini ให้คำบรรยายที่สม่ำเสมอที่สุด
+สำหรับการตั้งค่าครั้งแรก **เราแนะนำ Volcano Engine, Google Gemini และ Alibaba Cloud ตามลำดับ**
 
 หากใช้ Google Gemini ควรมีการเชื่อมต่อเครือข่ายที่เสถียร ตรวจสอบโควตาที่ใช้ได้ การเรียกเก็บเงิน และ API key ใน [Google AI Studio](https://aistudio.google.com/)
 

@@ -33,7 +33,7 @@
 
 ## 開始使用
 
-初次使用，**推薦先用阿里雲或 Google Gemini**。我們對阿里雲做了更多實際測試；目前個人用下來，Gemini 的字幕輸出最穩定。
+初次使用，**推薦依序選擇火山引擎、Google Gemini、阿里雲**。
 
 使用 Google Gemini 時，請保持網路連線穩定，並在 [Google AI Studio](https://aistudio.google.com/) 查看可用額度與費用，並取得 API 金鑰。
 

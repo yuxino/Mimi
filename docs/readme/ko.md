@@ -33,7 +33,7 @@
 
 ## 시작하기
 
-처음 설정한다면 **Alibaba Cloud나 Google Gemini로 시작하는 것을 권장합니다**. 실제 사용 테스트는 Alibaba Cloud로 더 많이 진행했습니다. 지금까지 제 경험으로는 Gemini의 자막 출력이 가장 일관적이었습니다.
+처음 설정한다면 **Volcano Engine, Google Gemini, Alibaba Cloud 순으로 권장합니다**.
 
 Google Gemini는 안정적인 네트워크 연결을 사용하세요. [Google AI Studio](https://aistudio.google.com/)에서 사용 가능량, 결제 정보와 API 키를 확인하세요.
 

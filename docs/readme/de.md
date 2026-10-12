@@ -33,7 +33,7 @@
 
 ## Erste Schritte
 
-Für die erste Einrichtung **empfehlen wir Alibaba Cloud oder Google Gemini**. Mit Alibaba Cloud haben wir mehr Tests unter realen Bedingungen durchgeführt; nach meiner bisherigen Erfahrung liefert Gemini die gleichmäßigsten Untertitelergebnisse.
+Für die erste Einrichtung **empfehlen wir in dieser Reihenfolge Volcano Engine, Google Gemini und Alibaba Cloud**.
 
 Verwende für Google Gemini eine stabile Netzwerkverbindung. Prüfe dein verfügbares Kontingent, die Abrechnung und deine API-Schlüssel in [Google AI Studio](https://aistudio.google.com/).
 
