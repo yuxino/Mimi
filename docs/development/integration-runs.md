@@ -2731,3 +2731,10 @@
   updater change was made. Public latest remained v1.5.23. Physical Android,
   API 29, split-screen, native Intel and manual Windows/Linux speech acceptance
   remain unverified. Keep the private regression evidence outside Git.
+
+## 2026-10-12 — v1.5.24 publication verification
+
+- Published `v1.5.24` from `d9c3ef1c`; product code is unchanged from the preceding native regression, with only concise multilingual README recommendations added. [Release CI](https://github.com/yuxino/Mimi/actions/runs/38191188626) and [Android CI](https://github.com/yuxino/Mimi/actions/runs/38191188616) passed.
+- Read back all 17 public assets, matching GitHub digests and `SHA256SUMS.txt`; independently verified five updater signatures, exact Latest manifest routing and bilingual notes. Both macOS architectures retained the installed formal app's complete signing requirement and their four public files match the locally source-verified packages. GitHub's native Contributors avatar for `@yuxino` was visible.
+- Public Android APK is non-debuggable `1.5.24` / `10524`, uses the same release certificate as v1.5.23, and passed four-ABI shared JNI and 16 KB alignment checks. Website PR #40 deployed successfully; all eight live locales show the concise recommendation and eight v1.5.24 download links.
+- This run verifies distribution, not additional speech quality or installed-updater acceptance. Earlier physical-device, API 29, split-screen, native Intel and manual Windows/Linux speech limits remain. The user's further report of frequent Ali draft meaning changes is pending a separate shared PC/Android investigation; this release does not establish that interim semantic revisions are eliminated.
