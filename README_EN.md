@@ -34,7 +34,7 @@
 
 ## Get started
 
-For your first setup, **we recommend Volcano Engine, Google Gemini, then Alibaba Cloud**.
+For your first setup, **we recommend Volcano Engine, Alibaba Cloud or Google Gemini**.
 
 For Google Gemini, use a stable network connection. Check your available quota, billing, and API keys in [Google AI Studio](https://aistudio.google.com/).
 

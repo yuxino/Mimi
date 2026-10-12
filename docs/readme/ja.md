@@ -34,7 +34,7 @@
 
 ## はじめに
 
-初めて使う場合は、**Volcano Engine、Google Gemini、Alibaba Cloud の順におすすめします**。
+初めて使う場合は、**Volcano Engine、Alibaba Cloud、Google Gemini をおすすめします**。
 
 Google Gemini を使う場合は、安定したネットワーク接続を用意してください。利用可能な割り当て、料金、API キーは [Google AI Studio](https://aistudio.google.com/) で確認できます。
 

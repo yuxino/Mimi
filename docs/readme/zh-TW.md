@@ -33,7 +33,7 @@
 
 ## 開始使用
 
-初次使用，**推薦依序選擇火山引擎、Google Gemini、阿里雲**。
+初次使用，**推薦火山引擎、阿里雲或 Google Gemini**。
 
 使用 Google Gemini 時，請保持網路連線穩定，並在 [Google AI Studio](https://aistudio.google.com/) 查看可用額度與費用，並取得 API 金鑰。
 

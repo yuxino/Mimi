@@ -34,7 +34,7 @@
 
 ## 开始使用
 
-初次使用，**推荐依次选择火山引擎、Google Gemini、阿里云**。
+初次使用，**推荐火山引擎、阿里云或 Google Gemini**。
 
 使用 Google Gemini 时，请保持网络连接稳定，并在 [Google AI Studio](https://aistudio.google.com/) 查看可用额度、计费和获取 API Key。
 

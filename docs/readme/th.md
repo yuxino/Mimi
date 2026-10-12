@@ -34,7 +34,7 @@
 
 ## เริ่มใช้งาน
 
-สำหรับการตั้งค่าครั้งแรก **เราแนะนำ Volcano Engine, Google Gemini และ Alibaba Cloud ตามลำดับ**
+สำหรับการตั้งค่าครั้งแรก **เราแนะนำ Volcano Engine, Alibaba Cloud หรือ Google Gemini**
 
 หากใช้ Google Gemini ควรมีการเชื่อมต่อเครือข่ายที่เสถียร ตรวจสอบโควตาที่ใช้ได้ การเรียกเก็บเงิน และ API key ใน [Google AI Studio](https://aistudio.google.com/)
 

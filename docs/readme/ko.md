@@ -33,7 +33,7 @@
 
 ## 시작하기
 
-처음 설정한다면 **Volcano Engine, Google Gemini, Alibaba Cloud 순으로 권장합니다**.
+처음 설정한다면 **Volcano Engine, Alibaba Cloud 또는 Google Gemini를 권장합니다**.
 
 Google Gemini는 안정적인 네트워크 연결을 사용하세요. [Google AI Studio](https://aistudio.google.com/)에서 사용 가능량, 결제 정보와 API 키를 확인하세요.
 
