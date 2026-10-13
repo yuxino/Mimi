@@ -10,6 +10,7 @@ pub mod openai_compatible;
 pub mod openai_realtime;
 pub mod qwen_mt;
 pub mod tencent_cloud;
+mod translation_thinking;
 pub mod volcano_engine;
 pub mod xai_realtime;
 

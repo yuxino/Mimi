@@ -16,6 +16,7 @@ fn contract() -> Value {
     for name in [
         "requests",
         "endpointRequests",
+        "thinkingRequestOptions",
         "detectedSourceRequests",
         "endpoints",
         "responses",
@@ -103,6 +104,33 @@ fn shared_endpoint_request_contracts() {
         )
         .unwrap();
         assert_eq!(actual, case["expected"], "{id}");
+    }
+}
+
+#[test]
+fn shared_thinking_options_preserve_the_rest_of_the_request() {
+    for case in contract()["thinkingRequestOptions"].as_array().unwrap() {
+        let id = case["id"].as_str().unwrap();
+        let request = |address| {
+            openai_compatible::request(
+                "Synthetic source.",
+                SourceLanguage::English,
+                TargetLanguage::SimplifiedChinese,
+                case["model"].as_str().unwrap(),
+                &openai_compatible::endpoint(address).unwrap(),
+            )
+            .unwrap()
+        };
+        let mut expected = request("https://example.com/v1");
+        expected
+            .as_object_mut()
+            .unwrap()
+            .extend(case["expected"].as_object().unwrap().clone());
+        assert_eq!(
+            request(case["endpoint"].as_str().unwrap()),
+            expected,
+            "{id}"
+        );
     }
 }
 

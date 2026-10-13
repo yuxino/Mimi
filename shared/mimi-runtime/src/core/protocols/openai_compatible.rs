@@ -162,12 +162,7 @@ pub fn request(
             {"role": "user", "content": text}
         ]
     });
-    // DeepSeek enables thinking by default, which roughly doubles the latency
-    // of every subtitle line. Turn it off for the official endpoint only;
-    // other services may reject the unknown field.
-    if endpoint.host_str() == Some("api.deepseek.com") {
-        body["thinking"] = json!({"type": "disabled"});
-    }
+    super::translation_thinking::disable(&mut body, endpoint);
     Ok(body)
 }
 
