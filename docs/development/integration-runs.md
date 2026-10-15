@@ -3289,6 +3289,51 @@
   durable instruction is preview first and proportional checks; pure copy/style
   edits do not require unrelated state matrices or repeated full local suites.
 
+## 2026-10-13：Silero VAD 宿主与意群候选离线研究
+
+- 产品基线 `5257f7e6`，实验源码／结果 `16239082`，Apple M5、macOS arm64、
+  Python 3.9 离线推理；不是 signed dev、MT 服务或原生字幕验收。
+- 固定 Silero 16 kHz 权重 1.23 MiB；直接 ONNX Runtime 1.19.2 对照
+  sherpa-onnx 1.13.8，相同窗口和迟滞。复用 FLEURS 日／英、Sintel 音效和
+  数字静音共四段、106.3 秒、3,324 个不同帧；主轮一次预热、三次计时。
+  两宿主活动判定差异 0，复位重复一致；每帧 P99 为 0.117–0.143 ms。
+- 英语的 250/400/600 ms 停顿阈值分别产生 7/4/1 个已确认结束点；600 ms
+  尾段在 EOF 仍活动，不能用等停顿保证更新期限。250/600 ms 轮并行执行，
+  只作边界敏感性证据，不比较其计时。
+- 19 项离线策略／工具测试、7 项 CI scope 测试及共享架构检查通过。
+  没有生产源码变化，未运行完整 canonical、Rust/JNI、新服务或原生测试。
+  不能据此声称翻译正确性或屏幕回改已改善，也未测安装包增量。
+- 代码、可复现命令、数值和图表见
+  [研究报告](2026-10-13-mt-stability-research.md)；音频与正文保留在原私有
+  归档。下一项为共享 Rust 接入后同 MT／同真人样本的回改、延迟和语义 A/B。
+
+## 2026-10-13：共享意群预览签名试用候选（暂不安装）
+
+- 实现 `a1578b83`；同步 main `f9d94a0a` 的文档后，候选来自干净提交
+  `20a9c174`。`experimental-stable-units` 仅构建时启用，桌面与 JNI
+  转发同一共享策略；默认构建和服务端直出译文路径不变。Silero 尚未接入。
+- 600 ms 稳定完整句界保留成功译文，后续仅请求尾部；2 s 允许可撤销
+  预览，既有 pacing 与 provider 延迟仍生效。纠错撤回预览；final 整句
+  翻译，预览不写历史。分句可能损失跨句上下文，final 可能改写预览。
+- 完整 canonical 首轮通过：shared runtime 762 passed / 1 ignored、
+  desktop 573 passed / 1 ignored、frontend 133 files / 2,075 tests。
+  补候选输出目录隔离后的复核中，原有 Gemini 445-draft 测试碰到 5 s
+  超时；不改测试或阈值单独重跑 84 项通过，失败用例耗时 509 ms，
+  剩余 updater / debugger / production build 检查通过。保留两次日志，
+  不将重复整套检查描述成一次全绿。
+- 启用实验 feature 的 runtime 762 passed / 1 ignored、严格 Clippy 和
+  JNI 编译检查通过。5 组新增共享 fixtures 同时通过直接 Rust 与实际
+  JVM/JNI；`SharedTranslationContractTest` 共 16 项通过。本地 HTTP
+  验证尾部请求、整句 final、纠错撤回和 clear 取消；最后修正迟到响应
+  的 HTTP 长度后，同一取消测试再次通过。没有云端请求或音频捕获。
+- canonical `dev-app.sh --build-only` 生成稳定签名 arm64 包，签名检查
+  通过，bundle 与实际 Cargo target 的 Mach-O UUID 一致。摘要见
+  [构建证据](evidence/2026-10-13-mt-stability/trial-build.json)。候选和
+  必要验证日志保留在本工作区 ignored `src-tauri/target/prepared/`；
+  一次性 shared/JVM 构建产物清理，已有全局缓存保留。
+- 用户选择“先准备好，暂时别切换”：没有安装或启动此候选，没有修改
+  当前配置。下一项是获准切换后使用独立识别 + 文字 MT，与相同真人
+  样本做 native/provider A/B；未提供新的原生效果截图或质量提升结论。
 ## 2026-10-13 — Configuration list and subpage navigation
 
 - Source: `c0e2b85b` plus the frontend changes in this entry's commit. Signed
@@ -3359,3 +3404,29 @@
   production replacement. Browser fixture pages were closed. Zero-profile
   screenshots are synthetic; native Windows/Linux and visual user acceptance
   remain separate. No full Rust/shared acceptance run for this frontend change.
+
+
+## 2026-10-15 — Stable MT trial resumed against current main
+
+- Resumed draft PR #272 from `db635742` and merged main `3593962b`, preserving
+  both the stable-preview fixtures and current draft ownership, Gemini session,
+  Android shared-runtime and recording-recovery behavior. The experiment
+  remains opt-in; the default feature selection is unchanged.
+- Canonical checks passed on the merged application code: 610 desktop Rust
+  tests (one ignored), 795 runtime tests (one ignored), 93 core tests plus contract suites,
+  eight JNI Rust tests, 2,198 frontend tests, Clippy, script checks and the
+  production frontend build. Experimental runtime Clippy/tests and all 19
+  research tests also passed.
+- Actual host JVM/JNI execution passed 235 debug and 235 release unit tests
+  with the default runtime. Rebuilding the host JNI library with
+  `experimental-stable-units` enabled then passed all 18 translation-contract
+  JVM tests. This is host JNI evidence, not Android device latency acceptance.
+- Included Linux keyring smoke-test handoff fix `36ac71ff` from draft PR #278.
+  Its exact revision passed desktop CI run `38739833191`, including the real
+  Linux native credential test, and Android CI run `38739832841`. The extra
+  change is limited to test orchestration; it does not change credential
+  behavior. Local handoff regression and syntax/format checks were rerun.
+- Preparation only: no app was installed or restarted, no provider requests or
+  live audio sessions were used, and no main merge or release was performed.
+  Native provider/audio A/B, subtitle reading comfort, Android device latency,
+  and Silero production integration remain unverified.

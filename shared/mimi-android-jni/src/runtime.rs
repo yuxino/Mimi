@@ -464,6 +464,54 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
             json!({"snapshotPublishIntervalMs":mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL.as_millis() as u64,
                 "sessionFinishTimeoutMs":mimi_runtime::core::health::SESSION_FINISH_TIMEOUT.as_millis() as u64})
         }
+        "stable_preview_candidates" => {
+            let steps = value["steps"]
+                .as_array()
+                .filter(|steps| steps.len() <= 64)
+                .ok_or("native_runtime_invalid_request")?;
+            let mut units = mimi_runtime::core::stable_preview::StablePreviewUnits::default();
+            let mut previous_ms = 0;
+            let mut rows = Vec::new();
+            for step in steps {
+                let now = step["atMs"]
+                    .as_u64()
+                    .filter(|now| *now >= previous_ms && *now <= 600_000)
+                    .ok_or("native_runtime_invalid_request")?;
+                previous_ms = now;
+                let draft = step["draft"]
+                    .as_str()
+                    .filter(|text| mimi_runtime::core::models::subtitle_text_within_limit(text))
+                    .ok_or("native_runtime_invalid_request")?;
+                let reply = if step.get("reply").is_some() {
+                    Some(
+                        step["reply"]
+                            .as_str()
+                            .filter(|text| {
+                                mimi_runtime::core::models::subtitle_text_within_limit(text)
+                            })
+                            .ok_or("native_runtime_invalid_request")?,
+                    )
+                } else {
+                    None
+                };
+                let reset = match step.get("reset") {
+                    Some(value) => value.as_bool().ok_or("native_runtime_invalid_request")?,
+                    None => false,
+                };
+                if reset {
+                    units.reset();
+                }
+                units.observe(draft, now);
+                let request = units.next(now);
+                let translation = request.as_ref().and_then(|request| {
+                    reply.and_then(|reply| units.complete(request, reply, now))
+                });
+                rows.push(json!({"source":request.as_ref().map(|r| &r.source),
+                    "suffix":request.as_ref().map(|r| &r.suffix), "translation":translation,
+                    "pinnedSource":units.pinned_pair().map(|(source, _)| source)}));
+            }
+            json!({"rows": rows})
+        }
         "volcano_decode" => volcano_decode(&value)?,
         "preview_candidate" => {
             let minimum = value["minimumCharacters"]

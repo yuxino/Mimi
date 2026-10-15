@@ -1,0 +1,8 @@
+# Reproduce the recorded macOS arm64 / CPython 3.9 experiment in a separate venv.
+# These are offline research dependencies, never application dependencies.
+numpy==2.0.2
+onnxruntime==1.19.2
+sherpa-onnx==1.13.8
+sherpa-onnx-core==1.13.8
+# Optional, used only by render-mt-vad-results.py:
+matplotlib==3.9.4

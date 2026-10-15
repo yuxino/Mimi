@@ -70,6 +70,8 @@ impl TranslationClient {
     ) -> Result<Self, TranslationClientError> {
         let mut client = Self::new_without_network(configuration, events)?;
         if let Self::HighQuality(pipeline) = &mut client {
+            #[cfg(feature = "experimental-stable-units")]
+            pipeline.enable_stable_unit_previews();
             pipeline.set_stage_networks(speech, text)?;
         } else {
             client.set_network(speech)?;
@@ -100,6 +102,8 @@ impl TranslationClient {
             })?;
         let mut client = Self::new_without_network(configuration, events)?;
         if let Self::HighQuality(pipeline) = &mut client {
+            #[cfg(feature = "experimental-stable-units")]
+            pipeline.enable_stable_unit_previews();
             let text = ProviderNetwork::resolve(
                 if matches!(
                     configuration.text_credentials,

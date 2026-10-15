@@ -1,0 +1,38 @@
+name: mt-stability-research
+
+on:
+  pull_request:
+    paths:
+      - "scripts/research/**"
+      - "shared/**"
+      - "src-tauri/Cargo.toml"
+      - ".github/workflows/mt-stability-research.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/research/**"
+      - "shared/**"
+      - "src-tauri/Cargo.toml"
+      - ".github/workflows/mt-stability-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Test offline candidates and probe boundaries
+        run: python3 -B scripts/research/mt-research-test.py
+
+  shared-trial:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Check opt-in shared runtime
+        run: |
+          cargo clippy --locked --manifest-path shared/mimi-runtime/Cargo.toml --all-targets --features experimental-stable-units -- -D warnings
+          cargo test --locked --manifest-path shared/mimi-runtime/Cargo.toml --features experimental-stable-units
+          cargo check --locked --manifest-path shared/mimi-android-jni/Cargo.toml --features experimental-stable-units

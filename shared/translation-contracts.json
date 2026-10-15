@@ -1,5 +1,232 @@
 {
   "schemaVersion": 1,
+  "stableUnitPreviews": [
+    {
+      "id": "stable-tail",
+      "steps": [
+        {
+          "atMs": 0,
+          "draft": "Hello world. Tail"
+        },
+        {
+          "atMs": 600,
+          "draft": "Hello world. Tail",
+          "reply": "你好。"
+        },
+        {
+          "atMs": 700,
+          "draft": "Hello world. Another sentence. Tail"
+        },
+        {
+          "atMs": 1300,
+          "draft": "Hello world. Another sentence. Tail",
+          "reply": "后一句。"
+        }
+      ],
+      "expected": [
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "Hello world.",
+          "suffix": "Hello world.",
+          "translation": "你好。",
+          "pinnedSource": "Hello world."
+        },
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": "Hello world."
+        },
+        {
+          "source": "Hello world. Another sentence.",
+          "suffix": "Another sentence.",
+          "translation": "你好。后一句。",
+          "pinnedSource": "Hello world. Another sentence."
+        }
+      ]
+    },
+    {
+      "id": "late-negation-stays-replaceable",
+      "steps": [
+        {
+          "atMs": 0,
+          "draft": "私は参加するとは"
+        },
+        {
+          "atMs": 2000,
+          "draft": "私は参加するとは",
+          "reply": "未完成。"
+        },
+        {
+          "atMs": 2100,
+          "draft": "私は参加するとは限らない",
+          "reply": "不一定参加。"
+        }
+      ],
+      "expected": [
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "私は参加するとは",
+          "suffix": "私は参加するとは",
+          "translation": "未完成。",
+          "pinnedSource": null
+        },
+        {
+          "source": "私は参加するとは限らない",
+          "suffix": "私は参加するとは限らない",
+          "translation": "不一定参加。",
+          "pinnedSource": null
+        }
+      ]
+    },
+    {
+      "id": "corrected-prefix-and-reset",
+      "steps": [
+        {
+          "atMs": 0,
+          "draft": "I agree."
+        },
+        {
+          "atMs": 600,
+          "draft": "I agree.",
+          "reply": "同意。"
+        },
+        {
+          "atMs": 700,
+          "draft": "I disagree."
+        },
+        {
+          "atMs": 1300,
+          "draft": "I disagree.",
+          "reply": "不同意。"
+        },
+        {
+          "atMs": 1400,
+          "draft": "",
+          "reset": true
+        }
+      ],
+      "expected": [
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "I agree.",
+          "suffix": "I agree.",
+          "translation": "同意。",
+          "pinnedSource": "I agree."
+        },
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "I disagree.",
+          "suffix": "I disagree.",
+          "translation": "不同意。",
+          "pinnedSource": "I disagree."
+        },
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        }
+      ]
+    },
+    {
+      "id": "abbreviation-decimal-waits",
+      "steps": [
+        {
+          "atMs": 0,
+          "draft": "Dr. Smith paid 3.14"
+        },
+        {
+          "atMs": 600,
+          "draft": "Dr. Smith paid 3.14"
+        },
+        {
+          "atMs": 2000,
+          "draft": "Dr. Smith paid 3.14",
+          "reply": "金额 3.14"
+        }
+      ],
+      "expected": [
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "Dr. Smith paid 3.14",
+          "suffix": "Dr. Smith paid 3.14",
+          "translation": "金额 3.14",
+          "pinnedSource": null
+        }
+      ]
+    },
+    {
+      "id": "empty-result-retries",
+      "steps": [
+        {
+          "atMs": 0,
+          "draft": "Hello world."
+        },
+        {
+          "atMs": 600,
+          "draft": "Hello world.",
+          "reply": ""
+        },
+        {
+          "atMs": 700,
+          "draft": "Hello world.",
+          "reply": "你好。"
+        }
+      ],
+      "expected": [
+        {
+          "source": null,
+          "suffix": null,
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "Hello world.",
+          "suffix": "Hello world.",
+          "translation": null,
+          "pinnedSource": null
+        },
+        {
+          "source": "Hello world.",
+          "suffix": "Hello world.",
+          "translation": "你好。",
+          "pinnedSource": "Hello world."
+        }
+      ]
+    }
+  ],
   "qwenCompletionResponses": [
     {
       "id": "sse-done",

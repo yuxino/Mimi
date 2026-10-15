@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "sourceRevision": "20a9c174efd99ae76d1da3ee661dedefef979665",
+  "treeState": "clean",
+  "buildMode": "signed local-dev; build-only",
+  "experimentalStableUnits": true,
+  "sileroBundled": false,
+  "bundleIdentifier": "app.yuxino.mimi.dev",
+  "bundleVersion": "1.5.24-dev",
+  "architecture": "arm64",
+  "binaryBytes": 80643552,
+  "binarySha256": "138911d0a191b7c0a5a3da039d39407a8b5f1f2cbc48de951d0e7604fd27c0fe",
+  "signatureVerification": "passed",
+  "installed": false,
+  "launched": false,
+  "providerAudioAcceptance": "not run"
+}

@@ -23,3 +23,14 @@ MIMI_DEV_APP_PATH="$CANONICAL_APP" MIMI_DEV_RECOVERY_ONLY=1 \
 [[ -f "$UNRELATED/data" ]]
 [[ -d "$MISMATCHED" ]]
 [[ ! -e "$OWNED" ]]
+
+# Preparing a candidate must leave even launcher-owned interrupted installs
+# untouched. Recovery is an installation operation, not a build operation.
+mkdir -p "$OWNED"
+printf '%s' "$CANONICAL_APP" > "$OWNED/$MARKER"
+rm -f "$TEST_ROOT/.mimi-dev.lock"
+MIMI_DEV_APP_PATH="$CANONICAL_APP" MIMI_DEV_RECOVERY_ONLY=1 \
+  "$SCRIPT_DIR/dev-app.sh" --build-only >/dev/null
+[[ -d "$OWNED" ]]
+[[ ! -e "$TEST_ROOT/.mimi-dev.lock" ]]
+[[ -f "$UNRELATED/data" ]]

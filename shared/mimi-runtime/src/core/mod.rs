@@ -17,4 +17,5 @@ pub mod provider;
 pub mod recovery;
 pub mod session;
 pub mod session_archive;
+pub mod stable_preview;
 pub mod subtitle_reducer;

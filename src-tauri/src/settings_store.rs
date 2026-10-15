@@ -6820,6 +6820,18 @@ mod tests {
             Err(CREDENTIAL_STORE_ACCESS_DENIED.into())
         );
         assert_no_default();
+        // A cancelled D-Bus prompt can complete before its GTK window closes.
+        // Wait for the smoke driver to observe that closure before requesting
+        // the next prompt; otherwise it may submit the previous dialog again.
+        let retry_ready = Path::new(&directory).join("first-save-retry-ready");
+        let wait_started = std::time::Instant::now();
+        while !retry_ready.exists() {
+            assert!(
+                wait_started.elapsed() < std::time::Duration::from_secs(30),
+                "smoke driver did not acknowledge the cancelled prompt closing"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         std::fs::write(&progress, "accept").unwrap();
         store.save_api_key(&profile.id, synthetic_value).unwrap();
         assert_eq!(store.credential_state(&profile), CredentialState::Present);

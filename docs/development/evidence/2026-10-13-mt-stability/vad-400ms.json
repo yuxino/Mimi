@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "kind": "offline-vad-host-comparison",
+  "model_revision": "1e261b036686cd0017d500ee96acd1c4ba572a9d",
+  "model_sha256": "7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49",
+  "model_bytes": 1289603,
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.9.6"
+  },
+  "packages": {
+    "numpy": "2.0.2",
+    "onnxruntime": "1.19.2",
+    "sherpa-onnx": "1.13.8",
+    "sherpa-onnx-core": "1.13.8"
+  },
+  "config": {
+    "sample_rate": 16000,
+    "frame_samples": 512,
+    "context_samples": 64,
+    "threads": 1,
+    "silence_ms": 400,
+    "speech_ms": 250,
+    "repeats": 3,
+    "warmup_passes": 1
+  },
+  "initialization_ms": {
+    "onnxruntime": 92.091333,
+    "sherpa-onnx": 63.205083
+  },
+  "scenes": [
+    {
+      "label": "fleurs-ja_jp-long-row1-id1608",
+      "samples": 365760,
+      "pcm_sha256": "a3190715b35144a28b8da08c5c7294cb72ec6a1eb908980b89e2f860539937cb",
+      "license": "CC-BY-4.0",
+      "source_url": "https://huggingface.co/datasets/google/fleurs",
+      "reference_status": "official_raw_transcription",
+      "expected_speech": true,
+      "duration_ms": 22860.0,
+      "hosts": {
+        "onnxruntime": {
+          "frames": 715,
+          "active_frames": 397,
+          "active_at_eof": false,
+          "transitions": [
+            {
+              "detected_ms": 6016.0,
+              "active": true
+            },
+            {
+              "detected_ms": 16032.0,
+              "active": false
+            },
+            {
+              "detected_ms": 16352.0,
+              "active": true
+            },
+            {
+              "detected_ms": 19040.0,
+              "active": false
+            }
+          ],
+          "median_ms": 0.072042,
+          "p95_ms": 0.095459,
+          "p99_ms": 0.142875,
+          "max_ms": 0.423584,
+          "processing_to_audio_ratio": 0.0023982359580052483
+        },
+        "sherpa-onnx": {
+          "frames": 715,
+          "active_frames": 397,
+          "active_at_eof": false,
+          "transitions": [
+            {
+              "detected_ms": 6016.0,
+              "active": true
+            },
+            {
+              "detected_ms": 16032.0,
+              "active": false
+            },
+            {
+              "detected_ms": 16352.0,
+              "active": true
+            },
+            {
+              "detected_ms": 19040.0,
+              "active": false
+            }
+          ],
+          "median_ms": 0.075167,
+          "p95_ms": 0.095458,
+          "p99_ms": 0.131416,
+          "max_ms": 0.252833,
+          "processing_to_audio_ratio": 0.0024717796587926566
+        }
+      },
+      "different_activity_frames": 0
+    },
+    {
+      "label": "fleurs-english-1527",
+      "samples": 375040,
+      "pcm_sha256": "ac2a670639c88b69a7015c0e34a5bd83c2cf7b629fd5b101e649ccfdad51665e",
+      "license": "CC-BY-4.0",
+      "source_url": "https://datasets-server.huggingface.co/rows?dataset=google%2Ffleurs&config=en_us&split=validation&offset=48&length=1",
+      "reference_status": "source_transcript_not_independently_audited",
+      "expected_speech": true,
+      "duration_ms": 23440.0,
+      "hosts": {
+        "sherpa-onnx": {
+          "frames": 733,
+          "active_frames": 664,
+          "active_at_eof": false,
+          "transitions": [
+            {
+              "detected_ms": 864.0,
+              "active": true
+            },
+            {
+              "detected_ms": 5632.0,
+              "active": false
+            },
+            {
+              "detected_ms": 6176.0,
+              "active": true
+            },
+            {
+              "detected_ms": 13696.0,
+              "active": false
+            },
+            {
+              "detected_ms": 14112.0,
+              "active": true
+            },
+            {
+              "detected_ms": 18176.0,
+              "active": false
+            },
+            {
+              "detected_ms": 18560.0,
+              "active": true
+            },
+            {
+              "detected_ms": 23456.0,
+              "active": false
+            }
+          ],
+          "median_ms": 0.075083,
+          "p95_ms": 0.094,
+          "p99_ms": 0.12625,
+          "max_ms": 0.383125,
+          "processing_to_audio_ratio": 0.0024644281712172954
+        },
+        "onnxruntime": {
+          "frames": 733,
+          "active_frames": 664,
+          "active_at_eof": false,
+          "transitions": [
+            {
+              "detected_ms": 864.0,
+              "active": true
+            },
+            {
+              "detected_ms": 5632.0,
+              "active": false
+            },
+            {
+              "detected_ms": 6176.0,
+              "active": true
+            },
+            {
+              "detected_ms": 13696.0,
+              "active": false
+            },
+            {
+              "detected_ms": 14112.0,
+              "active": true
+            },
+            {
+              "detected_ms": 18176.0,
+              "active": false
+            },
+            {
+              "detected_ms": 18560.0,
+              "active": true
+            },
+            {
+              "detected_ms": 23456.0,
+              "active": false
+            }
+          ],
+          "median_ms": 0.071792,
+          "p95_ms": 0.089708,
+          "p99_ms": 0.117,
+          "max_ms": 0.321,
+          "processing_to_audio_ratio": 0.0023371744880546067
+        }
+      },
+      "different_activity_frames": 0
+    },
+    {
+      "label": "sintel-action-bgm-negative",
+      "samples": 480000,
+      "pcm_sha256": "a76c88b6cd5dce785a40c8ca2fdaef7376b93f4fc80e766b1796e64c976519ff",
+      "license": "CC-BY-3.0",
+      "source_url": "https://video.blender.org/object-storage/web_videos/0eb052d0-fd51-43e6-aa33-ecdbf77a5d40-240.mp4",
+      "reference_status": "negative_control_expected_empty_pending_independent_audition",
+      "expected_speech": false,
+      "duration_ms": 30000.0,
+      "hosts": {
+        "onnxruntime": {
+          "frames": 938,
+          "active_frames": 0,
+          "active_at_eof": false,
+          "transitions": [],
+          "median_ms": 0.071667,
+          "p95_ms": 0.090125,
+          "p99_ms": 0.133791,
+          "max_ms": 0.319917,
+          "processing_to_audio_ratio": 0.002355321755555553
+        },
+        "sherpa-onnx": {
+          "frames": 938,
+          "active_frames": 0,
+          "active_at_eof": false,
+          "transitions": [],
+          "median_ms": 0.074834,
+          "p95_ms": 0.092625,
+          "p99_ms": 0.1245,
+          "max_ms": 0.212875,
+          "processing_to_audio_ratio": 0.002442944777777788
+        }
+      },
+      "different_activity_frames": 0
+    },
+    {
+      "label": "sintel-action-bgm-digital-silence",
+      "samples": 480000,
+      "pcm_sha256": "b9163d03c43083a18e6101539b555cb5e363eed61fa4b3a3b54f50ae60eb5b52",
+      "license": "CC-BY-3.0",
+      "source_url": "https://video.blender.org/object-storage/web_videos/0eb052d0-fd51-43e6-aa33-ecdbf77a5d40-240.mp4",
+      "reference_status": "verified_digital_silence_expected_empty",
+      "expected_speech": false,
+      "duration_ms": 30000.0,
+      "hosts": {
+        "sherpa-onnx": {
+          "frames": 938,
+          "active_frames": 0,
+          "active_at_eof": false,
+          "transitions": [],
+          "median_ms": 0.075125,
+          "p95_ms": 0.092667,
+          "p99_ms": 0.12875,
+          "max_ms": 0.46,
+          "processing_to_audio_ratio": 0.0024528815666666737
+        },
+        "onnxruntime": {
+          "frames": 938,
+          "active_frames": 0,
+          "active_at_eof": false,
+          "transitions": [],
+          "median_ms": 0.071875,
+          "p95_ms": 0.095084,
+          "p99_ms": 0.135375,
+          "max_ms": 0.293,
+          "processing_to_audio_ratio": 0.0023799590666666675
+        }
+      },
+      "different_activity_frames": 0
+    }
+  ],
+  "limits": [
+    "No MT, ASR, native overlay or packaged app was measured.",
+    "Host-call timings include Python binding overhead, exclude PCM I/O.",
+    "Detection timestamps include confirmation delay; they are not speech labels.",
+    "Same weights and hysteresis test hosts, not two model accuracies."
+  ]
+}

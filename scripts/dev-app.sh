@@ -24,15 +24,17 @@ BUNDLE_IDENTIFIER="app.yuxino.mimi.dev"
 RELEASE_BUNDLE_IDENTIFIER="app.yuxino.mimi"
 MODE="live"
 SHOULD_LAUNCH=1
+BUILD_ONLY=0
 WATCH=0
 EVIDENCE_WORKSPACE=""
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/dev-app.sh [--watch] [--ui-only] [--no-launch] [--evidence-workspace NAME]
+Usage: ./scripts/dev-app.sh [--watch] [--ui-only] [--no-launch | --build-only] [--evidence-workspace NAME]
 
   --watch     Keep the signed native app open; React/CSS changes update immediately.
   --ui-only   Open local UI fixtures without credentials, network, or audio capture.
+  --build-only Build and sign in the target directory without installing or touching running apps.
   --no-launch Build and install the canonical development app without opening it.
   --evidence-workspace NAME  Select a private dev evidence batch; recordings remain off until explicitly enabled.
 
@@ -41,6 +43,8 @@ The default is /Applications/mimi-dev.app. Override it only with another path
 that will remain stable:
 
   MIMI_DEV_APP_PATH="$HOME/Applications/mimi-dev.app" ./scripts/dev-app.sh
+
+MIMI_DEV_STABLE_UNITS=1 opts this research branch into experimental MT units.
 EOF
 }
 
@@ -51,6 +55,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --ui-only)
       MODE="ui-only"
+      ;;
+    --build-only)
+      BUILD_ONLY=1
+      SHOULD_LAUNCH=0
       ;;
     --no-launch)
       SHOULD_LAUNCH=0
@@ -75,6 +83,12 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ "$BUILD_ONLY" == "1" ]]; then
+  # Build caches may be shared by several worktrees. Keep the prepared bundle
+  # in its own checkout so another dev build cannot discard this candidate.
+  BUILD_APP="$PROJECT_DIR/src-tauri/target/prepared/mimi-dev.app"
+fi
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "error: scripts/dev-app.sh is the stable macOS launcher." >&2
@@ -181,6 +195,9 @@ running_conflicting_mimi_processes() {
   done < <(/usr/bin/pgrep -U "$(id -u)" -x mimi || true)
 }
 
+# A build-only candidate must not acquire the installation lock, recover old
+# installations, or touch the shared app used by another task.
+if [[ "$BUILD_ONLY" != "1" ]]; then
 case "$CANONICAL_APP" in
   /*/*.app) ;;
   *)
@@ -308,6 +325,8 @@ for stale_staging in "$INSTALL_PARENT"/.mimi-dev-install.*; do
   rm -rf "$stale_staging"
 done
 
+fi
+
 if [[ "${MIMI_DEV_RECOVERY_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
@@ -342,9 +361,15 @@ fi
 if [[ "${MIMI_DEV_WATCH:-0}" != "1" ]]; then
   npm run build:dev
 fi
+DEV_FEATURES="tauri/custom-protocol,devtools,development-debugger"
+case "${MIMI_DEV_STABLE_UNITS:-0}" in
+  0) ;;
+  1) DEV_FEATURES="$DEV_FEATURES,experimental-stable-units" ;;
+  *) echo "error: MIMI_DEV_STABLE_UNITS must be 0 or 1." >&2; exit 2 ;;
+esac
 TAURI_CONFIG="$(<"$DEV_TAURI_CONFIG")" cargo build --profile local-dev \
   --locked \
-  --features tauri/custom-protocol,devtools,development-debugger \
+  --features "$DEV_FEATURES" \
   --manifest-path src-tauri/Cargo.toml
 
 rm -rf "$BUILD_APP"
@@ -403,6 +428,14 @@ NEW_REQUIREMENT="$(designated_requirement "$BUILD_APP")"
 if [[ -z "$NEW_REQUIREMENT" || "$NEW_REQUIREMENT" == cdhash\ * ]]; then
   echo "error: refusing to launch an app without a stable code identity." >&2
   exit 1
+fi
+
+if [[ "$BUILD_ONLY" == "1" ]]; then
+  echo "Prepared signed development app without installing: $BUILD_APP"
+  echo "Designated requirement: $NEW_REQUIREMENT"
+  echo "Build features: $DEV_FEATURES"
+  echo "Source: $MIMI_DEBUG_REVISION ($MIMI_DEBUG_TREE_STATE)"
+  exit 0
 fi
 
 if [[ -e "$CANONICAL_APP" && ! -d "$CANONICAL_APP" ]]; then

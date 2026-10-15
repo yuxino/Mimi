@@ -92,6 +92,24 @@ for phase in cancel accept; do
   xdotool windowactivate --sync "$prompt"
   if [[ "$phase" == cancel ]]; then
     xdotool key --clearmodifiers Escape
+    # The Secret Service reply may arrive before the dismissed GTK window has
+    # disappeared. Hold the test's retry until the old window is gone, so the
+    # accept phase cannot type into (or submit) the cancelled prompt.
+    dismissed=0
+    for _ in {1..240}; do
+      if ! kill -0 "$test_pid" 2>/dev/null; then
+        cat "$secret_dir/test.log" >&2
+        echo "First-save test exited while dismissing the cancelled prompt." >&2
+        exit 1
+      fi
+      if ! xdotool search --onlyvisible --class '[Gg]cr-prompter' >/dev/null 2>&1; then
+        dismissed=1
+        break
+      fi
+      sleep 0.1
+    done
+    [[ "$dismissed" == 1 ]] || { echo "Cancelled keyring prompt did not close." >&2; exit 1; }
+    touch "$secret_dir/first-save-retry-ready"
   else
     xdotool type --clearmodifiers 'mimi-ci-synthetic-first-save'
     xdotool key Tab

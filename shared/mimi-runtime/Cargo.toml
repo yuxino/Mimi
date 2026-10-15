@@ -8,6 +8,8 @@ license = "MIT"
 
 [features]
 default = []
+# Opt-in research preview; no model/runtime dependency and no default behavior change.
+experimental-stable-units = []
 apple-native = []
 development-debugger = []
 test-support = ["development-debugger"]

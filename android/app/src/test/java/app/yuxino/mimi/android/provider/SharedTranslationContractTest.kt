@@ -19,6 +19,11 @@ class SharedTranslationContractTest {
         "Missing shared translation contract resource"
     }.bufferedReader().use { JSONObject(it.readText()) }.also { assertEquals(1, it.getInt("schemaVersion")) }
 
+    @Test fun stableUnitPreviewsCrossActualJni() = cases("stableUnitPreviews") { case ->
+        val actual = NativeRuntimeConfiguration.exchange(JSONObject(case.toString()).put("operation", "stable_preview_candidates"))
+        assertTrue(case.getString("id"), case.getJSONArray("expected").similar(actual.getJSONArray("rows")))
+    }
+
     @Test fun sharedGeminiFinishPolicyCrossesActualJni() {
         val expected = contract.getJSONObject("geminiFinishPolicy")
         val policy = SharedSubtitleCore.policy

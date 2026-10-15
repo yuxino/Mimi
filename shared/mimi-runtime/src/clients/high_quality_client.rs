@@ -22,6 +22,9 @@ use crate::core::models::{SourceLanguage, TargetLanguage};
 use crate::core::preview_pacing::{MTRequestBudget, PreviewCandidate, PreviewRequestPacer};
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTModel};
+use crate::core::stable_preview::{StablePreviewUnits, UnitRequest};
+#[cfg(any(test, feature = "experimental-stable-units"))]
+use crate::core::stable_preview::{UNIT_MAX_WAIT_MS, UNIT_STABLE_MS};
 use crate::core::subtitle_reducer::trim;
 use crate::pipeline_log;
 #[cfg(test)]
@@ -186,6 +189,12 @@ struct MTCooldown {
     reason: TranslationRecoveryReason,
 }
 
+struct TranslationInput<'a> {
+    text: &'a str,
+    /// Cumulative display identity; the HTTP payload may contain only its tail.
+    preview_source: Option<&'a str>,
+}
+
 struct MeasuredTranslation {
     text: String,
     request_ms: Option<u64>,
@@ -203,6 +212,8 @@ struct TranslationEvidenceIdentity {
 
 struct Inner {
     committer: ASRDraftCommitter,
+    units: StablePreviewUnits,
+    unit_request: Option<UnitRequest>,
     latest_draft_language: Option<String>,
     draft_revision: u64,
     next_confirmation_id: u64,
@@ -242,6 +253,7 @@ impl Inner {
     fn cancel_preview(&mut self) -> Option<u64> {
         abort_task(&mut self.preview_task);
         self.preview_candidate = None;
+        self.unit_request = None;
         self.pending_preview_revision = None;
         self.preview_http_pending.take()
     }
@@ -361,9 +373,23 @@ pub struct HighQualityTranslationClient {
     stable_draft_delay: Duration,
     maximum_wait_delay: Duration,
     streams_finals: bool,
+    stable_unit_previews: bool,
+    unit_clock: tokio::time::Instant,
 }
 
 impl HighQualityTranslationClient {
+    /// Build-time experiment, selected by the shared factory on both platforms.
+    #[cfg(any(test, feature = "experimental-stable-units"))]
+    pub(crate) fn enable_stable_unit_previews(&mut self) {
+        self.stable_unit_previews = true;
+        self.stable_draft_delay = Duration::from_millis(UNIT_STABLE_MS);
+        self.maximum_wait_delay = Duration::from_millis(UNIT_MAX_WAIT_MS);
+    }
+
+    fn unit_now_ms(&self) -> u64 {
+        self.unit_clock.elapsed().as_millis().min(u64::MAX as u128) as u64
+    }
+
     pub(crate) fn network_endpoints(&self) -> (Option<url::Url>, Option<url::Url>) {
         (
             self.asr_client.network_endpoint(),
@@ -462,6 +488,8 @@ impl HighQualityTranslationClient {
             events,
             inner: Arc::new(Mutex::new(Inner {
                 committer: ASRDraftCommitter::new(long_incomplete_commit_threshold),
+                units: StablePreviewUnits::default(),
+                unit_request: None,
                 latest_draft_language: None,
                 draft_revision: 0,
                 next_confirmation_id: 0,
@@ -494,6 +522,8 @@ impl HighQualityTranslationClient {
             stable_draft_delay,
             maximum_wait_delay,
             streams_finals,
+            stable_unit_previews: false,
+            unit_clock: tokio::time::Instant::now(),
         }
     }
 
@@ -817,6 +847,7 @@ impl HighQualityTranslationClient {
             inner.final_completion_in_progress = false;
             inner.deferred_overload = false;
             inner.committer.reset();
+            inner.units.reset();
             inner.latest_draft_language = None;
             next_nonzero(&mut inner.draft_revision);
             // Keep provider final-ID/replay watermarks and quota state.
@@ -873,6 +904,37 @@ impl HighQualityTranslationClient {
                 let (uncommitted_text, has_pending, revision, log_due, passed_through) = {
                     let mut inner = self.inner.lock().await;
                     let uncommitted = inner.committer.update_draft(&text);
+                    if self.stable_unit_previews {
+                        let language_changed = inner.latest_draft_language != language;
+                        if language_changed {
+                            inner.units.reset();
+                        }
+                        let retract = inner.units.observe(&uncommitted, self.unit_now_ms());
+                        if language_changed
+                            || inner
+                                .unit_request
+                                .as_ref()
+                                .is_some_and(|request| !inner.units.is_current(request))
+                        {
+                            self.cancel_preview(
+                                &mut inner,
+                                PreviewCancellationReason::ReplacedWaiter,
+                            );
+                            self.advance_preview_epoch();
+                        }
+                        if retract || language_changed {
+                            self.emit(LiveTranslateServerEvent::SubtitlePreviewCleared);
+                            self.emit(LiveTranslateServerEvent::TranslationDraft(String::new()));
+                            if let Some((source, translation)) = inner.units.pinned_pair() {
+                                self.emit(LiveTranslateServerEvent::SubtitlePreviewPair {
+                                    source_utterance_id: draft_source_id,
+                                    source: source.to_owned(),
+                                    language: language.clone(),
+                                    translation: translation.to_owned(),
+                                });
+                            }
+                        }
+                    }
                     inner.current_source_utterance_id = draft_source_id;
                     inner.latest_draft_language = language.clone();
                     next_nonzero(&mut inner.draft_revision);
@@ -999,6 +1061,7 @@ impl HighQualityTranslationClient {
         self.cancel_preview(&mut inner, PreviewCancellationReason::SourceBoundary);
         self.advance_preview_epoch();
         inner.committer.reset();
+        inner.units.reset();
         inner.latest_draft_language = None;
         inner.current_source_utterance_id = Some(source_utterance_id);
         next_nonzero(&mut inner.draft_revision);
@@ -1119,6 +1182,7 @@ impl HighQualityTranslationClient {
         });
         if !retains_newer_draft {
             inner.committer.reset();
+            inner.units.reset();
             inner.latest_draft_language = None;
             inner.current_source_utterance_id = None;
             inner.preview_request_pacer.finish_utterance();
@@ -1232,12 +1296,20 @@ impl HighQualityTranslationClient {
             // Do not replace a readable complete sentence with the first tiny
             // fragment of the next one. Honor the existing opening threshold;
             // once preview work starts, shorter ASR corrections remain eligible.
-            // Both timers still translate the whole draft, including its tail.
+            // The default lane retains whole-draft previews; the experiment
+            // selects a stable unit or a bounded, replaceable fallback.
             let opening = inner.preview_task.is_none()
                 && !inner.preview_request_pacer.has_previewed_utterance();
-            let text = inner
-                .committer
-                .preview_latest_draft(opening && matches!(kind, DraftTimerKind::Stable));
+            let text = if self.stable_unit_previews {
+                inner
+                    .units
+                    .next(self.unit_now_ms())
+                    .map(|request| request.source)
+            } else {
+                inner
+                    .committer
+                    .preview_latest_draft(opening && matches!(kind, DraftTimerKind::Stable))
+            };
             text.map(|text| {
                 (
                     text,
@@ -1339,7 +1411,16 @@ impl HighQualityTranslationClient {
             return;
         }
 
+        let unit_request = if self.stable_unit_previews {
+            let Some(request) = inner.units.request(&text, self.unit_now_ms()) else {
+                return;
+            };
+            Some(request)
+        } else {
+            None
+        };
         self.cancel_preview(inner, PreviewCancellationReason::ReplacedWaiter);
+        inner.unit_request = unit_request;
         let preview_id = self.advance_preview_epoch();
         let preview_self = self.clone();
         let task = tokio::spawn(async move {
@@ -1383,11 +1464,24 @@ impl HighQualityTranslationClient {
             self.clear_preview_task(preview_id, false).await;
             return;
         }
-        let partial_handler = self.preview_partial_handler(preview_id);
+        let unit_request = self.inner.lock().await.unit_request.clone();
+        let request_text = unit_request
+            .as_ref()
+            .map_or(text.as_str(), |request| request.suffix.as_str());
+        // Publishing partial MT tokens would rewrite the readable suffix. The
+        // experimental lane swaps only complete, matching source/result pairs.
+        let partial_handler: PartialHandler = if self.stable_unit_previews {
+            Arc::new(|_| {})
+        } else {
+            self.preview_partial_handler(preview_id)
+        };
         let deadline = tokio::time::Instant::now() + MAX_PREVIEW_REQUEST_AGE;
         let result = self
             .translate_with_retry(
-                &text,
+                TranslationInput {
+                    text: request_text,
+                    preview_source: Some(&text),
+                },
                 language.as_deref(),
                 deadline,
                 partial_handler,
@@ -1406,13 +1500,25 @@ impl HighQualityTranslationClient {
         let mut completed = false;
         if self.preview_is_current(preview_id) {
             match result {
-                Ok(translation) => {
-                    let inner = self.inner.lock().await;
+                Ok(mut translation) => {
+                    let mut inner = self.inner.lock().await;
                     if self.translation_work_is_current(
                         &inner,
                         TranslationWorkOwner::Preview(preview_id),
                     ) && !translation.text.trim().is_empty()
                     {
+                        if let Some(request) = &unit_request {
+                            let Some(joined) = inner.units.complete(
+                                request,
+                                &translation.text,
+                                self.unit_now_ms(),
+                            ) else {
+                                drop(inner);
+                                self.clear_preview_task(preview_id, true).await;
+                                return;
+                            };
+                            translation.text = joined;
+                        }
                         completed = true;
                         let translation_length = translation.text.chars().count();
                         *self.translation_latency.lock().unwrap() =
@@ -1545,12 +1651,21 @@ impl HighQualityTranslationClient {
             self.finish_preview_http(&mut inner, preview_id);
             drop(inner.preview_task.take());
             inner.preview_candidate = None;
+            inner.unit_request = None;
             let pending = inner.pending_preview_revision.take();
             if resume_latest && pending.is_some() && self.preview_is_current(preview_id) {
                 // Re-read the latest whole draft: ASR may have updated it after
                 // the queued timer fired. Do not retain a second text copy or
                 // replay an obsolete intermediate candidate.
-                if let Some(text) = inner.committer.preview_latest_draft(false) {
+                let latest = if self.stable_unit_previews {
+                    inner
+                        .units
+                        .next(self.unit_now_ms())
+                        .map(|request| request.source)
+                } else {
+                    inner.committer.preview_latest_draft(false)
+                };
+                if let Some(text) = latest {
                     let language = inner.latest_draft_language.clone();
                     let revision = inner.draft_revision;
                     self.start_preview_locked(&mut inner, text, language, revision);
@@ -1796,7 +1911,10 @@ impl HighQualityTranslationClient {
                 })
             } else {
                 self.translate_with_retry(
-                    &request.text,
+                    TranslationInput {
+                        text: &request.text,
+                        preview_source: None,
+                    },
                     request.language.as_deref(),
                     deadline,
                     partial_handler,
@@ -2096,7 +2214,7 @@ impl HighQualityTranslationClient {
                             .record_candidate_start(now.into_std(), candidate);
                         // Preserve the displayed preview while a replacement
                         // waits. Claim its matching source only at HTTP start.
-                        if first_request {
+                        if first_request && !self.stable_unit_previews {
                             self.emit_preview(
                                 id,
                                 source_draft_event(
@@ -2138,13 +2256,17 @@ impl HighQualityTranslationClient {
 
     async fn translate_with_retry(
         &self,
-        text: &str,
+        input: TranslationInput<'_>,
         language: Option<&str>,
         deadline: tokio::time::Instant,
         on_partial: PartialHandler,
         owner: TranslationWorkOwner,
         _identity: TranslationEvidenceIdentity,
     ) -> Result<MeasuredTranslation, QwenMTClientError> {
+        let TranslationInput {
+            text,
+            preview_source,
+        } = input;
         if !self.mt.supports_reported_source(language) {
             return Err(QwenMTClientError::UnsupportedSource);
         }
@@ -2152,7 +2274,7 @@ impl HighQualityTranslationClient {
         // history. Feeding a previous full document to a new cumulative
         // prefix can bias the model toward that example's old full output.
         // The live path has no explicitly curated translation memory.
-        let candidate = PreviewCandidate::new(text, language, 0);
+        let candidate = PreviewCandidate::new(preview_source.unwrap_or(text), language, 0);
         // Apple also needs the recognizer's actual source for explicit routes:
         // otherwise a configured same-language pair can bypass translation of
         // an utterance that the recognizer reported in a different language.
@@ -2170,7 +2292,7 @@ impl HighQualityTranslationClient {
             self.wait_for_mt_request_slot(
                 deadline,
                 owner,
-                text,
+                preview_source.unwrap_or(text),
                 language,
                 first_request_at.is_none(),
                 candidate,
@@ -2360,6 +2482,7 @@ impl HighQualityTranslationClient {
                 .as_ref()
                 .map(|_| next_nonzero(&mut inner.next_confirmation_id));
             inner.committer.reset();
+            inner.units.reset();
             inner.latest_draft_language = None;
             inner.current_source_utterance_id = None;
             inner.preview_request_pacer.finish_utterance();
@@ -2396,6 +2519,7 @@ impl HighQualityTranslationClient {
         self.cancel_preview(&mut inner, PreviewCancellationReason::Reset);
         self.advance_preview_epoch();
         inner.committer.reset();
+        inner.units.reset();
         inner.latest_draft_language = None;
         inner.preview_request_pacer.finish_utterance();
         next_nonzero(&mut inner.draft_revision);
@@ -2553,6 +2677,184 @@ mod tests {
             let error = super::recognition_error(super::RecognitionClientError::Custom(error));
             assert_eq!(ConnectError::MT(error).safe_code(), code);
         }
+    }
+
+    #[tokio::test]
+    async fn stable_units_http_sends_only_tail_but_final_retranslates_whole_source() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for (expected, output) in [
+                ("First complete sentence.", "第一句。"),
+                ("Second complete sentence.", "第二句。"),
+                (
+                    "First corrected sentence. Second complete sentence.",
+                    "权威完整译文。",
+                ),
+            ] {
+                let (mut socket, _) =
+                    tokio::time::timeout(Duration::from_secs(8), listener.accept())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                let bytes = read_synthetic_request(&mut socket).await;
+                let start = bytes
+                    .windows(4)
+                    .position(|window| window == b"\r\n\r\n")
+                    .unwrap()
+                    + 4;
+                let body: serde_json::Value = serde_json::from_slice(&bytes[start..]).unwrap();
+                assert_eq!(body["text"], expected);
+                let response = serde_json::json!({"code":200,"data":output}).to_string();
+                write_synthetic_response(&mut socket, 200, &response).await;
+            }
+        });
+        let (sender, mut events) = provider_event_channel();
+        let mut client = HighQualityTranslationClient::new_deeplx(
+            "synthetic",
+            &endpoint,
+            "",
+            SourceLanguage::English,
+            TargetLanguage::SimplifiedChinese,
+            sender,
+        )
+        .unwrap();
+        client.enable_stable_unit_previews();
+        for (draft, expected_source, expected_translation) in [
+            (
+                "First complete sentence. Unfinished",
+                "First complete sentence.",
+                "第一句。",
+            ),
+            (
+                "First complete sentence. Second complete sentence. Unfinished",
+                "First complete sentence. Second complete sentence.",
+                "第一句。第二句。",
+            ),
+        ] {
+            client
+                .handle_asr_event(LiveTranslateServerEvent::SourceDraft {
+                    text: draft.into(),
+                    language: Some("en".into()),
+                })
+                .await;
+            let (source, translation) = tokio::time::timeout(Duration::from_secs(8), async {
+                loop {
+                    if let LiveTranslateServerEvent::SubtitlePreviewPair {
+                        source,
+                        translation,
+                        ..
+                    } = events.recv().await.unwrap()
+                    {
+                        break (source, translation);
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(source, expected_source);
+            assert_eq!(translation, expected_translation);
+        }
+        client
+            .handle_asr_event(LiveTranslateServerEvent::SourceFinal {
+                text: "First corrected sentence. Second complete sentence.".into(),
+                language: Some("en".into()),
+            })
+            .await;
+        let translation = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                if let LiveTranslateServerEvent::SubtitleConfirmedPair { translation, .. } =
+                    events.recv().await.unwrap()
+                {
+                    break translation;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(translation, "权威完整译文。");
+        assert!(client.inner.lock().await.units.pinned_pair().is_none());
+        client.disconnect().await;
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stable_units_correction_retracts_pair_and_clear_cancels_inflight_result() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let (started_tx, started_rx) = oneshot::channel();
+        let (release_tx, release_rx) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut first, _) = listener.accept().await.unwrap();
+            reply_to_synthetic_request(&mut first, 200, r#"{"code":200,"data":"第一句。"}"#).await;
+            let (mut second, _) = listener.accept().await.unwrap();
+            let _ = read_synthetic_request(&mut second).await;
+            started_tx.send(()).unwrap();
+            release_rx.await.unwrap();
+            // Cancellation can close the socket; ignore the expected write error.
+            use tokio::io::AsyncWriteExt;
+            let body = r#"{"code":200,"data":"obsolete"}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = second.write_all(response.as_bytes()).await;
+        });
+        let (sender, mut events) = provider_event_channel();
+        let mut client = HighQualityTranslationClient::new_deeplx(
+            "synthetic",
+            &endpoint,
+            "",
+            SourceLanguage::English,
+            TargetLanguage::Japanese,
+            sender,
+        )
+        .unwrap();
+        client.enable_stable_unit_previews();
+        client
+            .handle_asr_event(LiveTranslateServerEvent::SourceDraft {
+                text: "First sentence.".into(),
+                language: Some("en".into()),
+            })
+            .await;
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while !matches!(
+                events.recv().await.unwrap(),
+                LiveTranslateServerEvent::SubtitlePreviewPair { .. }
+            ) {}
+        })
+        .await
+        .unwrap();
+        client
+            .handle_asr_event(LiveTranslateServerEvent::SourceDraft {
+                text: "Corrected first sentence.".into(),
+                language: Some("en".into()),
+            })
+            .await;
+        tokio::time::timeout(Duration::from_secs(4), async {
+            while !matches!(
+                events.recv().await.unwrap(),
+                LiveTranslateServerEvent::SubtitlePreviewCleared
+            ) {}
+        })
+        .await
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(8), started_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        client.clear_content().await;
+        release_tx.send(()).unwrap();
+        server.await.unwrap();
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        while let Ok(event) = events.try_recv() {
+            assert!(!matches!(
+                event,
+                LiveTranslateServerEvent::SubtitlePreviewPair { .. }
+            ));
+        }
+        assert!(client.inner.lock().await.units.pinned_pair().is_none());
+        client.disconnect().await;
     }
 
     #[tokio::test]
@@ -3525,7 +3827,10 @@ mod tests {
         assert!(client.mt.supports_reported_source(Some("unknown-report")));
         let error = client
             .translate_with_retry(
-                "Synthetic unsupported source",
+                TranslationInput {
+                    text: "Synthetic unsupported source",
+                    preview_source: None,
+                },
                 Some("no"),
                 tokio::time::Instant::now() + Duration::from_secs(1),
                 Arc::new(|_| {}),
