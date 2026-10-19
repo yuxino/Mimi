@@ -432,7 +432,7 @@ impl SessionHistory {
                 created_audio.push(audio_path);
             }
             let mut temporary = tempfile::NamedTempFile::new_in(&self.directory)?;
-            serde_json::to_writer(&mut temporary, &saved).map_err(io::Error::other)?;
+            write_final_transcript(&mut temporary, &saved)?;
             temporary.as_file().sync_all()?;
             temporary
                 .persist_noclobber(self.path(id, "json")?)
@@ -618,6 +618,14 @@ impl SessionHistory {
     }
 }
 
+fn write_final_transcript(writer: &mut impl Write, saved: &SavedTranscript) -> io::Result<()> {
+    // Batch the serializer's small tokens without another transcript-sized
+    // copy. Flush errors must reach the caller before it syncs or publishes.
+    let mut writer = io::BufWriter::with_capacity(8 * 1024, writer);
+    serde_json::to_writer(&mut writer, saved).map_err(io::Error::other)?;
+    writer.flush()
+}
+
 /// Reuse only a completed conversion of this pending PCM track. Existing
 /// outputs are compared with bounded buffers before the journal is consumed.
 fn verified_existing_wav(
@@ -708,6 +716,93 @@ fn wav_header(rate: u32, length: u32) -> [u8; 44] {
 mod tests {
     use super::*;
     use crate::core::models::SubtitlePair;
+
+    #[derive(Default)]
+    struct TranscriptWriter {
+        bytes: Vec<u8>,
+        writes: usize,
+        fail_after: Option<usize>,
+        fail_flush: bool,
+    }
+
+    impl Write for TranscriptWriter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.writes += 1;
+            let count = self.fail_after.map_or(bytes.len(), |limit| {
+                bytes.len().min(limit.saturating_sub(self.bytes.len()))
+            });
+            if count == 0 && !bytes.is_empty() {
+                return Err(io::Error::other("synthetic write failure"));
+            }
+            self.bytes.extend_from_slice(&bytes[..count]);
+            Ok(count)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            if self.fail_flush {
+                Err(io::Error::other("synthetic flush failure"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn synthetic_final_transcript(count: usize) -> SavedTranscript {
+        SavedTranscript {
+            version: 1,
+            id: uuid::Uuid::new_v4().to_string(),
+            started_at_ms: 100,
+            ended_at_ms: 200,
+            limited: false,
+            entries: (0..count)
+                .map(|index| {
+                    let mut pair = SubtitlePair::new(
+                        "Synthetic \\\"\n日本語".into(),
+                        "译文\t😀".into(),
+                        index as u64 + 100,
+                    );
+                    if index % 2 != 0 {
+                        pair.audio_source = AudioSource::Microphone;
+                    }
+                    pair
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn final_transcript_write_batches_small_tokens_and_preserves_bytes() {
+        let saved = synthetic_final_transcript(512);
+        let mut writer = TranscriptWriter::default();
+        write_final_transcript(&mut writer, &saved).unwrap();
+        assert_eq!(writer.bytes, serde_json::to_vec(&saved).unwrap());
+        assert!(
+            writer.writes < saved.entries.len() / 4,
+            "finalization should batch JSON tokens, writes={}",
+            writer.writes,
+        );
+    }
+
+    #[test]
+    fn final_transcript_write_propagates_tail_write_and_flush_failures() {
+        let saved = synthetic_final_transcript(1);
+        let expected = serde_json::to_vec(&saved).unwrap();
+        assert!(expected.len() < 8192);
+        for accepted in [0, expected.len() - 1] {
+            let mut writer = TranscriptWriter {
+                fail_after: Some(accepted),
+                ..Default::default()
+            };
+            assert!(write_final_transcript(&mut writer, &saved).is_err());
+            assert_eq!(writer.bytes, expected[..accepted]);
+        }
+        let mut writer = TranscriptWriter {
+            fail_flush: true,
+            ..Default::default()
+        };
+        assert!(write_final_transcript(&mut writer, &saved).is_err());
+        assert_eq!(writer.bytes, expected);
+    }
 
     fn assert_metadata_matches_transcript(history: &SessionHistory, id: &str) {
         let saved = history.read(id).unwrap();

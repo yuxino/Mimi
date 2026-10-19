@@ -588,6 +588,13 @@ not deduplicate by matching tails. Sentence breaks belong only to live display,
 never to transcript buffers or committed history. Keep preview clocks separate
 from local quiet checkpoints.
 
+Keep every display-only punctuation scan bounded by the input length. A linear
+closing-quote scan is insufficient if each period still passes the accumulated
+output to an abbreviation regex. Match only the needed input suffix, including
+the preceding word-boundary character, and verify output equivalence for Unicode
+and inserted line breaks. Use operation-count regressions rather than timing
+thresholds to catch repeated whole-prefix scans.
+
 Gemini's continuous model can omit `turnComplete` even after `audioStreamEnd`.
 Keep its Stop budget longer than the shared two-second paired-text quiet
 checkpoint, within the outer provider watchdog. Test a paired late tail without
