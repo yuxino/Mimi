@@ -26,7 +26,7 @@ class CustomRecognitionRuntimeJniTest {
         .bufferedReader().use { it.readText() }).getJSONArray("customRecognitionCompletions")
 
     private fun configuration(fixture: Loopback) = JSONObject()
-        .put("provider", "customOpenAIASR").put("qwenMtModel", "lite")
+        .put("provider", if (fixture.audio3) "customDashScopeASR" else "customOpenAIASR").put("qwenMtModel", "lite")
         .put("credentials", JSONObject().put("kind", "customSpeech").put("endpoint", fixture.endpoint)
             .put("model", "synthetic-model").put("apiKey", "synthetic-only"))
         .put("textCredentials", JSONObject.NULL).put("sourceLanguage", "en").put("targetLanguage", "original")
@@ -166,9 +166,37 @@ class CustomRecognitionRuntimeJniTest {
         }
     }
 
-    private class Loopback : AutoCloseable {
+    @Test fun audio3FinishDrainsDelayedTailWithOrWithoutProviderAcknowledgementAcrossActualJni() {
+        val cases = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONArray("audio3FinishDrain")
+        assertTrue("Missing Audio3 finish fixtures", cases.length() > 0)
+        for (index in 0 until cases.length()) {
+            val case = cases.getJSONObject(index)
+            Loopback(case).use { fixture ->
+                val handle = create(fixture)
+                try {
+                    NativeRuntimeConfiguration.command("start", handle)
+                    awaitState(fixture, handle) {
+                        it.getJSONObject("snapshot").getJSONObject("source").getString("text") == case.getString("initialDraft")
+                    }
+                    NativeRuntimeConfiguration.command("finish", handle)
+                    val finished = awaitState(fixture, handle) { it.getBoolean("finished") }
+                    assertTrue(case.getString("id"), fixture.finishSeen.await(1, TimeUnit.SECONDS))
+                    val expected = case.getJSONArray("confirmedSources")
+                    assertEquals(case.getString("id"), (0 until expected.length()).map(expected::getString), confirmedSources(finished))
+                    assertTrue(case.getString("id"), fixture.transportClosed.await(3, TimeUnit.SECONDS))
+                    fixture.checkFailure()
+                } finally { NativeRuntimeConfiguration.command("stop", handle) }
+            }
+        }
+    }
+
+    private class Loopback(private val audio3Finish: JSONObject? = null) : AutoCloseable {
+        val audio3 = audio3Finish != null
         private val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         val endpoint = "ws://127.0.0.1:${server.localPort}/v1/realtime"
+        val finishSeen = CountDownLatch(1)
+        val transportClosed = CountDownLatch(1)
         private val ready = CountDownLatch(1)
         private val commits = AtomicInteger()
         private val failure = AtomicReference<Throwable?>()
@@ -182,12 +210,17 @@ class CustomRecognitionRuntimeJniTest {
                 val input = DataInputStream(connection.inputStream)
                 val wire = connection.outputStream.also { output = it }
                 val request = headers(input)
-                check(request.startsWith("GET /v1/realtime?intent=transcription HTTP/1.1\r\n"))
+                check(request.startsWith(if (audio3) "GET /v1/realtime HTTP/1.1\r\n"
+                    else "GET /v1/realtime?intent=transcription HTTP/1.1\r\n"))
                 val key = request.lineSequence().first { it.startsWith("sec-websocket-key:", true) }.substringAfter(':').trim()
                 val accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1")
                     .digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray(Charsets.US_ASCII)))
                 wire.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $accept\r\n\r\n".toByteArray(Charsets.US_ASCII))
                 val setup = JSONObject(readText(input, wire))
+                if (audio3) {
+                    audio3Session(setup, input, wire, requireNotNull(audio3Finish))
+                    return@thread
+                }
                 check(setup.getString("type") == "session.update")
                 frame(wire, 1, setup.put("type", "session.updated").toString().toByteArray(Charsets.UTF_8))
                 ready.countDown()
@@ -205,6 +238,33 @@ class CustomRecognitionRuntimeJniTest {
                     }
                 }
             } catch (error: Throwable) { if (!closed) failure.set(error) }
+        }
+
+        private fun audio3Session(setup: JSONObject, input: DataInputStream, wire: OutputStream, case: JSONObject) {
+            check(setup.getJSONObject("header").getString("action") == "run-task")
+            val taskId = setup.getJSONObject("header").getString("task_id")
+            fun event(name: String) = JSONObject().put("header", JSONObject().put("event", name).put("task_id", taskId))
+            fun sentence(id: Int, text: String, isFinal: Boolean) = event("result-generated").put("payload", JSONObject()
+                .put("output", JSONObject().put("sentence", JSONObject().put("sentence_id", id).put("text", text).put("sentence_end", isFinal))))
+            fun sendFrame(event: JSONObject) = frame(wire, 1, event.toString().toByteArray(Charsets.UTF_8))
+            sendFrame(event("task-started"))
+            ready.countDown()
+            sendFrame(sentence(1, case.getString("initialDraft"), false))
+            val finish = JSONObject(requireNotNull(readText(input, wire)))
+            check(finish.getJSONObject("header").getString("action") == "finish-task")
+            check(finish.getJSONObject("header").getString("task_id") == taskId)
+            finishSeen.countDown()
+            // The recognizer produces its final update only after Stop. Keep
+            // this within the production budget; Rust tests control deadlines.
+            Thread.sleep(100)
+            val sentences = case.getJSONArray("finishSentences")
+            for (index in 0 until sentences.length()) {
+                val value = sentences.getJSONObject(index)
+                sendFrame(sentence(value.getInt("id"), value.getString("text"), value.getBoolean("final")))
+            }
+            if (case.getBoolean("acknowledge")) sendFrame(event("task-finished"))
+            check(readText(input, wire) == null) { "Unexpected command after Audio3 finish" }
+            transportClosed.countDown()
         }
 
         fun checkFailure() { failure.get()?.let { throw AssertionError("Synthetic custom recognition transport failed", it) } }
@@ -246,7 +306,13 @@ class CustomRecognitionRuntimeJniTest {
                 val mask = ByteArray(4).also(input::readFully)
                 val payload = ByteArray(size).also(input::readFully)
                 for (index in payload.indices) payload[index] = (payload[index].toInt() xor mask[index % 4].toInt()).toByte()
-                when (opcode) { 8 -> return null; 9 -> frame(output, 10, payload); 1 -> return payload.toString(Charsets.UTF_8); else -> error("Unexpected loopback opcode") }
+                when (opcode) {
+                    8 -> return null
+                    9 -> frame(output, 10, payload)
+                    1 -> return payload.toString(Charsets.UTF_8)
+                    2 -> check(audio3) { "Unexpected binary custom recognition frame" }
+                    else -> error("Unexpected loopback opcode")
+                }
             }
         }
         override fun close() {

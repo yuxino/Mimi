@@ -557,43 +557,119 @@ impl Audio3ASRClient {
     /// Sends `finish-task`, waits briefly for `task-finished`, then
     /// disconnects.
     pub async fn finish(&self, timeout: Duration) {
-        if self.inner.sink.lock().await.is_none() {
+        let generation = self.inner.generation.load(Ordering::SeqCst);
+        let events = self.events.lock().await.clone();
+        {
+            let _content = self.inner.content_gate.lock().unwrap();
+            if self.inner.generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            self.inner.finishing.store(true, Ordering::SeqCst);
+        }
+        let operation = async {
+            {
+                let mut sink = self.inner.sink.lock().await;
+                if self.inner.generation.load(Ordering::SeqCst) != generation {
+                    return Ok(false);
+                }
+                let Some(sink) = sink.as_mut() else {
+                    return Ok(false);
+                };
+                let task_id = self.task_id.lock().await.clone().unwrap_or_default();
+                if let Ok(command) = Audio3ASRRequestEncoder::finish_task(&task_id) {
+                    sink.send(Message::Text(command.to_string().into())).await?;
+                }
+            }
+            loop {
+                if self.inner.generation.load(Ordering::SeqCst) != generation
+                    || self.inner.task_finished.load(Ordering::SeqCst)
+                    || self.inner.terminal_error.lock().await.is_some()
+                {
+                    return Ok::<_, tokio_tungstenite::tungstenite::Error>(true);
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        };
+        // Sending the command consumes the same budget as waiting for its ack.
+        let outcome = tokio::time::timeout(timeout, operation).await;
+        if matches!(outcome, Ok(Ok(false))) {
             return;
         }
-        self.inner.finishing.store(true, Ordering::SeqCst);
-        let task_id = self.task_id.lock().await.clone().unwrap_or_default();
-        if let Ok(command) = Audio3ASRRequestEncoder::finish_task(&task_id) {
-            let _ = self.send_text(command.to_string()).await;
+        let send_failed = matches!(outcome, Ok(Err(_)));
+        let task = {
+            let mut task = self.inner.receive_task.lock().await;
+            if self.inner.generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            task.take()
+        };
+        let had_producer = task.is_some();
+        if let Some(task) = task {
+            task.abort();
+            let _ = task.await;
         }
-        let deadline = tokio::time::Instant::now() + timeout;
-        loop {
-            if self.inner.task_finished.load(Ordering::SeqCst) {
-                break;
+        // Join the sole producer before publishing a local drain barrier. A
+        // provider error must remain an error, and a real ack is not duplicated.
+        let failed = send_failed || self.inner.terminal_error.lock().await.is_some();
+        let retired_generation = {
+            let _content = self.inner.content_gate.lock().unwrap();
+            if self.inner.generation.load(Ordering::SeqCst) != generation {
+                return;
             }
-            if self.inner.terminal_error.lock().await.is_some() {
-                break;
+            if had_producer && !failed && !self.inner.task_finished.load(Ordering::SeqCst) {
+                if let Some(events) = events {
+                    let _ = events.send(LiveTranslateServerEvent::SessionFinished);
+                }
             }
-            if tokio::time::Instant::now() >= deadline {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        self.disconnect().await;
+            self.inner
+                .generation
+                .fetch_add(1, Ordering::SeqCst)
+                .wrapping_add(1)
+        };
+        self.disconnect_retired_generation(retired_generation).await;
     }
 
     pub async fn disconnect(&self) {
-        self.inner.generation.fetch_add(1, Ordering::SeqCst);
-        self.inner.finishing.store(true, Ordering::SeqCst);
-        if let Some(task) = self.inner.receive_task.lock().await.take() {
+        let generation = {
+            let _content = self.inner.content_gate.lock().unwrap();
+            self.inner.finishing.store(true, Ordering::SeqCst);
+            self.inner
+                .generation
+                .fetch_add(1, Ordering::SeqCst)
+                .wrapping_add(1)
+        };
+        self.disconnect_retired_generation(generation).await;
+    }
+
+    async fn disconnect_retired_generation(&self, generation: u64) {
+        let task = {
+            let mut task = self.inner.receive_task.lock().await;
+            if self.inner.generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            task.take()
+        };
+        if let Some(task) = task {
             task.abort();
+            let _ = task.await;
         }
-        let sink = self.inner.sink.lock().await.take();
+        let sink = {
+            let mut sink = self.inner.sink.lock().await;
+            if self.inner.generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
+            sink.take()
+        };
         if let Some(mut sink) = sink {
             let _ = tokio::time::timeout(CLOSE_TIMEOUT, sink.close()).await;
         }
-        self.inner.task_started.store(false, Ordering::SeqCst);
-        self.inner.task_finished.store(false, Ordering::SeqCst);
-        *self.inner.terminal_error.lock().await = None;
+        let mut terminal_error = self.inner.terminal_error.lock().await;
+        let _content = self.inner.content_gate.lock().unwrap();
+        if self.inner.generation.load(Ordering::SeqCst) == generation {
+            self.inner.task_started.store(false, Ordering::SeqCst);
+            self.inner.task_finished.store(false, Ordering::SeqCst);
+            *terminal_error = None;
+        }
     }
 
     async fn wait_for_task_start(&self, timeout: Duration) -> Result<(), Audio3ASRClientError> {
@@ -765,6 +841,166 @@ mod streaming_tests {
     use crate::clients::provider_events::provider_event_channel;
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
+
+    async fn connected_finish_fixture() -> (
+        Audio3ASRClient,
+        crate::clients::provider_events::ProviderEventReceiver,
+        WebSocketStream<tokio::net::TcpStream>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = Audio3ASRClient::new_custom(
+            &format!("ws://{}/asr", listener.local_addr().unwrap()),
+            "synthetic-model",
+            "synthetic-key",
+            SourceLanguage::English,
+        )
+        .unwrap();
+        client
+            .set_network(
+                super::super::provider_network::ProviderNetwork::resolve(
+                    &crate::core::network_proxy::ProxyConfig {
+                        mode: crate::core::network_proxy::ProxyMode::Direct,
+                        url: None,
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let (sender, mut receiver) = provider_event_channel();
+        client.set_event_sender(sender).await;
+        let accept = async {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let run = socket.next().await.unwrap().unwrap().into_text().unwrap();
+            assert!(run.contains("run-task"));
+            socket
+                .send(Message::Text(
+                    r#"{"header":{"event":"task-started","task_id":"finish-fixture"}}"#.into(),
+                ))
+                .await
+                .unwrap();
+            socket
+        };
+        let (connected, socket) = tokio::join!(client.connect_for_probe("finish-fixture"), accept);
+        connected.unwrap();
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionCreated)
+        );
+        (client, receiver, socket)
+    }
+
+    #[tokio::test]
+    async fn finish_is_inert_without_a_connection_and_after_a_completed_finish() {
+        let client = Audio3ASRClient::new("synthetic-key", SourceLanguage::English).unwrap();
+        let (sender, mut receiver) = provider_event_channel();
+        client.set_event_sender(sender).await;
+        client.finish(Duration::from_millis(40)).await;
+        assert!(receiver.try_recv().is_err());
+
+        let (client, mut receiver, mut socket) = connected_finish_fixture().await;
+        let server = tokio::spawn(async move {
+            assert!(socket
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .into_text()
+                .unwrap()
+                .contains("finish-task"));
+            assert!(matches!(
+                socket.next().await,
+                Some(Ok(Message::Close(_))) | None
+            ));
+        });
+        client.finish(Duration::from_millis(40)).await;
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionFinished)
+        );
+        client.finish(Duration::from_millis(40)).await;
+        client.disconnect().await;
+        client.finish(Duration::from_millis(40)).await;
+        assert!(receiver.try_recv().is_err());
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn finish_preserves_provider_errors_without_a_synthetic_success() {
+        let (client, mut receiver, mut socket) = connected_finish_fixture().await;
+        let server = tokio::spawn(async move {
+            assert!(socket
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .into_text()
+                .unwrap()
+                .contains("finish-task"));
+            socket.send(Message::Text(r#"{"header":{"event":"task-failed","task_id":"finish-fixture","error_code":"SERVER_ERROR","error_message":"synthetic failure"}}"#.into())).await.unwrap();
+            assert!(matches!(
+                socket.next().await,
+                Some(Ok(Message::Close(_))) | None
+            ));
+        });
+        client.finish(Duration::from_secs(1)).await;
+        assert!(matches!(
+            receiver.try_recv(),
+            Ok(LiveTranslateServerEvent::Error { .. })
+        ));
+        assert!(receiver.try_recv().is_err());
+        client.finish(Duration::from_millis(40)).await;
+        assert!(receiver.try_recv().is_err());
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn finish_send_failure_cannot_become_a_synthetic_success() {
+        let (client, mut receiver, mut socket) = connected_finish_fixture().await;
+        // Keep the peer unread so the receive task cannot independently turn
+        // this into a transport error. The writer itself rejects further data.
+        client
+            .inner
+            .sink
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .close()
+            .await
+            .unwrap();
+        client.finish(Duration::from_secs(1)).await;
+        assert!(receiver.try_recv().is_err());
+        assert!(matches!(
+            socket.next().await,
+            Some(Ok(Message::Close(_))) | None
+        ));
+    }
+
+    #[tokio::test]
+    async fn finish_command_wait_uses_the_ack_budget_and_stops_its_producer() {
+        let (client, mut receiver, mut socket) = connected_finish_fixture().await;
+        let writer = client.inner.sink.lock().await;
+        let finisher = {
+            let client = client.clone();
+            tokio::spawn(async move { client.finish(Duration::from_millis(40)).await })
+        };
+        // An occupied writer cannot make finish spend an additional send
+        // timeout. Producer drain is observable before cleanup acquires it.
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+                .await
+                .unwrap(),
+            Some(LiveTranslateServerEvent::SessionFinished)
+        );
+        assert!(client.inner.receive_task.lock().await.is_none());
+        drop(writer);
+        finisher.await.unwrap();
+        assert!(matches!(
+            socket.next().await,
+            Some(Ok(Message::Close(_))) | None
+        ));
+    }
 
     #[tokio::test]
     #[allow(clippy::result_large_err)] // Tungstenite fixes the handshake callback error type.

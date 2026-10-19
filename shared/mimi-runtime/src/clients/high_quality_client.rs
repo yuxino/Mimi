@@ -7575,6 +7575,125 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn audio3_finish_drain_contract() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        for case in fixtures["audio3FinishDrain"].as_array().unwrap() {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let wire_case = case.clone();
+            let server = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                let run = socket.next().await.unwrap().unwrap().into_text().unwrap();
+                let run: serde_json::Value = serde_json::from_str(&run).unwrap();
+                assert_eq!(run["header"]["action"], "run-task");
+                let task_id = run["header"]["task_id"].as_str().unwrap();
+                assert!(!task_id.is_empty());
+                socket
+                    .send(Message::Text(
+                        serde_json::json!({"header":{"event":"task-started","task_id":task_id}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .unwrap();
+                socket.send(Message::Text(serde_json::json!({"header":{"event":"result-generated","task_id":task_id},"payload":{"output":{"sentence":{"sentence_id":1,"sentence_end":false,"text":wire_case["initialDraft"]}}}}).to_string().into())).await.unwrap();
+                loop {
+                    let frame = socket.next().await.unwrap().unwrap();
+                    if let Message::Text(text) = frame {
+                        let command: serde_json::Value = serde_json::from_str(&text).unwrap();
+                        assert_eq!(command["header"]["action"], "finish-task");
+                        assert_eq!(command["header"]["task_id"], task_id);
+                        break;
+                    }
+                }
+                // This synthetic server deliberately sends a tail after Stop
+                // and omits its terminal notification in the missing-ack cases.
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                for sentence in wire_case["finishSentences"].as_array().unwrap() {
+                    socket.send(Message::Text(serde_json::json!({"header":{"event":"result-generated","task_id":task_id},"payload":{"output":{"sentence":{"sentence_id":sentence["id"],"sentence_end":sentence["final"],"text":sentence["text"]}}}}).to_string().into())).await.unwrap();
+                }
+                if wire_case["acknowledge"].as_bool().unwrap() {
+                    socket.send(Message::Text(serde_json::json!({"header":{"event":"task-finished","task_id":task_id}}).to_string().into())).await.unwrap();
+                }
+                assert!(matches!(
+                    tokio::time::timeout(Duration::from_secs(3), socket.next())
+                        .await
+                        .unwrap(),
+                    None | Some(Ok(Message::Close(_)))
+                ));
+            });
+            let mut configuration =
+                custom_configuration(ProviderKind::CustomDashScopeASR, TargetLanguage::Original);
+            configuration.credentials = ProviderCredentials::CustomSpeech {
+                endpoint: format!("ws://{address}/asr"),
+                model: "synthetic-recognition".into(),
+                api_key: "synthetic-key".into(),
+            };
+            let (sender, mut events) = provider_event_channel();
+            let mut client =
+                HighQualityTranslationClient::new_custom(&configuration, sender).unwrap();
+            client
+                .set_network(
+                    ProviderNetwork::resolve(&crate::core::network_proxy::ProxyConfig {
+                        mode: crate::core::network_proxy::ProxyMode::Direct,
+                        url: None,
+                    })
+                    .unwrap(),
+                )
+                .unwrap();
+            client.connect().await.unwrap();
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    if matches!(
+                        events.recv().await,
+                        Some(LiveTranslateServerEvent::SourceUtteranceDraft {
+                            utterance_id: 1,
+                            ..
+                        })
+                    ) {
+                        break;
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            let started = tokio::time::Instant::now();
+            client.finish().await;
+            let elapsed = started.elapsed();
+            let received: Vec<_> = std::iter::from_fn(|| events.try_recv().ok()).collect();
+            let finished = received
+                .iter()
+                .filter(|event| **event == LiveTranslateServerEvent::SessionFinished)
+                .count();
+            let confirmed: Vec<_> = received
+                .into_iter()
+                .filter_map(|event| match event {
+                    LiveTranslateServerEvent::SubtitleConfirmedPair { source, .. } => Some(source),
+                    _ => None,
+                })
+                .collect();
+            server.await.unwrap();
+            assert_eq!(
+                serde_json::json!(confirmed),
+                case["confirmedSources"],
+                "{}",
+                case["id"]
+            );
+            assert_eq!(
+                finished, 1,
+                "{}: the stopped producer must acknowledge its drain exactly once",
+                case["id"]
+            );
+            eprintln!("audio3 finish fixture={} elapsed={elapsed:?}", case["id"]);
+        }
+    }
+
+    #[tokio::test]
     async fn finish_fallback_preserves_latest_queued_asr_draft_before_finish_ack() {
         let (client, mut events) = test_client(TargetLanguage::Original, 20);
         client

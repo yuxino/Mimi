@@ -1,5 +1,38 @@
 {
   "schemaVersion": 1,
+  "audio3FinishDrain": [
+    {
+      "id": "missing-terminal-keeps-latest-draft",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [{ "id": 1, "text": "Synthetic partial with the final tail.", "final": false }],
+      "acknowledge": false,
+      "confirmedSources": ["Synthetic partial with the final tail."]
+    },
+    {
+      "id": "missing-terminal-keeps-authoritative-final-once",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [{ "id": 1, "text": "Synthetic authoritative final.", "final": true }],
+      "acknowledge": false,
+      "confirmedSources": ["Synthetic authoritative final."]
+    },
+    {
+      "id": "missing-terminal-empty-result-keeps-existing-draft",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [{ "id": 1, "text": "", "final": true }],
+      "acknowledge": false,
+      "confirmedSources": ["Synthetic partial"]
+    },
+    {
+      "id": "acknowledged-final-keeps-newer-draft",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [
+        { "id": 1, "text": "Synthetic authoritative final.", "final": true },
+        { "id": 2, "text": "Synthetic newer tail.", "final": false }
+      ],
+      "acknowledge": true,
+      "confirmedSources": ["Synthetic authoritative final.", "Synthetic newer tail."]
+    }
+  ],
   "asrFinishBarrier": [
     {
       "id": "latest-unidentified-draft",
