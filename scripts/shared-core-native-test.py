@@ -39,10 +39,12 @@ def elf(abi, alignment=16384):
 
 
 def apk(path, abis=None, aligned=True, compressed=False, duplicate=False,
-        notices=verify.NOTICE_SOURCE.read_bytes()):
+        notices=verify.NOTICE_SOURCE.read_bytes(), dex=None):
     with zipfile.ZipFile(path, "w") as archive:
         if notices is not None:
             archive.writestr(verify.NOTICES, notices)
+        for name, content in (dex or {}).items():
+            archive.writestr(name, content)
         for abi in abis or verify.ABIS:
             name = f"lib/{abi}/{verify.LIBRARY}"
             item = zipfile.ZipInfo(name)
@@ -158,6 +160,30 @@ class NativeBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "app.apk"
             apk(path)
+            verify.verify_apk(path)
+
+    def test_apk_rejects_legacy_runtime_in_primary_or_secondary_dex(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "app.apk"
+            for name, descriptor in [
+                ("classes.dex", b"Lapp/yuxino/mimi/android/provider/DashScopeEngine;"),
+                ("classes2.dex", b"Lapp/yuxino/mimi/android/provider/OpenAITranslationClient$check$1;"),
+                ("classes3.dex", b"Lapp/yuxino/mimi/android/provider/ProviderLanguageCatalogsKt;"),
+                ("classes4.dex", b"Lapp/yuxino/mimi/android/provider/BoundedTranslationHttpClient;"),
+                ("classes5.dex", b"Lapp/yuxino/mimi/android/provider/TencentProtocol;"),
+            ]:
+                with self.subTest(dex=name):
+                    apk(path, dex={name: b"dex\n035\0" + descriptor + b"\0"})
+                    with self.assertRaisesRegex(ValueError, "offline legacy runtime"):
+                        verify.verify_apk(path)
+
+    def test_apk_allows_shared_runtime_adapter_and_probe_types(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "app.apk"
+            apk(path, dex={"classes.dex": b"dex\n035\0" + b"\0".join(
+                b"Lapp/yuxino/mimi/android/provider/" + name + b";"
+                for name in (b"SharedRuntimeEngine", b"NativeTextProbeClient", b"TranslationResult$Success")
+            )})
             verify.verify_apk(path)
 
     def test_apk_rejects_missing_duplicate_compressed_and_misaligned_libraries(self):

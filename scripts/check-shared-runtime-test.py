@@ -112,6 +112,16 @@ class SharedRuntimeBoundaryTests(unittest.TestCase):
                   lambda text: text + "\nfun fallback(config: TranslationConfiguration) = createTranslationClient(config)\n")
         self.rejected("Android production references offline legacy runtime")
 
+    def test_old_fixture_filename_cannot_bypass_production_checks(self):
+        self.add(guard.PROVIDER + "DashScopeEngine.kt",
+                 "class DashScopeEngine : ProviderEngine { }\n")
+        self.rejected("Android production defines another provider engine")
+
+    def test_service_metadata_cannot_reference_a_test_engine(self):
+        self.edit(guard.PROVIDER + "ServiceCatalog.kt",
+                  lambda text: text + "\nval fallbackEndpoint = OpenAIRealtimeEngine.ENDPOINT\n")
+        self.rejected("Android production references offline legacy runtime")
+
     def test_new_kotlin_engine_in_a_flavor_is_rejected(self):
         self.add("android/app/src/demo/java/Fork.kt", "class Fork : ProviderEngine { }\n")
         self.rejected("Android production defines another provider engine")

@@ -26,7 +26,7 @@ class ScopeTests(unittest.TestCase):
                      "shared/mimi-core/src/subtitle_reducer.rs",
                      "shared/mimi-android-jni/src/lib.rs",
                      "scripts/build-shared-core.py",
-                     "android/app/src/main/java/app/yuxino/mimi/android/provider/DeepLTranslationClient.kt"]:
+                     "android/app/src/main/java/app/yuxino/mimi/android/provider/NativeTextProbeClient.kt"]:
             result = module.plan([path])
             self.assertEqual(result["rust_os"], module.ALL_OS)
             self.assertFalse(result["bundle"])

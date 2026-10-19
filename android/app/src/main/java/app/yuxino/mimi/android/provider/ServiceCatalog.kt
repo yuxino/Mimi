@@ -2,6 +2,9 @@ package app.yuxino.mimi.android.provider
 
 import org.json.JSONObject
 
+internal const val OPENAI_REALTIME_ENDPOINT = "wss://api.openai.com/v1/realtime/translations"
+internal const val OPENAI_REALTIME_MODEL = "gpt-realtime-translate"
+
 /** Pure metadata shared by setup, language selection and session creation. */
 data class CredentialField(val id: String, val label: String, val secret: Boolean = true)
 
@@ -13,7 +16,7 @@ enum class ServiceProvider(
     DASHSCOPE("dashscope", "阿里云", "Audio 3.0 · Qwen-MT", 16000,
         listOf(CredentialField("apiKey", "API Key"))),
     OPENAI("openai", "OpenAI", "Realtime Translation", 24000,
-        listOf(CredentialField("apiKey", "API Key")), OpenAIRealtimeEngine.ENDPOINT, OpenAIRealtimeEngine.MODEL),
+        listOf(CredentialField("apiKey", "API Key")), OPENAI_REALTIME_ENDPOINT, OPENAI_REALTIME_MODEL),
     GEMINI("gemini", "Google Gemini", "Live Translation", 16000,
         listOf(CredentialField("apiKey", "API Key")),
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent", "gemini-3.5-live-translate-preview"),

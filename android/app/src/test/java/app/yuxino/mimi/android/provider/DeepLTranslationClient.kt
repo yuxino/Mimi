@@ -23,12 +23,6 @@ class DeepLTranslationClient(
         }, ::decodeDeepLResponse, callback)
 }
 
-internal fun deepLEndpoint(apiKey: String): String {
-    val key = apiKey.trim()
-    require(key.isNotEmpty() && key.length <= 4096 && key.all { it.code in 33..126 }) { "translation_key" }
-    return if (key.endsWith(":fx")) "https://api-free.deepl.com/v2/translate" else "https://api.deepl.com/v2/translate"
-}
-
 internal fun deepLRequest(text: String, source: String, target: String): JSONObject {
     val body = JSONObject().put("text", JSONArray().put(boundedTranslationInput(text)))
         .put("target_lang", deepLLanguage(target, source = false))

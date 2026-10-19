@@ -13,15 +13,6 @@ import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.TimeUnit
 
-fun interface TranslationCall { fun cancel() }
-
-sealed class TranslationResult {
-    data class Success(val text: String, val elapsedMs: Long) : TranslationResult() {
-        override fun toString() = "TranslationResult.Success(elapsedMs=$elapsedMs)"
-    }
-    data class Failure(val code: String, val elapsedMs: Long) : TranslationResult()
-}
-
 interface TranslationClient {
     fun resolveSourceLanguage(configured: String, reported: String?): String =
         translationSourceLanguage(configured, reported)

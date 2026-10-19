@@ -222,8 +222,8 @@ class OpenAIRealtimeEngine(private val listener: EngineListener) : ProviderEngin
 
     companion object {
         private const val TAG = "OpenAIRealtimeEngine"
-        const val ENDPOINT = "wss://api.openai.com/v1/realtime/translations"
-        const val MODEL = "gpt-realtime-translate"
+        const val ENDPOINT = OPENAI_REALTIME_ENDPOINT
+        const val MODEL = OPENAI_REALTIME_MODEL
         const val SOURCE_TRANSCRIPTION_MODEL = "gpt-realtime-whisper"
     }
 }
