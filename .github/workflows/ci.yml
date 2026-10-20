@@ -124,6 +124,21 @@ jobs:
       - name: Test
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
+      - name: Test Linux application icons with isolated Xvfb
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test_name=audio::linux_application_icons::tests::native_theme_and_desktop_icons_are_bounded_pngs_with_safe_fallbacks
+          test_list="$(timeout 120s cargo test --locked --manifest-path src-tauri/Cargo.toml \
+            --lib "$test_name" -- --ignored --exact --list)"
+          if ! grep -Fxq "$test_name: test" <<< "$test_list"; then
+            echo "Required Linux application icon test was not discovered: $test_name" >&2
+            exit 1
+          fi
+          timeout 120s xvfb-run -a env GDK_BACKEND=x11 \
+            cargo test --locked --manifest-path src-tauri/Cargo.toml --lib "$test_name" \
+            -- --ignored --exact --nocapture --test-threads=1
+
       - name: Shared subtitle core and JNI adapter
         shell: bash
         run: bash scripts/check-shared-core.sh

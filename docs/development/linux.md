@@ -93,13 +93,18 @@ SVG artwork becomes a bounded 32px embedded PNG; missing, damaged or oversized
 icons use the neutral fallback. Icons are presentation metadata only and are
 never saved with the selected stream. Restoring a selected icon reads only
 already discovered live streams and does not initialize audio discovery.
+Desktop IDs take priority. Executable hints can match several launchers (for
+example browser profiles or native/Flatpak installs); an exact name must resolve
+that ambiguity, otherwise the picker keeps the neutral icon. Duplicate exact
+names do not fall through to a weaker executable or variant guess.
 When an audio product name omits a desktop variant suffix (for example, Brave
 versus Brave Origin), a unique installed variant can supply the icon after exact
 ID, executable and name matching fail. Multiple variants keep the neutral
 fallback; icon matching never changes the selected playback-stream identity.
 Flatpak launchers use `flatpak` as their executable. If the stream reports the
 application binary instead, Mimi matches the exported launcher's declared
-`--command` only when the candidate is unique. Read `X-Flatpak` and parse the
+`--command` using the same ambiguity rules. Main desktop entries and the exported
+`ID.foo.desktop` / `ID-foo.desktop` variants are supported. Read `X-Flatpak` and parse the
 arguments with GLib; never execute the launcher or interpret the sandbox's
 process ID as a host PID to resolve artwork.
 

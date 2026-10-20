@@ -166,7 +166,14 @@ fn flatpak_command(app: &gio::AppInfo) -> Option<std::ffi::OsString> {
     let id = app
         .downcast_ref::<gio::DesktopAppInfo>()?
         .string("X-Flatpak")?;
-    if app.id()?.strip_suffix(".desktop")? != id.as_str() {
+    let desktop_id = app.id()?;
+    let desktop_id = desktop_id.strip_suffix(".desktop")?;
+    // Flatpak also exports ID.foo.desktop and ID-foo.desktop launchers.
+    if desktop_id != id.as_str()
+        && !desktop_id
+            .strip_prefix(id.as_str())
+            .is_some_and(|suffix| suffix.starts_with(['.', '-']) && suffix.len() > 1)
+    {
         return None;
     }
     let arguments = gtk::glib::shell_parse_argv(app.commandline()?).ok()?;
@@ -218,60 +225,103 @@ fn desktop_icon(source: &IconSource, desktops: &[gio::AppInfo]) -> Option<gio::I
                 .is_some_and(|value| binary == value)
         })
     };
-    source
+    let executable_matches = |app: &gio::AppInfo, value: &str| {
+        binary_matches(app, value)
+            || flatpak_command(app).is_some_and(|command| {
+                std::path::Path::new(&command).file_name()
+                    == std::path::Path::new(value).file_name()
+            })
+    };
+    if let Some(app) = source
         .application_id
         .as_deref()
-        .and_then(|id| {
-            desktops
-                .iter()
-                .find(|app| id_matches(app, id))
-                .and_then(|app| app.icon())
-        })
-        .or_else(|| {
-            source.binary.as_deref().and_then(|binary| {
-                desktops
+        .and_then(|id| desktops.iter().find(|app| id_matches(app, id)))
+    {
+        return app.icon();
+    }
+    if let Some(binary) = source.binary.as_deref() {
+        // Exec identifies a program, not a launcher: profiles, interpreters and
+        // native/Flatpak installations can share it. Never pick by list order.
+        let candidates: Vec<_> = desktops
+            .iter()
+            .filter(|app| executable_matches(app, binary))
+            .collect();
+        if !candidates.is_empty() {
+            if let Some(name) = source.name.as_deref() {
+                if let Some(app) = candidates.iter().find(|app| id_matches(app, name)) {
+                    return app.icon();
+                }
+                let mut named = candidates
                     .iter()
-                    .find(|app| binary_matches(app, binary))
-                    .and_then(|app| app.icon())
-            })
-        })
-        .or_else(|| {
-            let binary = std::path::Path::new(source.binary.as_deref()?).file_name()?;
-            unique_icon(desktops.iter().filter(|app| {
-                flatpak_command(app).is_some_and(|command| {
-                    std::path::Path::new(&command).file_name() == Some(binary)
-                })
-            }))
-        })
-        .or_else(|| {
-            source.name.as_deref().and_then(|name| {
-                desktops
-                    .iter()
-                    .find(|app| {
-                        id_matches(app, name)
-                            || binary_matches(app, name)
-                            || app.name().eq_ignore_ascii_case(name)
-                    })
-                    .and_then(|app| app.icon())
-            })
-        })
-        .or_else(|| {
-            let name = source.name.as_deref()?;
-            unique_icon(
-                desktops
-                    .iter()
-                    .filter(|app| variant_name(&app.name(), name)),
-            )
-        })
+                    .copied()
+                    .filter(|app| app.name().eq_ignore_ascii_case(name))
+                    .peekable();
+                if named.peek().is_some() {
+                    return unique_icon(named);
+                }
+            }
+            return unique_icon(candidates.into_iter());
+        }
+    }
+    let name = source.name.as_deref()?;
+    if let Some(app) = desktops.iter().find(|app| id_matches(app, name)) {
+        return app.icon();
+    }
+    let mut named = desktops
+        .iter()
+        .filter(|app| app.name().eq_ignore_ascii_case(name))
+        .peekable();
+    if named.peek().is_some() {
+        // An ambiguous exact name must not fall through to a weaker variant.
+        return unique_icon(named);
+    }
+    let mut binaries = desktops
+        .iter()
+        .filter(|app| executable_matches(app, name))
+        .peekable();
+    if binaries.peek().is_some() {
+        return unique_icon(binaries);
+    }
+    unique_icon(
+        desktops
+            .iter()
+            .filter(|app| variant_name(&app.name(), name)),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn desktop_entry(
+        directory: &std::path::Path,
+        id: &str,
+        name: &str,
+        binary: &str,
+        icon: &str,
+    ) -> gio::AppInfo {
+        let path = directory.join(format!("{id}.desktop"));
+        std::fs::write(
+            &path,
+            format!("[Desktop Entry]\nType=Application\nName={name}\nExec={binary}\nIcon={icon}\n"),
+        )
+        .unwrap();
+        gio::DesktopAppInfo::from_filename(path).unwrap().upcast()
+    }
+
     fn flatpak_desktop(
         directory: &std::path::Path,
         id: &str,
+        options: &str,
+        icon: &str,
+    ) -> gio::AppInfo {
+        flatpak_desktop_with_id(directory, id, id, options, icon)
+    }
+
+    fn flatpak_desktop_with_id(
+        directory: &std::path::Path,
+        desktop_id: &str,
+        app_id: &str,
         options: &str,
         icon: &str,
     ) -> gio::AppInfo {
@@ -281,9 +331,9 @@ mod tests {
         if !launcher.exists() {
             std::os::unix::fs::symlink("/bin/true", &launcher).unwrap();
         }
-        let path = directory.join(format!("{id}.desktop"));
+        let path = directory.join(format!("{desktop_id}.desktop"));
         std::fs::write(&path, format!(
-            "[Desktop Entry]\nType=Application\nName=腾讯会议\nExec=\"{}\" run {options} {id} @@u %u @@\nIcon={icon}\nX-Flatpak={id}\n",
+            "[Desktop Entry]\nType=Application\nName=腾讯会议\nExec=\"{}\" run {options} {app_id} @@u %u @@\nIcon={icon}\nX-Flatpak={app_id}\n",
             launcher.display()
         )).unwrap();
         gio::DesktopAppInfo::from_filename(path).unwrap().upcast()
@@ -398,6 +448,206 @@ mod tests {
     }
 
     #[test]
+    fn shared_executables_use_exact_names_without_depending_on_desktop_order() {
+        let directory = tempfile::tempdir().unwrap();
+        let work = desktop_entry(
+            directory.path(),
+            "aaa-work",
+            "Work Profile",
+            "/bin/true",
+            "work",
+        );
+        let player = desktop_entry(directory.path(), "player", "Player", "/bin/true", "player");
+        let source = IconSource {
+            binary: Some("true".into()),
+            name: Some("Player".into()),
+            ..Default::default()
+        };
+        for apps in [
+            [work.clone(), player.clone()],
+            [player.clone(), work.clone()],
+        ] {
+            assert_eq!(desktop_icon(&source, &apps), player.icon());
+            for name in [None, Some("Unknown"), Some("true")] {
+                assert!(desktop_icon(
+                    &IconSource {
+                        name: name.map(Into::into),
+                        ..source.clone()
+                    },
+                    &apps
+                )
+                .is_none());
+            }
+            assert_eq!(
+                desktop_icon(
+                    &IconSource {
+                        application_id: Some("aaa-work.desktop".into()),
+                        ..source.clone()
+                    },
+                    &apps
+                ),
+                work.icon()
+            );
+        }
+    }
+
+    #[test]
+    fn ambiguous_names_and_executable_aliases_keep_the_neutral_fallback() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = desktop_entry(directory.path(), "first", "Player", "/bin/true", "first");
+        let second = desktop_entry(directory.path(), "second", "Player", "/bin/false", "second");
+        let variant = desktop_entry(
+            directory.path(),
+            "variant",
+            "Player Beta",
+            "/bin/true",
+            "beta",
+        );
+        let apps = [first.clone(), second, variant];
+        let source = IconSource {
+            name: Some("Player".into()),
+            ..Default::default()
+        };
+        assert!(desktop_icon(&source, &apps).is_none());
+        assert_eq!(
+            desktop_icon(
+                &IconSource {
+                    binary: Some("false".into()),
+                    ..source.clone()
+                },
+                &apps
+            ),
+            apps[1].icon()
+        );
+        assert_eq!(
+            desktop_icon(
+                &IconSource {
+                    binary: Some("true".into()),
+                    ..source
+                },
+                &apps
+            ),
+            first.icon()
+        );
+        assert!(desktop_icon(
+            &IconSource {
+                name: Some("true".into()),
+                ..Default::default()
+            },
+            &apps
+        )
+        .is_none());
+        let duplicate = desktop_entry(
+            directory.path(),
+            "duplicate",
+            "Player",
+            "/bin/true",
+            "duplicate",
+        );
+        assert!(desktop_icon(
+            &IconSource {
+                binary: Some("true".into()),
+                name: Some("Player".into()),
+                ..Default::default()
+            },
+            &[first, duplicate]
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn native_and_flatpak_commands_use_the_same_ambiguity_rules() {
+        let directory = tempfile::tempdir().unwrap();
+        let native = desktop_entry(
+            directory.path(),
+            "native",
+            "Native Player",
+            "/bin/true",
+            "native",
+        );
+        let sandbox = flatpak_desktop(
+            directory.path(),
+            "org.example.Player",
+            "--command=true",
+            "sandbox",
+        );
+        for apps in [
+            [native.clone(), sandbox.clone()],
+            [sandbox.clone(), native.clone()],
+        ] {
+            let source = IconSource {
+                binary: Some("true".into()),
+                ..Default::default()
+            };
+            assert!(desktop_icon(&source, &apps).is_none());
+            assert_eq!(
+                desktop_icon(
+                    &IconSource {
+                        name: Some("腾讯会议".into()),
+                        ..source
+                    },
+                    &apps
+                ),
+                sandbox.icon()
+            );
+        }
+    }
+
+    #[test]
+    fn missing_artwork_does_not_select_a_weaker_or_ambiguous_launcher() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("missing.desktop");
+        std::fs::write(
+            &path,
+            "[Desktop Entry]\nType=Application\nName=Player\nExec=/bin/true\n",
+        )
+        .unwrap();
+        let missing: gio::AppInfo = gio::DesktopAppInfo::from_filename(path).unwrap().upcast();
+        assert!(missing.icon().is_none());
+        let other = desktop_entry(directory.path(), "other", "Other", "/bin/false", "other");
+        let apps = [missing.clone(), other];
+        for source in [
+            IconSource {
+                application_id: Some("missing".into()),
+                binary: Some("false".into()),
+                name: Some("Other".into()),
+                ..Default::default()
+            },
+            IconSource {
+                binary: Some("true".into()),
+                name: Some("Other".into()),
+                ..Default::default()
+            },
+        ] {
+            assert!(desktop_icon(&source, &apps).is_none());
+        }
+        let variant = desktop_entry(
+            directory.path(),
+            "variant",
+            "Player Beta",
+            "/bin/false",
+            "beta",
+        );
+        assert!(desktop_icon(
+            &IconSource {
+                name: Some("Player".into()),
+                ..Default::default()
+            },
+            &[missing.clone(), variant]
+        )
+        .is_none());
+        let other = desktop_entry(directory.path(), "shared", "Other", "/bin/true", "other");
+        assert!(desktop_icon(
+            &IconSource {
+                binary: Some("true".into()),
+                ..Default::default()
+            },
+            &[missing, other]
+        )
+        .is_none());
+    }
+
+    #[test]
     fn flatpak_audio_binaries_match_unique_exported_commands_without_pid_or_name_hints() {
         let directory = tempfile::tempdir().unwrap();
         let mut properties = libpulse_binding::proplist::Proplist::new().unwrap();
@@ -452,6 +702,37 @@ mod tests {
             ),
             apps[1].icon()
         );
+    }
+
+    #[test]
+    fn flatpak_exported_suffixes_respect_application_id_boundaries() {
+        let directory = tempfile::tempdir().unwrap();
+        let id = "com.example.Meeting";
+        let source = IconSource {
+            binary: Some("wemeetapp".into()),
+            ..Default::default()
+        };
+        for (suffix, allowed) in [
+            ("", true),
+            (".viewer", true),
+            ("-viewer", true),
+            ("Extra", false),
+            (".", false),
+            ("-", false),
+        ] {
+            let app = flatpak_desktop_with_id(
+                directory.path(),
+                &format!("{id}{suffix}"),
+                id,
+                "--command=wemeetapp",
+                "meeting",
+            );
+            assert_eq!(
+                desktop_icon(&source, std::slice::from_ref(&app)).is_some(),
+                allowed,
+                "desktop suffix: {suffix}"
+            );
+        }
     }
 
     #[test]
