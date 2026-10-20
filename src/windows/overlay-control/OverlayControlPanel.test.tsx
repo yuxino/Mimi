@@ -10,6 +10,7 @@ import { useStore } from "../../lib/store";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
 import { sourceLanguagesForSettings } from "../../lib/providerCapabilities";
+import { profileLanguagePresetLabel } from "../../lib/profileLanguagePreset";
 import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
 
 let host: HTMLDivElement;
@@ -377,9 +378,80 @@ function configureProfiles() {
 
 async function chooseProfile(name: string) {
   await act(async () => picker(I18N.settings.currentProfile).click());
-  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === name)!;
+  const option = profileOption(name);
   await act(async () => option.click());
 }
+
+function profileOption(name: string) {
+  return [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.querySelector(".mimi-select__label")?.textContent === name)!;
+}
+
+it.each([
+  { credentialState: "missing", workspace: false },
+  { credentialState: "unavailable", workspace: false },
+  { credentialState: "present", workspace: true },
+] as const)("explains and blocks an unavailable profile: $credentialState, workspace=$workspace", async ({ credentialState, workspace }) => {
+  const unavailable = { id: "incomplete", name: "Incomplete service", provider: "alibabaCloud" as const, credentialState,
+    alibabaRealtimeMode: workspace ? "liveTranslate" as const : "disabled" as const, alibabaWorkspaceId: "  " };
+  configure({ profiles: [...props.settings.profiles, unavailable] });
+  await mount();
+  await act(async () => picker(I18N.settings.currentProfile).click());
+  const option = profileOption(unavailable.name);
+  expect(option.getAttribute("aria-disabled")).toBe("true");
+  expect(option.querySelector(".mimi-select__description")?.textContent).toContain(workspace ? I18N.settings.appleSpeechNeedsSetup
+    : credentialState === "missing" ? I18N.settings.credentialMissing : I18N.settings.credentialUnavailable);
+  await act(async () => option.click());
+  expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+  await key(picker(I18N.settings.currentProfile), "End");
+  await key(picker(I18N.settings.currentProfile), "Enter");
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+  expect(picker(I18N.settings.currentProfile).textContent).toBe("Alibaba Cloud");
+});
+
+it("keeps an invalid current profile selected and explained, then restores it after setup", async () => {
+  configureProfiles();
+  configure({ profiles: props.settings.profiles.map(profile => profile.id === "ali" ? { ...profile, credentialState: "missing" } : profile) });
+  await mount();
+  await act(async () => picker(I18N.settings.currentProfile).click());
+  const current = profileOption("Alibaba Cloud");
+  expect(current.getAttribute("aria-selected")).toBe("true");
+  expect(current.getAttribute("aria-disabled")).toBe("true");
+  expect(current.querySelector(".mimi-select__description")?.textContent).toBe(I18N.settings.credentialMissing);
+  await act(async () => current.click());
+  expect(props.onSelectProfile).not.toHaveBeenCalled();
+  await act(async () => profileOption("My recognition model").click());
+  expect(props.onSelectProfile).toHaveBeenCalledExactlyOnceWith("custom");
+  configure({ activeProfileId: "custom", profiles: props.settings.profiles.map(profile => ({ ...profile, credentialState: "present" })) });
+  await mount();
+  await act(async () => picker(I18N.settings.currentProfile).click());
+  expect(profileOption("Alibaba Cloud").getAttribute("aria-disabled")).not.toBe("true");
+  expect(profileOption("Alibaba Cloud").querySelector(".mimi-select__description")).toBeNull();
+  await act(async () => profileOption("Alibaba Cloud").click());
+  expect(props.onSelectProfile).toHaveBeenLastCalledWith("ali");
+});
+
+it.each(["appleSpeech", "customDashScopeASR", "customOpenAIASR"] as const)(
+  "allows a %s Original preset but blocks its incomplete translated preset", async provider => {
+    const original = { id: "original", name: "Recognition only", provider, credentialState: "missing" as const,
+      speechCredentialState: "present" as const, textCredentialState: "missing" as const,
+      languagePreset: { sourceLanguage: "en" as const, targetLanguage: "original" as const } };
+    const translated = { ...original, id: "translated", name: "Translation needs setup",
+      languagePreset: { sourceLanguage: "en" as const, targetLanguage: "zh" as const } };
+    configure({ targetLanguage: "original", profiles: [...props.settings.profiles, original, translated] });
+    await mount();
+    await act(async () => picker(I18N.settings.currentProfile).click());
+    const incomplete = profileOption(translated.name);
+    expect(incomplete.getAttribute("aria-disabled")).toBe("true");
+    expect(incomplete.querySelector(".mimi-select__description")?.textContent).toContain(profileLanguagePresetLabel(translated));
+    await act(async () => incomplete.click());
+    expect(props.onSelectProfile).not.toHaveBeenCalled();
+    const available = profileOption(original.name);
+    expect(available.getAttribute("aria-disabled")).not.toBe("true");
+    expect(available.querySelector(".mimi-select__description")?.textContent).toBe(profileLanguagePresetLabel(original));
+    await act(async () => available.click());
+    expect(props.onSelectProfile).toHaveBeenCalledExactlyOnceWith(original.id);
+  },
+);
 
 it.each([false, true])("switches saved profiles in the floating panel with paused=%s and keeps it open", async isPaused => {
   configureProfiles();

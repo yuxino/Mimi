@@ -82,9 +82,12 @@ it.each(["zh", "en", "ja"] as const)("identifies selected inputs and prioritizes
   }
 });
 
-it("measures collapsed content initially and after locale/status changes without measuring the expanded header", async () => {
+it.each(["Windows NT 10.0", "Macintosh", "Linux x86_64"])("measures collapsed content and preserves platform-specific DPI behavior on %s", async platform => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("devicePixelRatio", 1);
+  const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(platform);
+  const windowsDpiReports = platform.startsWith("Windows") ? 1 : 0;
   const callbacks: (() => void)[] = [];
   const disconnect = vi.fn();
   vi.stubGlobal("ResizeObserver", class {
@@ -118,6 +121,11 @@ it("measures collapsed content initially and after locale/status changes without
     callbacks[0]();
     expect(onWidthChange).toHaveBeenCalledOnce();
 
+    vi.stubGlobal("devicePixelRatio", 1.5);
+    window.dispatchEvent(new Event("resize"));
+    callbacks[0]();
+    expect(onWidthChange).toHaveBeenCalledTimes(1 + windowsDpiReports);
+
     setStoredUiLanguage("ja");
     width = 198.4;
     await act(async () => root.render(<LanguageStatusCapsule {...props} phase="error" />));
@@ -136,11 +144,15 @@ it("measures collapsed content initially and after locale/status changes without
     await act(async () => root.render(<LanguageStatusCapsule {...props} expanded />));
     expect(disconnect).toHaveBeenCalledOnce();
     expect(callbacks).toHaveLength(1);
-    expect(onWidthChange).toHaveBeenCalledTimes(3);
+    expect(onWidthChange).toHaveBeenCalledTimes(3 + windowsDpiReports);
+    callbacks[0]();
+    window.dispatchEvent(new Event("resize"));
+    expect(onWidthChange).toHaveBeenCalledTimes(3 + windowsDpiReports);
   } finally {
     await act(async () => root.unmount());
     host.remove();
     bounds.mockRestore();
+    userAgent.mockRestore();
     setStoredUiLanguage("system");
     vi.unstubAllGlobals();
   }

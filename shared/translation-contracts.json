@@ -1,5 +1,211 @@
 {
   "schemaVersion": 1,
+  "audio3FinishDrain": [
+    {
+      "id": "missing-terminal-keeps-latest-draft",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [{ "id": 1, "text": "Synthetic partial with the final tail.", "final": false }],
+      "acknowledge": false,
+      "confirmedSources": ["Synthetic partial with the final tail."]
+    },
+    {
+      "id": "missing-terminal-keeps-authoritative-final-once",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [{ "id": 1, "text": "Synthetic authoritative final.", "final": true }],
+      "acknowledge": false,
+      "confirmedSources": ["Synthetic authoritative final."]
+    },
+    {
+      "id": "missing-terminal-empty-result-keeps-existing-draft",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [{ "id": 1, "text": "", "final": true }],
+      "acknowledge": false,
+      "confirmedSources": ["Synthetic partial"]
+    },
+    {
+      "id": "acknowledged-final-keeps-newer-draft",
+      "initialDraft": "Synthetic partial",
+      "finishSentences": [
+        { "id": 1, "text": "Synthetic authoritative final.", "final": true },
+        { "id": 2, "text": "Synthetic newer tail.", "final": false }
+      ],
+      "acknowledge": true,
+      "confirmedSources": ["Synthetic authoritative final.", "Synthetic newer tail."]
+    }
+  ],
+  "asrFinishBarrier": [
+    {
+      "id": "latest-unidentified-draft",
+      "events": [
+        { "kind": "sourceDraft", "text": "Synthetic partial" },
+        { "kind": "sourceDraft", "text": "Synthetic partial with the final tail." },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sourceDraft", "text": "Synthetic partial with the final tail." },
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "latest-identified-draft",
+      "events": [
+        { "kind": "sourceDraft", "utteranceId": 1, "text": "Synthetic partial" },
+        { "kind": "sourceDraft", "utteranceId": 1, "text": "Synthetic partial with the final tail." },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sourceDraft", "utteranceId": 1, "text": "Synthetic partial with the final tail." },
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "authoritative-unidentified-final",
+      "events": [
+        { "kind": "sourceDraft", "text": "Synthetic partial" },
+        { "kind": "sourceDraft", "text": "Synthetic partial with the final tail." },
+        { "kind": "sourceFinal", "text": "Synthetic authoritative final." },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sourceFinal", "text": "Synthetic authoritative final." },
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "authoritative-identified-final",
+      "events": [
+        { "kind": "sourceDraft", "utteranceId": 1, "text": "Synthetic partial" },
+        { "kind": "sourceFinal", "utteranceId": 1, "text": "Synthetic authoritative final." },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sourceFinal", "utteranceId": 1, "text": "Synthetic authoritative final." },
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "newer-identified-draft-after-older-final",
+      "events": [
+        { "kind": "sourceDraft", "utteranceId": 2, "text": "Synthetic newer tail." },
+        { "kind": "sourceFinal", "utteranceId": 1, "text": "Synthetic older final." },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sourceFinal", "utteranceId": 1, "text": "Synthetic older final." },
+        { "kind": "sourceDraft", "utteranceId": 2, "text": "Synthetic newer tail." },
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "cleared-draft-is-not-a-finish-tail",
+      "events": [
+        { "kind": "sourceDraft", "text": "Synthetic cleared draft." },
+        { "kind": "clear" },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "current-draft-after-clear-is-finish-tail",
+      "events": [
+        { "kind": "sourceDraft", "text": "Synthetic cleared draft." },
+        { "kind": "clear" },
+        { "kind": "sourceDraft", "text": "Synthetic current tail." },
+        { "kind": "sessionFinished" }
+      ],
+      "expected": [
+        { "kind": "sourceDraft", "text": "Synthetic current tail." },
+        { "kind": "sessionFinished" }
+      ]
+    },
+    {
+      "id": "later-draft-does-not-move-before-finish",
+      "events": [
+        { "kind": "sessionFinished" },
+        { "kind": "sourceDraft", "text": "Synthetic later draft." }
+      ],
+      "expected": [
+        { "kind": "sessionFinished" },
+        { "kind": "sourceDraft", "text": "Synthetic later draft." }
+      ]
+    }
+  ],
+  "qwenCompletionResponses": [
+    {
+      "id": "sse-done",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic complete translation.\"},\"finish_reason\":null}]}\n\ndata: [DONE]\n",
+      "expected": "Synthetic complete translation."
+    },
+    {
+      "id": "sse-stop-without-done",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic complete translation.\"},\"finish_reason\":\"stop\"}]}\n\n",
+      "expected": "Synthetic complete translation."
+    },
+    {
+      "id": "sse-stop-final-line-without-newline",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic complete translation.\"},\"finish_reason\":\"stop\"}]}",
+      "expected": "Synthetic complete translation."
+    },
+    {
+      "id": "sse-clean-eof-partial",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":null}]}\n\n",
+      "expected": null
+    },
+    {
+      "id": "sse-clean-eof-final-line-partial",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":null}]}",
+      "expected": null
+    },
+    {
+      "id": "sse-length-with-done",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n",
+      "expected": null
+    },
+    {
+      "id": "sse-content-filter-with-done",
+      "stream": true,
+      "body": "data: {\"choices\":[{\"delta\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":\"content_filter\"}]}\n\ndata: [DONE]\n",
+      "expected": null
+    },
+    {
+      "id": "json-stop",
+      "stream": false,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"Synthetic complete translation.\"},\"finish_reason\":\"stop\"}]}",
+      "expected": "Synthetic complete translation."
+    },
+    {
+      "id": "json-legacy-omitted-reason",
+      "stream": false,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"Synthetic complete translation.\"}}]}",
+      "expected": "Synthetic complete translation."
+    },
+    {
+      "id": "json-length",
+      "stream": false,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":\"length\"}]}",
+      "expected": null
+    },
+    {
+      "id": "json-content-filter",
+      "stream": false,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":\"content_filter\"}]}",
+      "expected": null
+    },
+    {
+      "id": "json-null-reason",
+      "stream": false,
+      "body": "{\"choices\":[{\"message\":{\"content\":\"Synthetic partial translation\"},\"finish_reason\":null}]}",
+      "expected": null
+    }
+  ],
   "initialPreviewCandidates": [
     { "id": "short-opening", "minimumCharacters": 12, "opening": true, "draft": "Sample", "expected": null },
     { "id": "opening-at-limit", "minimumCharacters": 12, "opening": true, "draft": "Sample words", "expected": "Sample words" },
@@ -15997,5 +16203,53 @@
         "wire": "uk"
       }
     ]
-  }
+  },
+  "customRecognitionCompletions": [
+    {
+      "id": "empty-completion-retires-preview",
+      "draft": "Synthetic withdrawn preview.",
+      "completion": "",
+      "expected": {
+        "finalTexts": [
+          ""
+        ],
+        "confirmedSources": []
+      }
+    },
+    {
+      "id": "whitespace-completion-retires-preview",
+      "draft": "Synthetic withdrawn preview.",
+      "completion": " \t ",
+      "expected": {
+        "finalTexts": [
+          " \t "
+        ],
+        "confirmedSources": []
+      }
+    },
+    {
+      "id": "nonempty-completion-replaces-preview",
+      "draft": "Synthetic withdrawn preview.",
+      "completion": "Synthetic accepted final.",
+      "expected": {
+        "finalTexts": [
+          "Synthetic accepted final."
+        ],
+        "confirmedSources": [
+          "Synthetic accepted final."
+        ]
+      }
+    },
+    {
+      "id": "missing-completion-keeps-stop-tail",
+      "draft": "Synthetic withdrawn preview.",
+      "completion": null,
+      "expected": {
+        "finalTexts": [],
+        "confirmedSources": [
+          "Synthetic withdrawn preview."
+        ]
+      }
+    }
+  ]
 }

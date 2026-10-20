@@ -59,11 +59,17 @@ export function Tooltip({ label, popupClassName, children }: TooltipProps) {
     if (trigger.current) observer.observe(trigger.current);
     if (popup.current) observer.observe(popup.current);
     window.addEventListener("resize", position);
-    document.addEventListener("scroll", position, true);
+    const scrolled = (event: Event) => {
+      // A sibling subtitle timeline can scroll every animation frame without
+      // moving this anchor. Only its scrolling ancestors change its position.
+      if (event.target instanceof Element && !event.target.contains(trigger.current)) return;
+      position();
+    };
+    window.addEventListener("scroll", scrolled, true);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", position);
-      document.removeEventListener("scroll", position, true);
+      window.removeEventListener("scroll", scrolled, true);
     };
   }, [open, label]);
 

@@ -145,8 +145,13 @@ body.settings-body {
 
 /* A committed sentence replaces the live row it was already visible as; the
    timestamp is the only new thing in that frame, so it fades in quietly. */
+@keyframes subtitle-timestamp-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .subtitle-timestamp {
-  animation: lane-enter 200ms ease-out;
+  animation: subtitle-timestamp-enter 200ms ease-out;
 }
 
 /* Settings chrome belongs to no caption surface: it always yields to the

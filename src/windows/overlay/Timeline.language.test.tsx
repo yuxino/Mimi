@@ -25,7 +25,7 @@ it("updates paused source labels without replacing subtitle nodes or scrolling",
     const indicators = Array.from(host.querySelectorAll(".subtitle-audio-source"));
     expect(indicators.map(node => node.getAttribute("aria-label"))).toEqual(["System audio", "Microphone"]);
     timeline.scrollTop = 37;
-    for (const language of ["zh-TW", "de", "fr", "ko"] as const) {
+    for (const language of ["zh", "zh-TW", "ja", "de", "fr", "ko", "th", "en"] as const) {
       // No new props or subtitle event: React.memo must not retain old labels.
       await act(async () => setStoredUiLanguage(language));
       expect(host.firstElementChild).toBe(timeline);

@@ -1,7 +1,127 @@
 {
   "schemaVersion": 1,
   "description": "Synthetic identity pairing events; providerFrame is the corresponding public wire shape, never a captured response.",
+  "translationStartActivity": {
+    "phases": [
+      [
+        {"type":"conversation.item.created","item":{"id":"translation_old"},"previous_item_id":"source_old"},
+        {"type":"conversation.item.created","item":{"id":"translation_current"},"previous_item_id":"source_current"},
+        {"type":"conversation.item.input_audio_transcription.delta","item_id":"source_old","delta":"Synthetic old draft"},
+        {"type":"conversation.item.input_audio_transcription.completed","item_id":"source_current","transcript":"Synthetic current source."},
+        {"type":"response.done","response":{"id":"response_current","status":"completed","output":[{"id":"translation_current","content":[{"type":"output_text","text":"Synthetic current translation."}]}]}}
+      ],
+      [
+        {"type":"conversation.item.input_audio_transcription.completed","item_id":"source_old","transcript":"Synthetic late old source."},
+        {"type":"response.done","response":{"id":"response_old","status":"completed","output":[{"id":"translation_old","content":[{"type":"output_text","text":"Synthetic old translation."}]}]}}
+      ],
+      [
+        {"type":"conversation.item.created","item":{"id":"translation_next"},"previous_item_id":"source_next"},
+        {"type":"conversation.item.input_audio_transcription.completed","item_id":"source_next","transcript":"Synthetic next source."}
+      ]
+    ],
+    "finishFrames": [
+      {"type":"response.done","response":{"id":"response_next","status":"completed","output":[{"id":"translation_next","content":[{"type":"output_text","text":"Synthetic next translation."}]}]}},
+      {"type":"session.finished"}
+    ]
+  },
   "cases": [
+    {
+      "id": "queued_reliable_source_finals_keep_observation_order",
+      "queueBeforeDrain": true,
+      "expectedQueuedSource": { "text": "Synthetic current final.", "isFinal": true, "utteranceId": "source_c" },
+      "steps": [
+        {
+          "event": { "type": "item_created" },
+          "identity": { "item_id": "response_a", "previous_item_id": "source_a" },
+          "providerFrame": { "type": "conversation.item.created", "item_id": "response_a", "previous_item_id": "source_a" },
+          "atNs": 0,
+          "expected": []
+        },
+        {
+          "event": { "type": "item_created" },
+          "identity": { "item_id": "response_c", "previous_item_id": "source_c" },
+          "providerFrame": { "type": "conversation.item.created", "item_id": "response_c", "previous_item_id": "source_c" },
+          "atNs": 0,
+          "expected": []
+        },
+        {
+          "event": { "type": "source_draft", "text": "Synthetic old draft", "language": null },
+          "identity": { "item_id": "source_a", "previous_item_id": null },
+          "providerFrame": { "type": "conversation.item.input_audio_transcription.text", "item_id": "source_a", "text": "Synthetic old draft" },
+          "atNs": 1,
+          "expected": [{ "type": "utterance_text", "utterance_id": "source_a", "role": "source", "text": "Synthetic old draft", "is_final": false, "language": null }]
+        },
+        {
+          "event": { "type": "source_draft", "text": "Synthetic current draft", "language": null },
+          "identity": { "item_id": "source_c", "previous_item_id": null },
+          "providerFrame": { "type": "conversation.item.input_audio_transcription.text", "item_id": "source_c", "text": "Synthetic current draft" },
+          "atNs": 2,
+          "expected": [{ "type": "utterance_text", "utterance_id": "source_c", "role": "source", "text": "Synthetic current draft", "is_final": false, "language": null }]
+        },
+        {
+          "event": { "type": "source_final", "text": "Synthetic current final.", "language": null },
+          "identity": { "item_id": "source_c", "previous_item_id": null },
+          "providerFrame": { "type": "conversation.item.input_audio_transcription.completed", "item_id": "source_c", "transcript": "Synthetic current final." },
+          "atNs": 3,
+          "expected": [{ "type": "utterance_text", "utterance_id": "source_c", "role": "source", "text": "Synthetic current final.", "is_final": true, "language": null }]
+        },
+        {
+          "event": { "type": "source_final", "text": "Synthetic late old final.", "language": null },
+          "identity": { "item_id": "source_a", "previous_item_id": null },
+          "providerFrame": { "type": "conversation.item.input_audio_transcription.completed", "item_id": "source_a", "transcript": "Synthetic late old final." },
+          "atNs": 4,
+          "expected": [{ "type": "utterance_text", "utterance_id": "source_a", "role": "source", "text": "Synthetic late old final.", "is_final": true, "language": null }]
+        }
+      ]
+    },
+    {
+      "id": "queued_late_translation_preserves_following_draft",
+      "queueBeforeDrain": true,
+      "expectedQueuedSource": {
+        "text": "Synthetic following draft",
+        "isFinal": false,
+        "utteranceId": "source_a"
+      },
+      "expectedQueuedHistory": [
+        { "source": "Synthetic first sentence.", "translation": "Synthetic first translation." }
+      ],
+      "steps": [
+        {
+          "event": { "type": "item_created" },
+          "identity": { "item_id": "response_z", "previous_item_id": "source_z" },
+          "atNs": 0,
+          "providerFrame": { "type": "conversation.item.created", "item_id": "response_z", "previous_item_id": "source_z" },
+          "expected": []
+        },
+        {
+          "event": { "type": "source_final", "text": "Synthetic first sentence.", "language": "en" },
+          "identity": { "item_id": "source_z", "previous_item_id": null },
+          "atNs": 1000000,
+          "providerFrame": { "type": "conversation.item.input_audio_transcription.completed", "item_id": "source_z", "transcript": "Synthetic first sentence.", "language": "en" },
+          "expected": [
+            { "type": "utterance_text", "utterance_id": "source_z", "role": "source", "text": "Synthetic first sentence.", "is_final": true, "language": "en" }
+          ]
+        },
+        {
+          "event": { "type": "source_draft", "text": "Synthetic following draft", "language": "en" },
+          "identity": { "item_id": "source_a", "previous_item_id": null },
+          "atNs": 2000000,
+          "providerFrame": { "type": "conversation.item.input_audio_transcription.text", "item_id": "source_a", "text": "Synthetic following draft", "language": "en" },
+          "expected": [
+            { "type": "utterance_text", "utterance_id": "source_a", "role": "source", "text": "Synthetic following draft", "is_final": false, "language": "en" }
+          ]
+        },
+        {
+          "event": { "type": "translation_final", "text": "Synthetic first translation." },
+          "identity": { "item_id": "response_z", "previous_item_id": null },
+          "atNs": 4000000,
+          "providerFrame": { "type": "response.text.done", "item_id": "response_z", "text": "Synthetic first translation." },
+          "expected": [
+            { "type": "final_pair", "utterance_id": "source_z", "source": "Synthetic first sentence.", "translation": "Synthetic first translation.", "language": "en", "follow_latency_ms": 3 }
+          ]
+        }
+      ]
+    },
     {
       "id": "translation_first_waits_for_its_own_multilingual_source_final",
       "steps": [
@@ -199,6 +319,23 @@
         {
           "event": {
             "type": "translation_draft",
+            "text": "Synthetic unlinked translation draft"
+          },
+          "identity": {
+            "item_id": "unknown-response",
+            "previous_item_id": null
+          },
+          "atNs": 11500000,
+          "providerFrame": {
+            "type": "response.text.text",
+            "text": "Synthetic unlinked translation draft",
+            "item_id": "unknown-response"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_draft",
             "text": "第一句"
           },
           "identity": {
@@ -247,6 +384,23 @@
               "utterance_id": "source-a"
             }
           ]
+        },
+        {
+          "event": {
+            "type": "translation_draft",
+            "text": "Synthetic retired translation draft"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": null
+          },
+          "atNs": 16000000,
+          "providerFrame": {
+            "type": "response.text.text",
+            "text": "Synthetic retired translation draft",
+            "item_id": "response-a"
+          },
+          "expected": []
         }
       ]
     },
@@ -1797,6 +1951,847 @@
               {
                 "source": "Second complete sentence.",
                 "translation": "第二句完整译文。"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "late_previous_source_final_preserves_new_pending_final",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "Synthetic A draft",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "Synthetic A draft",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "Synthetic A draft",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "Synthetic B incomplete",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-b",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "Synthetic B incomplete",
+            "language": "en",
+            "item_id": "source-b"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-b",
+              "role": "source",
+              "text": "Synthetic B incomplete",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": "source-b"
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-b",
+            "previous_item_id": "source-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic B translation."
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": null
+          },
+          "atNs": 4000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic B translation.",
+            "item_id": "response-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic A complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic A complete.",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "Synthetic A complete.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic B complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-b",
+            "previous_item_id": null
+          },
+          "atNs": 6000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic B complete.",
+            "language": "en",
+            "item_id": "source-b"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-b",
+              "role": "source",
+              "text": "Synthetic B complete.",
+              "is_final": true,
+              "language": "en"
+            },
+            {
+              "type": "final_pair",
+              "utterance_id": "source-b",
+              "source": "Synthetic B complete.",
+              "language": "en",
+              "translation": "Synthetic B translation.",
+              "follow_latency_ms": 0
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic B translation."
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": null
+          },
+          "atNs": 7000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic B translation.",
+            "item_id": "response-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic A translation."
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": null
+          },
+          "atNs": 8000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic A translation.",
+            "item_id": "response-a"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "source-a",
+              "source": "Synthetic A complete.",
+              "language": "en",
+              "translation": "Synthetic A translation.",
+              "follow_latency_ms": 3
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Synthetic B complete.",
+              "isFinal": true,
+              "utteranceId": "source-b"
+            },
+            "translation": {
+              "text": "Synthetic B translation.",
+              "isFinal": true,
+              "utteranceId": "source-b"
+            },
+            "displayPair": {
+              "utteranceId": "source-b",
+              "source": "Synthetic B complete.",
+              "translation": "Synthetic B translation."
+            },
+            "history": [
+              {
+                "source": "Synthetic B complete.",
+                "translation": "Synthetic B translation."
+              },
+              {
+                "source": "Synthetic A complete.",
+                "translation": "Synthetic A translation."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "legacy_next_translation_waits_for_unobserved_source_after_retirement",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic A complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic A complete.",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "Synthetic A complete.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic A translation."
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic A translation.",
+            "item_id": "response-a"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "source-a",
+              "source": "Synthetic A complete.",
+              "language": "en",
+              "translation": "Synthetic A translation.",
+              "follow_latency_ms": 1
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": "source-b"
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-b",
+            "previous_item_id": "source-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic B translation."
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": null
+          },
+          "atNs": 4000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic B translation.",
+            "item_id": "response-b"
+          },
+          "expected": []
+        },
+        {
+          "legacySourceOrder": true,
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic B complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-b",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic B complete.",
+            "language": "en",
+            "item_id": "source-b"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-b",
+              "role": "source",
+              "text": "Synthetic B complete.",
+              "is_final": true,
+              "language": "en"
+            },
+            {
+              "type": "final_pair",
+              "utterance_id": "source-b",
+              "source": "Synthetic B complete.",
+              "language": "en",
+              "translation": "Synthetic B translation.",
+              "follow_latency_ms": 0
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Synthetic B complete.",
+              "isFinal": true,
+              "utteranceId": "source-b"
+            },
+            "translation": {
+              "text": "Synthetic B translation.",
+              "isFinal": true,
+              "utteranceId": "source-b"
+            },
+            "displayPair": {
+              "utteranceId": "source-b",
+              "source": "Synthetic B complete.",
+              "translation": "Synthetic B translation."
+            },
+            "history": [
+              {
+                "source": "Synthetic A complete.",
+                "translation": "Synthetic A translation."
+              },
+              {
+                "source": "Synthetic B complete.",
+                "translation": "Synthetic B translation."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "legacy_empty_source_final_does_not_move_current_back",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-a",
+            "previous_item_id": "source-a"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "legacySourceOrder": true,
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "Synthetic B incomplete",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-b",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "Synthetic B incomplete",
+            "language": "en",
+            "item_id": "source-b"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-b",
+              "role": "source",
+              "text": "Synthetic B incomplete",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": "source-b"
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-b",
+            "previous_item_id": "source-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic B translation."
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": null
+          },
+          "atNs": 4000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic B translation.",
+            "item_id": "response-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic A complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic A complete.",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "Synthetic A complete.",
+              "is_final": true,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic B complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-b",
+            "previous_item_id": null
+          },
+          "atNs": 6000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic B complete.",
+            "language": "en",
+            "item_id": "source-b"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-b",
+              "role": "source",
+              "text": "Synthetic B complete.",
+              "is_final": true,
+              "language": "en"
+            },
+            {
+              "type": "final_pair",
+              "utterance_id": "source-b",
+              "source": "Synthetic B complete.",
+              "language": "en",
+              "translation": "Synthetic B translation.",
+              "follow_latency_ms": 0
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic B translation."
+          },
+          "identity": {
+            "item_id": "response-b",
+            "previous_item_id": null
+          },
+          "atNs": 7000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic B translation.",
+            "item_id": "response-b"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic A translation."
+          },
+          "identity": {
+            "item_id": "response-a",
+            "previous_item_id": null
+          },
+          "atNs": 8000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic A translation.",
+            "item_id": "response-a"
+          },
+          "expected": [
+            {
+              "type": "final_pair",
+              "utterance_id": "source-a",
+              "source": "Synthetic A complete.",
+              "language": "en",
+              "translation": "Synthetic A translation.",
+              "follow_latency_ms": 3
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Synthetic B complete.",
+              "isFinal": true,
+              "utteranceId": "source-b"
+            },
+            "translation": {
+              "text": "Synthetic B translation.",
+              "isFinal": true,
+              "utteranceId": "source-b"
+            },
+            "displayPair": {
+              "utteranceId": "source-b",
+              "source": "Synthetic B complete.",
+              "translation": "Synthetic B translation."
+            },
+            "history": [
+              {
+                "source": "Synthetic B complete.",
+                "translation": "Synthetic B translation."
+              },
+              {
+                "source": "Synthetic A complete.",
+                "translation": "Synthetic A translation."
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "legacy_translation_placeholder_before_current_waits_for_actual_source",
+      "steps": [
+        {
+          "event": {
+            "type": "item_created"
+          },
+          "identity": {
+            "item_id": "response-c",
+            "previous_item_id": "source-c"
+          },
+          "atNs": 0,
+          "providerFrame": {
+            "type": "conversation.item.created",
+            "item_id": "response-c",
+            "previous_item_id": "source-c"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic C translation."
+          },
+          "identity": {
+            "item_id": "response-c",
+            "previous_item_id": null
+          },
+          "atNs": 1000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic C translation.",
+            "item_id": "response-c"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "Synthetic A draft",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-a",
+            "previous_item_id": null
+          },
+          "atNs": 2000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "Synthetic A draft",
+            "language": "en",
+            "item_id": "source-a"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-a",
+              "role": "source",
+              "text": "Synthetic A draft",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "legacySourceOrder": true,
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "translation_final",
+            "text": "Synthetic C translation."
+          },
+          "identity": {
+            "item_id": "response-c",
+            "previous_item_id": null
+          },
+          "atNs": 3000000,
+          "providerFrame": {
+            "type": "response.text.done",
+            "text": "Synthetic C translation.",
+            "item_id": "response-c"
+          },
+          "expected": []
+        },
+        {
+          "event": {
+            "type": "source_draft",
+            "text": "Synthetic C draft",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-c",
+            "previous_item_id": null
+          },
+          "atNs": 4000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.text",
+            "text": "Synthetic C draft",
+            "language": "en",
+            "item_id": "source-c"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-c",
+              "role": "source",
+              "text": "Synthetic C draft",
+              "is_final": false,
+              "language": "en"
+            }
+          ]
+        },
+        {
+          "event": {
+            "type": "source_final",
+            "text": "Synthetic C complete.",
+            "language": "en"
+          },
+          "identity": {
+            "item_id": "source-c",
+            "previous_item_id": null
+          },
+          "atNs": 5000000,
+          "providerFrame": {
+            "type": "conversation.item.input_audio_transcription.completed",
+            "transcript": "Synthetic C complete.",
+            "language": "en",
+            "item_id": "source-c"
+          },
+          "expected": [
+            {
+              "type": "utterance_text",
+              "utterance_id": "source-c",
+              "role": "source",
+              "text": "Synthetic C complete.",
+              "is_final": true,
+              "language": "en"
+            },
+            {
+              "type": "final_pair",
+              "utterance_id": "source-c",
+              "source": "Synthetic C complete.",
+              "language": "en",
+              "translation": "Synthetic C translation.",
+              "follow_latency_ms": 0
+            }
+          ],
+          "expectedReducer": {
+            "source": {
+              "text": "Synthetic C complete.",
+              "isFinal": true,
+              "utteranceId": "source-c"
+            },
+            "translation": {
+              "text": "Synthetic C translation.",
+              "isFinal": true,
+              "utteranceId": "source-c"
+            },
+            "displayPair": {
+              "utteranceId": "source-c",
+              "source": "Synthetic C complete.",
+              "translation": "Synthetic C translation."
+            },
+            "history": [
+              {
+                "source": "Synthetic C complete.",
+                "translation": "Synthetic C translation."
               }
             ]
           }

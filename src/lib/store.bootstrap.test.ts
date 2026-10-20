@@ -110,8 +110,8 @@ it("recovers a hidden overlay after late listener acknowledgement without a retr
   expect(sources.getSettings).toHaveBeenCalledOnce();
 });
 
-it("permits a new read after genuine IPC rejection while retaining both event listeners", async () => {
-  sources.getSettings.mockRejectedValueOnce("synthetic-native-error");
+it("permits a new read after a catalog failure while retaining both event listeners", async () => {
+  sources.getSettings.mockRejectedValueOnce("Service profile settings are unavailable.");
   await useStore.getState().init();
   expect(useStore.getState()).toMatchObject({ initialized: false, initializationStatus: "error", initializationError: "unavailable" });
   expect(useStore.getState().settings).toBe(initial.settings);

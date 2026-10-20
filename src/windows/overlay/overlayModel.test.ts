@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  type AudioSource,
   type ServiceProvider,
   type SubtitleSnapshot,
 } from "../../lib/types";
 import {
+  buildMultiSourceSubtitleBlocks,
   buildSubtitleBlocks,
   subtitleLaneBudget,
   computeActivityPhaseFromSignals,
@@ -88,6 +90,84 @@ describe("live presentation epochs", () => {
       expect(buildSubtitleBlocks([second], mode, { ...ownedB, utteranceId: "synthetic-epoch:1:C" }).at(-1)!.id).not.toBe(id);
       expect(buildSubtitleBlocks([], mode, { ...ownedB, utteranceId: "synthetic-epoch:2:B" }).at(-1)!.id).not.toBe(id);
     }
+  });
+});
+
+describe("multi-source subtitle blocks", () => {
+  const emptyTail = { source: null, translation: null, isStreaming: false };
+  const tail = { source: "Repeated text", translation: "Repeated text", isStreaming: true };
+
+  it.each(["original", "translation", "bilingual"] as const)(
+    "builds live rows without reading per-source history text in %s mode",
+    mode => {
+      const textReads = { system: 0, microphone: 0 };
+      const historyFor = (audioSource: AudioSource, start: number) => Array.from({ length: 64 }, (_, index) => ({
+        audioSource,
+        createdAt: start + index,
+        get source() { textReads[audioSource] += 1; return "Repeated text"; },
+        get translation() { textReads[audioSource] += 1; return "Repeated text"; },
+      }));
+      const systemHistory = historyFor("system", 100);
+      const microphoneHistory = historyFor("microphone", 200);
+      const history = [
+        { audioSource: "system" as const, createdAt: 163, source: "Repeated text", translation: "Repeated text" },
+        { audioSource: "microphone" as const, createdAt: 263, source: "Repeated text", translation: "Repeated text" },
+      ];
+      const blocks = buildMultiSourceSubtitleBlocks(history, mode, [
+        { audioSource: "system", history: systemHistory, tail },
+        { audioSource: "microphone", history: microphoneHistory, tail },
+      ]);
+
+      expect(blocks.map(block => [block.id, block.audioSource, block.presentation])).toEqual([
+        ["system:history-163", "system", "history"],
+        ["microphone:history-263", "microphone", "history"],
+        ["system:live-after-history-163", "system", "live"],
+        ["microphone:live-after-history-263", "microphone", "live"],
+      ]);
+      expect(blocks.slice(-2).map(block => [block.source, block.translation, block.streaming]))
+        .toEqual([[tail.source, tail.translation, true], [tail.source, tail.translation, true]]);
+      expect(textReads).toEqual({ system: 0, microphone: 0 });
+    },
+  );
+
+  it("keeps chronological committed rows and marks the latest visible row when both tails are empty", () => {
+    const history = [
+      { createdAt: 1, source: "Legacy system", translation: "Legacy system" },
+      { audioSource: "microphone" as const, createdAt: 2, source: "Microphone", translation: "Microphone" },
+      { audioSource: "system" as const, createdAt: 3, source: " ", translation: " " },
+    ];
+    expect(buildMultiSourceSubtitleBlocks(history, "bilingual", [
+      { audioSource: "system", history: [history[0], history[2]], tail: emptyTail },
+      { audioSource: "microphone", history: [history[1]], tail: emptyTail },
+    ])).toEqual([
+      { id: "history-1", audioSource: "system", createdAt: 1, presentation: "history", source: "Legacy system", translation: null },
+      { id: "microphone:history-2", audioSource: "microphone", createdAt: 2, presentation: "latestCommitted", source: "Microphone", translation: null },
+    ]);
+  });
+
+  it("keeps each live epoch through source-history trimming and hidden final rows", () => {
+    const first = { createdAt: 1, source: "Earlier", translation: "Earlier" };
+    const last = { createdAt: 2, source: "Original only", translation: "" };
+    const ids = (history: SubtitleSnapshot["history"]) => buildMultiSourceSubtitleBlocks([], "translation", [
+      { audioSource: "system", history, tail },
+      { audioSource: "microphone", history: [], tail },
+    ]).map(block => block.id);
+    expect(ids([first, last])).toEqual(["system:live-after-history-2", "microphone:live"]);
+    expect(ids([last])).toEqual(ids([first, last]));
+    expect(ids([])).toEqual(["system:live", "microphone:live"]);
+  });
+
+  it("keeps an identified live owner stable when an earlier final arrives", () => {
+    const ownedTail = { ...tail, utteranceId: "synthetic-epoch:1:B" };
+    const blocksFor = (history: SubtitleSnapshot["history"], utteranceId = ownedTail.utteranceId) =>
+      buildMultiSourceSubtitleBlocks(history, "bilingual", [
+        { audioSource: "system", history, tail: { ...ownedTail, utteranceId } },
+        { audioSource: "microphone", history: [], tail: emptyTail },
+      ]);
+    const delayed = { createdAt: 1, source: "Earlier final", translation: "Earlier final" };
+    expect(blocksFor([]).at(-1)?.id).toBe("system:live-utterance-synthetic-epoch:1:B");
+    expect(blocksFor([delayed]).at(-1)?.id).toBe(blocksFor([]).at(-1)?.id);
+    expect(blocksFor([delayed], "synthetic-epoch:1:C").at(-1)?.id).not.toBe(blocksFor([]).at(-1)?.id);
   });
 });
 

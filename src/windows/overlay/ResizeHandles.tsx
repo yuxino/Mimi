@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../../lib/ipc";
 import { OVERLAY_BASE_MINIMUM_HEIGHT } from "./overlayMinimumHeight";
+import { startNativeResize, type NativeResizeGesture } from "./resizeIpc";
 import type {
   CSSProperties,
   PointerEvent as ReactPointerEvent,
@@ -69,96 +69,101 @@ interface DragState {
   startWinY: number;
 }
 
+type ActiveDrag = {
+  element: HTMLElement;
+  pointerId: number;
+} & ({ native: true; gesture: NativeResizeGesture } | { native: false; geometry: DragState });
+
 /** Self-drawn resize handles for the overlay's eight edge/corner regions. */
 export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE_MINIMUM_HEIGHT }: ResizeHandlesProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<DragState | null>(null);
-  // Tauri mode: the backend owns the resize math; the webview forwards pointer
-  // positions. `active` gates move/end so a stale backend drag can never be
-  // re-triggered by an unrelated hover, and `element`/`pointerId` remember who
-  // owns the pointer so it can be released on the fallback path.
-  const tauriDragRef = useRef<{
-    active: boolean;
-    element: HTMLElement | null;
-    pointerId: number;
-  }>({ active: false, element: null, pointerId: 0 });
+  const dragRef = useRef<ActiveDrag | null>(null);
 
-  // Stable callback (only refs and module imports), so the one-time window
-  // listeners below can add/remove it with a matching identity.
-  const finishTauriDrag = useCallback(() => {
-    const drag = tauriDragRef.current;
-    if (!drag.active) return;
-    drag.active = false;
+  const finish = useCallback((pointerId?: number) => {
+    const drag = dragRef.current;
+    if (!drag || (pointerId !== undefined && drag.pointerId !== pointerId)) return;
+    // Clear ownership before releasing capture: release can itself dispatch
+    // lostpointercapture, followed by the same release bubbling to window.
+    dragRef.current = null;
     try {
-      if (drag.element) drag.element.releasePointerCapture(drag.pointerId);
+      drag.element.releasePointerCapture(drag.pointerId);
     } catch {
-      // Pointer capture was already lost (e.g. window blur); nothing to do.
+      // Capture can already be lost, or unavailable in a browser preview.
     }
-    drag.element = null;
-    void invoke("resize_end").catch(() => {});
+    if (drag.native) drag.gesture.finish();
   }, []);
 
-  // Safety net: if pointer capture is lost mid-drag, or the window loses
-  // focus, these finish the drag (idempotent via the active flag). Without
-  // them a drag that escapes the 14px handle would leave the backend drag
-  // state stuck and later hovers would keep resizing the window.
+  // A release outside the handle must finish even when capture failed. Only
+  // the owning pointer may release a gesture; blur/unmount end any owner.
   useEffect(() => {
-    window.addEventListener("pointerup", finishTauriDrag);
-    window.addEventListener("pointercancel", finishTauriDrag);
-    window.addEventListener("blur", finishTauriDrag);
+    const release = (event: PointerEvent) => finish(event.pointerId);
+    const blur = () => finish();
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", blur);
     return () => {
-      window.removeEventListener("pointerup", finishTauriDrag);
-      window.removeEventListener("pointercancel", finishTauriDrag);
-      window.removeEventListener("blur", finishTauriDrag);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", blur);
+      finish();
     };
-  }, [finishTauriDrag]);
+  }, [finish]);
+
+  useEffect(() => {
+    if (disabled) finish();
+  }, [disabled, finish]);
 
   const start = (region: Region, event: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled) return;
+    if (disabled || dragRef.current || event.button !== 0 || event.isPrimary === false) return;
+    const element = event.currentTarget;
     if (isTauri) {
       // Send SCREEN coordinates, not clientX/Y: the backend moves the window
       // during the drag, so window-relative coordinates would shift under a
       // stationary cursor and feed back into the math (the overlay used to
       // oscillate between two frames on corner drags).
-      void invoke("resize_start", {
-        region,
-        x: event.screenX,
-        y: event.screenY,
-      }).catch(() => {});
-      const element = event.currentTarget;
-      tauriDragRef.current = { active: true, element, pointerId: event.pointerId };
-      try {
-        element.setPointerCapture(event.pointerId);
-      } catch {
-        // Capture is an optimisation; the window-level listeners still
-        // guarantee the drag ends even if capture is unavailable.
-      }
-      return;
+      dragRef.current = {
+        native: true,
+        element,
+        pointerId: event.pointerId,
+        gesture: startNativeResize(region, event.screenX, event.screenY),
+      };
+    } else {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      dragRef.current = {
+        native: false,
+        element,
+        pointerId: event.pointerId,
+        geometry: {
+          region,
+          startX: event.clientX,
+          startY: event.clientY,
+          startWidth: rect.width,
+          startHeight: rect.height,
+          startWinX: window.screenX,
+          startWinY: window.screenY,
+        },
+      };
     }
-    const rect = rootRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    dragRef.current = {
-      region,
-      startX: event.clientX,
-      startY: event.clientY,
-      startWidth: rect.width,
-      startHeight: rect.height,
-      startWinX: window.screenX,
-      startWinY: window.screenY,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      element.setPointerCapture(event.pointerId);
+    } catch {
+      // Window release/blur remain available when capture is unsupported.
+    }
   };
 
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (isTauri) {
-      if (!tauriDragRef.current.active) return;
-      void invoke("resize_move", { x: event.screenX, y: event.screenY }).catch(
-        () => {},
-      );
+    const active = dragRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    if (disabled || (event.buttons & 1) === 0) {
+      finish(event.pointerId);
       return;
     }
-    const drag = dragRef.current;
-    if (!drag) return;
+    if (active.native) {
+      active.gesture.move(event.screenX, event.screenY);
+      return;
+    }
+    const drag = active.geometry;
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
     const region = drag.region.toLowerCase();
@@ -201,10 +206,7 @@ export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE
     onResize(clampedW, clampedH, x, y);
   };
 
-  const end = () => {
-    dragRef.current = null;
-    if (isTauri) finishTauriDrag();
-  };
+  const end = (event: ReactPointerEvent<HTMLDivElement>) => finish(event.pointerId);
 
   return (
     <div
@@ -228,6 +230,7 @@ export function ResizeHandles({ disabled, onResize, minimumHeight = OVERLAY_BASE
           onPointerMove={move}
           onPointerUp={end}
           onPointerCancel={end}
+          onLostPointerCapture={end}
         />
       ))}
     </div>

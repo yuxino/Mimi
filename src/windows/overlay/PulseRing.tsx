@@ -9,6 +9,8 @@ interface PulseRingProps {
   prominent?: boolean;
   /** Already resolved independently from the subtitle-motion preference. */
   motionEnabled: boolean;
+  /** Hidden measurement copies keep their geometry and animation phase. */
+  animationVisible?: boolean;
   /** Missing preferences use the ribbon (B) indicator. */
   pulseStyle?: PulseStyle;
 }
@@ -19,28 +21,41 @@ const heights = [6, 12, 23, 29, 22, 13, 6];
 // by 40 units loops without replacing its animation instance.
 const wave = "M-40 20 Q-35 20 -30 12 T-20 20 T-10 28 T0 20 T10 12 T20 20 T30 28 T40 20 T50 12 T60 20 T70 28 T80 20";
 
+/** Freeze an outgoing track after its opacity/envelope transition finishes. */
+function useTrackClock(active: boolean, enabled: boolean): boolean {
+  const [clock, setClock] = useState({ active, enabled, running: active && enabled });
+  let running = clock.running;
+  if (clock.active !== active || clock.enabled !== enabled) {
+    running = enabled && (active || clock.enabled && clock.running);
+    setClock({ active, enabled, running });
+  }
+  useEffect(() => {
+    if (!enabled || active || !running) return;
+    const settle = window.setTimeout(() => setClock(previous =>
+      previous.active || !previous.enabled ? previous : { ...previous, running: false }), 520);
+    return () => window.clearTimeout(settle);
+  }, [active, enabled, running]);
+  return running;
+}
+
 /** Decorative sound language from session phases, never measured audio.
  * Tracks stay mounted. Phase changes reshape their enclosing layers;
  * pause settles for 520ms, then freezes clocks; resume continues those clocks.
  */
-export const PulseRing = memo(function PulseRing({ phase, compact = false, prominent = false, motionEnabled, pulseStyle = "ribbon" }: PulseRingProps) {
+export const PulseRing = memo(function PulseRing({ phase, compact = false, prominent = false, motionEnabled, animationVisible = true, pulseStyle = "ribbon" }: PulseRingProps) {
   const size = prominent ? (compact ? 48 : 80) : compact ? 24 : 40;
   const working = OVERLAY_ACTIVITY_PHASES[phase].animationSpeed > 0;
-  const [clockPaused, setClockPaused] = useState(!motionEnabled || !working);
-  useEffect(() => {
-    if (!motionEnabled || working) {
-      setClockPaused(!motionEnabled);
-      return;
-    }
-    const settle = window.setTimeout(() => setClockPaused(true), 520);
-    return () => window.clearTimeout(settle);
-  }, [motionEnabled, working]);
+  const enabled = motionEnabled && animationVisible;
+  const recognizing = working && phase !== "translating";
+  const syllableClock = useTrackClock(recognizing && pulseStyle === "syllable", enabled);
+  const ribbonClock = useTrackClock(recognizing && pulseStyle === "ribbon", enabled);
+  const translationClock = useTrackClock(phase === "translating", enabled);
 
   return (
     <div
       className={`sound-light${motionEnabled ? "" : " sound-light--still"}`}
       data-phase={phase}
-      data-clock={clockPaused ? "paused" : "running"}
+      data-clock={syllableClock || ribbonClock || translationClock ? "running" : "paused"}
       data-sound-style={pulseStyle}
       data-pulse-style={pulseStyle}
       data-size={prominent ? (compact ? "prominent-compact" : "prominent") : compact ? "compact" : "normal"}
@@ -48,7 +63,7 @@ export const PulseRing = memo(function PulseRing({ phase, compact = false, promi
       style={{ width: size, height: size, color: OVERLAY_ACTIVITY_PHASES[phase].color }}
     >
       <svg className="sound-light__drawing" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeLinecap="round">
-        <g className="sound-light__syllables">
+        <g className="sound-light__syllables" data-clock={syllableClock ? "running" : "paused"}>
           {syllables.map((x, index) => (
             <g className="sound-light__envelope" key={x}>
               <g className="sound-light__beat" style={{ animationDelay: `${-index * 0.19}s` }}>
@@ -57,13 +72,13 @@ export const PulseRing = memo(function PulseRing({ phase, compact = false, promi
             </g>
           ))}
         </g>
-        <g className="sound-light__ribbons">
+        <g className="sound-light__ribbons" data-clock={ribbonClock ? "running" : "paused"}>
           <g className="sound-light__ribbon-envelope">
             <path className="sound-light__wave sound-light__wave--back" strokeWidth="1.5" d={wave} />
             <path className="sound-light__wave sound-light__wave--front" strokeWidth="2.2" d={wave} />
           </g>
         </g>
-        <g className="sound-light__translation">
+        <g className="sound-light__translation" data-clock={translationClock ? "running" : "paused"}>
           <g className="sound-light__current-envelope">
             <path className="sound-light__current sound-light__current--back" strokeWidth="1.5" d={wave} />
             <path className="sound-light__current sound-light__current--front" strokeWidth="2.2" d={wave} />

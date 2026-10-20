@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
+import { Select } from "../../components/Select";
 import { buildSubtitleBlocks, type SubtitleBlock } from "./overlayModel";
 
 const originalScrollTo = HTMLElement.prototype.scrollTo;
@@ -46,6 +47,84 @@ async function mount(list = blocks) {
   // Equivalent to the existing resize pin after the initial native layout.
   scrollTop = 120;
 }
+
+it("starts a new sentence glide before measuring rows and preserves it through delayed layout", async () => {
+  await mount();
+  const movements: Array<{ before: number; after: number; behavior?: ScrollBehavior }> = [];
+  timeline.scrollTo = ((options: ScrollToOptions) => {
+    const before = scrollTop;
+    // A real smooth scroll does not synchronously reach its destination.
+    if (options.behavior !== "smooth") scrollTop = Math.min(options.top ?? 0, scrollHeight - 80);
+    movements.push({ before, after: scrollTop, behavior: options.behavior });
+  }) as HTMLElement["scrollTo"];
+  const next: SubtitleBlock = { id: "new-live", createdAt: null, presentation: "live", source: null, translation: "A new sentence" };
+  scrollHeight = 320;
+  await render("translation", [...blocks, next]);
+  expect(movements[0]).toEqual({ before: 120, after: 120, behavior: "smooth" });
+  expect(movements.every(move => move.behavior === "smooth")).toBe(true);
+
+  scrollHeight = 350;
+  await act(async () => resizeRow(timeline.lastElementChild!));
+  expect(scrollTop).toBe(120);
+  expect(movements.at(-1)?.behavior).toBe("smooth");
+
+  // The next streaming chunk must retarget the in-flight sentence glide too.
+  scrollHeight = 370;
+  await render("translation", [...blocks, { ...next, translation: "A new sentence continues streaming" }]);
+  expect(scrollTop).toBe(120);
+  expect(movements.at(-1)?.behavior).toBe("smooth");
+
+  // Once the glide reaches the tail, later viewport changes pin immediately.
+  await act(async () => { scrollTop = 290; timeline.dispatchEvent(new Event("scroll", { bubbles: true })); });
+  scrollHeight = 380;
+  await act(async () => resizeRow(timeline.lastElementChild!));
+  expect(scrollTop).toBe(300);
+  expect(movements.at(-1)?.behavior).toBe("instant");
+});
+
+it("keeps a sibling embedded picker open through a new caption's automatic scroll", async () => {
+  const choose = vi.fn();
+  const choices = [{ value: "en", label: "English" }, { value: "zh", label: "Chinese" }];
+  const show = async (list: SubtitleBlock[]) => act(async () => root.render(<>
+    <Timeline blocks={list.map(block => ({ ...block, source: null }))} displayMode="translation" fontSize={18} alignment="center" color="white" />
+    <div className="embedded-panel"><Select label="Language" value="en" options={choices} onChange={choose} /></div>
+  </>));
+  await show(blocks);
+  timeline = host.querySelector<HTMLDivElement>(".overlay-timeline")!;
+  Object.defineProperties(timeline, {
+    scrollHeight: { get: () => scrollHeight }, clientHeight: { get: () => 80 },
+    scrollTop: { get: () => scrollTop, set: (top: number) => { scrollTop = top; } },
+  });
+  scrollTop = 120;
+  const scrolled = vi.fn();
+  timeline.addEventListener("scroll", scrolled);
+  timeline.scrollTo = ((options: ScrollToOptions) => {
+    const next = Math.max(0, Math.min(options.top ?? 0, scrollHeight - 80));
+    if (next === scrollTop) return;
+    scrollTop = next;
+    // jsdom has no layout scrolling. Deliver only the browser's asynchronous
+    // non-bubbling event after the actual Timeline requests its new position.
+    const target = timeline;
+    queueMicrotask(() => target.dispatchEvent(new Event("scroll")));
+  }) as HTMLElement["scrollTo"];
+  const trigger = host.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+  await act(() => trigger.click());
+  const popup = document.querySelector<HTMLElement>('[role="listbox"]')!;
+  expect(popup).not.toBeNull();
+  expect(timeline.contains(trigger)).toBe(false);
+  expect(timeline.contains(popup)).toBe(false);
+  scrollHeight = 320;
+  await show([...blocks, { id: "new-live", createdAt: null, presentation: "live", source: null, translation: "Synthetic next caption" }]);
+  expect(scrolled).toHaveBeenCalledOnce();
+  expect((scrolled.mock.calls[0][0] as Event).target).toBe(timeline);
+  expect(document.querySelector('[role="listbox"]')).toBe(popup);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  expect(document.activeElement).toBe(trigger);
+  await act(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  await act(() => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(choose).toHaveBeenCalledExactlyOnceWith("zh");
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
 it("switches to bilingual at the latest sentence's start rather than hiding its original at the old bottom", async () => {
   await mount(); scrollHeight = 320;
   await render("bilingual");

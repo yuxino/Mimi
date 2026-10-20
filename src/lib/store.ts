@@ -265,8 +265,7 @@ export const useStore = create<StoreState>()((set, get) => ({
           applySettings: (settings) => {
             if (generation !== initializationGeneration) return;
             settingsResponseGate.advance();
-            settingsSaveCoordinator.invalidate();
-            set({ settings, hasSettingsSnapshot: true });
+            set({ settings: settingsSaveCoordinator.receiveSnapshot(settings), hasSettingsSnapshot: true });
             // Language switches initiated from any window reach every other
             // window through this event without reloading the WebView.
             syncUiLanguageFromSettings(settings);

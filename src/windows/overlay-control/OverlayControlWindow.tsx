@@ -1,6 +1,7 @@
 import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
-import { useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
+import { effectiveUiLanguage, subscribeUiLanguage } from "../../lib/i18n";
 import { targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
@@ -30,7 +31,11 @@ import { overlayControlPanelModel } from "./overlayControlModel";
 import "./overlay-control.css";
 
 /** Child window that morphs between a compact status island and its panel. */
-export function OverlayControlWindow({ embedded = false }: { embedded?: boolean }) {
+export const OverlayControlWindow = memo(function OverlayControlWindow({ embedded = false, subtitleRootRef }: {
+  embedded?: boolean;
+  subtitleRootRef?: RefObject<HTMLElement | null>;
+}) {
+  useSyncExternalStore(subscribeUiLanguage, effectiveUiLanguage, effectiveUiLanguage);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const sessionStatusKind = useStore(selectSessionStatusKind);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
@@ -133,7 +138,16 @@ export function OverlayControlWindow({ embedded = false }: { embedded?: boolean 
       void overlayControlSetPopupBounds(bounds, notification).catch(() => {});
     };
     const schedule = () => { if (!frame) frame = window.requestAnimationFrame(measure); };
-    const observer = new MutationObserver(schedule);
+    const observer = new MutationObserver(records => {
+      const subtitleRoot = subtitleRootRef?.current;
+      const surface = surfaceRef.current;
+      // Only this known fixed-size sibling is independent of the hit slots.
+      // Unknown roots, ancestors and portals retain the original policy.
+      if (subtitleRoot && surface && !subtitleRoot.contains(surface) && !surface.contains(subtitleRoot)
+        && records.length > 0
+        && records.every(record => isLocalSubtitleMutation(record, subtitleRoot))) return;
+      schedule();
+    });
     observer.observe(document.body, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["style"] });
     window.addEventListener("resize", schedule);
     schedule();
@@ -143,7 +157,7 @@ export function OverlayControlWindow({ embedded = false }: { embedded?: boolean 
       if (frame) window.cancelAnimationFrame(frame);
       void overlayControlSetPopupBounds(null).catch(() => {});
     };
-  }, [embedded, mode]);
+  }, [embedded, mode, subtitleRootRef]);
 
   const phase = computeActivityPhaseFromSignals(
     {
@@ -216,12 +230,26 @@ export function OverlayControlWindow({ embedded = false }: { embedded?: boolean 
           isPaused={sessionIsPaused}
           isWaitingForFinalTranslation={isWaiting}
           expanded={false}
+          animationVisible={mode === "island"}
           isStopping={sessionStatusKind === "stopping"}
           onToggle={toggle}
           onWidthChange={isTauri ? reportIslandWidth : undefined}
         />
       </div>
     </div>
+  );
+});
+
+function isLocalSubtitleMutation(record: MutationRecord, subtitleRoot: HTMLElement): boolean {
+  if (!subtitleRoot.contains(record.target)) return false;
+  if (record.type !== "childList" && record.type !== "characterData" && record.type !== "attributes") return false;
+  if (record.type === "attributes" && record.attributeName !== "style") return false;
+  // Stylesheets can affect siblings. Never discard explicit layer records.
+  const external = "style, link, .mimi-select__menu, .settings-toast";
+  const target = record.target instanceof Element ? record.target : record.target.parentElement;
+  if (target?.closest(external)) return false;
+  return ![...record.addedNodes, ...record.removedNodes].some(node =>
+    node instanceof Element && (node.matches(external) || node.querySelector(external)),
   );
 }
 

@@ -218,6 +218,9 @@ pub enum OverlayMode {
 #[derive(Debug)]
 pub struct OverlayState {
     pub mode: OverlayMode,
+    /// Distinguishes repeated visits to the same mode, so an interrupted
+    /// animation cannot become current again after another collapse/expand.
+    mode_revision: u64,
     /// Current subtitle requirement; part of every queued geometry transaction.
     minimum_height: f64,
     /// Temporary readable, interactive presentation; never persisted.
@@ -250,6 +253,7 @@ pub struct OverlayState {
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct OverlayApplySnapshot {
     mode: OverlayMode,
+    mode_revision: u64,
     session_error: bool,
     minimum_height: f64,
     user_frame: OverlayFrame,
@@ -269,6 +273,7 @@ impl From<&OverlayState> for OverlayApplySnapshot {
     fn from(state: &OverlayState) -> Self {
         Self {
             mode: state.mode,
+            mode_revision: state.mode_revision,
             session_error: state.session_error,
             minimum_height: state.minimum_height,
             user_frame: state.user_frame,
@@ -327,6 +332,7 @@ struct OverlayControlStateInner {
     mode: OverlayControlMode,
     island_width: f64,
     panel_height: f64,
+    webview_zoom: f64,
     generation: u64,
 }
 
@@ -405,6 +411,7 @@ impl Default for OverlayControlState {
             mode: OverlayControlMode::Hidden,
             island_width: OverlayControlWindowManager::DEFAULT_ISLAND_WIDTH,
             panel_height: OverlayControlWindowManager::DEFAULT_PANEL_HEIGHT,
+            webview_zoom: 1.0,
             generation: 0,
         }))
     }
@@ -430,26 +437,28 @@ impl OverlayControlState {
         true
     }
 
-    fn set_panel_height(&self, height: f64) -> bool {
+    fn set_panel_height(&self, height: f64, zoom: f64) -> bool {
         let mut state = self.0.lock().unwrap();
-        if (state.panel_height - height).abs() < 0.5 {
+        if (state.panel_height - height).abs() < 0.5 && (state.webview_zoom - zoom).abs() < 0.0001 {
             return false;
         }
         state.panel_height = height;
+        state.webview_zoom = zoom;
         true
     }
 
-    fn dimensions(&self) -> (f64, f64) {
+    fn dimensions(&self) -> (f64, f64, f64) {
         let state = self.0.lock().unwrap();
-        (state.island_width, state.panel_height)
+        (state.island_width, state.panel_height, state.webview_zoom)
     }
 
-    fn set_island_width(&self, width: f64) -> bool {
+    fn set_island_width(&self, width: f64, zoom: f64) -> bool {
         let mut state = self.0.lock().unwrap();
-        if (state.island_width - width).abs() < 0.5 {
+        if (state.island_width - width).abs() < 0.5 && (state.webview_zoom - zoom).abs() < 0.0001 {
             return false;
         }
         state.island_width = width;
+        state.webview_zoom = zoom;
         true
     }
 
@@ -492,6 +501,7 @@ impl OverlayState {
         fit_user_frame_to_screen(app, &mut user_frame, minimum_height);
         Self {
             mode: OverlayMode::Expanded,
+            mode_revision: 0,
             minimum_height,
             user_frame,
             presentation_frame: None,
@@ -1091,61 +1101,26 @@ impl OverlayWindowManager {
     ) {
         let (mut state, observed_frame, work_areas, primary_work_area) =
             lock_overlay_after_native_geometry_read(app, overlay_state);
-        let manual_drag =
-            reconcile_native_drag(&mut state, observed_frame, &work_areas, primary_work_area);
-        let frame_to_persist = manual_drag.promoted.then_some(state.user_frame);
-        let new_mode = if collapsed {
-            OverlayMode::Collapsed
-        } else {
-            OverlayMode::Expanded
-        };
-        if state.mode == new_mode {
-            let expected_state = OverlayApplySnapshot::from(&*state);
-            drop(state);
-            if let Some(frame) = frame_to_persist {
-                persist_user_frame_if_current(overlay_state, settings, frame);
-            }
-            if manual_drag.fit_changed {
-                Self::apply_if_geometry_current(app, overlay_state, expected_state, false);
-            }
-            return;
-        }
-        if collapsed {
-            // Adopt the exact current window frame before shrinking so an
-            // expand later restores precisely what the user saw. A temporary
-            // active-Space frame is already exact but must not become saved
-            // merely because the user collapsed the surface.
-            if should_sync_before_collapse(manual_drag, &state) {
-                if let Some(observed_frame) = observed_frame {
-                    state.user_frame = observed_frame;
-                    state.user_frame.height = state.user_frame.height.max(state.minimum_height);
-                }
-            }
-        } else if !state.session_error {
-            // The screen configuration may have changed while collapsed;
-            // keep the expanded frame on the visible screen.
-            let minimum_height = state.minimum_height;
-            if let Some(frame) = state.presentation_frame.as_mut() {
-                fit_user_frame_to_work_areas(frame, &work_areas, primary_work_area, minimum_height);
-            } else {
-                fit_user_frame_to_work_areas(
-                    &mut state.user_frame,
-                    &work_areas,
-                    primary_work_area,
-                    minimum_height,
-                );
-            }
-        }
-        state.mode = new_mode;
-        if state.session_error {
-            state.native_drag_start = None;
-        }
+        let transition = transition_overlay_mode(
+            &mut state,
+            observed_frame,
+            &work_areas,
+            primary_work_area,
+            collapsed,
+        );
         let expected_state = OverlayApplySnapshot::from(&*state);
         drop(state);
-        if let Some(frame) = frame_to_persist {
+        if let Some(frame) = transition.frame_to_persist {
             persist_user_frame_if_current(overlay_state, settings, frame);
         }
-        Self::apply_if_geometry_current(app, overlay_state, expected_state, true);
+        if transition.geometry_changed {
+            Self::apply_if_geometry_current(
+                app,
+                overlay_state,
+                expected_state,
+                transition.mode_changed,
+            );
+        }
     }
 
     /// Handles OS Moved/Resized events for the overlay. Never persists
@@ -1391,27 +1366,40 @@ impl OverlayWindowManager {
     ) {
         let (work_areas, primary_work_area) = available_work_areas(app);
         let mut state = overlay_state.lock().unwrap();
-        state.resize_drag = None;
-        state.resize_start = None;
-        if state.mode != OverlayMode::Expanded || state.session_error {
+        let Some(frame_to_persist) = finish_resize_drag(&mut state, &work_areas, primary_work_area)
+        else {
             return;
-        }
-        state.presentation_frame = None;
-        state.native_drag_start = None;
-        let minimum_height = state.minimum_height;
-        fit_user_frame_to_work_areas(
-            &mut state.user_frame,
-            &work_areas,
-            primary_work_area,
-            minimum_height,
-        );
-        let frame_to_persist = state.user_frame;
+        };
         let expected_state = OverlayApplySnapshot::from(&*state);
         drop(state);
         persist_user_frame_if_current(overlay_state, settings, frame_to_persist);
         Self::apply_if_geometry_current(app, overlay_state, expected_state, false);
         tracing::info!("resize end");
     }
+}
+
+fn finish_resize_drag(
+    state: &mut OverlayState,
+    work_areas: &[LogicalWorkArea],
+    primary_work_area: Option<LogicalWorkArea>,
+) -> Option<OverlayFrame> {
+    // Error presentation already cancels its resize owner. A later WebView
+    // cleanup must not replace the recovered Space frame or a native move.
+    state.resize_drag?;
+    state.resize_drag = None;
+    state.resize_start = None;
+    if state.mode != OverlayMode::Expanded || state.session_error {
+        return None;
+    }
+    state.presentation_frame = None;
+    state.native_drag_start = None;
+    fit_user_frame_to_work_areas(
+        &mut state.user_frame,
+        work_areas,
+        primary_work_area,
+        state.minimum_height,
+    );
+    Some(state.user_frame)
 }
 
 /// WebView `screenX`/`screenY` are not a stable global coordinate space on a
@@ -1820,7 +1808,7 @@ fn reconcile_linux_overlay_input(
     let control = if OverlayControlWindowManager::is_embedded(app) {
         let (width, height) = window.as_ref().size();
         app.try_state::<OverlayControlState>().and_then(|state| {
-            let (island_width, panel_height) = state.dimensions();
+            let (island_width, panel_height, _) = state.dimensions();
             embedded_control_geometry(state.mode(), island_width, panel_height, width, height).map(
                 |geometry| {
                     gtk::cairo::RectangleInt::new(
@@ -1982,14 +1970,16 @@ fn promote_observed_user_frame(state: &mut OverlayState, observed: OverlayFrame)
         }
         return;
     }
+    // start_dragging only moves the window; custom resize gestures own size.
+    // Its observed dimensions may still belong to an expansion animation.
+    let native_move = state.native_drag_start.take().is_some();
     state.presentation_frame = None;
-    state.native_drag_start = None;
     match state.mode {
-        OverlayMode::Expanded => {
+        OverlayMode::Expanded if !native_move => {
             state.user_frame = observed;
             state.user_frame.height = state.user_frame.height.max(state.minimum_height);
         }
-        OverlayMode::Collapsed => {
+        OverlayMode::Expanded | OverlayMode::Collapsed => {
             state.user_frame.x = observed.x;
             state.user_frame.y = observed.y;
         }
@@ -2003,6 +1993,60 @@ fn promote_observed_user_frame(state: &mut OverlayState, observed: OverlayFrame)
 struct NativeDragReconcile {
     promoted: bool,
     fit_changed: bool,
+}
+
+#[derive(Debug)]
+struct OverlayModeTransition {
+    mode_changed: bool,
+    geometry_changed: bool,
+    frame_to_persist: Option<OverlayFrame>,
+}
+
+/// Native observations reconcile explicit movement only. An unmarked size can
+/// be an intermediate animation frame and must never replace the expanded
+/// target when the user reverses a transition.
+fn transition_overlay_mode(
+    state: &mut OverlayState,
+    observed: Option<OverlayFrame>,
+    work_areas: &[LogicalWorkArea],
+    primary_work_area: Option<LogicalWorkArea>,
+    collapsed: bool,
+) -> OverlayModeTransition {
+    let manual_drag = reconcile_native_drag(state, observed, work_areas, primary_work_area);
+    let frame_to_persist = manual_drag.promoted.then_some(state.user_frame);
+    let new_mode = if collapsed {
+        OverlayMode::Collapsed
+    } else {
+        OverlayMode::Expanded
+    };
+    let mode_changed = state.mode != new_mode;
+    if mode_changed {
+        if !collapsed && !state.session_error {
+            // The screen configuration may have changed while collapsed;
+            // keep the expanded frame on the visible screen.
+            let minimum_height = state.minimum_height;
+            if let Some(frame) = state.presentation_frame.as_mut() {
+                fit_user_frame_to_work_areas(frame, work_areas, primary_work_area, minimum_height);
+            } else {
+                fit_user_frame_to_work_areas(
+                    &mut state.user_frame,
+                    work_areas,
+                    primary_work_area,
+                    minimum_height,
+                );
+            }
+        }
+        state.mode = new_mode;
+        state.mode_revision = state.mode_revision.wrapping_add(1);
+        if state.session_error {
+            state.native_drag_start = None;
+        }
+    }
+    OverlayModeTransition {
+        mode_changed,
+        geometry_changed: mode_changed || manual_drag.fit_changed,
+        frame_to_persist,
+    }
 }
 
 fn reconcile_native_drag(
@@ -2076,10 +2120,6 @@ fn positions_approximately_equal(left: (f64, f64), right: (f64, f64)) -> bool {
 
 fn native_drag_changed_position(start: (f64, f64), observed: &OverlayFrame) -> bool {
     !positions_approximately_equal(start, (observed.x, observed.y))
-}
-
-fn should_sync_before_collapse(reconciliation: NativeDragReconcile, state: &OverlayState) -> bool {
-    !state.session_error && !reconciliation.promoted && state.presentation_frame.is_none()
 }
 
 fn frames_approximately_equal(left: &OverlayFrame, right: &OverlayFrame) -> bool {
@@ -2298,6 +2338,18 @@ impl LogicalWorkArea {
 
     fn coordinate_distance(self, logical: f64) -> f64 {
         logical * self.coordinate_scale
+    }
+
+    /// CSS pixels also include WebView zoom (including Windows text scaling).
+    /// Preserve the physical work area while expressing its bounds in CSS units.
+    #[cfg(any(target_os = "windows", test))]
+    fn with_webview_zoom(self, zoom: f64) -> Self {
+        Self {
+            width: self.width / zoom,
+            height: self.height / zoom,
+            coordinate_scale: self.coordinate_scale * zoom,
+            ..self
+        }
     }
 }
 
@@ -2704,15 +2756,18 @@ impl OverlayControlWindowManager {
 
     /// Updates the tightly-fitted panel height measured by React. The value is
     /// clamped before any native window mutation.
-    pub fn set_panel_height(app: &AppHandle, height: f64) {
+    pub fn set_panel_height(app: &AppHandle, height: f64, pixel_ratio: f64) {
         if !height.is_finite() {
             return;
         }
         let height = height.clamp(Self::MIN_PANEL_HEIGHT, Self::MAX_PANEL_HEIGHT);
+        let Some(zoom) = measured_webview_zoom(app, pixel_ratio) else {
+            return;
+        };
         let Some(state) = app.try_state::<OverlayControlState>() else {
             return;
         };
-        if state.set_panel_height(height) && state.mode() == OverlayControlMode::Panel {
+        if state.set_panel_height(height, zoom) && state.mode() == OverlayControlMode::Panel {
             Self::apply_geometry(app, OverlayControlMode::Panel);
         }
     }
@@ -2720,16 +2775,19 @@ impl OverlayControlWindowManager {
     /// Caches the collapsed capsule's intrinsic width independently of the
     /// panel. Hidden and expanded surfaces only remember this measurement;
     /// a late report must neither reveal a hidden window nor shrink a panel.
-    pub fn set_island_width(app: &AppHandle, width: f64) {
+    pub fn set_island_width(app: &AppHandle, width: f64, pixel_ratio: f64) {
         let Some(width) = measured_island_width(width) else {
             return;
         };
         let current_app = app.clone();
         let _ = app.run_on_main_thread(move || {
+            let Some(zoom) = measured_webview_zoom(&current_app, pixel_ratio) else {
+                return;
+            };
             let Some(state) = current_app.try_state::<OverlayControlState>() else {
                 return;
             };
-            if state.set_island_width(width) && state.mode() == OverlayControlMode::Island {
+            if state.set_island_width(width, zoom) && state.mode() == OverlayControlMode::Island {
                 Self::apply_geometry(&current_app, OverlayControlMode::Island);
             }
         });
@@ -2836,10 +2894,14 @@ impl OverlayControlWindowManager {
         let Some((anchor_x, anchor_y, work_area)) = Self::overlay_anchor(app) else {
             return false;
         };
-        let (island_width, panel_height) = app
+        let (island_width, panel_height, zoom) = app
             .try_state::<OverlayControlState>()
             .map(|state| state.dimensions())
-            .unwrap_or((Self::DEFAULT_ISLAND_WIDTH, Self::DEFAULT_PANEL_HEIGHT));
+            .unwrap_or((Self::DEFAULT_ISLAND_WIDTH, Self::DEFAULT_PANEL_HEIGHT, 1.0));
+        #[cfg(target_os = "windows")]
+        let work_area = work_area.with_webview_zoom(zoom);
+        #[cfg(not(target_os = "windows"))]
+        let _ = zoom;
         let geometry = overlay_control_geometry(
             mode,
             anchor_x,
@@ -2952,6 +3014,41 @@ fn control_mode_for_presentation(
     } else {
         OverlayControlMode::Island
     }
+}
+
+fn measured_webview_zoom(app: &AppHandle, pixel_ratio: f64) -> Option<f64> {
+    #[cfg(target_os = "windows")]
+    {
+        let native_scale = app
+            .get_webview_window("overlay-control")?
+            .scale_factor()
+            .ok()?;
+        windows_webview_zoom(pixel_ratio, native_scale)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Some(unscaled_webview_zoom(pixel_ratio))
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_webview_zoom(pixel_ratio: f64, native_scale: f64) -> Option<f64> {
+    if !pixel_ratio.is_finite()
+        || !(0.25..=16.0).contains(&pixel_ratio)
+        || !native_scale.is_finite()
+        || !(0.25..=16.0).contains(&native_scale)
+    {
+        return None;
+    }
+    Some(pixel_ratio / native_scale)
+}
+
+/// Only Windows applies WebView text zoom to native control geometry. Ignore
+/// the extra measurement entirely elsewhere, preserving their size updates.
+#[cfg(any(not(target_os = "windows"), test))]
+fn unscaled_webview_zoom(_pixel_ratio: f64) -> f64 {
+    1.0
 }
 
 fn measured_island_width(width: f64) -> Option<f64> {
@@ -3177,6 +3274,7 @@ mod geometry_tests {
     fn state_with_frame(user_frame: OverlayFrame) -> OverlayState {
         OverlayState {
             mode: OverlayMode::Expanded,
+            mode_revision: 0,
             minimum_height: SubtitleOverlayMetrics::MINIMUM_HEIGHT,
             user_frame,
             presentation_frame: None,
@@ -3222,10 +3320,6 @@ mod geometry_tests {
         assert!(state.resize_drag.is_none());
         assert!(state.native_drag_start.is_none());
         assert!(!active_space_follow_allowed(&state));
-        assert!(!should_sync_before_collapse(
-            NativeDragReconcile::default(),
-            &state
-        ));
         assert_eq!(state.effective_frame(), followed);
         assert!(state.set_session_error(false));
         assert_eq!(state.presentation_frame, Some(followed));
@@ -3328,15 +3422,24 @@ mod geometry_tests {
     }
 
     #[test]
-    fn ordinary_drag_reconciliation_still_adopts_and_fits_the_complete_frame() {
+    fn ordinary_native_drag_reconciles_position_without_adopting_observed_dimensions() {
         let mut state = state_with_frame(frame(400.0, 300.0, 640.0, 136.0));
         state.native_drag_start = Some((400.0, 300.0));
         let moved = frame(1200.0, 400.0, 700.0, 200.0);
         let result = reconcile_native_drag(&mut state, Some(moved), &[WORK_AREA], Some(WORK_AREA));
         assert!(result.promoted);
         assert!(result.fit_changed);
-        assert_eq!(state.user_frame, frame(812.0, 400.0, 700.0, 200.0));
+        assert_eq!(state.user_frame, frame(872.0, 400.0, 640.0, 136.0));
         assert!(state.native_drag_start.is_none());
+    }
+
+    #[test]
+    fn resize_observation_without_a_native_move_still_updates_the_complete_frame() {
+        let mut state = state_with_frame(frame(400.0, 300.0, 640.0, 136.0));
+        let resized = frame(400.0, 300.0, 700.0, 200.0);
+
+        assert!(adopt_observed_frame(&mut state, resized));
+        assert_eq!(state.user_frame, resized);
     }
 
     #[test]
@@ -3794,6 +3897,103 @@ mod geometry_tests {
     }
 
     #[test]
+    fn interrupted_expansion_keeps_the_saved_frame_and_cancels_the_earlier_animation() {
+        let saved = frame(400.0, 300.0, 659.0, 328.0);
+        let collapsed = frame(400.0, 300.0, 280.0, 54.0);
+        let halfway = frame(400.0, 300.0, 469.5, 191.0);
+        let mut state = state_with_frame(saved);
+        transition_overlay_mode(&mut state, Some(saved), &[WORK_AREA], Some(WORK_AREA), true);
+        transition_overlay_mode(
+            &mut state,
+            Some(collapsed),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            false,
+        );
+        let earlier_expansion = OverlayApplySnapshot::from(&state);
+
+        let recollapse = transition_overlay_mode(
+            &mut state,
+            Some(halfway),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            true,
+        );
+        assert!(recollapse.mode_changed);
+        assert!(recollapse.geometry_changed);
+        assert!(recollapse.frame_to_persist.is_none());
+        assert_eq!(state.user_frame, saved);
+        assert_eq!(state.mode, OverlayMode::Collapsed);
+
+        transition_overlay_mode(
+            &mut state,
+            Some(collapsed),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            false,
+        );
+        assert_eq!(state.effective_frame(), saved);
+        assert_eq!(state.mode, earlier_expansion.mode);
+        // The mode and complete frame now match the earlier expansion, but its
+        // queued steps must stay cancelled instead of interleaving with this one.
+        assert!(!apply_snapshot_is_current(&state, earlier_expansion));
+    }
+
+    #[test]
+    fn repeated_mode_requests_do_not_cancel_the_current_animation() {
+        let saved = frame(400.0, 300.0, 659.0, 328.0);
+        let mut state = state_with_frame(saved);
+        transition_overlay_mode(&mut state, Some(saved), &[WORK_AREA], Some(WORK_AREA), true);
+        let animation = OverlayApplySnapshot::from(&state);
+
+        let repeated = transition_overlay_mode(
+            &mut state,
+            Some(frame(400.0, 300.0, 469.5, 191.0)),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            true,
+        );
+        assert!(!repeated.geometry_changed);
+        assert!(apply_snapshot_is_current(&state, animation));
+        assert_eq!(state.user_frame, saved);
+    }
+
+    #[test]
+    fn native_move_during_expansion_preserves_the_saved_size_when_recollapsed() {
+        let saved = frame(400.0, 300.0, 659.0, 328.0);
+        let mut state = state_with_frame(saved);
+        transition_overlay_mode(&mut state, Some(saved), &[WORK_AREA], Some(WORK_AREA), true);
+        transition_overlay_mode(
+            &mut state,
+            Some(frame(400.0, 300.0, 280.0, 54.0)),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            false,
+        );
+        state.native_drag_start = Some((saved.x, saved.y));
+
+        let recollapse = transition_overlay_mode(
+            &mut state,
+            Some(frame(420.0, 300.0, 469.5, 191.0)),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            true,
+        );
+        let moved = frame(420.0, 300.0, saved.width, saved.height);
+        assert_eq!(state.user_frame, moved);
+        assert_eq!(recollapse.frame_to_persist, Some(moved));
+
+        transition_overlay_mode(
+            &mut state,
+            Some(frame(420.0, 300.0, 280.0, 54.0)),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            false,
+        );
+        assert_eq!(state.effective_frame(), moved);
+    }
+
+    #[test]
     fn native_drag_marker_does_not_strand_an_animation_mid_size() {
         let mut state = state_with_frame(frame(400.0, 700.0, 640.0, 136.0));
         state.mode = OverlayMode::Collapsed;
@@ -3815,10 +4015,111 @@ mod geometry_tests {
         });
         let queued_move = OverlayApplySnapshot::from(&state);
 
-        state.resize_drag = None;
-        state.resize_start = None;
+        assert_eq!(
+            finish_resize_drag(&mut state, &[WORK_AREA], Some(WORK_AREA)),
+            Some(frame(400.0, 700.0, 640.0, 136.0))
+        );
 
         assert!(!apply_snapshot_is_current(&state, queued_move));
+    }
+
+    #[test]
+    fn resize_end_without_an_active_gesture_preserves_new_presentation_and_move() {
+        let saved = frame(400.0, 300.0, 640.0, 400.0);
+        let mut state = state_with_frame(saved);
+        state.presentation_frame = Some(frame(-1200.0, 200.0, 640.0, 400.0));
+        state.native_drag_start = Some((-1200.0, 200.0));
+        let before = OverlayGeometrySnapshot::from(&state);
+
+        assert_eq!(finish_resize_drag(&mut state, &[], None), None);
+
+        assert_eq!(OverlayGeometrySnapshot::from(&state), before);
+    }
+
+    #[test]
+    fn resize_end_after_error_recovery_cannot_restore_an_old_saved_frame() {
+        let saved = frame(400.0, 300.0, 640.0, 400.0);
+        let followed = frame(-1200.0, 200.0, 640.0, 400.0);
+        let mut state = state_with_frame(saved);
+        state.presentation_frame = Some(followed);
+        state.resize_drag = Some(ResizeRegion::BottomRight);
+        state.resize_start = Some(ResizeGesture {
+            pointer: (-1200.0, 200.0),
+            frame: followed,
+            work_area: WORK_AREA,
+        });
+        state.set_session_error(true);
+        state.set_session_error(false);
+        let before = OverlayGeometrySnapshot::from(&state);
+
+        assert_eq!(
+            finish_resize_drag(&mut state, &[WORK_AREA], Some(WORK_AREA)),
+            None
+        );
+
+        assert_eq!(OverlayGeometrySnapshot::from(&state), before);
+        assert_eq!(state.effective_frame(), followed);
+        assert_eq!(state.user_frame, saved);
+    }
+
+    #[test]
+    fn resize_end_in_a_transient_mode_only_clears_the_resize_owner() {
+        for (mode, session_error) in [
+            (OverlayMode::Collapsed, false),
+            (OverlayMode::Expanded, true),
+        ] {
+            let saved = frame(400.0, 300.0, 640.0, 400.0);
+            let followed = frame(-1200.0, 200.0, 640.0, 400.0);
+            let mut state = state_with_frame(saved);
+            state.mode = mode;
+            state.session_error = session_error;
+            state.presentation_frame = Some(followed);
+            state.native_drag_start = Some((-1200.0, 200.0));
+            state.resize_drag = Some(ResizeRegion::BottomRight);
+            state.resize_start = Some(ResizeGesture {
+                pointer: (-1200.0, 200.0),
+                frame: followed,
+                work_area: WORK_AREA,
+            });
+
+            assert_eq!(
+                finish_resize_drag(&mut state, &[WORK_AREA], Some(WORK_AREA)),
+                None
+            );
+
+            assert_eq!(state.resize_drag, None);
+            assert_eq!(state.resize_start, None);
+            assert_eq!(state.mode, mode);
+            assert_eq!(state.session_error, session_error);
+            assert_eq!(state.presentation_frame, Some(followed));
+            assert_eq!(state.native_drag_start, Some((-1200.0, 200.0)));
+            assert_eq!(state.user_frame, saved);
+        }
+    }
+
+    #[test]
+    fn resize_end_fits_the_active_frame_and_a_second_end_is_a_noop() {
+        let mut state = state_with_frame(frame(1400.0, 900.0, 640.0, 400.0));
+        state.resize_drag = Some(ResizeRegion::BottomRight);
+        state.resize_start = Some(ResizeGesture {
+            pointer: (1400.0, 900.0),
+            frame: state.user_frame,
+            work_area: WORK_AREA,
+        });
+        let fitted = frame(872.0, 582.0, 640.0, 400.0);
+
+        assert_eq!(
+            finish_resize_drag(&mut state, &[WORK_AREA], Some(WORK_AREA)),
+            Some(fitted)
+        );
+        assert_eq!(state.user_frame, fitted);
+        assert_eq!(state.resize_drag, None);
+        assert_eq!(state.resize_start, None);
+        assert!(active_space_follow_allowed(&state));
+        assert_eq!(
+            finish_resize_drag(&mut state, &[WORK_AREA], Some(WORK_AREA)),
+            None
+        );
     }
 
     #[test]
@@ -3836,14 +4137,22 @@ mod geometry_tests {
     }
 
     #[test]
-    fn promoted_drag_is_not_resynced_over_its_fitted_user_frame() {
-        let state = state_with_frame(frame(872.0, 400.0, 640.0, 136.0));
-        let reconciliation = NativeDragReconcile {
-            promoted: true,
-            fit_changed: true,
-        };
+    fn collapse_reconciles_a_manual_drag_without_overwriting_its_fitted_frame() {
+        let saved = frame(400.0, 300.0, 640.0, 136.0);
+        let mut state = state_with_frame(saved);
+        state.native_drag_start = Some((saved.x, saved.y));
+        let transition = transition_overlay_mode(
+            &mut state,
+            Some(frame(1200.0, 400.0, 700.0, 200.0)),
+            &[WORK_AREA],
+            Some(WORK_AREA),
+            true,
+        );
+        let fitted = frame(872.0, 400.0, saved.width, saved.height);
 
-        assert!(!should_sync_before_collapse(reconciliation, &state));
+        assert_eq!(state.user_frame, fitted);
+        assert_eq!(state.mode, OverlayMode::Collapsed);
+        assert_eq!(transition.frame_to_persist, Some(fitted));
     }
 
     #[test]
@@ -4045,15 +4354,17 @@ mod geometry_tests {
     #[test]
     fn measured_width_updates_keep_hidden_and_panel_modes_and_dismiss_generation() {
         let state = OverlayControlState::default();
-        assert!(state.set_island_width(148.0));
+        assert!(state.set_island_width(148.0, 1.0));
         assert_eq!(state.snapshot(), (OverlayControlMode::Hidden, 270.0, 0));
-        assert_eq!(state.dimensions(), (148.0, 270.0));
+        assert_eq!(state.dimensions(), (148.0, 270.0, 1.0));
         assert!(state.set_mode(OverlayControlMode::Panel));
-        assert!(state.set_panel_height(356.0));
-        assert!(state.set_island_width(312.0));
-        assert!(!state.set_island_width(312.0));
+        assert!(state.set_panel_height(356.0, 1.0));
+        assert!(state.set_island_width(312.0, 1.0));
+        assert!(!state.set_island_width(312.0, 1.0));
         assert_eq!(state.snapshot(), (OverlayControlMode::Panel, 356.0, 1));
-        assert_eq!(state.dimensions(), (312.0, 356.0));
+        assert_eq!(state.dimensions(), (312.0, 356.0, 1.0));
+        assert!(state.set_island_width(312.0, 1.2));
+        assert_eq!(state.dimensions(), (312.0, 356.0, 1.2));
     }
 
     #[test]
@@ -4063,6 +4374,45 @@ mod geometry_tests {
         assert_eq!(measured_island_width(10000.0), Some(512.0));
         assert_eq!(measured_island_width(f64::NAN), None);
         assert_eq!(measured_island_width(f64::INFINITY), None);
+    }
+
+    #[test]
+    fn windows_text_zoom_is_independent_of_monitor_dpi_and_rejects_invalid_scales() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            assert_eq!(windows_webview_zoom(scale, scale), Some(1.0));
+            assert!((windows_webview_zoom(scale * 1.2, scale).unwrap() - 1.2).abs() < 0.0001);
+        }
+        for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY, 17.0] {
+            assert_eq!(windows_webview_zoom(invalid, 1.0), None);
+            assert_eq!(windows_webview_zoom(1.0, invalid), None);
+        }
+    }
+
+    #[test]
+    fn non_windows_dimensions_ignore_pixel_ratio_including_invalid_values() {
+        let state = OverlayControlState::default();
+        for pixel_ratio in [0.0, -1.0, f64::NAN, f64::INFINITY, 1.5, 17.0] {
+            let zoom = unscaled_webview_zoom(pixel_ratio);
+            state.set_panel_height(356.0, zoom);
+            state.set_island_width(148.0, zoom);
+            assert_eq!(state.dimensions(), (148.0, 356.0, 1.0));
+        }
+    }
+
+    #[test]
+    fn unchanged_panel_height_still_reapplies_changed_windows_text_zoom() {
+        let state = OverlayControlState::default();
+        assert!(state.set_panel_height(356.0, 1.0));
+        assert!(!state.set_panel_height(356.0, 1.0));
+        assert!(state.set_panel_height(356.0, 1.2));
+        assert_eq!(
+            state.dimensions(),
+            (
+                OverlayControlWindowManager::DEFAULT_ISLAND_WIDTH,
+                356.0,
+                1.2
+            )
+        );
     }
 
     #[test]
@@ -4096,6 +4446,60 @@ mod geometry_tests {
             narrow,
         );
         assert_eq!((island.x, island.y, island.width), (108.0, 160.0, 84.0));
+    }
+
+    #[test]
+    fn zoomed_controls_fit_css_content_without_changing_monitor_bounds() {
+        for monitor_scale in [1.0, 1.5, 2.0] {
+            let monitor = LogicalWorkArea {
+                x: -1920.0,
+                y: 80.0,
+                width: 1280.0,
+                height: 720.0,
+                coordinate_scale: monitor_scale,
+            };
+            for zoom in [1.0, 1.2, 1.5] {
+                let css_area = monitor.with_webview_zoom(zoom);
+                assert!((css_area.coordinate_width() - monitor.coordinate_width()).abs() < 0.001);
+                assert!((css_area.coordinate_height() - monitor.coordinate_height()).abs() < 0.001);
+                for mode in [OverlayControlMode::Island, OverlayControlMode::Panel] {
+                    let geometry = overlay_control_geometry(
+                        mode,
+                        monitor.x + 100.0,
+                        monitor.y + 100.0,
+                        148.0,
+                        356.0,
+                        css_area,
+                    );
+                    let (css_width, css_height) = match mode {
+                        OverlayControlMode::Island => (148.0, 30.0),
+                        _ => (280.0, 356.0),
+                    };
+                    assert!(
+                        (geometry.width * css_area.coordinate_scale
+                            - css_width * monitor_scale * zoom)
+                            .abs()
+                            < 0.001
+                    );
+                    assert!(
+                        (geometry.height * css_area.coordinate_scale
+                            - css_height * monitor_scale * zoom)
+                            .abs()
+                            < 0.001
+                    );
+                    assert!(geometry.x >= monitor.x);
+                    assert!(geometry.y >= monitor.y);
+                    assert!(
+                        geometry.x + geometry.width * css_area.coordinate_scale
+                            <= monitor.x + monitor.coordinate_width()
+                    );
+                    assert!(
+                        geometry.y + geometry.height * css_area.coordinate_scale
+                            <= monitor.y + monitor.coordinate_height()
+                    );
+                }
+            }
+        }
     }
 }
 

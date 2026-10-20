@@ -18,3 +18,4 @@ pub mod development_content;
 #[cfg(not(any(test, feature = "development-debugger")))]
 #[path = "development_content_disabled.rs"]
 pub mod development_content;
+pub mod resource_cleanup;

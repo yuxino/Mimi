@@ -67,6 +67,57 @@ it("reads only on a paste click, updates the draft, and retains normal password 
   expect(host.querySelector<HTMLInputElement>("input")!.value).toBe("synthetic-pasted-key");
   expect(host.querySelector("input")!.type).toBe("password");
 });
+
+it("keeps a newer edit and does not commit a late paste through onPasteValue", async () => {
+  let finish!: (value: string) => void;
+  const onPasteValue = vi.fn();
+  read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await act(() => root.render(<ExpandableDraft initial="original" onPasteValue={onPasteValue} />));
+  await act(() => host.querySelector<HTMLButtonElement>(".config-input__paste")!.click());
+  const input = host.querySelector<HTMLInputElement>("input")!;
+  expect(input.disabled).toBe(false);
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "newer edit");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => finish("late clipboard value"));
+  expect(input.value).toBe("newer edit");
+  expect(changed).toHaveBeenCalledExactlyOnceWith("newer edit");
+  expect(onPasteValue).not.toHaveBeenCalled();
+});
+
+it("cancels a late paste when an edit returns to the original value", async () => {
+  let finish!: (value: string) => void;
+  const onPasteValue = vi.fn();
+  read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await act(() => root.render(<ExpandableDraft initial="original" onPasteValue={onPasteValue} />));
+  await act(() => host.querySelector<HTMLButtonElement>(".config-input__paste")!.click());
+  const input = host.querySelector<HTMLInputElement>("input")!;
+  for (const value of ["newer edit", "original"]) {
+    await act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  await act(async () => finish("late clipboard value"));
+  expect(input.value).toBe("original");
+  expect(changed.mock.calls).toEqual([["newer edit"], ["original"]]);
+  expect(onPasteValue).not.toHaveBeenCalled();
+});
+
+it("discards a late paste after the owner replaces the field value", async () => {
+  let finish!: (value: string) => void;
+  const onPasteValue = vi.fn();
+  read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await act(() => root.render(<ConfigInput value="original" onValueChange={changed} onPasteValue={onPasteValue} />));
+  await act(() => host.querySelector<HTMLButtonElement>(".config-input__paste")!.click());
+  await act(() => root.render(<ConfigInput value="external replacement" onValueChange={changed} onPasteValue={onPasteValue} />));
+  await act(async () => finish("late clipboard value"));
+  expect(host.querySelector<HTMLInputElement>("input")!.value).toBe("external replacement");
+  expect(changed).not.toHaveBeenCalled();
+  expect(onPasteValue).not.toHaveBeenCalled();
+});
+
 it("does not read when disabled, rejects a late read after switching fields, and does not echo clipboard errors", async () => {
   await act(() => root.render(<><Draft disabled /><SettingsToastRegion /></>));
   await act(() => host.querySelector<HTMLButtonElement>("button")!.click());

@@ -98,7 +98,7 @@ impl AudioIngress {
         }
         let has_data = !data.is_empty();
         let pending = has_data.then(|| self.pending_pcm.acquire());
-        let has_sound = peak_pcm16_sample(&data) > 32;
+        let has_sound = observe_capture && peak_pcm16_sample(&data) > 32;
         let captured_at = Instant::now();
         let packet = PendingAudio {
             data,
@@ -688,6 +688,32 @@ mod tests {
 #[cfg(test)]
 mod activity_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn processed_output_preserves_raw_capture_activity() {
+        let pipeline = AudioSendPipeline::spawn(|_data| async { Ok::<(), ()>(()) }, |_| {});
+        let ingress = pipeline.ingress().unwrap();
+        assert_eq!(pipeline.input_activity(), (false, false));
+
+        ingress
+            .try_send_processed(i16::MAX.to_le_bytes().to_vec())
+            .unwrap();
+        assert_eq!(pipeline.input_activity(), (false, false));
+
+        ingress.try_send(vec![0, 0]).unwrap();
+        assert_eq!(pipeline.input_activity(), (true, false));
+        ingress
+            .try_send_processed(i16::MAX.to_le_bytes().to_vec())
+            .unwrap();
+        assert_eq!(pipeline.input_activity(), (true, false));
+
+        ingress.try_send(i16::MAX.to_le_bytes().to_vec()).unwrap();
+        assert_eq!(pipeline.input_activity(), (true, true));
+        ingress.try_send_processed(vec![0, 0]).unwrap();
+        assert_eq!(pipeline.input_activity(), (true, true));
+        assert!(pipeline.finish(Duration::from_secs(1)).await);
+    }
+
     #[test]
     fn concurrent_activity_does_not_claim_sound_without_pcm() {
         let now = Instant::now();

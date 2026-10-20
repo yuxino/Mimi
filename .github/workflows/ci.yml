@@ -146,7 +146,9 @@ jobs:
 
       - name: Test legacy credential setup with a new Linux keyring
         if: runner.os == 'Linux'
-        run: ./scripts/linux-keyring-first-save-smoke.sh
+        run: |
+          python3 -B scripts/linux-keyring-first-save-driver-test.py
+          ./scripts/linux-keyring-first-save-smoke.sh
 
       - name: Check Intel macOS target
         if: runner.os == 'macOS'
@@ -275,6 +277,9 @@ jobs:
 
       - name: Test quick-check argument safety
         run: bash scripts/check-quick-test.sh
+
+      - name: Test signed watch preview configuration
+        run: node --test scripts/dev-app-watch.node.mjs
 
       - name: Shared native packaging invariants
         run: python3 -B scripts/shared-core-native-test.py

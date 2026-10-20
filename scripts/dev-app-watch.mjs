@@ -10,6 +10,7 @@ const frontendUrl = "http://127.0.0.1:1420";
 
 export async function startFrontendServer() {
   const server = await createServer({
+    configFile: resolve(projectDirectory, "config/vite.config.ts"),
     root: projectDirectory,
     envDir: false,
     // QA fixtures and old Android reports are not application entry points.

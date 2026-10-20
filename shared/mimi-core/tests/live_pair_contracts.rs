@@ -12,7 +12,12 @@ fn synthetic_identity_contracts_keep_pairs_exact_through_stateless_round_trips()
         let mut aligner = LivePairAligner::default();
         let mut reducer = SubtitleReducer::<NoopArchive>::new(6);
         for (index, step) in case["steps"].as_array().unwrap().iter().enumerate() {
-            let output = if step["clearContent"] == true {
+            let output = if step["legacySourceOrder"] == true {
+                let mut state = serde_json::to_value(&aligner).unwrap();
+                state.as_object_mut().unwrap().remove("source_order");
+                aligner = serde_json::from_value(state).unwrap();
+                Vec::new()
+            } else if step["clearContent"] == true {
                 aligner.clear_content();
                 reducer.apply(SubtitleEvent::Clear);
                 Vec::new()

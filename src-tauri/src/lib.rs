@@ -324,19 +324,31 @@ pub fn run() {
                     }
                     // Hiding instead of closing keeps the window alive so
                     // the tray or a repeated launch can restore it instantly.
-                    // Windows users may keep tray icons in the notification
-                    // overflow, so explicitly keep the native icon visible.
+                    // The tray is created visible. Windows' tray backend also
+                    // re-registers it on TaskbarCreated after Explorer restarts.
                     api.prevent_close();
                     let tray_ready = if let Some(tray) = app.tray_by_id("mimi-tray") {
-                        if let Err(error) = tray.set_visible(true) {
-                            tracing::warn!(
-                                error = %error,
-                                "settings close could not keep tray icon visible"
-                            );
-                            false
-                        } else {
+                        #[cfg(target_os = "windows")]
+                        {
+                            // Reapplying visibility calls Shell_NotifyIconW
+                            // synchronously on this UI thread. It is redundant
+                            // (we never hide the tray) and can wait on Explorer.
+                            let _ = tray;
                             record_ui_test_tray_visible();
                             true
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            if let Err(error) = tray.set_visible(true) {
+                                tracing::warn!(
+                                    error = %error,
+                                    "settings close could not keep tray icon visible"
+                                );
+                                false
+                            } else {
+                                record_ui_test_tray_visible();
+                                true
+                            }
                         }
                     } else {
                         tracing::warn!("settings close could not find tray icon");
@@ -792,23 +804,17 @@ fn native_tray_session_is_active(status: &str) -> bool {
 #[cfg(target_os = "macos")]
 fn system_language_code() -> Option<String> {
     use objc2::msg_send;
-    use objc2::runtime::{AnyClass, AnyObject};
-    use std::ffi::{c_char, CStr};
+    use objc2::runtime::AnyClass;
+    use objc2_foundation::{NSArray, NSString};
     unsafe {
         let locale_class = AnyClass::get(c"NSLocale")?;
-        let current: *mut AnyObject = msg_send![locale_class, currentLocale];
-        if current.is_null() {
-            return None;
-        }
-        let code: *mut AnyObject = msg_send![current, languageCode];
-        if code.is_null() {
-            return None;
-        }
-        let ptr: *const c_char = msg_send![code, UTF8String];
-        if ptr.is_null() {
-            return None;
-        }
-        Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+        // The formatting locale's base language drops scripts such as Hant
+        // and can differ from the user's preferred interface language.
+        let languages: *mut NSArray<NSString> = msg_send![locale_class, preferredLanguages];
+        languages
+            .as_ref()?
+            .firstObject()
+            .map(|language| language.to_string())
     }
 }
 
@@ -1269,6 +1275,22 @@ fn setup_global_shortcuts(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_system_language_preserves_the_full_preferred_ui_language() {
+        use objc2::{msg_send, runtime::AnyClass};
+        use objc2_foundation::{NSArray, NSString};
+
+        // Read the OS UI preference rather than its region-formatting locale.
+        // The language code alone loses Chinese scripts and regional variants.
+        let class = AnyClass::get(c"NSLocale").unwrap();
+        let languages: *mut NSArray<NSString> = unsafe { msg_send![class, preferredLanguages] };
+        let expected = unsafe { languages.as_ref() }
+            .and_then(|languages| languages.firstObject())
+            .map(|language| language.to_string());
+        assert_eq!(system_language_code(), expected);
+    }
 
     #[test]
     fn native_menu_language_preserves_chinese_scripts_and_regions() {

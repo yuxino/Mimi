@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { I18N } from "../../lib/i18n";
 import { profileErrorMessage } from "../../lib/connectionDiagnostics";
-import { credentialStateForTarget, usesAlibabaRealtime } from "../../lib/providerCapabilities";
+import { profileSelectionState } from "../../lib/profileSelection";
 import { useStore } from "../../lib/store";
 import { AudioInputSettings } from "./AudioInputSettings";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
@@ -20,6 +20,8 @@ export function VoiceSettings({ onOpenModels, onOpenAppleResources }: { onOpenMo
   const locked = busy || status === "connecting" || status === "stopping";
   const choose = async (id: string) => {
     if (locked || inFlight.current || id === settings.activeProfileId) return;
+    const profile = settings.profiles.find(profile => profile.id === id);
+    if (!profile || profileSelectionState(profile, settings.targetLanguage).disabled) return;
     inFlight.current = true; setBusy(true);
     const notify = beginToast();
     try { await selectProfile(id); }
@@ -31,9 +33,8 @@ export function VoiceSettings({ onOpenModels, onOpenAppleResources }: { onOpenMo
     <SettingsSection id="voice-model" title={settingsPageCopy().selection} hideHeading>
       <SettingsRow label={settingsPageCopy().selection}>
         {settings.profiles.length ? <SettingsSelect label={settingsPageCopy().selection} value={settings.activeProfileId} disabled={locked}
-          options={settings.profiles.map(profile => ({ value: profile.id, label: profile.name,
-            icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} />,
-            disabled: profile.id !== settings.activeProfileId && (credentialStateForTarget(profile, profile.languagePreset?.targetLanguage ?? settings.targetLanguage) !== "present" || (usesAlibabaRealtime(profile) && !profile.alibabaWorkspaceId?.trim())) }))}
+          options={settings.profiles.map(profile => ({ value: profile.id, label: profile.name, ...profileSelectionState(profile, settings.targetLanguage),
+            icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} /> }))}
           onChange={id => { void choose(id); }} /> : <button type="button" className="settings-button settings-button--quiet settings-button--compact" onClick={onOpenModels}>{I18N.settings.addProfile}</button>}
       </SettingsRow>
     </SettingsSection>

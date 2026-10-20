@@ -184,12 +184,17 @@ export function mergeSettingsSnapshot(
 ): SettingsSnapshot {
   const networkProxy = draft.networkProxy === undefined ? null
     : validateNetworkProxy(draft.networkProxy.mode, draft.networkProxy.url);
+  const recordingInputChanged =
+    (draft.systemAudioTarget !== undefined && JSON.stringify(draft.systemAudioTarget) !== JSON.stringify(current.systemAudioTarget ?? { kind: "system" }))
+    || (draft.audioInput !== undefined && draft.audioInput !== (current.audioInput ?? "system"))
+    || (draft.windowsAudioSource !== undefined && draft.windowsAudioSource !== (current.windowsAudioSource ?? ""));
   return {
     ...current,
     sourceLanguage: draft.sourceLanguage ?? current.sourceLanguage,
     targetLanguage: draft.targetLanguage ?? current.targetLanguage,
     translationMode: draft.translationMode ?? current.translationMode,
     fontSize: draft.fontSize ?? current.fontSize,
+    subtitleFontFamily: draft.subtitleFontFamily ?? current.subtitleFontFamily,
     subtitleBackgroundOpacity: draft.subtitleBackgroundOpacity ?? current.subtitleBackgroundOpacity ?? 80,
     subtitleColor: draft.subtitleColor ?? current.subtitleColor,
     microphoneSubtitleColor: draft.microphoneSubtitleColor ?? current.microphoneSubtitleColor ?? "yellow",
@@ -216,28 +221,70 @@ export function mergeSettingsSnapshot(
     retainSessionHistory:
       draft.retainSessionHistory ?? current.retainSessionHistory,
     // A prior recording opt-in must never silently cover a different input.
-    recordSessionAudio: (draft.systemAudioTarget !== undefined && JSON.stringify(draft.systemAudioTarget) !== JSON.stringify(current.systemAudioTarget ?? { kind: "system" })) || (draft.audioInput !== undefined && draft.audioInput !== (current.audioInput ?? "system"))
+    recordSessionAudio: recordingInputChanged
       ? false : draft.recordSessionAudio ?? current.recordSessionAudio,
   };
 }
 
 /**
- * Applies settings drafts immediately, persists them in call order, and keeps
- * the last confirmed snapshot for rollback. External snapshots invalidate
- * pending UI responses without allowing their older results to overwrite the
- * store.
+ * Applies settings drafts immediately and keeps the last confirmed snapshot
+ * for rollback. Consecutive slider edits share the latest queued write; other
+ * drafts remain ordered barriers. External snapshots invalidate pending UI
+ * responses without allowing their older results to overwrite the store.
  */
 export class SettingsSaveCoordinator {
   private generation = 0;
   private epoch = 0;
   private persistenceQueue: Promise<void> = Promise.resolve();
+  private queuedSlider: SettingsSaveOperation | null = null;
   private confirmedSnapshot: SettingsSnapshot | null = null;
   private activeSaves = 0;
+  private sliderPreviews = new Map<SliderField, { value: number; generation: number }>();
+  private submittedSlider: { draft: SettingsDraft; generations: Partial<Record<SliderField, number>> } | null = null;
+  private sliderRevisions: Record<SliderField, number> = { fontSize: 0, subtitleBackgroundOpacity: 0 };
+  private receivedSnapshot: SettingsSnapshot | null = null;
+  private displayedSnapshot: SettingsSnapshot | null = null;
 
   invalidate(): void {
+    this.sliderPreviews.clear();
+    this.receivedSnapshot = null;
+    this.displayedSnapshot = null;
+    for (const field of SLIDER_FIELDS) this.sliderRevisions[field] += 1;
+    this.invalidateResponses();
+  }
+
+  private invalidateResponses(): void {
     this.generation += 1;
     this.epoch += 1;
     this.confirmedSnapshot = null;
+  }
+
+  /** Native events can acknowledge an earlier slider save while a newer
+   * local value is still queued. Other fields always belong to the event. */
+  receiveSnapshot(snapshot: SettingsSnapshot): SettingsSnapshot {
+    for (const field of SLIDER_FIELDS) {
+      const value = sliderValue(snapshot, field);
+      const unchanged = this.receivedSnapshot !== null && value === sliderValue(this.receivedSnapshot, field);
+      const submitted = value === this.submittedSlider?.draft[field];
+      if (this.receivedSnapshot !== null && !unchanged && !submitted) this.sliderRevisions[field] += 1;
+      const preview = this.sliderPreviews.get(field);
+      if (!preview) continue;
+      // A different native value supersedes the local preview. A matching
+      // value confirms only the latest operation: the user may drag back to
+      // an earlier value while an intermediate value is still queued.
+      const acknowledged = value === preview.value && this.submittedSlider?.generations[field] === preview.generation;
+      if (acknowledged || (value !== preview.value && !unchanged && !submitted)) this.sliderPreviews.delete(field);
+    }
+    this.invalidateResponses();
+    this.receivedSnapshot = snapshot;
+    return this.preview(snapshot);
+  }
+
+  private preview(snapshot: SettingsSnapshot): SettingsSnapshot {
+    const draft: SettingsDraft = {};
+    for (const [field, preview] of this.sliderPreviews) draft[field] = preview.value;
+    this.displayedSnapshot = this.sliderPreviews.size ? mergeSettingsSnapshot(snapshot, draft) : snapshot;
+    return this.displayedSnapshot;
   }
 
   async save(
@@ -248,34 +295,129 @@ export class SettingsSaveCoordinator {
   ): Promise<void> {
     const generation = ++this.generation;
     const epoch = this.epoch;
+    const sliderFields = sliderDraftFields(draft);
+    this.receivedSnapshot ??= previous;
+    // A mixed draft keeps the ordinary transaction and opt-out semantics.
+    // Its explicit fields supersede a prior standalone slider preview.
+    if (!sliderFields.length) {
+      if (draft.fontSize !== undefined) this.sliderPreviews.delete("fontSize");
+      if (draft.subtitleBackgroundOpacity !== undefined) this.sliderPreviews.delete("subtitleBackgroundOpacity");
+    }
+    for (const field of sliderFields) this.sliderPreviews.set(field, { value: draft[field]!, generation });
     if (this.confirmedSnapshot === null) {
       this.confirmedSnapshot = previous;
     }
-    this.activeSaves += 1;
-    apply(mergeSettingsSnapshot(previous, draft));
-
-    const operation = this.persistenceQueue.then(async () => {
-      try {
-        const snapshot = await persist(draft);
-        if (epoch === this.epoch) {
-          this.confirmedSnapshot = snapshot;
-          if (generation === this.generation) apply(snapshot);
-        }
-      } catch (error) {
-        if (epoch === this.epoch && generation === this.generation) {
-          apply(this.confirmedSnapshot ?? previous);
-        }
-        throw error;
-      } finally {
-        this.activeSaves -= 1;
-        if (this.activeSaves === 0) this.confirmedSnapshot = null;
-      }
-    });
-
-    // A failed save must reject its own caller without poisoning later saves.
-    this.persistenceQueue = operation.catch(() => {});
-    return operation;
+    const generations = Object.fromEntries(sliderFields.map(field => [field, generation]));
+    let queued = sliderFields.length ? this.queuedSlider : null;
+    if (queued) {
+      // Keep only the latest value for each field, and let every caller observe
+      // the shared write's completion or failure. Never merge an active write.
+      Object.assign(queued.draft, draft);
+      Object.assign(queued.sliderGenerations, generations);
+      Object.assign(queued, { generation, epoch, persist, apply });
+    } else {
+      queued = { previous, draft: { ...draft }, generation, epoch, persist, apply,
+        sliderGenerations: generations, completion: Promise.resolve() };
+      const pending = queued;
+      // Reserve the first write immediately, before its microtask starts. All
+      // later slider edits can share one queued successor until a barrier.
+      this.queuedSlider = sliderFields.length && this.activeSaves > 0 ? pending : null;
+      this.activeSaves += 1;
+      const operation = this.persistenceQueue.then(() => this.persist(pending));
+      pending.completion = operation;
+      // A failed write must reject its callers without poisoning later saves.
+      this.persistenceQueue = operation.catch(() => {});
+    }
+    apply(this.preview(mergeSettingsSnapshot(previous, draft)));
+    return queued.completion;
   }
+
+  private async persist(operation: SettingsSaveOperation): Promise<void> {
+    if (this.queuedSlider === operation) this.queuedSlider = null;
+    const { previous, draft, generation, epoch, persist, apply, sliderGenerations } = operation;
+    const sliderFields = sliderDraftFields(draft);
+    const publish = (snapshot: SettingsSnapshot) => apply(this.preview(snapshot));
+    this.submittedSlider = sliderFields.length ? { draft, generations: sliderGenerations } : null;
+    const revisions = { ...this.sliderRevisions };
+    try {
+      const snapshot = await persist(draft);
+      if (epoch === this.epoch) {
+        this.confirmedSnapshot = snapshot;
+        this.receivedSnapshot = snapshot;
+      }
+      if (sliderFields.length) {
+        const acknowledged: SettingsDraft = {};
+        const confirmed: SettingsDraft = {};
+        for (const field of sliderFields) {
+          const preview = this.sliderPreviews.get(field);
+          if (!preview) continue;
+          // A late acknowledgement from before an external edit cannot
+          // become the rollback baseline for a subsequent local intent,
+          // even when external edits returned to the same numeric value.
+          if (revisions[field] !== this.sliderRevisions[field]) continue;
+          confirmed[field] = sliderValue(snapshot, field);
+          if (preview.generation === sliderGenerations[field]) {
+            this.sliderPreviews.delete(field);
+            acknowledged[field] = confirmed[field];
+          }
+        }
+        if (Object.keys(confirmed).length) {
+          this.receivedSnapshot = mergeSettingsSnapshot(this.receivedSnapshot ?? previous, confirmed);
+          if (this.confirmedSnapshot !== null) this.confirmedSnapshot = mergeSettingsSnapshot(this.confirmedSnapshot, confirmed);
+        }
+        if (Object.keys(acknowledged).length) {
+          const base = epoch === this.epoch && generation === this.generation ? snapshot : this.displayedSnapshot ?? previous;
+          publish(mergeSettingsSnapshot(base, acknowledged));
+        }
+      } else if (epoch === this.epoch && generation === this.generation) {
+        publish(snapshot);
+      }
+    } catch (error) {
+      if (sliderFields.length) {
+        const rollback: SettingsDraft = {};
+        for (const field of sliderFields) {
+          if (this.sliderPreviews.get(field)?.generation !== sliderGenerations[field]) continue;
+          this.sliderPreviews.delete(field);
+          rollback[field] = sliderValue(this.receivedSnapshot ?? previous, field);
+        }
+        if (Object.keys(rollback).length) {
+          if (this.confirmedSnapshot !== null) this.confirmedSnapshot = mergeSettingsSnapshot(this.confirmedSnapshot, rollback);
+          const base = epoch === this.epoch && generation === this.generation
+            ? this.confirmedSnapshot ?? previous : this.displayedSnapshot ?? previous;
+          publish(mergeSettingsSnapshot(base, rollback));
+        }
+      } else if (epoch === this.epoch && generation === this.generation) {
+        publish(this.confirmedSnapshot ?? previous);
+      }
+      throw error;
+    } finally {
+      this.submittedSlider = null;
+      this.activeSaves -= 1;
+      if (this.activeSaves === 0) this.confirmedSnapshot = null;
+    }
+  }
+}
+
+type SliderField = "fontSize" | "subtitleBackgroundOpacity";
+interface SettingsSaveOperation {
+  previous: SettingsSnapshot;
+  draft: SettingsDraft;
+  generation: number;
+  epoch: number;
+  persist: (draft: SettingsDraft) => Promise<SettingsSnapshot>;
+  apply: (settings: SettingsSnapshot) => void;
+  sliderGenerations: Partial<Record<SliderField, number>>;
+  completion: Promise<void>;
+}
+const SLIDER_FIELDS: SliderField[] = ["fontSize", "subtitleBackgroundOpacity"];
+function sliderDraftFields(draft: SettingsDraft): SliderField[] {
+  const fields = Object.keys(draft);
+  return fields.length && fields.every((field): field is SliderField =>
+    (field === "fontSize" || field === "subtitleBackgroundOpacity") && typeof draft[field] === "number")
+    ? fields : [];
+}
+function sliderValue(snapshot: SettingsSnapshot, field: SliderField): number {
+  return field === "fontSize" ? snapshot.fontSize : snapshot.subtitleBackgroundOpacity ?? 80;
 }
 
 /** Prevents an older command response from overwriting a newer event or save. */

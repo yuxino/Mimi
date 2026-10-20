@@ -104,6 +104,27 @@ it("saves speech alone without a translation key or synthetic defaults", async (
   await fillSpeech(); await submit();
   expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "customSpeech", endpoint: "wss://speech.example/inference", model: "synthetic-asr-model", apiKey: "synthetic-asr-key" });
 });
+
+it("allows an explicit complete speech replacement after saved metadata fails but preserves partial-draft read protection", async () => {
+  vi.mocked(profileCredentialEditorState).mockRejectedValue("credential_store_unavailable");
+  await render({ ...props, profile: { ...props.profile, credentialState: "present", speechCredentialState: "present" } });
+  await change("#test-speech-endpoint", "wss://replacement.example/inference");
+  await change("#test-speech-model", "replacement-model");
+  expect(host.querySelector<HTMLButtonElement>('.credential-form button[type="submit"]')!.disabled).toBe(true);
+  await change("#test-speech-key", "synthetic-replacement-key");
+  expect(host.querySelector<HTMLButtonElement>('.credential-form button[type="submit"]')!.disabled).toBe(false);
+  await submit();
+  expect(props.onSave).toHaveBeenCalledExactlyOnceWith({ kind: "customSpeech", endpoint: "wss://replacement.example/inference", model: "replacement-model", apiKey: "synthetic-replacement-key" });
+});
+
+it.each(["model", "key"])("keeps a %s-only speech replacement blocked while saved metadata is unavailable", async field => {
+  vi.mocked(profileCredentialEditorState).mockRejectedValue("credential_store_unavailable");
+  await render({ ...props, profile: { ...props.profile, credentialState: "present", speechCredentialState: "present" } });
+  await change(`#test-speech-${field}`, "synthetic-replacement");
+  expect(host.querySelector<HTMLButtonElement>('.credential-form button[type="submit"]')!.disabled).toBe(true);
+  await submit();
+  expect(props.onSave).not.toHaveBeenCalled();
+});
 it("keeps drafts on failure and focuses an unsafe address before any save", async () => {
   await render(); await fillSpeech("wss://speech.example?key=synthetic"); await submit();
   expect(props.onSave).not.toHaveBeenCalled(); expect(document.activeElement?.id).toBe("test-speech-endpoint");

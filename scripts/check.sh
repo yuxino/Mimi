@@ -25,6 +25,7 @@ fi
 
 bash "$SCRIPT_DIR/check-quick-test.sh"
 bash "$SCRIPT_DIR/dev-app-launch-test.sh"
+node --test "$SCRIPT_DIR/dev-app-watch.node.mjs"
 bash "$SCRIPT_DIR/check-apple-translation.sh"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
@@ -37,6 +38,7 @@ fi
 python3 "$SCRIPT_DIR/check-appimage-permissions-test.py"
 python3 "$SCRIPT_DIR/check-appimage-gles-test.py"
 python3 -B "$SCRIPT_DIR/check-linux-input-region-trace-test.py"
+python3 -B "$SCRIPT_DIR/linux-keyring-first-save-driver-test.py"
 python3 -B "$SCRIPT_DIR/analyze-development-case-test.py"
 python3 -B "$SCRIPT_DIR/analyze-translation-comparison-test.py"
 python3 -B "$SCRIPT_DIR/run-development-batch-test.py"

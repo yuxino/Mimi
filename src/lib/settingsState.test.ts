@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SettingsSnapshot } from "./types";
+import type { SettingsDraft, SettingsSnapshot } from "./types";
 import {
   SnapshotStreamBootstrap,
   mergeSettingsSnapshot,
@@ -101,6 +101,18 @@ describe("mergeSettingsSnapshot", () => {
     expect(changed).toMatchObject({ windowsAudioSource: "synthetic-render-endpoint", pulseStyle: "ribbon", pulseAnimation: false });
     expect(mergeSettingsSnapshot(changed, { fontSize: 20 }).windowsAudioSource).toBe("synthetic-render-endpoint");
   });
+  it("requires a fresh recording opt-in when the Windows source changes", () => {
+    for (const audioInput of ["system", "microphone", "both"] as const) {
+      for (const recordSessionAudio of [undefined, false, true]) {
+        const recording = { ...SETTINGS, audioInput, windowsAudioSource: "wasapi:synthetic-first", recordSessionAudio: true };
+        const changed = mergeSettingsSnapshot(recording, { windowsAudioSource: "wasapi:synthetic-second", recordSessionAudio });
+        expect(changed).toMatchObject({ audioInput, windowsAudioSource: "wasapi:synthetic-second", recordSessionAudio: false });
+        const optedIn = mergeSettingsSnapshot(changed, { recordSessionAudio: true });
+        expect(mergeSettingsSnapshot(optedIn, { windowsAudioSource: "wasapi:synthetic-second" }).recordSessionAudio).toBe(true);
+        expect(mergeSettingsSnapshot(optedIn, { windowsAudioSource: "" }).recordSessionAudio).toBe(false);
+      }
+    }
+  });
   it("merges runtime-safe subtitle presentation preferences", () => {
     expect(
       mergeSettingsSnapshot(SETTINGS, {
@@ -125,6 +137,82 @@ describe("mergeSettingsSnapshot", () => {
 });
 
 describe("SettingsSaveCoordinator", () => {
+  it.each(["fontSize", "subtitleBackgroundOpacity"] as const)(
+    "coalesces a blocked %s drag before saving a later history opt-out",
+    async (field) => {
+      const coordinator = new SettingsSaveCoordinator();
+      let current: SettingsSnapshot = { ...SETTINGS, retainSessionHistory: true };
+      let persisted = current;
+      const requests: SettingsDraft[] = [];
+      let finishFirst!: () => void;
+      const persist = (draft: SettingsDraft) => {
+        requests.push(draft);
+        const commit = () => {
+          persisted = mergeSettingsSnapshot(persisted, draft);
+          current = coordinator.receiveSnapshot(persisted);
+          return persisted;
+        };
+        if (requests.length === 1) {
+          return new Promise<SettingsSnapshot>((resolve) => {
+            finishFirst = () => resolve(commit());
+          });
+        }
+        return Promise.resolve(commit());
+      };
+      const save = (draft: SettingsDraft) =>
+        coordinator.save(current, draft, persist, snapshot => { current = snapshot; });
+      const firstDraft = { [field]: field === "fontSize" ? 19 : 79 };
+      const operations = [save(firstDraft)];
+      // The first native write is already running when the drag continues.
+      await Promise.resolve();
+      let latest = 0;
+      for (let index = 0; index < 100; index += 1) {
+        latest = field === "fontSize" ? 14 + index % 7 : index;
+        operations.push(save({ [field]: latest }));
+      }
+      operations.push(save({ retainSessionHistory: false }));
+      expect(current[field]).toBe(latest);
+      expect(current.retainSessionHistory).toBe(false);
+      expect(requests).toEqual([firstDraft]);
+
+      finishFirst();
+      await Promise.all(operations);
+
+      // Intermediate slider positions must not each delay the explicit opt-out
+      // with another durable write and settings broadcast.
+      expect(requests).toEqual([
+        firstDraft,
+        { [field]: latest },
+        { retainSessionHistory: false },
+      ]);
+      expect(persisted[field]).toBe(latest);
+      expect(persisted.retainSessionHistory).toBe(false);
+      expect(current[field]).toBe(latest);
+      expect(current.retainSessionHistory).toBe(false);
+    },
+  );
+
+  it("previews a font choice immediately, preserves it across another edit and rolls back a failed reset", async () => {
+    const coordinator = new SettingsSaveCoordinator();
+    const original = { ...SETTINGS, subtitleFontFamily: "Original Font" };
+    let current: SettingsSnapshot = original;
+    let finish!: () => void;
+    const save = coordinator.save(current, { subtitleFontFamily: "Selected Font" }, () => new Promise(resolve => {
+      finish = () => resolve({ ...original, subtitleFontFamily: "Selected Font" });
+    }), snapshot => { current = snapshot; });
+    expect(current.subtitleFontFamily).toBe("Selected Font");
+    await Promise.resolve();
+    finish();
+    await save;
+    await coordinator.save(current, { fontSize: 20 }, async () => ({ ...current, fontSize: 20 }), snapshot => { current = snapshot; });
+    expect(current.subtitleFontFamily).toBe("Selected Font");
+
+    const reset = coordinator.save(current, { subtitleFontFamily: "" }, async () => { throw new Error("save failed"); }, snapshot => { current = snapshot; });
+    expect(current.subtitleFontFamily).toBe("");
+    await expect(reset).rejects.toThrow("save failed");
+    expect(current).toMatchObject({ subtitleFontFamily: "Selected Font", fontSize: 20 });
+  });
+
   it("rolls the latest optimistic draft back when persistence fails", async () => {
     const coordinator = new SettingsSaveCoordinator();
     let current = SETTINGS;
@@ -280,6 +368,9 @@ describe("SettingsSaveCoordinator", () => {
     resolveSave?.({ ...SETTINGS, fontSize: 19 });
     await pending;
 
+    expect(current.fontSize).toBe(20);
+    const next = coordinator.save(current, { fontSize: 21 }, async () => { throw new Error("retry failed"); }, snapshot => { current = snapshot; });
+    await expect(next).rejects.toThrow("retry failed");
     expect(current.fontSize).toBe(20);
   });
 });

@@ -43,15 +43,21 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
   const [error, setError] = useState<string | null>(null);
   const savedKey = networkProxyConfigKey(value);
   const [renderedKey, setRenderedKey] = useState(savedKey);
+  const [deferredSnapshot, setDeferredSnapshot] = useState(false);
   const [acknowledgedKey, setAcknowledgedKey] = useState(savedKey);
+  const form = useRef<HTMLFormElement>(null);
   const inFlight = useRef(false);
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  if (renderedKey !== savedKey) {
+  if (renderedKey !== savedKey || (!busy && deferredSnapshot)) {
     setRenderedKey(savedKey);
-    // Optimistic snapshots and rollback must not erase a failed save's draft.
-    if (!busy) { setMode(value.mode); setAddress(value.url ?? ""); setAcknowledgedKey(savedKey); setError(null); }
+    setDeferredSnapshot(busy);
+    // Reconcile events received during a successful save, while preserving a
+    // failed save's draft through its optimistic snapshot and rollback.
+    if (!busy && (renderedKey !== savedKey || error === null)) {
+      setMode(value.mode); setAddress(value.url ?? ""); setAcknowledgedKey(savedKey); setError(null);
+    }
   }
 
   const validated = validateNetworkProxy(mode, address);
@@ -81,7 +87,7 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
   };
 
   const control = <>
-    <form className="network-proxy-form" aria-busy={busy} onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <form ref={form} className="network-proxy-form" aria-busy={busy} onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <SettingsRow label={label} descriptionId={`${addressId}-help`} description={[scope, help, ...(disabled ? [I18N.settings.networkProxyLocked] : [])].join("\n")}>
         {busy && <span className="network-proxy-saving" role="status">
           <span className="settings-spinner" aria-hidden="true" />
@@ -109,7 +115,8 @@ export function NetworkProxySettings({ value = DEFAULT_NETWORK_PROXY, disabled, 
           onPasteValue={value => { void save("custom", value); }}
           onGroupBlur={event => {
             // Switching modes or pasting commits the new choice, not the old draft.
-            if (event.relatedTarget instanceof Element && (event.currentTarget.contains(event.relatedTarget) || event.relatedTarget.closest('[role="combobox"]'))) return;
+            if (event.relatedTarget instanceof Element && (event.currentTarget.contains(event.relatedTarget)
+              || form.current?.querySelector('[role="combobox"]')?.contains(event.relatedTarget))) return;
             void save();
           }} />
       </div>}

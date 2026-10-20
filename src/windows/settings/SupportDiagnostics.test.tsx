@@ -164,6 +164,36 @@ it("loads a fresh snapshot under StrictMode without duplicating the disposed ent
   expect(host.querySelector('button[aria-busy="true"]')).toBeNull();
 });
 
+it.each([false, true])("queues one fresh entry read after a previous visit's pending diagnostics settles (failure=%s)", async failure => {
+  let resolve!: (report: string) => void;
+  let reject!: (error: Error) => void;
+  mocks.invoke.mockImplementationOnce(() => new Promise<string>((done, fail) => { resolve = done; reject = fail; }));
+  mocks.invoke.mockResolvedValue(JSON.stringify({ schema: "mimi.support.v2", session_status: "error" }));
+  await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
+  for (let visit = 0; visit < 2; visit += 1) {
+    await act(async () => root.render(<><SupportDiagnostics visible={false} /><SettingsToastRegion /></>));
+    await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
+  }
+  expect(mocks.invoke).toHaveBeenCalledOnce();
+  await act(async () => {
+    if (failure) reject(new Error("old request failed"));
+    else resolve(JSON.stringify({ schema: "mimi.support.v2", session_status: "idle" }));
+  });
+  expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  expect(host.querySelector(".settings-diagnostic-summary")?.textContent).toContain(I18N.settings.sessionError);
+  expect(host.querySelector(".settings-toast")).toBeNull();
+});
+
+it("discards a previous visit's report without refreshing an inactive page", async () => {
+  let complete!: (report: string) => void;
+  mocks.invoke.mockImplementationOnce(() => new Promise<string>(resolve => { complete = resolve; }));
+  await act(async () => root.render(<><SupportDiagnostics visible /><SettingsToastRegion /></>));
+  await act(async () => root.render(<><SupportDiagnostics visible={false} /><SettingsToastRegion /></>));
+  await act(async () => complete(JSON.stringify({ schema: "mimi.support.v2", session_status: "idle" })));
+  expect(host.querySelector(".settings-diagnostic-summary")).toBeNull();
+  expect(mocks.invoke).toHaveBeenCalledOnce();
+});
+
 it("accepts reports up to 16KiB of UTF-8 and rejects oversized reads or feedback reports without displaying them", async () => {
   const fullReport = "x".repeat(16_384);
   mocks.invoke.mockResolvedValue(fullReport);

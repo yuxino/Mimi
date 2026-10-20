@@ -305,6 +305,13 @@ impl Default for Preferences {
 }
 
 impl Preferences {
+    pub fn apply_windows_audio_source(&mut self, source: String) {
+        if self.windows_audio_source != source {
+            self.record_session_audio = false;
+        }
+        self.windows_audio_source = source;
+    }
+
     pub fn apply_system_audio_target(
         &mut self,
         target: crate::core::system_audio_target::SystemAudioTarget,
@@ -730,7 +737,6 @@ pub struct SettingsStore {
     catalog_write_blocked: bool,
     secret: Box<dyn SecretStore>,
     profile_keychain_service: &'static str,
-    migrate_legacy_alibaba: bool,
     /// Every first read is cached, including unavailable results. This keeps
     /// concurrent windows from triggering repeated OS authorization prompts.
     /// Explicit saves/deletes replace the cached state; diagnostics retry failed
@@ -758,7 +764,6 @@ impl SettingsStore {
                 true,
                 Box::new(KeyringSecretStore),
                 profile_keychain_service,
-                false,
             );
         }
         let secret: Box<dyn SecretStore> =
@@ -772,14 +777,7 @@ impl SettingsStore {
         if secret.pending_imports().unwrap_or(0) > 0 && secret.migrate_legacy().is_err() {
             tracing::warn!("credential import incomplete label=legacy_import_pending");
         }
-        let is_file_mode = secret.uses_local_file();
-        Self::load_with_secret(
-            app_config_dir,
-            is_ui_test,
-            secret,
-            profile_keychain_service,
-            !is_development && !is_file_mode,
-        )
+        Self::load_with_secret(app_config_dir, is_ui_test, secret, profile_keychain_service)
     }
 
     /// Paid manual probes may only use an already initialized local store.
@@ -880,7 +878,6 @@ impl SettingsStore {
             catalog_write_blocked: false,
             secret: Box::new(secret),
             profile_keychain_service: DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
-            migrate_legacy_alibaba: false,
             secret_cache: Mutex::new(HashMap::new()),
             is_ui_test: false,
             ui_test_preferences_writable: false,
@@ -892,11 +889,10 @@ impl SettingsStore {
         is_ui_test: bool,
         secret: Box<dyn SecretStore>,
         profile_keychain_service: &'static str,
-        migrate_legacy_alibaba: bool,
     ) -> Self {
         if is_ui_test {
             // UI fixtures never inspect the user's preferences, catalog or keychain.
-            let store = Self::in_memory_with_scope(secret, true, profile_keychain_service, false);
+            let store = Self::in_memory_with_scope(secret, true, profile_keychain_service);
             *store.catalog.lock().unwrap() = ProfileCatalog::default();
             return store;
         }
@@ -952,7 +948,6 @@ impl SettingsStore {
             catalog_write_blocked,
             secret,
             profile_keychain_service,
-            migrate_legacy_alibaba,
             secret_cache: Mutex::new(HashMap::new()),
             is_ui_test,
             ui_test_preferences_writable: false,
@@ -979,14 +974,13 @@ impl SettingsStore {
 
     #[cfg(test)]
     pub fn in_memory(secret: Box<dyn SecretStore>, is_ui_test: bool) -> Self {
-        Self::in_memory_with_scope(secret, is_ui_test, PROFILE_KEYCHAIN_SERVICE, true)
+        Self::in_memory_with_scope(secret, is_ui_test, PROFILE_KEYCHAIN_SERVICE)
     }
 
     fn in_memory_with_scope(
         secret: Box<dyn SecretStore>,
         is_ui_test: bool,
         profile_keychain_service: &'static str,
-        migrate_legacy_alibaba: bool,
     ) -> Self {
         let catalog = ProfileCatalog::legacy_alibaba();
         Self {
@@ -997,7 +991,6 @@ impl SettingsStore {
             catalog_write_blocked: false,
             secret,
             profile_keychain_service,
-            migrate_legacy_alibaba,
             secret_cache: Mutex::new(HashMap::new()),
             is_ui_test,
             ui_test_preferences_writable: false,
@@ -1049,7 +1042,6 @@ impl SettingsStore {
             Box::new(KeyringSecretStore),
             true,
             DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
-            false,
         );
         store.prefs_path = prefs_path;
         store.ui_test_preferences_writable = true;
@@ -1068,7 +1060,7 @@ impl SettingsStore {
     }
 
     #[cfg(test)]
-    fn at_path(app_config_dir: PathBuf, secret: Box<dyn SecretStore>) -> Self {
+    pub(crate) fn at_path(app_config_dir: PathBuf, secret: Box<dyn SecretStore>) -> Self {
         // Existing provider/storage regressions exercise an explicitly configured
         // installation. First-run tests call load_with_secret without this fixture.
         if !app_config_dir.join(PROFILE_CATALOG_FILE).exists()
@@ -1080,13 +1072,7 @@ impl SettingsStore {
             )
             .unwrap();
         }
-        Self::load_with_secret(
-            app_config_dir,
-            false,
-            secret,
-            PROFILE_KEYCHAIN_SERVICE,
-            true,
-        )
+        Self::load_with_secret(app_config_dir, false, secret, PROFILE_KEYCHAIN_SERVICE)
     }
 
     pub fn is_ui_test(&self) -> bool {
@@ -1178,13 +1164,6 @@ impl SettingsStore {
             catalog.active_profile_id.clone(),
             catalog.profiles.clone(),
         ))
-    }
-
-    /// Safe fallback used only for best-effort broadcasts after the initial
-    /// `settings_get` has already reported a catalog error.
-    pub fn profile_catalog_or_default(&self) -> (String, Vec<ServiceProfile>) {
-        let catalog = self.catalog.lock().unwrap();
-        (catalog.active_profile_id.clone(), catalog.profiles.clone())
     }
 
     pub fn active_profile(&self) -> Result<ServiceProfile, String> {
@@ -1635,7 +1614,6 @@ impl SettingsStore {
     fn retry_profile_credential_errors(&self, profile: &ServiceProfile, speech: bool, text: bool) {
         let speech = speech && profile.provider != ProviderKind::AppleSpeech;
         let account = credential_account(profile);
-        let retry_legacy = speech && is_default_alibaba(profile) && self.migrate_legacy_alibaba;
         self.secret_cache
             .lock()
             .unwrap()
@@ -1645,17 +1623,7 @@ impl SettingsStore {
                         || (text
                             && profile.provider.supports_text_translation()
                             && slot == &Self::destination_account(profile)));
-                let migration = retry_legacy
-                    && ((service == self.profile_keychain_service
-                        && slot == LEGACY_MIGRATION_TOMBSTONE_ACCOUNT)
-                        || (slot == LEGACY_KEYCHAIN_ACCOUNT
-                            && matches!(
-                                service.as_str(),
-                                LEGACY_KEYCHAIN_SERVICE_V3
-                                    | LEGACY_KEYCHAIN_SERVICE_V2
-                                    | LEGACY_KEYCHAIN_SERVICE
-                            )));
-                result.is_ok() || !(selected || migration)
+                result.is_ok() || !selected
             });
     }
 
@@ -1707,28 +1675,7 @@ impl SettingsStore {
         if profile.provider == ProviderKind::AppleSpeech {
             return CredentialState::Present;
         }
-        let presence = (|| {
-            if self.secret_present(&credential_account(profile))? {
-                return Ok(true);
-            }
-            // Discovery is metadata-only; actual legacy migration stays on use.
-            if is_default_alibaba(profile)
-                && self.migrate_legacy_alibaba
-                && !self.secret_present(LEGACY_MIGRATION_TOMBSTONE_ACCOUNT)?
-            {
-                for service in [
-                    LEGACY_KEYCHAIN_SERVICE_V3,
-                    LEGACY_KEYCHAIN_SERVICE_V2,
-                    LEGACY_KEYCHAIN_SERVICE,
-                ] {
-                    if self.secret.contains(service, LEGACY_KEYCHAIN_ACCOUNT)? {
-                        return Ok(true);
-                    }
-                }
-            }
-            Ok(false)
-        })();
-        Self::presence_state(presence)
+        Self::presence_state(self.secret_present(&credential_account(profile)))
     }
 
     fn secret_present(&self, account: &str) -> Result<bool, SecretStoreError> {
@@ -2254,9 +2201,28 @@ impl SettingsStore {
             )
         };
         self.retry_profile_credential_errors(profile, true, false);
-        let previous = self
-            .load_api_key_for_profile(profile)
-            .map_err(SecretStoreError::public_error)?;
+        let previous = match self.load_api_key_for_profile(profile) {
+            Ok(previous) => previous,
+            Err(SecretStoreError::MigrationRequired) => {
+                // A complete explicit value can retire its unread pending import.
+                // The unknown old value must never become a missing-key rollback.
+                let (Some(endpoint), Some(model)) = (&entered_endpoint, &entered_model) else {
+                    return Err(SecretStoreError::MigrationRequired.public_error());
+                };
+                if api_key.trim().is_empty() {
+                    return Err(SecretStoreError::MigrationRequired.public_error());
+                }
+                let value = ProviderCredentials::CustomSpeech {
+                    endpoint: endpoint.clone(),
+                    model: model.clone(),
+                    api_key: api_key.into(),
+                }
+                .encode_for_keychain(profile.provider)
+                .map_err(|error| error.to_string())?;
+                return self.save_api_key_for_profile(profile, &value, true);
+            }
+            Err(error) => return Err(error.public_error()),
+        };
         let previous_credentials = previous
             .as_deref()
             .map(|value| ProviderCredentials::decode_for_profile(profile, value))
@@ -3424,63 +3390,8 @@ impl SettingsStore {
             if value.trim().is_empty() {
                 return Err(SecretStoreError::Unavailable);
             }
-            // A profile-scoped credential is already authoritative. Do not
-            // touch the separate migration marker on the normal read path:
-            // macOS authorizes Keychain items independently, so reading both
-            // accounts can produce two password prompts after an intentional
-            // signing-identity migration. Save, delete, and actual legacy
-            // migration still persist the marker before it matters.
             return Ok(Some(value));
         }
-        if !is_default_alibaba(profile) || !self.migrate_legacy_alibaba {
-            return Ok(None);
-        }
-
-        match self.load_secret(
-            self.profile_keychain_service,
-            LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-        )? {
-            Some(value) if value == LEGACY_MIGRATION_TOMBSTONE_VALUE => return Ok(None),
-            Some(_) => return Err(SecretStoreError::Unavailable),
-            None => {}
-        }
-
-        let mut saw_blank_legacy_value = false;
-        for service in [
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_SERVICE_V2,
-            LEGACY_KEYCHAIN_SERVICE,
-        ] {
-            let Some(legacy) = self.load_secret(service, LEGACY_KEYCHAIN_ACCOUNT)? else {
-                continue;
-            };
-            if legacy.trim().is_empty() {
-                saw_blank_legacy_value = true;
-                continue;
-            }
-
-            self.save_secret(self.profile_keychain_service, &account, &legacy, false)?;
-            let verified = self.load_secret_uncached(self.profile_keychain_service, &account)?;
-            if verified.as_deref() != Some(legacy.as_str()) {
-                self.secret_cache
-                    .lock()
-                    .unwrap()
-                    .remove(&cache_key(self.profile_keychain_service, &account));
-                return Err(SecretStoreError::Unavailable);
-            }
-            self.cache_secret(self.profile_keychain_service, &account, verified);
-            if self.write_legacy_tombstone().is_err() {
-                tracing::warn!("credential migration deferred label=tombstone_write_failed");
-            }
-            return Ok(Some(legacy));
-        }
-
-        if saw_blank_legacy_value {
-            return Err(SecretStoreError::Unavailable);
-        }
-
-        // An empty scan is not a migration. Leave it retryable so a credential
-        // created by an older installed version can still be imported later.
         Ok(None)
     }
 
@@ -3488,31 +3399,9 @@ impl SettingsStore {
         if profile.provider == ProviderKind::AppleSpeech {
             return Ok(());
         }
-        if is_default_alibaba(profile) && self.migrate_legacy_alibaba {
-            // The tombstone must be durable before deletion so a missing new
-            // slot can never revive an older single-slot Alibaba credential.
-            self.write_legacy_tombstone()
-                .map_err(SecretStoreError::public_error)?;
-            // Explicit removal is also the point where rollback-era single
-            // slots are retired. Keep the current profile credential intact
-            // unless every legacy deletion succeeds.
-            self.delete_legacy_alibaba_credentials()
-                .map_err(SecretStoreError::public_error)?;
-        }
         let account = credential_account(profile);
         self.delete_secret(self.profile_keychain_service, &account)
             .map_err(SecretStoreError::public_error)
-    }
-
-    fn delete_legacy_alibaba_credentials(&self) -> Result<(), SecretStoreError> {
-        for service in [
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_SERVICE_V2,
-            LEGACY_KEYCHAIN_SERVICE,
-        ] {
-            self.delete_secret(service, LEGACY_KEYCHAIN_ACCOUNT)?;
-        }
-        Ok(())
     }
 
     fn save_api_key_for_profile(
@@ -3546,49 +3435,6 @@ impl SettingsStore {
         }
         self.cache_secret(self.profile_keychain_service, &account, verified);
 
-        if is_default_alibaba(profile)
-            && self.migrate_legacy_alibaba
-            && self.write_legacy_tombstone().is_err()
-        {
-            // Saving and verifying the profile slot is the user-visible
-            // transaction. A migration marker failure is retryable and must
-            // not turn a successful key replacement into an error.
-            tracing::warn!("credential migration deferred label=tombstone_write_failed");
-        }
-        Ok(())
-    }
-
-    fn write_legacy_tombstone(&self) -> Result<(), SecretStoreError> {
-        match self.load_secret(
-            self.profile_keychain_service,
-            LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-        )? {
-            Some(value) if value == LEGACY_MIGRATION_TOMBSTONE_VALUE => return Ok(()),
-            Some(_) => return Err(SecretStoreError::Unavailable),
-            None => {}
-        }
-        self.save_secret(
-            self.profile_keychain_service,
-            LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-            LEGACY_MIGRATION_TOMBSTONE_VALUE,
-            false,
-        )?;
-        let verified = self.load_secret_uncached(
-            self.profile_keychain_service,
-            LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-        )?;
-        if verified.as_deref() != Some(LEGACY_MIGRATION_TOMBSTONE_VALUE) {
-            self.secret_cache.lock().unwrap().remove(&cache_key(
-                self.profile_keychain_service,
-                LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-            ));
-            return Err(SecretStoreError::Unavailable);
-        }
-        self.cache_secret(
-            self.profile_keychain_service,
-            LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-            verified,
-        );
         Ok(())
     }
 
@@ -4215,7 +4061,6 @@ mod tests {
             false,
             Box::new(fake.clone()),
             PROFILE_KEYCHAIN_SERVICE,
-            false,
         )
     }
 
@@ -4547,7 +4392,6 @@ mod tests {
                 false,
                 Box::new(fake.clone()),
                 PROFILE_KEYCHAIN_SERVICE,
-                false,
             )
         };
         let store = open();
@@ -6759,7 +6603,6 @@ mod tests {
             Box::new(KeyringSecretStore),
             false,
             "app.yuxino.mimi.test.secret-service-first-save",
-            false,
         );
         let profile = store.active_profile().unwrap();
         let synthetic_value = "synthetic-first-save-value";
@@ -6801,6 +6644,18 @@ mod tests {
             Err(CREDENTIAL_STORE_ACCESS_DENIED.into())
         );
         assert_no_default();
+        // A cancelled D-Bus prompt can complete before its GTK window closes.
+        // Wait for the smoke driver to observe that closure before requesting
+        // the next prompt; otherwise it may submit the previous dialog again.
+        let retry_ready = Path::new(&directory).join("first-save-retry-ready");
+        let wait_started = std::time::Instant::now();
+        while !retry_ready.exists() {
+            assert!(
+                wait_started.elapsed() < std::time::Duration::from_secs(30),
+                "smoke driver did not acknowledge the cancelled prompt closing"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         std::fs::write(&progress, "accept").unwrap();
         store.save_api_key(&profile.id, synthetic_value).unwrap();
         assert_eq!(store.credential_state(&profile), CredentialState::Present);
@@ -6862,7 +6717,6 @@ mod tests {
             Box::new(KeyringSecretStore),
             false,
             "app.yuxino.mimi.test.secret-service-recovery",
-            false,
         );
         let profile = store.active_profile().unwrap();
         assert_eq!(store.credential_diagnostic(&profile), "serviceUnavailable");
@@ -7128,6 +6982,58 @@ mod tests {
             restored.windows_audio_source,
             preferences.windows_audio_source
         );
+    }
+
+    #[test]
+    fn windows_source_changes_require_fresh_recording_opt_in_and_persist_it() {
+        for input in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
+            for recording in [None, Some(false), Some(true)] {
+                let directory = tempfile::tempdir().unwrap();
+                let store = SettingsStore::at_path(
+                    directory.path().into(),
+                    Box::new(FakeSecretStore::default()),
+                );
+                store
+                    .save_preferences_for_active_profile(|prefs| {
+                        prefs.audio_input = input;
+                        prefs.windows_audio_source = "wasapi:synthetic-first".into();
+                        prefs.record_session_audio = true;
+                    })
+                    .unwrap();
+                store
+                    .save_preferences_for_active_profile(|prefs| {
+                        prefs.apply_audio_preferences(None, recording);
+                        prefs.apply_windows_audio_source("wasapi:synthetic-second".into());
+                    })
+                    .unwrap();
+                let changed = store.preferences();
+                assert_eq!(changed.audio_input, input);
+                assert_eq!(changed.windows_audio_source, "wasapi:synthetic-second");
+                assert!(!changed.record_session_audio);
+                let reloaded = SettingsStore::at_path(
+                    directory.path().into(),
+                    Box::new(FakeSecretStore::default()),
+                );
+                assert!(!reloaded.preferences().record_session_audio);
+                reloaded
+                    .save_preferences_for_active_profile(|prefs| {
+                        prefs.apply_audio_preferences(None, Some(true));
+                    })
+                    .unwrap();
+                reloaded
+                    .save_preferences_for_active_profile(|prefs| {
+                        prefs.apply_windows_audio_source("wasapi:synthetic-second".into());
+                    })
+                    .unwrap();
+                assert!(reloaded.preferences().record_session_audio);
+                reloaded
+                    .save_preferences_for_active_profile(|prefs| {
+                        prefs.apply_windows_audio_source(String::new());
+                    })
+                    .unwrap();
+                assert!(!reloaded.preferences().record_session_audio);
+            }
+        }
     }
 
     #[test]
@@ -7827,30 +7733,9 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn snapshot_presence_respects_legacy_tombstone_and_cached_access_failure() {
+    fn snapshot_presence_respects_cached_access_failure() {
         let fake = FakeSecretStore::default();
         let store = settings(&fake);
-        let profile = ServiceProfile::alibaba_default();
-        fake.put(
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_ACCOUNT,
-            "synthetic-legacy",
-        );
-        assert_eq!(
-            store.credential_state_for_snapshot(&profile),
-            CredentialState::Present
-        );
-        assert!(fake.state.lock().unwrap().loads.is_empty());
-        fake.put(
-            PROFILE_KEYCHAIN_SERVICE,
-            LEGACY_MIGRATION_TOMBSTONE_ACCOUNT,
-            LEGACY_MIGRATION_TOMBSTONE_VALUE,
-        );
-        assert_eq!(
-            store.credential_state_for_snapshot(&profile),
-            CredentialState::Missing
-        );
-        assert!(fake.state.lock().unwrap().loads.is_empty());
         let other = openai_profile(&store, "Access failure");
         let account = credential_account(&other);
         fake.put(PROFILE_KEYCHAIN_SERVICE, &account, "synthetic-key");
@@ -8274,7 +8159,7 @@ mod tests {
         store.secret_cache.lock().unwrap().clear();
         fake.state.lock().unwrap().loads.clear();
         store.select_profile(&profile.id).unwrap();
-        let snapshot = crate::commands::SettingsSnapshotPayload::from_store(&store);
+        let snapshot = crate::commands::SettingsSnapshotPayload::try_from_store(&store).unwrap();
         let payload = snapshot
             .profiles
             .iter()
@@ -8703,7 +8588,7 @@ mod tests {
                 .saved_fields
                 .is_empty());
             let snapshot = serde_json::to_string(
-                &crate::commands::SettingsSnapshotPayload::from_store(&store),
+                &crate::commands::SettingsSnapshotPayload::try_from_store(&store).unwrap(),
             )
             .unwrap();
             for private in [
@@ -8871,7 +8756,7 @@ mod tests {
             Some("https://example.com/private-path/translate")
         );
         let snapshot = serde_json::to_string(
-            &crate::commands::SettingsSnapshotPayload::from_store(&store),
+            &crate::commands::SettingsSnapshotPayload::try_from_store(&store).unwrap(),
         )
         .unwrap();
         assert!(!snapshot.contains("private-path"));
@@ -9034,7 +8919,6 @@ mod tests {
                 false,
                 Box::new(fake.clone()),
                 PROFILE_KEYCHAIN_SERVICE,
-                false,
             );
             let profile = store
                 .create_profile(ProviderKind::AlibabaCloud, "Recovery")
@@ -10431,7 +10315,6 @@ mod tests {
             Box::new(fake.clone()),
             false,
             DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
-            false,
         );
 
         assert_eq!(store.load_api_key().unwrap(), None);
@@ -10453,79 +10336,6 @@ mod tests {
             )
             .as_deref(),
             Some("sk-release-profile")
-        );
-    }
-
-    #[test]
-    fn legacy_key_migrates_only_to_default_alibaba_and_writes_tombstone() {
-        let fake = FakeSecretStore::default();
-        fake.put(
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_ACCOUNT,
-            "sk-legacy",
-        );
-        let store = settings(&fake);
-        let openai = openai_profile(&store, "OpenAI");
-
-        assert_eq!(store.credential_state(&openai), CredentialState::Missing);
-        assert_eq!(store.load_api_key().unwrap().as_deref(), Some("sk-legacy"));
-        assert_eq!(
-            fake.value(
-                PROFILE_KEYCHAIN_SERVICE,
-                &credential_account(&ServiceProfile::alibaba_default())
-            )
-            .as_deref(),
-            Some("sk-legacy")
-        );
-        assert_eq!(
-            fake.value(PROFILE_KEYCHAIN_SERVICE, LEGACY_MIGRATION_TOMBSTONE_ACCOUNT)
-                .as_deref(),
-            Some(LEGACY_MIGRATION_TOMBSTONE_VALUE)
-        );
-    }
-
-    #[test]
-    fn tombstone_failure_does_not_turn_a_verified_key_save_into_an_error() {
-        let fake = FakeSecretStore::default();
-        fake.make_unavailable(PROFILE_KEYCHAIN_SERVICE, LEGACY_MIGRATION_TOMBSTONE_ACCOUNT);
-        let default = ServiceProfile::alibaba_default();
-        let store = settings(&fake);
-
-        store
-            .save_api_key(DEFAULT_ALIBABA_PROFILE_ID, "sk-replacement")
-            .unwrap();
-        assert_eq!(
-            fake.value(PROFILE_KEYCHAIN_SERVICE, &credential_account(&default))
-                .as_deref(),
-            Some("sk-replacement")
-        );
-        assert_eq!(
-            store.load_api_key().unwrap().as_deref(),
-            Some("sk-replacement")
-        );
-
-        // A fresh process reads only the authoritative profile slot. Explicit
-        // deletion remains fail-closed because it must persist the marker
-        // before removing the key.
-        let restarted = settings(&fake);
-        assert_eq!(
-            restarted.load_api_key().unwrap().as_deref(),
-            Some("sk-replacement")
-        );
-        assert_eq!(
-            fake.load_count(PROFILE_KEYCHAIN_SERVICE, LEGACY_MIGRATION_TOMBSTONE_ACCOUNT),
-            1
-        );
-        assert_eq!(
-            restarted
-                .delete_api_key(DEFAULT_ALIBABA_PROFILE_ID)
-                .unwrap_err(),
-            CREDENTIAL_STORE_UNAVAILABLE
-        );
-        assert_eq!(
-            fake.value(PROFILE_KEYCHAIN_SERVICE, &credential_account(&default))
-                .as_deref(),
-            Some("sk-replacement")
         );
     }
 
@@ -10563,106 +10373,6 @@ mod tests {
         assert_eq!(
             fake.load_count(LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT),
             0
-        );
-    }
-
-    #[test]
-    fn explicit_deletion_prevents_legacy_credential_resurrection() {
-        let fake = FakeSecretStore::default();
-        fake.put(
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_ACCOUNT,
-            "sk-legacy",
-        );
-        let store = settings(&fake);
-        assert_eq!(store.load_api_key().unwrap().as_deref(), Some("sk-legacy"));
-        store.delete_api_key(DEFAULT_ALIBABA_PROFILE_ID).unwrap();
-
-        assert_eq!(
-            fake.value(LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT),
-            None
-        );
-
-        // A new process has an empty cache but sees the durable tombstone.
-        let restarted = settings(&fake);
-        assert_eq!(restarted.load_api_key().unwrap(), None);
-        assert_eq!(
-            fake.load_count(LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT),
-            1
-        );
-    }
-
-    #[test]
-    fn failed_legacy_cleanup_keeps_the_current_default_credential() {
-        let fake = FakeSecretStore::default();
-        fake.put(
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_ACCOUNT,
-            "sk-legacy",
-        );
-        let store = settings(&fake);
-        assert_eq!(store.load_api_key().unwrap().as_deref(), Some("sk-legacy"));
-        fake.make_delete_unavailable(LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT);
-
-        assert_eq!(
-            store
-                .delete_api_key(DEFAULT_ALIBABA_PROFILE_ID)
-                .unwrap_err(),
-            CREDENTIAL_STORE_UNAVAILABLE
-        );
-        assert_eq!(store.load_api_key().unwrap().as_deref(), Some("sk-legacy"));
-    }
-
-    #[test]
-    fn missing_legacy_credential_does_not_suppress_a_future_import() {
-        let fake = FakeSecretStore::default();
-        let store = settings(&fake);
-        assert_eq!(store.load_api_key().unwrap(), None);
-        assert_eq!(
-            fake.value(PROFILE_KEYCHAIN_SERVICE, LEGACY_MIGRATION_TOMBSTONE_ACCOUNT)
-                .as_deref(),
-            None
-        );
-
-        fake.put(
-            LEGACY_KEYCHAIN_SERVICE_V3,
-            LEGACY_KEYCHAIN_ACCOUNT,
-            "sk-created-by-older-version",
-        );
-        let restarted = settings(&fake);
-        assert_eq!(
-            restarted.load_api_key().unwrap().as_deref(),
-            Some("sk-created-by-older-version")
-        );
-    }
-
-    #[test]
-    fn blank_legacy_slot_does_not_hide_a_later_valid_credential() {
-        let fake = FakeSecretStore::default();
-        fake.put(LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT, "   ");
-        fake.put(
-            LEGACY_KEYCHAIN_SERVICE_V2,
-            LEGACY_KEYCHAIN_ACCOUNT,
-            "sk-valid",
-        );
-        let store = settings(&fake);
-
-        assert_eq!(store.load_api_key().unwrap().as_deref(), Some("sk-valid"));
-    }
-
-    #[test]
-    fn only_blank_legacy_values_fail_closed_without_a_tombstone() {
-        let fake = FakeSecretStore::default();
-        fake.put(LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT, "   ");
-        let store = settings(&fake);
-
-        assert_eq!(
-            store.load_api_key().unwrap_err(),
-            CREDENTIAL_STORE_UNAVAILABLE
-        );
-        assert_eq!(
-            fake.value(PROFILE_KEYCHAIN_SERVICE, LEGACY_MIGRATION_TOMBSTONE_ACCOUNT),
-            None
         );
     }
 
@@ -11414,7 +11124,8 @@ mod tests {
             assert_eq!(reloaded.preferences().show_subtitle_timestamps, enabled);
             assert_eq!(reloaded.configuration().unwrap(), original_configuration);
             assert_eq!(
-                crate::commands::SettingsSnapshotPayload::from_store(&reloaded)
+                crate::commands::SettingsSnapshotPayload::try_from_store(&reloaded)
+                    .unwrap()
                     .show_subtitle_timestamps,
                 enabled
             );
@@ -11670,14 +11381,10 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             r#"{"schemaVersion":99,"profiles":[]}"#
         );
-        let fallback = crate::commands::SettingsSnapshotPayload::from_store(&store);
-        assert!(fallback
-            .profiles
-            .iter()
-            .all(|profile| profile.credential_state == CredentialState::Unavailable));
-        let fallback_json = serde_json::to_value(fallback).unwrap();
-        assert!(fallback_json.get("error").is_none());
-        assert!(fallback_json.get("credentialError").is_none());
+        assert_eq!(
+            crate::commands::SettingsSnapshotPayload::try_from_store(&store).unwrap_err(),
+            PROFILE_CATALOG_UNAVAILABLE
+        );
 
         let _ = std::fs::remove_dir_all(directory);
     }

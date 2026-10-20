@@ -14,6 +14,20 @@ NOTICES = "assets/shared-core.txt"
 ROOT = Path(__file__).resolve().parent.parent
 LOCKFILE = ROOT / "shared/mimi-android-jni/Cargo.lock"
 NOTICE_SOURCE = ROOT / "android/native-licenses/shared-core.txt"
+# These historical Kotlin implementations belong only to the JVM test source
+# set. Match DEX class descriptors (including Kotlin file facades/inner types),
+# not short display labels. A stale/generated source must not repack them.
+LEGACY_RUNTIME_DESCRIPTOR = re.compile(
+    rb"Lapp/yuxino/mimi/android/provider/(?:"
+    rb"DashScopeEngine|OpenAIRealtimeEngine|StreamingServiceEngine|CloudProtocols|"
+    rb"VolcanoProtocol|GrokProtocol|TranslationPipeline|OpenAITranslationClient|"
+    rb"DeepLTranslationClient|DeepLXTranslationClient|ProviderLanguageCatalogs|"
+    rb"DeepLLanguages|ProviderFinishGate|TranscriptBuffer|SharedLivePairStream|"
+    rb"SharedTranscriptStream|TranslationClient|BoundedTranslationHttpClient|"
+    rb"ServiceEvent|WireFrame|ServiceProtocol|TencentProtocol|TencentProviderException|"
+    rb"BaiduProtocol|TurnText|GeminiProtocol|AzureProtocol|VolcanoWire|"
+    rb"FinalTranslationPolicy|TranslationDeadlines)(?:Kt)?(?:\$[^;\x00]*)?;"
+)
 
 
 def verify_license_notices(content):
@@ -96,6 +110,10 @@ def verify_apk(path):
         if NOTICES not in archive.namelist() or not archive.read(NOTICES).strip():
             raise ValueError("APK is missing the shared core dependency license notices")
         verify_license_notices(archive.read(NOTICES))
+        for item in archive.infolist():
+            if re.fullmatch(r"classes(?:\d+)?\.dex", item.filename):
+                if LEGACY_RUNTIME_DESCRIPTOR.search(archive.read(item)):
+                    raise ValueError(f"APK contains offline legacy runtime in {item.filename}")
         entries = [item for item in archive.infolist() if item.filename.endswith("/" + LIBRARY)]
         if len(entries) != len(expected) or {item.filename for item in entries} != expected:
             raise ValueError("APK must contain exactly one shared core library for each supported ABI")
@@ -126,7 +144,7 @@ def main():
             verify_apk(args.apk)
     except (ValueError, OSError, zipfile.BadZipFile) as error:
         parser.exit(1, f"Shared core artifact verification failed: {error}\n")
-    print("Verified shared core: four ABIs, ELF LOAD alignment and applicable APK ZIP alignment/license notices.")
+    print("Verified shared core: four ABIs, ELF LOAD alignment and applicable APK ZIP alignment/license notices/runtime isolation.")
 
 
 if __name__ == "__main__":

@@ -148,6 +148,51 @@ it("switches modes without committing an unfinished custom address", async () =>
   expect(save).toHaveBeenCalledExactlyOnceWith(system);
 });
 
+it("saves an edited address when focus moves to another proxy's mode selector", async () => {
+  const otherSave = vi.fn().mockResolvedValue(undefined);
+  await act(() => root.render(<>
+    <NetworkProxySettings value={{ mode: "custom", url: "http://127.0.0.1:7890/" }} disabled={false} onSave={save} />
+    <NetworkProxySettings value={system} disabled={false} onSave={otherSave} />
+  </>));
+  await address("http://127.0.0.1:7891/");
+  await blur(host.querySelectorAll('[role="combobox"]')[1]);
+  expect(save).toHaveBeenCalledExactlyOnceWith({ mode: "custom", url: "http://127.0.0.1:7891/" });
+  expect(otherSave).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each([
+  { mode: "custom", url: "http://127.0.0.1:7891/" },
+  system,
+] satisfies NetworkProxyConfig[])("applies a newer saved route that arrived before an earlier save completed: $mode", async latest => {
+  let complete!: () => void;
+  save.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+  await render();
+  await choose(I18N.settings.networkProxyDirect);
+  await render({ mode: "direct", url: null });
+  await render(latest);
+  await act(async () => complete());
+  expect(host.querySelector('[role="combobox"]')?.textContent).toBe(latest.mode === "custom" ? I18N.settings.networkProxyCustom : I18N.settings.networkProxySystem);
+  expect(host.querySelector<HTMLInputElement>('input')?.value ?? null).toBe(latest.url);
+  await submit();
+  expect(save).toHaveBeenCalledOnce();
+});
+
+it("keeps a failed draft retryable when another route arrives during its save", async () => {
+  let fail!: (error: Error) => void;
+  save.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await render({ mode: "custom", url: "http://127.0.0.1:7890/" });
+  await address("http://127.0.0.1:7891/");
+  await submit();
+  await render({ mode: "direct", url: null });
+  await act(async () => fail(new Error("save failed")));
+  expect(host.querySelector<HTMLInputElement>('input')?.value).toBe("http://127.0.0.1:7891/");
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.networkProxySaveFailed);
+  await submit();
+  expect(save).toHaveBeenLastCalledWith({ mode: "custom", url: "http://127.0.0.1:7891/" });
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
 it("commits when keyboard focus leaves the address group after passing through paste", async () => {
   await render(); await choose(I18N.settings.networkProxyCustom); await address("http://127.0.0.1:7890");
   const paste = host.querySelector<HTMLButtonElement>(".config-input__paste")!;

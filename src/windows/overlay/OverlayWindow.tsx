@@ -256,7 +256,7 @@ export function OverlayWindow() {
 
   if (isTauri) {
     return <div className="relative h-full w-full">{content}
-      {hasEmbeddedOverlayControls && <OverlayControlWindow embedded />}
+      {hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
     </div>;
   }
 

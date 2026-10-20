@@ -24,9 +24,10 @@ it("keeps source identity accessible without repeated full-sized labels beside e
   // Count visible timestamps only: in UTC the ISO dateTime attribute has
   // the same clock text, while local offsets can hide that mistake.
   expect(html.match(/>12:34:56<\/time>/g)).toHaveLength(2);
-  expect(html).toContain('aria-label="System audio"');
-  expect(html).toContain('aria-label="Microphone"');
-  expect(html).not.toContain('>System audio<');
+  const labels = [...html.matchAll(/role="img" aria-label="([^"]+)"/g)].map(match => match[1]);
+  expect(labels).toHaveLength(2);
+  expect(labels[0]).not.toBe(labels[1]);
+  for (const label of labels) expect(html).not.toContain(`>${label}<`);
 });
 
 it("never assigns the current clock to live text, including immersive mode", () => {

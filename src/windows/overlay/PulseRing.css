@@ -40,9 +40,9 @@
 .sound-light[data-phase="error"] .sound-light__error { opacity: 1; }
 
 /* Fixed identities/durations: phase wrappers never restart the tracks. */
-.sound-light[data-clock="paused"] .sound-light__beat,
-.sound-light[data-clock="paused"] .sound-light__wave,
-.sound-light[data-clock="paused"] .sound-light__current { animation-play-state: paused; }
+.sound-light__syllables[data-clock="paused"] .sound-light__beat,
+.sound-light__ribbons[data-clock="paused"] .sound-light__wave,
+.sound-light__translation[data-clock="paused"] .sound-light__current { animation-play-state: paused; }
 .sound-light--still, .sound-light--still * { animation: none !important; transition: none !important; }
 .sound-light--still .sound-light__beat { transform: scaleY(0.85); }
 .sound-light--still .sound-light__wave--back,

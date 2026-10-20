@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useState } from "react";
+import { act, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { installedFontFamilies } from "../../lib/ipc";
@@ -13,8 +13,10 @@ const save = vi.fn();
 const preview = vi.fn();
 function Harness({ initial = "" }: { initial?: string }) {
   const [value, setValue] = useState(initial);
-  return <><SubtitleFontControl value={value} onPreview={preview} onChange={async family => {
+  const saved = useRef(initial);
+  return <><SubtitleFontControl value={value} onPreview={preview} getCurrentValue={() => saved.current} onChange={async family => {
     await save(family);
+    saved.current = family;
     setValue(family);
   }} /><SettingsToastRegion /></>;
 }

@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.*
 import com.google.android.material.button.MaterialButton
@@ -27,6 +28,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
     private var workspaceInput: Pair<TextInputLayout, TextInputEditText>? = null
     private var moreButton: ImageButton? = null
     private var translationSettings: TextTranslationSettings? = null
+    private lateinit var draftHolder: ServiceEditorDraftViewModel
     private lateinit var status: android.widget.TextView
     private var sessionBlocked = false
     private val sessionListener: () -> Unit = { runOnUiThread { refreshSessionUi() } }
@@ -35,13 +37,16 @@ class ServiceSettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         profileId = intent.getStringExtra("profileId")
+        draftHolder = ViewModelProvider(this)[ServiceEditorDraftViewModel::class.java]
         val profile = runCatching { profileId?.let { id -> SettingsStore.profiles(this).firstOrNull { it.id == id } ?: error("profile_missing") } }
             .getOrElse { storageUnavailable = true; null }
-        provider = profile?.provider ?: ServiceProvider.fromId(intent.getStringExtra("provider").orEmpty())
+        provider = profile?.provider ?: (if (storageUnavailable) draftHolder.providerFor(profileId) else null)
+            ?: ServiceProvider.fromId(intent.getStringExtra("provider").orEmpty())
         saved = runCatching {
             profileId?.let { SettingsStore.profileConfiguration(this, it) }
                 ?: ServiceConfiguration(provider, emptyMap(), alibabaRealtimeMode = "liveTranslate")
         }.getOrElse { storageUnavailable = true; ServiceConfiguration(provider, emptyMap()) }
+        val editorDraft = draftHolder.restore(profileId, provider)
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL }
         val header=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; minimumHeight=dp(64); setPadding(dp(12),dp(8),dp(12),dp(8)) }
         header.addView(ImageButton(this).apply {
@@ -102,7 +107,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
         if (storageUnavailable) { status.text=getString(R.string.guide_storage_unavailable); status.visibility=View.VISIBLE }
         content.addView(status,LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(16) })
         nameInput = field(content, "profile-name", getString(R.string.profiles_name), false).second.apply {
-            tag = "profile-name"; setText(profile?.name ?: speechProviderName(this@ServiceSettingsActivity, provider))
+            tag = "profile-name"; setText(editorDraft?.name ?: profile?.name ?: speechProviderName(this@ServiceSettingsActivity, provider))
             filters = arrayOf(android.text.InputFilter.LengthFilter(80))
         }
         if (provider == ServiceProvider.DASHSCOPE) {
@@ -112,10 +117,10 @@ class ServiceSettingsActivity : AppCompatActivity() {
                 adapter = android.widget.ArrayAdapter(this@ServiceSettingsActivity, R.layout.mimi_spinner_item,
                     listOf(getString(R.string.profiles_alibaba_asr_mt), getString(R.string.profiles_alibaba_live))).apply { setDropDownViewResource(R.layout.mimi_spinner_dropdown) }
                 contentDescription = getString(R.string.profiles_alibaba_mode)
-                setSelection(if (saved.usesAlibabaLiveTranslate) 1 else 0)
+                setSelection(editorDraft?.alibabaMode ?: if (saved.usesAlibabaLiveTranslate) 1 else 0)
             }
             content.addView(alibabaMode, LinearLayout.LayoutParams(-1, dp(56)).apply { bottomMargin = dp(16) })
-            workspaceInput = field(content, "alibaba-workspace", getString(R.string.profiles_alibaba_workspace), false).also { it.second.setText(saved.alibabaWorkspaceId) }
+            workspaceInput = field(content, "alibaba-workspace", getString(R.string.profiles_alibaba_workspace), false).also { it.second.setText(editorDraft?.workspace ?: saved.alibabaWorkspaceId) }
         }
         provider.fields.forEach { field ->
             val title = when (field.id) {
@@ -131,10 +136,11 @@ class ServiceSettingsActivity : AppCompatActivity() {
                     pair.first.placeholderText=getString(R.string.service_secret_saved)
                 }
             } else pair.second.setText(saved.value(field.id))
+            editorDraft?.speechValues?.get(field.id)?.let { pair.second.setText(it) }
             inputs[field.id]=pair
         }
         if (provider == ServiceProvider.DASHSCOPE && !storageUnavailable) {
-            translationSettings = runCatching { TextTranslationSettings(this, profileId) }.getOrElse {
+            translationSettings = runCatching { TextTranslationSettings(this, profileId, editorDraft?.translation) }.getOrElse {
                 storageUnavailable = true; status.setText(R.string.guide_storage_unavailable); status.visibility = View.VISIBLE; null
             }
             translationSettings?.let { content.addView(it.view, LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(12) }) }
@@ -168,10 +174,27 @@ class ServiceSettingsActivity : AppCompatActivity() {
         ServiceSettingsUi.addField(this,container,box,edit,title,dp(18))
         return box to edit
     }
-    override fun onDestroy() { translationSettings?.dispose(); super.onDestroy() }
+    override fun finish() {
+        if (::draftHolder.isInitialized) draftHolder.clearDraft()
+        super.finish()
+    }
+    override fun onDestroy() {
+        if (isFinishing && ::draftHolder.isInitialized) draftHolder.clearDraft()
+        translationSettings?.dispose(); super.onDestroy()
+    }
     override fun onStart() { super.onStart(); MimiService.addStateListener(sessionListener); refreshSessionUi() }
     override fun onStop() {
         MimiService.removeStateListener(sessionListener)
+        if (::draftHolder.isInitialized && ::nameInput.isInitialized) {
+            if (isFinishing) draftHolder.clearDraft()
+            else draftHolder.remember(profileId, provider, ServiceEditorDraft(
+                nameInput.text.toString(), inputs.mapValues { (_, field) -> field.second.text.toString() },
+                workspaceInput?.second?.text?.toString(), alibabaMode?.selectedItemPosition,
+                // An unavailable credential store must not erase the previous
+                // route drafts; all storage/session guards still disable saves.
+                translationSettings?.editorDraft() ?: draftHolder.restore(profileId, provider)?.translation,
+            ))
+        }
         translationSettings?.dispose()
         provider.fields.filter { it.secret }.forEach { field ->
             inputs[field.id]?.second?.transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()

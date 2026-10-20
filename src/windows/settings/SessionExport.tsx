@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
@@ -14,6 +14,7 @@ import {
   sessionHistoryDelete,
 } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
+import { useDocumentVisibility } from "../../lib/useDocumentVisibility";
 import type { AudioSource, SessionArchiveState, SessionHistoryItem, SettingsDraft, TranscriptPage } from "../../lib/types";
 import {
   InlineFeedback,
@@ -26,6 +27,8 @@ import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { useSettingsToast } from "./useSettingsToast";
 
 export function SessionExport({ visible }: { visible: boolean }) {
+  const documentVisible = useDocumentVisibility();
+  const pageVisible = visible && documentVisible;
   const active = useStore((state) => state.session.isActive);
   const retainHistory = useStore(
     (state) => state.settings.retainSessionHistory,
@@ -34,7 +37,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
   const audioInput = useStore((state) => state.settings.audioInput);
   const saveSettings = useStore((state) => state.saveSettings);
   const [archive, setArchive] = useState<SessionArchiveState>();
-  const [transcript, setTranscript] = useState<TranscriptPage>();
+  const [transcript, setTranscript] = useState<{ owner: symbol | string; page: TranscriptPage }>();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [transcriptError, setTranscriptError] = useState(false);
@@ -45,6 +48,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingSource, setRecordingSource] = useState<AudioSource>("system");
   const [audioError, setAudioError] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const { beginToast, clearToast } = useSettingsToast();
@@ -54,20 +58,36 @@ export function SessionExport({ visible }: { visible: boolean }) {
   const transcriptRequest = useRef(0);
   const historyRequest = useRef(0);
   const audioRequest = useRef(0);
+  const audioInFlight = useRef(false);
   const interaction = useRef(0);
-  const visibility = useRef(0);
+  const selectedHistoryId = useRef<string | null>(null);
+  // Counts can match across a reset. Current reads belong to an exact local
+  // lifecycle, while saved-history reads remain independent of live capture.
+  const archiveContext = useMemo(() => Symbol(`${active}:${retainHistory}`), [active, retainHistory]);
+  const transcriptContext = selectedId ?? archiveContext;
+  const transcriptEnabled = selectedId !== null || retainHistory;
+  const [renderedArchiveContext, setRenderedArchiveContext] = useState(archiveContext);
+  if (renderedArchiveContext !== archiveContext) {
+    setRenderedArchiveContext(archiveContext);
+    if (selectedId === null) {
+      setTranscript(undefined);
+      setTranscriptError(false);
+    }
+  }
 
   const selected = history.find((item) => item.id === selectedId);
   const audioSources = selected ? selected.audioSources ?? ["system" as const] : archive?.audioSources ?? ["system" as const];
   const selectedAudioSource = audioSources.includes(recordingSource) ? recordingSource : audioSources[0];
   const availableCount = selectedId ? (selected?.count ?? 0) : (archive?.transcriptCount ?? 0);
-  const displayedTranscript = availableCount ? transcript : undefined;
+  const displayedTranscript = availableCount && transcript?.owner === transcriptContext ? transcript.page : undefined;
 
   function selectHistory(id: string | null) {
-    if (id === selectedId) return;
+    if (id === selectedHistoryId.current) return;
+    selectedHistoryId.current = id;
     interaction.current += 1;
     clearToast();
     setHistoryError(false);
+    transcriptRequest.current += 1;
     audioRequest.current += 1;
     setAudioUrl(null);
     setAudioError(false);
@@ -80,7 +100,14 @@ export function SessionExport({ visible }: { visible: boolean }) {
   }
 
   function loadAudio(id: string) {
+    // One WAV may be 64 MiB. Superseding its result must not start another
+    // full-file transfer while the native read is still in flight.
+    if (audioInFlight.current) return;
+    audioInFlight.current = true;
+    const currentLifetime = lifetime.current;
     const request = ++audioRequest.current;
+    setAudioLoading(true);
+    setAudioError(false);
     void sessionHistoryAudio(id, selectedAudioSource).then(
       (bytes) => {
         if (request !== audioRequest.current) return;
@@ -88,42 +115,49 @@ export function SessionExport({ visible }: { visible: boolean }) {
         setAudioError(false);
       },
       () => { if (request === audioRequest.current) setAudioError(true); },
-    );
+    ).finally(() => {
+      audioInFlight.current = false;
+      if (lifetime.current === currentLifetime) setAudioLoading(false);
+    });
   }
 
   useEffect(() => {
     lifetime.current += 1;
-    if (isTauri) {
-      monitor.current = monitorSessionArchive(
-        sessionArchiveState,
-        (state) => {
-          setArchive(state);
-          setReadError(false);
-        },
-        () => setReadError(true),
-      );
-    }
     return () => {
       lifetime.current += 1;
       transcriptRequest.current += 1;
       historyRequest.current += 1;
       audioRequest.current += 1;
-      monitor.current?.stop();
-      monitor.current = null;
     };
   }, []);
 
   useEffect(() => {
+    if (!pageVisible || !isTauri) return;
+    const current = monitorSessionArchive(
+      sessionArchiveState,
+      (state) => {
+        setArchive(state);
+        setReadError(false);
+      },
+      () => setReadError(true),
+    );
+    monitor.current = current;
+    return () => {
+      current.stop();
+      if (monitor.current === current) monitor.current = null;
+    };
+  }, [pageVisible]);
+
+  useEffect(() => {
     interaction.current += 1;
-    visibility.current += 1;
-  }, [visible]);
+  }, [pageVisible]);
 
   useEffect(() => {
     monitor.current?.refresh();
   }, [active, retainHistory, recordAudio]);
 
   useEffect(() => {
-    if (!visible || !isTauri) return;
+    if (!pageVisible || !isTauri) return;
     const request = ++historyRequest.current;
     void sessionHistoryList().then(
       (items) => {
@@ -134,14 +168,14 @@ export function SessionExport({ visible }: { visible: boolean }) {
       () => { if (request === historyRequest.current) setHistoryError(true); },
     );
     return () => { historyRequest.current += 1; };
-  }, [visible, active]);
+  }, [pageVisible, active]);
 
   useEffect(() => {
     return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
   }, [audioUrl]);
 
   useEffect(() => {
-    if (!visible || !isTauri || !availableCount) {
+    if (!pageVisible || !isTauri || !availableCount || !transcriptEnabled) {
       transcriptRequest.current += 1;
       return;
     }
@@ -150,7 +184,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
       void (selectedId ? sessionHistoryPage(selectedId, query, page) : sessionTranscriptPage(query, page)).then(
         (result) => {
           if (request !== transcriptRequest.current) return;
-          setTranscript(result);
+          setTranscript({ owner: transcriptContext, page: result });
           setTranscriptError(false);
           if (result.page !== page) setPage(result.page);
         },
@@ -163,7 +197,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
       transcriptRequest.current += 1;
       clearTimeout(timer);
     };
-  }, [visible, availableCount, selectedId, query, page]);
+  }, [pageVisible, availableCount, selectedId, query, page, transcriptEnabled, transcriptContext]);
 
   async function perform(action: () => Promise<"saved" | "cleared" | null>, failureMessage = I18N.settings.sessionExportFailed) {
     if (!isTauri || operation.current || useStore.getState().session.isActive)
@@ -191,16 +225,18 @@ export function SessionExport({ visible }: { visible: boolean }) {
     if (!isTauri || operation.current) return;
     const currentLifetime = lifetime.current;
     const currentInteraction = interaction.current;
-    const currentVisibility = visibility.current;
     operation.current = true;
     setBusy(true);
     setHistoryError(false);
     const notify = beginToast();
     try {
       await sessionHistoryDelete(id);
-      if (lifetime.current !== currentLifetime || visibility.current !== currentVisibility) return;
+      if (lifetime.current !== currentLifetime) return;
+      // Deletion changes the catalog even after navigation. Reject an older
+      // list snapshot without disturbing another selected session's content.
+      historyRequest.current += 1;
       setHistory((items) => items.filter((item) => item.id !== id));
-      if (interaction.current === currentInteraction) selectHistory(null);
+      if (selectedHistoryId.current === id) selectHistory(null);
     } catch {
       if (lifetime.current === currentLifetime && interaction.current === currentInteraction) {
         notify(I18N.settings.historyDeleteFailed, true);
@@ -225,6 +261,15 @@ export function SessionExport({ visible }: { visible: boolean }) {
   const canExportAudio = selected ? selected.hasAudio : hasAudio;
   const showCurrent = active || hasTranscript || hasAudio;
   const showContent = selected || showCurrent;
+  // Reuse each format only within this render. Later polls still observe
+  // language/default-time-zone changes, and empty lists need no formatter.
+  const language = effectiveUiLanguage();
+  let sessionTimeFormatter: Intl.DateTimeFormat | undefined;
+  let transcriptTimeFormatter: Intl.DateTimeFormat | undefined;
+  const formatSessionTime = (timestamp: number) =>
+    (sessionTimeFormatter ??= new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit" })).format(timestamp);
+  const formatTranscriptTime = (timestamp: number) =>
+    (transcriptTimeFormatter ??= new Intl.DateTimeFormat(language, { hour: "2-digit", minute: "2-digit", second: "2-digit" })).format(timestamp);
 
   return (
     <SettingsSection
@@ -296,12 +341,12 @@ export function SessionExport({ visible }: { visible: boolean }) {
             <span>{I18N.settings.historyCurrent}</span>
             {(hasTranscript || hasAudio) && <small>{hasTranscript ? I18N.settings.transcriptCount(archive?.transcriptCount ?? 0) : ""}{hasTranscript && hasAudio ? " · " : ""}{hasAudio ? I18N.settings.historyAudio : ""}</small>}
           </button>}
-          {groupHistory(history).map((group) => (
+          {groupHistory(history, language).map((group) => (
             <div className="session-history__group" key={group.day}>
               <h4>{group.label}</h4>
               {group.items.map((item) => (
                 <button type="button" key={item.id} className={`session-history__item${selectedId === item.id ? " is-selected" : ""}`} onClick={() => selectHistory(item.id)}>
-                  <span>{new Intl.DateTimeFormat(effectiveUiLanguage(), { hour: "2-digit", minute: "2-digit" }).format(item.startedAtMs)}</span>
+                  <span>{formatSessionTime(item.startedAtMs)}</span>
                   <small>{item.count > 0 ? I18N.settings.transcriptCount(item.count) : ""}{item.count > 0 && item.hasAudio ? " · " : ""}{item.hasAudio ? I18N.settings.historyAudio : ""}</small>
                 </button>
               ))}
@@ -327,7 +372,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
               }} />
           </SettingsRow>}
           {selected && <div className="session-history__actions" aria-busy={busy}>
-            {selected.hasAudio && (audioUrl ? <audio controls src={audioUrl} aria-label={I18N.settings.historyAudio} /> : <button type="button" className="settings-button settings-button--quiet" onClick={() => loadAudio(selected.id)}>{I18N.settings.historyPlayAudio}</button>)}
+            {selected.hasAudio && (audioUrl ? <audio controls src={audioUrl} aria-label={I18N.settings.historyAudio} /> : <button type="button" className="settings-button settings-button--quiet" disabled={audioLoading} aria-busy={audioLoading} onClick={() => loadAudio(selected.id)}>{I18N.settings.historyPlayAudio}</button>)}
             <button type="button" className="settings-button settings-button--danger settings-button--compact" disabled={busy} onClick={() => setConfirmDelete(true)}>
               <Icon name="trash" />{I18N.settings.historyDelete}
             </button>
@@ -363,7 +408,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
                 <div className="session-transcript__meta">
                   <span>#{entry.index}</span>
                   <time dateTime={new Date(entry.createdAtMs).toISOString()}>
-                    {new Intl.DateTimeFormat(effectiveUiLanguage(), { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(entry.createdAtMs)}
+                    {formatTranscriptTime(entry.createdAtMs)}
                   </time>
                 </div>
                 <div>
@@ -456,7 +501,7 @@ export function SessionExport({ visible }: { visible: boolean }) {
   );
 }
 
-function groupHistory(items: SessionHistoryItem[]) {
+function groupHistory(items: SessionHistoryItem[], language: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today);
@@ -464,13 +509,16 @@ function groupHistory(items: SessionHistoryItem[]) {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const groups = new Map<string, { day: string; label: string; items: SessionHistoryItem[] }>();
+  let dateFormatter: Intl.DateTimeFormat | undefined;
   for (const item of items) {
     const date = new Date(item.startedAtMs);
     const day = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-    const label = date >= today && date < tomorrow ? I18N.settings.historyToday
-      : date >= yesterday && date < today ? I18N.settings.historyYesterday
-      : new Intl.DateTimeFormat(effectiveUiLanguage(), { year: "numeric", month: "long", day: "numeric" }).format(date);
-    if (!groups.has(day)) groups.set(day, { day, label, items: [] });
+    if (!groups.has(day)) {
+      const label = date >= today && date < tomorrow ? I18N.settings.historyToday
+        : date >= yesterday && date < today ? I18N.settings.historyYesterday
+        : (dateFormatter ??= new Intl.DateTimeFormat(language, { year: "numeric", month: "long", day: "numeric" })).format(date);
+      groups.set(day, { day, label, items: [] });
+    }
     groups.get(day)!.items.push(item);
   }
   return [...groups.values()];

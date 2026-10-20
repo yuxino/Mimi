@@ -307,6 +307,7 @@ export function SettingsView() {
                         </SettingsRow>
                         <SubtitleFontControl value={settings.subtitleFontFamily ?? ""}
                           onPreview={setSubtitleFontPreview}
+                          getCurrentValue={() => useStore.getState().settings.subtitleFontFamily ?? ""}
                           onChange={subtitleFontFamily => saveSettings({ subtitleFontFamily })} />
                       </div>
                       <SettingsRow label={I18N.settings.showIntermediateSubtitles} description={I18N.settings.showIntermediateSubtitlesHelp}>

@@ -5,8 +5,29 @@ export class TimelineScroll {
   private modeAnchor = false;
   private reading: { id: string; offset: number } | null = null;
   private readingStart = false;
+  private smoothFollowing = false;
+  private pointerInterruptedGlide = false;
+
+  pointerDown(element: HTMLElement) {
+    this.pointerInterruptedGlide = this.smoothFollowing;
+    if (this.pointerInterruptedGlide) {
+      // Freeze automatic movement before attributing any scroll to a pointer.
+      // A plain click resumes the glide on release; a real drag enters reading.
+      this.smoothFollowing = false;
+      this.move(element, element.scrollTop, "instant");
+    }
+    this.userIntent(element);
+  }
+
+  pointerUp(element: HTMLElement) {
+    this.endUserIntent();
+    const resume = this.pointerInterruptedGlide && this.following;
+    this.pointerInterruptedGlide = false;
+    if (resume) this.contentChanged(element, "smooth");
+  }
 
   userIntent(element: HTMLElement, direction: "down" | "pointer" = "pointer") {
+    this.smoothFollowing = false;
     this.readingStart = false;
     this.userScrolling = { top: element.scrollTop, direction };
     this.rememberReading(element);
@@ -19,6 +40,8 @@ export class TimelineScroll {
   /** Enter full confirmed-history reading even if the compact rows do not
    * overflow yet, so an upward wheel/key can reveal a single long sentence. */
   beginReading(element: HTMLElement) {
+    this.pointerInterruptedGlide = false;
+    this.smoothFollowing = false;
     this.readingStart = false;
     this.endUserIntent();
     this.following = false;
@@ -40,6 +63,8 @@ export class TimelineScroll {
   }
 
   followTail(element: HTMLElement) {
+    this.pointerInterruptedGlide = false;
+    this.smoothFollowing = false;
     this.following = true;
     this.modeAnchor = false;
     this.reading = null;
@@ -53,13 +78,14 @@ export class TimelineScroll {
   }
 
   scrolled(element: HTMLElement) {
+    if (this.atTail(element)) this.smoothFollowing = false;
     const intent = this.userScrolling;
     this.endUserIntent();
     if (intent) {
       const downward = element.scrollTop > intent.top ||
         (intent.direction === "down" && element.scrollTop === intent.top);
       if (this.atTail(element) && downward) this.following = true;
-      else if (!this.atTail(element)) this.following = false;
+      else if (!this.atTail(element) && element.scrollTop !== intent.top) this.following = false;
     }
     // Native layout/anchor corrections may emit scroll without user input.
     // Keep the actual visible anchor, but never use them to leave reading.
@@ -67,13 +93,21 @@ export class TimelineScroll {
   }
 
   displayChanged(element: HTMLElement) {
+    this.pointerInterruptedGlide = false;
+    this.smoothFollowing = false;
     this.modeAnchor = true;
     this.reflow(element);
   }
 
-  contentChanged(element: HTMLElement, behavior: ScrollBehavior) {
+  contentChanged(element: HTMLElement, behavior: ScrollBehavior, motionEnabled = true) {
     this.modeAnchor = false;
-    if (this.following) this.move(element, element.scrollHeight, behavior);
+    if (!motionEnabled) this.pointerInterruptedGlide = false;
+    if (this.following && this.pointerInterruptedGlide) return;
+    // Streaming revisions can arrive before a new sentence reaches the tail.
+    // Keep retargeting that glide until it finishes or motion is disabled.
+    const followBehavior = motionEnabled && (behavior === "smooth" || this.smoothFollowing) ? "smooth" : "instant";
+    this.smoothFollowing = this.following && followBehavior === "smooth" && !this.atTail(element);
+    if (this.following) this.move(element, element.scrollHeight, followBehavior);
     else this.restoreReading(element);
   }
 
@@ -82,12 +116,16 @@ export class TimelineScroll {
       this.restoreReading(element);
       return;
     }
+    if (this.pointerInterruptedGlide) return;
     // A compact bilingual lane reserves blank space as well as actual text.
     // Start at the newest sentence after a mode change so its original is
     // visible; bottom-pinning can hide that original behind the reserved space.
     const latest = element.lastElementChild as HTMLElement | null;
     const top = this.modeAnchor && latest ? this.top(element, latest) : element.scrollHeight;
-    this.move(element, top, "instant");
+    // New rows settle from their provisional compact budgets to measured
+    // heights. Retarget the glide instead of snapping it to the final tail.
+    if (this.atTail(element)) this.smoothFollowing = false;
+    this.move(element, top, this.smoothFollowing ? "smooth" : "instant");
   }
 
   private rememberReading(element: HTMLElement) {

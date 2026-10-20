@@ -92,6 +92,10 @@
   user-select: none;
 }
 .mimi-select__option[data-active="true"] { background: var(--select-hover); }
+.mimi-select__option[aria-disabled="true"] { cursor: default; }
+.mimi-select__option[aria-disabled="true"] .mimi-select__label,
+.mimi-select__option[aria-disabled="true"] .mimi-select__icon,
+.mimi-select__option[aria-disabled="true"] > svg { opacity: 0.5; }
 .mimi-select__option .mimi-select__content { flex: 1; }
 .mimi-select__option-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .mimi-select__option .mimi-select__label { overflow-wrap: anywhere; }

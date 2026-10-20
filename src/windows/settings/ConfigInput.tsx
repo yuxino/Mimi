@@ -20,6 +20,7 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
   const [expanded, setExpanded] = useState(false);
   const { beginToast, clearToast } = useSettingsToast();
   const pending = useRef(false);
+  const pasteRevision = useRef(0);
   const mounted = useRef(false);
   const disabled = useRef(!!props.disabled || !!props.readOnly);
   const field = useRef<ConfigInputElement | null>(null);
@@ -35,6 +36,7 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
   }, [ref]);
   useEffect(() => { disabled.current = !!props.disabled || !!props.readOnly; }, [props.disabled, props.readOnly]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useLayoutEffect(() => { pasteRevision.current += 1; }, [props.value]);
   useLayoutEffect(() => {
     if (!selection.current || !field.current) { switchingField.current = false; return; }
     const cursor = selection.current;
@@ -61,7 +63,7 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
     return () => observer.disconnect();
   }, [isExpanded, props.value, props.placeholder]);
   const normalize = (value: string) => canExpand ? value.replace(/[\r\n]/g, "") : value;
-  const change = (value: string) => { clearToast(); onValueChange(normalize(value)); };
+  const change = (value: string) => { pasteRevision.current += 1; clearToast(); onValueChange(normalize(value)); };
   const toggle = () => {
     if (props.disabled) return;
     // WebKit may report relatedTarget=null while replacing a focused native
@@ -73,18 +75,21 @@ export function ConfigInput({ onValueChange, onPasteValue, onGroupBlur, action, 
   const paste = async () => {
     if (props.disabled || props.readOnly || pending.current) return;
     pending.current = true;
+    const revision = pasteRevision.current;
     setBusy(true);
     const notify = beginToast();
     try {
       const value = await readClipboardText();
-      if (mounted.current && !disabled.current) {
+      // Keep edits available while the OS reads the clipboard. A newer edit
+      // or owner-supplied value supersedes this paste, including its save hook.
+      if (mounted.current && !disabled.current && revision === pasteRevision.current) {
         if (value.length > (props.maxLength ?? 2_048)) throw new Error("clipboard_value_too_long");
         const next = normalize(value);
         onValueChange(next);
         onPasteValue?.(next);
       }
     } catch {
-      if (mounted.current) notify(I18N.settings.pasteFailed, true);
+      if (mounted.current && revision === pasteRevision.current) notify(I18N.settings.pasteFailed, true);
     } finally {
       pending.current = false;
       if (mounted.current) setBusy(false);

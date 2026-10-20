@@ -104,7 +104,10 @@ describe("published bilingual release history", () => {
   it.each([
     ["v1.5.9", release159], ["v1.5.10", release1510],
     ["v1.5.11", release1511], ["v1.5.12", release1512],
-  ])("preserves each complete language in %s and renders real Markdown", (_version, notes) => {
+  ])("preserves each complete language in %s and renders real Markdown", (_version, rawNotes) => {
+    // `?raw` imports keep the working copy's line endings; compare against the
+    // same normalized form the component reads.
+    const notes = rawNotes.replace(/\r\n/g, "\n");
     const [english, chinese] = notes.replace("## English", "").split("## 中文").map(section => section.trim());
     expect(selectLocalizedReleaseNotes(normalizeReleaseNotes(notes), "en")).toBe(english);
     expect(selectLocalizedReleaseNotes(normalizeReleaseNotes(notes), "zh")).toBe(chinese);

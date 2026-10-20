@@ -12,14 +12,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 PROVIDER = "android/app/src/main/java/app/yuxino/mimi/android/provider/"
-LEGACY_FILES = {
-    "DashScopeEngine.kt", "OpenAIRealtimeEngine.kt", "StreamingServiceEngine.kt",
-    "CloudProtocols.kt", "VolcanoProtocol.kt", "GrokProtocol.kt",
-    "TranslationPipeline.kt", "OpenAITranslationClient.kt",
-    "DeepLTranslationClient.kt", "DeepLXTranslationClient.kt",
-    "ProviderLanguageCatalogs.kt", "DeepLLanguages.kt", "ProviderFinishGate.kt",
-    "TranscriptBuffer.kt", "SharedLivePairStream.kt", "SharedTranscriptStream.kt",
-}
 LEGACY_SYMBOLS = {
     "DashScopeEngine", "OpenAIRealtimeEngine", "StreamingServiceEngine",
     "TranslationPipeline", "OpenAITranslationClient", "DeepLTranslationClient",
@@ -109,12 +101,7 @@ def check(root=ROOT):
     engine_users = []
     for path in sorted(sources):
         relative = path.relative_to(root).as_posix()
-        if relative in {PROVIDER + name for name in LEGACY_FILES}:
-            continue
         text = code(path.read_text(encoding="utf-8"), hide_strings=True)
-        if relative == PROVIDER + "ServiceCatalog.kt":
-            # These two legacy constants are metadata only, not executable clients.
-            text = re.sub(r"OpenAIRealtimeEngine\s*\.\s*(?:ENDPOINT|MODEL)\b", "", text)
         tokens = set(re.findall(r"\b\w+\b", text))
         leaked = sorted(tokens & LEGACY_SYMBOLS)
         require(not leaked, f"Android production references offline legacy runtime: {relative}: {', '.join(leaked)}")

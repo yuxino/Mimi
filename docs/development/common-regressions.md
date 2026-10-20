@@ -39,11 +39,19 @@ Rules:
   `CARGO_TARGET_DIR` selects both the binary and temporary bundle location.
   A fresh cache builds the existing SpeexDSP echo-cancellation dependency and
   needs CMake on `PATH`, or an explicit `CMAKE=/absolute/path/to/cmake`.
+- The signed watch launcher must explicitly load `config/vite.config.ts`.
+  Vite's default root-file discovery misses the relocated configuration, so
+  React setup and development flags are absent and the native preview is blank.
+  The watch-server regression checks the real transformed entry and flags.
 - Serialize `check.sh`, `dev-app.sh`, `prepare-macos-release.sh` and other
   frontend builds in one checkout. They write the same `dist` directory even
   when Cargo target directories differ. Concurrent writes can remove a CSS or
   JavaScript asset while Tauri embeds it; finish the first build before retrying
-  the second, without clearing shared caches.
+  the second, without clearing shared caches. Finish the native UI inspection,
+  quit its app and stop `dev-app.sh --watch` before the complete `check.sh`:
+  its real watch-server regression also binds port 1420 and correctly fails if
+  that preview is still running. Do not change the configured port or clear
+  caches to bypass this collision.
 - Focused Rust checks use the same local registry as `check.sh`: set
   `CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"` before `cargo test` or Clippy.
   A bare Cargo invocation can switch registry source paths and rebuild otherwise
@@ -57,6 +65,11 @@ Rules:
   signature after verifying the app. The
   code-signing private key stays in that Mac's Keychain; CI verifies the
   prepared draft assets. See [release signing](macos-release-signing.md).
+- When preparing a release while the maintainer is using the Mac, run
+  `CI=true TAURI_BUNDLER_DMG_IGNORE_CI=false ./scripts/prepare-macos-release.sh`.
+  Tauri's DMG bundler then skips its Finder layout AppleScript. This changes
+  cosmetic DMG layout only; preserve signing and all package verification.
+  Do not launch or replace the running formal app as part of this background work.
 - Before replacing a formal app, run
   `./scripts/verify-macos-install-identity.sh NEW_APP /Applications/mimi.app`.
   A mismatch fails closed. `MIMI_ALLOW_IDENTITY_CHANGE=1` is reserved for a
@@ -179,6 +192,19 @@ not establish that the other is healthy.
 
 ## Know which prompt appeared
 
+An Apple-language-pack error can be a settings snapshot failure, including on
+Windows where Apple Speech is unavailable. Check the sanitized catalog-load
+label before diagnosing a platform component. An unreleased provider enum
+(for example `localProgram`) makes the stable profile catalog fail closed;
+extra optional fields alone do not establish that cause. Keep experimental
+schemas in a separate development app directory. For cross-version package QA,
+remember that the Windows portable marker changes update behavior, not the
+production config directory. Preserve and verify the original non-secret files
+before temporary isolation, remove only the test profile through the app,
+then restore the original bytes
+after quitting. Never delete the original catalog or reset credentials to make
+an unrelated UI error disappear.
+
 Production and ordinary development credentials use private local files on all
 desktop platforms. Legacy OS items are read only during automatic upgrade import,
 then deleted after durable write and read-back verification. Completed imports
@@ -286,6 +312,32 @@ Keep unconfirmed resources out of all ready-language lists, invalidate earlier
 recognition results when resource work starts, and offer a read-only refresh.
 Do not reset TCC, change signing or delete system assets without evidence.
 
+## Windows process-loopback activation
+
+- A `VT_BLOB` activation `PROPVARIANT` borrows the completion handler's parameter
+  storage. Do not run `PropVariantClear` on it: that would `CoTaskMemFree` a
+  non-owning pointer and corrupt the heap. The handler must retain the payload
+  through asynchronous completion, including cancellation. Keep the outer
+  `PROPVARIANT` behind the lifetime-bound `BorrowedActivationVariant`; wrapping
+  only its inner union in `ManuallyDrop` does not suppress the owning destructor.
+  The Windows regression tests construct and destroy this borrowed variant on
+  both success and early failure. Preserve these native tests, not just source
+  text checks. Any queued audio interface must be released before the worker's
+  COM apartment guard, and a late failed send releases it on the MTA callback.
+- The activation callback and the explicitly initialized capture worker share
+  the process MTA. Transfer the owned audio interface within that apartment,
+  not through `AgileReference`: `IAudioClient` is a local interface, and an
+  unnecessary marshal can fail with `0x80040155`. Missing proxy registration is
+  not evidence of damaged Windows components. See Microsoft's
+  [process-loopback sample](https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/ApplicationLoopback/cpp/LoopbackCapture.cpp)
+  and [MTA sharing contract](https://learn.microsoft.com/en-us/windows/win32/com/multithreaded-apartments).
+- Verify real output-device playback, selected-process capture and system mix
+  separately. Check visible recognized/translated subtitles, stop/restart and
+  process exit; a successful activation alone is not full-pipeline evidence.
+- `AppHangXProcB1` naming Explorer establishes an external wait, not its stack
+  or cause. Use bounded responsiveness probes and a hang dump when available;
+  do not infer a complete hang fix from a healthy short run or a screenshot.
+
 ## Overlay and UI checks
 
 For shared layout, notification choices and the cross-page review checklist,
@@ -378,6 +430,11 @@ page must include a review of other instances of the same pattern.
   status visible; source previews belong only to Original/same-language mode.
   Changing preview kind or removing a preview must immediately invalidate the
   text stabilizer's old display value.
+- An identified empty ASR completion withdraws that source's preview and stop
+  fallback. Keep the withdrawal identified through the shared reducer: the
+  latest recognition draft and the displayed pair may have different owners.
+  Reliable withdrawal must consume its earlier matching queued draft before
+  another withdrawal arrives; other source owners and durable finals survive.
 - Keep accessibility state in `aria-*`, but drive changing selected/checked
   visuals through explicit React class names. macOS WKWebView has previously
   left attribute-selector styling stale after the underlying state changed;
@@ -409,6 +466,17 @@ non-sensitive; do not change permissions or reset TCC to repair the fixture.
 
 See [the integration learning loop](integration-learning-loop.md) for comparable
 samples and [the run ledger](integration-runs.md) for this check's exact scope.
+
+## Desktop recovery teardown ownership
+
+An empty generation tag or client slot does not prove that capture stop or
+disconnect finished. Reserve teardown synchronously before exposing recovery or
+releasing admission, and give the work an owner that survives cancellation of
+its waiter. Test both cancellation before the first cleanup poll and after a
+client has been removed from its slot. An admitted replacement Start must retain
+its intent across teardown and recheck the lifecycle epoch before activation.
+Preserve normal Stop's drain/finish path. A caller already holding a teardown
+guard must wait for concrete owners rather than its own global counter.
 
 ## Native exit and acceptance evidence
 
@@ -470,6 +538,21 @@ artifacts, and signing material.
 
 ## Configuration input and development-mode acceptance
 
+- Desktop autosave names need an owner that survives editor navigation, keyed
+  by profile and field/translation route. A late failed save must retain its
+  draft and inline retry; confirmed deletion cancels queued writes. Check
+  StrictMode cleanup and interrupted IME composition: leaving an editor before
+  composition ends must not persist its preedit text.
+- Android editor view-state saving remains disabled for credentials. Preserve
+  unsaved fields across configuration recreation in an Activity-owned plain
+  ViewModel, without Bundle/SavedStateHandle, views or network calls. Bind the
+  draft to profile/provider identity, preserve each translation route's key
+  removal intent, retain fresh storage/session guards and release on finish.
+  Process death reloads persisted configuration; it cannot restore RAM secrets.
+- For credential-free Android instrumentation, compare catalog files directly
+  when proving cancellation did not write. `SettingsStore.profiles()` can trigger
+  legacy credential migration or retirement; it is not a read-only precondition.
+
 - Before replacing the canonical development app, identify the source revision
   and any unpublished provider support in the running build. A stable signature
   does not make an older provider catalog parser compatible. A main-based build
@@ -509,6 +592,13 @@ actual JNI as well as Rust fixtures. Preserve raw spaces and subwords, and do
 not deduplicate by matching tails. Sentence breaks belong only to live display,
 never to transcript buffers or committed history. Keep preview clocks separate
 from local quiet checkpoints.
+
+Keep every display-only punctuation scan bounded by the input length. A linear
+closing-quote scan is insufficient if each period still passes the accumulated
+output to an abbreviation regex. Match only the needed input suffix, including
+the preceding word-boundary character, and verify output equivalence for Unicode
+and inserted line breaks. Use operation-count regressions rather than timing
+thresholds to catch repeated whole-prefix scans.
 
 Gemini's continuous model can omit `turnComplete` even after `audioStreamEnd`.
 Keep its Stop budget longer than the shared two-second paired-text quiet

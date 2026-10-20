@@ -4,6 +4,1121 @@
 实测范围和未解决项；条目是历史证据，后续任务仍须核对当前源码与设备。
 不写密钥、音频、字幕正文或个人目录，不把临时日志当作已持久归档的案例。
 
+## 2026-10-20：v1.6.5 公开发布验收
+
+- [v1.6.5](https://github.com/yuxino/Mimi/releases/tag/v1.6.5) 已公开为
+  Latest，源码为 `aa5456051472dd84ec943f9aed55470a15943604`；配置选择
+  修复为 `7c4ff5fa`，本地完整回归范围见下条。版本号、Android 10605 和
+  双语发布说明同步提交后，才从干净源码准备包。
+- macOS arm64／x86_64 使用现有固定证书；本地包及从草稿下载的包均
+  验证来源提交、架构、版本、完整签名与 DMG 内同一应用。新包与正式
+  安装的 designated requirement 相同；未启动、替换或重启正式应用。
+  后台打包跳过 Finder 布局脚本；未改变证书、权限或真实配置。
+- [标签 CI](https://github.com/yuxino/Mimi/actions/runs/39293795767)
+  和[独立 Android CI](https://github.com/yuxino/Mimi/actions/runs/39293795816)
+  均 success：桌面三平台、Windows ARM64 原生启动、双架构 macOS
+  发布校验、Windows／Linux 安装包启动、实际 JVM/JNI、APK 变体与
+  固定证书签名均通过。通用 bundle 作业按非 tag 条件跳过，各 release
+  作业及 stage-release 完整执行成功。
+- 草稿严格 17 项，远端摘要及大小与实际下载一致，16 条校验清单通过；
+  5 个更新文件的密码学签名、四平台更新清单及 Android 架构／16 KiB／
+  许可证／旧实现隔离检查通过。首次摘要检查启动早于后台下载退出，
+  报告不符；等待下载 exit 0 后原文件全部一致，未替换产物。
+- 发布后再次核对 17 项摘要与公开下载链接；tag、canonical Latest 和
+  配置中的小写仓库更新地址均匿名返回与受测文件逐字节相同的清单。
+  发布页原生 Contributors HTML 包含 `@yuxino` 头像；此前浏览器任务
+  空间已不存在，因此未重新打开窗口或声称做了发布页视觉验收。
+- 公开说明与更新元数据中英一致。实际安装升级、真实音频／服务会话、
+  实体设备与长期内存压力未重新验收；自动和包检查不替代这些范围。
+- 已清理本轮下载、解包目录、重复安装包、前端构建产物与一次性日志，
+  保留源码、依赖／编译缓存、精简校验记录及最终界面样本；正式应用
+  仍为原有运行进程。
+
+## 2026-10-20：未完成配置的选择提示
+
+- 基于 main `4fae21dc` 加本条目所在提交的前端修复；用户仍在使用正式
+  应用，仅使用后台合成快照，没有启动原生测试、读取真实凭据、联网探测
+  服务或更换安装。范围见[设计记录](../plans/2026-10-20-profile-selection-availability.md)。
+- 浮窗与声音设置保留未完成项、禁用选择并显示原因；失效当前项不丢失，
+  补齐后恢复。候选预设优先，原文模式与合法无密钥配置仍可用。独立复核
+  纠正 Apple 翻译凭据不可用被误指为识别不可用的提示，未发现其他问题。
+- 行为样本先在旧实现出现 15 项失败；最终相关 3 文件 84 项通过，定向
+  lint 通过。鼠标／键盘、当前项失效／恢复、预设覆盖与分槽状态均有回归。
+- 实际 React 浏览器样本检查浮窗与声音设置、320／420 px、8 种语言和
+  明暗主题共 64 组合，禁用状态、原因、换行和菜单边界均通过，样本中
+  无凭据或服务探测调用。复看中文暗色浮窗、日文亮色设置截图后，只对
+  名称／图标／勾选淡化，原因不叠加两层透明度；同样本复看可读。
+- v1.6.5 源码的无参数 `./scripts/check.sh` 全通过：前端 147 文件／
+  2,452 项，core 106＋4 契约、runtime 831＋既有 ignored 1、Rust
+  JNI 24、updater 4、desktop 632＋既有 ignored 1，含严格静态检查和
+  生产构建。低优先级、Rust 并发 2；停止本轮浏览器预览服务后串行运行。
+- 浏览器合成样本不代表 macOS WebKit、原生窗口、Windows／Linux 实机
+  或真实服务验收；保留用户正在运行的正式应用和现有配置。
+
+## 2026-10-19：Issue #280 后续——停止收尾预算与尾句交付
+
+- 从 clean main `632166a5` 开始，源码提交
+  `286e8da6c567f7c3524b89adcc245192afad7906`，范围见
+  [设计记录](../plans/2026-10-19-audio3-finish-budget.md)。只运行后台离线
+  loopback 和合成文本；未启动应用、播放／捕获音频、访问真实凭据或更换安装。
+- 固定样本 `audio3FinishDrain` 的缺失结束确认用例，旧实现尾句正确但
+  关闭识别连接后再空等一次 bridge 确认，单次实测 2.041 秒。修复后同例
+  1.003 秒；另外两个无确认样本为 1.003／1.001 秒，正常确认样本 52 ms。
+  这是局部模拟收尾，不是语音识别延迟、完整应用停止时间或稳定性能承诺。
+- Audio3 结束指令发送与等待共用原有识别预算；旧生产任务退出后才发送
+  本地尾句交付屏障。没有延长 timeout、添加模型或设置。错误、明确发送
+  失败、未连接和重复停止不补成功事件；普通断开不确认草稿。保留 Audio3
+  忽略空结果的既有协议语义，不套用 OpenAI 的空 final 撤回规则。
+- 4 个共享样本覆盖最新尾稿、final 优先、空结果和新句尾；直接 Rust
+  与实际 JNI 使用同一份 fixture。新增负例覆盖重复停止、服务错误、发送
+  失败和 writer 被占时的预算；独立复核后 Audio3 18 项、HQ 71 项通过。
+  持久回归检查交付内容和恰好一次终止，不依赖狭窄墙钟性能门槛。
+- 冻结源码的无参数 `./scripts/check.sh` 全通过：core 106＋4 契约、
+  runtime 831＋既有 ignored 1、Rust JNI 24、updater 4、desktop
+  632＋既有 ignored 1、前端 146 文件／2,423 项，含严格静态检查和生产构建。
+  使用低优先级、Rust 并发 2；本机未另跑 JVM。
+- 后续 CI 对 PR head `b8d43dcb1ef831b3418e52cdb519d14afb989634`
+  全部适用检查通过：[跨平台检查](https://github.com/yuxino/Mimi/actions/runs/39281715027)
+  覆盖 macOS、Windows、Linux、Windows ARM64、MSRV 和前端；
+  [Android 检查](https://github.com/yuxino/Mimi/actions/runs/39281715004)
+  通过宿主 JNI 构建、debug／release JVM 单测和四 ABI 构建。打包与发布
+  作业按本次 PR 的 scope／非 tag 条件跳过；不代表完成设备或发布验收。
+- [PR #302](https://github.com/yuxino/Mimi/pull/302) 于北京时间
+  2026-10-20 合并到 main `1d5738e96b2ebd68a689914c12add9b034993a00`；
+  已核对合并树与上述已验证 PR head 完全一致，本地 main 安全快进同步。
+- 用户对主动静音提示的复杂度提出顾虑；评估后本轮不增加界面或状态系统。
+  静音不能单独证明故障，已知采音错误继续沿用现有可见错误与恢复入口。
+  实际本地 worker 超过现有收尾期限、真实尾词完整度与设备交互仍未验收。
+
+## 2026-10-19：继续优化——长字幕缩写检查与历史写入
+
+- 基于 clean main `1846507c`，范围见
+  [设计记录](../plans/2026-10-19-bounded-transcript-formatting.md)。仍只做离线
+  合成样本和后台源码检查，不启动原生应用或访问真实凭据、录音及历史。
+- 格式化固定样本为 65,535 字符的重复 ASCII 缩写；原实现累计交给正则
+  715,816,960 字符，新线性工作量回归先失败。只读取最长缩写、句点和
+  前置词边界需要的最多 6 个码点后，降为 131,065 字符。相同 Node 环境
+  7 轮中位 24.116→2.359 ms；65,520 字符普通合成英文为
+  6.592→1.511 ms。这些是局部算法观测，不是 WebKit 帧率或进程 RSS。
+- 新旧 formatter 的两份独立固定种子对照共 23,000 次，输出逐字一致。
+  原有及新缩写、Unicode、引号、换行、连续标点回归保留；frontend quick
+  检查 11 文件／211 项通过，类型与相关 lint 通过。独立复核确认没有
+  对累计输出取尾段而再次触发整段展开。
+- 历史序列化固定样本为 10,000 条、正文 2,000,000 字节，JSON 共
+  2,700,119 字节。相同临时文件→sync→persist 对照中，底层 write 次数
+  320,039→334，文件逐字相同；debug 三轮直接写
+  579.113／465.776／467.719 ms，8 KiB 缓冲且显式 flush 为
+  43.409／42.526／42.627 ms。只量到该段写提交，不推断完整停止耗时。
+- 最终写入的操作预算回归先在旧实现失败（512 条、19,495 次 write）；
+  修复后 history 全模块 23 项通过，含双轨、原子输出、失败重试及 PCM
+  权威性。新增故障注入覆盖首次写、末尾部分写和底层 flush 错误；显式
+  flush 成功后才 sync／persist，实时 append 的回滚路径未变。
+- 本轮还审查 shared/JNI 容器上限、重连状态和历史失败恢复；未确认的新
+  缺陷不改动。两处实现均经独立复核，未发现新增回归。
+- 冻结源码的无参数 `./scripts/check.sh` 全通过：core 106＋4 契约、
+  runtime 826＋既有 ignored 1、Rust JNI 24、updater 4、macOS desktop
+  632＋既有 ignored 1、前端 146 文件／2,423 项，以及严格静态检查、
+  生产构建和 debugger 边界。完整检查低优先级、Rust 并发 2。
+- [PR #301](https://github.com/yuxino/Mimi/pull/301) 的 `1a3d7587` 通过
+  [跨平台 CI](https://github.com/yuxino/Mimi/actions/runs/39276508994) 和
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/39276508573)，包含
+  macOS、Windows x64／ARM64、Linux、实际 JVM/JNI 和两个 APK 的校验。
+  合入 main `da6ea3a9` 后确认完整文件树与受测提交一致，工作分支已清理。
+- 原生交互、实际服务、实体设备和长时间内存压力未验收。临时合成基准、
+  本轮前端构建输出和一次性日志已清理，保留现用项目缓存。
+
+## 2026-10-19：继续深挖——异步历史列表与 Android 测试实现隔离
+
+- 基于 clean main `bd778732`，在 `perf/runtime-cleanup` 分支准备，范围见
+  [设计记录](../plans/2026-10-19-runtime-resource-cleanup.md)。用户继续使用
+  电脑，仍只进行离线合成测试与后台检查，不启动原生应用或访问私有数据。
+- 历史列表用 oneshot 屏障控制文件扫描：读取期间开始 B，旧顺序把 B
+  错列为已保存历史；回归先失败。当前会话 ID 改为读取完成后取得，同例
+  通过，并覆盖读取期间 A 完成后应显示、其他旧记录保留。模块 3 项通过；
+  独立复核确认没有新增锁顺序或删除／音频／导出行为变更。
+- Android 16 个历史 Kotlin 实现从正式源码移至 JVM 测试源码；13 文件
+  逐字节不变，3 文件仅拆出生产仍用的回调类型、端点校验和服务常量。
+  未删除既有行为测试、修改协议或开启缩减器；不声称这项移动降低运行 RSS。
+- 移除结构检查的旧文件／metadata 豁免，两项新拒绝用例先失败再通过。
+  APK 检查覆盖各 DEX 中的旧实现、文件 facade 和内部类；独立复核发现
+  初版未覆盖单独的辅助类型，补入负例并修正后，27 个旧顶层类型全部匹配，
+  生产适配器及 probe 类型不误拦。结构 25 项、native packaging 12 项、
+  CI scope 7 项通过；后续 Android CI 已确认实际 Kotlin/JNI 及两个 APK
+  构建与隔离校验通过。
+- 本轮还审查了共享 MT／HTTP／连接取消、Gemini 代次清理、前端 late
+  reply／隐藏窗口／监听器，以及 desktop 双声源与保存选项边界；没有
+  确证的新问题就保持原实现。CoreAudio 停止尾帧疑点未形成安全最小修复，
+  不将推测记作缺陷或进行原生采集验证。
+- 组合源码的无参数 `./scripts/check.sh` 全通过：core 106＋4 契约、
+  runtime 826＋既有 ignored 1、Rust JNI 24、updater 4、macOS desktop
+  630＋既有 ignored 1、前端 146 文件／2,410 项，严格静态检查和生产构建
+  通过。低优先级、Rust 并发 2。
+- [PR #300](https://github.com/yuxino/Mimi/pull/300) 的 `d4039be4` 在合并前
+  通过[跨平台 CI](https://github.com/yuxino/Mimi/actions/runs/39269321320) 与
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/39269321232)，包含
+  macOS、Windows x64／ARM64、Linux、实际 JVM/JNI、debug／release APK。
+  合入 main `68940e93` 后核对完整树与受测分支一致；工作分支已清理。
+- 本轮没有真实服务、实体设备、长期内存压力或原生阅读体验验收。
+
+## 2026-10-19：后台优化——历史摘要、双声源投影与旧凭据分支
+
+- 基于 `c0e6284d7148ad537ce1517fc9c8b12d738685cf`，范围见
+  [设计记录](../plans/2026-10-19-history-overlay-and-legacy-cleanup.md)。沿用
+  用户不打扰约束：只做源码、合成数据和后台检查，不启动应用或访问真实凭据、
+  会话记录、音频、权限及已安装应用。
+- 双声源固定样本：每路 64 条历史，公共历史仅保留末尾两条，同时有两路
+  live tail。三个显示模式原先均额外读取 512 次历史正文字段，修复后为 0；
+  同时核对 source 顺序、重复正文、空尾部、裁剪和 owner ID。相关 4 文件
+  150 项通过。这是投影工作量对照，不是实际帧率测量。
+- 历史列表固定样本：8 个完成记录，每个 2,048 条、正文共 2 MiB。
+  旧读取每记录另持有 2,097,152 字节正文 String 和 131,072 字节条目 Vec；
+  新摘要不创建这两份数据，仍保留受既有 16 MiB 文件上限约束的单行缓冲。
+  同机 debug 三轮旧读取为 70.911／56.501／68.206 ms，摘要读取为
+  53.655／59.460／56.343 ms；有一轮反向，不据此承诺稳定耗时改善或
+  整个进程 RSS 降幅。临时合成基准不作为产品代码或常驻性能测试保留。
+- 清理两项全仓无引用的前端导出，以及生产构造路径恒关闭的旧 Alibaba
+  native-to-native 迁移分支。保留真正的一次性 native-to-file 导入；仅淘汰
+  已失效策略测试，将空旧槽位后查找有效值的用例迁入现行导入器，并保留
+  missing-file、读取回验、清理重试和环境隔离保护。该两文件净减 308 行，
+  相关 180 项通过；历史读取聚焦检查 21 项通过，独立复核未发现兼容性回归。
+- 组合冻结树的无参数 `./scripts/check.sh` 全通过：core 106＋4 契约、
+  runtime 826＋既有 ignored 1、Rust JNI 24、updater 4、macOS desktop
+  629＋既有 ignored 1、前端 146 文件／2,410 项，严格格式／静态检查和
+  生产构建均通过。低优先级运行、Rust 并发 2。源码提交 `558e80ec` 的
+  [跨平台 CI](https://github.com/yuxino/Mimi/actions/runs/39265652162) 和
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/39265652196) 均通过，
+  包含 macOS、Windows x64／ARM64、Linux 与实际 JVM/JNI 检查。
+- 未做原生交互、真实服务、长期运行内存压力或实体设备验收；下一步应在
+  允许非打扰实测的时段对比双声源持续字幕和大量历史记录下的实际操作耗时。
+
+## 2026-10-19：后台排查——滑条写入积压与停止句尾
+
+- 基于 clean main `5d487431a1ec62ed89326a4af914a696fba6dbaa`，仅修改
+  [设计记录](../plans/2026-10-19-bounded-settings-and-asr-finish.md) 所列两个边界。
+  用户正在使用电脑，本轮不启动应用、显示窗口、播放或捕获音频，不读取
+  私有凭据，也不替换正式／开发安装。
+- 固定滑条样本：阻塞首次保存，连续 100 次调整，再关闭历史保留。修复前
+  字号／透明度两例均提交 102 次 native 保存；合并未提交的连续滑条值后
+  均为 3 次，最终值与后续普通设置顺序不变。这是调用次数对照，不是
+  实机延迟或内存占用基准。
+- 固定 ASR 样本：先接纳短草稿，再同时排入完整尾稿与结束确认。修复前
+  HQ 停止兜底只确认旧短稿；修复在共享 ASR bridge 的队列结束边界先交付
+  有效尾稿。普通字幕接收方、可靠 final、Clear 与 overflow 保持原规则。
+- 新增共享 finish fixtures，直接 Rust 覆盖确定性队列顺序；Android 的
+  真实 JNI loopback 用同例验证最新尾稿兜底和权威 final，不声称该 JNI
+  测试确定性复现调度竞态。本机无 JDK，实际 JVM/JNI 验证交给 Android CI。
+- 前端两个聚焦文件 52 项通过；无参数 `./scripts/check.sh` 全通过：core
+  106＋4 契约、runtime 826＋既有 ignored 1、Rust JNI 24、updater 4、
+  macOS desktop 631＋既有 ignored 1、前端 146 文件／2,404 项，以及严格
+  静态检查、生产构建和 debugger 边界检查。检查低优先级运行，Rust 编译／
+  测试并发限制为 2。提交 `c0e6284d` 的
+  [跨平台 CI](https://github.com/yuxino/Mimi/actions/runs/39263365958) 与
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/39263365501) 均通过，
+  包含实际 Kotlin/JNI 回归；未使用本机模拟器。
+- 无真实服务、macOS 原生滑条／停止操作、Windows／Linux／Android 实体
+  设备或长期内存压力验收；下次有非打扰测试时段再检查实际交互及真实句尾。
+
+## 2026-10-19：v1.6.3 后 main 发布回归与界面基线核对
+
+- 基线为 clean main `552171d53f305a88ca21104fdff1067b8b338c11`，对比公开
+  v1.6.3 的 19 个后续合并改动；未引入其他 worktree、stash 或未合并实验策略。
+- 无参数 `./scripts/check.sh` 全通过：core 106＋4 契约、runtime 821＋既有
+  ignored 1、Rust JNI 24、updater 4、macOS desktop 631＋既有 ignored 1；
+  前端 146 文件／2,398 项、严格静态检查、生产构建及 debugger 边界检查通过。
+  完整跨平台 [CI 39199103378](https://github.com/yuxino/Mimi/actions/runs/39199103378)
+  和同 revision [Android CI](https://github.com/yuxino/Mimi/actions/runs/39123053791)
+  均通过；实际 Kotlin/JNI 证据来自 Android CI，本机未另跑 Gradle。
+- 版本同步为 v1.6.4（Android 10604）后，无参数完整检查再次全部通过；
+  此次同步只涉及版本、双语说明和本记录，产品源码保持基线。
+- 隔离副本复用当前 45 项名称输入回归，仅把 NameDraft 换回 v1.6.3 实现，
+  出现 17 项断言失败；恢复当前实现后 45 项全过。第一次临时路径未规范化
+  导致测试文件未加载，未把该次环境失败计作缺陷证据；正式对照使用相同
+  规范化目录和测试。临时副本已移除。
+- 稳定签名的 macOS watch UI-test 检查添加确认、名称保存后跨页返回、字体
+  菜单和保存选项默认关闭。embedded UI-test 的合成会话进入 listening，
+  浮动 capsule／panel 可展开、可返回设置、正常停止；不冒充真实采集或服务。
+  本轮未原生操作暂停／恢复、连续字幕或缩放，相关自动回归已覆盖，但不能
+  代替这些原生交互验收。
+- 最终界面保持原 main，不包含本轮任何排版改动。两界面文件与基线逐字节
+  相同，watch 返回原 CSS，native binary 内嵌该 revision，原生 AX 为
+  `127.0.0.1:1420`。重开 UI-test 确认首设标题、行高、行尾帮助均恢复基线；
+  同一原生窗口另检查零配置首设与无凭据配置编辑两种状态。
+- 浏览器抢焦后出现 AX 有内容但截图空白；按 common-regressions 从原生
+  应用菜单进入设置后恢复绘制，未改代码、清缓存或重置权限。
+- 无真实 provider、凭据复制、捕获、录音或录制退出落盘实测；无 Windows／
+  Linux／Android 实体设备和长时间运行验收。正式应用保持原样。
+- v1.6.4 从 `6b65473be931b7f0936e7a2c8a969af19d7e066e` 正式发布并成为
+  Latest。[main CI](https://github.com/yuxino/Mimi/actions/runs/39201323680)、
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/39201323686)、
+  [标签打包 CI](https://github.com/yuxino/Mimi/actions/runs/39201734268) 和
+  [标签 Android CI](https://github.com/yuxino/Mimi/actions/runs/39201734279)
+  全通过；包括 Windows ARM64 编译／启动、Windows portable 和 Linux 包安装／启动。
+- 草稿全部 17 资产通过 16 条 SHA256SUMS、远端 digest 与 5 份 updater 签名
+  校验；公开后匿名完整下载 17 资产均匹配。标签、Latest 与应用实际使用的
+  小写仓库更新地址返回完全相同的清单；Release／updater 双语说明一致，
+  GitHub 原生 Contributors 的本次贡献者头像已显示。
+- 下载回来的 macOS 双架构归档、DMG、固定身份、signed source／version 均
+  通过验证。ARM 实际 release 可执行文件以 UI-test 内嵌前端启动，首设原布局
+  与添加／取消确认通过，正常退出；安装身份与现有正式应用连续，没有替换
+  正式安装。Intel 仅构建、签名与包验证，不声称 Intel 硬件或实际安装更新验收。
+
+## 2026-10-18：自动名称草稿与较新原生状态的确认边界
+
+- 基于 main `530b2be55b76da75dbd997c4ffde01f0e8b008c2`，受测 dirty
+  工作树的 NameDraft 源 SHA-256 为 `7c04f551…bf3a2fad`；范围见
+  [设计记录](../plans/2026-10-18-pending-name-source.md)。原生先确认 A、再
+  发布 B、迟到 A IPC 成功时，全局 heading 保留 B、旧输入却永久显示 A。
+  三类名称共用的真实输入与实际 ServiceProfiles 正式负例先有 12 项失败。
+- 仅增加本次提交名与待确认 source 两个有界字段，分开更新确认基线和
+  覆盖草稿的条件。较新本地 typing／ABA、IME、原始空格、迟到旧 own ack、
+  无回显、空别名、失败／显式重试均保留各自语义；接纳 B 不额外写回 B。
+  preflush baseline 与 IME 四个新增负例先失败，最后的无新字符 interrupted
+  composer 还暴露 controller 过早释放；用既有 composition 标记保留所有权。
+- quick frontend 的 typecheck、选定 lint、provider-copy、diff 通过，相关
+  14 文件／450 项全过；最终仅新增一个旧 own ack 的非 pending 控制，
+  单文件 45 项与该文件 lint 全过，生产源码未再改变。实际 ServiceProfiles
+  的 167 项含 heading／输入一致、导航返回及无额外保存回归通过。
+- 实际 Chromium 使用真实 SettingsView／ServiceProfiles／NameDraft 及
+  store bootstrap／response gate，仅 native IPC 为内存合成；等初始化 ready
+  后重开实际 editor。三类名称均完成 own A → external B → 旧 A 回复，
+  显示 B、保留输入／focus、真实返回列表再编辑仍 B，各只写一次 metadata；
+  翻译别名还覆盖清空。ABA 第二次 A、无名称回显、失败重试及 debounce
+  前新基线对照均过。浏览器无异常，凭据 save／reveal／connection-check
+  计数为 0，两张真实编辑器截图已查看。浏览器与本轮 1431 Vite 均关闭，
+  1431 确认无监听；临时依赖链接已移除。IME 仅正式 DOM 事件回归，未冒充
+  原生输入法或原生 IPC／设备验收。
+- 未跑本分支全量前端、production 或 native 构建；由 root 在组合冻结树
+  完成统一验收。没有真实 provider、真实凭据读写、捕获或私有会话数据。
+- root 变基 main `4ae49cb` 后前端源码／测试／依赖／工具配置未变，与独立
+  popup mutation 修复组成冻结 `7ba8423b4c6d1d14b3f79df6a52be9e94988a9a0`；
+  单 worker 完整 146 文件／2,398 项（232.17s）、全量 lint、provider-copy、
+  带类型检查的 production build／图标验证及 17 文件 debugger 扫描均通过。
+  之后仅补证据，未改断言或超时，保留既有大 chunk 提示；原生验收限制不变。
+
+## 2026-10-18：嵌入控制窗口的字幕更新边界
+
+- 基于 `1b3b111`，范围见[设计记录](../plans/2026-10-18-embedded-control-render-boundary.md)。
+  真实 OverlayWindow → ControlWindow → Panel／Capsule／Timeline 合成原生
+  IPC 用例在 hidden／island／panel 各发送 50 次字幕与延迟快照；父模型均
+  运行 50 次，旧控制模型每模式至少 50 次，新实现新增 0 次。三个正式
+  工作量负例先失败；修后五项通过，字幕稳态仍发布最新草稿，节点与
+  打开的 picker portal 身份保持。计数不推算 CPU、帧率或原测试超时原因。
+- 独立对照覆盖八语言、无设置替换的语言事件、System 读取当前 navigator
+  语言、关闭面板后的静态文案、目标语言／pulse 样式、暂停／停止阶段、
+  原生 mode、迟到快捷键信息、尺寸 observer 及卸载监听清理；独立源码
+  复审无阻断。仅增加控制窗口 memo 与现有 locale 订阅，不改整个 overlay、
+  字幕稳定器或 popup observer；没有新增系统语言通知。
+- quick frontend 的 provider-copy、typecheck、选定 lint 与 diff 检查均通过，
+  相关 13 文件／199 项回归通过；包括既有控制窗口帮助／popup 生命周期、
+  记录阅读及两种 445 草稿对照。没有将本轮工作量结果归因于旧超时。
+- 变基到 main `fdc765f` 后生产代码与新回归不变，实际 Chromium 在
+  `ef148679e9237cf39c8f86e385929cc314c46afa` 挂载真实 OverlayWindow，
+  仅合成 native bridge／embedded flag。先移除 motion fixture 的占位表面与
+  全局 section 尺寸样式，保留产品 CSS。每模式 50 快照含稳态尾更新各有
+  52 次父计算、0 次控制 render／model；最新字幕、节点、打开的 portal
+  保持。以可见 DOM 等待八语言、设置、阶段和 mode 更新，已查看真实面板
+  与打开菜单截图，浏览器无异常；关闭了本轮 Vite 和 Chromium。
+- observer 仅另行量化、未修改：50 次字幕／延迟快照逐条等待显示，有 100 次 menu
+  rect 读取，panel／anchor／portal 几何不变、无新增 bounds IPC；menu 与
+  toast 共存的 8 次显示更新有各 16 次读取，同样无新增 IPC。祖先 transform、
+  portal 尺寸／增删、toast 清除及 viewport 对照的上报与实际 rect 相符。
+  该候选留待独立设计，不以此推断所有祖先／字体变化或 native hit testing。
+- 随后同一冻结前端单 worker 完整测试 146 文件／2,361 项、全量 lint、
+  带类型检查的 production build 全过，图标验证与 17 个输出文件的生产
+  debugger 边界扫描通过；未改测试阈值或断言，保留既有大 chunk 提示。
+  之后仅补本证据文档，移除临时依赖 symlink，未自行再次变基。
+- 无 native 构建、真实 provider、捕获、私有字幕或凭据；浏览器几何与
+  合成 bridge 不能代替原生 Wayland 输入区域、穿透和 compositor 交互验收。
+
+## 2026-10-18：嵌入 popup 测量的字幕 mutation 范围
+
+- 基于 main `4ae49cbd3c9983a9cff6d522994b6a911cbc180b` 的独立 dirty frontend
+  工作树，范围见[设计记录](../plans/2026-10-18-embedded-popup-mutation-scope.md)。
+  caption-only／latency-only × 无 layer／仅 menu／仅 toast／两者的八个
+  真实 OverlayWindow 正式负例均先红；初次面板 focus frame 先执行，再打开
+  菜单并断言 layer 确实存在，避免场景退化。旧策略每三个显示更新都新增
+  三次 popup 测量查询，修后查询、layer rect 和 bounds IPC 均新增零次。
+- 仅传既有稳定 subtitleRootRef 并过滤明确字幕 sibling 子树，未知、祖先、
+  portal、STYLE／LINK 与 mixed batch 保留原 schedule；初次测量、resize、
+  几何去重与退出 clear 不变。正式组件对照覆盖真实 toast 替换／移除、menu
+  几何／增删、stylesheet 子树／Text／LINK、未知 sibling、mixed 与 pending
+  frame 退出；额外 callback fixture 覆盖 null／替换／两向不安全 ref、Text／
+  Document／未知类型／空 batch，后者不冒充真实 body observer emission。
+- 独立源码复核无阻断；quick frontend 的 provider-copy、类型、选定 lint、
+  diff 与 13 文件／210 项回归全过，保留三模式 50 快照 memo 零额外 control
+  model、最新字幕／节点身份与两种 445-draft 对照。完整前端留给冻结变更的
+  组合验收，没有改超时或弱化断言。
+- 相同冻结生产源码的真实 Chromium 矩阵通过：原 50 次逐条显示字幕／latency
+  的 menu 读取由 100 降为 0，toast 共存的 8 次显示更新由各 16 次降为 0；
+  另将 caption-only／latency-only 分开，八种 layer 组合各实际显示三次，
+  popup measure／rect／IPC 均零，parent 正常更新、control render／model
+  保持零，几何／节点身份不变。三模式 50 快照与最新草稿仍通过。
+- 十四个实际几何／订阅对照的最后 menu／notification 上报均等于真实 rect：
+  真正 toast 文案替换、STYLE 子树／Text／移除、LINK 增删、mixed、祖先
+  transform、portal 尺寸／增删、locale 和 viewport。通知及样式对照真实
+  改变 toast 宽高；本例 locale 几何相同，正确不发额外 bounds IPC。
+  两张真实 panel／toast、可见菜单截图均已查看，browser errors 为空。
+  首次工具匹配因 prop 签名换行中止；修正后仍严格单匹配并保留实际实现。
+- 受测生产文件之后未改（SHA-256 前缀 control `40b649018ea4ddf5`、overlay
+  `ebbb04b6b938cd27`）。浏览器 controller 均关闭；Vite 命令 session 已退出
+  130，但 1430 仍响应且环境看不到所属 PID，已交 coordinator 处理，不将其
+  写成清场成功。临时 browser 证据尚未归档为可重启持久样本。
+- 本轮没有 native 构建、真实 provider、音频捕获或私有内容。仅以调度／
+  DOM 读取次数描述收益，不推算 CPU、FPS；native Wayland 输入区域与
+  compositor 仍需平台验收。
+- root 与独立名称修复组成冻结 `7ba8423b4c6d1d14b3f79df6a52be9e94988a9a0`，
+  单 worker 完整 146 文件／2,398 项（232.17s）、全量 lint、provider-copy、
+  带类型检查的 production build／图标验证和 17 文件 debugger 扫描均过。
+  后续仅补证据，无断言／超时变化。最终明确 net-enabled 查询仍看不到
+  1430 所属 PID，未终止其他进程，也未将清场记成成功。
+
+## 2026-10-18：可靠迟到原文保持服务观察顺序
+
+- 基于 `d5664012c7d95d962799df5f2e8b9cfd6adcd038` 的 dirty debug 工作树，
+  范围见[设计记录](../plans/2026-10-18-provider-source-order-admission.md)。
+  同一真实 aligner → 暂扣 mailbox → controller 四输入在修前把旧句当作
+  新句，直接交付则保留当前句；原 main 与上一轮 provider 修复都有此问题。
+  正式回归的四输入、旧译文先完成、新译文先完成三种断言均先红后绿。
+- 只将既有私有 source ordinal 接入共享 admission，不加可靠消息、身份集合、
+  IPC 字段或 Kotlin 排序规则。64 项身份窗口保持；常量大小的各行 owner
+  顺序与独立当前／完整显示前沿保护混合有序／无序、淘汰与晚 metadata。
+  旧完整 pair 仍进历史，不能回退当前句；原 Volcano mutable clock 契约保留。
+- 最终 quick shared 通过 core 104＋4 契约、runtime 814（既有 ignored 1）、
+  Rust JNI 18、updater 4、格式、严格 Clippy、架构和 diff 检查。独立实际
+  源码复核覆盖具体反例及 100,000 个固定 seed 操作，每步状态校验均通过。
+  desktop 的正式 helper timeout 回归还经实际源码提取编译通过，包含双源、
+  旧历史、当前确认和重复 final；未将此当作整个 native crate 编译。
+- 同一受测生产源码的固定 debug JNI 库 hash `7325798b`，实际 Java exchange
+  经本地 CONNECT／TLS／WebSocket 通过：1 连接、10 内容事件、21 poll，
+  当前原文 final、旧历史、旧重放、当前译文 preview 与正常 finish 的两对
+  历史均保持；transport 在硬停前关闭。上一轮 draft-barrier 的原三阶段
+  Java/JNI 回归也用同一固定库复测。证据只含结果、计数和库 hash。
+- maintained Kotlin/JNI 用例使用真正 completed response.done 完成 pair，
+  覆盖 SubtitleBus 和正常／finish 交付；本机缺 Kotlin／Gradle 工具，仍待
+  精确提交 CI 编译执行。JNI poll 不能暂停 native 消费者，确定性 backlog
+  只由 Rust 用例覆盖。本机缺 GTK，完整桌面 native 亦待 CI；无真实 provider、
+  凭据、采集、设备或 UI 验收。临时复现日志尚未作为可重启样本归档。
+- 额外实测确认 unchanged emitter 的既有边界：迟到 source final 之前的
+  ID-less TranslationStarted 仍会重设当前 deadline；本修复只确保后续旧
+  identified pair 不取消该 deadline 并保留历史，start 身份归属另行处理。
+- 组合 main 的 conditional poll 后，无参数 canonical 通过 core 104＋4契约、
+  runtime 814＋既有ignored 1、JNI 24、updater 4及共享严格检查；桌面止于
+  本机缺 `glib-2.0.pc`。组合SO完整hash `020316e7…0c7a7db`，source-order
+  Java/JNI为1连接／10内容／20poll，旧draft-barrier为1／8／20，两项全部通过。
+  随后变基 main `fdc765f`，shared／desktop／Android源码及测试未变；新增
+  前端Select修复已有独立全前端与Android CI，完整native／Kotlin仍待本PR CI。
+
+## 2026-10-18：identified 原文 final 与翻译等待共同准入
+
+- 基于 `7501a4e577566a0f480bb4b4d835c3a46f96cde9` 的 dirty debug 工作树，
+  范围见[设计记录](../plans/2026-10-18-identified-translation-start-admission.md)。
+  实际 emit → mailbox → controller 正式回归先红后绿：旧句首个原文 final
+  在 t=5s 到达时，修前将当前截止从 t=6s 改成 t=11s，或重新打开已完成句的
+  pending；字幕和历史未被替换。单独绕过附带 Started 的同输入对照不改变等待。
+- 四个共享生产文件让 final、既有顺序、content revision 与 private activity
+  bool 共用一个 envelope／可靠槽／controller 准入；无新 wire、队列或身份表。
+  已确认、过旧、discarded、空白／超限及 ordinal 耗尽不能误开等待；保留
+  legacy ID-less、其他 provider、original-only 和 source-order 原契约。
+- quick shared 通过 core 106＋4 契约、runtime 821（既有 ignored 1）、Rust
+  JNI 24、updater 4、格式、严格 Clippy、架构与 diff。首轮网络隔离使本地
+  mock socket 无法 bind；原命令允许本地测试网络后通过，未改变阈值。独审
+  纠正一处测试的重复 rank 后，合法新 ID／旧 rank 的 focused、runtime
+  all-target strict Clippy 与格式再次通过；生产逻辑未随此测试修正改变。
+- 新共享合成夹具同时用于真实 decoder／aligner／emit 的 Rust 回归与 maintained
+  Kotlin JNI TLS 用例。旧固定库 `020316e7` 的实际 Java exchange 先失败；
+  新库 `7e2ba7ab` 同样本 1 连接、10 内容事件、23 poll 通过：当前完成及旧句
+  归档后 pending 仍 false，下一句正常 pending，finish 保留三对历史并在硬停前
+  关闭 transport。原 source-order 的正常／finish Java JNI 回放也用该库通过。
+- desktop 新维护用例只验证无 activity metadata 时 adapter 不自行创建／替换
+  deadline；两个正式 helper 回归及另行 private marked-envelope 双源应用经真实
+  源码提取编译通过，不代表完整 native crate 或真实 timer 调度验收。已补的
+  Kotlin／Gradle 测试和完整 native 仍待精确提交 CI；本机缺桌面 GTK 开发库。
+  本分支不跑无参数 canonical，组合验收由 root 接续。无真实 provider、凭据、
+  捕获、设备或 UI 验收；临时证据未升级为可重启的持久样本归档。
+- 变基 main `0cd2b2d` 后所有shared／desktop／Android源码及测试保持相同；
+  无参数canonical通过core106＋4契约、runtime821＋既有ignored 1、JNI24、
+  updater4和共享严格检查，随后桌面编译止于缺 `glib-2.0.pc`。组合构建库
+  完整SHA256与上述已通过实际Java两项回放的 `7e2ba7ab…74505c2a` 完全一致；
+  最终仅补证据文档，完整native／Kotlin仍待精确head CI。
+
+## 2026-10-18：字幕滚动与下拉菜单归属
+
+- 基于 `7bf13f1`，范围见[设计记录](../plans/2026-10-18-select-scroll-ownership.md)。
+  Wayland embedded panel 与真实 Timeline 在同一 document；新 caption 触发
+  timeline 的 scrollTo 时，原 Select 把无关 sibling scroll 当作关闭意图。
+  正式负例和 HTML／SVG sibling、Window target 边界共 4 项修前失败。
+- 只忽略与 trigger 无祖先关系的 Element scroll，保留菜单自身／文本滚动，
+  真祖先、document／window scroll、resize、blur 和原定位／键盘行为。
+  真实 Select＋Timeline 回归保留 popup／focus，再用方向键与 Enter 完成选择。
+- 比例 quick frontend 的类型、选定 test lint、provider-copy、diff 与
+  3 文件／73 项回归通过；生产 Select 独立 lint 通过。
+- JSDOM 仅为实际 scrollTo 补异步非 bubbling 事件，验证事件归属策略；
+  未据此宣称 native Wayland／compositor 已验收。
+- Root 实际 Chromium 使用真实 Select＋Timeline、布局及浏览器 scroll 事件：
+  新 caption 在旧实现关闭菜单，修后保持；菜单自身滚动保持，trigger祖先
+  实际滚动及 viewport resize 关闭。未stub scrollTo／事件，已查看截图并
+  关闭预览。变基到 main `1b3b111` 后前端源码未变；无 cargo、provider、
+  采集或用户配置操作。完整前端检查另记，native compositor 未实测。
+- 完整前端145文件／2,356项、全量lint、带类型检查的production build及
+  17项生产边界检查通过。首次双worker全量中，既有445-draft Gemini一例
+  触及原5秒上限，其余2,355项通过；该例两版本隔离为2.09／1.54秒通过，
+  随后单worker完整全绿，未改断言、超时或产品实现，未跑无关native suite。
+
+## 2026-10-18：JNI 稳定快照轻量轮询与版本一致性
+
+- 最初基于 `8d60c7613a076c971a17b9f2ee7578ade4cef712`，随后组合并变基到
+  main `7bf13f1fd33d39416cb6d6ca9545185bf5fa05c5`，生产修改保持不变，
+  范围见[设计记录](../plans/2026-10-18-conditional-jni-poll.md)。可选
+  `sinceVersion` 相等时只返回版本与当前终态信息；旧 poll 及旧 native 回退
+  保持 full。controller 与 revision 同锁发布、捕获后解锁再序列化；无响应缓存。
+- 五个正式回归先红，修后 JNI Rust 24 项通过，含计时器更新、终态迟到、
+  旧响应字段/null、stale/invalid 和并发版本一致性；strict Clippy、fmt、架构、
+  diff 检查通过。原发布顺序在真实函数竞争用例中出现 state 427／version 426，
+  临时精确门闩也证明旧版本＋finished 会让 Kotlin 跳过尾字幕。
+- 最终生产函数分配 A/B：3 行×每字段128B，full 从136次／22,629B降为
+  37次／11,540B；20行×1,024B为412／449,630→109／390,924。旧请求和
+  changed full 均无退化；steady四组合均1次／128B，正常一位版本／无错误时
+  JSON为64B。68项full深比较、34项light/metadata检查通过；不推算JNI/JVM、
+  CPU、RSS或设备延迟，完整对象只允许键序变化。
+- 实际 Java JNI 新协议旧库红／新库绿；本地TLS正常tail与fatal error都保留
+  当前终态并关闭socket，旧库同请求返回full的两项兼容对照也过。纯Kotlin
+  6项JUnit经项目固定编译器版本通过，Network adapter临时stub未调用；未冒充
+  完整Gradle/JNI suite。维护中的Kotlin/JNI与原生平台检查留给精确提交CI；
+  协议夹具只走loopback，无真实provider、生产凭据或原生采集验收。
+- 组合树无参数canonical通过 core 95＋4契约、runtime 810＋既有ignored 1、
+  JNI 24、updater 4及共享fmt／strict Clippy／架构检查；桌面编译止于本机
+  缺少 `glib-2.0.pc`。组合SO固定SHA-256 `ed597bce…bcd8f5a`，实际Java
+  JNI协议、TLS正常tail、fatal error及旧库两项full回退共5场景重跑全过。
+  最终变基后的完整tree与该组合验证相同，仅随后补充本证据记录。
+
+## 2026-10-18：历史页日期格式器复用
+
+- 基于 `90fa8cb`，范围见[设计记录](../plans/2026-10-18-history-date-formatting.md)。
+  真实 SessionExport 合成组件含 20 个同旧日会话与实际 30 条正文分页；
+  相同 archive 每秒返回新对象时，每轮 Intl formatter 构造从 70 降到 3，
+  五轮 350 → 15，无新正文读取，历史按钮／article 节点身份保持。
+- 新正式工作量用例修前以 70 对 3 失败，其余 11 个行为用例修前已通过；
+  修后新用例与原生命周期、选择、播放、删除回归共 46 项通过。
+  保留三个日期／时间 options、八语言、ISO timestamp、跨本地午夜的
+  Today／Yesterday、新 archive 状态即时展示及空列表惰性行为。
+- quick frontend 的类型、选定 lint、provider-copy 与 diff 检查通过，
+  相关 9 文件／135 项全部通过。独立审查无阻断；另从真实修前／修后函数
+  做 7 时区 × 8 语言 × 8 个 DST／午夜时刻的 448 组分组差分，输出相同。
+- formatter 只在当次 render 复用；真实 Intl 注入默认时区的用例验证下次
+  poll 重新读取时区，未将其当作 OS 时区通知验收。未改 poll、保留策略或
+  整页 memo；没有真实 provider、采集、记录、凭据或原生交互。
+  本轮证据是构造／格式化工作量，不能推算生产 CPU、帧率或端到端延迟。
+- root 的真实 Chromium 设置页使用合成 native archive／history／正文，
+  20 会话、30 行正文的 3 次真实轮询只构造 9 个 formatter，无新增正文读取，
+  节点与显示文本保持，已查看截图并关闭预览。随后与字体修复一起完成
+  前端 145 文件／2,345 项、lint、typechecked production build 与输出边界
+  17 项检查。重放到 `a71680c` 后前端源码未变；未跑无关 native suite。
+
+## 2026-10-18：Android PCM 队列背压恢复
+
+- 基于 `85c14105038dba57512e3f2f74fb5d88b964b72f` 的 dirty debug 工作树，
+  包含前轮硬停 owner；范围见[设计记录](../plans/2026-10-18-android-pcm-backpressure-recovery.md)。
+  实际 Java JNI＋本地 CONNECT／TLS／WebSocket，无真实 provider、凭据、
+  capture 或外网连接。只将首次 typed Backpressure 转入原连接的现有 Rust
+  恢复通道，不改共享 bounded 策略或增加 Kotlin 恢复算法。
+- 旧库暂扣 setup ack 约 2.3s 时 21 包接纳／1 包拒绝，排空后后续 5 包全拒；
+  状态仍 Listening／无错误，Ping／Pong 正常。相同恢复断言在旧固定库上
+  失败；新固定库同 handle 建立第二连接，5 帧／16,000B 新标记 PCM 全到达，
+  硬停 1ms Close，stale PCM 后实际监听 500ms 无第三连接。
+- 两个正式 Rust 用例修前因无事件失败；修后 JNI 18 项通过，含新增的
+  一次报告、旧 endpoint 隔离、硬停 Closed 安静及真实共享客户端同 handle
+  恢复路径。实际 Java/JNI 的原四项 stop／setup／graceful-tail 对照仍通过，
+  正常末尾一对字幕保留。新增 Kotlin/JNI 维护用例待 CI 真正编译执行。
+- JNI all-target strict Clippy、fmt、共享架构和 diff 检查通过。root 无参数
+  canonical 通过 core 93＋4 契约、runtime 797（既有 ignored 1）、Rust JNI 18、
+  updater 4 及格式／严格 Clippy／架构检查；随后因本机缺 `glib-2.0.pc` 停在
+  桌面 native 编译，平台与维护 Kotlin/JNI 仍以精确提交 CI 为门槛。
+  重放到 `922bbc5` 后受测 shared／JNI／Kotlin 源码未变。
+  暂扣的是第一代 setup，新连接及时应答；持续每代慢 setup
+  仍可能按既有策略再次溢出重连，不承诺全局重试次数上限、无损超预算音频
+  或 setup 延迟改善。设备、真实 provider 和原生捕获仍未验收。
+
+## 2026-10-18：迟到确认与下一句草稿的队列边界
+
+- 基于 `90fa8cb` 复现，受测源码冻结为 `4a479e8`（基于 `a71680c`）；范围见
+  [设计记录](../plans/2026-10-18-provider-draft-final-barrier.md)。真实共享
+  aligner → 有界 mailbox → session controller 的正式 Rust 红回归证明：
+  A 原文 final、B draft、迟到 A 译文 final 在消费者积压时保留 A 历史，
+  却把当前 B 丢掉。修复仅携带核心既有顺序的私有元数据，不新增可靠队列
+  消息、身份集合、Kotlin 规则或 session snapshot 字段。
+- 独立复审另使两个正式回归先失败：迟到 A 不能让尚未交付的旧 B 越过已
+  交付 C 的 final／draft。常量大小的已交付顺序前沿保持单调，并区分原文
+  final 与完整 pair final；额外覆盖 C 译文 preview 先交付的跨 lane 情况。
+  B 原文已 final 后，合法 B 译文 preview 仍可更新。
+- 首轮默认并行 shared 检查出现既有 xAI reconnect 用例在 50 ms 观察窗口
+  后确认历史仍为空；未改该用例、阈值或 xAI 实现，两个线程下单独复跑通过。
+  最终两个线程的 quick shared 全过：core 95＋4 契约、runtime 810（既有
+  ignored 1）、Rust JNI adapter 14、updater 4，以及格式、严格 Clippy、
+  架构和 diff 检查；独立源码审查无阻断。未做 native UI 验收。
+- 同一冻结源码构建的 debug JNI 库经实际 Java exchange → 本地 CONNECT／
+  TLS／WebSocket 三阶段验证通过：B 当前草稿、A 单次历史、旧 A draft／final
+  不回退、B 译文 preview 与正常 finish 均保持，且 transport 在硬停前已关闭。
+  单连接、8 个合成内容事件、20 次 poll；证据只含计数、结果和受测库 hash。
+- 随后只将本轮改动重放到 `8d60c76`，三个共享生产文件与 `4a479e8` 逐字
+  相同；保留 main 五个硬停／正常收尾／PCM 回归并合并新的 loopback 模式。
+  上述实际 Java 库仍对应 `4a479e8` 的 JNI adapter，不把旧库当作组合证据。
+- root 随后基于合并 main `47c5a35` 验收 `aa01686`，整树与组合 `d631a17`
+  相同。无参数 canonical 通过 core 95＋4 契约、runtime 810（既有 ignored 1）、
+  Rust JNI 18、updater 4 及格式／严格 Clippy／架构；随后因缺 `glib-2.0.pc`
+  停在桌面 native 编译。组合 JNI debug 库再构建并固定 hash `06fc0bcd`，
+  实际 Java/JNI 三阶段复跑通过：同样 1 连接／8 内容事件／20 poll，草稿、
+  单次历史、旧重放、合法译文 preview 与正常收尾均保持。原生和 Kotlin
+  完整构建仍以精确提交平台 CI 为门槛。
+- Android 新增 maintained JNI loopback 用例。公开 poll 只读快照，不能暂停
+  native 消费者；该用例验证正常分阶段
+  协议映射与 Kotlin 发布，确定性 backlog 由 Rust 门闩覆盖，不把它描述成
+  JNI 稳定复现旧队列故障。本机缺 Kotlin／Gradle／JUnit 工具缓存，完整
+  Kotlin suite 仍是平台 CI 门槛，无真实 provider、采集、凭据或设备验收。
+
+## 2026-10-18：缩放 IPC 有界串行
+
+- 基于 `ba87a50`，范围见[设计记录](../plans/2026-10-18-bounded-resize-ipc.md)。
+  真实组件的受控 ACK probe：120 次 move 原来产生 121 个在途请求；新 dispatcher
+  峰值为 1，仅保留最新待发坐标。旧手势 final move／end ACK 后才允许新 start，
+  未发出便释放的点击不积压；无 timer、超时放行、新依赖或 native 协议变更。
+- 正式 quick frontend 类型、lint 与 10 文件／228 项通过，含 41 个组件和
+  13 个调度回归；独立审查无阻断。完整前端 142 文件／2,317 项、lint、
+  typechecked production build、输出边界 17 项通过。
+- Linux Chromium 用真实 pointer capture 驱动 120 次移动、卸载重挂与受控
+  invoke ACK，验证峰值 1、最终 screen 坐标和 end barrier；另 8 个 browser／
+  native-stub 的释放、丢捕获、卸载、禁用回归通过，已查看实际 fixture 截图。
+  均为合成原生边界，不涉及真实 provider、采集、凭据或用户设置。
+- 同环境已有 `f949d61` 与本轮生产产物比较，JS 逐文件总量增加 755 字节，
+  Node gzip 默认等级 6 总和增加 295 字节；这是有界调度的体积成本，不是
+  安装包或生产 CPU／帧率测量。浏览器回退几何未变。
+- ACK 不表示 OS 已绘制；Windows 在命令执行时读 GetCursorPos，快速释放／
+  重启仍需实机验收。WebView reload、其他原生 owner 和传输内部重复交付
+  仍需 native gesture identity 才能完整隔离，未据本轮宣称已覆盖。
+
+## 2026-10-18：跨页字体保存归属
+
+- 基于 `f949d610`（与合并后的 `ba87a502` 同树），范围见[设计记录](../plans/2026-10-18-subtitle-font-save-ownership.md)。
+  实际字体组件、store、保存 coordinator 与 settings-changed 监听保持生产路径，
+  仅原生保存／枚举边界使用合成数据，没有真实配置、凭据、provider 或采集。
+- A 保存挂起、旧页选择 B、离页返回选择 C：旧组件在首写成功和失败两项
+  正式负控中均写入 A、C、B；窗口级有界 owner 改为 A、C，新 UI 与原生
+  设置均保持 C。没有新 C 时仍完成 B，不以卸载时丢弃合法选择规避问题。
+- 原有 15 项和新增 16 项通过，覆盖共享单待发槽、多实例、ABA、失败重试／
+  回滚与当前通知、旧 native 回显／外部值、闲置外部变化与 StrictMode。
+  另两项旧组件负控复现外部 D 使旧 A 返回过期后再选 A 丢失；强制读取 live
+  store 后，留页和卸载两种路径都补发最新 A。quick frontend 类型、selected
+  lint、10 文件／120 项通过；既有 resume 测试
+  有 React act 警告但未失败，未调整其断言或时限。
+- root 验收把源码不变的字体修复与缩放 dispatcher 一起重放到 `90fa8cb`；
+  完整前端 144 文件／2,333 项、lint、typechecked production build 和输出
+  边界 17 项通过。真实 Chromium 设置页面完成 A 在途、旧 B 排队、离页返回
+  选择 C 的成功／首写失败两种路径，均只写 A、C；没有新 C 时仍写 A、B。
+  三组真实导航／控件／store 配合合成字体枚举及持久化，已查看实际截图。
+- 原生旧回显／external ABA 由正式 store 监听回归覆盖，浏览器 fixture
+  不替代该事件边界；真实已安装字体、signed macOS／Windows 交互仍未验收。
+  单 WebView owner 不跨窗口共享，不更改普通交易次序，也不凭同值快照推断
+  原生 mutation 来源。
+
+## 2026-10-18：缩放收尾、滑块预览与应用刷新
+
+- 基于 `5e1c3eb` 的 UI 生命周期修复，范围见[缩放记录](../plans/2026-10-18-resize-drag-finalization.md)
+  和[设置预览记录](../plans/2026-10-18-settings-preview-and-picker-refresh.md)。
+  仅合成 UI／IPC 数据，无真实 provider、录音、凭据或用户配置。
+- 缩放原组件回归 16 项失败并有 6 个未捕获异常；统一 finish 后 40 项通过，
+  quick frontend 214 项通过。native completion 旧逻辑使 3 项新用例失败，
+  active-owner 检查后，真实生产函数抽取的 58 项几何／resize 回归通过。
+- Chromium 的 browser／模拟 native 两种边界各检查正常释放、真实捕获丢失、
+  卸载、禁用，共 8 组通过；每个 native gesture 仅一次 start／end，结束后
+  不再响应 hover。先移动一次使捕获生效再 release，避免把尚未生效的 pending
+  capture 误当 lostpointercapture。传输重排与签名原生交互仍未实测。
+- 两滑块最新预览与外部更新／失败回滚、普通设置交叉、隐私交易顺序均有
+  正式 store 回归；初始 7 项中 5 项修前失败，最终 18 项通过。冻结源码后
+  quick frontend 48 文件／992 项、类型与 lint 通过。未做保存写入合并，
+  不声称减少落盘；无 mutation ID 时同值外部事件的边界已明确记录。
+- 实际设置控件通过 8 语言 × 520／952 CSS px 共 16 组端点与方向键操作。
+  macOS／Windows／Linux 的无图标／目标退出共 6 组，每组挂载＋两次刷新
+  均为 3 次查询；另一次失败后重试通过。23 组均为合成设置 fixture，
+  不替代 native settings-changed 旧回显（由正式 store 回归覆盖）。
+- 完整前端 141 文件／2,303 项、lint、typechecked production build 与输出检查
+  通过。canonical 通过 core 93＋4 契约、runtime 787（既有 ignored 1）、
+  Rust JNI adapter 8、updater 4 及格式／严格 Clippy／架构检查，随后因本机
+  缺少 `glib-2.0.pc` 停在 native 编译；完整原生及精确提交 CI 见对应 PR。
+  后续原生验收重点为拖动时锁定、
+  收起／沉浸、错误恢复，以及快速释放后重新开始；仍不宣称跨 IPC 请求 FIFO。
+
+## 2026-10-18：Android 硬停后的连接清理归属
+
+- 基于 `ffddc20` 的 dirty 修复工作树，原 JNI adapter 在 `a1fe131` 至该基线
+  间未改。范围见[设计记录](../plans/2026-10-18-android-stop-resource-ownership.md)。
+  本地 CONNECT／TLS／WebSocket 夹具经实际 Java JNI export 调用共享客户端；
+  无真实 provider、凭据、音频、capture 或外网连接。
+- 旧 native library 在服务端收到 `session.finish` 后硬停，9,621ms 后仍能回复
+  Ping，证实已取走 Connection 的 receive loop 没被清理；同配置修后立即
+  Close。direct stop、暂扣 setup ack 时 stop、正常 finish 保留末尾一对字幕
+  均通过，Close 在夹具关闭前检查。第二 handle 仅 create／poll，快照与句柄
+  隔离通过，不声称两个活跃网络连接的验收。
+- JNI 正式 Rust 14 项通过；runtime 完整低并发 797 项通过、既有 ignored 1，
+  含迁移后的 owner 10 项。首次默认并行运行有既有 xAI 50ms idle 观察用例
+  失败（796 passed／1 failed／1 ignored）；隔离及完整双线程复跑通过，
+  保留原测试和时限。移除 Stop join、把实际连接 key 改回重试 generation
+  的临时生产代码负对照均被正式回归拒绝。
+- owner 迁移仅 public 可见性和文档不同；真实共享库＋桌面 re-export 的
+  无 GTK 补充 driver 9 项通过。runtime／JNI strict Clippy、三个受影响
+  Rust manifest 的 fmt、架构及 diff 检查通过。四个维护中的 Kotlin/JNI
+  loopback 回归尚待 CI 真正编译执行；本机缺 Kotlin／Gradle 和桌面 GTK
+  开发依赖，实际设备、全平台 native 与 signed capture 未验收。
+- 提交前重放到 `90fa8cb`，受测 shared／JNI／desktop re-export 与 Kotlin 源码
+  未变。关闭预览服务并复用现有依赖后，无参数 canonical 通过 core 93＋4
+  契约、runtime 797（既有 ignored 1）、Rust JNI 14、updater 4 及格式／严格
+  Clippy／架构检查，随后因缺少 `glib-2.0.pc` 停在桌面 native 编译。
+  完整 Kotlin／桌面 CI 为合并门槛，不把本机共享通过写成全平台验收。
+
+## 2026-10-18：共享会话与桌面快照分配
+
+- 调查基于 `10d726e`，提交前更新到 `58901be`，受测 shared／桌面源码未变。
+  [设计记录](../plans/2026-10-18-runtime-state-copy.md)说明聚合历史、各音源
+  状态和锁边界。无新 IPC 字段、保留策略、provider 或音频采集行为。
+- 真实生产函数抽取的分配 A/B 保持完整输出相等：20 条、每字段 1,024 字节
+  的共享单源 refresh 从 86 次／84,998 字节降为 45 次／42,758 字节；双源
+  128／127,733 → 87／85,493。桌面 20 条、每字段 128 字节单轨快照为
+  92／13,384 → 46／6,692，双轨 278／41,976 → 139／20,988。
+  这是合成夹具的分配证据，不能推算整体 CPU、峰值内存或端到端延迟。
+- 正式回归覆盖序列化的全部主字幕／track 字段、独立 history 和 pending
+  标记，以及 processed PCM 不覆盖 raw capture 活动；相关 60 项通过。
+  canonical 检查通过 core 93＋4 契约、runtime 787（既有 ignored 1）、
+  Rust JNI adapter 8、updater 4 项及格式、严格 Clippy、架构检查。
+- mock socket 测试在禁网 sandbox 里无法 bind；启用网络权限后上述检查通过，
+  未调用真实 provider。完整检查随后因本机缺 `glib-2.0` 停在 native build；
+  完整桌面与实际 Java／JNI 以对应 PR 的平台 CI 为门槛。未做原生交互验收。
+- 审查另外确认 recovery 清理 owner 被取消的问题，保留复现与后续方案；
+  本轮只修分配开销，没有把未完成的生命周期方案混入。
+
+## 2026-10-18：恢复任务取消与原生清理归属
+
+- 基于 `10d726e` 复现，提交前更新至 `8ec3d62`，受测 teardown helpers
+  保持不变。范围见[设计记录](../plans/2026-10-18-recovery-cleanup-ownership.md)。
+  真实 manager 方法的 Tokio 门闩夹具证实：旧恢复任务被 Start 取消时，
+  可留下 generation 71 的 client／pump，导致新代安装失败；不依赖真实服务。
+- 同步登记与独立 owner 使 capture stop／disconnect 不随等待者取消。
+  复审额外查出 Start 第二门禁丢失恢复接管意图、旧 attempt 迟到安装和
+  Stop 抢占后 Start 重新激活，均纳入正式编排回归；正常 Stop 的 drain／finish
+  保持。空 slot／generation tag 不再当作完整 teardown 已完成的证据。
+- 两个正式 production helper 模块 19 项回归通过；实际 manager／完整
+  recover_connection／真实共享 RecoverySchedule 的临时补充夹具 4 项通过。
+  四个负对照分别还原旧二次门禁、不清 active generation、忽略退役 epoch、
+  忽略激活 epoch，均被正式测试拒绝。临时抽取 driver 不作为持久测试交付。
+- helper 严格 Clippy、desktop fmt、共享架构与 diff 检查通过；quick desktop
+  检查在缺少 `glib-2.0.pc` 处停止，完整 Tauri 编译／测试以平台 CI 为门槛。
+  没有真实采集、provider、凭据或签名原生交互验收。
+- 该 owner 协调 desktop adapter 的 native capture／slot／双门禁；不复制到
+  Kotlin。Android drive 取走 Connection 后被硬停的取消安全另待本地模拟服务
+  验证，未把相似 await 结构直接宣称为已确认泄漏或完整修复。
+
+## 2026-10-18：前端重复工作、可见性与快照归属
+
+- 基于 `10d726e`，范围见[设计记录](../plans/2026-10-18-frontend-work-and-snapshots.md)。
+  只使用合成组件数据，没有读取用户记录、凭据或启动采集／服务请求。
+- 当前转写同条数跨会话、隐藏后停止展示轮询、诊断重入及迟到结果的新增
+  回归修前共 9 项失败，修后相关 72 项通过。可见性使用标准 document 事件，
+  普通失焦不停止轮询，既有跨页音频播放保留；未声称覆盖所有原生隐藏方式。
+- Gemini 8,192 个闭合引号的真实函数合成调用，单次同进程约 1,496ms →
+  5.9ms；独立复审另做 20,000 组标点／Unicode 差分，输出一致。正式回归
+  检查操作数量和 final 即时交付，不依赖运行时限。
+- 开发版 React/jsdom 工作量：200 选项、50 次关闭状态父渲染，label 读取
+  10,050 → 50；50 次同一行鼠标移动 commit 50 → 2；100 次无关滚动触发的
+  tooltip anchor 测量 200 → 0。20,000 次语言标签读取不再构造 20,000 份表。
+  这些不是生产 CPU、整体内存或延迟比例。体积分析未据此改动拆包配置。
+- Linux Chromium 前台通过 96 组 tooltip 和 30 组字幕动画断言，覆盖八语言、
+  最小宽度、折叠状态和动画偏好。此处为实际组件＋合成原生边界，不能替代
+  macOS／Windows 原生窗口交互与可见性验收。
+- 完整前端首次运行 2,241 项通过，既有 445 次 draft 压力用例一项触及默认
+  5 秒上限；保留原断言和时限，隔离完整 modes 文件 84 项通过，压力用例
+  两个变体为 4.20s／2.97s。同配置临时 HEAD／当前源 A/B 两变体均通过，
+  当前样本更快；不据此声称生产 CPU 比例。精确提交的完整 CI 结果见对应 PR。
+  后续原生验收优先检查窗口隐藏／恢复和新会话相同条数的记录切换。
+
+## 2026-10-18：字幕历史渲染、启动查询与资源精简
+
+- 基于 `58901be` 的后续前端优化，分别见[历史渲染](../plans/2026-10-18-subtitle-history-render.md)、
+  [快捷键查询](../plans/2026-10-18-desktop-shortcut-support-cache.md)和
+  [资源元数据](../plans/2026-10-18-provider-asset-metadata.md)。无新依赖、
+  IPC、采集或 provider 请求；root 接受前已做独立互审。
+- 20 条历史 × 20 次显示更新的实际组件合成 probe：Lane／CompactLane
+  调用和测量回调 ref 维护 840 → 40，未变历史 Lane 800 → 0；挂载后重复
+  字体规范化 840 → 0。两版测量循环均无 geometry read；React/jsdom render
+  约 118ms → 78ms，不代表生产 CPU 或帧率。时间戳格式化未纳入本轮。
+- 正式回归覆盖每次重新构造 history 对象仍即时显示字幕、旧 last 行迟到
+  测量不污染新 last、历史阅读位置与节点保留、字体字号对齐和八语言更新。
+  Timeline 相关 73 项通过，Linux Chromium 前台 96 组 tooltip＋30 组 motion
+  通过，保留此前 glide 与动画时钟行为；原生 macOS／Windows 未新增实测。
+- 同 WebView 的三个快捷键消费者合并为一次能力请求；成功值含 null 可复用，
+  失败可重试，卸载不取消其他消费者。新增 7 项回归修前 4 项失败，修后
+  通过；quick frontend 21 文件／341 项通过。不同 WebView 仍各自执行 IPC。
+- Gemini 只删除 11,904 字节 Adobe XMP，保留其余 JPEG 字节和 SVG 绘图；
+  未删除许可／版权字段。解码 RGB 与九尺寸 Chromium RGBA 完全相同。
+  `10d726e` 受控生产 A/B 总产物 −15,871 字节，Node gzip 等级 6 的逐文件
+  总和 −7,176 字节，JS 不变；不推算原生安装包变化。
+- 完整前端 140 文件／2,252 项、lint、typechecked production build 与输出边界
+  检查通过；两个 445 次 draft 压力变体约 2.41s／1.94s，未修改时限或断言。
+  精确提交 CI 结果见对应 PR；后续原生验收优先检查连续字幕时阅读历史、
+  切字体和旧行 resize 的组合。
+
+## 2026-10-18：字幕动画、窗口反转与设置保存回归
+
+- 基于 `8b9756a7c37414df7f23008631274a3a133f9e00` 的修复工作树，范围见
+  [设计记录](../plans/2026-10-18-overlay-motion-regressions.md)。未启动真实服务、
+  采集声音或读取用户配置。浏览器样本由仓库内 `overlay-motion.html` 生成。
+- Linux Chromium 前台通过 30 组断言：新句测量不再瞬移抵消 glide；一行到
+  五行、三行预算的首行从 0 平滑移到 −48px，不再先下跳 48px；动画中点击
+  不误入历史。四个 surface × 系统减弱动画 × 显式 true/false/null 均遵循
+  已解析偏好；默认 ribbon 的循环轨道为 2 条，原为 11 条。淡出后暂停、
+  恢复同一 CSSAnimation 对象、隐藏测量副本立即暂停通过，未量化 CPU 收益。
+- 原生纯函数和既有几何测试经临时 driver 从真实源码抽取，54 个 Rust 测试
+  通过；恢复中间尺寸采纳、移除模式 revision、恢复原生拖动采纳尺寸三个
+  负对照分别失败。它们验证状态和几何规则，不替代完整 Tauri 编译或原生
+  窗口交互。macOS/Windows 实机动画与真实捕获仍未验证。
+- 代理外部 picker 失焦保存、在途成功后同步新配置、失败保草稿及字体合并
+  已加入正式组件/store 回归。完整自动检查和平台 CI 结果见对应修复 PR；
+  后续原生验收优先检查展开中途反转、移动与 resize 的组合。
+
+## 2026-10-15：v1.6.3 成品验收与公开交付
+
+- 发布源码：`v1.6.3` → `fd44949d5a69a3c4af2d9526f8711c124c94be93`；
+  包含下述生命周期和资源修复，版本提交只同步版本与双语发布说明。
+  完整 `./scripts/check.sh` 通过：前端 2203 项、桌面 612 项、shared core
+  93 项及契约、runtime 785 项、JNI crate 8 项；既有 native ignored 项保留。
+- 精确源码 main 桌面 `38753595014`／Android `38753594806`，tag 桌面
+  `38754550806`／Android `38754550675` 均成功。Linux 新钥匙串用例通过；
+  Windows x64 成品及解压便携包、原生 ARM64 无安装包程序的冷启动、
+  单实例交接、托盘／会话保留及窗口恢复通过。Linux 实际安装 DEB 后与
+  AppImage 各三次启动通过；这是 Xvfb／Openbox、软件渲染及合成会话，
+  不等同于实体设备或实际服务链路。Windows 未执行 MSI／NSIS 安装升级。
+- 最终内嵌 UI-only 签名开发版通过版本、空记录页、保存字幕开关及切页保留。
+  两套正式 macOS DMG／archive 通过完整指定要求、严格签名、debugger 排除、
+  版本／架构／sealed source 与 DMG 内容一致性检查。经已获得的退出授权，
+  在 canonical 正式路径分别启动 ARM64 和 Rosetta Intel 成品，验证相同
+  空状态和导航；原正式 app 随后完整恢复，executable hash 与签名复核通过。
+  UI-only 未连接 provider 或采集声音，未覆盖原生已有录音播放、实际 Intel
+  硬件或长时内存稳定性。仍使用既有自签名分发，未获 Apple 公证；Gatekeeper
+  assessment 仍拒绝，没有更改证书、系统信任或权限设置。
+- Android 成品为 `1.6.3`／`10603`、`app.yuxino.mimi.android`，非 debug；
+  四 ABI、ELF／ZIP alignment 与 notices 检查通过。实际下载 v1.6.2 和新
+  APK 均为唯一有效 signer，证书 SHA256 同为
+  `b263d1b5ec3c43eb4f8107f438a5cbebed18f9290e56ed2e0d0ffb11e4b74ec2`。
+  本轮没有新做 Android 设备安装或真实音频验收。
+- 草稿与公开匿名下载分别核验精确 17 资产、远端 size／digest、16 条
+  SHA256SUMS、5 个实际 updater 签名，以及发布页／源码／manifest 的同一份
+  English-first／中文说明。发布前后 tag 均未移动；公开 Latest API、tag
+  manifest 和应用实际配置的 lowercase 仓库 Latest 更新入口返回同一份新
+  manifest。已按本次“发”授权公开为 Latest：
+  [v1.6.3](https://github.com/yuxino/Mimi/releases/tag/v1.6.3)。
+  浏览器确认双语说明、17 个公开资产链接和 GitHub 原生 Contributors 的
+  `yuxino` 头像加载正常。
+- GitHub 成品 size 对比 v1.6.2：全部安装／更新包变化为 −0.089064% 至
+  +0.017822%，最大字节增长为 AppImage 的 8192 bytes；Windows MSI 和
+  Android APK 大小不变。这仅是包体证据，不代表整体性能或内存改善。
+
+## 2026-10-15：补丁版候选资源与生命周期审计
+
+- 修复源码：`2a05f15420fd75f3a8dec76b9ed60b22e4ab1a40`，基于
+  `bdc1ecc8`。范围见 [记录页资源与翻译超时](../plans/2026-10-15-session-resource-lifecycle.md)。
+- 旧组件在记录页隐藏 5 秒时仍增加 5 次 archive IPC；连续播放点击产生
+  3 次整份音频读取。两条回归先失败再通过；修复只停止不可见类别的
+  monitor，并把同一组件的在途音频读取限制为 1 份。既有跨页播放、删除、
+  导出、失败重试、切记录／音源和迟到回复保留；组件／monitor 共 32 项通过。
+  整个原生设置窗口隐藏但类别仍为 export 的情况未在本轮增加新的可见性处理。
+- 桌面原先先派发 timeout task、后应用 `TranslationStarted`，worker 可读取
+  空／旧 deadline。生产路径现在先 reducer、后同步捕获 deadline 再派发，
+  generation／task-id／source／取消检查保留。旧调度顺序的同步见证 0/2，
+  修复后 2/2；这是可行交错的确定性见证，不是原始线程调度每次必现的证据。
+  Android 在同一事件循环应用事件并周期性 tick，无需复制桌面修复。
+- 完整 `./scripts/check.sh` 通过：前端 136 文件／2203 项，桌面 612 项，
+  shared core 93 项及契约、runtime 785 项、JNI crate 8 项和 bridge 契约。
+  既有显式原生环境 ignored 项保持；前端、桌面各做一次独立缺陷复核，无阻断。
+- ego-lite 使用正式组件和合成 IPC，8 种语言 × 520／952 CSS px 共 16 个
+  加载按钮检查通过；同一轮三次点击仅 1 个音频请求，隐藏 2.2 秒新增读取
+  为 0，返回立即刷新，失败恢复可重试。此 fixture 不读取用户记录或凭据。
+- 经用户同意正常退出正式版后，canonical 签名 watch UI-only 开发版验证
+  记录页空状态、保存字幕开关、切走／返回及状态保留。临时开关恢复关闭，
+  开发版正常退出；严格签名通过，构建／安装 Mach-O UUID 同为
+  `5FB0D6BA-3A10-3CDC-81E4-FEB83614D9A0`。构建是基于 `bdc1ecc8` 的提交前
+  dirty 工作树，随后源码提交为上述修复；原生播放加载状态仅由浏览器 fixture
+  和组件测试覆盖，没有伪称 native 保存记录或真实录音验收。
+- 相同已安装依赖与 Darwin 生产 Vite 配置：`v1.6.2` 前端 1,347,937 bytes，
+  修复后 1,348,231 bytes；逐文件 gzip 合计 401,593 → 401,685 bytes。
+  共 17 文件，生产 debugger 排除通过，无新增依赖。没有重构压缩配置；
+  这些数值是前端资源对照，不是新安装包或整机内存改善。
+- shared／desktop 只读审计未确认其他无界队列：事件、PCM、翻译调度和
+  录音磁盘写入均有既有容量边界。现有正式进程 20 次只读 RSS 采样约
+  30.6–56.4 MiB，负载不受控且不含 WebKit helper，不能证明长期稳定性或
+  本轮改善幅度。没有新建实际 provider 会话、录音或付费批次；实体
+  Windows／Linux／Android、长时播放和新安装包验收仍需各自证据。
+
+## 2026-10-15：并行排查迟到事件与录音恢复
+
+- 修复源码：`8e1b1a71ffb40d1ead2d39bdcd178399ea70736a`，基于
+  `e5b7746e`。设计见 [生命周期边界](../plans/2026-10-15-lifecycle-boundary-regressions.md)。
+- 共享配对器的旧代码在已完成 A 的迟到译文草稿到达时覆盖 B，新增 reducer
+  回归先失败再通过。带身份但缺映射的草稿现在丢弃；无身份兼容路径及正常
+  已映射草稿保留。共用 fixture 加入 unknown／retired 两步，Rust、真实 wire
+  解码与 Android actual JNI 均回放；原有 Alibaba 正常响应样本测试通过。
+- 录音收尾失败后，旧播放／导出优先读取损坏或过期 WAV；坏 PCM 也被已有
+  WAV 掩盖。两个回归先失败再通过。临时目录覆盖两音源、空／损坏／错采样率／
+  错内容 WAV、坏 rate／奇数字节 PCM；只有 PCM 不存在才回退。历史存储 18 项
+  和关闭保存后清理重试 2 项通过，没有修改录音授权门禁或写入／收尾逻辑。
+- Apple 翻译语言包准备的旧字符串归属在离页返回和语言对 A→B→A 后使新查询
+  失效，另会复活旧错误。正式组件新增 3 项先失败再通过；不可复用上下文保护
+  结果、错误和成功回调，完成仍释放 busy。兄弟 Apple Speech 及状态 hook 已有
+  相应上下文规则。定向 108 项、frontend quick 430 项通过，各修复交叉复核无阻断。
+- 完整 `./scripts/check.sh` 通过：前端 136 文件／2198 项，桌面 Rust 610 项，
+  shared core 93 项及共享契约、runtime 785 项、JNI crate 8 项；保留既有显式
+  native 环境的 ignored 项。Android Debug／Release 各 234 项 JVM 全通过，
+  两种 actual JNI 配对契约报告各 5 项通过，新 fixture 与处理资源哈希一致。
+- 签名 watch UI-only 检查添加确认、ASR + MT 模式保存、服务页离开／返回，
+  没有访问用户凭据、连接服务或采集声音。Apple 语言包准备在 UI-only 中明确
+  不可用，因此准备期间的迟到结果依据受控组件测试，未宣称系统下载验收。
+- 修复提交的内嵌 UI-only 开发版实际启动并显示服务页，严格签名检查通过；
+  构建／安装 Mach-O UUID 同为 `E3824995-C8B2-3197-92F6-E8161773EF39`，
+  运行路径为 canonical dev app。两次预览均正常退出，正式安装保持原样。
+- 限制：没有新建实际 provider 会话、Windows／Linux 原生或实体 Android
+  捕获验收；临时文件与合成事件不证明真实故障发生频率或字幕阅读体验。
+  本轮没有发布版本。
+
+## 2026-10-15：v1.6.2 独立回归与公开交付
+
+- 发布源码：`v1.6.2` → `17cbc0300b08f28a76c4396628d0d9ea33845584`；
+  本轮产品修复 `acb4847a` 基于 `844f0bde`，后续提交仅整理验证及公开文案。
+  设计见 [选择框与显式凭据恢复](../plans/2026-10-15-release-recovery-regressions.md)。
+- 新发现的选择框解锁后重开、完整语音草稿因旧元数据读取失败而禁用保存，
+  都在 v1.6.1 已存在。正式组件与真实 voice consumer 先 4 项失败，再通过；
+  部分草稿继续要求可靠旧值，真实编辑页的保存拒绝保留字段及重试。最终
+  quick 覆盖 45 文件、1011 项，settings／overlay 共用控件及正常 keyboard／
+  search、名称 owner、迟到粘贴与 Android holder 的相邻路径复核未见新缺陷。
+- 待导入的自定义 speech 槽原先拦住完整显式替换。真实本地文件存储与 fake
+  legacy 的正式聚焦用例先 6 通过／3 失败，再 9 项全通过；file store 26 项、
+  多 route 文本槽保护 1 项通过。只放行 typed MigrationRequired 的完整有效
+  speech 值，未知旧值不删除回滚。写入大小失败保留原 pending 文档，marker
+  失败保留耐久新值供 retry；损坏／不可读文件和部分草稿不覆盖，文本多 route
+  blob、catalog／preferences 及正常 known-value rollback 保留原边界。
+- 精确 v1.6.1 tag `56f04d7d` 与本轮未改变的 shared source 独立对照：正常
+  aligner 10 案例／72 steps、subtitle 12 案例／74 steps、9 类 Qwen localhost
+  HTTP 响应一致，旧状态恢复通过；两版本取消／clear／reconnect 等聚焦各
+  7 项通过，公开 ASR WebSocket→queue→controller 的正常 final 和 stop-tail
+  成对结果一致。当前 incomplete／empty／withdrawal 等 12 项回归通过。
+- 完整 `./scripts/check.sh` 通过：前端 2195 项、桌面 Rust 608 项、shared
+  runtime 785 项；既有显式 native 环境的 ignored 项没有强制启用。两次独立
+  diff 复核没有发现阻塞。所有系统凭据及 I/O 故障仅使用 fake／临时目录。
+- Android Debug／Release 各 234 项 JVM 测试通过，包含生产 actual JNI；两种
+  lint 无错误，各有 63 项既有 warning。v1.6.2／10602 四 ABI debug APK 检查
+  通过，SHA256 `3a3c0a9aa3cc0c123df315312671e2eb3d930ab3843a71ea6a835dc9208dfd1f`。
+  Android 15 虚拟机按相同 signer `install -r` 保留开发数据，真实 Activity
+  recreate 再次通过：未保存合成名称、语音、workspace／mode、Qwen 和独立
+  MT 草稿保留、密码遮罩、不进 Bundle、取消不写 catalog、fresh editor 不串稿。
+- macOS canonical watch 及最终内嵌 `1.6.2-dev` 的 UI-only 签名开发版验证
+  添加确认、完整识别草稿保存、复制／返回、两可用配置 keyboard 切换及关闭
+  菜单；内嵌版本名称编辑立即离页再返回保留。运行路径为 canonical dev app，
+  构建／安装 UUID `B97A9C67-D056-34E1-82E0-B27E81E0235B` 一致；严格签名通过，
+  安装 executable SHA256 `410503de01efb1bc52d73d800a8d878d510fd47c343f6c1525e55ff00b887eb7`。
+  完成后正常退出，无服务连接或音频采集。
+- 正式 macOS ARM64／Intel 两套 DMG 和 updater archive 均通过严格签名、
+  debugger 排除、version／architecture／sealed source 检查，DMG 内 app 与
+  loose app 的指定要求及 CDHash 一致。两种正式二进制分别实际启动并显示
+  v1.6.2；Intel 通过本机 Rosetta，均使用 UI-only，正式安装未替换。现有
+  正式 app 与新包的完整指定要求一致，没有迁移证书或更改系统权限。
+- main 桌面 `38607076333`／Android `38607076322`，tag 桌面
+  `38608784255`／Android `38608783870` 均成功。tag 流水线包括 Windows
+  x64／ARM64、便携解压及 Linux 成品 smoke、Linux synthetic PulseAudio
+  system／microphone、两种 macOS updater 和 Android 正式签名／rejection
+  检查；这些 CI 环境测试不等同于用户硬件和实际服务。
+- Android 正式 APK signer SHA256 为
+  `b263d1b5ec3c43eb4f8107f438a5cbebed18f9290e56ed2e0d0ffb11e4b74ec2`，
+  与实际下载的 v1.6.1 公开 APK 一致。四 ABI 检查通过，虚拟机安装并前台
+  启动正式 `MainActivity`，version 1.6.2／10602；installed code 与成品
+  SHA256 `0b33386e181f45988d1e6c94e5da54d6ccc08ce1d2ae5a7b5277b1e7d214550c`
+  一致。新正式包与已配置开发版使用独立 app scope，没有卸载或清理开发数据。
+- 四 macOS 资产先 staging 到私有 draft，再推精确 tag。所有 tag CI 完成后，
+  authenticated 草稿和无 Authorization 的公开下载各自核验 17 资产，远端
+  size／digest、16 项 SHA256SUMS 及 5 个实际 minisign 全部一致；updater
+  四平台 URL、signature、version 和 English-first／中文 notes 对应源码。
+  已按用户本次“检查没问题就发布”授权公开为 Latest：
+  [v1.6.2](https://github.com/yuxino/Mimi/releases/tag/v1.6.2)。tag-specific、
+  canonical Latest 及 app 实际配置的 updater endpoint 返回相同 manifest。
+- ego-lite 页面确认 Latest、immutable release、17cbc03、双语说明及 17
+  实际资产链接；页面另列两份源码和 release attestation，共显示 Assets 20。
+  本次新发代码的 authors 只有维护者，原生页面没有 Contributors 区域；没有
+  重复上一版的外部贡献者 credit 或为展示头像伪造新的感谢。
+- 限制：受控对照和 CI／虚拟机不能证明实际 provider 接受度／识别质量、
+  用户 Windows／Linux／Intel 或实体 Android 的捕获硬件。未连接实际服务、
+  开始音频捕获或访问真实用户凭据／记录。
+
+## 2026-10-15：第四轮 pending 状态与 Android 虚拟机复核
+
+- 产品源码：`4793d51454d009149371fdec3ff6c31b40426fd6`，基于
+  `8a3c8de9`。设计见 [pending 状态边界](../plans/2026-10-15-pending-state-regressions.md)。
+  桌面三个名称字段离页后丢失失败草稿／重试，正式用户路径先 3 项失败，
+  修复后通过。补查串行保存、晚到结果、不同 route、删除失败／确认删除、
+  StrictMode 与中断 IME；后两项在修复审查时先复现，再补防护。
+- 录音收尾遇到目录、链接、损坏或内容不匹配的已有 WAV 时，旧逻辑会误报
+  成功并消费 PCM。两种来源与同文件头／长度但首字节、跨 buffer 尾字节
+  不同的用例均先失败；最终 16 项通过。仅复用已有输出时以两个 8 KiB
+  buffer 比较全 payload；异常保留 PCM／journal，合法旧输出与双源 retry
+  保留，已有保存记录及关闭保存的相邻测试通过。未访问真实用户记录。
+- 自定义 OpenAI ASR 的空／空白 completion 原先被丢弃，Stop 仍可能确认
+  已撤回草稿。共享 Rust 保留终结身份、只撤回匹配 owner，并在可靠撤回
+  交付时消费此前匹配的 queued draft。实际 localhost WebSocket → shared
+  client → controller 和 JNI engine 重放 4 种终稿 fixtures；另查旧空终稿／
+  新缺终稿 Stop tail。新增 3 个 owner 案例／12 steps 走 direct 与实际 JNI；
+  老显示 owner、新任务、连续撤回、晚到 preview、confirmed history、clear／
+  revision、deadline 与正常终稿均有聚焦回归，没有第二套 Kotlin 算法。
+- Android 15 的 `Mimi_Android15` 虚拟机保留既有开发数据，以相同 debug
+  签名 `install -r` 更新最终四 ABI APK。旧 editor 的真实 Activity 重建先
+  丢失草稿；修复后名称、识别字段、workspace／mode、Qwen 型号与独立 MT
+  route 的原始字段保留。取消不改变 catalog 哈希，fresh editor 无旧草稿，
+  凭据不进入 Bundle，密码保持遮罩。原生截图等标签动画结束后复核；测试
+  只使用未保存的合成 editor，不连接服务或启动采集。Process death 仍从
+  已保存配置加载，不恢复 RAM secrets。
+- macOS canonical 签名 watch 和内嵌前端的 UI-only 开发版验证添加、复制、
+  名称编辑后立即返回、不同 editor 隔离、校验离页保留与修正后保存。
+  后台 I/O 失败与迟到结果由受控异步回归覆盖，未在原生内存 fixture 注入
+  磁盘故障。提交后再次构建、严格签名校验并实际启动；构建／安装 Mach-O
+  UUID 一致，运行路径为 canonical 开发 app，随后正常退出。
+- 完整 `./scripts/check.sh` 通过：前端 2187 项、桌面 Rust 603 项；shared
+  runtime 785 项通过，既有需显式 native 环境的 ignored 项没有强行启用。
+  Android Debug／Release 各 234 项 JVM 测试通过，含生产 actual JNI；两种
+  lint 无错误，本次修改文件无 lint 诊断，debug APK 四 ABI／alignment／
+  notices 检查通过。peer 复核涵盖最终 owner／queue、WAV payload、IME 与
+  Android holder；之前选择器／voice 40 项和本地凭据正常 copy／delete／
+  restart 对照也通过。
+- 限制：没有真实 provider、音频采集、实体 Android 或 Windows／Linux
+  原生 UI 验收；合成输入不能证明真实识别质量、频率或阅读体验。没有发布版本。
+
+## 2026-10-14：第三轮兼容性复核与选择／凭据边界
+
+- 基于 `0d2141a1`，设计见
+  [选择器与凭据边界](../plans/2026-10-14-picker-and-credential-regressions.md)。
+  语音页不可用服务已经标记 disabled，但共享选择器仍派发切换；三种
+  缺少配置的用户路径先变红，修复后点击、键盘、搜索及动态禁用通过。
+  普通列表、当前值、恢复可用与设置／浮窗共用控件保留原行为。
+- 正常保存／删除最后导入槽后缺少完成标记，临时文件丢失与重启回归
+  证明旧系统值会被重新导入。标记失败不重试、末槽保存误报成功也先
+  变红；修复后普通 21 项与开发诊断 22 项存储测试通过。耐久读回校验、
+  部分导入、未退休清理、损坏文档与只读探针保持各自边界。未访问真实
+  凭据或用户记录，所有 I/O 故障在临时目录及 fake 系统存储中注入。
+- 对 `c0511a09` 与当前共享源码做独立旧／新对照：8 个既有配对案例
+  64 steps 与两种空来源案例 8 steps 输出一致；旧序列化状态恢复也按
+  每步核查。9 类 localhost 合成 Qwen 响应的结果、错误与 partial 序列
+  一致；既有 stop、clear、取消、截止时间和连接复用分支通过。本轮
+  未发现前两轮改动的确定正常流程回归；该结论只覆盖已对照的路径。
+- 完整 `check.sh` 通过，前端 2172 项、桌面 Rust 596 项通过；实际 JNI
+  的 `SharedLivePairContractTest` 5 项与 `NativeRuntimeJniTest` 13 项通过。
+  两次交叉复核通过，未新增 Kotlin 业务实现。
+- `28f0ccf0` 的 canonical 签名开发版先完成构建、安装与严格签名验证；
+  用户确认正式版正常退出后，使用嵌入前端的 `--ui-only` 做原生验收。
+  缺少凭据／workspace 的两个条目可见灰显，点击不切换；Home／End 与
+  反向方向键跳过不可用项，可用 A/B 正常互切。补齐 workspace 后恢复
+  可选；当前配置失去合成凭据后仍保留显示，也能切回正常配置。构建
+  Mach-O UUID、运行路径与安装包一致，检查后正常退出开发版。
+  合成配置和占位值只在 UI-test 内存中，未运行连接检查或开始会话。
+- 没有执行真实服务、录音或实体设备捕获，也未发布版本。
+
+## 2026-10-14：第二轮会话边界回归
+
+- 基于 `59b9475d` 的本轮修复，设计见
+  [会话边界记录](../plans/2026-10-14-session-boundary-regressions.md)。配置
+  目录损坏／不可读不再返回成功空快照，真实空目录与凭据不可用仍保留
+  各自语义；会话与浮窗广播也不能覆盖加载错误。原目录内容保持不变。
+- 历史删除成功后离页返回不会残留已删记录，迟到列表、字幕和录音被
+  拒绝；已选另一会话保留其内容和播放。临时 journal 的真实 I/O 失败
+  回归证明：关闭保存后清理失败，恢复磁盘再收尾不会复活被关闭的类型，
+  仍授权的另一类型和已有保存记录保持完整；持续失败保留 pending/error。
+- 共享原文身份与翻译占位分开跟踪，避免迟到旧原文提前确认新草稿，
+  或下一句译文先到时丢失配对。直接 Rust、桌面真实协议解码与实际 JNI
+  重放同一组 12 cases／97 steps，含新加的四种序列与旧状态字段缺失；
+  记录保持 64 身份上限，空 current、clear/reset、retire 与恢复均有回归。
+- 所有新增失败序列先在旧实现变红，再修复通过。完整 `check.sh` 通过，
+  前端 2158 项；Android Debug／Release 各 232 项 JVM 测试通过。
+  两次独立复核通过，无新增 Kotlin 字幕算法或另一份业务实现。
+- 签名 canonical `--watch --ui-only` 的安装、运行路径及构建 Mach-O UUID
+  核对一致。原生保存开关、空状态及离页返回通过，开关恢复关闭后正常
+  退出并停止预览；没有访问真实凭据、用户记录或音频设备。
+- 限制：原生页面检查没有注入删除延迟、目录损坏或磁盘故障；这些路径
+  通过受控异步、真实临时文件与 native getter 的回归验证。没有证明
+  真实服务的乱序频率或实体 Windows／Android 捕获，需要另行有界实测。
+
+## 2026-10-14：主动检查的四项回归
+
+- 基于 `c0511a09` 的本轮修复，设计与边界见
+  [回归检查记录](../plans/2026-10-14-proactive-regression-audit.md)。四项新增
+  用例先在旧实现失败：Qwen MT 截断／长度限制仍返回成功、Windows 输出
+  来源变化仍保留录音勾选、迟到粘贴覆盖新编辑、macOS 丢失完整系统语言码。
+- 修复后 `./scripts/check.sh` 完整通过，前端 2152 项测试通过。
+  Android Debug／Release 各 232 项 JVM 测试通过；新增 12 种合成响应
+  经实际 JNI 的 Audio3 → MT → controller 路径，正常完成进入历史，
+  不完整响应保留 history=0 和 displayPairFinal=false。无第二套 Kotlin 实现。
+- canonical 签名 `--watch --ui-only` 开发版的运行路径、稳定身份和构建
+  Mach-O UUID 一致。原生配置输入可编辑，安全字段仍为密码输入；显式繁体
+  与跟随系统切换、应用菜单 Settings／Quit 标签通过。Foundation 回归
+  核对当前完整首选界面语言。测试未访问凭据、云服务或音频，之后正常退出。
+- 完整检查的 watch-server 回归与当前预览共用 1420 端口：先退出应用并
+  停止预览，再运行完整检查；对应规则已补入常见回归。保留必要的本机
+  验证日志和构建元数据，清理本轮临时文件与一次性服务器。
+- 限制：剪贴板迟到竞争通过受控 deferred 测试，未人为延迟原生剪贴板；
+  Windows 真实输出设备录音、真实云服务截断、繁体系统环境与 Android
+  硬件捕获没有本轮设备证据，需要另行有界实测。此次只交付源码修复。
+
+## 2026-10-14：v1.6.1 发布包复核
+
+- 发布源为 `56f04d7d7142dd24661b74b3532641c033f4de03`，含 PR #277
+  与借用参数生命周期、Windows 缩放回归防护；Linux 采集和共享业务源码未改。
+  完整 canonical、macOS／Windows／Linux CI、Android 直接 Rust／实际 JNI
+  与签名打包检查通过。Windows 真实运行了借用激活参数成功／提前失败回归。
+- 无影 Windows Server 2025 Datacenter 24H2（26100.32860）运行最终
+  1.6.1 便携包，ZIP 与运行中 exe 的 SHA-256 均与发布资产一致；没有
+  UI-test 或开发调试器。麦克风、字幕保存、录音均关闭，使用有界音调进程
+  和仅保存统计元数据的本机接收端，证明采集与生命周期，不代表识别／翻译质量。
+- 指定应用收到非零 PCM，暂停后接收连接关闭，恢复后新连接继续收到非零 PCM；
+  目标进程退出显示应用不可用，Mimi 保持存活。系统混音独立收到非零 PCM。
+  100%／150% 显示及 150% 显示＋120% 文字下，语言胶囊、完整面板标题、
+  有界滚动到底部、折回和设置关闭重开通过；测试后恢复显示 125%、文字 100%。
+- 云端原配置使用未发布的 `localProgram` 类型，稳定版保护性拒绝读取；
+  随后的快照失败被误映射为 Apple 语言包错误。这条路径与 v1.6.0 相同。
+  只读枚举和原件哈希确认原因，临时隔离后提示消失；测试配置经正常界面
+  删除，退出后原 catalog／preferences 已按原 SHA-256 逐字节恢复。
+  隔离工具没有读取或迁移凭据，未改旧实验配置或原安装应用。
+- macOS 使用 canonical 签名开发包完成离线胶囊展开／折回及原有聚焦行为
+  检查；公开双架构包另行核对固定身份、源提交、架构和 DMG 内容。
+  Linux 原生 Wayland／音频及最终 deb／AppImage 安装烟雾检查由 CI 完成。
+  17 个公开资产已匿名下载校验，5 份更新签名、Latest 和双语更新清单一致。
+- 限制：本轮无真实云识别质量、实体 Windows 客户端／Android 硬件验收；
+  原 Explorer `AppHangXProcB1` 仍缺线程栈或 dump，不声称已定位或彻底修复。
+
+## 2026-10-14：Windows 按应用采集与控件缩放
+
+- 源为 v1.6.0（`4b53f0b`）加本轮修复，production identifier 的
+  `--no-bundle` release 构建；真实输出设备播放，配置取自本机用户设置，
+  测试后已还原 `system_audio_target`／`overlay_frame` 与输入、录制选项。
+  未替换已安装的 1.6.0。
+- 按应用采集（12 个受控 Python 进程、独立 Vivaldi 用户目录）：原
+  `PropVariantClear` 非法释放已消除，实际捕获到应用树内播放的英文语音，
+  收到原文与中文译文各 215／78 字符；激活结果改为同一 MTA 内转移，不再
+  走 `AgileReference`（本机 `REGDB_E_IIDNOTREG`）。目标进程退出后会话进入
+  `application_audio_unavailable` 错误态，进程存活。
+- 系统混音模式在同一构建上独立验证，英文原文与中文译文均到达；
+  暂停／恢复、停止、控件展开与 30 次设置关闭重开（最大 102 ms）均通过，
+  四个可见窗口的限时 `WM_NULL` 探测为 0–7 ms。
+- 语言胶囊与控制面板此前按 CSS 像素直接比对原生逻辑像素：窗口 DPI 96／144、
+  WebView DPR 1.2／1.8 时内容被裁切。现改为上报 DPR 并除以原生缩放，
+  在 100% 与 150% 屏上量测内容与视口一致；展开面板首次聚焦不再把标题
+ 滚出可视区，错误态面板同样从顶部显示。
+- 回归：`cargo test` 552 通过（2 ignored）、`cargo clippy -D warnings`、
+  `npm test` 2136 通过、改动文件 eslint 通过。删除两处依赖本机区域设置／
+  时钟的旧断言（发布时间线原文比较、按语言固定的音频来源标签），改为
+  跨环境成立的属性检查。
+- 未解决：`AppHangXProcB1`（等待 explorer.exe）没有线程栈或 dump，
+  不能证明是本次卡死根因；已移除关闭设置时冗余的同步托盘可见性调用，
+  本轮多次启动／停止与关闭重开压力测试未复现，真实卡死仍需等待链或
+  dump 才能定位。
+
 ## 2026-10-14：Linux 播放流图标移植验证
 
 - 源码：上游 `b3fa6df2` 加原图标功能补丁 `e75ab05`，Cargo debug 构建。
@@ -17,7 +1132,6 @@
 - 回归覆盖 GTK 主题／桌面入口匹配、唯一版本候选与 Flatpak 导出命令匹配、歧义回退，以及 PNG／SVG／本地绝对路径、损坏／缺失／超限图标和快照预算。原生 GTK 夹具及现存流元数据探针通过；元数据探针不启动采集。
 - 验证：完整 `./scripts/check.sh` 通过，桌面 Rust 547 passed／16 ignored、前端 133 文件／2,119 项，含共享 Rust／实际主机 JNI、格式、严格 Clippy、lint、类型检查和生产构建。私有 PulseAudio 合成音频回归 8 项通过；布局夹具模拟 IPC 和 CI scope 7 项通过。原生忽略项按显式执行结果记录，不计入默认测试通过数。
 - 限制：原生产品界面、其他图标主题及其他沙箱应用仍待验证；未执行远程 CI 或 macOS／Windows 原生复验。
-
 
 ## 2026-10-13：Android 多配置与原文回露
 

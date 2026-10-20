@@ -72,10 +72,26 @@ These project rules apply to implementation and review.
   themes. Interactive controls, including help and toast dismissal, keep pointer
   cursors; preserve disabled, text-input, slider and resize cursors.
 - Live subtitle geometry needs a stable reading edge as well as unclipped text.
+  Automatic glides must retain ownership across row measurement and streaming
+  revisions; pointer clicks cannot turn their pending scroll events into history
+  intent. Test chunk growth crossing the compact line budget with real browser
+  geometry, and finish pointer interactions even when release occurs outside.
+  Preserve status-light animation identities when pausing invisible tracks;
+  system chrome rules must not override their explicit motion setting.
+  Resize ownership ends on capture loss, unmount, disabling and primary-button
+  loss as well as release. Clear it before releasing capture; duplicate native
+  completion without an active gesture must not replace a newer presentation.
   In normal Android mode, bottom-align the current measured lanes, matching the
   desktop reading edge. Growing reference text must not push an unchanged
   translation down; preserve complete glyph lines and deliberate history reading.
   Check changing line counts in native draws rather than only static screenshots.
+- Windows control-window measurements are CSS pixels, not native logical pixels.
+  Report the WebView's `devicePixelRatio` with capsule width and panel height,
+  and divide by the native window DPI scale before sizing against monitor bounds.
+  WebView `ZoomFactor` alone does not include the observed Windows text scaling.
+  Preserve accessibility scaling; size both fixed and measured dimensions in
+  the same units. Re-measure on viewport/DPI changes even when content width is
+  unchanged, and verify the actual native capsule and expanded panel.
 - Reserve readable label space and bound picker columns. Put ongoing device
   feedback in `SettingsRow.feedback`, below the label/control grid; never put a
   long status sentence beside a picker inside the auto-sized control column.
@@ -100,6 +116,23 @@ These project rules apply to implementation and review.
   Memoized children that read localized copy must subscribe to the locale or
   receive it as a prop. Check paused/static content too; do not remount subtitle
   history to refresh labels and lose the reader's scroll position.
+- Bound presentation work to its owner: closed pickers need no option rows,
+  unrelated element scrolls need no tooltip measurements, and unchanged subtitle
+  text needs no repeat formatting. Preserve keyboard intent when skipping an
+  equal cursor index. Pause presentation polling on document visibility changes,
+  not ordinary focus loss; keep explicit playback lifetime independent.
+  Current transcript results need a session/retention identity beyond item count.
+  Diagnostics reentry must request a fresh snapshot after any serialized in-flight
+  operation, and old visits must not replace the new view's report.
+  Reuse unchanged subtitle lanes by all presentation props, preserving row identity
+  and locale subscriptions. When the last row changes, retire its measurement
+  callback so a late old-row resize cannot replace the new reading budget.
+  Process-stable native capability reads may be shared within one WebView;
+  failures must remain retryable and every other window must verify its own IPC.
+  Keep pending slider previews stable across older save echoes. Confirmations
+  and rollbacks must respect field ownership, external revisions and subsequent
+  ordinary settings; a completed iconless application query is a valid result,
+  not an instruction to enumerate again.
 - All interface text, native controls, tooltips and portaled menus use
   `--mimi-ui-font`. Order CJK fallbacks for the interface language and include
   Windows non-UI family names; do not add a separate stack to a shared tooltip.
@@ -135,6 +168,12 @@ These project rules apply to implementation and review.
   inline retry, and update only the requested metadata so an alias or proxy
   cannot replay an old configuration name. Keep compact labels single-line;
   expanded editing is explicit.
+
+- A preference with a coalesced save queue must keep that queue in the settings
+  window's lifetime when its page can unmount. Recreated or simultaneous controls
+  share the latest unsent choice; an older page must not submit it after a newer
+  choice. Preserve a legitimate queued choice when leaving without a replacement,
+  and keep previews/notifications owned by the currently mounted view.
 
 - Proxy system/direct choices save immediately. A custom address saves on blur,
   Enter or explicit paste; typing stays local and saving does not run a probe.

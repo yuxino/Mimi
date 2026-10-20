@@ -259,6 +259,9 @@ pub enum LiveTranslateServerEvent {
     },
     /// Invalidates only an obsolete preview at a real source sentence boundary.
     SubtitlePreviewCleared,
+    SubtitlePreviewWithdrawn {
+        source_utterance_id: u64,
+    },
     /// Locally generated MT backoff; the system-audio/ASR session stays alive.
     TranslationDeferred(crate::core::diagnostics::TranslationRecovery),
     TranslationDraft(String),

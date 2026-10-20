@@ -11,7 +11,7 @@ export function TextTranslationName({ profile, route, inputId, disabled, onSave 
   disabled: boolean;
   onSave: (route: TextTranslationNameDraft["route"], name: string) => Promise<unknown>;
 }) {
-  return <AutoSaveNameField key={`${profile.id}:${route}`} id={inputId} label={I18N.settings.textTranslationName}
+  return <AutoSaveNameField key={`${profile.id}:${route}`} id={inputId} draftKey={`translation:${route}`} label={I18N.settings.textTranslationName}
     className="translation-name-field" value={profile.textTranslationNames?.[route] ?? ""}
     placeholder={defaultTextTranslationName(route)} disabled={disabled} allowEmpty
     onSave={name => onSave(route, name)} />;

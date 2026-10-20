@@ -19,7 +19,25 @@ const OVERFLOW_MESSAGE: &str = "Translation event processing fell behind. mimi i
 struct SequencedEvent {
     sequence: u64,
     content_revision: u64,
+    // Optional admission evidence from the shared identity aligner, never
+    // inferred from opaque provider IDs or from delivery order.
+    source_ordinal: Option<u64>,
+    starts_translation: bool,
     event: LiveTranslateServerEvent,
+}
+
+struct IdentifiedFinal {
+    sequence: u64,
+    content_revision: u64,
+    utterance_id: String,
+    source_ordinal: Option<u64>,
+}
+
+struct DeliveredSource {
+    content_revision: u64,
+    ordinal: u64,
+    source_final: bool,
+    pair_final: bool,
 }
 
 /// A local content boundary, independent of the socket/session generation.
@@ -32,11 +50,48 @@ pub struct ProviderEvent {
     pub transport_sequence: Option<u64>,
     pub content_revision: u64,
     pub event: LiveTranslateServerEvent,
+    source_ordinal: Option<u64>,
+    starts_translation: bool,
 }
 
 impl ProviderEvent {
     pub fn is_content(&self) -> bool {
         is_content_event(&self.event)
+    }
+
+    /// Local controls and fixtures have no aligner ordering evidence.
+    pub fn unsequenced(event: LiveTranslateServerEvent, content_revision: u64) -> Self {
+        Self {
+            #[cfg(any(test, feature = "development-debugger"))]
+            transport_sequence: None,
+            content_revision,
+            event,
+            source_ordinal: None,
+            starts_translation: false,
+        }
+    }
+
+    pub fn apply_to(
+        self,
+        controller: &mut crate::core::session::TranslationSessionController,
+        source: crate::core::audio_input::AudioSource,
+    ) -> crate::core::session::ProviderEventApplication {
+        self.apply_to_at(controller, source, std::time::Instant::now())
+    }
+
+    pub fn apply_to_at(
+        self,
+        controller: &mut crate::core::session::TranslationSessionController,
+        source: crate::core::audio_input::AudioSource,
+        now: std::time::Instant,
+    ) -> crate::core::session::ProviderEventApplication {
+        controller.handle_ordered_from_at(
+            source,
+            self.event,
+            now,
+            self.source_ordinal,
+            self.starts_translation,
+        )
     }
 }
 
@@ -95,12 +150,15 @@ pub struct ProviderEventReceiver {
     translation_open: bool,
     overflow_open: bool,
     overflow_delivered: bool,
+    recognition_finish_drain: bool,
+    pending_finish: Option<SequencedEvent>,
     source_pending: Option<SequencedEvent>,
     translation_pending: Option<SequencedEvent>,
     last_delivered_sequence: u64,
     last_source_final: Option<(u64, u64)>,
     // Revision scopes final freezing across content clears.
-    last_identified_final: Option<(u64, u64, String)>,
+    last_identified_final: Option<IdentifiedFinal>,
+    latest_delivered_source: Option<DeliveredSource>,
     content_revision: Arc<AtomicU64>,
 }
 
@@ -142,11 +200,14 @@ fn provider_event_channel_with_capacity(
             translation_open: true,
             overflow_open: true,
             overflow_delivered: false,
+            recognition_finish_drain: false,
+            pending_finish: None,
             source_pending: None,
             translation_pending: None,
             last_delivered_sequence: 0,
             last_source_final: None,
             last_identified_final: None,
+            latest_delivered_source: None,
             content_revision,
         },
     )
@@ -278,12 +339,40 @@ impl ProviderEventSender {
         self.send_if(event, || true)
     }
 
+    pub(crate) fn send_with_source_order(
+        &self,
+        event: LiveTranslateServerEvent,
+        source_ordinal: Option<u64>,
+    ) -> Result<(), ProviderEventSendError> {
+        self.send_if_with_source_order(event, source_ordinal, false, || true)
+    }
+
+    /// Commit source text and its activity hint in one publication. The
+    /// controller still decides whether this identity can start a new wait.
+    pub(crate) fn send_translating_source_final(
+        &self,
+        event: LiveTranslateServerEvent,
+        source_ordinal: Option<u64>,
+    ) -> Result<(), ProviderEventSendError> {
+        self.send_if_with_source_order(event, source_ordinal, true, || true)
+    }
+
     /// Checks validity in the same critical section as sequence allocation and
     /// publication. The predicate must be short, synchronous, and must not
     /// re-enter this sender. An obsolete event is discarded without error.
     pub fn send_if(
         &self,
         event: LiveTranslateServerEvent,
+        is_current: impl FnOnce() -> bool,
+    ) -> Result<(), ProviderEventSendError> {
+        self.send_if_with_source_order(event, None, false, is_current)
+    }
+
+    fn send_if_with_source_order(
+        &self,
+        event: LiveTranslateServerEvent,
+        source_ordinal: Option<u64>,
+        starts_translation: bool,
         is_current: impl FnOnce() -> bool,
     ) -> Result<(), ProviderEventSendError> {
         // Sequence allocation and lane publication are one tiny synchronous
@@ -328,6 +417,16 @@ impl ProviderEventSender {
         };
         let event = SequencedEvent {
             content_revision: self.content_revision(),
+            source_ordinal,
+            starts_translation: starts_translation
+                && matches!(
+                    &event,
+                    LiveTranslateServerEvent::UtteranceText {
+                        role: UtteranceRole::Source,
+                        is_final: true,
+                        ..
+                    }
+                ),
             sequence: self
                 .inner
                 .sequence
@@ -433,6 +532,13 @@ impl ProviderEventSender {
 }
 
 impl ProviderEventReceiver {
+    /// Recognition bridges need the latest unfinished source before their
+    /// finish acknowledgement so the bounded session-finish fallback can use
+    /// it. Ordinary subtitle consumers retain their terminal-barrier behavior.
+    pub(crate) fn enable_recognition_finish_drain(&mut self) {
+        self.recognition_finish_drain = true;
+    }
+
     #[cfg(test)]
     pub fn try_recv(&mut self) -> Result<LiveTranslateServerEvent, mpsc::error::TryRecvError> {
         self.try_recv_with_revision().map(|event| event.event)
@@ -452,10 +558,13 @@ impl ProviderEventReceiver {
             self.overflow_delivered = true;
             return Ok(self.control_event(overflow_event()));
         }
+        if let Some(event) = self.pending_finish.take() {
+            return Ok(self.take_reliable_event(event));
+        }
         if self.reliable_open {
             match self.reliable.try_recv() {
                 Ok(event) => {
-                    return Ok(self.take_reliable_event(event));
+                    return Ok(self.take_reliable_event_or_recognition_tail(event));
                 }
                 Err(mpsc::error::TryRecvError::Disconnected) => {
                     self.reliable_open = false;
@@ -498,12 +607,7 @@ impl ProviderEventReceiver {
     }
 
     fn control_event(&self, event: LiveTranslateServerEvent) -> ProviderEvent {
-        ProviderEvent {
-            #[cfg(any(test, feature = "development-debugger"))]
-            transport_sequence: None,
-            content_revision: self.content_revision.load(Ordering::SeqCst),
-            event,
-        }
+        ProviderEvent::unsequenced(event, self.content_revision.load(Ordering::SeqCst))
     }
 
     async fn recv_unfiltered(&mut self) -> Option<ProviderEvent> {
@@ -512,10 +616,13 @@ impl ProviderEventReceiver {
                 self.overflow_delivered = true;
                 return Some(self.control_event(overflow_event()));
             }
+            if let Some(event) = self.pending_finish.take() {
+                return Some(self.take_reliable_event(event));
+            }
             if self.reliable_open {
                 match self.reliable.try_recv() {
                     Ok(event) => {
-                        return Some(self.take_reliable_event(event));
+                        return Some(self.take_reliable_event_or_recognition_tail(event));
                     }
                     Err(mpsc::error::TryRecvError::Disconnected) => {
                         self.reliable_open = false;
@@ -551,7 +658,7 @@ impl ProviderEventReceiver {
                 event = self.reliable.recv(), if self.reliable_open => {
                     match event {
                         Some(event) => {
-                            return Some(self.take_reliable_event(event));
+                            return Some(self.take_reliable_event_or_recognition_tail(event));
                         }
                         None => self.reliable_open = false,
                     }
@@ -589,11 +696,63 @@ impl ProviderEventReceiver {
         );
     }
 
+    fn take_reliable_event_or_recognition_tail(&mut self, event: SequencedEvent) -> ProviderEvent {
+        if self.recognition_finish_drain
+            && matches!(event.event, LiveTranslateServerEvent::SessionFinished)
+        {
+            refresh_pending(
+                &mut self.source_draft,
+                &mut self.source_open,
+                &mut self.source_pending,
+            );
+            let has_tail = self.source_pending.as_ref().is_some_and(|draft| {
+                draft.sequence < event.sequence
+                    && draft.content_revision == self.content_revision.load(Ordering::SeqCst)
+                    && matches!(
+                        draft.event,
+                        LiveTranslateServerEvent::SourceDraft { .. }
+                            | LiveTranslateServerEvent::SourceUtteranceDraft { .. }
+                    )
+                    && !self.source_draft_is_obsolete(draft)
+            });
+            if has_tail {
+                let draft = self.source_pending.take().unwrap();
+                // At most one already-received terminal is retained. Deliver
+                // it before consulting normal lanes; overflow stays urgent.
+                self.pending_finish = Some(event);
+                return self.take_draft_event(draft);
+            }
+        }
+        self.take_reliable_event(event)
+    }
+
     fn take_reliable_event(&mut self, event: SequencedEvent) -> ProviderEvent {
+        self.note_delivered_source(&event);
         match &event.event {
+            LiveTranslateServerEvent::SubtitlePreviewWithdrawn {
+                source_utterance_id,
+            } => {
+                // Reliable controls are read before latest-value drafts. Consume
+                // the matching earlier slot now; a later withdrawal must never
+                // replace a marker and make this withdrawn draft visible again.
+                refresh_pending(
+                    &mut self.source_draft,
+                    &mut self.source_open,
+                    &mut self.source_pending,
+                );
+                drop(self.source_pending.take_if(|draft| {
+                    draft.content_revision == event.content_revision
+                        && draft.sequence <= event.sequence
+                        && matches!(draft.event, LiveTranslateServerEvent::SourceUtteranceDraft { utterance_id, .. } if utterance_id == *source_utterance_id)
+                }));
+            }
             LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { utterance_id, .. } => {
-                self.last_identified_final =
-                    Some((event.sequence, event.content_revision, utterance_id.clone()));
+                self.last_identified_final = Some(IdentifiedFinal {
+                    sequence: event.sequence,
+                    content_revision: event.content_revision,
+                    utterance_id: utterance_id.clone(),
+                    source_ordinal: event.source_ordinal,
+                });
             }
             LiveTranslateServerEvent::SourceUtteranceFinal { utterance_id, .. }
             | LiveTranslateServerEvent::SubtitleConfirmedPair {
@@ -614,6 +773,7 @@ impl ProviderEventReceiver {
                 | LiveTranslateServerEvent::PreviewTranslationFinished { .. }
                 | LiveTranslateServerEvent::SubtitlePreviewPair { .. }
                 | LiveTranslateServerEvent::SubtitlePreviewCleared
+                | LiveTranslateServerEvent::SubtitlePreviewWithdrawn { .. }
                 | LiveTranslateServerEvent::TranslationStarted
                 | LiveTranslateServerEvent::TranslationDeferred(_)
                 | LiveTranslateServerEvent::UtteranceRegistered { .. }
@@ -624,6 +784,8 @@ impl ProviderEventReceiver {
             #[cfg(any(test, feature = "development-debugger"))]
             transport_sequence: Some(event.sequence),
             content_revision: event.content_revision,
+            source_ordinal: event.source_ordinal,
+            starts_translation: event.starts_translation,
             event: event.event,
         }
     }
@@ -636,8 +798,12 @@ impl ProviderEventReceiver {
         {
             self.source_pending = None;
         }
-        self.translation_pending
-            .take_if(|event| event.sequence <= self.last_delivered_sequence);
+        if self.translation_pending.as_ref().is_some_and(|event| {
+            self.stamped_draft_is_obsolete(event)
+                .unwrap_or(event.sequence <= self.last_delivered_sequence)
+        }) {
+            self.translation_pending = None;
+        }
 
         let take_source = match (&self.source_pending, &self.translation_pending) {
             (Some(source), Some(translation)) => source.sequence < translation.sequence,
@@ -650,28 +816,38 @@ impl ProviderEventReceiver {
         } else {
             self.translation_pending.take().unwrap()
         };
+        Some(self.take_draft_event(event))
+    }
+
+    fn take_draft_event(&mut self, event: SequencedEvent) -> ProviderEvent {
+        self.note_delivered_source(&event);
         self.last_delivered_sequence = self.last_delivered_sequence.max(event.sequence);
-        Some(ProviderEvent {
+        ProviderEvent {
             #[cfg(any(test, feature = "development-debugger"))]
             transport_sequence: Some(event.sequence),
             content_revision: event.content_revision,
+            source_ordinal: event.source_ordinal,
+            starts_translation: event.starts_translation,
             event: event.event,
-        })
+        }
     }
 
     fn source_draft_is_obsolete(&self, event: &SequencedEvent) -> bool {
+        if let Some(obsolete) = self.stamped_draft_is_obsolete(event) {
+            return obsolete;
+        }
         if let (
             LiveTranslateServerEvent::SubtitleIdentifiedPreviewPair { utterance_id, .. },
-            Some((sequence, revision, final_id)),
+            Some(final_event),
         ) = (&event.event, &self.last_identified_final)
         {
-            if event.content_revision == *revision {
-                if utterance_id == final_id {
+            if event.content_revision == final_event.content_revision {
+                if utterance_id == &final_event.utterance_id {
                     return true;
                 }
                 // A queued complete preview for another registered sentence
                 // survives an older final. The reducer knows the actual order.
-                if *sequence == self.last_delivered_sequence {
+                if final_event.sequence == self.last_delivered_sequence {
                     return false;
                 }
             }
@@ -687,6 +863,96 @@ impl ProviderEventReceiver {
             (LiveTranslateServerEvent::SourceUtteranceDraft { utterance_id, .. }, Some((sequence, final_id)))
                 if sequence == self.last_delivered_sequence && *utterance_id > final_id
         )
+    }
+
+    fn stamped_draft_is_obsolete(&self, event: &SequencedEvent) -> Option<bool> {
+        let LiveTranslateServerEvent::UtteranceText {
+            utterance_id,
+            role,
+            is_final: false,
+            ..
+        } = &event.event
+        else {
+            return None;
+        };
+        let final_event = self
+            .last_identified_final
+            .as_ref()
+            .filter(|final_event| event.content_revision == final_event.content_revision);
+        if final_event.is_some_and(|final_event| utterance_id == &final_event.utterance_id) {
+            return Some(true);
+        }
+        if event.sequence > self.last_delivered_sequence {
+            return Some(false);
+        }
+        // Only a queued draft proven to belong to a later source may cross
+        // this final. Other lifecycle barriers and unknown identities keep
+        // their conservative sequence-based admission rule.
+        Some(!final_event.is_some_and(|final_event| {
+            final_event.sequence == self.last_delivered_sequence
+                && event
+                    .source_ordinal
+                    .zip(final_event.source_ordinal)
+                    .is_some_and(|(draft, final_order)| {
+                        draft > final_order
+                            && self
+                                .latest_delivered_source
+                                .as_ref()
+                                .filter(|source| source.content_revision == event.content_revision)
+                                .is_none_or(|source| {
+                                    draft > source.ordinal
+                                        || (draft == source.ordinal
+                                            && match role {
+                                                UtteranceRole::Source => !source.source_final,
+                                                UtteranceRole::Translation => !source.pair_final,
+                                            })
+                                })
+                    })
+        }))
+    }
+
+    fn note_delivered_source(&mut self, event: &SequencedEvent) {
+        if event.content_revision != self.content_revision.load(Ordering::SeqCst) {
+            return;
+        }
+        let Some(ordinal) = event.source_ordinal else {
+            return;
+        };
+        let (source_final, pair_final) = match &event.event {
+            LiveTranslateServerEvent::UtteranceText {
+                role: UtteranceRole::Source,
+                is_final,
+                ..
+            } => (*is_final, false),
+            // A known ordinal also proves that a translation's source was
+            // observed by the aligner, even if its source draft coalesced.
+            LiveTranslateServerEvent::UtteranceText { .. } => (false, false),
+            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { .. } => (true, true),
+            _ => return,
+        };
+        match &mut self.latest_delivered_source {
+            Some(source) if source.content_revision == event.content_revision => {
+                if ordinal > source.ordinal {
+                    *source = DeliveredSource {
+                        content_revision: event.content_revision,
+                        ordinal,
+                        source_final,
+                        pair_final,
+                    };
+                } else if ordinal == source.ordinal {
+                    source.source_final |= source_final;
+                    source.pair_final |= pair_final;
+                }
+            }
+            slot => {
+                *slot = Some(DeliveredSource {
+                    content_revision: event.content_revision,
+                    ordinal,
+                    source_final,
+                    pair_final,
+                })
+            }
+        }
     }
 }
 
@@ -717,6 +983,252 @@ fn overflow_event() -> LiveTranslateServerEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn finish_contract_event(value: &serde_json::Value) -> LiveTranslateServerEvent {
+        use LiveTranslateServerEvent::*;
+        let text = || value["text"].as_str().unwrap().to_owned();
+        let id = value["utteranceId"].as_u64();
+        match value["kind"].as_str().unwrap() {
+            "sourceDraft" => match id {
+                Some(utterance_id) => SourceUtteranceDraft {
+                    utterance_id,
+                    text: text(),
+                    language: None,
+                },
+                None => SourceDraft {
+                    text: text(),
+                    language: None,
+                },
+            },
+            "sourceFinal" => match id {
+                Some(utterance_id) => SourceUtteranceFinal {
+                    utterance_id,
+                    text: text(),
+                    language: None,
+                },
+                None => SourceFinal {
+                    text: text(),
+                    language: None,
+                },
+            },
+            "sessionFinished" => SessionFinished,
+            _ => panic!("invalid synthetic ASR finish event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn recognition_finish_contracts_match_for_async_and_try_receive() {
+        let fixtures: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../translation-contracts.json"
+        )))
+        .unwrap();
+        let cases = fixtures["asrFinishBarrier"].as_array().unwrap();
+        assert!(!cases.is_empty());
+        for case in cases {
+            for asynchronous in [false, true] {
+                let (sender, mut receiver) = provider_event_channel();
+                receiver.enable_recognition_finish_drain();
+                for event in case["events"].as_array().unwrap() {
+                    if event["kind"] == "clear" {
+                        sender.advance_content_revision();
+                    } else {
+                        sender.send(finish_contract_event(event)).unwrap();
+                    }
+                }
+                for expected in case["expected"].as_array().unwrap() {
+                    let actual = if asynchronous {
+                        tokio::time::timeout(
+                            std::time::Duration::from_secs(1),
+                            receiver.recv_with_revision(),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap()
+                    } else {
+                        receiver.try_recv_with_revision().unwrap()
+                    };
+                    assert_eq!(
+                        actual.event,
+                        finish_contract_event(expected),
+                        "{} asynchronous={asynchronous}",
+                        case["id"]
+                    );
+                }
+                assert!(receiver.try_recv_with_revision().is_err(), "{}", case["id"]);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn recognition_finish_drain_handles_waiting_receive_and_prioritizes_its_saved_finish() {
+        let (sender, mut receiver) = provider_event_channel();
+        receiver.enable_recognition_finish_drain();
+        let draft = LiveTranslateServerEvent::SourceDraft {
+            text: "Synthetic final tail.".into(),
+            language: None,
+        };
+        let mut waiting = Box::pin(receiver.recv_with_revision());
+        assert!(futures_util::poll!(&mut waiting).is_pending());
+        sender.send(draft.clone()).unwrap();
+        sender
+            .send(LiveTranslateServerEvent::SessionFinished)
+            .unwrap();
+        assert_eq!(waiting.await.unwrap().event, draft);
+
+        // New reliable work cannot overtake the one terminal already removed
+        // from the queue while its source tail was delivered.
+        sender
+            .send(LiveTranslateServerEvent::SessionUpdated)
+            .unwrap();
+        assert_eq!(
+            receiver.recv_with_revision().await.unwrap().event,
+            LiveTranslateServerEvent::SessionFinished
+        );
+        assert_eq!(
+            receiver.try_recv_with_revision().unwrap().event,
+            LiveTranslateServerEvent::SessionUpdated
+        );
+        assert!(receiver.try_recv_with_revision().is_err());
+    }
+
+    #[test]
+    fn recognition_finish_drain_keeps_other_draft_lanes_and_normal_receivers_unchanged() {
+        for (drain, draft) in [
+            (
+                false,
+                LiveTranslateServerEvent::SourceDraft {
+                    text: "Synthetic source draft.".into(),
+                    language: None,
+                },
+            ),
+            (
+                true,
+                LiveTranslateServerEvent::TranslationDraft("Synthetic translation.".into()),
+            ),
+            (
+                true,
+                LiveTranslateServerEvent::UtteranceText {
+                    utterance_id: "synthetic".into(),
+                    role: UtteranceRole::Source,
+                    text: "Synthetic stamped draft.".into(),
+                    is_final: false,
+                    language: None,
+                },
+            ),
+        ] {
+            let (sender, mut receiver) = provider_event_channel();
+            if drain {
+                receiver.enable_recognition_finish_drain();
+            }
+            sender.send(draft).unwrap();
+            sender
+                .send(LiveTranslateServerEvent::SessionFinished)
+                .unwrap();
+            assert_eq!(
+                receiver.try_recv_with_revision().unwrap().event,
+                LiveTranslateServerEvent::SessionFinished
+            );
+            assert!(receiver.try_recv_with_revision().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn recognition_finish_drain_keeps_overflow_ahead_of_its_saved_finish() {
+        for asynchronous in [false, true] {
+            let (sender, mut receiver) = provider_event_channel_with_capacity(1);
+            receiver.enable_recognition_finish_drain();
+            sender
+                .send(LiveTranslateServerEvent::SourceDraft {
+                    text: "Synthetic final tail.".into(),
+                    language: None,
+                })
+                .unwrap();
+            sender
+                .send(LiveTranslateServerEvent::SessionFinished)
+                .unwrap();
+            assert!(matches!(
+                receiver.try_recv_with_revision().unwrap().event,
+                LiveTranslateServerEvent::SourceDraft { .. }
+            ));
+            sender
+                .send(LiveTranslateServerEvent::SessionUpdated)
+                .unwrap();
+            assert_eq!(
+                sender.send(LiveTranslateServerEvent::SessionUpdated),
+                Err(ProviderEventSendError::Backpressure)
+            );
+            let event = if asynchronous {
+                receiver.recv_with_revision().await.unwrap()
+            } else {
+                receiver.try_recv_with_revision().unwrap()
+            };
+            assert_eq!(event.event, overflow_event());
+            assert_eq!(
+                receiver.try_recv_with_revision().unwrap().event,
+                LiveTranslateServerEvent::SessionFinished
+            );
+        }
+    }
+
+    #[test]
+    fn withdrawal_discards_only_its_queued_source_draft_before_delivery() {
+        let draft = |id| LiveTranslateServerEvent::SourceUtteranceDraft {
+            utterance_id: id,
+            text: "Synthetic source draft.".into(),
+            language: None,
+        };
+        let withdrawal = LiveTranslateServerEvent::SubtitlePreviewWithdrawn {
+            source_utterance_id: 2,
+        };
+        let (sender, mut receiver) = provider_event_channel();
+        sender.send(draft(2)).unwrap();
+        sender.send(withdrawal.clone()).unwrap();
+        assert_eq!(receiver.try_recv().unwrap(), withdrawal);
+        assert!(receiver.try_recv().is_err());
+
+        let (sender, mut receiver) = provider_event_channel();
+        sender.send(draft(3)).unwrap();
+        let translation = LiveTranslateServerEvent::TranslationDraft(
+            "Synthetic older in-flight translation.".into(),
+        );
+        sender.send(translation.clone()).unwrap();
+        sender.send(withdrawal.clone()).unwrap();
+        assert_eq!(receiver.try_recv().unwrap(), withdrawal);
+        assert_eq!(receiver.try_recv().unwrap(), draft(3));
+        assert_eq!(receiver.try_recv().unwrap(), translation);
+        sender.advance_content_revision();
+        sender.send(draft(2)).unwrap();
+        assert_eq!(receiver.try_recv().unwrap(), draft(2));
+    }
+
+    #[test]
+    fn sequential_withdrawals_cannot_resurrect_the_first_queued_draft() {
+        let (sender, mut receiver) = provider_event_channel();
+        sender
+            .send(LiveTranslateServerEvent::SourceUtteranceDraft {
+                utterance_id: 1,
+                text: "Synthetic withdrawn first draft.".into(),
+                language: None,
+            })
+            .unwrap();
+        for id in [1, 2] {
+            sender
+                .send(LiveTranslateServerEvent::SubtitlePreviewWithdrawn {
+                    source_utterance_id: id,
+                })
+                .unwrap();
+        }
+        for id in [1, 2] {
+            assert_eq!(
+                receiver.try_recv().unwrap(),
+                LiveTranslateServerEvent::SubtitlePreviewWithdrawn {
+                    source_utterance_id: id
+                }
+            );
+        }
+        assert!(receiver.try_recv().is_err());
+    }
 
     fn identified_preview(id: &str, text: &str) -> LiveTranslateServerEvent {
         LiveTranslateServerEvent::SubtitleIdentifiedPreviewPair {
@@ -1359,6 +1871,546 @@ mod tests {
             text: text.into(),
             is_final: false,
             language: None,
+        }
+    }
+
+    #[test]
+    fn ordered_application_preserves_current_deadlines_and_duplicate_final_ownership() {
+        use crate::core::audio_input::{AudioInput, AudioSource};
+        use crate::core::session::TranslationSessionController;
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.did_connect();
+        let now = std::time::Instant::now();
+        let mut deadlines = Vec::new();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            let (sender, mut receiver) = provider_event_channel();
+            sender
+                .send_with_source_order(
+                    stamped_draft("current", UtteranceRole::Source, "Synthetic current"),
+                    Some(1),
+                )
+                .unwrap();
+            receiver
+                .try_recv_with_revision()
+                .unwrap()
+                .apply_to(&mut controller, source);
+            let started =
+                ProviderEvent::unsequenced(LiveTranslateServerEvent::TranslationStarted, 0)
+                    .apply_to_at(&mut controller, source, now);
+            deadlines.push((source, started.translation_pending_deadline.unwrap()));
+            sender
+                .send_with_source_order(
+                    identified_final("old", "Synthetic previous complete"),
+                    Some(0),
+                )
+                .unwrap();
+            let old = receiver
+                .try_recv_with_revision()
+                .unwrap()
+                .apply_to(&mut controller, source);
+            assert!(!old.resolves_translation_timeout);
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                started.translation_pending_deadline
+            );
+            assert_eq!(
+                controller
+                    .state
+                    .subtitles
+                    .tracks
+                    .iter()
+                    .find(|track| track.audio_source == source)
+                    .unwrap()
+                    .source
+                    .utterance_id
+                    .as_deref(),
+                Some("current")
+            );
+        }
+        for (source, deadline) in deadlines {
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                Some(deadline)
+            );
+            let (sender, mut receiver) = provider_event_channel();
+            sender
+                .send_with_source_order(
+                    identified_final("current", "Synthetic current complete"),
+                    Some(1),
+                )
+                .unwrap();
+            let current = receiver
+                .try_recv_with_revision()
+                .unwrap()
+                .apply_to(&mut controller, source);
+            assert!(current.resolves_translation_timeout);
+            assert!(controller
+                .translation_pending_deadline_from(source)
+                .is_none());
+            let next = ProviderEvent::unsequenced(LiveTranslateServerEvent::TranslationStarted, 0)
+                .apply_to_at(
+                    &mut controller,
+                    source,
+                    now + std::time::Duration::from_secs(1),
+                );
+            sender
+                .send_with_source_order(identified_final("current", "Synthetic duplicate"), Some(1))
+                .unwrap();
+            let duplicate = receiver
+                .try_recv_with_revision()
+                .unwrap()
+                .apply_to(&mut controller, source);
+            assert!(!duplicate.resolves_translation_timeout);
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                next.translation_pending_deadline
+            );
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 4);
+    }
+
+    fn translating_final(id: &str, text: &str) -> LiveTranslateServerEvent {
+        LiveTranslateServerEvent::UtteranceText {
+            utterance_id: id.into(),
+            role: UtteranceRole::Source,
+            text: text.into(),
+            is_final: true,
+            language: None,
+        }
+    }
+
+    #[test]
+    fn translating_source_final_commits_one_envelope_and_one_timer_per_source() {
+        use crate::core::audio_input::{AudioInput, AudioSource};
+        use crate::core::session::{TranslationSessionController, TRANSLATION_PENDING_TIMEOUT};
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.did_connect();
+        let now = std::time::Instant::now();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            // One remaining reliable slot is enough for both text and activity.
+            let (sender, mut receiver) = provider_event_channel_with_capacity(1);
+            let final_ = translating_final("current", "Synthetic current source.");
+            sender
+                .send_translating_source_final(final_.clone(), Some(0))
+                .unwrap();
+            let envelope = receiver.try_recv_with_revision().unwrap();
+            assert_eq!(envelope.event, final_);
+            assert!(envelope.starts_translation);
+            let application = envelope.clone().apply_to_at(&mut controller, source, now);
+            assert_eq!(
+                application.translation_pending_deadline,
+                Some(now + TRANSLATION_PENDING_TIMEOUT)
+            );
+            assert!(!application.resolves_translation_timeout);
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                application.translation_pending_deadline
+            );
+            assert!(receiver.try_recv_with_revision().is_err());
+        }
+        assert!(controller.expire_translation_pending_from(
+            AudioSource::System,
+            now + TRANSLATION_PENDING_TIMEOUT
+        ));
+        assert!(controller
+            .translation_pending_deadline_from(AudioSource::Microphone)
+            .is_some());
+    }
+
+    #[test]
+    fn translating_activity_is_cleared_or_rejected_with_its_source_final() {
+        use crate::core::audio_input::AudioSource;
+        let (sender, mut receiver) = provider_event_channel_with_capacity(1);
+        sender
+            .send_translating_source_final(
+                translating_final("cleared", "Synthetic cleared source"),
+                Some(0),
+            )
+            .unwrap();
+        sender.advance_content_revision();
+        assert!(receiver.try_recv_with_revision().is_err());
+
+        sender
+            .send(LiveTranslateServerEvent::SessionCreated)
+            .unwrap();
+        assert_eq!(
+            sender.send_translating_source_final(
+                translating_final("rejected", "Synthetic rejected source"),
+                Some(1)
+            ),
+            Err(ProviderEventSendError::Backpressure)
+        );
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        let mut controls = 0;
+        while let Ok(envelope) = receiver.try_recv_with_revision() {
+            controls += usize::from(matches!(
+                envelope.event,
+                LiveTranslateServerEvent::Error { .. }
+            ));
+            assert!(!envelope.starts_translation);
+            assert!(envelope
+                .apply_to(&mut controller, AudioSource::System)
+                .translation_pending_deadline
+                .is_none());
+        }
+        assert_eq!(controls, 1);
+        assert!(!controller.state.is_translation_pending);
+        assert!(controller.state.subtitles.source.text.is_empty());
+    }
+
+    #[test]
+    fn only_valid_identified_source_finals_can_carry_translation_activity() {
+        use crate::core::audio_input::AudioSource;
+        let oversized = "x".repeat(crate::core::models::MAX_SUBTITLE_TEXT_BYTES + 1);
+        for event in [
+            stamped_draft("draft", UtteranceRole::Source, "Synthetic draft"),
+            LiveTranslateServerEvent::TranslationStarted,
+            LiveTranslateServerEvent::Error {
+                code: "synthetic_error".into(),
+                message: "Synthetic failure".into(),
+            },
+            translating_final("oversized-text", &oversized),
+        ] {
+            let (sender, mut receiver) = provider_event_channel();
+            let result = sender.send_translating_source_final(event, Some(0));
+            assert!(result.is_ok() || result == Err(ProviderEventSendError::TextTooLarge));
+            assert!(
+                !receiver
+                    .try_recv_with_revision()
+                    .unwrap()
+                    .starts_translation
+            );
+        }
+        for (id, text) in [
+            (" ", "Synthetic source"),
+            ("empty", " \u{3000}"),
+            (oversized.as_str(), "Synthetic source"),
+        ] {
+            let (sender, mut receiver) = provider_event_channel();
+            sender
+                .send_translating_source_final(translating_final(id, text), None)
+                .unwrap();
+            let mut controller = crate::core::session::TranslationSessionController::default();
+            controller.did_connect();
+            let application = receiver
+                .try_recv_with_revision()
+                .unwrap()
+                .apply_to(&mut controller, AudioSource::System);
+            assert!(application.translation_pending_deadline.is_none());
+            assert!(!controller.state.is_translation_pending);
+        }
+    }
+
+    #[test]
+    fn rejected_stopping_content_cannot_register_rank_ahead_of_an_accepted_final_tail() {
+        use crate::core::audio_input::AudioSource;
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        controller.begin_stopping();
+        let (sender, mut receiver) = provider_event_channel();
+        sender
+            .send_with_source_order(
+                stamped_draft("ignored", UtteranceRole::Source, "Synthetic ignored"),
+                Some(0),
+            )
+            .unwrap();
+        receiver
+            .try_recv_with_revision()
+            .unwrap()
+            .apply_to(&mut controller, AudioSource::System);
+        sender
+            .send_with_source_order(identified_final("tail", "Synthetic accepted tail"), Some(0))
+            .unwrap();
+        receiver
+            .try_recv_with_revision()
+            .unwrap()
+            .apply_to(&mut controller, AudioSource::System);
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        assert_eq!(
+            controller.state.subtitles.history[0].source,
+            "Synthetic accepted tail"
+        );
+    }
+
+    #[test]
+    fn ordered_application_accepts_zero_again_after_reconnect_and_content_clear() {
+        use crate::core::audio_input::AudioSource;
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        let (sender, mut receiver) = provider_event_channel();
+        sender
+            .send_with_source_order(
+                identified_final("previous", "Synthetic previous complete"),
+                Some(99),
+            )
+            .unwrap();
+        receiver
+            .try_recv_with_revision()
+            .unwrap()
+            .apply_to(&mut controller, AudioSource::System);
+        controller.begin_connecting();
+        sender
+            .send_with_source_order(
+                stamped_draft("next", UtteranceRole::Source, "Synthetic reconnected"),
+                Some(0),
+            )
+            .unwrap();
+        receiver
+            .try_recv_with_revision()
+            .unwrap()
+            .apply_to(&mut controller, AudioSource::System);
+        assert_eq!(
+            controller.state.subtitles.source.text,
+            "Synthetic reconnected"
+        );
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        sender
+            .send_with_source_order(
+                identified_final("stale", "Synthetic pre-clear final"),
+                Some(100),
+            )
+            .unwrap();
+        sender.advance_content_revision();
+        controller.clear_subtitles();
+        sender
+            .send_with_source_order(
+                stamped_draft("fresh", UtteranceRole::Source, "Synthetic after clear"),
+                Some(0),
+            )
+            .unwrap();
+        receiver
+            .try_recv_with_revision()
+            .unwrap()
+            .apply_to(&mut controller, AudioSource::System);
+        assert_eq!(
+            controller.state.subtitles.source.text,
+            "Synthetic after clear"
+        );
+        assert!(controller.state.subtitles.history.is_empty());
+        assert!(receiver.try_recv_with_revision().is_err());
+    }
+
+    #[test]
+    fn ordered_stamped_lanes_survive_a_late_previous_final() {
+        let (sender, mut receiver) = provider_event_channel();
+        // Registration order is authoritative even when opaque IDs sort the
+        // other way and source drafts have coalesced before reduction.
+        for id in ["source_z", "source_a"] {
+            sender
+                .send(LiveTranslateServerEvent::UtteranceRegistered {
+                    utterance_id: id.into(),
+                })
+                .unwrap();
+        }
+        for (role, text) in [
+            (UtteranceRole::Source, "Synthetic following source"),
+            (
+                UtteranceRole::Translation,
+                "Synthetic following translation",
+            ),
+        ] {
+            sender
+                .send_with_source_order(stamped_draft("source_a", role, text), Some(1))
+                .unwrap();
+        }
+        sender
+            .send_with_source_order(identified_final("source_z", "Synthetic previous"), Some(0))
+            .unwrap();
+        let mut controller = crate::core::session::TranslationSessionController::default();
+        while let Ok(event) = receiver.try_recv() {
+            controller.handle(event);
+        }
+        assert_eq!(
+            controller.state.subtitles.source.text,
+            "Synthetic following source"
+        );
+        assert_eq!(
+            controller.state.subtitles.translation.text,
+            "Synthetic following translation"
+        );
+        assert!(!controller.state.subtitles.source.is_final);
+        assert_eq!(controller.state.subtitles.history.len(), 1);
+        assert_eq!(
+            controller.state.subtitles.history[0].source,
+            "Synthetic previous"
+        );
+    }
+
+    #[test]
+    fn ordered_older_stamped_drafts_cannot_replay_after_a_newer_final() {
+        for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+            let (sender, mut receiver) = provider_event_channel();
+            for id in ["source_z", "source_a"] {
+                sender
+                    .send(LiveTranslateServerEvent::UtteranceRegistered {
+                        utterance_id: id.into(),
+                    })
+                    .unwrap();
+            }
+            sender
+                .send_with_source_order(
+                    stamped_draft("source_z", role, "Synthetic stale draft"),
+                    Some(0),
+                )
+                .unwrap();
+            let final_event = identified_final("source_a", "Synthetic newer final");
+            sender
+                .send_with_source_order(final_event.clone(), Some(1))
+                .unwrap();
+            let mut controller = crate::core::session::TranslationSessionController::default();
+            let mut delivered_stale = false;
+            while let Ok(event) = receiver.try_recv() {
+                delivered_stale |= matches!(event, LiveTranslateServerEvent::UtteranceText { .. });
+                controller.handle(event);
+            }
+            assert!(!delivered_stale);
+            assert_eq!(
+                controller.state.subtitles.source.utterance_id.as_deref(),
+                Some("source_a")
+            );
+            assert!(controller.state.subtitles.source.is_final);
+            assert_eq!(controller.state.subtitles.history.len(), 1);
+        }
+    }
+
+    #[test]
+    fn stamped_final_freezes_its_own_queued_and_late_drafts() {
+        for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+            let (sender, mut receiver) = provider_event_channel();
+            let draft = stamped_draft("source", role, "Synthetic draft");
+            sender
+                .send_with_source_order(draft.clone(), Some(0))
+                .unwrap();
+            let final_event = identified_final("source", "Synthetic final");
+            sender
+                .send_with_source_order(final_event.clone(), Some(0))
+                .unwrap();
+            assert_eq!(receiver.try_recv(), Ok(final_event));
+            assert!(receiver.try_recv().is_err());
+            sender.send_with_source_order(draft, Some(0)).unwrap();
+            assert!(receiver.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn unknown_stamped_order_and_unstamped_drafts_keep_final_barriers() {
+        for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+            for (draft_order, final_order) in [(None, Some(0)), (Some(1), None), (None, None)] {
+                let (sender, mut receiver) = provider_event_channel();
+                sender
+                    .send_with_source_order(
+                        stamped_draft("following", role, "Synthetic unknown draft"),
+                        draft_order,
+                    )
+                    .unwrap();
+                let final_event = identified_final("previous", "Synthetic final");
+                sender
+                    .send_with_source_order(final_event.clone(), final_order)
+                    .unwrap();
+                assert_eq!(receiver.try_recv(), Ok(final_event));
+                assert!(receiver.try_recv().is_err());
+            }
+        }
+        let (sender, mut receiver) = provider_event_channel();
+        sender
+            .send(LiveTranslateServerEvent::SourceDraft {
+                text: "Synthetic source".into(),
+                language: None,
+            })
+            .unwrap();
+        sender
+            .send(LiveTranslateServerEvent::TranslationDraft(
+                "Synthetic translation".into(),
+            ))
+            .unwrap();
+        let final_event = identified_final("previous", "Synthetic final");
+        sender
+            .send_with_source_order(final_event.clone(), Some(0))
+            .unwrap();
+        assert_eq!(receiver.try_recv(), Ok(final_event));
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[test]
+    fn later_barriers_still_discard_ordered_stamped_drafts() {
+        for barrier in [
+            LiveTranslateServerEvent::SessionUpdated,
+            LiveTranslateServerEvent::SessionFinished,
+            LiveTranslateServerEvent::Error {
+                code: "synthetic".into(),
+                message: "Synthetic failure".into(),
+            },
+            LiveTranslateServerEvent::SubtitleFinalPair {
+                source: "Synthetic source".into(),
+                translation: "Synthetic translation".into(),
+                language: None,
+            },
+        ] {
+            for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+                let (sender, mut receiver) = provider_event_channel();
+                sender
+                    .send_with_source_order(
+                        stamped_draft("following", role, "Synthetic draft"),
+                        Some(1),
+                    )
+                    .unwrap();
+                let final_event = identified_final("previous", "Synthetic final");
+                sender
+                    .send_with_source_order(final_event.clone(), Some(0))
+                    .unwrap();
+                sender.send(barrier.clone()).unwrap();
+                assert_eq!(receiver.try_recv(), Ok(final_event));
+                assert_eq!(receiver.try_recv(), Ok(barrier.clone()));
+                assert!(receiver.try_recv().is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn content_clear_releases_stamped_final_freeze_and_order() {
+        for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+            let (sender, mut receiver) = provider_event_channel();
+            let final_event = identified_final("source", "Synthetic previous final");
+            sender
+                .send_with_source_order(final_event.clone(), Some(99))
+                .unwrap();
+            assert_eq!(receiver.try_recv(), Ok(final_event));
+            sender.advance_content_revision();
+            let draft = stamped_draft("source", role, "Synthetic new content");
+            sender
+                .send_with_source_order(draft.clone(), Some(0))
+                .unwrap();
+            assert_eq!(receiver.try_recv(), Ok(draft));
+            assert!(receiver.try_recv().is_err());
+            let next_draft = stamped_draft("following", role, "Synthetic following content");
+            sender
+                .send_with_source_order(next_draft.clone(), Some(1))
+                .unwrap();
+            let final_event = identified_final("source", "Synthetic new final");
+            sender
+                .send_with_source_order(final_event.clone(), Some(0))
+                .unwrap();
+            assert_eq!(receiver.try_recv(), Ok(final_event));
+            assert_eq!(receiver.try_recv(), Ok(next_draft));
+        }
+    }
+
+    #[test]
+    fn source_order_does_not_change_admission_after_the_barrier() {
+        for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+            for order in [None, Some(0)] {
+                let (sender, mut receiver) = provider_event_channel();
+                let final_event = identified_final("newer", "Synthetic final");
+                sender
+                    .send_with_source_order(final_event.clone(), Some(1))
+                    .unwrap();
+                assert_eq!(receiver.try_recv(), Ok(final_event));
+                // The reducer still owns admission of later publications. The
+                // transport exception only repairs already-queued previews.
+                let draft = stamped_draft("older-or-unknown", role, "Synthetic later publication");
+                sender.send_with_source_order(draft.clone(), order).unwrap();
+                assert_eq!(receiver.try_recv(), Ok(draft));
+            }
         }
     }
 

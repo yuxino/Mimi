@@ -343,14 +343,17 @@ impl BoundedSseResponse {
         if !self.done && !self.buffer.is_empty() {
             let line = std::str::from_utf8(&self.buffer)
                 .map_err(|_| QwenMTClientError::InvalidHTTPResponse)?;
-            handle_sse_line(line.trim_end(), &mut self.translation, on_partial)?;
+            self.done = handle_sse_line(line.trim_end(), &mut self.translation, on_partial)?;
+        }
+        if !self.done {
+            return Err(incomplete_translation_error());
         }
         Ok(self.translation.trim().to_string())
     }
 }
 
 /// Handles one SSE `data:` line, appending decoded content to `translation`.
-/// Returns `true` when the stream has reached `[DONE]`.
+/// Returns `true` when `[DONE]` or a successful `stop` confirms completion.
 fn handle_sse_line(
     line: &str,
     translation: &mut String,
@@ -366,8 +369,12 @@ fn handle_sse_line(
     if payload == "[DONE]" {
         return Ok(true);
     }
-    let content = QwenMTStreamDecoder::decode_chunk(payload)
-        .map_err(|_| QwenMTClientError::InvalidHTTPResponse)?;
+    let (content, complete) = QwenMTStreamDecoder::decode_chunk_with_completion(payload).map_err(
+        |error| match error {
+            QwenMTProtocolError::IncompleteTranslation => incomplete_translation_error(),
+            _ => QwenMTClientError::InvalidHTTPResponse,
+        },
+    )?;
     if let Some(content) = content {
         if !content.is_empty() {
             if content.len() > MAX_TRANSLATION_BYTES - translation.len() {
@@ -377,7 +384,14 @@ fn handle_sse_line(
             on_partial(translation.clone());
         }
     }
-    Ok(false)
+    Ok(complete)
+}
+
+fn incomplete_translation_error() -> QwenMTClientError {
+    QwenMTClientError::RequestFailed {
+        status_code: 200,
+        message: QwenMTProtocolError::IncompleteTranslation.to_string(),
+    }
 }
 
 fn rejected_error(status_code: u16, data: &[u8]) -> QwenMTClientError {
@@ -430,7 +444,7 @@ mod tests {
         let mut decoder = BoundedSseResponse::default();
         decoder
             .push(
-                b"data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}",
+                b"data: {\"choices\":[{\"finish_reason\":\"stop\",\"delta\":{\"content\":\"hello\"}}]}",
                 &|_| {},
             )
             .unwrap();
@@ -559,6 +573,38 @@ mod tests {
         let body: serde_json::Value =
             serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
         assert_eq!(body["stream"], true);
+    }
+
+    #[tokio::test]
+    async fn qwen_completion_contracts_reject_partial_http_successes() {
+        let contracts: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        for case in contracts["qwenCompletionResponses"].as_array().unwrap() {
+            let body = case["body"].as_str().unwrap();
+            let (client, server) = fixture_client(format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len(),
+            ))
+            .await;
+            let result = if case["stream"].as_bool().unwrap() {
+                client
+                    .translate_streaming("Synthetic source", None, &[], |_| {})
+                    .await
+            } else {
+                client.translate("Synthetic source", None, &[]).await
+            };
+            server.await.unwrap();
+            if let Some(expected) = case["expected"].as_str() {
+                assert_eq!(result.unwrap(), expected, "{}", case["id"]);
+            } else {
+                let error = result.expect_err(case["id"].as_str().unwrap());
+                assert!(!error.to_string().contains("Synthetic partial"));
+                assert_eq!(
+                    error.retry_class(),
+                    mimi_core::translation_policy::RetryClass::Permanent
+                );
+            }
+        }
     }
 
     async fn read_fixture_request(socket: &mut tokio::net::TcpStream) -> bool {

@@ -15,7 +15,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
 /** A draft only. ServiceSettingsActivity commits this alongside the speech configuration. */
-internal class TextTranslationSettings(private val activity: AppCompatActivity, private val profileId: String? = null) {
+internal class TextTranslationSettings(private val activity: AppCompatActivity, private val profileId: String? = null, editorDraft: TextTranslationEditorDraft? = null) {
     private class Draft(val saved: TranslationConfiguration) {
         var endpoint = saved.endpoint.ifBlank {
             if (saved.provider == TextTranslationProvider.CHAT_MOCK) "http://127.0.0.1:8000/v1" else ""
@@ -27,8 +27,15 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
     }
     private val providers = listOf(TextTranslationProvider.BUILTIN, TextTranslationProvider.DEEPL, TextTranslationProvider.DEEPLX,
         TextTranslationProvider.CHAT_MOCK, TextTranslationProvider.OPENAI_COMPATIBLE, TextTranslationProvider.NONE)
-    private val drafts = providers.associateWith { Draft(if (profileId == null) TranslationConfiguration(provider = it) else SettingsStore.profileTranslationConfiguration(activity, profileId, it)) }
-    private var selected = if (profileId == null) TextTranslationProvider.BUILTIN else SettingsStore.profileTextTranslationProvider(activity, profileId)
+    private val drafts = providers.associateWith { route ->
+        Draft(if (profileId == null) TranslationConfiguration(provider = route) else SettingsStore.profileTranslationConfiguration(activity, profileId, route)).apply {
+            editorDraft?.routes?.get(route)?.let {
+                endpoint = it.endpoint; model = it.model; key = it.key
+                localHttp = it.localHttp; forgetKey = it.forgetKey
+            }
+        }
+    }
+    private var selected = editorDraft?.selected ?: if (profileId == null) TextTranslationProvider.BUILTIN else SettingsStore.profileTextTranslationProvider(activity, profileId)
     private var rendering = false
     private val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val fields = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -74,7 +81,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
         qwenModel.adapter = ArrayAdapter(activity, R.layout.mimi_spinner_item,
             listOf("Qwen-MT Lite", "Qwen-MT Flash", "Qwen-MT Plus")).apply { setDropDownViewResource(R.layout.mimi_spinner_dropdown) }
         qwenModel.contentDescription = activity.getString(R.string.translation_model)
-        qwenModel.setSelection(qwenModels.indexOf(if (profileId == null) "lite" else SettingsStore.profileQwenMtModel(activity, profileId)))
+        qwenModel.setSelection(qwenModels.indexOf(editorDraft?.qwenMtModel ?: if (profileId == null) "lite" else SettingsStore.profileQwenMtModel(activity, profileId)))
         qwenModelRow.addView(ServiceSettingsUi.label(activity, activity.getString(R.string.translation_model), 16f))
         qwenModelRow.addView(qwenModel, LinearLayout.LayoutParams(-1, dp(56)))
         root.addView(qwenModelRow, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
@@ -119,6 +126,17 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
             key = this@TextTranslationSettings.key.text.toString()
             localHttp = this@TextTranslationSettings.localHttp.isChecked
         }
+    }
+
+    fun editorDraft(): TextTranslationEditorDraft {
+        rememberDraft()
+        // Spinner selection can change just before recreation, while its
+        // onItemSelected callback is still queued. The fields still belong to
+        // `selected`, but the next editor must open the newly chosen route.
+        val nextSelected = providers.getOrNull(mode.selectedItemPosition) ?: selected
+        return TextTranslationEditorDraft(nextSelected, qwenMtModel, drafts.mapValues { (_, state) ->
+            TextTranslationRouteDraft(state.endpoint, state.model, state.key, state.localHttp, state.forgetKey)
+        })
     }
 
     private fun renderDraft() {

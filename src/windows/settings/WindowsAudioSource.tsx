@@ -11,12 +11,14 @@ import {
 } from "../../lib/windowsAudioSource";
 import { isTauri } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
+import { useDocumentVisibility } from "../../lib/useDocumentVisibility";
 import { SettingsRow, SettingsSelect } from "./SettingsPrimitives";
 import { I18N } from "../../lib/i18n";
 import { useSettingsToast } from "./useSettingsToast";
 
 
 export function WindowsAudioSource() {
+  const documentVisible = useDocumentVisibility();
   const [snapshot, setSnapshot] = useState<AudioSourceSnapshot | null>(null);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,7 +31,7 @@ export function WindowsAudioSource() {
   const save = useStore((state) => state.saveSettings);
   const text = audioSourceCopy();
   useEffect(() => {
-    if (!isTauri) return;
+    if (!isTauri || !documentVisible) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
@@ -51,7 +53,7 @@ export function WindowsAudioSource() {
     };
     void refresh();
     return () => { disposed = true; clearTimeout(timer); };
-  }, []);
+  }, [documentVisible]);
   if (!snapshot) return null;
   const missing = isDeviceSource(selected) && !snapshot.devices.some((device) => device.id === selected);
   const current = snapshot.devices.find((device) => device.id === snapshot.currentDevice)?.name;

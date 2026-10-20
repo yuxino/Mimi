@@ -106,3 +106,36 @@ it("does not grant an upward gesture or a stationary pointer permission to resum
   scroll.userIntent(element, "down"); scroll.followIfAtTail(element);
   expect(scroll.isFollowing()).toBe(true);
 });
+
+it("stops an in-flight follow glide immediately when the motion preference is disabled", () => {
+  const { element, scroll, scrollTo } = fixture();
+  element.scrollTop = 30;
+  scrollTo.mockImplementation(() => {});
+  scroll.contentChanged(element, "smooth");
+  scroll.contentChanged(element, "instant", false);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 200, behavior: "instant" });
+  scroll.reflow(element);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 200, behavior: "instant" });
+});
+
+it("resumes a clicked follow glide without mistaking its queued scroll for history reading", () => {
+  const { element, scroll, scrollTo } = fixture();
+  element.scrollTop = 30;
+  scrollTo.mockImplementation(() => {});
+  scroll.contentChanged(element, "smooth");
+  scroll.pointerDown(element);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 30, behavior: "instant" });
+  scroll.scrolled(element);
+  expect(scroll.isFollowing()).toBe(true);
+  scroll.pointerUp(element);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 200, behavior: "smooth" });
+
+  scroll.pointerDown(element);
+  scroll.userIntent(element);
+  element.scrollTop = 10;
+  scroll.scrolled(element);
+  expect(scroll.isFollowing()).toBe(false);
+  scrollTo.mockClear();
+  scroll.pointerUp(element);
+  expect(scrollTo).not.toHaveBeenCalled();
+});

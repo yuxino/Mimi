@@ -1,9 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { effectiveUiLanguage, I18N, UI_LANGUAGES, UI_LANGUAGE_OPTIONS, setStoredUiLanguage, subscribeUiLanguage } from "./i18n";
+import { effectiveUiLanguage, I18N, localizedRecord, UI_LANGUAGES, UI_LANGUAGE_OPTIONS, setStoredUiLanguage, subscribeUiLanguage } from "./i18n";
 import { SUBTITLE_DISPLAY_OPTIONS } from "./subtitleDisplay";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "./types";
 
 afterEach(() => { setStoredUiLanguage("en"); vi.unstubAllGlobals(); });
+
+it("reuses locale-only display records during repeated reads and after switching back", () => {
+  setStoredUiLanguage("en");
+  const read = vi.fn(() => ({ label: { language: effectiveUiLanguage() } }));
+  const record = localizedRecord(read);
+  const english = record.label;
+  for (let index = 0; index < 100; index++) expect(record.label).toBe(english);
+  expect(read).toHaveBeenCalledOnce();
+  for (const language of UI_LANGUAGES) {
+    setStoredUiLanguage(language);
+    expect(record.label.language).toBe(language);
+    expect(Object.values(record)[0]).toBe(record.label);
+  }
+  setStoredUiLanguage("en");
+  expect(record.label).toBe(english);
+  expect(read).toHaveBeenCalledTimes(UI_LANGUAGES.length);
+});
 
 describe("in-place language changes", () => {
   it("updates copy and display tables without reloading the window", () => {

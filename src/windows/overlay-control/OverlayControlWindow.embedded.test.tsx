@@ -105,6 +105,59 @@ it("does not install embedded dismissal or input-region reporting for a separate
   expect(host.querySelector(".overlay-control-embedded")).toBeNull();
 });
 
+it("reads the current subtitle ref and conservatively schedules unknown or unsafe-root mutation records", async () => {
+  const ActualMutationObserver = MutationObserver;
+  let popup!: { callback: MutationCallback; observer: MutationObserver };
+  vi.stubGlobal("MutationObserver", class extends ActualMutationObserver {
+    callback: MutationCallback;
+    constructor(callback: MutationCallback) { super(callback); this.callback = callback; }
+    observe(target: Node, options?: MutationObserverInit) {
+      if (target === document.body && options?.characterData) popup = { callback: this.callback, observer: this };
+      super.observe(target, options);
+    }
+  });
+  const subtitle = document.createElement("div"); subtitle.textContent = "Synthetic subtitle";
+  const replacement = document.createElement("div"); replacement.textContent = "Replacement subtitle";
+  document.body.append(subtitle, replacement);
+  const subtitleRootRef: { current: HTMLElement | null } = { current: subtitle };
+  await act(async () => root.render(<OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />));
+  await act(async () => mode("panel"));
+  await act(async () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); });
+  const surface = host.querySelector<HTMLElement>(".overlay-control-embedded")!;
+  const record = (target: Node, type = "characterData", attributeName: string | null = null) =>
+    ({ target, type, attributeName, addedNodes: [], removedNodes: [] }) as unknown as MutationRecord;
+  const assertIgnored = (records: MutationRecord[]) => {
+    popup.callback(records, popup.observer);
+    expect(frames.size).toBe(0);
+  };
+  // Deliver edge records through the actual component observer callback;
+  // Document/unknown kinds are defensive cases, not body-observer emissions.
+  assertIgnored([record(subtitle.firstChild!)]);
+  const flush = async () => {
+    await act(async () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); });
+  };
+  const check = async (records: MutationRecord[]) => {
+    popup.callback(records, popup.observer);
+    expect(frames.size).toBeGreaterThan(0);
+    await flush();
+  };
+  subtitleRootRef.current = null;
+  await check([record(subtitle.firstChild!)]);
+  subtitleRootRef.current = replacement;
+  await check([record(subtitle.firstChild!)]);
+  assertIgnored([record(replacement.firstChild!)]);
+  subtitleRootRef.current = host;
+  await check([record(surface, "attributes", "style")]);
+  subtitleRootRef.current = surface.firstElementChild as HTMLElement;
+  await check([record(subtitleRootRef.current, "attributes", "style")]);
+  subtitleRootRef.current = replacement;
+  await check([record(document)]);
+  await check([record(replacement, "attributes", "class")]);
+  await check([record(replacement, "unknown")]);
+  await check([]);
+  await act(async () => { subtitle.remove(); replacement.remove(); });
+});
+
 it.each([false, true])("keeps a locked notification dismissible alongside a picker (failure=%s)", async failure => {
   native.failure = failure;
   await act(async () => root.render(<OverlayControlWindow embedded />));

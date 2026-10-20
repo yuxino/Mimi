@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Select } from "./Select";
@@ -39,11 +39,102 @@ async function render(value: string) {
 }
 function trigger() { return host.querySelector<HTMLButtonElement>('[role="combobox"]')!; }
 
+it.each([
+  { target: "sibling element", staysOpen: true },
+  { target: "sibling SVG", staysOpen: true },
+  { target: "menu", staysOpen: true },
+  { target: "menu text", staysOpen: true },
+  { target: "trigger ancestor", staysOpen: false },
+  { target: "outside text", staysOpen: false },
+  { target: "document", staysOpen: false },
+  { target: "window", staysOpen: false },
+  { target: "resize", staysOpen: false },
+  { target: "blur", staysOpen: false },
+])("keeps the scroll dismissal policy for $target (open=$staysOpen)", async ({ target, staysOpen }) => {
+  await render("translation");
+  await act(() => trigger().click());
+  const popup = document.querySelector<HTMLElement>('[role="listbox"]')!;
+  let source: EventTarget;
+  if (target === "menu") source = popup;
+  else if (target === "menu text") source = popup.appendChild(document.createTextNode("Synthetic menu content"));
+  else if (target === "trigger ancestor") source = host;
+  else if (target === "document") source = document;
+  else if (["window", "resize", "blur"].includes(target)) source = window;
+  else source = host.appendChild(target === "sibling SVG"
+    ? document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    : target === "outside text" ? document.createTextNode("Synthetic outside content") : document.createElement("div"));
+  await act(() => source.dispatchEvent(new Event(target === "resize" || target === "blur" ? target : "scroll")));
+  expect(document.querySelector('[role="listbox"]')).toBe(staysOpen ? popup : null);
+  expect(trigger().getAttribute("aria-expanded")).toBe(String(staysOpen));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 const translatorOptions = [
   { value: "default", label: "Alibaba", icon: <svg width="32" height="32"><circle cx="16" cy="16" r="8" /></svg> },
   { value: "deepL", label: "DeepL", icon: <img src="synthetic-deepl.svg" alt="" /> },
   { value: "deepLX", label: "DeepLX" },
 ];
+
+const partlyUnavailable = [
+  { value: "first", label: "Unavailable first", disabled: true },
+  { value: "alpha", label: "Alpha" },
+  { value: "blocked", label: "Blocked", disabled: true },
+  { value: "beta", label: "Beta" },
+  { value: "last", label: "Unavailable last", disabled: true },
+];
+async function choiceKey(key: string) {
+  await act(() => trigger().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })));
+}
+
+it("builds option rows only while open, including after closing a filtered menu", async () => {
+  const unselectedLabel = vi.fn(() => "Another application");
+  const choices = [{ value: "selected", label: "Selected application" },
+    ...Array.from({ length: 40 }, (_, index) => ({ value: `app-${index}`, get label() { return unselectedLabel(); } }))];
+  const show = () => root.render(<Select label="Applications" value="selected" options={choices} searchLabel="Search" onChange={onChange} />);
+  await act(show);
+  expect(unselectedLabel).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="option"]')).toBeNull();
+
+  await act(() => trigger().click());
+  expect(document.querySelectorAll('[role="option"]')).toHaveLength(41);
+  expect(unselectedLabel).toHaveBeenCalled();
+  const input = document.querySelector<HTMLInputElement>(".mimi-select__search")!;
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Selected");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(document.querySelectorAll('[role="option"]')).toHaveLength(1);
+  await act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  unselectedLabel.mockClear();
+  await act(show);
+  expect(unselectedLabel).not.toHaveBeenCalled();
+  expect(trigger().textContent).toBe("Selected application");
+  expect(trigger().getAttribute("aria-expanded")).toBe("false");
+});
+
+it("ignores repeated pointer movement within one row while preserving pointer and keyboard selection", async () => {
+  const committed = vi.fn();
+  await act(() => root.render(<Profiler id="select" onRender={committed}>
+    <Select label="Choice" value="alpha" options={partlyUnavailable} onChange={onChange} />
+  </Profiler>));
+  await act(() => trigger().click());
+  const beta = document.querySelectorAll<HTMLElement>('[role="option"]')[3];
+  await act(() => beta.dispatchEvent(new Event("pointermove", { bubbles: true })));
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Beta");
+  committed.mockClear();
+  for (let index = 0; index < 20; index++) {
+    await act(() => beta.dispatchEvent(new Event("pointermove", { bubbles: true })));
+  }
+  expect(committed).not.toHaveBeenCalled();
+  const alpha = document.querySelectorAll<HTMLElement>('[role="option"]')[1];
+  await act(() => alpha.dispatchEvent(new Event("pointermove", { bubbles: true })));
+  expect(committed).toHaveBeenCalledOnce();
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Alpha");
+  await choiceKey("ArrowDown");
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Beta");
+  await choiceKey("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
+});
 
 it("keeps decorative option icons beside unchanged labels and preserves keyboard typeahead", async () => {
   await act(() => root.render(<Select label="文字翻译" value="default" options={translatorOptions} onChange={onChange} />));
@@ -59,6 +150,122 @@ it("keeps decorative option icons beside unchanged labels and preserves keyboard
   await act(() => root.render(<Select label="文字翻译" value="deepL" options={translatorOptions} onChange={onChange} />));
   expect(trigger().textContent).toBe("DeepL");
   expect(trigger().querySelector('.mimi-select__icon[aria-hidden="true"] img')).not.toBeNull();
+});
+
+it("keeps disabled options visible while blocking pointer hover and selection", async () => {
+  await act(() => root.render(<Select label="Choice" value="alpha" options={partlyUnavailable} onChange={onChange} />));
+  await act(() => trigger().click());
+  expect(document.querySelectorAll('[role="option"]')).toHaveLength(5);
+  const blocked = document.querySelectorAll<HTMLElement>('[role="option"]')[2];
+  expect(blocked.getAttribute("aria-disabled")).toBe("true");
+  await act(() => blocked.dispatchEvent(new Event("pointermove", { bubbles: true })));
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Alpha");
+  await act(() => blocked.click());
+  expect(onChange).not.toHaveBeenCalled();
+  expect(trigger().getAttribute("aria-expanded")).toBe("true");
+  const usable = document.querySelectorAll<HTMLElement>('[role="option"]')[3];
+  await act(() => usable.dispatchEvent(new Event("pointermove", { bubbles: true })));
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Beta");
+  await act(() => usable.click());
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
+});
+
+it.each([false, true])("closes a disabled picker without reviving its old popup or query when enabled again (search=%s)", async searchable => {
+  const show = async (disabled: boolean) => act(() => root.render(<Select label="Choice" value="translation" options={options}
+    disabled={disabled} searchLabel={searchable ? "Filter" : undefined} onChange={onChange} />));
+  await show(false);
+  await act(() => trigger().click());
+  if (searchable) await act(() => {
+    const input = document.querySelector<HTMLInputElement>(".mimi-select__search")!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "双语");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await show(true);
+  expect(trigger().disabled).toBe(true);
+  expect(document.querySelector(".mimi-select__menu")).toBeNull();
+  await show(false);
+  expect(document.querySelector(".mimi-select__menu")).toBeNull();
+  expect(trigger().getAttribute("aria-expanded")).toBe("false");
+  expect(onChange).not.toHaveBeenCalled();
+  await act(() => trigger().click());
+  expect(document.querySelectorAll('[role="option"]')).toHaveLength(3);
+  if (searchable) expect(document.querySelector<HTMLInputElement>(".mimi-select__search")!.value).toBe("");
+});
+
+it.each(["Enter", " "])("skips disabled choices with arrows and boundaries before confirming with %j", async confirm => {
+  await act(() => root.render(<Select label="Choice" value="alpha" options={partlyUnavailable} onChange={onChange} />));
+  await act(() => trigger().click());
+  for (const [key, label] of [["ArrowDown", "Beta"], ["ArrowDown", "Alpha"], ["ArrowUp", "Beta"], ["Home", "Alpha"], ["End", "Beta"]]) {
+    await choiceKey(key);
+    expect(document.querySelector('[data-active="true"]')?.textContent).toBe(label);
+  }
+  expect(onChange).not.toHaveBeenCalled();
+  await choiceKey(confirm);
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
+});
+
+it("ignores disabled typeahead matches while retaining normal confirmation", async () => {
+  await act(() => root.render(<Select label="Choice" value="alpha" options={partlyUnavailable} onChange={onChange} />));
+  await choiceKey("B");
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Beta");
+  await choiceKey("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
+});
+
+it("skips unavailable rows for rapid closed arrows and a disabled current value", async () => {
+  const renderChoice = (value: string) => act(() => root.render(<Select label="Choice" value={value} options={partlyUnavailable} closedArrowSelection onChange={onChange} />));
+  await renderChoice("alpha");
+  await act(() => {
+    for (const key of ["ArrowDown", "ArrowDown", "ArrowUp"]) trigger().dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  });
+  expect(onChange.mock.calls).toEqual([["beta"], ["alpha"], ["beta"]]);
+  onChange.mockClear();
+  await renderChoice("blocked"); await choiceKey("ArrowDown");
+  await renderChoice("blocked"); await choiceKey("ArrowUp");
+  expect(onChange.mock.calls).toEqual([["beta"], ["alpha"]]);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+});
+
+it("keeps search results visible without an active choice when every match is disabled", async () => {
+  await act(() => root.render(<Select label="Choice" value="alpha" options={partlyUnavailable} searchLabel="Search" onChange={onChange} />));
+  await act(() => trigger().click());
+  await typeQuery("Blocked");
+  expect(visibleLabels()).toEqual(["Blocked"]);
+  for (const keyName of ["ArrowDown", "ArrowUp", "Home", "End", "Enter"]) await key(keyName);
+  expect(document.querySelector('[data-active="true"]')).toBeNull();
+  expect(input().getAttribute("aria-activedescendant")).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+  expect(trigger().getAttribute("aria-expanded")).toBe("true");
+  await typeQuery("Beta"); await key("Enter");
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
+});
+
+it("moves an active disabled row to the next enabled choice without changing the saved value", async () => {
+  const renderChoices = (choices: typeof partlyUnavailable) => act(() => root.render(<Select label="Choice" value="alpha" options={choices} onChange={onChange} />));
+  await renderChoices(partlyUnavailable); await act(() => trigger().click());
+  await choiceKey("ArrowDown");
+  await renderChoices(partlyUnavailable.map(option => option.value === "beta" ? { ...option, disabled: true } : option));
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Alpha");
+  await renderChoices(partlyUnavailable.map(option => ({ ...option, disabled: true })));
+  expect(trigger().textContent).toBe("Alpha");
+  expect(document.querySelector('[aria-selected="true"]')?.getAttribute("aria-disabled")).toBe("true");
+  expect(document.querySelector('[data-active="true"]')).toBeNull();
+  await choiceKey("Enter"); expect(onChange).not.toHaveBeenCalled();
+  await renderChoices(partlyUnavailable.map(option => ({ ...option, disabled: option.value !== "beta" })));
+  expect(document.querySelector('[data-active="true"]')?.textContent).toBe("Beta");
+  await choiceKey("Enter"); expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
+});
+
+it("leaves all-disabled closed choices unchanged and allows opening their visible list", async () => {
+  await act(() => root.render(<Select label="Choice" value="alpha" options={partlyUnavailable.map(option => ({ ...option, disabled: true }))} closedArrowSelection onChange={onChange} />));
+  await choiceKey("ArrowDown"); await choiceKey("ArrowUp");
+  expect(onChange).not.toHaveBeenCalled();
+  await choiceKey("Enter");
+  expect(document.querySelectorAll('[role="option"]')).toHaveLength(5);
+  for (const key of ["ArrowDown", "ArrowUp", "Home", "End", "Enter", " "]) await choiceKey(key);
+  expect(document.querySelector('[data-active="true"]')).toBeNull();
+  expect(onChange).not.toHaveBeenCalled();
+  expect(trigger().getAttribute("aria-expanded")).toBe("true");
 });
 
 it("uses a fallback icon only while the saved selection is absent from the options", async () => {

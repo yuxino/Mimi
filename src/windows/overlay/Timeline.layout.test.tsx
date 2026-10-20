@@ -155,6 +155,58 @@ it("keeps the same confirmed long sentence bounded when the next live sentence a
   expect(after.textContent).toContain(confirmed.translation);
 });
 
+it("keeps later measurements of a former last row from replacing the current row's lane budget", async () => {
+  const previous = { ...confirmed, source: "Previous original", translation: "Previous translation" };
+  const current = { ...live, source: "Current original", translation: "Current translation" };
+  const heights = new Map([[previous.source, 22], [previous.translation, 240], [current.source, 240], [current.translation, 24]]);
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    const height = heights.get(this.textContent ?? "") ?? 24;
+    return { top: 0, bottom: height, height } as DOMRect;
+  };
+  const timeline = await render([previous]);
+  const previousRow = timeline.firstElementChild;
+  const previousObservers = resize.slice(0, 2);
+  await render([{ ...previous, presentation: "history" }, current]);
+  const original = timeline.querySelector<HTMLElement>(`[aria-label="${current.source}"]`)!;
+  expect(original.style.height).toBe("66px");
+  heights.set(previous.source, 240);
+  heights.set(previous.translation, 24);
+  await act(() => { previousObservers.forEach(callback => callback()); });
+  expect(timeline.firstElementChild).toBe(previousRow);
+  expect(original.style.height).toBe("66px");
+
+  heights.set(current.source, 22);
+  heights.set(current.translation, 240);
+  await act(() => { resize.forEach(callback => callback()); });
+  expect(original.style.height).toBe("22px");
+  expect(timeline.querySelector<HTMLElement>(`[aria-label="${current.translation}"]`)!.style.height).toBe("48px");
+});
+
+it("refreshes retained typography and alignment without remounting the history being read", async () => {
+  const blocks = [{ ...confirmed, presentation: "history" as const }, live];
+  const show = (fontFamily: string, fontSize: number, alignment: "left" | "right") => root.render(
+    <Timeline blocks={blocks.map(block => ({ ...block }))} fontFamily={fontFamily} fontSize={fontSize}
+      alignment={alignment} color="pink" displayMode="bilingual" audioInput="system" motionEnabled={false} />,
+  );
+  await act(() => show("Previous Font", 18, "left"));
+  const timeline = host.firstElementChild as HTMLElement;
+  const previousRow = timeline.firstElementChild;
+  await act(() => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -30 })));
+  timeline.scrollTop = 37;
+  await act(() => show("Current Font", 24, "right"));
+  expect(timeline.firstElementChild).toBe(previousRow);
+  expect(timeline.scrollTop).toBe(37);
+  expect(timeline.querySelector("[aria-label]:not([role])")).toBeNull();
+  const lanes = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id] span.block")];
+  expect(lanes).toHaveLength(4);
+  for (const lane of lanes) {
+    expect(lane.style.fontFamily).toBe('"Current Font", var(--mimi-ui-font)');
+    expect(lane.style.textAlign).toBe("right");
+  }
+  expect(lanes.map(lane => lane.style.fontSize)).toEqual(["21.6px", "24px", "21.6px", "24px"]);
+  expect(lanes[1].style.color).toBe("rgb(244, 154, 181)");
+});
+
 it.each(["original", "translation", "bilingual"] as const)("keeps a fitting three-line confirmed phrase readable when the next short phrase starts in %s", async displayMode => {
   viewportHeight = 480;
   const source = "The first sentence describes a room. The second describes a door. The last ends with tomorrow.";
@@ -358,6 +410,22 @@ it("does not glide a new line that still fits the compact lane", async () => {
   await act(async () => { resize.forEach(callback => callback()); });
   expect(transforms.mock.calls.map(([value]) => value)).toEqual(["translateY(0)"]);
   expect(inner.style.transition).toBe("none");
+  transforms.mockRestore();
+});
+
+it("keeps the first line in place when a chunk crosses from one line to five", async () => {
+  viewportHeight = 80;
+  measuredHeight = 24;
+  const timeline = await render([{ ...confirmed, source: null }], 18, true);
+  const lane = timeline.querySelector<HTMLElement>("[aria-label]:not([role])")!;
+  const inner = lane.firstElementChild as HTMLElement;
+  const transforms = vi.spyOn(inner.style, "transform", "set");
+  measuredHeight = 120;
+  await act(async () => { resize.forEach(callback => callback()); });
+  expect(lane.style.height).toBe("72px");
+  // bottom:0 moves the first line up 48px. Restoring 96px (the full growth)
+  // would instead jump it down 48px and clip the newly arrived lines.
+  expect(transforms.mock.calls.map(([value]) => value)).toEqual(["translateY(48px)", "translateY(0)"]);
   transforms.mockRestore();
 });
 

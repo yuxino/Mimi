@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, type ComponentProps } from "react";
+import { act, StrictMode, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N } from "../../lib/i18n";
 import { AutoSaveNameField } from "./AutoSaveNameField";
+import { NameDraftContext, NameDraftOwner, type NameDraftKey } from "./nameDraftOwner";
 
 let host: HTMLDivElement, root: Root;
 const save = vi.fn<(name: string) => Promise<unknown>>();
@@ -44,6 +45,318 @@ function deferred() {
   const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 }
+
+async function renderOwned(owner: NameDraftOwner, profileId = "first", props: Partial<ComponentProps<typeof AutoSaveNameField>> = {}, shown = true) {
+  await act(() => root.render(<StrictMode><NameDraftContext.Provider value={{ owner, profileId }}>
+    {shown ? <AutoSaveNameField key={profileId} id="name" draftKey="profile" label="Name" value="Original" placeholder="Default" onSave={save} {...props} /> : <div>List</div>}
+  </NameDraftContext.Provider></StrictMode>));
+}
+
+it.each(["profile", "recognition", "translation:deepL"] as NameDraftKey[])("reconciles a newer authoritative %s name after an older save reply and keeps it across navigation", async draftKey => {
+  const owner = new NameDraftOwner(), pending = deferred();
+  save.mockReturnValueOnce(pending.promise);
+  await renderOwned(owner, "first", { draftKey });
+  await change("Saved A"); await tick();
+  const field = input();
+  await renderOwned(owner, "first", { draftKey, value: "Saved A" });
+  await renderOwned(owner, "first", { draftKey, value: "Newer B" });
+  expect(input().value).toBe("Saved A");
+  await act(async () => pending.resolve({}));
+  expect(input()).toBe(field);
+  expect(input().value).toBe("Newer B");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await renderOwned(owner, "first", { draftKey, value: "Newer B" }, false);
+  await renderOwned(owner, "first", { draftKey, value: "Newer B" });
+  expect(input().value).toBe("Newer B");
+  await tick();
+  expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+});
+
+it("distinguishes a new authoritative return to the initial name from having no echo", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Saved A"); await tick();
+  await render({ value: "Saved A" }); await render({ value: "Original" });
+  await act(async () => pending.resolve({}));
+  expect(input().value).toBe("Original");
+  await tick(); expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+});
+
+it.each(["recognition", "translation:deepL"] as NameDraftKey[])("accepts an empty authoritative %s alias as a real update", async draftKey => {
+  const owner = new NameDraftOwner(), pending = deferred();
+  save.mockReturnValueOnce(pending.promise);
+  await renderOwned(owner, "first", { draftKey });
+  await change("Saved A"); await tick();
+  await renderOwned(owner, "first", { draftKey, value: "Saved A" });
+  await renderOwned(owner, "first", { draftKey, value: "" });
+  await act(async () => pending.resolve({}));
+  expect(input().value).toBe("");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await tick(); expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+});
+
+it("accepts a new authoritative name during a pending save even without that save's prop echo", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Saved A"); await tick();
+  await render({ value: "Newer B" });
+  await act(async () => pending.resolve({}));
+  expect(input().value).toBe("Newer B");
+  await tick(); expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+});
+
+it("keeps a successful name when no source echo arrives", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Saved A"); await tick();
+  await act(async () => pending.resolve({}));
+  await render({ value: "Original" });
+  expect(input().value).toBe("Saved A");
+  expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+});
+
+it.each(["current", "older"] as const)("distinguishes %s own acknowledgement after an external pending-save update", async kind => {
+  const owner = new NameDraftOwner();
+  await renderOwned(owner); await change("Older own name"); await tick();
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await change("Current own name"); await tick();
+  await renderOwned(owner, "first", { value: "External name" });
+  await renderOwned(owner, "first", { value: kind === "current" ? "Current own name" : "Older own name" });
+  await act(async () => pending.resolve({}));
+  expect(input().value).toBe(kind === "current" ? "Current own name" : "External name");
+  await tick(); expect(save).toHaveBeenCalledTimes(2);
+});
+
+it.each(["New typing", "Saved A", "  Newer B  "])("preserves a later local revision %j over pending-save source updates", async latest => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Saved A"); await tick();
+  await render({ value: "Saved A" }); await render({ value: "Newer B" });
+  await change("Intermediate local edit"); await change(latest);
+  await tick(); // Queue the newer edit while the first write is still pending.
+  const field = input();
+  await act(() => field.setSelectionRange(2, 2));
+  await act(async () => pending.resolve({}));
+  expect(input()).toBe(field); expect(input().value).toBe(latest);
+  expect(input().selectionStart).toBe(2);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(save).toHaveBeenCalledTimes(latest.trim() === "Newer B" ? 1 : 2);
+  if (latest.trim() !== "Newer B") expect(save).toHaveBeenLastCalledWith(latest.trim());
+});
+
+it("preserves active composition when an earlier save succeeds after an external update", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Saved A"); await tick();
+  await render({ value: "Saved A" }); await render({ value: "Newer B" });
+  await act(() => input().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+  await act(async () => pending.resolve({}));
+  expect(input().value).toBe("Saved A");
+  await tick(); expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+});
+
+it("preserves raw whitespace for an authoritative name equal to the owned trimmed draft", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("  Saved A  "); await tick();
+  await render({ value: "Saved A" }); // Consume the current own acknowledgement.
+  await render({ value: "External interim" }); await render({ value: "Saved A" });
+  await act(() => input().setSelectionRange(3, 3));
+  await act(async () => pending.resolve({}));
+  expect(input().value).toBe("  Saved A  "); expect(input().selectionStart).toBe(3);
+});
+
+it("preserves interrupted composition across a late save and waits for explicit confirmation", async () => {
+  const owner = new NameDraftOwner(), pending = deferred();
+  save.mockReturnValueOnce(pending.promise);
+  await renderOwned(owner); await change("Saved A"); await tick();
+  await renderOwned(owner, "first", { value: "Saved A" });
+  await renderOwned(owner, "first", { value: "Newer B" });
+  await act(() => input().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+  await renderOwned(owner, "first", { value: "Newer B" }, false);
+  await act(async () => pending.resolve({}));
+  await renderOwned(owner, "first", { value: "Newer B" });
+  expect(input().value).toBe("Saved A");
+  await tick(); expect(save).toHaveBeenCalledExactlyOnceWith("Saved A");
+  await key("Enter");
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith("Saved A");
+});
+
+it.each(["Original", "  Newer B  "])("keeps pre-save edits %j against a newer authoritative baseline", async latest => {
+  await render(); await change("Unsaved A");
+  await render({ value: "Newer B" });
+  expect(input().value).toBe("Unsaved A");
+  await change(latest); await tick();
+  expect(input().value).toBe(latest);
+  expect(save).toHaveBeenCalledTimes(latest.trim() === "Newer B" ? 0 : 1);
+  if (latest.trim() !== "Newer B") expect(save).toHaveBeenLastCalledWith(latest);
+});
+
+it("keeps a failed dirty draft and retry while accepting an idle external baseline", async () => {
+  save.mockRejectedValueOnce(new Error("private-write-failure"));
+  await render(); await change("Failed A"); await tick();
+  const error = host.querySelector('[role="alert"]');
+  await render({ value: "Newer B" });
+  expect(input().value).toBe("Failed A");
+  expect(host.querySelector('[role="alert"]')).toBe(error);
+  await act(async () => host.querySelector<HTMLButtonElement>('.auto-save-name-field__error button')!.click());
+  expect(save).toHaveBeenLastCalledWith("Failed A");
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
+it("does not let an older own acknowledgement replace a dirty external baseline after blur", async () => {
+  await render(); await change("Older own name"); await tick();
+  save.mockRejectedValueOnce(new Error("private-write-failure"));
+  await change("Failed A"); await tick();
+  await render({ value: "Newer B" });
+  await act(() => host.querySelector<HTMLButtonElement>('button[type="submit"]')!.focus());
+  await render({ value: "Older own name" });
+  expect(input().value).toBe("Failed A");
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  await change("Older own name"); await tick();
+  expect(save).toHaveBeenCalledTimes(3);
+  expect(save).toHaveBeenLastCalledWith("Older own name");
+});
+
+it.each([false, true])("does not replace owned preedit with an idle external update (interrupted=%s)", async interrupted => {
+  const owner = new NameDraftOwner();
+  await renderOwned(owner);
+  await act(() => input().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+  if (interrupted) {
+    await renderOwned(owner, "first", {}, false);
+    await act(() => owner.sync([{ id: "first", name: "Newer B", provider: "alibabaCloud", credentialState: "present" }]));
+  }
+  await renderOwned(owner, "first", { value: "Newer B" });
+  expect(input().value).toBe("Original");
+  await tick(); expect(save).not.toHaveBeenCalled();
+  if (interrupted) await key("Enter");
+  else await act(() => input().dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })));
+  await tick(); expect(save).toHaveBeenCalledExactlyOnceWith("Original");
+});
+
+it("keeps a failed owned draft and explicit retry after a newer pending-save source arrives", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Failed A"); await tick();
+  await render({ value: "Newer B" });
+  await act(async () => pending.reject(new Error("private-write-failure")));
+  expect(input().value).toBe("Failed A");
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  await tick(); expect(save).toHaveBeenCalledOnce();
+  await act(async () => host.querySelector<HTMLButtonElement>('.auto-save-name-field__error button')!.click());
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(input().value).toBe("Failed A");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("saves a new return to the initial name after failure against a newer authoritative baseline", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Failed A"); await tick();
+  await render({ value: "Newer B" });
+  await act(async () => pending.reject(new Error("private-write-failure")));
+  expect(input().value).toBe("Failed A");
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  await change("Original"); await tick();
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith("Original");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("keeps retry available when a current own acknowledgement preceded the command failure", async () => {
+  const pending = deferred(); save.mockReturnValueOnce(pending.promise);
+  await render(); await change("Failed A"); await tick();
+  await render({ value: "External earlier" }); await render({ value: "Failed A" });
+  await act(async () => pending.reject(new Error("private-write-failure")));
+  expect(input().value).toBe("Failed A");
+  await act(async () => host.querySelector<HTMLButtonElement>('.auto-save-name-field__error button')!.click());
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith("Failed A");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it.each(["success", "failure"] as const)("coalesces a remounted owner's newer edit after late %s without changing another profile", async outcome => {
+  const owner = new NameDraftOwner(), first = deferred(), latest = deferred();
+  const otherSave = vi.fn().mockResolvedValue({});
+  save.mockReturnValueOnce(first.promise).mockReturnValueOnce(latest.promise);
+  await renderOwned(owner); await change("First request"); await tick();
+  await renderOwned(owner, "other", { value: "Other profile", onSave: otherSave });
+  expect(input().value).toBe("Other profile");
+  await renderOwned(owner);
+  expect(input().value).toBe("First request");
+  await change("Latest request"); await tick();
+  expect(save).toHaveBeenCalledTimes(1);
+  await act(async () => outcome === "success" ? first.resolve({}) : first.reject(new Error("private-old-failure")));
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith("Latest request");
+  expect(input().value).toBe("Latest request");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await renderOwned(owner, "other", { value: "Other profile", onSave: otherSave });
+  await act(async () => latest.resolve({}));
+  expect(input().value).toBe("Other profile");
+  expect(otherSave).not.toHaveBeenCalled();
+  await renderOwned(owner);
+  expect(input().value).toBe("Latest request");
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
+it("preserves a late success until source acknowledgement and accepts the next external update while offscreen", async () => {
+  const owner = new NameDraftOwner(), pending = deferred();
+  save.mockReturnValueOnce(pending.promise);
+  await renderOwned(owner); await change("Saved name");
+  await renderOwned(owner, "first", {}, false);
+  await act(async () => pending.resolve({}));
+  await renderOwned(owner);
+  expect(input().value).toBe("Saved name");
+  await renderOwned(owner, "first", {}, false);
+  await act(async () => owner.sync([{ id: "first", name: "Saved name", provider: "alibabaCloud", credentialState: "present" }]));
+  await renderOwned(owner, "first", { value: "External name" });
+  expect(input().value).toBe("External name");
+  expect(save).toHaveBeenCalledExactlyOnceWith("Saved name");
+});
+
+it("discards a deleted owner's queued write and isolates late failure from its replacement", async () => {
+  const owner = new NameDraftOwner(), pending = deferred();
+  save.mockReturnValueOnce(pending.promise);
+  await renderOwned(owner); await change("Pending old name"); await tick();
+  await change("Queued old name");
+  await renderOwned(owner, "first", {}, false);
+  owner.discard("first");
+  await renderOwned(owner, "first", { value: "Replacement profile" });
+  await act(async () => pending.reject(new Error("private-deleted-profile-failure")));
+  expect(input().value).toBe("Replacement profile");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(save).toHaveBeenCalledExactlyOnceWith("Pending old name");
+  await change("Replacement edit"); await tick();
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith("Replacement edit");
+});
+
+it("releases a failed draft explicitly replaced with the confirmed value without retrying it", async () => {
+  const owner = new NameDraftOwner();
+  save.mockRejectedValueOnce(new Error("private-failure"));
+  await renderOwned(owner); await change("Discarded name"); await tick();
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  await change("Original");
+  await renderOwned(owner, "first", {}, false);
+  await renderOwned(owner, "first", { value: "External name" });
+  expect(input().value).toBe("External name");
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(save).toHaveBeenCalledExactlyOnceWith("Discarded name");
+});
+
+it("keeps interrupted IME preedit across navigation without saving it before a new edit or explicit confirmation", async () => {
+  const owner = new NameDraftOwner();
+  await renderOwned(owner);
+  await act(() => input().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+  await change("wei"); await tick();
+  await renderOwned(owner, "first", {}, false);
+  expect(save).not.toHaveBeenCalled();
+  await renderOwned(owner); await tick();
+  expect(input().value).toBe("wei");
+  expect(save).not.toHaveBeenCalled();
+  await change("New committed edit"); await tick();
+  expect(save).toHaveBeenCalledExactlyOnceWith("New committed edit");
+  await act(() => input().dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true })));
+  await change("plain");
+  await renderOwned(owner, "first", {}, false);
+  await renderOwned(owner);
+  expect((await key("Enter")).defaultPrevented).toBe(true);
+  expect(save).toHaveBeenLastCalledWith("plain");
+});
 
 it("quietly debounces repeated edits while preserving focus, raw spaces, punctuation and emoji", async () => {
   await render(); await act(() => input().focus());

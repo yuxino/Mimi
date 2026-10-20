@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { hexToRgba } from "../../lib/types";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
 import { subtitleFontFamily } from "../../lib/subtitleFont";
@@ -105,6 +105,16 @@ export const Timeline = memo(function Timeline({
       ? previous : { active, request: followTailRequest });
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const [laneMeasurements, setLaneMeasurements] = useState({ blockId: "", source: 0, translation: 0 });
+  const lastBlockId = blocks.at(-1)?.id ?? "";
+  const measureLane = useCallback((kind: "source" | "translation", height: number) => {
+    setLaneMeasurements(previous => {
+      const current = previous.blockId === lastBlockId ? previous : { blockId: lastBlockId, source: 0, translation: 0 };
+      return current[kind] === height ? previous : { ...current, [kind]: height };
+    });
+  }, [lastBlockId]);
+  const measureSource = useCallback((height: number) => measureLane("source", height), [measureLane]);
+  const measureTranslation = useCallback((height: number) => measureLane("translation", height), [measureLane]);
+  const resolvedFontFamily = useMemo(() => subtitleFontFamily(fontFamily), [fontFamily]);
   const touchStartYRef = useRef<number | null>(null);
   const tight = viewportHeight !== null && viewportHeight < 80;
   const laneGap = tight ? 1 : LANE_GAP;
@@ -113,6 +123,20 @@ export const Timeline = memo(function Timeline({
 
   useEffect(() => { onReadingHistoryChange?.(readingHistory); }, [onReadingHistoryChange, readingHistory]);
   useEffect(() => () => onReadingHistoryChange?.(false), [onReadingHistoryChange]);
+
+  useEffect(() => {
+    // Pointer release can happen outside the subtitle viewport after a click
+    // interrupted its glide. Do not leave automatic following suspended.
+    const release = () => { if (containerRef.current) scroll.pointerUp(containerRef.current); };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+    };
+  }, [scroll]);
 
   useLayoutEffect(() => {
     if (containerRef.current) scroll.reflow(containerRef.current);
@@ -136,7 +160,7 @@ export const Timeline = memo(function Timeline({
     }
   }, [followTailRequest, scroll]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const newBlock = blocks.length !== prevBlockCountRef.current;
@@ -144,7 +168,7 @@ export const Timeline = memo(function Timeline({
     // Do not overwrite the new mode's sentence anchor with a second passive
     // effect in the same render. Real subsequent text still follows the tail.
     if (modeChangedRef.current) { modeChangedRef.current = false; return; }
-    scroll.contentChanged(element, newBlock && motionEnabled ? "smooth" : "instant");
+    scroll.contentChanged(element, newBlock && motionEnabled ? "smooth" : "instant", motionEnabled);
   }, [blocks.length, lastTextLength, fontSize, fontFamily, alignment, blendsWithBackground, motionEnabled, displayMode, scroll]);
 
   useLayoutEffect(() => {
@@ -194,10 +218,10 @@ export const Timeline = memo(function Timeline({
       }}
       onTouchEnd={() => { touchStartYRef.current = null; scroll.endUserIntent(); }}
       onTouchCancel={() => { touchStartYRef.current = null; scroll.endUserIntent(); }}
-      onPointerDown={(event) => scroll.userIntent(event.currentTarget)}
+      onPointerDown={(event) => scroll.pointerDown(event.currentTarget)}
       onPointerMove={(event) => { if (event.buttons !== 0) scroll.userIntent(event.currentTarget); }}
-      onPointerUp={() => scroll.endUserIntent()}
-      onPointerCancel={() => scroll.endUserIntent()}
+      onPointerUp={(event) => scroll.pointerUp(event.currentTarget)}
+      onPointerCancel={(event) => scroll.pointerUp(event.currentTarget)}
       onKeyDown={(event) => {
         if (event.key === "Home") {
           event.preventDefault();
@@ -274,13 +298,6 @@ export const Timeline = memo(function Timeline({
         const budgetMode = displayMode === "bilingual" && block.source === null ? "translation" : displayMode;
         const budget = subtitleLaneBudget(budgetMode, block.translation !== null, availableLaneHeight, fontSize,
           isLast && laneMeasurements.blockId === block.id ? laneMeasurements : null, sourceScale);
-        const measureLane = (kind: "source" | "translation", height: number) => {
-          if (!isLast) return;
-          setLaneMeasurements(previous => {
-            const current = previous.blockId === block.id ? previous : { blockId: block.id, source: 0, translation: 0 };
-            return current[kind] === height ? previous : { ...current, [kind]: height };
-          });
-        };
         // A new sentence must not collapse the previous phrase to its last
         // word. Every following row keeps the viewport's bounded lane budget;
         // the timeline's outer scroll chooses which rows remain in view.
@@ -326,7 +343,7 @@ export const Timeline = memo(function Timeline({
                   text={block.source}
                   kind="source"
                   lines={compact && budget.source > 0 ? budget.source : null}
-                  fontFamily={subtitleFontFamily(fontFamily)}
+                  fontFamily={resolvedFontFamily}
                   fontSize={fontSize}
                   alignment={alignment}
                   displayMode={displayMode}
@@ -338,7 +355,7 @@ export const Timeline = memo(function Timeline({
                   keepTextOpaque={keepTextOpaque}
                   preserveLineBreaks={preserveLiveLineBreaks && block.presentation === "live"}
                   sourceScale={sourceScale}
-                  onMeasure={height => measureLane("source", height)}
+                  onMeasure={isLast ? measureSource : undefined}
                 />
               ) : null}
               {block.translation !== null && displayMode !== "original" ? (
@@ -346,7 +363,7 @@ export const Timeline = memo(function Timeline({
                   text={block.translation}
                   kind="translation"
                   lines={compact && budget.translation > 0 ? budget.translation : null}
-                  fontFamily={subtitleFontFamily(fontFamily)}
+                  fontFamily={resolvedFontFamily}
                   fontSize={fontSize}
                   alignment={alignment}
                   displayMode={displayMode}
@@ -357,7 +374,7 @@ export const Timeline = memo(function Timeline({
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
                   preserveLineBreaks={preserveLiveLineBreaks && block.presentation === "live"}
-                  onMeasure={height => measureLane("translation", height)}
+                  onMeasure={isLast ? measureTranslation : undefined}
                 />
               ) : null}
             </div>
@@ -405,7 +422,7 @@ interface LaneProps {
   preserveLineBreaks?: boolean;
 }
 
-function Lane({
+const Lane = memo(function Lane({
   text,
   kind,
   lines,
@@ -469,7 +486,7 @@ function Lane({
       onMeasure={onMeasure}
     />
   );
-}
+});
 
 interface CompactLaneProps {
   text: string;
@@ -520,7 +537,7 @@ function CompactLane({
   const { overflowed, innerHeight } = useLaneOverflow(viewportRef, onMeasure);
   const maximumHeight = Math.round(lines * lineHeightPx);
   // Let the text glide upward when a new line pushes it instead of jumping.
-  useRollupGlide(innerRef, innerHeight, motionEnabled && innerHeight > maximumHeight + 2);
+  useRollupGlide(innerRef, innerHeight, maximumHeight, motionEnabled);
   return (
     <div
       ref={viewportRef}
@@ -602,29 +619,32 @@ function useLaneOverflow(viewportRef: RefObject<HTMLDivElement | null>, onMeasur
 function useRollupGlide(
   innerRef: RefObject<HTMLSpanElement | null>,
   innerHeight: number,
+  maximumHeight: number,
   enabled: boolean,
 ): void {
-  const previousHeightRef = useRef(0);
-  useEffect(() => {
+  const previousSizeRef = useRef({ height: 0, maximumHeight });
+  useLayoutEffect(() => {
     const inner = innerRef.current;
-    const previous = previousHeightRef.current;
-    previousHeightRef.current = innerHeight;
+    const previous = previousSizeRef.current;
+    previousSizeRef.current = { height: innerHeight, maximumHeight };
     if (inner === null) return;
-    if (!enabled) {
+    if (!enabled || innerHeight <= maximumHeight + 2 || previous.maximumHeight !== maximumHeight) {
       inner.style.transition = "none";
       inner.style.transform = "translateY(0)";
       return;
     }
-    if (previous === 0 || innerHeight <= previous) return;
-    // bottom:0 has already moved existing text up by the new line's height.
+    if (previous.height === 0 || innerHeight <= previous.height) return;
+    // Only growth beyond the clip budget moves existing text. A chunk can
+    // cross from one fitting line to several overflowing lines at once.
     // Restore its previous position with a positive offset, then slide up.
-    const shift = innerHeight - previous;
+    const shift = Math.max(0, innerHeight - maximumHeight)
+      - Math.max(0, previous.height - maximumHeight);
     inner.style.transition = "none";
     inner.style.transform = `translateY(${shift}px)`;
     void inner.offsetHeight;
     inner.style.transition = "transform 180ms ease-out";
     inner.style.transform = "translateY(0)";
-  }, [innerRef, innerHeight, enabled]);
+  }, [innerRef, innerHeight, maximumHeight, enabled]);
 }
 
 /** Confirmed subtitle time, in local HH:mm:ss; never a fabricated live clock. */

@@ -5,6 +5,15 @@ import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+fun interface TranslationCall { fun cancel() }
+
+sealed class TranslationResult {
+    data class Success(val text: String, val elapsedMs: Long) : TranslationResult() {
+        override fun toString() = "TranslationResult.Success(elapsedMs=$elapsedMs)"
+    }
+    data class Failure(val code: String, val elapsedMs: Long) : TranslationResult()
+}
+
 /** A UI adapter to PC's bounded text diagnostic; no speech credentials or text parser here. */
 internal class NativeTextProbeClient(
     private val exchange: (JSONObject) -> JSONObject = NativeRuntimeConfiguration::exchange,

@@ -476,7 +476,10 @@ impl TurnSequencer {
                 self.retire(item_id);
             }
             let text = turn.final_text.unwrap();
-            if turn.revision == revision && !text.trim().is_empty() {
+            // An empty authoritative completion still retires this source's
+            // replaceable preview. Suppressing its identity here would leave
+            // that preview eligible for the session-finish fallback.
+            if turn.revision == revision {
                 output.push(TranscriptOutput {
                     sequence: turn.sequence,
                     revision: turn.revision,
@@ -730,6 +733,55 @@ mod tests {
             .complete("one".into(), "duplicate".into(), 0)
             .unwrap()
             .is_empty());
+        assert!(turns.is_empty());
+    }
+
+    #[test]
+    fn empty_completions_keep_order_and_cleared_or_retired_turns_do_not_reappear() {
+        let mut turns = TurnSequencer::default();
+        for id in ["one", "two"] {
+            turns.start(0).unwrap();
+            turns.commit().unwrap();
+            turns.acknowledge(id.into()).unwrap();
+        }
+        turns
+            .delta("two".into(), "Synthetic newer preview.", 0)
+            .unwrap();
+        assert!(turns
+            .complete("two".into(), String::new(), 0)
+            .unwrap()
+            .is_empty());
+        let output = turns.complete("one".into(), " \t ".into(), 0).unwrap();
+        assert_eq!(
+            output
+                .iter()
+                .map(|event| (event.sequence, event.text.as_str()))
+                .collect::<Vec<_>>(),
+            [(1, " \t "), (2, "")]
+        );
+        assert!(turns
+            .complete("one".into(), "Synthetic replay.".into(), 0)
+            .unwrap()
+            .is_empty());
+
+        turns.start(0).unwrap();
+        turns.commit().unwrap();
+        turns.acknowledge("old".into()).unwrap();
+        turns.clear();
+        turns.buffer_cleared();
+        turns.start(1).unwrap();
+        turns.commit().unwrap();
+        turns.acknowledge("new".into()).unwrap();
+        assert!(turns
+            .complete("new".into(), String::new(), 1)
+            .unwrap()
+            .is_empty());
+        let output = turns.complete("old".into(), String::new(), 1).unwrap();
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].sequence, 4);
+        assert_eq!(output[0].revision, 1);
+        assert!(output[0].is_final);
+        assert!(output[0].text.is_empty());
         assert!(turns.is_empty());
     }
 

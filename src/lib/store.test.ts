@@ -9,6 +9,17 @@ import {
 } from "./store";
 
 describe("local preview store", () => {
+  it("retains a selected subtitle font across preference saves and restores the default font", async () => {
+    const original = useStore.getState();
+    try {
+      await useStore.getState().saveSettings({ subtitleFontFamily: "Synthetic Preview Font" });
+      await useStore.getState().saveSettings({ fontSize: 19 });
+      expect(useStore.getState().settings.subtitleFontFamily).toBe("Synthetic Preview Font");
+      await useStore.getState().saveSettings({ subtitleFontFamily: "" });
+      expect(useStore.getState().settings.subtitleFontFamily).toBe("");
+    } finally { useStore.setState(original, true); }
+  });
+
   it("creates Alibaba previews in LiveTranslate without rewriting legacy configurations", async () => {
     const original = useStore.getState();
     try {

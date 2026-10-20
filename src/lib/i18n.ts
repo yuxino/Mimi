@@ -52,9 +52,20 @@ export function subscribeUiLanguage(listener: () => void): () => void {
   };
 }
 
-/** Resolves labels at render time without discarding mounted window state. */
+/** Resolves immutable, locale-only labels without rebuilding a whole record
+ * for every property read. The cache is bounded by the UI language catalog. */
 export function localizedRecord<T extends object>(read: () => T): T {
-  return new Proxy(read(), { get: (_target, key) => Reflect.get(read(), key) });
+  const records = new Map<ResolvedUiLanguage, T>();
+  const current = () => {
+    const language = effectiveUiLanguage();
+    let record = records.get(language);
+    if (record === undefined) {
+      record = read();
+      records.set(language, record);
+    }
+    return record;
+  };
+  return new Proxy(current(), { get: (_target, key) => Reflect.get(current(), key) });
 }
 
 /** Applies a language override in this window and persists it for future windows. */
@@ -84,11 +95,6 @@ export function effectiveUiLanguage(): ResolvedUiLanguage {
     if (parts.some(part => ["tw", "hk", "mo"].includes(part))) return "zh-TW";
   }
   return isUiLanguage(base) ? base : "en";
-}
-
-/** True when the effective UI language is Chinese (zh-*). */
-export function isChineseSystem(): boolean {
-  return ["zh", "zh-TW"].includes(effectiveUiLanguage());
 }
 
 const TRAY_ZH = {

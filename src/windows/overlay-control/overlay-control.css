@@ -457,9 +457,10 @@
 @media (prefers-reduced-motion: reduce) {
   .overlay-control-island,
   .overlay-control-header,
-  .overlay-control-panel *,
-  .overlay-control-panel *::before,
-  .overlay-control-panel *::after {
+  /* PulseRing already resolves the user's explicit motion preference. */
+  .overlay-control-panel :not(.sound-light, .sound-light *),
+  .overlay-control-panel :not(.sound-light, .sound-light *)::before,
+  .overlay-control-panel :not(.sound-light, .sound-light *)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

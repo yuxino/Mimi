@@ -43,9 +43,13 @@ A desktop business fix belongs in the shared crates, so an Android build uses
 the same changed source without a second manual patch. Run
 `python3 -B scripts/check-shared-runtime.py` to check repository path dependencies,
 desktop re-export facades, the production Android engine entry and references to
-historical Kotlin clients. The independent Kotlin text-client factory now exists
-only in the JVM test source set. The guard also rejects a new Java/Kotlin provider
+historical Kotlin clients. Historical Kotlin engines, protocol clients and the
+independent text-client factory live only in the JVM test source set. Production
+metadata and native probe result/cancel types remain in their native adapters.
+The guard has no historical-file exemptions and rejects a new Java/Kotlin provider
 transport or engine in production, including variant/flavor source directories.
+APK verification also rejects the historical runtime descriptors in every DEX
+file, so a stale or generated source cannot silently ship those implementations.
 
 Canonical/shared checks and desktop CI run the guard and its mutation regressions.
 Android preBuild and direct native-library builds run it before compilation.

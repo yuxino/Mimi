@@ -15,14 +15,14 @@ use std::{
 };
 
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Slot {
     service: String,
     account: String,
     legacy_alibaba: bool,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Cleanup {
     service: String,
@@ -30,7 +30,7 @@ struct Cleanup {
     destination_service: String,
     destination_account: String,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Document {
     schema_version: u32,
@@ -144,6 +144,11 @@ impl FileCredentialStore {
         }
     }
     fn read(&self) -> Result<Document, SecretStoreError> {
+        let document = self.read_document()?;
+        self.complete_verified_document(&document)?;
+        Ok(document)
+    }
+    fn read_document(&self) -> Result<Document, SecretStoreError> {
         if !self.path.is_absolute() {
             return Err(SecretStoreError::Unavailable);
         }
@@ -187,9 +192,6 @@ impl FileCredentialStore {
                     document.pending_import.clear();
                 }
                 self.write(&document)?;
-                if document.pending_import.is_empty() {
-                    self.mark_complete()?;
-                }
                 return Ok(document);
             }
             Err(_) => return Err(SecretStoreError::Unavailable),
@@ -251,6 +253,24 @@ impl FileCredentialStore {
             return Err(SecretStoreError::Unavailable);
         }
         Ok(document)
+    }
+    fn complete_verified_document(&self, document: &Document) -> Result<(), SecretStoreError> {
+        #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+        if self.read_only {
+            return Ok(());
+        }
+        if !document.pending_import.is_empty() || !document.pending_cleanup.is_empty() {
+            return Ok(());
+        }
+        if fs::symlink_metadata(&self.complete_path).is_err() {
+            // Creation, replacement and import cancellation all reach this
+            // boundary. Verify the durable document before closing OS import,
+            // including a retry after a previous marker write failed.
+            if self.read_document()? != *document {
+                return Err(SecretStoreError::Unavailable);
+            }
+        }
+        self.mark_complete()
     }
     fn valid_slot(&self, slot: &Slot) -> bool {
         if slot.service != self.legacy_service {
@@ -372,7 +392,12 @@ impl FileCredentialStore {
         document
             .pending_import
             .retain(|slot| slot.service != service || slot.account != account);
-        self.write(&document)
+        self.write(&document)?;
+        let verified = self.read_document()?;
+        if verified != document {
+            return Err(SecretStoreError::Unavailable);
+        }
+        self.complete_verified_document(&verified)
     }
     fn imported_value(&self, slot: &Slot) -> Result<Option<String>, SecretStoreError> {
         let value = self.legacy.load(&slot.service, &slot.account)?;
@@ -870,6 +895,281 @@ mod tests {
         assert!(!store.contains("test.service", "deleted").unwrap());
         assert_eq!(reads(&legacy), 0);
     }
+
+    fn verify_local_write_retires_import_after_restart_and_file_loss(delete: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        legacy_value(&legacy, "key", "synthetic-old-native-value");
+        let store = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("key")],
+            Box::new(legacy.clone()),
+        );
+        if delete {
+            store.delete("test.service", "key").unwrap();
+        } else {
+            store
+                .save("test.service", "key", "synthetic-new-local-value")
+                .unwrap();
+        }
+        assert_eq!(store.pending_imports().unwrap(), 0);
+        assert_eq!(reads(&legacy), 0);
+        drop(store);
+        let restarted = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("key")],
+            Box::new(legacy.clone()),
+        );
+        assert_eq!(
+            restarted.load("test.service", "key").unwrap().as_deref(),
+            if delete {
+                None
+            } else {
+                Some("synthetic-new-local-value")
+            }
+        );
+        fs::remove_file(&restarted.path).unwrap();
+        drop(restarted);
+        let missing = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("key")],
+            Box::new(legacy.clone()),
+        );
+        // Match startup's automatic import gate without touching an OS store.
+        if missing.pending_imports().unwrap() > 0 {
+            missing.migrate_legacy().unwrap();
+        }
+        assert_eq!(reads(&legacy), 0);
+        assert_eq!(missing.load("test.service", "key").unwrap(), None);
+        assert!(missing.complete_path.is_file());
+    }
+
+    #[test]
+    fn normal_save_retires_import_after_restart_and_file_loss() {
+        verify_local_write_retires_import_after_restart_and_file_loss(false);
+    }
+
+    #[test]
+    fn normal_delete_retires_import_after_restart_and_file_loss() {
+        verify_local_write_retires_import_after_restart_and_file_loss(true);
+    }
+
+    #[test]
+    fn completion_marker_retries_after_write_failure_and_rejects_damaged_document() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        let mut store = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            Vec::new(),
+            Box::new(legacy.clone()),
+        );
+        let blocked_parent = directory.path().join("synthetic-marker-parent");
+        fs::write(&blocked_parent, b"synthetic path obstruction").unwrap();
+        store.complete_path = blocked_parent.join("complete");
+        assert_eq!(
+            store.load("test.service", "key"),
+            Err(SecretStoreError::Unavailable)
+        );
+        let valid_document = fs::read(&store.path).unwrap();
+        assert!(serde_json::from_slice::<Document>(&valid_document).is_ok());
+        assert!(!store.complete_path.exists());
+        fs::remove_file(&blocked_parent).unwrap();
+        fs::create_dir(&blocked_parent).unwrap();
+        fs::write(&store.path, b"synthetic damaged document").unwrap();
+        assert_eq!(
+            store.load("test.service", "key"),
+            Err(SecretStoreError::Unavailable)
+        );
+        assert!(!store.complete_path.exists());
+        fs::write(&store.path, valid_document).unwrap();
+        assert_eq!(store.load("test.service", "key").unwrap(), None);
+        assert!(store.complete_path.is_file());
+        assert_eq!(reads(&legacy), 0);
+    }
+
+    #[test]
+    fn last_local_write_reports_marker_failure_and_keeps_the_durable_key_for_retry() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        let mut store = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("key")],
+            Box::new(legacy.clone()),
+        );
+        let blocked_parent = directory.path().join("synthetic-marker-parent");
+        fs::write(&blocked_parent, b"synthetic path obstruction").unwrap();
+        store.complete_path = blocked_parent.join("complete");
+        assert_eq!(
+            store.save("test.service", "key", "synthetic-local-value"),
+            Err(SecretStoreError::Unavailable)
+        );
+        let document: Document = serde_json::from_slice(&fs::read(&store.path).unwrap()).unwrap();
+        assert_eq!(
+            document.entries["test.service"]["key"].as_deref(),
+            Some("synthetic-local-value")
+        );
+        assert!(document.pending_import.is_empty());
+        assert!(!store.complete_path.exists());
+        assert_eq!(
+            store.load("test.service", "key"),
+            Err(SecretStoreError::Unavailable)
+        );
+        fs::remove_file(&blocked_parent).unwrap();
+        fs::create_dir(&blocked_parent).unwrap();
+        assert_eq!(
+            store.load("test.service", "key").unwrap().as_deref(),
+            Some("synthetic-local-value")
+        );
+        assert!(store.complete_path.is_file());
+        assert_eq!(reads(&legacy), 0);
+    }
+
+    #[test]
+    fn local_replacement_does_not_complete_other_pending_imports() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        legacy_value(&legacy, "pending", "synthetic-native-value");
+        let store = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("replaced"), slot("pending")],
+            Box::new(legacy.clone()),
+        );
+        store
+            .save("test.service", "replaced", "synthetic-local-value")
+            .unwrap();
+        assert_eq!(store.pending_imports().unwrap(), 1);
+        assert!(!store.complete_path.exists());
+        assert_eq!(reads(&legacy), 0);
+        store.migrate_legacy().unwrap();
+        assert_eq!(reads(&legacy), 1);
+        assert_eq!(store.pending_imports().unwrap(), 0);
+        assert!(store.complete_path.is_file());
+        assert_eq!(
+            store.load("test.service", "replaced").unwrap().as_deref(),
+            Some("synthetic-local-value")
+        );
+    }
+
+    #[test]
+    fn local_replacement_keeps_pending_native_cleanup_until_verified_retirement() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        legacy_value(&legacy, "key", "synthetic-native-value");
+        legacy.0.lock().unwrap().deny_deletion = true;
+        let store = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("key")],
+            Box::new(legacy.clone()),
+        );
+        assert_eq!(store.migrate_legacy(), Err(SecretStoreError::Unavailable));
+        store
+            .save("test.service", "key", "synthetic-local-value")
+            .unwrap();
+        assert_eq!(store.pending_imports().unwrap(), 1);
+        assert!(!store.complete_path.exists());
+        assert_eq!(
+            store.load("test.service", "key").unwrap().as_deref(),
+            Some("synthetic-local-value")
+        );
+        assert_eq!(reads(&legacy), 1);
+        drop(store);
+        legacy.0.lock().unwrap().deny_deletion = false;
+        let restarted = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![slot("key")],
+            Box::new(legacy.clone()),
+        );
+        restarted.migrate_legacy().unwrap();
+        assert_eq!(reads(&legacy), 1);
+        assert_eq!(restarted.pending_imports().unwrap(), 0);
+        assert!(restarted.complete_path.is_file());
+        assert_eq!(
+            restarted.load("test.service", "key").unwrap().as_deref(),
+            Some("synthetic-local-value")
+        );
+    }
+
+    #[cfg(all(feature = "development-debugger", target_os = "macos"))]
+    #[test]
+    fn read_only_manual_probe_never_repairs_permissions_or_recreates_storage() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let service = super::super::DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE;
+        let store = FileCredentialStore::new(
+            directory.path(),
+            service,
+            Vec::new(),
+            Box::new(Legacy::default()),
+        );
+        store
+            .save(service, "synthetic-slot", "synthetic-local-value")
+            .unwrap();
+        let document = fs::read(&store.path).unwrap();
+        let document_modified = fs::metadata(&store.path).unwrap().modified().unwrap();
+        let marker_modified = fs::metadata(&store.complete_path)
+            .unwrap()
+            .modified()
+            .unwrap();
+        let probe = FileCredentialStore::for_read_only_manual_probe(directory.path()).unwrap();
+        assert_eq!(
+            probe.load(service, "synthetic-slot").unwrap().as_deref(),
+            Some("synthetic-local-value")
+        );
+        assert_eq!(fs::read(&probe.path).unwrap(), document);
+        assert_eq!(
+            fs::metadata(&probe.path).unwrap().modified().unwrap(),
+            document_modified
+        );
+        assert_eq!(
+            fs::metadata(&probe.complete_path)
+                .unwrap()
+                .modified()
+                .unwrap(),
+            marker_modified
+        );
+
+        let credentials_directory = probe.path.parent().unwrap();
+        fs::set_permissions(credentials_directory, fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            probe.load(service, "synthetic-slot"),
+            Err(SecretStoreError::Unavailable)
+        );
+        assert_eq!(
+            fs::metadata(credentials_directory)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o755
+        );
+        fs::set_permissions(credentials_directory, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::remove_file(&probe.complete_path).unwrap();
+        assert_eq!(
+            probe.load(service, "synthetic-slot"),
+            Err(SecretStoreError::Unavailable)
+        );
+        assert_eq!(
+            probe.save(service, "synthetic-slot", "synthetic-new-value"),
+            Err(SecretStoreError::Unavailable)
+        );
+        assert!(!probe.complete_path.exists());
+        assert_eq!(fs::read(&probe.path).unwrap(), document);
+        fs::remove_file(&probe.path).unwrap();
+        assert_eq!(
+            probe.load(service, "synthetic-slot"),
+            Err(SecretStoreError::Unavailable)
+        );
+        assert!(!probe.path.exists());
+        assert!(!probe.complete_path.exists());
+    }
     #[test]
     fn damaged_or_future_schema_is_preserved_without_native_fallback() {
         for content in [
@@ -1006,6 +1306,79 @@ mod tests {
             );
             assert_eq!(reads(&legacy), read_count);
         }
+    }
+    #[test]
+    fn blank_legacy_slot_does_not_hide_a_later_valid_credential() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        for (service, value) in [
+            (LEGACY_KEYCHAIN_SERVICE_V3, "   "),
+            (LEGACY_KEYCHAIN_SERVICE_V2, "synthetic-legacy-key"),
+        ] {
+            legacy.0.lock().unwrap().values.insert(
+                (service.into(), LEGACY_KEYCHAIN_ACCOUNT.into()),
+                value.into(),
+            );
+        }
+        let store = FileCredentialStore::new(
+            directory.path(),
+            "test.service",
+            vec![Slot {
+                legacy_alibaba: true,
+                ..slot("key")
+            }],
+            Box::new(legacy.clone()),
+        );
+
+        store.migrate_legacy().unwrap();
+
+        assert_eq!(
+            store.load("test.service", "key").unwrap().as_deref(),
+            Some("synthetic-legacy-key")
+        );
+        assert_eq!(reads(&legacy), 4);
+        assert_eq!(store.pending_imports().unwrap(), 0);
+    }
+    #[test]
+    fn missing_local_profile_credential_never_reads_native_migration_items() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        let profile = ProfileCatalog::legacy_alibaba().profiles.remove(0);
+        for (service, account) in [
+            (
+                super::super::PROFILE_KEYCHAIN_SERVICE,
+                credential_account(&profile),
+            ),
+            (
+                super::super::PROFILE_KEYCHAIN_SERVICE,
+                LEGACY_MIGRATION_TOMBSTONE_ACCOUNT.into(),
+            ),
+            (LEGACY_KEYCHAIN_SERVICE_V3, LEGACY_KEYCHAIN_ACCOUNT.into()),
+            (LEGACY_KEYCHAIN_SERVICE_V2, LEGACY_KEYCHAIN_ACCOUNT.into()),
+            (LEGACY_KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_ACCOUNT.into()),
+        ] {
+            legacy
+                .0
+                .lock()
+                .unwrap()
+                .values
+                .insert((service.into(), account), "synthetic-native-value".into());
+        }
+        let file = FileCredentialStore::new(
+            directory.path(),
+            super::super::PROFILE_KEYCHAIN_SERVICE,
+            vec![],
+            Box::new(legacy.clone()),
+        );
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(file));
+
+        assert_eq!(store.load_api_key().unwrap(), None);
+        assert_eq!(
+            store.credential_state_for_snapshot(&profile),
+            super::super::CredentialState::Missing
+        );
+        assert_eq!(reads(&legacy), 0);
+        assert_eq!(legacy.0.lock().unwrap().deletes, 0);
     }
     #[test]
     fn real_settings_snapshot_uses_file_metadata_and_import_clears_stale_errors() {
@@ -1253,5 +1626,355 @@ mod tests {
         );
         assert_eq!(fs::read_to_string(target).unwrap(), "public-foreign-value");
         assert_eq!(reads(&legacy), 0);
+    }
+
+    fn pending_custom_settings(
+        provider: crate::core::provider::ProviderKind,
+    ) -> (
+        tempfile::TempDir,
+        FileCredentialStore,
+        super::super::ServiceProfile,
+        Legacy,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        let service = super::super::PROFILE_KEYCHAIN_SERVICE;
+        let bootstrap = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(legacy.clone()),
+            service,
+        );
+        let profile = bootstrap
+            .create_profile(provider, "Synthetic import repair")
+            .unwrap();
+        drop(bootstrap);
+        let speech = credential_account(&profile);
+        let text = SettingsStore::destination_account(&profile);
+        {
+            let mut state = legacy.0.lock().unwrap();
+            state.denied.insert((service.into(), speech.clone()));
+            let destination = super::super::TextTranslationDestination {
+                endpoint: "https://example.com/translate".into(),
+                token: "synthetic retained text value".into(),
+                ..Default::default()
+            };
+            state.values.insert(
+                (service.into(), text.clone()),
+                serde_json::to_string(&destination).unwrap(),
+            );
+        }
+        let local = FileCredentialStore::new(
+            directory.path(),
+            service,
+            vec![
+                Slot {
+                    service: service.into(),
+                    account: speech,
+                    legacy_alibaba: false,
+                },
+                Slot {
+                    service: service.into(),
+                    account: text,
+                    legacy_alibaba: false,
+                },
+            ],
+            Box::new(legacy.clone()),
+        );
+        assert_eq!(local.migrate_legacy(), Err(SecretStoreError::Unavailable));
+        assert_eq!(local.pending_imports().unwrap(), 1);
+        (directory, local, profile, legacy)
+    }
+
+    fn complete_speech_request(key: &str) -> crate::core::credentials::ProviderCredentials {
+        crate::core::credentials::ProviderCredentials::CustomSpeech {
+            endpoint: "wss://speech.example/realtime".into(),
+            model: "synthetic-model".into(),
+            api_key: key.into(),
+        }
+    }
+
+    #[test]
+    fn complete_custom_speech_replacement_retires_only_its_pending_import() {
+        use crate::core::{credentials::ProviderCredentials, provider::ProviderKind};
+        for provider in [
+            ProviderKind::CustomOpenAIASR,
+            ProviderKind::CustomDashScopeASR,
+        ] {
+            let (directory, local, profile, legacy) = pending_custom_settings(provider);
+            let path = local.path.clone();
+            let original = fs::read(&path).unwrap();
+            let native_reads = reads(&legacy);
+            let mut store = SettingsStore::load_with_secret(
+                directory.path().into(),
+                false,
+                Box::new(local),
+                super::super::PROFILE_KEYCHAIN_SERVICE,
+            );
+            let metadata = store.profile_catalog().unwrap();
+            for request in [
+                ProviderCredentials::CustomSpeech {
+                    endpoint: String::new(),
+                    model: "synthetic-model".into(),
+                    api_key: "synthetic-new-key".into(),
+                },
+                ProviderCredentials::CustomSpeech {
+                    endpoint: "wss://speech.example/realtime".into(),
+                    model: String::new(),
+                    api_key: "synthetic-new-key".into(),
+                },
+                ProviderCredentials::CustomSpeech {
+                    endpoint: "wss://speech.example/realtime".into(),
+                    model: "synthetic-model".into(),
+                    api_key: String::new(),
+                },
+            ] {
+                assert!(store.save_credentials(&profile.id, &request).is_err());
+                assert_eq!(fs::read(&path).unwrap(), original);
+            }
+            let blocked = directory.path().join("blocked-metadata-output");
+            fs::create_dir(&blocked).unwrap();
+            store.catalog_path = blocked.clone();
+            store.prefs_path = blocked;
+            store
+                .save_credentials(&profile.id, &complete_speech_request("synthetic-new-key"))
+                .unwrap();
+            assert_eq!(store.profile_catalog().unwrap(), metadata);
+            let text = store.destination_value(&profile).unwrap().unwrap();
+            let text: super::super::TextTranslationDestination =
+                serde_json::from_str(&text).unwrap();
+            assert_eq!(text.token, "synthetic retained text value");
+            assert!(directory
+                .path()
+                .join("credentials-file-mode-complete")
+                .is_file());
+            assert_eq!(reads(&legacy), native_reads);
+            drop(store);
+            let restarted = FileCredentialStore::new(
+                directory.path(),
+                super::super::PROFILE_KEYCHAIN_SERVICE,
+                Vec::new(),
+                Box::new(legacy.clone()),
+            );
+            let store = SettingsStore::load_with_secret(
+                directory.path().into(),
+                false,
+                Box::new(restarted),
+                super::super::PROFILE_KEYCHAIN_SERVICE,
+            );
+            assert!(
+                matches!(store.credentials_for_profile(&profile).unwrap(), Some(ProviderCredentials::CustomSpeech { api_key, .. }) if api_key == "synthetic-new-key")
+            );
+            assert_eq!(reads(&legacy), native_reads);
+        }
+    }
+
+    #[test]
+    fn pending_custom_speech_marker_failure_keeps_the_durable_replacement_for_retry() {
+        let (directory, mut local, profile, legacy) =
+            pending_custom_settings(crate::core::provider::ProviderKind::CustomOpenAIASR);
+        let path = local.path.clone();
+        let blocker = directory.path().join("blocked-marker-parent");
+        fs::write(&blocker, b"synthetic obstruction").unwrap();
+        local.complete_path = blocker.join("complete");
+        let native_reads = reads(&legacy);
+        let store = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(local),
+            super::super::PROFILE_KEYCHAIN_SERVICE,
+        );
+        assert!(store
+            .save_credentials(&profile.id, &complete_speech_request("synthetic-new-key"))
+            .is_err());
+        let document: Document = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert!(document.entries[super::super::PROFILE_KEYCHAIN_SERVICE]
+            .get(&credential_account(&profile))
+            .is_some_and(Option::is_some));
+        assert!(document.pending_import.is_empty());
+        assert_eq!(reads(&legacy), native_reads);
+        fs::remove_file(&blocker).unwrap();
+        fs::create_dir(&blocker).unwrap();
+        store
+            .save_credentials(&profile.id, &complete_speech_request("synthetic-new-key"))
+            .unwrap();
+        assert!(blocker.join("complete").is_file());
+        assert_eq!(reads(&legacy), native_reads);
+    }
+
+    #[test]
+    fn pending_custom_speech_failed_local_write_preserves_the_pending_document() {
+        let (directory, local, profile, legacy) =
+            pending_custom_settings(crate::core::provider::ProviderKind::CustomOpenAIASR);
+        let path = local.path.clone();
+        let mut document: Document = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        document
+            .entries
+            .entry("synthetic unrelated service".into())
+            .or_default()
+            .insert(
+                "padding".into(),
+                Some("x".repeat(MAX_BYTES as usize - 3000)),
+            );
+        let original = serde_json::to_vec(&document).unwrap();
+        assert!((original.len() as u64) < MAX_BYTES);
+        fs::write(&path, &original).unwrap();
+        let native_reads = reads(&legacy);
+        let store = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(local),
+            super::super::PROFILE_KEYCHAIN_SERVICE,
+        );
+        assert!(store
+            .save_credentials(&profile.id, &complete_speech_request(&"k".repeat(8192)))
+            .is_err());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert!(!directory
+            .path()
+            .join("credentials-file-mode-complete")
+            .exists());
+        document.entries.remove("synthetic unrelated service");
+        fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+        store
+            .save_credentials(&profile.id, &complete_speech_request("synthetic-new-key"))
+            .unwrap();
+        assert!(directory
+            .path()
+            .join("credentials-file-mode-complete")
+            .is_file());
+        assert_eq!(reads(&legacy), native_reads);
+    }
+
+    #[test]
+    fn complete_custom_speech_replacement_cannot_overwrite_a_damaged_document() {
+        let (directory, local, profile, legacy) =
+            pending_custom_settings(crate::core::provider::ProviderKind::CustomOpenAIASR);
+        let path = local.path.clone();
+        let native_reads = reads(&legacy);
+        let store = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(local),
+            super::super::PROFILE_KEYCHAIN_SERVICE,
+        );
+        fs::write(&path, b"synthetic damaged document").unwrap();
+        assert!(store
+            .save_credentials(&profile.id, &complete_speech_request("synthetic-new-key"))
+            .is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"synthetic damaged document");
+        assert_eq!(reads(&legacy), native_reads);
+        assert!(!directory
+            .path()
+            .join("credentials-file-mode-complete")
+            .exists());
+    }
+
+    #[test]
+    fn complete_text_route_cannot_replace_an_unread_multi_route_import() {
+        use crate::core::{
+            credentials::ProviderCredentials,
+            provider::{ProviderKind, TextTranslation},
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let legacy = Legacy::default();
+        let service = super::super::PROFILE_KEYCHAIN_SERVICE;
+        let bootstrap = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(legacy.clone()),
+            service,
+        );
+        let profile = bootstrap
+            .create_profile(ProviderKind::CustomOpenAIASR, "Synthetic text import")
+            .unwrap();
+        drop(bootstrap);
+        let speech = credential_account(&profile);
+        let text = SettingsStore::destination_account(&profile);
+        let speech_value = complete_speech_request("synthetic-old-speech")
+            .encode_for_keychain(profile.provider)
+            .unwrap();
+        let destination = super::super::TextTranslationDestination {
+            endpoint: "https://old.example/translate".into(),
+            token: "synthetic-old-deeplx".into(),
+            open_ai_compatible: Some(super::super::OpenAICompatibleDestination {
+                endpoint: "https://old.example/v1".into(),
+                api_key: "synthetic-old-openai".into(),
+                model: "synthetic-old-model".into(),
+            }),
+            chat_mock: Some(super::super::OpenAICompatibleDestination {
+                endpoint: "http://localhost:8000/v1".into(),
+                api_key: "synthetic-old-chatmock".into(),
+                model: "synthetic-other-model".into(),
+            }),
+            ..Default::default()
+        };
+        let destination_value = serde_json::to_string(&destination).unwrap();
+        {
+            let mut state = legacy.0.lock().unwrap();
+            state
+                .values
+                .insert((service.into(), speech.clone()), speech_value.clone());
+            state
+                .values
+                .insert((service.into(), text.clone()), destination_value.clone());
+            state.denied.insert((service.into(), text.clone()));
+        }
+        let local = FileCredentialStore::new(
+            directory.path(),
+            service,
+            vec![
+                Slot {
+                    service: service.into(),
+                    account: speech.clone(),
+                    legacy_alibaba: false,
+                },
+                Slot {
+                    service: service.into(),
+                    account: text.clone(),
+                    legacy_alibaba: false,
+                },
+            ],
+            Box::new(legacy.clone()),
+        );
+        assert_eq!(local.migrate_legacy(), Err(SecretStoreError::Unavailable));
+        assert_eq!(local.pending_imports().unwrap(), 1);
+        let path = local.path.clone();
+        let original = fs::read(&path).unwrap();
+        let native_reads = reads(&legacy);
+        let store = SettingsStore::load_with_secret(
+            directory.path().into(),
+            false,
+            Box::new(local),
+            service,
+        );
+        let metadata = store.profile_catalog().unwrap();
+        let request = ProviderCredentials::AlibabaTranslation {
+            api_key: String::new(),
+            text_translation: TextTranslation::OpenAICompatible,
+            endpoint: "https://replacement.example/v1".into(),
+            token: "synthetic-new-openai".into(),
+            model: "synthetic-new-model".into(),
+            clear_token: false,
+        };
+        assert_eq!(
+            store.save_credentials(&profile.id, &request),
+            Err(SecretStoreError::MigrationRequired.public_error())
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert_eq!(store.profile_catalog().unwrap(), metadata);
+        assert_eq!(
+            store.load_api_key_for_profile(&profile).unwrap(),
+            Some(speech_value)
+        );
+        assert_eq!(reads(&legacy), native_reads);
+        assert_eq!(
+            legacy.0.lock().unwrap().values.get(&(service.into(), text)),
+            Some(&destination_value)
+        );
+        assert!(!directory
+            .path()
+            .join("credentials-file-mode-complete")
+            .exists());
     }
 }

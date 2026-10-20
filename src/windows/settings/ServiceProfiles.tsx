@@ -1,7 +1,7 @@
 import { profileSelectionChangesSettings } from "../../lib/profileLanguagePreset";
 import { testProfileConnection, type ConnectionCheckStage, type ConnectionDiagnostic, type StoredCredentialField } from "../../lib/ipc";
 import { credentialErrorMessage, profileErrorMessage, diagnosticCopy } from "../../lib/connectionDiagnostics";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "../../components/Icon";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { I18N, providerDisplayName } from "../../lib/i18n";
@@ -54,6 +54,7 @@ import { ProfileLanguagePresetSettings } from "./ProfileLanguagePresetSettings";
 import { CustomSpeechLanguageSettings } from "./CustomSpeechLanguageSettings";
 import { speechLanguageGuidance } from "../../lib/speechLanguageGuidance";
 import { AutoSaveNameField } from "./AutoSaveNameField";
+import { NameDraftContext, NameDraftOwner } from "./nameDraftOwner";
 import { AppleSpeechSettings } from "./AppleSpeechSettings";
 import { useAppleSpeechSupport } from "./useAppleSpeechSupport";
 import { TencentSetupHelp } from "./TencentSetupHelp";
@@ -117,6 +118,11 @@ export function ServiceProfiles({
   const [selectedProfileId, setSelectedProfileId] = useState(
     activeProfile?.id ?? settings.activeProfileId,
   );
+  const [nameDraftOwner] = useState(() => new NameDraftOwner());
+  // A settings event can delete a profile before its editor's passive cleanup.
+  // Cancel that owner's pending flush before the detached field can replay it.
+  useLayoutEffect(() => nameDraftOwner.prune(settings.profiles), [nameDraftOwner, settings.profiles]);
+  useEffect(() => nameDraftOwner.sync(settings.profiles), [nameDraftOwner, settings.profiles]);
   const [showsEditor, setShowsEditor] = useState(settings.profiles.length === 1);
   const [handledProfileEditorRequest, setHandledProfileEditorRequest] = useState(0);
   const [deferredProfileEditorRequest, setDeferredProfileEditorRequest] = useState(0);
@@ -467,6 +473,7 @@ export function ServiceProfiles({
       I18N.settings.profileDeleted,
     );
     if (snapshot) {
+      nameDraftOwner.discard(pendingConfirmation.profileId);
       setSelectedProfileId(snapshot.activeProfileId);
       setShowsEditor(false);
     }
@@ -585,6 +592,7 @@ export function ServiceProfiles({
   }
 
   return (
+    <NameDraftContext.Provider value={{ owner: nameDraftOwner, profileId: selectedProfile?.id ?? "" }}>
     <div ref={navigationRoot}>
     {!showsEditor && !pickerVisible && overview}
     <SettingsSection id="service-profiles" title={I18N.settings.serviceProfilesTitle} hideHeading>
@@ -661,7 +669,7 @@ export function ServiceProfiles({
           <div className="service-detail__configuration">
           <ServiceEditorModule kind="setup">
           <div className="profile-form service-detail__name">
-            <AutoSaveNameField key={selectedProfile.id} id={`profile-name-${selectedProfile.id}`}
+            <AutoSaveNameField key={selectedProfile.id} id={`profile-name-${selectedProfile.id}`} draftKey="profile"
               label={I18N.settings.profileName} value={selectedProfile.name} allowEmpty={false}
               placeholder={I18N.settings.profileNamePlaceholder} disabled={mutationsDisabled}
               onSave={name => handleRename(selectedProfile.id, name)} />
@@ -868,6 +876,7 @@ export function ServiceProfiles({
       />
     )}
     </div>
+    </NameDraftContext.Provider>
   );
 }
 

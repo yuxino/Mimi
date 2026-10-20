@@ -75,3 +75,9 @@ internal fun validateTranslationConfiguration(config: TranslationConfiguration):
     return endpoint
 }
 
+internal fun deepLEndpoint(apiKey: String): String {
+    val key = apiKey.trim()
+    require(key.isNotEmpty() && key.length <= 4096 && key.all { it.code in 33..126 }) { "translation_key" }
+    return if (key.endsWith(":fx")) "https://api-free.deepl.com/v2/translate" else "https://api.deepl.com/v2/translate"
+}
+

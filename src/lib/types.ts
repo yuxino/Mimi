@@ -376,15 +376,6 @@ export type SourceLanguage = "auto" | typeof SOURCE_LANGUAGE_CODES[number];
 export type TargetLanguage = "original" | typeof TARGET_LANGUAGE_CODES[number];
 export type TranslationMode = "lowLatency" | "highQuality" | "turbo";
 
-/** Conservative ASR scope for translation routes without expanded language mapping. */
-export const LEGACY_SOURCE_LANGUAGE_CASES: readonly SourceLanguage[] = [
-  "auto",
-  "ja",
-  "en",
-  "ko",
-  "zh",
-];
-
 export const TRANSLATION_MODE_CASES: readonly TranslationMode[] = [
   "turbo",
 ];

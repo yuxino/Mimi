@@ -7,6 +7,7 @@ import { useSettingsToast } from "./useSettingsToast";
 import { invoke } from "@tauri-apps/api/core";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import { isTauri } from "../../lib/ipc";
+import { useDocumentVisibility } from "../../lib/useDocumentVisibility";
 import { writeDiagnosticClipboard } from "../../lib/diagnosticClipboard";
 import { supportDiagnosticSummary, type DiagnosticStatus, type DiagnosticSummaryEvent } from "./supportDiagnosticSummary";
 
@@ -71,6 +72,8 @@ function eventLabel(event: DiagnosticSummaryEvent, text: typeof copy.en | typeof
 }
 
 export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
+  const documentVisible = useDocumentVisibility();
+  const pageVisible = visible && documentVisible;
   const [report, setReport] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<DiagnosticAction | null>(null);
   const { beginToast, clearToast } = useSettingsToast();
@@ -79,6 +82,8 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
   const operation = useRef(false);
   const request = useRef(0);
   const lifetime = useRef(0);
+  const viewGeneration = useRef(0);
+  const queuedEntryRefresh = useRef<(() => void) | null>(null);
   useEffect(() => {
     const clear = () => { lifetime.current += 1; clearToast(); };
     const hidden = () => { if (document.hidden) clear(); };
@@ -99,6 +104,7 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
     if (operation.current) return;
     operation.current = true;
     const currentRequest = ++request.current;
+    const currentView = viewGeneration.current;
     setPendingAction(action);
     setManualCopy(false);
     const showToast = beginToast();
@@ -111,12 +117,12 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
         // Backend builds the fixed public destination from typed whitelist facts.
         const issue = await invoke<SupportIssue>("app_open_support_issue");
         const value = diagnosticReport(issue.report);
-        if (currentRequest === request.current) setReport(value);
+        if (currentRequest === request.current && currentView === viewGeneration.current) setReport(value);
         notify(issue.requiresPaste ? "paste" : "opened");
       } else {
         const value = invoke<string>("support_diagnostics").then((result) => {
           const report = diagnosticReport(result);
-          if (currentRequest === request.current) setReport(report);
+          if (currentRequest === request.current && currentView === viewGeneration.current) setReport(report);
           return report;
         });
         if (action === "refresh") {
@@ -136,20 +142,38 @@ export function SupportDiagnostics({ visible = false }: { visible?: boolean }) {
       }
     } catch { notify(action === "issue" ? "openFailed" : "prepareFailed"); }
     finally {
-      if (currentRequest === request.current) { operation.current = false; setPendingAction(null); }
+      if (currentRequest === request.current) {
+        operation.current = false;
+        setPendingAction(null);
+        const refresh = queuedEntryRefresh.current;
+        queuedEntryRefresh.current = null;
+        refresh?.();
+      }
     }
   }, [beginToast]);
   useEffect(() => {
-    if (!visible) {
+    viewGeneration.current += 1;
+    if (!pageVisible) {
       lifetime.current += 1;
       clearToast();
       return;
     }
     if (!isTauri) return;
     let disposed = false;
-    queueMicrotask(() => { if (!disposed) void perform("refresh", false); });
-    return () => { disposed = true; };
-  }, [visible, perform, clearToast]);
+    const refresh = () => {
+      if (disposed) return;
+      // A fresh visit needs a fresh snapshot. Keep native reads serial and
+      // coalesce repeated visits while the previous operation is completing.
+      if (operation.current) queuedEntryRefresh.current = refresh;
+      else void perform("refresh", false);
+    };
+    queueMicrotask(refresh);
+    return () => {
+      disposed = true;
+      viewGeneration.current += 1;
+      if (queuedEntryRefresh.current === refresh) queuedEntryRefresh.current = null;
+    };
+  }, [pageVisible, perform, clearToast]);
   const text = copy[effectiveUiLanguage()];
   const summary = useMemo(() => supportDiagnosticSummary(report), [report]);
   const busy = pendingAction !== null;

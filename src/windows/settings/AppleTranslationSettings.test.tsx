@@ -112,6 +112,34 @@ it("discards old-pair status and preparation results after a source change", asy
   expect(button(I18N.settings.appleTranslationPrepare)?.disabled).toBe(false);
 });
 
+it.each(["visibility", "language"] as const)("keeps the new status query alive after returning through a %s boundary during preparation", async boundary => {
+  const download = deferred(), latestStatus = deferred();
+  vi.mocked(prepareAppleTranslationLanguages).mockReturnValueOnce(download.promise);
+  await render();
+  await act(async () => button(I18N.settings.appleTranslationPrepare)!.click());
+  await render(boundary === "visibility" ? { visible: false } : { sourceLanguage: "ja", targetLanguage: "en" });
+  vi.mocked(getAppleTranslationStatus).mockReturnValueOnce(latestStatus.promise);
+  await render({ visible: true, sourceLanguage: "en", targetLanguage: "ja" });
+  await act(async () => download.resolve("installed"));
+  await act(async () => latestStatus.resolve("installed"));
+  expect(host.querySelector(".apple-speech-resource-status")?.textContent).toContain(I18N.settings.appleTranslationReady);
+  expect(host.querySelector(".apple-translation-settings")?.getAttribute("aria-busy")).toBe("false");
+  expect(props.onPrepared).not.toHaveBeenCalled();
+  expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+});
+
+it("does not revive a preparation error after leaving and returning to the same language pair", async () => {
+  vi.mocked(prepareAppleTranslationLanguages).mockRejectedValueOnce(new Error("private-failure"));
+  await render();
+  await act(async () => button(I18N.settings.appleTranslationPrepare)!.click());
+  expect(host.querySelector(".apple-translation-settings")?.textContent).toContain(I18N.settings.appleTranslationPrepareFailed);
+  await render({ visible: false });
+  vi.mocked(getAppleTranslationStatus).mockResolvedValueOnce("installed");
+  await render({ visible: true });
+  expect(host.querySelector(".apple-speech-resource-status")?.textContent).toContain(I18N.settings.appleTranslationReady);
+  expect(host.querySelector(".apple-translation-settings")?.textContent).not.toContain(I18N.settings.appleTranslationPrepareFailed);
+});
+
 it("clears old-pair download errors when the pair changes", async () => {
   vi.mocked(prepareAppleTranslationLanguages).mockRejectedValueOnce(new Error("private-failure"));
   await render();

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mimi overlay motion fixture</title></head>
+<body>
+<main id="timeline"></main>
+<section id="settings" class="settings-console"></section>
+<section id="panel" class="overlay-control-panel"></section>
+<section id="island" class="overlay-control-island"></section>
+<section id="overlay"></section>
+<script type="module">
+// Real UI and styles with synthetic text only; no native bridge or capture.
+const { default: React } = await import("/node_modules/.vite/deps/react.js");
+const { createRoot } = (await import("/node_modules/.vite/deps/react-dom_client.js")).default;
+const { flushSync } = (await import("/node_modules/.vite/deps/react-dom.js")).default;
+const { Timeline } = await import("/src/windows/overlay/Timeline.tsx");
+const { PulseRing } = await import("/src/windows/overlay/PulseRing.tsx");
+const { useResolvedMotion } = await import("/src/windows/overlay/animation.ts");
+await import("/src/index.css");
+await import("/src/windows/settings/settings.css");
+await import("/src/windows/overlay-control/overlay-control.css");
+const style = document.createElement("style");
+style.textContent = `body { background:#202020; color:white; overflow:auto; }
+  #timeline { width:300px; } #timeline .overlay-timeline { width:300px; height:80px; overflow-y:auto; }
+  section { position:relative !important; display:inline-block !important; width:180px !important; height:100px !important; margin:12px; }`;
+document.head.append(style);
+const timelineRoot = createRoot(document.getElementById("timeline"));
+const lightRoots = ["settings", "panel", "island", "overlay"].map(id => createRoot(document.getElementById(id)));
+let generation = 0;
+let timelineOptions = {};
+function FixtureLight({ explicit = null, ...props }) {
+  return React.createElement(PulseRing, { phase:"listening", pulseStyle:"ribbon", ...props, motionEnabled:useResolvedMotion(explicit) });
+}
+window.motionFixture = {
+  scrolls: [],
+  renderTimeline(blocks, options = {}, reset = false) {
+    if (reset) { generation++; timelineOptions = {}; }
+    timelineOptions = { ...timelineOptions, ...options };
+    flushSync(() => timelineRoot.render(React.createElement(Timeline, {
+      key:generation, blocks, displayMode:"original", fontSize:18, alignment:"left", color:"white",
+      audioInput:"system", preserveLiveLineBreaks:true, motionEnabled:true,
+      onReadingHistoryChange:reading => { window.motionFixture.readingHistory = reading; }, ...timelineOptions,
+    })));
+  },
+  renderLights(props = {}) {
+    flushSync(() => lightRoots.forEach(root => root.render(React.createElement(FixtureLight, props))));
+  },
+};
+const originalScrollTo = HTMLElement.prototype.scrollTo;
+HTMLElement.prototype.scrollTo = function(options) {
+  const before = this.scrollTop;
+  const result = originalScrollTo.call(this, options);
+  if (this.closest("#timeline")) window.motionFixture.scrolls.push({ ...options, before, after:this.scrollTop });
+  return result;
+};
+window.motionFixture.renderLights();
+window.motionFixtureReady = true;
+</script>
+</body>
+</html>

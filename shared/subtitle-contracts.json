@@ -2232,6 +2232,329 @@
           }
         }
       ]
+    },
+    {
+      "id": "numeric-withdrawal-keeps-another-sources-displayed-preview",
+      "maxHistoryCount": 3,
+      "audioSource": "system",
+      "steps": [
+        {
+          "event": {
+            "type": "source_utterance_draft",
+            "utterance_id": 1,
+            "text": "Synthetic active final source."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic active final source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "",
+              "isFinal": false
+            },
+            "previewPair": null,
+            "displayPair": null,
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "translation_draft",
+            "text": "Synthetic active final preview."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic active final source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": false
+            },
+            "previewPair": null,
+            "displayPair": null,
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "preview_pair",
+            "source_utterance_id": 1,
+            "source": "Synthetic active final source.",
+            "translation": "Synthetic active final preview."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic active final source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": false
+            },
+            "previewPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "displayPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "source_utterance_draft",
+            "utterance_id": 2,
+            "text": ""
+          },
+          "expected": {
+            "source": {
+              "text": "",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": false
+            },
+            "previewPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "displayPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "withdraw_preview",
+            "source_utterance_id": 2
+          },
+          "expected": {
+            "source": {
+              "text": "",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": false
+            },
+            "previewPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "displayPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "history": []
+          },
+          "displayPairFinal": false
+        }
+      ]
+    },
+    {
+      "id": "numeric-withdrawal-removes-only-the-matching-complete-preview",
+      "maxHistoryCount": 3,
+      "audioSource": "system",
+      "steps": [
+        {
+          "event": {
+            "type": "source_utterance_draft",
+            "utterance_id": 2,
+            "text": "Synthetic withdrawn source."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic withdrawn source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "",
+              "isFinal": false
+            },
+            "previewPair": null,
+            "displayPair": null,
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "translation_draft",
+            "text": "Synthetic withdrawn translation."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic withdrawn source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic withdrawn translation.",
+              "isFinal": false
+            },
+            "previewPair": null,
+            "displayPair": null,
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "preview_pair",
+            "source_utterance_id": 2,
+            "source": "Synthetic withdrawn source.",
+            "translation": "Synthetic withdrawn translation."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic withdrawn source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic withdrawn translation.",
+              "isFinal": false
+            },
+            "previewPair": {
+              "source": "Synthetic withdrawn source.",
+              "translation": "Synthetic withdrawn translation."
+            },
+            "displayPair": {
+              "source": "Synthetic withdrawn source.",
+              "translation": "Synthetic withdrawn translation."
+            },
+            "history": []
+          },
+          "displayPairFinal": false
+        },
+        {
+          "event": {
+            "type": "withdraw_preview",
+            "source_utterance_id": 2
+          },
+          "expected": {
+            "source": {
+              "text": "",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "",
+              "isFinal": false
+            },
+            "previewPair": null,
+            "displayPair": null,
+            "history": []
+          },
+          "displayPairFinal": false
+        }
+      ]
+    },
+    {
+      "id": "numeric-withdrawal-preserves-earlier-confirmed-display-and-history",
+      "maxHistoryCount": 3,
+      "audioSource": "system",
+      "steps": [
+        {
+          "event": {
+            "type": "confirmed_pair",
+            "utterance_id": 1,
+            "source_utterance_id": 1,
+            "source": "Synthetic active final source.",
+            "translation": "Synthetic active final preview."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic active final source.",
+              "isFinal": true
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Synthetic active final source.",
+                "translation": "Synthetic active final preview."
+              }
+            ]
+          },
+          "displayPairFinal": true
+        },
+        {
+          "event": {
+            "type": "source_utterance_draft",
+            "utterance_id": 2,
+            "text": "Synthetic withdrawn source."
+          },
+          "expected": {
+            "source": {
+              "text": "Synthetic withdrawn source.",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Synthetic active final source.",
+                "translation": "Synthetic active final preview."
+              }
+            ]
+          },
+          "displayPairFinal": true
+        },
+        {
+          "event": {
+            "type": "withdraw_preview",
+            "source_utterance_id": 2
+          },
+          "expected": {
+            "source": {
+              "text": "",
+              "isFinal": false
+            },
+            "translation": {
+              "text": "Synthetic active final preview.",
+              "isFinal": true
+            },
+            "previewPair": null,
+            "displayPair": {
+              "source": "Synthetic active final source.",
+              "translation": "Synthetic active final preview."
+            },
+            "history": [
+              {
+                "audioSource": "system",
+                "source": "Synthetic active final source.",
+                "translation": "Synthetic active final preview."
+              }
+            ]
+          },
+          "displayPairFinal": true
+        }
+      ]
     }
   ]
 }

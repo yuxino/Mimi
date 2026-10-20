@@ -39,6 +39,8 @@ struct IdentifiedSource {
     id: String,
     ordinal: u64,
     confirmed: bool,
+    #[serde(default)]
+    known_order: Option<u64>,
 }
 
 /// Platform persistence receives confirmations only; the core retains only its bounded display.
@@ -85,6 +87,16 @@ pub struct SubtitleReducer<A: ArchiveSink = NoopArchive> {
     latest_source_ordinal: Option<u64>,
     #[serde(default)]
     display_source_ordinal: Option<u64>,
+    #[serde(default)]
+    latest_known_source_order: Option<u64>,
+    #[serde(default)]
+    display_known_source_order: Option<u64>,
+    #[serde(default)]
+    source_owner_order: Option<u64>,
+    #[serde(default)]
+    translation_owner_order: Option<u64>,
+    #[serde(default)]
+    display_owner_order: Option<u64>,
     layout_epoch: u64,
 }
 
@@ -107,6 +119,11 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             next_source_ordinal: 0,
             latest_source_ordinal: None,
             display_source_ordinal: None,
+            latest_known_source_order: None,
+            display_known_source_order: None,
+            source_owner_order: None,
+            translation_owner_order: None,
+            display_owner_order: None,
             layout_epoch: fresh_layout_epoch(),
         }
     }
@@ -135,10 +152,31 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         self.identified_sources
             .iter()
             .find(|item| item.id == id)
-            .is_none_or(|item| {
-                self.latest_source_ordinal
-                    .is_none_or(|latest| item.ordinal >= latest)
-            })
+            .is_none_or(|item| self.can_present_identity(item, false))
+    }
+
+    /// Activity may start only for a meaningful source the reducer can accept.
+    /// Register any provider order before querying this admission decision.
+    pub fn can_start_identified_translation(&self, id: &str, text: &str) -> bool {
+        if id.trim().is_empty()
+            || text.trim().is_empty()
+            || !crate::models::subtitle_text_within_limit(id)
+            || !crate::models::subtitle_text_within_limit(text)
+            || self.discarded_source_ids.iter().any(|old| old == id)
+        {
+            return false;
+        }
+        self.identified_sources
+            .iter()
+            .find(|item| item.id == id)
+            .map_or_else(
+                || {
+                    self.next_source_ordinal
+                        .checked_add(1)
+                        .is_some_and(|next| next < u64::MAX)
+                },
+                |item| !item.confirmed && self.can_present_identity(item, false),
+            )
     }
 
     /// Retains provider sentence order even when replaceable drafts coalesce.
@@ -149,6 +187,126 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             && !self.discarded_source_ids.iter().any(|old| old == id)
         {
             self.identify_source(id);
+        }
+    }
+
+    /// Registers provider observation order without mixing it with the local
+    /// arrival counter. Missing metadata never erases an identity's known order.
+    pub fn register_source_order(&mut self, id: &str, order: u64) -> bool {
+        if id.trim().is_empty()
+            || !crate::models::subtitle_text_within_limit(id)
+            || order == 0
+            || order > i64::MAX as u64
+            || self.discarded_source_ids.iter().any(|old| old == id)
+            || self.identified_sources.iter().any(|item| {
+                (item.id != id && item.known_order == Some(order))
+                    || (item.id == id && item.known_order.is_some_and(|known| known != order))
+            })
+        {
+            return false;
+        }
+        self.identify_source(id);
+        let Some(item) = self
+            .identified_sources
+            .iter_mut()
+            .find(|item| item.id == id)
+        else {
+            return false;
+        };
+        item.known_order = Some(order);
+        let ordinal = item.ordinal;
+        if self.snapshot.source.utterance_id.as_deref() == Some(id) {
+            self.source_owner_order = Some(order);
+        }
+        if self.snapshot.translation.utterance_id.as_deref() == Some(id) {
+            self.translation_owner_order = Some(order);
+        }
+        // A boundary can arrive after its caption. Retain that already visible
+        // owner's order without changing the caption or its confirmation.
+        if self.snapshot.source.utterance_id.as_deref() == Some(id)
+            || self
+                .snapshot
+                .realtime_preview
+                .as_ref()
+                .is_some_and(|preview| {
+                    !preview.translation.text.is_empty()
+                        && preview.translation.utterance_id.as_deref() == Some(id)
+                })
+        {
+            self.note_live_identity(ordinal, Some(order));
+        }
+        if self
+            .snapshot
+            .display_pair
+            .as_ref()
+            .and_then(|pair| pair.utterance_id.as_deref())
+            == Some(id)
+        {
+            self.display_known_source_order =
+                Some(self.display_known_source_order.unwrap_or(0).max(order));
+            self.display_owner_order = Some(order);
+        }
+        true
+    }
+
+    fn retained_line(&self, line: &SubtitleLine, role: UtteranceRole) -> bool {
+        self.snapshot.display_pair.as_ref().is_some_and(|pair| {
+            self.snapshot.display_pair_final
+                && line.is_final
+                && line.utterance_id == pair.utterance_id
+                && line.text
+                    == match role {
+                        UtteranceRole::Source => &pair.source,
+                        UtteranceRole::Translation => &pair.translation,
+                    }
+                    .as_str()
+        })
+    }
+
+    fn visible_live_owner_order(&self) -> Option<u64> {
+        if !self.snapshot.source.text.is_empty()
+            && !self.retained_line(&self.snapshot.source, UtteranceRole::Source)
+        {
+            self.source_owner_order
+        } else if !self.snapshot.translation.text.is_empty()
+            && !self.retained_line(&self.snapshot.translation, UtteranceRole::Translation)
+        {
+            self.translation_owner_order
+        } else {
+            self.source_owner_order
+        }
+    }
+
+    fn can_present_identity(&self, item: &IdentifiedSource, display: bool) -> bool {
+        let (arrival, known, owner_order) = if display {
+            (
+                self.display_source_ordinal,
+                self.display_known_source_order,
+                self.display_owner_order,
+            )
+        } else {
+            (
+                self.latest_source_ordinal,
+                self.latest_known_source_order,
+                self.visible_live_owner_order(),
+            )
+        };
+        if let Some(order) = item.known_order {
+            if known.is_some_and(|latest| order < latest) {
+                return false;
+            }
+            if let Some(owner_order) = owner_order {
+                return order >= owner_order;
+            }
+        }
+        arrival.is_none_or(|latest| item.ordinal >= latest)
+    }
+
+    fn note_live_identity(&mut self, ordinal: u64, order: Option<u64>) {
+        self.latest_source_ordinal = Some(self.latest_source_ordinal.unwrap_or(0).max(ordinal));
+        if let Some(order) = order {
+            self.latest_known_source_order =
+                Some(self.latest_known_source_order.unwrap_or(0).max(order));
         }
     }
 
@@ -179,6 +337,16 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     .utterance_id
                     .as_deref()
                     .is_none_or(crate::models::subtitle_text_within_limit)
+        };
+        let owner_valid = |owner: Option<&str>, order: Option<u64>| {
+            order.is_none_or(|_| owner.is_some())
+                && owner
+                    .and_then(|id| self.identified_sources.iter().find(|item| item.id == id))
+                    .and_then(|item| item.known_order)
+                    .is_none_or(|known| order == Some(known))
+        };
+        let frontier_covers = |order: Option<u64>, frontier: Option<u64>| {
+            order.is_none_or(|order| frontier.is_some_and(|frontier| frontier >= order))
         };
         if self.max_history_count <= max_history_limit
             && self.snapshot.history.len() <= self.max_history_count
@@ -221,6 +389,36 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             && self.identified_sources.len() <= MAX_IDENTIFIED_SOURCES
             && self.discarded_source_ids.len() <= MAX_IDENTIFIED_SOURCES
             && self.next_source_ordinal < u64::MAX
+            && owner_valid(
+                self.snapshot.source.utterance_id.as_deref(),
+                self.source_owner_order,
+            )
+            && owner_valid(
+                self.snapshot.translation.utterance_id.as_deref(),
+                self.translation_owner_order,
+            )
+            && owner_valid(
+                self.snapshot
+                    .display_pair
+                    .as_ref()
+                    .and_then(|pair| pair.utterance_id.as_deref()),
+                self.display_owner_order,
+            )
+            && frontier_covers(self.source_owner_order, self.latest_known_source_order)
+            && frontier_covers(
+                self.visible_live_owner_order(),
+                self.latest_known_source_order,
+            )
+            && frontier_covers(self.display_owner_order, self.display_known_source_order)
+            && [
+                self.latest_known_source_order,
+                self.display_known_source_order,
+                self.source_owner_order,
+                self.translation_owner_order,
+                self.display_owner_order,
+            ]
+            .iter()
+            .all(|order| order.is_none_or(|order| order > 0 && order <= i64::MAX as u64))
             && self
                 .latest_source_ordinal
                 .is_none_or(|id| id <= self.next_source_ordinal)
@@ -232,7 +430,21 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     && item.ordinal > 0
                     && item.ordinal <= self.next_source_ordinal
                     && !self.discarded_source_ids.contains(&item.id)
+                    && item
+                        .known_order
+                        .is_none_or(|order| order > 0 && order <= i64::MAX as u64)
             })
+            && self
+                .identified_sources
+                .iter()
+                .filter_map(|item| item.known_order)
+                .collect::<HashSet<_>>()
+                .len()
+                == self
+                    .identified_sources
+                    .iter()
+                    .filter(|item| item.known_order.is_some())
+                    .count()
             && self
                 .identified_sources
                 .iter()
@@ -283,12 +495,16 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             SubtitleEvent::SourceUtteranceDraft { .. }
                 | SubtitleEvent::PreviewPair { .. }
                 | SubtitleEvent::ConfirmedPair { .. }
+                | SubtitleEvent::WithdrawPreview { .. }
         );
         match event {
             SubtitleEvent::SourceBoundary {
                 utterance_id,
                 source_order,
             } => {
+                // Audio-time boundaries may correct a provisional clock for
+                // an unconfirmed item. They retain their existing contract;
+                // stable aligner ranks use register_source_order instead.
                 if utterance_id.is_empty()
                     || source_order == 0
                     || source_order > i64::MAX as u64
@@ -308,7 +524,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     .iter_mut()
                     .find(|item| item.id == utterance_id)
                 {
-                    if item.confirmed {
+                    if item.confirmed || item.known_order.is_some() {
                         return;
                     }
                     if self.latest_source_ordinal == Some(item.ordinal) {
@@ -320,6 +536,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                         id: utterance_id,
                         ordinal: source_order,
                         confirmed: false,
+                        known_order: None,
                     });
                 }
                 self.identified_sources
@@ -333,6 +550,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             }
             SubtitleEvent::SourceDraft(text) => {
                 self.latest_source_ordinal = None;
+                self.source_owner_order = None;
                 let text = trim(&text);
                 // A new recognition cycle may repeat the preceding lyric or
                 // sentence. Its final is distinct from a duplicate final sent
@@ -354,6 +572,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     return;
                 }
                 self.latest_source_utterance_id = Some(utterance_id);
+                self.source_owner_order = None;
                 self.source_draft_since_confirmation |= !text.trim().is_empty();
                 self.snapshot.source = SubtitleLine::for_utterance(
                     trim(&text),
@@ -363,6 +582,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             }
             SubtitleEvent::SourceFinal(text) => {
                 self.latest_source_ordinal = None;
+                self.source_owner_order = None;
                 self.snapshot.source = SubtitleLine::new(trim(&text), true);
             }
             SubtitleEvent::TranslationDraft(text) => {
@@ -372,6 +592,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     return;
                 }
                 self.snapshot.translation = SubtitleLine::new(trimmed, false);
+                self.translation_owner_order = None;
             }
             SubtitleEvent::PreviewPair {
                 source_utterance_id,
@@ -419,6 +640,44 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 self.preview_source_utterance_id = None;
                 self.clear_unconfirmed_display_pair();
             }
+            SubtitleEvent::WithdrawPreview {
+                source_utterance_id,
+            } => {
+                if source_utterance_id == 0 {
+                    return;
+                }
+                let owner = self.source_layout_identity(source_utterance_id);
+                let owns_source = !self.snapshot.source.is_final
+                    && self.snapshot.source.utterance_id.as_deref() == Some(owner.as_str());
+                let owns_preview = self.preview_source_utterance_id == Some(source_utterance_id);
+                let owns_display = !self.snapshot.display_pair_final
+                    && self.display_pair_source_utterance_id == Some(source_utterance_id);
+                if !owns_source && !owns_preview && !owns_display {
+                    return;
+                }
+                if owns_preview {
+                    self.snapshot.preview_pair = None;
+                    self.preview_source_utterance_id = None;
+                }
+                if owns_display {
+                    self.clear_unconfirmed_display_pair();
+                }
+                if owns_source {
+                    self.snapshot.source =
+                        SubtitleLine::for_utterance(String::new(), false, owner.clone());
+                }
+                // Unstamped translation drafts may belong to an older final
+                // still in flight. Only an identified line or complete owned
+                // preview supplies enough evidence to withdraw that line.
+                if !self.snapshot.translation.is_final
+                    && ((owns_source && owns_preview)
+                        || self.snapshot.translation.utterance_id.as_deref()
+                            == Some(owner.as_str()))
+                {
+                    self.snapshot.translation =
+                        SubtitleLine::for_utterance(String::new(), false, owner);
+                }
+            }
             SubtitleEvent::UtteranceText {
                 utterance_id,
                 role,
@@ -432,14 +691,16 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 match role {
                     UtteranceRole::Source => {
                         let (ordinal, confirmed) = self.identify_source(&utterance_id);
-                        if confirmed
-                            || self
-                                .latest_source_ordinal
-                                .is_some_and(|latest| ordinal < latest)
-                        {
+                        if confirmed || !self.identified_source_is_current(&utterance_id) {
                             return;
                         }
-                        self.latest_source_ordinal = Some(ordinal);
+                        let order = self
+                            .identified_sources
+                            .iter()
+                            .find(|item| item.id == utterance_id)
+                            .and_then(|item| item.known_order);
+                        self.note_live_identity(ordinal, order);
+                        self.source_owner_order = order;
                         self.snapshot.source =
                             SubtitleLine::for_utterance(text, is_final, utterance_id);
                     }
@@ -449,16 +710,22 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                             .iter()
                             .find(|item| item.id == utterance_id)
                             .is_some_and(|item| {
-                                item.confirmed
-                                    || self
-                                        .latest_source_ordinal
-                                        .is_some_and(|latest| item.ordinal < latest)
+                                item.confirmed || !self.can_present_identity(item, false)
                             })
                         {
                             return;
                         }
                         if text.is_empty() && self.snapshot.translation.is_final {
                             return;
+                        }
+                        let known_identity = self
+                            .identified_sources
+                            .iter()
+                            .find(|item| item.id == utterance_id)
+                            .and_then(|item| item.known_order.map(|order| (item.ordinal, order)));
+                        self.translation_owner_order = known_identity.map(|(_, order)| order);
+                        if let Some((ordinal, order)) = known_identity {
+                            self.note_live_identity(ordinal, Some(order));
                         }
                         self.snapshot.translation =
                             SubtitleLine::for_utterance(text.clone(), is_final, utterance_id);
@@ -473,6 +740,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 }
             }
             SubtitleEvent::TranslationFinal(text) => {
+                self.translation_owner_order = None;
                 let translation = trim(&text);
                 self.snapshot.translation = SubtitleLine::new(translation.clone(), true);
                 let source = self.snapshot.source.text.clone();
@@ -487,6 +755,8 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             } => {
                 let source = trim(&source);
                 let translation = trim(&translation);
+                self.source_owner_order = None;
+                self.translation_owner_order = None;
                 self.snapshot.source = SubtitleLine::new(source.clone(), true);
                 self.snapshot.translation = SubtitleLine::new(translation.clone(), true);
                 // HQ finals own the durable lane and exclude later preview
@@ -519,11 +789,18 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     .find(|item| item.id == utterance_id)
                     .unwrap()
                     .confirmed = true;
-                if self
-                    .latest_source_ordinal
-                    .is_none_or(|latest| latest <= ordinal)
-                {
-                    self.latest_source_ordinal = Some(ordinal);
+                let item = self
+                    .identified_sources
+                    .iter()
+                    .find(|item| item.id == utterance_id)
+                    .unwrap();
+                let order = item.known_order;
+                let promote_source = self.can_present_identity(item, false);
+                let promoted = self.can_present_identity(item, true);
+                if promote_source {
+                    self.note_live_identity(ordinal, order);
+                    self.source_owner_order = order;
+                    self.translation_owner_order = order;
                     self.snapshot.source =
                         SubtitleLine::for_utterance(source.clone(), true, utterance_id.clone());
                     self.snapshot.translation = SubtitleLine::for_utterance(
@@ -533,10 +810,8 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     );
                     self.snapshot.preview_pair = None;
                 }
-                let promoted = self
-                    .display_source_ordinal
-                    .is_none_or(|display| display <= ordinal);
                 if promoted {
+                    self.display_owner_order = order;
                     self.snapshot.display_pair = Some(PreviewSubtitlePair {
                         utterance_id: Some(utterance_id),
                         source: source.clone(),
@@ -544,7 +819,14 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                     });
                     self.snapshot.display_pair_final = true;
                     self.display_pair_source_utterance_id = None;
-                    self.display_source_ordinal = Some(ordinal);
+                    self.display_source_ordinal =
+                        Some(self.display_source_ordinal.unwrap_or(0).max(ordinal));
+                }
+                if let Some(order) = order {
+                    self.latest_known_source_order =
+                        Some(self.latest_known_source_order.unwrap_or(0).max(order));
+                    self.display_known_source_order =
+                        Some(self.display_known_source_order.unwrap_or(0).max(order));
                 }
                 self.source_draft_since_confirmation = false;
                 let time = self.append_confirmed_history(source, translation, true);
@@ -588,6 +870,8 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 // A previous sentence's HTTP final remains durable, but is
                 // not the owner of a newer real sentence already on screen.
                 if !newer_source_visible {
+                    self.source_owner_order = None;
+                    self.translation_owner_order = None;
                     self.snapshot.source = SubtitleLine::new(source.clone(), true);
                     self.snapshot.translation = SubtitleLine::new(translation.clone(), true);
                     // Original-only readers use the raw final lane. Retain the
@@ -621,6 +905,11 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
                 self.identified_sources.clear();
                 self.latest_source_ordinal = None;
                 self.display_source_ordinal = None;
+                self.latest_known_source_order = None;
+                self.display_known_source_order = None;
+                self.source_owner_order = None;
+                self.translation_owner_order = None;
+                self.display_owner_order = None;
                 self.archive.clear();
                 self.snapshot = SubtitleSnapshot::empty();
                 self.latest_source_utterance_id = None;
@@ -645,19 +934,11 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
     fn refresh_realtime_preview(&mut self) {
         let mut source = self.snapshot.source.clone();
         let mut translation = self.snapshot.translation.clone();
-        if let Some(pair) = self.snapshot.display_pair.as_ref() {
-            let previous = |line: &SubtitleLine, text: &str| {
-                self.snapshot.display_pair_final
-                    && line.is_final
-                    && line.text == text
-                    && line.utterance_id == pair.utterance_id
-            };
-            if previous(&source, &pair.source) {
-                source = SubtitleLine::new("", false);
-            }
-            if previous(&translation, &pair.translation) {
-                translation = SubtitleLine::new("", false);
-            }
+        if self.retained_line(&source, UtteranceRole::Source) {
+            source = SubtitleLine::new("", false);
+        }
+        if self.retained_line(&translation, UtteranceRole::Translation) {
+            translation = SubtitleLine::new("", false);
         }
         // A translation with a different/unknown owner cannot accompany the
         // current original. Translation-first streams can still show one lane.
@@ -666,6 +947,30 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             && source.utterance_id != translation.utterance_id
         {
             translation = SubtitleLine::new("", false);
+        }
+        let (owner, order) = if !source.text.is_empty() {
+            (source.utterance_id.as_deref(), self.source_owner_order)
+        } else {
+            (
+                translation.utterance_id.as_deref(),
+                self.translation_owner_order,
+            )
+        };
+        if let Some(order) = order {
+            self.latest_known_source_order =
+                Some(self.latest_known_source_order.unwrap_or(0).max(order));
+        }
+        // Pure legacy translation drafts keep their existing policy. In a
+        // mixed stream an already registered visible owner also retains its
+        // arrival frontier, so known-order corrections cannot reopen it.
+        if self.latest_known_source_order.is_some() {
+            if let Some(ordinal) = owner
+                .and_then(|id| self.identified_sources.iter().find(|item| item.id == id))
+                .map(|item| item.ordinal)
+            {
+                self.latest_source_ordinal =
+                    Some(self.latest_source_ordinal.unwrap_or(0).max(ordinal));
+            }
         }
         self.snapshot.realtime_preview = if source.text.is_empty() && translation.text.is_empty() {
             None
@@ -694,6 +999,11 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         self.next_source_ordinal = 0;
         self.latest_source_ordinal = None;
         self.display_source_ordinal = None;
+        self.latest_known_source_order = None;
+        self.display_known_source_order = None;
+        self.source_owner_order = None;
+        self.translation_owner_order = None;
+        self.display_owner_order = None;
         self.last_confirmed_id = None;
         self.latest_source_utterance_id = None;
         self.last_confirmed_source_id = None;
@@ -736,6 +1046,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
             id: id.into(),
             ordinal,
             confirmed: false,
+            known_order: None,
         });
         if self.identified_sources.len() > MAX_IDENTIFIED_SOURCES {
             let old = self.identified_sources.pop_front().unwrap();
@@ -788,6 +1099,22 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
         {
             return false;
         }
+        let known_order = pair
+            .utterance_id
+            .as_deref()
+            .and_then(|id| self.identified_sources.iter().find(|item| item.id == id))
+            .and_then(|item| item.known_order)
+            .or_else(|| {
+                (pair.utterance_id.is_some()
+                    && pair.utterance_id == self.snapshot.source.utterance_id)
+                    .then_some(self.source_owner_order)
+                    .flatten()
+            });
+        self.display_owner_order = known_order;
+        if let Some(order) = known_order {
+            self.display_known_source_order =
+                Some(self.display_known_source_order.unwrap_or(0).max(order));
+        }
         self.snapshot.display_pair = Some(pair);
         self.display_source_ordinal = None;
         self.display_pair_source_utterance_id = source_id;
@@ -800,6 +1127,7 @@ impl<A: ArchiveSink> SubtitleReducer<A> {
 
     fn clear_unconfirmed_display_pair(&mut self) {
         if !self.snapshot.display_pair_final {
+            self.display_owner_order = None;
             self.snapshot.display_pair = None;
             self.snapshot.display_pair_created_at_ms = None;
             self.display_source_ordinal = None;
@@ -900,6 +1228,61 @@ mod tests {
     type SubtitleReducer = super::SubtitleReducer<BoundedTestArchive>;
 
     #[test]
+    fn translation_start_requires_a_meaningful_current_unconfirmed_source() {
+        let mut reducer = SubtitleReducer::default();
+        assert!(reducer.can_start_identified_translation("current", "Synthetic source"));
+        assert!(reducer.register_source_order("current", 2));
+        reducer.apply(identified_text(
+            "current",
+            UtteranceRole::Source,
+            "Synthetic source",
+        ));
+        assert!(reducer.register_source_order("unseen-old", 1));
+        assert!(!reducer.can_start_identified_translation("unseen-old", "Synthetic old source"));
+        reducer.discard_source_id("discarded".into());
+        let oversized = "x".repeat(crate::models::MAX_SUBTITLE_TEXT_BYTES + 1);
+        for (id, text) in [
+            ("", "Synthetic source"),
+            (" \u{3000}", "Synthetic source"),
+            ("current", ""),
+            ("current", " \u{3000}"),
+            ("discarded", "Synthetic source"),
+            (oversized.as_str(), "Synthetic source"),
+            ("current", oversized.as_str()),
+        ] {
+            assert!(!reducer.can_start_identified_translation(id, text));
+        }
+        reducer.apply(SubtitleEvent::IdentifiedFinalPair {
+            utterance_id: "current".into(),
+            source: "Synthetic source".into(),
+            translation: "Synthetic translation".into(),
+        });
+        assert!(!reducer.can_start_identified_translation("current", "Synthetic revised source"));
+        assert!(reducer.can_start_identified_translation("newer", "Synthetic next source"));
+    }
+
+    #[test]
+    fn translation_start_cannot_admit_an_unknown_identity_after_ordinal_exhaustion() {
+        let mut reducer = SubtitleReducer::default();
+        reducer.apply(identified_text(
+            "known",
+            UtteranceRole::Source,
+            "Synthetic source",
+        ));
+        reducer.next_source_ordinal = u64::MAX - 1;
+        assert!(reducer.validate_state(100).is_ok());
+        assert!(reducer.can_start_identified_translation("known", "Synthetic revised source"));
+        assert!(!reducer.can_start_identified_translation("unknown", "Synthetic next source"));
+        let before = reducer.snapshot.clone();
+        reducer.apply(identified_text(
+            "unknown",
+            UtteranceRole::Source,
+            "Synthetic next source",
+        ));
+        assert_eq!(reducer.snapshot, before);
+    }
+
+    #[test]
     fn source_order_limits_and_exhausted_auto_order_keep_state_restorable() {
         let mut reducer = SubtitleReducer::default();
         reducer.apply(SubtitleEvent::SourceBoundary {
@@ -934,6 +1317,379 @@ mod tests {
         });
         assert_eq!(serde_json::to_value(&reducer).unwrap(), before);
         assert!(reducer.validate_state(100).is_ok());
+    }
+
+    fn identified_text(id: &str, role: UtteranceRole, text: &str) -> SubtitleEvent {
+        SubtitleEvent::UtteranceText {
+            utterance_id: id.into(),
+            role,
+            text: text.into(),
+            is_final: false,
+        }
+    }
+
+    fn identified_pair(id: &str, text: &str) -> SubtitleEvent {
+        SubtitleEvent::IdentifiedFinalPair {
+            utterance_id: id.into(),
+            source: text.into(),
+            translation: format!("Translated {text}"),
+        }
+    }
+
+    #[test]
+    fn known_order_is_independent_of_unknown_arrival_ordinals_and_cannot_be_retargeted() {
+        let mut reducer = SubtitleReducer::default();
+        reducer.apply(identified_text(
+            "unknown",
+            UtteranceRole::Source,
+            "Synthetic unknown",
+        ));
+        assert!(reducer.register_source_order("known-z", 1));
+        reducer.apply(identified_text(
+            "known-z",
+            UtteranceRole::Source,
+            "Synthetic known",
+        ));
+        assert_eq!(
+            reducer.snapshot.source.utterance_id.as_deref(),
+            Some("known-z")
+        );
+        assert!(!reducer.register_source_order("known-z", 2));
+        assert!(!reducer.register_source_order("other", 1));
+        assert!(reducer.register_source_order("known-a", 2));
+        reducer.apply(identified_text(
+            "known-a",
+            UtteranceRole::Source,
+            "Synthetic newer",
+        ));
+        // Missing metadata cannot erase the rank learned for this identity.
+        reducer.apply(identified_text(
+            "known-z",
+            UtteranceRole::Source,
+            "Synthetic old replay",
+        ));
+        assert_eq!(reducer.snapshot.source.text, "Synthetic newer");
+        assert!(reducer.validate_state(100).is_ok());
+    }
+
+    #[test]
+    fn old_known_pairs_keep_history_and_the_retained_pair_without_rewinding_live_lanes() {
+        let mut reducer = SubtitleReducer::default();
+        assert!(reducer.register_source_order("current", 2));
+        reducer.apply(identified_text(
+            "current",
+            UtteranceRole::Source,
+            "Synthetic current",
+        ));
+        reducer.apply(identified_text(
+            "current",
+            UtteranceRole::Translation,
+            "Current preview",
+        ));
+        assert!(reducer.register_source_order("previous", 1));
+        for role in [UtteranceRole::Source, UtteranceRole::Translation] {
+            reducer.apply(identified_text("previous", role, "Synthetic stale preview"));
+        }
+        assert_eq!(reducer.snapshot.source.text, "Synthetic current");
+        assert_eq!(reducer.snapshot.translation.text, "Current preview");
+        reducer.apply(identified_pair("previous", "Synthetic previous complete"));
+        assert_eq!(reducer.snapshot.source.text, "Synthetic current");
+        assert_eq!(
+            reducer
+                .snapshot
+                .display_pair
+                .as_ref()
+                .unwrap()
+                .utterance_id
+                .as_deref(),
+            Some("previous")
+        );
+        reducer.apply(identified_pair("current", "Synthetic current complete"));
+        reducer.apply(identified_pair("previous", "Synthetic duplicate"));
+        assert_eq!(reducer.snapshot.source.text, "Synthetic current complete");
+        assert_eq!(
+            reducer
+                .snapshot
+                .display_pair
+                .as_ref()
+                .unwrap()
+                .utterance_id
+                .as_deref(),
+            Some("current")
+        );
+        assert_eq!(reducer.snapshot.history.len(), 2);
+        assert!(reducer.validate_state(100).is_ok());
+    }
+
+    #[test]
+    fn known_correction_does_not_reopen_an_older_unknown_source_or_display() {
+        let mut reducer = SubtitleReducer::default();
+        assert!(reducer.register_source_order("known-a", 3));
+        reducer.register_source_identity("unknown-old");
+        assert!(reducer.register_source_order("known-z", 2));
+        reducer.apply(identified_text(
+            "known-z",
+            UtteranceRole::Source,
+            "Synthetic second",
+        ));
+        reducer.apply(identified_pair("known-z", "Synthetic second complete"));
+        reducer.apply(identified_text(
+            "known-a",
+            UtteranceRole::Source,
+            "Synthetic newest",
+        ));
+        reducer.apply(identified_pair("known-a", "Synthetic newest complete"));
+        reducer.apply(identified_text(
+            "unknown-old",
+            UtteranceRole::Source,
+            "Synthetic old unknown",
+        ));
+        reducer.apply(identified_pair(
+            "unknown-old",
+            "Synthetic old unknown complete",
+        ));
+        assert_eq!(reducer.snapshot.source.text, "Synthetic newest complete");
+        assert_eq!(
+            reducer
+                .snapshot
+                .display_pair
+                .as_ref()
+                .unwrap()
+                .utterance_id
+                .as_deref(),
+            Some("known-a")
+        );
+        assert_eq!(reducer.snapshot.history.len(), 3);
+        reducer.apply(identified_text(
+            "unknown-new",
+            UtteranceRole::Source,
+            "Synthetic new unknown",
+        ));
+        assert_eq!(reducer.snapshot.source.text, "Synthetic new unknown");
+        reducer.apply(identified_text(
+            "known-z",
+            UtteranceRole::Source,
+            "Synthetic late known",
+        ));
+        assert_eq!(reducer.snapshot.source.text, "Synthetic new unknown");
+        assert!(reducer.validate_state(100).is_ok());
+    }
+
+    #[test]
+    fn legacy_order_state_restores_and_rank_scope_resets_without_losing_confirmed_history() {
+        let mut reducer = SubtitleReducer::default();
+        reducer.apply(identified_text(
+            "old",
+            UtteranceRole::Source,
+            "Synthetic old",
+        ));
+        reducer.apply(identified_text(
+            "current",
+            UtteranceRole::Source,
+            "Synthetic current",
+        ));
+        let mut legacy = serde_json::to_value(&reducer).unwrap();
+        for field in ["latest_known_source_order", "display_known_source_order"] {
+            legacy.as_object_mut().unwrap().remove(field);
+        }
+        for identity in legacy["identified_sources"].as_array_mut().unwrap() {
+            identity.as_object_mut().unwrap().remove("known_order");
+        }
+        let mut restored: SubtitleReducer = serde_json::from_value(legacy).unwrap();
+        assert!(restored.validate_state(100).is_ok());
+        assert!(restored.register_source_order("current", 100));
+        assert!(restored.register_source_order("old", 99));
+        restored.apply(identified_text(
+            "old",
+            UtteranceRole::Source,
+            "Synthetic late old",
+        ));
+        assert_eq!(restored.snapshot.source.text, "Synthetic current");
+        restored.apply(identified_pair("current", "Synthetic confirmed"));
+        restored.reset_transient();
+        assert_eq!(restored.snapshot.history.len(), 1);
+        assert!(restored.register_source_order("next", 1));
+        restored.apply(identified_text(
+            "next",
+            UtteranceRole::Source,
+            "Synthetic new scope",
+        ));
+        assert_eq!(restored.snapshot.source.text, "Synthetic new scope");
+        let state = serde_json::to_value(&restored).unwrap();
+        let mut restored: SubtitleReducer = serde_json::from_value(state).unwrap();
+        restored.apply(SubtitleEvent::Clear);
+        assert!(restored.snapshot.history.is_empty());
+        assert!(!restored.register_source_order("next", 1));
+        assert!(restored.register_source_order("after-clear", 1));
+        restored.apply(identified_text(
+            "after-clear",
+            UtteranceRole::Source,
+            "Synthetic after clear",
+        ));
+        assert_eq!(restored.snapshot.source.text, "Synthetic after clear");
+        assert!(restored.validate_state(100).is_ok());
+    }
+
+    #[test]
+    fn late_order_for_translation_only_owner_covers_both_domains_and_its_successor() {
+        let mut reducer = SubtitleReducer::default();
+        assert!(reducer.register_source_order("future", 3));
+        reducer.register_source_identity("old-unknown");
+        reducer.apply(identified_text(
+            "current",
+            UtteranceRole::Translation,
+            "Synthetic current translation",
+        ));
+        assert!(reducer.register_source_order("current", 2));
+        assert!(reducer.register_source_order("previous", 1));
+        for id in ["previous", "old-unknown"] {
+            reducer.apply(identified_text(
+                id,
+                UtteranceRole::Translation,
+                "Synthetic old translation",
+            ));
+            assert_eq!(
+                reducer.snapshot.translation.text,
+                "Synthetic current translation"
+            );
+        }
+        reducer.apply(identified_text(
+            "future",
+            UtteranceRole::Translation,
+            "Synthetic newer translation",
+        ));
+        assert_eq!(
+            reducer.snapshot.translation.text,
+            "Synthetic newer translation"
+        );
+        assert!(reducer.validate_state(100).is_ok());
+    }
+
+    #[test]
+    fn retained_source_does_not_hide_the_visible_translation_comparison_domain() {
+        for old_known in [false, true] {
+            let mut reducer = SubtitleReducer::default();
+            if old_known {
+                assert!(reducer.register_source_order("retained", 1));
+            }
+            reducer.apply(identified_pair("retained", "Synthetic retained complete"));
+            assert!(reducer.register_source_order("future", 3));
+            assert!(reducer.register_source_order("current", 2));
+            reducer.apply(identified_text(
+                "current",
+                UtteranceRole::Translation,
+                "Synthetic current translation",
+            ));
+            assert_eq!(
+                reducer
+                    .snapshot
+                    .realtime_preview
+                    .as_ref()
+                    .unwrap()
+                    .translation
+                    .text,
+                "Synthetic current translation"
+            );
+            assert!(reducer.validate_state(100).is_ok());
+            reducer.register_source_identity("unknown-new");
+            reducer.apply(identified_text(
+                "unknown-new",
+                UtteranceRole::Translation,
+                "Synthetic new unknown translation",
+            ));
+            reducer.apply(identified_text(
+                "future",
+                UtteranceRole::Translation,
+                "Synthetic early unknown replacement",
+            ));
+            assert_eq!(
+                reducer.snapshot.translation.text,
+                "Synthetic new unknown translation"
+            );
+            assert!(reducer.validate_state(100).is_ok());
+        }
+    }
+
+    #[test]
+    fn evicting_the_current_known_identity_keeps_its_comparison_domain() {
+        for display in [false, true] {
+            let mut reducer = SubtitleReducer::default();
+            assert!(reducer.register_source_order("current", 3));
+            assert!(reducer.register_source_order("future", 4));
+            for index in 3..=64 {
+                reducer.register_source_identity(&format!("unknown-{index}"));
+            }
+            assert!(reducer.register_source_order("unknown-64", 2));
+            reducer.apply(if display {
+                identified_pair("unknown-64", "Synthetic earlier")
+            } else {
+                identified_text("unknown-64", UtteranceRole::Source, "Synthetic earlier")
+            });
+            reducer.apply(if display {
+                identified_pair("current", "Synthetic current")
+            } else {
+                identified_text("current", UtteranceRole::Source, "Synthetic current")
+            });
+            reducer.register_source_identity("extra");
+            assert!(!reducer
+                .identified_sources
+                .iter()
+                .any(|item| item.id == "current"));
+            reducer.apply(if display {
+                identified_pair("future", "Synthetic newer")
+            } else {
+                identified_text("future", UtteranceRole::Source, "Synthetic newer")
+            });
+            assert_eq!(reducer.snapshot.source.text, "Synthetic newer");
+            if display {
+                assert_eq!(
+                    reducer.snapshot.display_pair.as_ref().unwrap().source,
+                    "Synthetic newer"
+                );
+            }
+            assert!(reducer.validate_state(100).is_ok());
+        }
+    }
+
+    #[test]
+    fn restored_known_frontiers_cannot_lag_their_visible_owners() {
+        let mut reducer = SubtitleReducer::default();
+        assert!(reducer.register_source_order("current", 100));
+        reducer.apply(identified_pair("current", "Synthetic current"));
+        for field in ["latest_known_source_order", "display_known_source_order"] {
+            for forged in [serde_json::Value::Null, serde_json::json!(1)] {
+                let mut state = serde_json::to_value(&reducer).unwrap();
+                state[field] = forged;
+                let restored: SubtitleReducer = serde_json::from_value(state).unwrap();
+                assert!(restored.validate_state(100).is_err(), "{field}");
+            }
+        }
+        let mut stable = SubtitleReducer::default();
+        assert!(stable.register_source_order("maximum-stable", i64::MAX as u64));
+        assert_eq!(stable.next_source_ordinal, 1);
+        assert!(stable.validate_state(100).is_ok());
+    }
+
+    #[test]
+    fn known_order_state_stays_bounded_and_rejects_forged_duplicate_ranks() {
+        let mut reducer = SubtitleReducer::default();
+        for order in 1..=200 {
+            let id = format!("synthetic-{order}");
+            assert!(reducer.register_source_order(&id, order));
+            reducer.apply(identified_text(
+                &id,
+                UtteranceRole::Source,
+                "Synthetic bounded",
+            ));
+        }
+        assert_eq!(reducer.identified_sources.len(), MAX_IDENTIFIED_SOURCES);
+        assert_eq!(reducer.discarded_source_ids.len(), MAX_IDENTIFIED_SOURCES);
+        assert!(reducer.validate_state(100).is_ok());
+        let mut forged = serde_json::to_value(&reducer).unwrap();
+        forged["identified_sources"][1]["known_order"] =
+            forged["identified_sources"][0]["known_order"].clone();
+        let forged: SubtitleReducer = serde_json::from_value(forged).unwrap();
+        assert!(forged.validate_state(100).is_err());
     }
 
     #[derive(Default)]

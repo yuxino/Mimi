@@ -30,7 +30,9 @@ use crate::core::protocols::qwen_mt::QwenMTModel;
 #[cfg(test)]
 use crate::core::protocols::qwen_mt::REALTIME_MT_MODEL;
 use crate::core::provider::ProviderKind;
-use crate::core::session::{TranslationSessionController, TranslationSessionState};
+use crate::core::session::{
+    ProviderEventApplication, TranslationSessionController, TranslationSessionState,
+};
 use crate::core::support_diagnostics::{
     Availability, CaptureObservation, DiagnosticEvent, DiagnosticFacts, DiagnosticJournal,
     DiagnosticStatus, LifecycleAction, OutputSelection, RecoveryAction, SafeFailure, TextEventKind,
@@ -48,6 +50,15 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex as TokioMutex, Notify, OwnedMutexGuard};
 use tokio::task::JoinHandle;
+
+mod cleanup_owner;
+mod recovery_cleanup;
+
+use cleanup_owner::{CleanupOwners, CleanupTicket};
+use recovery_cleanup::{
+    activate_start_if_current, cancel_recovery_task, prepare_recovery_cleanup,
+    retire_recovery_for_start,
+};
 
 /// UI-only buffers contain synthetic fixtures. An explicit export fixture keeps
 /// them in memory after stop so QA can reach the real picker and write path.
@@ -338,6 +349,16 @@ fn start_request_can_proceed(
     active_generation: u64,
 ) -> bool {
     !has_active_session || (is_recovering && active_generation == NO_GENERATION)
+}
+
+fn start_request_can_proceed_after_teardown(
+    has_active_session: bool,
+    is_recovering: bool,
+    active_generation: u64,
+    accepted_recovery_replacement: bool,
+) -> bool {
+    start_request_can_proceed(has_active_session, is_recovering, active_generation)
+        || (accepted_recovery_replacement && active_generation == NO_GENERATION)
 }
 
 fn apply_establish_failure_state(
@@ -750,6 +771,29 @@ struct LocalCaptureStats {
     sample_rate: u32,
 }
 
+fn finalize_pending_history(
+    history: &SessionHistory,
+    id: &str,
+    ended_at_ms: u64,
+    limited: bool,
+    retain_text: bool,
+    retain_audio: bool,
+) -> std::io::Result<bool> {
+    // An opt-out takes effect even when its initial filesystem cleanup fails.
+    // Retry that cleanup before making any current content saved history.
+    if !retain_text && !retain_audio {
+        history.discard(id)?;
+        return Ok(false);
+    }
+    if !retain_text {
+        history.clear_text(id)?;
+    }
+    if !retain_audio {
+        history.clear_audio(id)?;
+    }
+    history.finalize(id, ended_at_ms, limited)
+}
+
 /// Capture presentation never borrows a retired generation's recent activity.
 /// Unlike diagnostics, this represents currently selected live input only.
 fn source_capture_observation(
@@ -772,17 +816,35 @@ fn source_capture_observation(
     })
 }
 
+/// Apply the event before capturing its shared deadline. The native timer must
+/// not race the reducer and observe a missing or previous request's deadline.
 /// A provider terminating either stream terminates the selected session.
-/// Synchronize every reducer before publishing or tearing down transports.
-fn apply_terminal_event_to_all_sources(
+fn apply_provider_envelope(
     controller: &mut TranslationSessionController,
-    event: &LiveTranslateServerEvent,
-) {
-    match event {
+    source: AudioSource,
+    envelope: &ProviderEvent,
+) -> ProviderEventApplication {
+    let application = envelope.clone().apply_to(controller, source);
+    match &envelope.event {
         LiveTranslateServerEvent::SessionFinished => controller.did_stop(),
         LiveTranslateServerEvent::Error { message, .. } => controller.did_fail(message.clone()),
         _ => {}
     }
+    application
+}
+
+#[cfg(test)]
+fn apply_provider_event(
+    controller: &mut TranslationSessionController,
+    source: AudioSource,
+    event: &LiveTranslateServerEvent,
+) -> Option<Instant> {
+    apply_provider_envelope(
+        controller,
+        source,
+        &ProviderEvent::unsequenced(event.clone(), 0),
+    )
+    .translation_pending_deadline
 }
 
 #[derive(Clone, Copy)]
@@ -915,6 +977,9 @@ pub struct SessionManager {
     generation_transition: Arc<Mutex<()>>,
     teardown_operations: Arc<AtomicUsize>,
     teardown_notify: Arc<Notify>,
+    /// Registered synchronously before a teardown can expose a newer start.
+    /// Its independent owner survives cancellation of any individual waiter.
+    cleanup_owners: CleanupOwners,
 }
 
 impl SessionManager {
@@ -984,6 +1049,7 @@ impl SessionManager {
             generation_transition: Arc::new(Mutex::new(())),
             teardown_operations: Arc::new(AtomicUsize::new(0)),
             teardown_notify: Arc::new(Notify::new()),
+            cleanup_owners: CleanupOwners::default(),
         })
     }
 
@@ -1535,9 +1601,10 @@ impl SessionManager {
         let _start_request = StartRequestGuard {
             in_progress: Arc::clone(&self.start_in_progress),
         };
+        let accepted_recovery_replacement = self.is_recovering.load(Ordering::SeqCst);
         if !start_request_can_proceed(
             self.has_active_session(),
-            self.is_recovering.load(Ordering::SeqCst),
+            accepted_recovery_replacement,
             self.active_generation.load(Ordering::SeqCst),
         ) {
             self.record_diagnostic_event(DiagnosticEvent::Lifecycle {
@@ -1549,11 +1616,26 @@ impl SessionManager {
         let _operation = self.begin_lifecycle_operation();
         let request_generation = self.next_lifecycle_request();
         let lifecycle = self.lock_after_teardown().await;
+        let replacement_cleanup = if accepted_recovery_replacement {
+            let Some(cleanup) = retire_recovery_for_start(
+                &self.generation_transition,
+                &self.lifecycle_sequence,
+                &self.active_generation,
+                request_generation,
+                |generation| self.cleanup_generation(generation),
+            ) else {
+                return Ok(());
+            };
+            cleanup
+        } else {
+            CleanupTicket::completed()
+        };
         if !self.is_lifecycle_request_current(request_generation)
-            || !start_request_can_proceed(
+            || !start_request_can_proceed_after_teardown(
                 self.has_active_session(),
                 self.is_recovering.load(Ordering::SeqCst),
                 self.active_generation.load(Ordering::SeqCst),
+                accepted_recovery_replacement,
             )
         {
             self.record_diagnostic_event(DiagnosticEvent::Lifecycle {
@@ -1582,6 +1664,10 @@ impl SessionManager {
         // Cancel the old owner before installing this generation so its
         // global recovery flag cannot affect the new session's error path.
         self.cancel_recovery().await;
+        replacement_cleanup.await;
+        if !self.is_lifecycle_request_current(request_generation) {
+            return Ok(());
+        }
         self.persist_current_history()
             .map_err(|_| "Could not save the previous session history.".to_string())?;
         let preferences = self.settings.preferences();
@@ -1601,8 +1687,14 @@ impl SessionManager {
                 .begin(id, started_at_ms)
                 .map_err(|_| "Could not start local session history.".to_string())?;
         }
-        self.active_generation
-            .store(request_generation, Ordering::SeqCst);
+        if !activate_start_if_current(
+            &self.generation_transition,
+            &self.lifecycle_sequence,
+            &self.active_generation,
+            request_generation,
+        ) {
+            return Ok(());
+        }
         self.stopping_tail_generation
             .store(NO_GENERATION, Ordering::SeqCst);
         self.is_paused.store(false, Ordering::SeqCst);
@@ -1710,14 +1802,18 @@ impl SessionManager {
                     self.publish_settings();
                 }
                 pipeline_log!("session establish failed label=provider_or_capture_setup");
+                // Reserve teardown before invalidation permits a newer start.
+                // Dropping this ticket still starts the independent owner.
+                let cleanup = self.cleanup_generation_without_pump(generation);
                 // Claim failure before cleanup can await. Otherwise a provider
                 // pump can claim recovery during teardown and then be aborted
                 // before it installs the retry task.
                 let Some(failure_epoch) = self.invalidate_generation_with_epoch(generation) else {
-                    self.cleanup_generation_without_pump(generation).await;
+                    cleanup.await;
                     return Err(SESSION_START_CANCELLED.into());
                 };
                 self.cleanup_generation(generation).await;
+                drop(cleanup);
                 let _lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
                 if self.lifecycle_sequence.load(Ordering::SeqCst) != failure_epoch {
                     return Err(SESSION_START_CANCELLED.into());
@@ -1869,18 +1965,14 @@ impl SessionManager {
             let connect_result = match connect_result {
                 Ok(result) => result,
                 Err(error) => {
-                    self.remember_mt_request_budget(source, generation, &client)
-                        .await;
-                    let _ = tokio::time::timeout(Duration::from_secs(1), client.disconnect()).await;
+                    self.cleanup_generation_without_pump(generation).await;
                     return Err(error);
                 }
             };
             connect_result.map_err(|error| error.to_string())?;
             tokio::task::yield_now().await;
             if let Err(error) = self.ensure_generation_current(generation) {
-                self.remember_mt_request_budget(source, generation, &client)
-                    .await;
-                let _ = tokio::time::timeout(Duration::from_secs(1), client.disconnect()).await;
+                self.cleanup_generation_without_pump(generation).await;
                 return Err(error);
             }
             pipeline_log!("asr websocket connected");
@@ -1973,16 +2065,16 @@ impl SessionManager {
                     // delivered. Always request generation-scoped teardown;
                     // the platform implementation also cleans up its own
                     // start token before returning this error.
-                    self.stop_capture_for_generation(source, generation).await;
+                    self.cleanup_generation_without_pump(generation).await;
                     return Err(error.to_string());
                 }
                 Err(error) => {
-                    self.stop_capture_for_generation(source, generation).await;
+                    self.cleanup_generation_without_pump(generation).await;
                     return Err(error);
                 }
             }
             if let Err(error) = self.ensure_generation_current(generation) {
-                self.stop_capture_for_generation(source, generation).await;
+                self.cleanup_generation_without_pump(generation).await;
                 return Err(error);
             }
             pipeline_log!("audio capture started");
@@ -2869,10 +2961,9 @@ impl SessionManager {
         self.cancel_recovery().await;
         self.controller.lock().unwrap().begin_connecting();
         self.publish_state();
+        let cleanup = self.cleanup_generation(old_generation);
         drop(lifecycle);
-        if old_generation != NO_GENERATION {
-            self.cleanup_generation(old_generation).await;
-        }
+        cleanup.await;
         let lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
         if !self.is_lifecycle_request_current(reconnect_generation) {
             return Err("language_switch_superseded".into());
@@ -3011,6 +3102,7 @@ impl SessionManager {
             .lock()
             .unwrap()
             .as_deref()
+            .filter(|_| self.history_pending_audio.load(Ordering::SeqCst))
             .and_then(|id| self.history.audio_sources(id).ok())
             .unwrap_or_default();
         let stats = self.history_stats.lock().unwrap();
@@ -3056,10 +3148,14 @@ impl SessionManager {
             return Ok(());
         }
         let limited = self.history_stats.lock().unwrap().transcript_limited;
-        if let Err(error) =
-            self.history
-                .finalize(id, crate::core::subtitle_reducer::now_epoch_ms(), limited)
-        {
+        if let Err(error) = finalize_pending_history(
+            &self.history,
+            id,
+            crate::core::subtitle_reducer::now_epoch_ms(),
+            limited,
+            self.history_pending_text.load(Ordering::SeqCst),
+            self.history_pending_audio.load(Ordering::SeqCst),
+        ) {
             self.history_save_error.store(true, Ordering::SeqCst);
             return Err(error);
         }
@@ -3080,7 +3176,10 @@ impl SessionManager {
             return Ok(self.controller.lock().unwrap().archive().page(query, page));
         }
         let pending = self.history_pending_id.lock().unwrap();
-        let Some(id) = pending.as_deref() else {
+        let Some(id) = pending
+            .as_deref()
+            .filter(|_| self.history_pending_text.load(Ordering::SeqCst))
+        else {
             return Ok(crate::core::session_archive::TranscriptPage {
                 total: 0,
                 page: 0,
@@ -3101,7 +3200,10 @@ impl SessionManager {
                 .map(String::into_bytes));
         }
         let pending = self.history_pending_id.lock().unwrap();
-        match pending.as_deref() {
+        match pending
+            .as_deref()
+            .filter(|_| self.history_pending_text.load(Ordering::SeqCst))
+        {
             Some(id) => self.history.export_transcript(id).map(Some),
             None => Ok(None),
         }
@@ -3134,7 +3236,10 @@ impl SessionManager {
             return Ok(index.and_then(|index| recordings[index].export()));
         }
         let pending = self.history_pending_id.lock().unwrap();
-        match pending.as_deref() {
+        match pending
+            .as_deref()
+            .filter(|_| self.history_pending_audio.load(Ordering::SeqCst))
+        {
             Some(id) => self.history.audio_selected(id, source).map(Some),
             None => Ok(None),
         }
@@ -3204,20 +3309,23 @@ impl SessionManager {
         self: &Arc<Self>,
         source: AudioSource,
         generation: u64,
-        envelope: ProviderEvent,
+        mut envelope: ProviderEvent,
     ) {
         let content = self.subtitle_content_lock.lock().await;
+        #[cfg(any(test, feature = "development-debugger"))]
+        let (content_revision, transport_sequence) =
+            (envelope.content_revision, envelope.transport_sequence);
         #[cfg(any(test, feature = "development-debugger"))]
         let debug_event = |event: &LiveTranslateServerEvent, admission| {
             if crate::core::development_debug::is_enabled() {
                 let mut observation = crate::core::development_debug::ProviderObservation::new(
                     source,
                     generation,
-                    envelope.content_revision,
+                    content_revision,
                     event,
                     admission,
                 );
-                observation.transport_sequence = envelope.transport_sequence;
+                observation.transport_sequence = transport_sequence;
                 crate::core::development_debug::record(
                     crate::core::development_debug::DebugEvent::Provider { observation },
                 );
@@ -3238,10 +3346,10 @@ impl SessionManager {
             );
             return;
         }
-        let mut event = envelope.event;
-        if !self.accepts_event(generation, &event) || self.is_paused() {
+        let event = &envelope.event;
+        if !self.accepts_event(generation, event) || self.is_paused() {
             debug_event(
-                &event,
+                event,
                 if self.is_paused() {
                     crate::core::development_debug::Admission::Paused
                 } else {
@@ -3259,7 +3367,7 @@ impl SessionManager {
             LiveTranslateServerEvent::SessionCreated | LiveTranslateServerEvent::SessionUpdated
         ) {
             debug_event(
-                &event,
+                event,
                 crate::core::development_debug::Admission::SetupAcknowledgement,
             );
             return;
@@ -3270,7 +3378,7 @@ impl SessionManager {
             source: source_text,
             translation,
             ..
-        } = &event
+        } = event
         {
             // A replay is not an accepted final: it must not cancel a newer
             // request's timeout or inflate the content-free journal counts.
@@ -3281,7 +3389,7 @@ impl SessionManager {
                 translation,
             ) {
                 debug_event(
-                    &event,
+                    event,
                     crate::core::development_debug::Admission::DuplicateFinal,
                 );
                 return;
@@ -3293,7 +3401,7 @@ impl SessionManager {
             source: source_text,
             translation,
             ..
-        } = &event
+        } = event
         {
             if !self
                 .controller
@@ -3302,29 +3410,30 @@ impl SessionManager {
                 .accepts_identified_final_pair_from(source, utterance_id, source_text, translation)
             {
                 debug_event(
-                    &event,
+                    event,
                     crate::core::development_debug::Admission::DuplicateFinal,
                 );
                 return;
             }
         }
 
-        if let LiveTranslateServerEvent::Error { code, message } = &mut event {
+        if let LiveTranslateServerEvent::Error { code, message } = &mut envelope.event {
             if normalize_provider_error_code(code) == "credential_authentication_failed" {
                 *message = "credential_authentication_failed".into();
             }
         }
+        let event = &envelope.event;
 
-        if !self.record_accepted_provider_event(generation, &event) {
+        if !self.record_accepted_provider_event(generation, event) {
             debug_event(
-                &event,
+                event,
                 crate::core::development_debug::Admission::StaleGeneration,
             );
             return;
         }
-        debug_event(&event, crate::core::development_debug::Admission::Accepted);
+        debug_event(event, crate::core::development_debug::Admission::Accepted);
 
-        if let LiveTranslateServerEvent::Error { code, message } = &event {
+        if let LiveTranslateServerEvent::Error { code, message } = event {
             if provider_error_is_retryable(code) {
                 let _teardown = self.begin_teardown_operation();
                 let _operation = self.begin_lifecycle_operation();
@@ -3364,35 +3473,6 @@ impl SessionManager {
             }
         }
 
-        // A final translation resolves any pending timeout; a fresh
-        // TranslationStarted arms a new one.
-        let resolves_translation_timeout = match &event {
-            LiveTranslateServerEvent::SubtitleIdentifiedFinalPair { utterance_id, .. } => self
-                .controller
-                .lock()
-                .unwrap()
-                .identified_source_is_current_from(source, utterance_id),
-            _ => matches!(
-                event,
-                LiveTranslateServerEvent::TranslationFinal(_)
-                    | LiveTranslateServerEvent::SubtitleFinalPair { .. }
-                    | LiveTranslateServerEvent::SubtitleConfirmedPair { .. }
-                    | LiveTranslateServerEvent::UtteranceText {
-                        role: UtteranceRole::Translation,
-                        is_final: true,
-                        ..
-                    }
-                    | LiveTranslateServerEvent::Error { .. }
-                    | LiveTranslateServerEvent::TranslationDeferred(_)
-            ),
-        };
-        if resolves_translation_timeout {
-            self.cancel_source_translation_timeout(source);
-        }
-        if matches!(event, LiveTranslateServerEvent::TranslationStarted) {
-            self.arm_translation_timeout(source, generation);
-        }
-
         let is_terminal = matches!(
             event,
             LiveTranslateServerEvent::Error { .. } | LiveTranslateServerEvent::SessionFinished
@@ -3403,16 +3483,19 @@ impl SessionManager {
             return;
         }
         if is_terminal {
+            // A same-generation settings rebuild may already own an Abort
+            // cleanup. Its completion can abort this pump while it waits for
+            // teardown, so retire terminal settings before the first await.
+            self.clear_active_settings_for_generation(generation);
             self.cancel_translation_timeout();
         }
-        let newly_confirmed = {
+        let (newly_confirmed, application) = {
             let mut controller = self.controller.lock().unwrap();
             #[cfg(any(test, feature = "development-debugger"))]
             let debug_before = crate::core::development_debug::is_enabled()
                 .then(|| controller.state.subtitles.clone());
             let previous = controller.state.subtitles.history.last().cloned();
-            controller.handle_from(source, event.clone());
-            apply_terminal_event_to_all_sources(&mut controller, &event);
+            let application = apply_provider_envelope(&mut controller, source, &envelope);
             #[cfg(any(test, feature = "development-debugger"))]
             if let Some(before) = debug_before {
                 crate::core::development_debug::record(
@@ -3426,10 +3509,17 @@ impl SessionManager {
                 );
             }
             let current = controller.state.subtitles.history.last();
-            confirmed_history_tail_changed(previous.as_ref(), current)
+            let confirmed = confirmed_history_tail_changed(previous.as_ref(), current)
                 .then(|| current.cloned())
-                .flatten()
+                .flatten();
+            (confirmed, application)
         };
+        if application.resolves_translation_timeout {
+            self.cancel_source_translation_timeout(source);
+        }
+        if let Some(deadline) = application.translation_pending_deadline {
+            self.arm_translation_timeout(source, generation, deadline);
+        }
         if let Some(pair) = newly_confirmed {
             let pending = self.history_pending_id.lock().unwrap();
             if let Some(id) = pending.as_deref() {
@@ -3464,7 +3554,7 @@ impl SessionManager {
             // Provider error codes are not universally trustworthy (some
             // protocols carry arbitrary server strings). Keep diagnostics on
             // a fixed local label just like free-text messages.
-            let label = match &event {
+            let label = match event {
                 LiveTranslateServerEvent::Error { .. } => "provider_terminal_error",
                 LiveTranslateServerEvent::SessionFinished => "session_finished",
                 _ => "terminal_event",
@@ -3474,7 +3564,6 @@ impl SessionManager {
             self.stop_health_checks().await;
             self.cancel_recovery().await;
             self.cleanup_generation_without_pump(generation).await;
-            self.clear_active_settings_for_generation(generation);
             drop(terminal_operation);
             drop(terminal_teardown);
         }
@@ -3485,7 +3574,12 @@ impl SessionManager {
     /// then waits for the server's `response.text.done`; if the audio stops
     /// mid-sentence the server may never finalize, so without this the UI
     /// would stay pending forever. The shown subtitle is left untouched.
-    fn arm_translation_timeout(self: &Arc<Self>, source: AudioSource, generation: u64) {
+    fn arm_translation_timeout(
+        self: &Arc<Self>,
+        source: AudioSource,
+        generation: u64,
+        deadline: Instant,
+    ) {
         // Install/cancel under one slot lock. Otherwise a concurrent cancel
         // can run after `spawn` but before the handle is stored, leaving a
         // detached stale handle in the slot even though its ownership id was
@@ -3500,14 +3594,6 @@ impl SessionManager {
             .store(task_id, Ordering::SeqCst);
         let this = Arc::clone(self);
         let task = tokio::spawn(async move {
-            let deadline = this
-                .controller
-                .lock()
-                .unwrap()
-                .translation_pending_deadline_from(source);
-            let Some(deadline) = deadline else {
-                return;
-            };
             tokio::time::sleep_until(deadline.into()).await;
             let _content = this.subtitle_content_lock.lock().await;
             if !this.is_generation_current(generation)
@@ -3789,14 +3875,18 @@ impl SessionManager {
         }
         self.record_recovery_if_current(RecoveryAction::Retrying, recovery_generation);
         pipeline_log!("session recovery started");
-        self.is_recovering.store(true, Ordering::SeqCst);
-        self.recovery_retry_generation
-            .store(NO_GENERATION, Ordering::SeqCst);
-        self.stop_health_checks().await;
-        self.controller.lock().unwrap().begin_connecting();
-        self.publish_state();
-        drop(lifecycle);
-        self.cleanup_generation(failed_generation).await;
+        prepare_recovery_cleanup(
+            lifecycle,
+            &self.is_recovering,
+            &self.recovery_retry_generation,
+            || self.cleanup_generation(failed_generation),
+            || async {
+                self.stop_health_checks().await;
+                self.controller.lock().unwrap().begin_connecting();
+                self.publish_state();
+            },
+        )
+        .await;
 
         let mut recovered = false;
         let mut terminal_failure = None;
@@ -3899,12 +3989,13 @@ impl SessionManager {
     }
 
     async fn cancel_recovery(&self) {
-        let mut slot = self.recovery_task.lock().unwrap();
-        self.recovery_task_id.store(NO_GENERATION, Ordering::SeqCst);
-        clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
-        if let Some(task) = slot.take() {
-            task.abort();
-        }
+        let task = {
+            let mut slot = self.recovery_task.lock().unwrap();
+            self.recovery_task_id.store(NO_GENERATION, Ordering::SeqCst);
+            clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
+            slot.take()
+        };
+        cancel_recovery_task(task, &self.cleanup_owners).await;
     }
 
     async fn finish_source_pipeline(&self, source: AudioSource, timeout: Duration) {
@@ -4355,17 +4446,43 @@ impl SessionManager {
         }
     }
 
-    async fn cleanup_generation(&self, generation: u64) {
+    fn cleanup_generation(&self, generation: u64) -> CleanupTicket {
         self.cleanup_generation_resources(generation, EventPumpCleanup::Abort)
-            .await;
     }
 
-    async fn cleanup_generation_without_pump(&self, generation: u64) {
+    fn cleanup_generation_without_pump(&self, generation: u64) -> CleanupTicket {
         self.cleanup_generation_resources(generation, EventPumpCleanup::Preserve)
-            .await;
     }
 
-    async fn cleanup_generation_resources(&self, generation: u64, pumps: EventPumpCleanup) {
+    fn cleanup_generation_resources(
+        &self,
+        generation: u64,
+        pumps: EventPumpCleanup,
+    ) -> CleanupTicket {
+        if generation == NO_GENERATION {
+            return CleanupTicket::completed();
+        }
+        let guard = self.begin_teardown_operation();
+        let manager = self.clone();
+        let after = if matches!(pumps, EventPumpCleanup::Abort) {
+            let manager = self.clone();
+            Some(Box::new(move || {
+                for source in [AudioSource::System, AudioSource::Microphone] {
+                    manager.stop_pump_for_generation(source, generation);
+                }
+            }) as cleanup_owner::CleanupAfter)
+        } else {
+            None
+        };
+        self.cleanup_owners.register(
+            generation,
+            guard,
+            move || async move { manager.cleanup_generation_owned(generation).await },
+            after,
+        )
+    }
+
+    async fn cleanup_generation_owned(&self, generation: u64) {
         self.retire_audio_attempt(generation);
         if let Some(echo) = self.take_echo_pipeline(generation) {
             echo.stop();
@@ -4384,9 +4501,6 @@ impl SessionManager {
                 self.remember_mt_request_budget(source, generation, &client)
                     .await;
                 let _ = tokio::time::timeout(DISCONNECT_TIMEOUT, client.disconnect()).await;
-            }
-            if matches!(pumps, EventPumpCleanup::Abort) {
-                self.stop_pump_for_generation(source, generation);
             }
         }
     }
@@ -4439,8 +4553,13 @@ impl SessionManager {
     /// Builds the current session state snapshot without emitting it (used by
     /// windows that boot after the last broadcast, e.g. the overlay control).
     pub fn current_state_event(&self) -> SessionStateEvent {
-        let state = self.controller.lock().unwrap().state.clone();
-        let mut event = SessionStateEvent::from(&state);
+        let (mut event, status) = {
+            let controller = self.controller.lock().unwrap();
+            (
+                SessionStateEvent::from(&controller.state),
+                controller.state.status.clone(),
+            )
+        };
         event.is_active |= self.is_recovering.load(Ordering::SeqCst);
         event.is_paused = self.is_paused();
         event.is_overlay_collapsed = self.is_overlay_collapsed();
@@ -4455,7 +4574,7 @@ impl SessionManager {
             .max_by_key(|latency| latency.milliseconds);
         let (api_latency_ms, translation_latency_ms, translation_latency_kind) =
             visible_session_latencies(
-                &state.status,
+                &status,
                 event.is_paused,
                 self.is_recovering.load(Ordering::SeqCst),
                 generation,
@@ -4586,10 +4705,11 @@ impl SessionManager {
     /// window re-shows in case its webview missed events while hidden).
     pub fn publish_settings(&self) {
         crate::commands::sync_overlay_minimum(&self.app);
-        let _ = self.app.emit(
-            "settings-changed",
-            crate::commands::SettingsSnapshotPayload::from_store(&self.settings),
-        );
+        if let Ok(payload) =
+            crate::commands::SettingsSnapshotPayload::try_from_store(&self.settings)
+        {
+            let _ = self.app.emit("settings-changed", payload);
+        }
     }
 
     fn is_ui_test(&self) -> bool {
@@ -4733,6 +4853,121 @@ fn seed_ui_test_live_subtitles(
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+
+    fn verify_failed_opt_out_cleanup_is_retried(retain_text: bool, retain_audio: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let history = SessionHistory::new(directory.path().to_path_buf(), false);
+        let pair = |source| {
+            let mut pair = crate::core::models::SubtitlePair::new(
+                "Synthetic retained source".into(),
+                "Synthetic retained translation".into(),
+                100,
+            );
+            pair.audio_source = source;
+            pair
+        };
+        let saved_id = uuid::Uuid::new_v4().to_string();
+        let pending_id = uuid::Uuid::new_v4().to_string();
+        for id in [&saved_id, &pending_id] {
+            history.begin(id, 0).unwrap();
+            for source in [AudioSource::System, AudioSource::Microphone] {
+                history.append_pair(id, &pair(source)).unwrap();
+                history
+                    .append_pcm_from(id, source, 16_000, &[1, 0, 2, 0])
+                    .unwrap();
+            }
+        }
+        history.finalize(&saved_id, 200, false).unwrap();
+        let saved_transcript = history.export_transcript(&saved_id).unwrap();
+        let saved_audio = history
+            .audio_from(&saved_id, AudioSource::Microphone)
+            .unwrap();
+
+        // A provider error ends listening but leaves the current journal for
+        // the user's subsequent opt-out, restart or normal quit.
+        let mut controller = TranslationSessionController::default();
+        controller.did_connect();
+        controller.did_fail("synthetic provider error");
+        assert!(!controller.state.status.is_active());
+
+        let blocked_path = directory.path().join(format!(
+            "{pending_id}.{}",
+            if retain_text { "pcm" } else { "jsonl" }
+        ));
+        let backup_path = directory.path().join("synthetic-cleanup-backup");
+        std::fs::rename(&blocked_path, &backup_path).unwrap();
+        std::fs::create_dir(&blocked_path).unwrap();
+        let cleanup = if retain_text {
+            history.clear_audio(&pending_id)
+        } else {
+            history.clear_text(&pending_id)
+        };
+        assert!(cleanup.is_err());
+        assert!(finalize_pending_history(
+            &history,
+            &pending_id,
+            200,
+            false,
+            retain_text,
+            retain_audio,
+        )
+        .is_err());
+        assert!(!directory.path().join(format!("{pending_id}.json")).exists());
+
+        std::fs::remove_dir(&blocked_path).unwrap();
+        std::fs::rename(&backup_path, &blocked_path).unwrap();
+        assert!(finalize_pending_history(
+            &history,
+            &pending_id,
+            200,
+            false,
+            retain_text,
+            retain_audio,
+        )
+        .unwrap());
+        let page = history.page(&pending_id, "", 0).unwrap();
+        assert_eq!(page.total, if retain_text { 2 } else { 0 });
+        if retain_text {
+            assert_eq!(page.entries[0].audio_source, AudioSource::Microphone);
+            assert_eq!(page.entries[1].audio_source, AudioSource::System);
+        } else {
+            assert!(history.export_transcript(&pending_id).is_err());
+        }
+        assert_eq!(
+            history.audio_sources(&pending_id).unwrap(),
+            if retain_audio {
+                vec![AudioSource::System, AudioSource::Microphone]
+            } else {
+                Vec::new()
+            }
+        );
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            assert_eq!(
+                history.audio_from(&pending_id, source).is_ok(),
+                retain_audio
+            );
+        }
+        assert_eq!(
+            history.export_transcript(&saved_id).unwrap(),
+            saved_transcript
+        );
+        assert_eq!(
+            history
+                .audio_from(&saved_id, AudioSource::Microphone)
+                .unwrap(),
+            saved_audio
+        );
+    }
+
+    #[test]
+    fn pending_text_opt_out_retries_failed_cleanup_before_finalization() {
+        verify_failed_opt_out_cleanup_is_retried(false, true);
+    }
+
+    #[test]
+    fn pending_audio_opt_out_retries_failed_cleanup_before_finalization() {
+        verify_failed_opt_out_cleanup_is_retried(true, false);
+    }
 
     #[test]
     fn application_target_validation_is_bounded_and_ui_fixtures_never_probe_os_support() {
@@ -5402,6 +5637,200 @@ mod lifecycle_tests {
     }
 
     #[test]
+    fn translation_timeout_captures_the_first_and_replacement_deadline_per_source() {
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.did_connect();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            assert!(controller
+                .translation_pending_deadline_from(source)
+                .is_none());
+            let first = apply_provider_event(
+                &mut controller,
+                source,
+                &LiveTranslateServerEvent::TranslationStarted,
+            )
+            .expect("the first timer must observe the newly applied pending request");
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                Some(first)
+            );
+
+            // Give the previous request a distinct deadline without sleeping.
+            controller.handle_from_at(
+                source,
+                LiveTranslateServerEvent::TranslationStarted,
+                Instant::now() - Duration::from_secs(1),
+            );
+            let previous = controller
+                .translation_pending_deadline_from(source)
+                .unwrap();
+            let replacement = apply_provider_event(
+                &mut controller,
+                source,
+                &LiveTranslateServerEvent::TranslationStarted,
+            )
+            .unwrap();
+            assert!(replacement > previous);
+            assert!(!controller.expire_translation_pending_from(source, previous));
+            assert!(controller.expire_translation_pending_from(source, replacement));
+            assert!(controller
+                .translation_pending_deadline_from(source)
+                .is_none());
+        }
+    }
+
+    #[test]
+    fn translation_timeout_deadline_is_not_rearmed_by_final_or_cancelled_content() {
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.did_connect();
+        let system = apply_provider_event(
+            &mut controller,
+            AudioSource::System,
+            &LiveTranslateServerEvent::TranslationStarted,
+        )
+        .unwrap();
+        let microphone = apply_provider_event(
+            &mut controller,
+            AudioSource::Microphone,
+            &LiveTranslateServerEvent::TranslationStarted,
+        )
+        .unwrap();
+        assert!(apply_provider_event(
+            &mut controller,
+            AudioSource::System,
+            &LiveTranslateServerEvent::TranslationFinal("synthetic translation".into()),
+        )
+        .is_none());
+        assert!(!controller.expire_translation_pending_from(AudioSource::System, system));
+        assert_eq!(
+            controller.translation_pending_deadline_from(AudioSource::Microphone),
+            Some(microphone)
+        );
+        controller.clear_subtitles();
+        assert!(!controller.expire_translation_pending_from(AudioSource::Microphone, microphone));
+    }
+
+    #[test]
+    fn provider_application_keeps_the_current_timer_when_an_old_pair_enters_history() {
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.did_connect();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            for (id, source_order) in [("previous", 1), ("current", 2)] {
+                apply_provider_event(
+                    &mut controller,
+                    source,
+                    &LiveTranslateServerEvent::SubtitleSourceBoundary {
+                        utterance_id: id.into(),
+                        source_order,
+                    },
+                );
+            }
+            apply_provider_event(
+                &mut controller,
+                source,
+                &LiveTranslateServerEvent::UtteranceText {
+                    utterance_id: "current".into(),
+                    role: UtteranceRole::Source,
+                    text: "Synthetic current source.".into(),
+                    is_final: true,
+                    language: None,
+                },
+            );
+            let deadline = apply_provider_event(
+                &mut controller,
+                source,
+                &LiveTranslateServerEvent::TranslationStarted,
+            )
+            .unwrap();
+            let pair = |id: &str| LiveTranslateServerEvent::SubtitleIdentifiedFinalPair {
+                utterance_id: id.into(),
+                source: format!("Synthetic {id} source."),
+                translation: format!("Synthetic {id} translation."),
+                language: None,
+            };
+            let old = apply_provider_envelope(
+                &mut controller,
+                source,
+                &ProviderEvent::unsequenced(pair("previous"), 0),
+            );
+            assert!(!old.resolves_translation_timeout);
+            assert!(old.translation_pending_deadline.is_none());
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                Some(deadline)
+            );
+            assert_eq!(
+                controller
+                    .state
+                    .subtitles
+                    .tracks
+                    .iter()
+                    .find(|track| track.audio_source == source)
+                    .unwrap()
+                    .source
+                    .utterance_id
+                    .as_deref(),
+                Some("current")
+            );
+            let current = ProviderEvent::unsequenced(pair("current"), 0);
+            assert!(
+                apply_provider_envelope(&mut controller, source, &current)
+                    .resolves_translation_timeout
+            );
+            let restarted = apply_provider_event(
+                &mut controller,
+                source,
+                &LiveTranslateServerEvent::TranslationStarted,
+            )
+            .unwrap();
+            assert!(
+                !apply_provider_envelope(&mut controller, source, &current)
+                    .resolves_translation_timeout
+            );
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                Some(restarted)
+            );
+        }
+        assert_eq!(controller.state.subtitles.history.len(), 4);
+    }
+
+    #[test]
+    fn source_text_without_runtime_activity_metadata_cannot_replace_the_native_timer() {
+        let mut controller = TranslationSessionController::default();
+        controller.set_audio_input(AudioInput::Both);
+        controller.did_connect();
+        for source in [AudioSource::System, AudioSource::Microphone] {
+            let deadline = apply_provider_event(
+                &mut controller,
+                source,
+                &LiveTranslateServerEvent::TranslationStarted,
+            )
+            .unwrap();
+            let final_ = ProviderEvent::unsequenced(
+                LiveTranslateServerEvent::UtteranceText {
+                    utterance_id: "synthetic-original-only".into(),
+                    role: UtteranceRole::Source,
+                    text: "Synthetic source without translation activity.".into(),
+                    is_final: true,
+                    language: None,
+                },
+                0,
+            );
+            let application = apply_provider_envelope(&mut controller, source, &final_);
+            assert!(application.translation_pending_deadline.is_none());
+            assert!(!application.resolves_translation_timeout);
+            assert_eq!(
+                controller.translation_pending_deadline_from(source),
+                Some(deadline)
+            );
+        }
+    }
+
+    #[test]
     fn either_source_finishing_or_failing_ends_all_selected_sources() {
         for source in [AudioSource::System, AudioSource::Microphone] {
             for event in [
@@ -5417,8 +5846,7 @@ mod lifecycle_tests {
                 for &input in AudioInput::Both.sources() {
                     controller.handle_from(input, LiveTranslateServerEvent::TranslationStarted);
                 }
-                controller.handle_from(source, event.clone());
-                apply_terminal_event_to_all_sources(&mut controller, &event);
+                assert!(apply_provider_event(&mut controller, source, &event).is_none());
                 assert!(!controller.state.status.is_active());
                 assert!(!controller.state.is_translation_pending);
                 assert!(controller
@@ -5591,11 +6019,7 @@ mod lifecycle_tests {
         ] {
             assert!(subtitle_content_is_current(
                 generation,
-                &ProviderEvent {
-                    transport_sequence: None,
-                    content_revision: 0,
-                    event
-                },
+                &ProviderEvent::unsequenced(event, 0),
                 (generation, sender.content_revision())
             ));
         }

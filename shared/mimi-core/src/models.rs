@@ -235,6 +235,10 @@ pub enum SubtitleEvent {
         translation: String,
     },
     ClearPreview,
+    /// Withdraws only the replaceable content owned by one numeric ASR source.
+    WithdrawPreview {
+        source_utterance_id: u64,
+    },
     /// Text from a provider that identifies its utterances. `role` selects the
     /// preview line and `utterance_id` is always the *source* utterance id, so
     /// both lines of one utterance carry the same identity.
@@ -302,7 +306,7 @@ impl SubtitleEvent {
                 translation,
                 ..
             } => subtitle_text_within_limit(source) && subtitle_text_within_limit(translation),
-            Self::Clear | Self::ClearPreview => true,
+            Self::Clear | Self::ClearPreview | Self::WithdrawPreview { .. } => true,
         }
     }
 }
@@ -345,6 +349,9 @@ enum SubtitleEventWire {
         translation: String,
     },
     ClearPreview,
+    WithdrawPreview {
+        source_utterance_id: u64,
+    },
     UtteranceText {
         utterance_id: String,
         role: UtteranceRole,
@@ -396,6 +403,11 @@ impl From<SubtitleEvent> for SubtitleEventWire {
                 translation,
             },
             SubtitleEvent::ClearPreview => Self::ClearPreview,
+            SubtitleEvent::WithdrawPreview {
+                source_utterance_id,
+            } => Self::WithdrawPreview {
+                source_utterance_id,
+            },
             SubtitleEvent::UtteranceText {
                 utterance_id,
                 role,
@@ -466,6 +478,11 @@ impl From<SubtitleEventWire> for SubtitleEvent {
                 translation,
             },
             SubtitleEventWire::ClearPreview => Self::ClearPreview,
+            SubtitleEventWire::WithdrawPreview {
+                source_utterance_id,
+            } => Self::WithdrawPreview {
+                source_utterance_id,
+            },
             SubtitleEventWire::UtteranceText {
                 utterance_id,
                 role,

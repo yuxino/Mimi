@@ -24,7 +24,7 @@ beforeEach(() => {
   fixture.settings.windowsAudioSource = "";
   fixture.session.isActive = false;
   fixture.saveSettings.mockReset().mockResolvedValue(undefined);
-  vi.mocked(invoke).mockResolvedValue({
+  vi.mocked(invoke).mockReset().mockResolvedValue({
     devices: [{ id: "speaker-id", name: "Fixture speakers" }], currentDevice: "speaker-id",
     receivingSound: false, receivingAudioData: false,
   });
@@ -33,10 +33,43 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(() => root.unmount()); host.remove();
-  setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals();
+  setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
 });
 async function render() { await act(async () => root.render(<><WindowsAudioSource /><SettingsToastRegion /></>)); }
 function trigger() { return host.querySelector<HTMLButtonElement>('[role="combobox"]')!; }
+
+it("pauses output enumeration while the document is hidden and refreshes on return, including initial hide", async () => {
+  vi.useFakeTimers();
+  const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  await render();
+  expect(invoke).not.toHaveBeenCalled();
+  hidden.mockReturnValue(false);
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  expect(invoke).toHaveBeenCalledTimes(1);
+  await act(async () => window.dispatchEvent(new Event("blur")));
+  await act(async () => vi.advanceTimersByTimeAsync(2000));
+  expect(invoke).toHaveBeenCalledTimes(3);
+  hidden.mockReturnValue(true);
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  await act(async () => vi.advanceTimersByTimeAsync(5000));
+  expect(invoke).toHaveBeenCalledTimes(3);
+  hidden.mockReturnValue(false);
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  expect(invoke).toHaveBeenCalledTimes(4);
+});
+
+it("rejects a device census that finishes after the document was hidden and shown again", async () => {
+  let finish!: (value: unknown) => void;
+  vi.mocked(invoke).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await render();
+  const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  hidden.mockReturnValue(false);
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  await act(async () => finish({ devices: [], currentDevice: null, receivingSound: false, receivingAudioData: false }));
+  expect(host.querySelector('[role="status"]')?.textContent).not.toBe(audioSourceCopy().missing);
+  expect(trigger()).toBeTruthy();
+});
 
 it("offers follow system and concrete outputs without adding experimental role choices", async () => {
   await render(); await act(() => trigger().click());

@@ -297,19 +297,27 @@ export function buildSubtitleBlocks(
     });
   }
 
-  const isEmptyTail =
-    liveTail === null || (liveTail.source === null && liveTail.translation === null);
-  if (isEmptyTail) {
+  const live = buildLiveSubtitleBlock(history, liveTail);
+  if (live === null) {
     const newest = blocks[blocks.length - 1];
     if (newest !== undefined) newest.presentation = "latestCommitted";
-    return blocks;
+  } else {
+    blocks.push(live);
   }
+  return blocks;
+}
+
+function buildLiveSubtitleBlock(
+  history: SubtitleSnapshot["history"],
+  liveTail: LiveTail | null,
+): SubtitleBlock | null {
+  if (liveTail === null || (liveTail.source === null && liveTail.translation === null)) return null;
 
   // An identified B remains the same row if a delayed final A inserts above
   // it. Legacy snapshots lack this owner: keep the canonical history epoch so
   // a new B cannot inherit A's former live reading anchor.
   const latestConfirmedAt = history.at(-1)?.createdAt;
-  blocks.push({
+  return {
     id: liveTail.utteranceId ? `live-utterance-${liveTail.utteranceId}`
       : latestConfirmedAt === undefined ? "live" : `live-after-history-${latestConfirmedAt}`,
     createdAt: null,
@@ -317,8 +325,7 @@ export function buildSubtitleBlocks(
     source: liveTail.source,
     translation: liveTail.translation,
     ...(liveTail.isStreaming ? { streaming: true as const } : {}),
-  });
-  return blocks;
+  };
 }
 
 /** Keep both live tails independent while sharing one chronological history. */
@@ -327,7 +334,7 @@ export function buildMultiSourceSubtitleBlocks(history: SubtitleSnapshot["histor
   tails: { audioSource: AudioSource; history: SubtitleSnapshot["history"]; tail: LiveTail }[]): SubtitleBlock[] {
   const committed = buildSubtitleBlocks(history, displayMode).map(block => ({ ...block, audioSource: block.audioSource ?? "system" as const }));
   const live = tails.flatMap(({ audioSource, history: sourceHistory, tail }) => {
-    const block = buildSubtitleBlocks(sourceHistory, displayMode, tail).find(block => block.presentation === "live");
+    const block = buildLiveSubtitleBlock(sourceHistory, tail);
     return block ? [{ ...block, id: `${audioSource}:${block.id}`, audioSource }] : [];
   });
   if (live.length && committed.length) committed[committed.length - 1].presentation = "history";

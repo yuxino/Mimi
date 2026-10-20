@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { audioInputLabel } from "../../lib/audioInput";
 import { I18N } from "../../lib/i18n";
+import { diagnosticPlatform } from "../../lib/connectionDiagnostics";
 import {
   OVERLAY_ACTIVITY_PHASES,
   type OverlayActivityPhaseKind,
@@ -20,6 +21,8 @@ interface LanguageStatusCapsuleProps {
   isPaused: boolean;
   isWaitingForFinalTranslation: boolean;
   expanded: boolean;
+  /** A hidden island still measures its full content without animating it. */
+  animationVisible?: boolean;
   isStopping?: boolean;
   onToggle: () => void;
   onWidthChange?: (width: number) => void;
@@ -33,6 +36,7 @@ export function LanguageStatusCapsule({
   isPaused,
   isWaitingForFinalTranslation,
   expanded,
+  animationVisible = true,
   isStopping = false,
   onToggle,
   onWidthChange,
@@ -54,11 +58,17 @@ export function LanguageStatusCapsule({
   useLayoutEffect(() => {
     const capsule = capsuleRef.current;
     if (expanded || !onWidthChange || !capsule) return;
+    const windowsResize = diagnosticPlatform() === "windows";
+    let active = true;
     let lastWidth = 0;
+    let lastPixelRatio = 0;
     const measure = () => {
+      if (!active) return;
       const width = Math.ceil(capsule.getBoundingClientRect().width);
-      if (width <= 0 || width === lastWidth) return;
+      const pixelRatio = windowsResize ? window.devicePixelRatio : 1;
+      if (width <= 0 || (width === lastWidth && pixelRatio === lastPixelRatio)) return;
       lastWidth = width;
+      lastPixelRatio = pixelRatio;
       onWidthChange(width);
     };
     // max-content makes this independent of the previous native window size.
@@ -66,7 +76,12 @@ export function LanguageStatusCapsule({
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(capsule);
-    return () => observer.disconnect();
+    if (windowsResize) window.addEventListener("resize", measure);
+    return () => {
+      active = false;
+      observer.disconnect();
+      if (windowsResize) window.removeEventListener("resize", measure);
+    };
   }, [expanded, onWidthChange]);
 
   return (
@@ -81,7 +96,7 @@ export function LanguageStatusCapsule({
       aria-expanded={expanded ? undefined : false}
       aria-controls={expanded ? undefined : "overlay-control-panel"}
     >
-      <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
+      <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />
       <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
       {transientPhase && (
         <span className="overlay-control-island__phase">{compact.phase}</span>

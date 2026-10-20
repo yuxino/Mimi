@@ -1382,9 +1382,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .settings-console *,
-  .settings-console *::before,
-  .settings-console *::after,
+  /* The status-light preview follows its own resolved animation switch. */
+  .settings-console :not(.sound-light, .sound-light *),
+  .settings-console :not(.sound-light, .sound-light *)::before,
+  .settings-console :not(.sound-light, .sound-light *)::after,
   .mimi-switch,
   .mimi-switch__thumb {
     scroll-behavior: auto !important;

@@ -20,4 +20,12 @@ internal object NativeRuntimeConfiguration {
         JSONObject().put("operation", "endpoints").put("configuration", configuration))
     val policy: JSONObject by lazy { exchange(JSONObject().put("operation", "policy")) }
     fun command(operation: String, handle: Long): JSONObject = exchange(JSONObject().put("operation", operation).put("handle", handle))
+    fun poll(handle: Long, sinceVersion: Long? = null): JSONObject = exchange(runtimePollRequest(handle, sinceVersion))
+}
+
+internal fun runtimePollRequest(handle: Long, sinceVersion: Long? = null): JSONObject {
+    require(sinceVersion == null || sinceVersion >= 0) { "native_runtime_invalid_request" }
+    return JSONObject().put("operation", "poll").put("handle", handle).apply {
+        if (sinceVersion != null) put("sinceVersion", sinceVersion)
+    }
 }

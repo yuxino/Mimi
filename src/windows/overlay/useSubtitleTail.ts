@@ -6,6 +6,11 @@ import { formatGeminiTranscriptForDisplay } from "./geminiTranscriptDisplay";
 
 type TranslationSignals = Pick<SessionStateEvent, "detectedLanguage" | "isTranslationPending" | "isTranslationTimedOut">;
 
+function useDisplayText(text: string, streamingProvider: boolean): string {
+  return useMemo(() => streamingProvider ? formatGeminiTranscriptForDisplay(text) : text,
+    [text, streamingProvider]);
+}
+
 /** Every input has its own stabilization state; another input cannot replace it. */
 export function useSubtitleTail(subtitles: SubtitleSnapshot, settings: SettingsSnapshot,
   signals: TranslationSignals, running: boolean, atomicProvider: boolean, sourceIdentity: string,
@@ -18,8 +23,8 @@ export function useSubtitleTail(subtitles: SubtitleSnapshot, settings: SettingsS
   const translation = previews.find(preview => preview.kind === "translation");
   const latestCommittedAt = subtitles.history.at(-1)?.createdAt ?? null;
   const streamIdentity = `${sourceIdentity}:${streamingProvider}`;
-  const displaySource = streamingProvider ? formatGeminiTranscriptForDisplay(source?.text ?? "") : source?.text ?? "";
-  const displayTranslation = streamingProvider ? formatGeminiTranscriptForDisplay(translation?.text ?? "") : translation?.text ?? "";
+  const displaySource = useDisplayText(source?.text ?? "", streamingProvider);
+  const displayTranslation = useDisplayText(translation?.text ?? "", streamingProvider);
   const sourceText = useStableText(displaySource, source === undefined || source.isFinal || source.isStable ? 0 : 180, 750,
     `${streamIdentity}:${subtitleStreamKey(settings.subtitleDisplayMode, "source", source?.utteranceId, latestCommittedAt)}`);
   // Continuous output transcription is already translated. Keep a short

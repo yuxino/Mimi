@@ -25,6 +25,7 @@ fn contract() -> Value {
         "optionalAuthorization",
         "liveSetups",
         "liveTranscriptSequences",
+        "customRecognitionCompletions",
     ] {
         let cases = value[name].as_array().unwrap();
         assert!(!cases.is_empty(), "empty {name} contract");
@@ -40,6 +41,41 @@ fn contract() -> Value {
         }
     }
     value
+}
+
+#[test]
+fn custom_recognition_completion_contracts_preserve_authoritative_empty_finals() {
+    use super::custom_speech::TurnSequencer;
+    for case in contract()["customRecognitionCompletions"]
+        .as_array()
+        .unwrap()
+    {
+        let mut turns = TurnSequencer::default();
+        turns.start(0).unwrap();
+        turns.commit().unwrap();
+        turns.acknowledge("one".into()).unwrap();
+        turns
+            .delta("one".into(), case["draft"].as_str().unwrap(), 0)
+            .unwrap();
+        let output = case["completion"].as_str().map_or_else(Vec::new, |text| {
+            turns.complete("one".into(), text.into(), 0).unwrap()
+        });
+        let texts = output
+            .iter()
+            .map(|event| event.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            serde_json::to_value(texts).unwrap(),
+            case["expected"]["finalTexts"],
+            "{}",
+            case["id"]
+        );
+        for event in output {
+            assert!(event.is_final);
+            assert_eq!(event.sequence, 1);
+        }
+        assert_eq!(turns.is_empty(), !case["completion"].is_null());
+    }
 }
 
 #[test]

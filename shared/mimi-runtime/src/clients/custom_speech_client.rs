@@ -1161,4 +1161,48 @@ mod tests {
         trim_pending_started(&mut content);
         assert_eq!(content.pending_started.front(), Some(&(second, now)));
     }
+
+    #[tokio::test]
+    async fn empty_completion_retires_its_deadline_without_refunding_a_later_turn() {
+        for final_text in ["", " \t "] {
+            let (client, _receiver, _listener) = fixture().await;
+            client.inner.ready.store(true, Ordering::SeqCst);
+            let now = tokio::time::Instant::now();
+            {
+                let mut content = client.inner.content.lock().unwrap();
+                let first = content.turns.start(0).unwrap();
+                content.turns.commit().unwrap();
+                content.turns.acknowledge("first".into()).unwrap();
+                let second = content.turns.start(0).unwrap();
+                content.turns.commit().unwrap();
+                content.turns.acknowledge("second".into()).unwrap();
+                content
+                    .pending_started
+                    .push_back((first, now - MAX_FINAL_WAIT));
+                content.pending_started.push_back((second, now));
+                let output = content
+                    .turns
+                    .complete("first".into(), final_text.into(), 0)
+                    .unwrap();
+                assert_eq!(output.len(), 1);
+                assert_eq!(output[0].sequence, first);
+                trim_pending_started(&mut content);
+                assert_eq!(content.pending_started.front(), Some(&(second, now)));
+            }
+            assert!(client.tick().await.is_ok());
+            client
+                .inner
+                .content
+                .lock()
+                .unwrap()
+                .pending_started
+                .front_mut()
+                .unwrap()
+                .1 = now - MAX_FINAL_WAIT;
+            assert!(matches!(
+                client.tick().await,
+                Err(CustomSpeechClientError::InvalidProtocol)
+            ));
+        }
+    }
 }

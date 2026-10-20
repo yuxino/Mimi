@@ -49,11 +49,26 @@ pub async fn session_transcript_page(
 #[tauri::command]
 pub async fn session_history_list(state: State<'_, AppState>) -> Result<Vec<HistoryItem>, String> {
     let history = state.session.history();
-    let current_id = state.session.current_history_id();
-    let mut items = tauri::async_runtime::spawn_blocking(move || history.list())
-        .await
-        .map_err(|_| "Could not read session history.")?
-        .map_err(|_| "Could not read session history.")?;
+    list_saved_history(
+        async move {
+            tauri::async_runtime::spawn_blocking(move || history.list())
+                .await
+                .map_err(|_| "Could not read session history.")?
+                .map_err(|_| "Could not read session history.".into())
+        },
+        || state.session.current_history_id(),
+    )
+    .await
+}
+
+async fn list_saved_history(
+    read_history: impl std::future::Future<Output = Result<Vec<HistoryItem>, String>>,
+    current_history_id: impl FnOnce() -> Option<String>,
+) -> Result<Vec<HistoryItem>, String> {
+    let mut items = read_history.await?;
+    // Start may append a new current session while the file read is queued;
+    // Stop may finalize the old one. Filter against the owner at completion.
+    let current_id = current_history_id();
     items.retain(|item| Some(&item.id) != current_id.as_ref());
     Ok(items)
 }
@@ -208,6 +223,87 @@ fn write_export(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::models::SubtitlePair;
+    use crate::session_history::SessionHistory;
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn history_listing_uses_the_session_owner_after_the_file_read() {
+        for start_new_session in [true, false] {
+            let directory = tempfile::tempdir().unwrap();
+            let history = Arc::new(SessionHistory::new(directory.path().join("history"), false));
+            let saved_id = uuid::Uuid::new_v4().to_string();
+            history.begin(&saved_id, 100).unwrap();
+            history
+                .append_pair(
+                    &saved_id,
+                    &SubtitlePair::new("Synthetic saved".into(), "Synthetic result".into(), 150),
+                )
+                .unwrap();
+            history.finalize(&saved_id, 200, false).unwrap();
+            let changing_id = uuid::Uuid::new_v4().to_string();
+            let current = Arc::new(Mutex::new(None));
+            if !start_new_session {
+                history.begin(&changing_id, 300).unwrap();
+                *current.lock().unwrap() = Some(changing_id.clone());
+                history
+                    .append_pair(
+                        &changing_id,
+                        &SubtitlePair::new(
+                            "Synthetic current".into(),
+                            "Synthetic result".into(),
+                            350,
+                        ),
+                    )
+                    .unwrap();
+            }
+            let (reading_tx, reading_rx) = tokio::sync::oneshot::channel();
+            let (continue_tx, continue_rx) = tokio::sync::oneshot::channel();
+            let reader = Arc::clone(&history);
+            let owner = Arc::clone(&current);
+            let listing = tokio::spawn(list_saved_history(
+                async move {
+                    reading_tx.send(()).unwrap();
+                    continue_rx.await.unwrap();
+                    reader.list().map_err(|error| error.to_string())
+                },
+                move || owner.lock().unwrap().clone(),
+            ));
+            reading_rx.await.unwrap();
+
+            if start_new_session {
+                // Production Start writes the empty header, publishes its owner,
+                // then allows providers/capture to append content.
+                history.begin(&changing_id, 300).unwrap();
+                *current.lock().unwrap() = Some(changing_id.clone());
+                history
+                    .append_pair(
+                        &changing_id,
+                        &SubtitlePair::new(
+                            "Synthetic current".into(),
+                            "Synthetic result".into(),
+                            350,
+                        ),
+                    )
+                    .unwrap();
+            } else {
+                // Successful finalization clears the current owner, so this
+                // newly saved session must be visible in the completed list.
+                history.finalize(&changing_id, 400, false).unwrap();
+                *current.lock().unwrap() = None;
+            }
+            continue_tx.send(()).unwrap();
+            let items = listing.await.unwrap().unwrap();
+            assert!(items.iter().any(|item| item.id == saved_id));
+            assert_eq!(
+                items.iter().any(|item| item.id == changing_id),
+                !start_new_session,
+                "list must use the owner after reading; start_new_session={start_new_session}",
+            );
+            assert_eq!(items.len(), if start_new_session { 1 } else { 2 });
+        }
+    }
+
     #[test]
     fn exports_replace_only_the_selected_file_without_leaving_temporary_copies() {
         let dir = tempfile::tempdir().unwrap();

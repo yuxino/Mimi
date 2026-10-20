@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
@@ -34,10 +34,17 @@ afterEach(async () => {
 async function mount(visible = true) { await act(async () => root.render(visible ? <ApplicationAudioPicker /> : null)); }
 function trigger() { return host.querySelector<HTMLButtonElement>('button[role="combobox"]')!; }
 function icon() { return trigger().querySelector('img')?.getAttribute("src"); }
+function refreshButton() { return host.querySelector<HTMLButtonElement>('.application-audio-picker__refresh')!; }
+async function selectExternally(app: typeof player) {
+  await act(async () => useStore.setState(state => ({ settings: { ...state.settings,
+    systemAudioTarget: { kind: "application", id: app.id, name: app.name },
+  } })));
+}
 function deferred() {
   let resolve!: (value: ApplicationSnapshot) => void;
-  const promise = new Promise<ApplicationSnapshot>(done => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (error: Error) => void;
+  const promise = new Promise<ApplicationSnapshot>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
 it("restores the saved application's icon on first mount without creating choices, writes, or capture", async () => {
@@ -62,6 +69,16 @@ it("keeps the selected icon immediately after the floating controls unmount and 
   await act(async () => next.resolve(snapshot));
   expect(icon()).toBe(player.iconDataUrl);
   expect(switchTarget).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+});
+
+it("shares the same target lookup across StrictMode effects and opening the picker", async () => {
+  const pending = deferred(); vi.mocked(invoke).mockReturnValueOnce(pending.promise);
+  await act(async () => root.render(<StrictMode><ApplicationAudioPicker /></StrictMode>));
+  expect(invoke).toHaveBeenCalledOnce();
+  await act(async () => trigger().click());
+  expect(invoke).toHaveBeenCalledOnce();
+  await act(async () => pending.resolve(snapshot));
+  expect(icon()).toBe(player.iconDataUrl);
 });
 
 it("restores an application chosen in another window without selecting it again", async () => {
@@ -129,6 +146,99 @@ it("keeps background failures silent while a manual refresh still reports a safe
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().failed);
   expect(host.textContent).not.toContain("synthetic-private-error");
   expect(switchTarget).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+});
+
+it.each([
+  { name: "has no icon", applications: [{ id: player.id, name: player.name }], missing: false },
+  { name: "has exited", applications: [], missing: true },
+])("does not enumerate again after refreshing a selected application that $name", async ({ applications, missing }) => {
+  await mount();
+  vi.mocked(invoke).mockResolvedValueOnce({ supported: true, applications });
+  await act(async () => refreshButton().click());
+  expect(invoke).toHaveBeenCalledTimes(2);
+  expect(icon()).toBeUndefined();
+  expect(trigger().textContent).toBe(missing ? `${player.name} · ${applicationAudioCopy().missing}` : player.name);
+  expect(host.querySelector('[role="alert"]')?.textContent ?? null).toBe(missing ? applicationAudioCopy().unavailable : null);
+  await mount();
+  expect(invoke).toHaveBeenCalledTimes(2);
+  expect(switchTarget).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+});
+
+it("allows a failed refresh to retry successfully without an extra icon lookup", async () => {
+  await mount();
+  vi.mocked(invoke).mockRejectedValueOnce(new Error("synthetic-private-error"));
+  await act(async () => refreshButton().click());
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().failed);
+  vi.mocked(invoke).mockResolvedValueOnce({ supported: true, applications: [] });
+  await act(async () => refreshButton().click());
+  expect(invoke).toHaveBeenCalledTimes(3);
+  expect(refreshButton().disabled).toBe(false);
+  expect(trigger().textContent).toBe(`${player.name} · ${applicationAudioCopy().missing}`);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().unavailable);
+});
+
+it("keeps the current target's choices and pending refresh when an older target's refresh completes", async () => {
+  await mount();
+  const old = deferred(); vi.mocked(invoke).mockReturnValueOnce(old.promise);
+  await act(async () => refreshButton().click());
+  const currentIcon = "data:image/png;base64,Y3VycmVudA==";
+  const current = { supported: true, applications: [{ ...chat, iconDataUrl: currentIcon }] };
+  vi.mocked(invoke).mockResolvedValueOnce(current);
+  await selectExternally(chat);
+  expect(invoke).toHaveBeenCalledTimes(3);
+  expect(icon()).toBe(currentIcon);
+  expect(refreshButton().disabled).toBe(false);
+  vi.mocked(invoke).mockResolvedValueOnce(current);
+  await act(async () => refreshButton().click());
+  expect(invoke).toHaveBeenCalledTimes(4);
+
+  const pending = deferred(); vi.mocked(invoke).mockReturnValueOnce(pending.promise);
+  await act(async () => trigger().click());
+  expect(invoke).toHaveBeenCalledTimes(5);
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent))
+    .toEqual([applicationAudioCopy().all, chat.name]);
+  await act(async () => old.resolve({ supported: true, applications: [player] }));
+  expect(refreshButton().getAttribute("aria-busy")).toBe("true");
+  expect(icon()).toBe(currentIcon);
+  expect(applicationIconCache.read().get(chat.id)).toBe(currentIcon);
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent))
+    .toEqual([applicationAudioCopy().all, chat.name]);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  await act(async () => pending.resolve(current));
+  expect(refreshButton().disabled).toBe(false);
+});
+
+it("ignores a previous target's late refresh failure after an external target change", async () => {
+  await mount();
+  const old = deferred(); vi.mocked(invoke).mockReturnValueOnce(old.promise);
+  await act(async () => refreshButton().click());
+  vi.mocked(invoke).mockResolvedValueOnce({ supported: true, applications: [chat] });
+  await selectExternally(chat);
+  expect(invoke).toHaveBeenCalledTimes(3);
+  expect(refreshButton().disabled).toBe(false);
+  await act(async () => old.reject(new Error("synthetic-private-error")));
+  expect(icon()).toBe(chat.iconDataUrl);
+  expect(applicationIconCache.read().get(chat.id)).toBe(chat.iconDataUrl);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(host.textContent).not.toContain("synthetic-private-error");
+});
+
+it("does not accept a refresh from the first visit after an external target changes away and back", async () => {
+  await mount();
+  const old = deferred(); vi.mocked(invoke).mockReturnValueOnce(old.promise);
+  await act(async () => refreshButton().click());
+  vi.mocked(invoke).mockResolvedValueOnce({ supported: true, applications: [chat] });
+  await selectExternally(chat);
+  const currentIcon = "data:image/png;base64,cmV0dXJuZWQ=";
+  vi.mocked(invoke).mockResolvedValueOnce({ supported: true, applications: [{ ...player, iconDataUrl: currentIcon }] });
+  await selectExternally(player);
+  expect(invoke).toHaveBeenCalledTimes(4);
+  expect(icon()).toBe(currentIcon);
+  await act(async () => old.resolve({ supported: true, applications: [] }));
+  expect(icon()).toBe(currentIcon);
+  expect(trigger().textContent).toBe(player.name);
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+  expect(refreshButton().disabled).toBe(false);
 });
 
 it("ignores an old unmounted read when a reopened panel already received newer icons", async () => {

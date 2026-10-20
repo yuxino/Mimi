@@ -33,7 +33,10 @@ class SharedLivePairContractTest {
                 val step = steps.getJSONObject(index)
                 val operation = JSONObject().put("type", "dashscope")
                 val events: JSONArray
-                if (step.optBoolean("resetStream")) {
+                if (step.optBoolean("legacySourceOrder")) {
+                    state = JSONObject(requireNotNull(state)).apply { remove("source_order") }.toString()
+                    events = JSONArray()
+                } else if (step.optBoolean("resetStream")) {
                     state = null
                     reducer = reducerOperation(reducer, JSONObject().put("type", "reset"))
                     events = JSONArray()

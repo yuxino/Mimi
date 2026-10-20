@@ -72,6 +72,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("service_draft_recreation") == "true") {
+            ServiceDraftRecreationChecks(this).run()
+            return
+        }
         if (captureArguments?.getString("copyProfileScreenshots") == "true") {
             val result = runCatching { copyProfileScreenshots(targetContext, captureArguments?.getString("theme") ?: "light") }
             finish(if (result.isSuccess) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {

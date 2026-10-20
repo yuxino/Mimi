@@ -9,6 +9,11 @@ import { useStore } from "./store";
 
 let latestIconRequest = 0;
 
+function currentTargetKey() {
+  const target = useStore.getState().settings.systemAudioTarget;
+  return target?.kind === "application" ? target.id : "";
+}
+
 /** Selectable lists load on user intent. The chosen application's local icon
  * can refresh silently without permission or capture. Linux only reads already
  * discovered streams; it never initializes discovery in the background. */
@@ -20,51 +25,73 @@ export function useApplicationAudioPicker(disabled = false) {
   const targetKey = target.kind === "application" ? target.id : "";
   const [snapshot, setSnapshot] = useState<{ targetKey: string; value: ApplicationSnapshot } | null>(null);
   const [icons, setIcons] = useState(applicationIconCache.read);
-  const [loading, setLoading] = useState(false);
+  const [loadingState, setLoading] = useState({ targetKey, ready, active: false });
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<{ targetKey: string; message: string } | null>(null);
+  const snapshotRef = useRef(snapshot);
+  const snapshotRevision = useRef(0);
   const mounted = useRef(false);
-  const listing = useRef(false);
+  const generation = useRef({ targetKey, ready, value: 0 });
+  const listing = useRef<number | null>(null);
   const switching = useRef(false);
-  const lookup = useRef<Promise<ApplicationSnapshot> | null>(null);
-  const readSnapshot = useCallback((cachedOnly = false) => {
-    if (!cachedOnly && lookup.current) return lookup.current;
-    const generation = ++latestIconRequest;
+  const lookup = useRef<{ generation: number; request: Promise<ApplicationSnapshot> } | null>(null);
+  const readSnapshot = useCallback((cachedOnly = false, owner = generation.current.value) => {
+    if (!cachedOnly && lookup.current?.generation === owner) return lookup.current.request;
+    const iconRequest = ++latestIconRequest;
+    const current = () => owner === generation.current.value && currentTargetKey() === targetKey;
     const request = (isTauri ? (cachedOnly
       ? invoke<ApplicationSnapshot>("audio_applications", { cachedOnly: true })
       : invoke<ApplicationSnapshot>("audio_applications")) : Promise.resolve({ supported: true, applications: [] }))
       .then(value => {
-        if (generation === latestIconRequest) applicationIconCache.replace(value);
+        if (current() && iconRequest === latestIconRequest) applicationIconCache.replace(value);
         return value;
       }, error => {
-        if (generation === latestIconRequest) applicationIconCache.clear();
+        if (current() && iconRequest === latestIconRequest) applicationIconCache.clear();
         throw error;
       });
     if (!cachedOnly) {
-      lookup.current = request;
-      void request.then(() => { lookup.current = null; }, () => { lookup.current = null; });
+      lookup.current = { generation: owner, request };
+      const complete = () => { if (lookup.current?.request === request) lookup.current = null; };
+      void request.then(complete, complete);
     }
     return request;
-  }, []);
+  }, [targetKey]);
   const text = applicationAudioCopy();
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { snapshotRef.current = snapshot; }, [snapshot]);
   useEffect(() => {
+    const previous = generation.current;
+    if (previous.targetKey !== targetKey || previous.ready !== ready) {
+      generation.current = { targetKey, ready, value: previous.value + 1 };
+    }
+    const owner = generation.current.value;
+    listing.current = null;
     if (!isTauri || !/Mac|Windows|Linux/i.test(navigator.userAgent) || !ready || !targetKey) return;
     const cachedOnly = usesPlaybackStreams();
+    const snapshot = snapshotRef.current;
     if (cachedOnly && snapshot?.targetKey === targetKey) return;
     // An older list only covers this choice while its icon is still cached.
     // A failed lookup can clear icons before another window selects it again.
-    // Cache updates are not dependencies: missing icons never start a retry loop.
+    // Completed manual refreshes do not restart this effect: a missing icon or
+    // exited target is a valid result, not a reason to enumerate again.
     if (snapshot && applicationIconCache.read().has(targetKey)
       && (snapshot.targetKey === targetKey || snapshot.value.applications.some(app => app.id === targetKey))) return;
     let active = true;
-    const restoreIcon = () => { if (active) setIcons(applicationIconCache.read()); };
-    void readSnapshot(cachedOnly).then(value => {
-      if (active && cachedOnly) setSnapshot({ targetKey, value });
+    const revision = ++snapshotRevision.current;
+    const current = () => active && revision === snapshotRevision.current
+      && owner === generation.current.value && currentTargetKey() === targetKey;
+    const restoreIcon = () => { if (current()) setIcons(applicationIconCache.read()); };
+    void readSnapshot(cachedOnly, owner).then(value => {
+      if (current() && cachedOnly) setSnapshot({ targetKey, value });
       restoreIcon();
     }, restoreIcon);
     return () => { active = false; };
-  }, [readSnapshot, ready, snapshot, targetKey]);
+  }, [readSnapshot, ready, targetKey]);
+  // Loading belongs to one target visit, including a return to the same app.
+  if (loadingState.targetKey !== targetKey || loadingState.ready !== ready) {
+    setLoading({ targetKey, ready, active: false });
+  }
+  const loading = loadingState.targetKey === targetKey && loadingState.ready === ready && loadingState.active;
   // An external window can choose a newly opened application. Its new target
   // is not missing merely because this window has an older enumeration.
   if (failure && failure.targetKey !== targetKey) setFailure(null);
@@ -84,25 +111,31 @@ export function useApplicationAudioPicker(disabled = false) {
   }))];
 
   async function refresh(reportFailure?: (message: string) => void) {
-    if (listing.current || locked || !supported) return;
-    listing.current = true;
-    setLoading(true);
+    if (listing.current !== null || locked || !supported) return;
+    const owner = generation.current.value;
+    const current = () => mounted.current && owner === generation.current.value && currentTargetKey() === targetKey;
+    listing.current = owner;
+    // A late cached-only result cannot replace this explicit enumeration.
+    snapshotRevision.current += 1;
+    setLoading({ targetKey, ready, active: true });
     setFailure(null);
     try {
-      const value = await readSnapshot();
-      if (mounted.current) {
+      const value = await readSnapshot(false, owner);
+      if (current()) {
         setIcons(applicationIconCache.read());
         setSnapshot({ targetKey, value });
       }
     } catch {
-      if (mounted.current) {
+      if (current()) {
         setIcons(applicationIconCache.read());
         if (reportFailure) reportFailure(text.failed);
         else setFailure({ targetKey, message: text.failed });
       }
     } finally {
-      listing.current = false;
-      if (mounted.current) setLoading(false);
+      if (listing.current === owner) {
+        listing.current = null;
+        if (current()) setLoading({ targetKey, ready, active: false });
+      }
     }
   }
 

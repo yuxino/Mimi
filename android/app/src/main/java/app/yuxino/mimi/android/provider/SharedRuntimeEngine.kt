@@ -30,25 +30,21 @@ internal class SharedRuntimeEngine(
             active.set(true)
             val owner = handle
             worker = thread(name = "mimi-native-state") {
-                var revision = -1L
+                val cursor = NativeRuntimePollCursor()
                 try {
                     while (active.get()) {
                         val state = synchronized(lock) {
                             if (handle != owner || !active.get()) return@thread
-                            NativeRuntimeConfiguration.command("poll", owner)
+                            NativeRuntimeConfiguration.poll(owner, cursor.lastFullRevision)
                         }
-                        val current = state.getLong("version")
-                        if (current != revision) {
-                            revision = current
-                            listener.onRuntimeSnapshot(state, configuration.getString("targetLanguage") == "original")
-                        }
-                        if (state.optBoolean("finished")) {
+                        val finished = cursor.consume(state, onSnapshot = { snapshot ->
+                            listener.onRuntimeSnapshot(snapshot, configuration.getString("targetLanguage") == "original")
+                        }, onTerminal = { code ->
                             val callback = synchronized(lock) { finishCallback.also {finishCallback=null} }
-                            val code = state.optString("errorCode").takeUnless { it.isBlank() || it == "null" }
                             if (code != null) listener.onError(sanitizeErrorCode(code), "")
                             else if (callback != null) callback() else listener.onClosed()
-                            return@thread
-                        }
+                        })
+                        if (finished) return@thread
                         Thread.sleep(NativeRuntimeConfiguration.policy.getLong("snapshotPublishIntervalMs"))
                     }
                 } catch (_: InterruptedException) { }
@@ -76,6 +72,32 @@ internal class SharedRuntimeEngine(
         }
     }
 }
+
+/** Tracks delivered JNI snapshots; terminal metadata is also carried by light replies. */
+internal class NativeRuntimePollCursor {
+    var lastFullRevision: Long? = null
+        private set
+
+    fun consume(state: JSONObject, onSnapshot: (JSONObject) -> Unit, onTerminal: (String?) -> Unit): Boolean {
+        val version = state.getLong("version")
+        require(version >= 0) { "native_runtime_invalid_response" }
+        val unchanged = state.optBoolean("unchanged", false)
+        val finished = state.optBoolean("finished")
+        if (unchanged) {
+            require(lastFullRevision == version && !state.has("snapshot") &&
+                state.opt("finished") is Boolean && state.has("errorCode")) { "native_runtime_invalid_response" }
+        } else if (version != lastFullRevision || finished) {
+            state.getJSONObject("snapshot")
+            onSnapshot(state)
+            lastFullRevision = version
+        }
+        if (finished) {
+            onTerminal(state.optString("errorCode").takeUnless { it.isBlank() || it == "null" })
+        }
+        return finished
+    }
+}
+
 internal fun configurationRoute(configuration: JSONObject): String =
     configuration.optJSONObject("textCredentials")?.optString("kind")?.takeIf {it.isNotEmpty()}
         ?: configuration.getJSONObject("credentials").optString("kind").takeIf {it in setOf("deepL","deepLX","openAICompatible","chatMock")}

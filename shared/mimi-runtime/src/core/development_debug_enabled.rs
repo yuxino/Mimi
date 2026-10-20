@@ -114,6 +114,7 @@ pub enum ProviderEventKind {
     PreviewFinished,
     PreviewPair,
     PreviewCleared,
+    PreviewWithdrawn,
     TranslationDeferred,
     TranslationDraft,
     TranslationFinal,
@@ -197,6 +198,9 @@ impl ProviderObservation {
                 translation.chars().count(),
             ),
             E::SubtitlePreviewCleared => (K::PreviewCleared, None, 0, 0),
+            E::SubtitlePreviewWithdrawn {
+                source_utterance_id,
+            } => (K::PreviewWithdrawn, Some(*source_utterance_id), 0, 0),
             E::SubtitleIdentifiedPreviewPair {
                 source,
                 translation,
