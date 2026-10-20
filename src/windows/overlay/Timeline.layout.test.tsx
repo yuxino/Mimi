@@ -307,14 +307,14 @@ it("opens a single compact confirmed sentence without needing a scrollbar, while
   expect(timeline.querySelector("[aria-label]:not([role])")).not.toBeNull();
 });
 
-it("fits both long bilingual lanes into the actual 51px body and uses added space after resize", async () => {
+it("fits both long bilingual lanes into a tight body without shrinking the reference font", async () => {
   measuredHeight = 240;
-  viewportHeight = 51;
+  viewportHeight = 54;
   const timeline = await render([confirmed], 20);
   const row = timeline.firstElementChild as HTMLElement;
   const lanes = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   const laneHeights = lanes.map(lane => Number.parseFloat(lane.style.height));
-  expect(laneHeights).toEqual([22, 27]);
+  expect(laneHeights).toEqual([24, 27]);
   expect(laneHeights.reduce((sum, height) => sum + height, 0) + 1 + 1).toBeLessThanOrEqual(viewportHeight);
   expect(row.style.paddingTop).toBe("0px");
   viewportHeight = 130;
@@ -352,10 +352,10 @@ it.each([80, 81])("fits long original and short translation at the %ipx responsi
   const lanes = Array.from(row.querySelectorAll<HTMLElement>("[aria-label]:not([role])"));
   const textHeight = lanes.reduce((sum, lane) => sum + Number.parseFloat(lane.style.height), 0);
   expect(textHeight + 7).toBeLessThanOrEqual(viewportHeight);
-  expect(lanes[0].style.height).toBe("44px");
+  expect(lanes[0].style.height).toBe("24px");
 });
 
-it.each([83, 84, 85])("keeps the reference font stable as translation arrives and leaves at the %ipx boundary", async (height) => {
+it.each([83, 84, 85])("keeps the reference font stable as translation arrives and leaves at height %i", async (height) => {
   viewportHeight = height;
   measuredHeight = 240;
   const waiting = { ...live, translation: null };
@@ -364,7 +364,7 @@ it.each([83, 84, 85])("keeps the reference font stable as translation arrives an
   const text = original.firstElementChild as HTMLElement;
   const font = text.style.fontSize;
   const lineHeight = text.style.lineHeight;
-  expect(font).toBe(height < 85 ? "16.4px" : "18px");
+  expect(font).toBe("18px");
 
   await render([live], 20);
   expect(timeline.querySelector(`[aria-label="${live.source}"]`)).toBe(original);
@@ -483,7 +483,7 @@ it("reproduces the 136px native dual-bilingual clipping and fits both rows after
   const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
   const totalHeight = rows.reduce((height, row) => height + renderedBlockHeight(row), 0);
   expect(viewportHeight).toBe(51);
-  expect(totalHeight).toBe(92);
+  expect(totalHeight).toBe(96);
   // Bottom following starts below the system original's entire first lane.
   const systemOriginalHeight = Number.parseFloat(rows[0].querySelector<HTMLElement>("[aria-label]:not([role])")!.style.height);
   expect(totalHeight - viewportHeight).toBeGreaterThan(systemOriginalHeight);
@@ -494,7 +494,7 @@ it("reproduces the 136px native dual-bilingual clipping and fits both rows after
   expect(timeline.querySelectorAll("[data-utterance-id]")).toHaveLength(2);
 });
 
-it.each([14, 15, 16, 17, 18, 19, 20])("fits both long bilingual live rows below the active native chrome at font %i", async fontSize => {
+it.each([14, 15, 16, 17, 18, 19, 20, 24, 32, 40, 48])("fits both long bilingual live rows below the active native chrome at font %i", async fontSize => {
   measuredHeight = 240;
   viewportHeight = minimumOverlayHeight({ audioInput: "both", subtitleDisplayMode: "bilingual", targetLanguage: "zh", fontSize })
     - OVERLAY_MAXIMUM_CHROME_HEIGHT;
@@ -511,7 +511,7 @@ it.each([14, 15, 16, 17, 18, 19, 20])("fits both long bilingual live rows below 
 
 it.each(["original", "translation"] as const)("fits both single-language rows at the derived minimum in %s mode", async subtitleDisplayMode => {
   measuredHeight = 240;
-  for (const fontSize of [14, 18, 20]) {
+  for (const fontSize of [14, 18, 20, 24, 32, 40, 48]) {
     viewportHeight = minimumOverlayHeight({ audioInput: "both", subtitleDisplayMode, targetLanguage: "zh", fontSize })
       - OVERLAY_MAXIMUM_CHROME_HEIGHT;
     const timeline = await render(dualLive, fontSize, false, false, subtitleDisplayMode);
@@ -534,12 +534,53 @@ it("budgets original-target bilingual rows with a side label instead of adding a
 
 it("keeps retained mixed-source identity beside a single live row at the single-input minimum", async () => {
   measuredHeight = 240;
-  viewportHeight = 51;
+  viewportHeight = minimumOverlayHeight({ audioInput: "system", fontSize: 20,
+    subtitleDisplayMode: "bilingual", targetLanguage: "zh" }) - OVERLAY_MAXIMUM_CHROME_HEIGHT;
   const timeline = await render([{ ...live, audioSource: "microphone" }], 20);
   const row = timeline.querySelector<HTMLElement>("[data-utterance-id]")!;
   expect(row.querySelector(".subtitle-audio-source")).not.toBeNull();
   expect(row.querySelector(".subtitle-metadata")).toBeNull();
   expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+});
+
+it.each([false, true])("fits 48px microphone captions with their separate source metadata (time=%s)", async showTimestamps => {
+  measuredHeight = 240;
+  viewportHeight = minimumOverlayHeight({ audioInput: "microphone", fontSize: 48,
+    subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: showTimestamps })
+    - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  await act(async () => root.render(<Timeline blocks={[{ ...confirmed, audioSource: "microphone" }]}
+    fontSize={48} alignment="center" color="white" displayMode="bilingual" audioInput="microphone"
+    showTimestamps={showTimestamps} />));
+  const row = host.querySelector<HTMLElement>("[data-utterance-id]")!;
+  const metadata = row.querySelector<HTMLElement>(".subtitle-metadata")!;
+  expect(metadata).not.toBeNull();
+  expect(metadata.querySelector(".subtitle-audio-source")).not.toBeNull();
+  expect(metadata.querySelector(".subtitle-timestamp") !== null).toBe(showTimestamps);
+  expect(row.querySelectorAll("[aria-label]:not([role])")).toHaveLength(2);
+  expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+});
+
+it.each(["system", "microphone"] as const)("fits retained mixed-source captions at the 48px %s minimum", async audioInput => {
+  measuredHeight = 240;
+  viewportHeight = minimumOverlayHeight({ audioInput, fontSize: 48,
+    subtitleDisplayMode: "bilingual", targetLanguage: "zh" }) - OVERLAY_MAXIMUM_CHROME_HEIGHT;
+  const previousSource = audioInput === "system" ? "microphone" : "system";
+  await act(async () => root.render(<Timeline blocks={[
+    { ...confirmed, id: "retained-other-input", presentation: "history", audioSource: previousSource },
+    { ...live, audioSource: audioInput, source: confirmed.source, translation: confirmed.translation },
+  ]} fontSize={48} alignment="center" color="white" displayMode="bilingual" audioInput={audioInput} />));
+  const rows = [...host.querySelectorAll<HTMLElement>("[data-utterance-id]")];
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    const lanes = [...row.querySelectorAll<HTMLElement>("[aria-label]:not([role])")];
+    expect(lanes.map(lane => (lane.firstElementChild as HTMLElement).style.fontSize)).toEqual(["43.2px", "48px"]);
+    // Each bounded sentence remains readable while the outer timeline chooses
+    // which history/current rows are visible. Retention must not enlarge it.
+    expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
+  }
+  const microphoneRow = audioInput === "microphone" ? rows[1] : rows[0];
+  expect(microphoneRow.querySelector(".subtitle-audio-source")).not.toBeNull();
+  expect(microphoneRow.querySelector(".subtitle-metadata") !== null).toBe(audioInput === "microphone");
 });
 
 it.each([
@@ -556,16 +597,17 @@ it.each([
   expect(renderedBlockHeight(row)).toBeLessThanOrEqual(viewportHeight);
 });
 
-it.each(["system", "microphone", "both"] as const)("keeps both bilingual lanes below the narrow service row for %s", async audioInput => {
+it.each((["system", "microphone", "both"] as const).flatMap(audioInput =>
+  [20, 48].map(fontSize => ({ audioInput, fontSize }))))("keeps $fontSize px bilingual lanes below the narrow service row for $audioInput", async ({ audioInput, fontSize }) => {
   measuredHeight = 240;
   // Real narrow canvas budget: control band + separate service row + insets,
   // padding and borders. Both sources retain timestamp metadata in this case.
   const chromeHeight = 61 + 20 + 12 + 10 + 2;
   viewportHeight = minimumOverlayHeight({ audioInput, subtitleDisplayMode: "bilingual", targetLanguage: "zh",
-    fontSize: 20, showSubtitleTimestamps: true }) - chromeHeight;
+    fontSize, showSubtitleTimestamps: true }) - chromeHeight;
   const blocks = (audioInput === "both" ? dualLive : [{ ...live, audioSource: audioInput }])
     .map(block => ({ ...block, createdAt: 1_700_000_000_000, source: confirmed.source, translation: confirmed.translation }));
-  await act(async () => root.render(<Timeline blocks={blocks} fontSize={20} alignment="center" color="white"
+  await act(async () => root.render(<Timeline blocks={blocks} fontSize={fontSize} alignment="center" color="white"
     displayMode="bilingual" audioInput={audioInput} showTimestamps />));
   const rows = [...host.querySelectorAll<HTMLElement>("[data-utterance-id]")];
   expect(rows).toHaveLength(audioInput === "both" ? 2 : 1);
@@ -599,4 +641,29 @@ it.each([264, 265, 270, 280])("fits dual bilingual live rows with dividers at na
   const rows = [...timeline.querySelectorAll<HTMLElement>("[data-utterance-id]")];
   expect(rows.reduce((sum, row) => sum + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
   expect(rows[0].querySelector(".subtitle-separator")).not.toBeNull();
+});
+
+it.each(["original", "translation", "bilingual"] as const)("fits 48px dual-source %s captions and their divider below configured-service chrome", async subtitleDisplayMode => {
+  measuredHeight = 240;
+  // A configured service takes its own 20px row in a narrow overlay. Reserving
+  // only the compact control band would hide a missing metadata/divider budget.
+  const chromeHeight = 61 + 20 + 12 + 10 + 2;
+  for (const showTimestamps of [false, true]) {
+    viewportHeight = minimumOverlayHeight({ audioInput: "both", fontSize: 48,
+      subtitleDisplayMode, targetLanguage: "zh", showSubtitleTimestamps: showTimestamps }) - chromeHeight;
+    const blocks = dualLive.map(block => ({ ...block, createdAt: 1_700_000_000_000 }));
+    await act(async () => root.render(<Timeline blocks={blocks} fontSize={48} alignment="center"
+      color="white" displayMode={subtitleDisplayMode} audioInput="both"
+      showSubtitleDividers showTimestamps={showTimestamps} />));
+    const rows = [...host.querySelectorAll<HTMLElement>("[data-utterance-id]")];
+    expect(rows).toHaveLength(2);
+    expect(host.querySelectorAll(".subtitle-separator")).toHaveLength(1);
+    for (const row of rows) {
+      expect(row.querySelector(".subtitle-metadata .subtitle-audio-source")).not.toBeNull();
+      expect(row.querySelector(".subtitle-timestamp") !== null).toBe(showTimestamps);
+      expect(row.querySelectorAll("[aria-label]:not([role])"))
+        .toHaveLength(subtitleDisplayMode === "bilingual" ? 2 : 1);
+    }
+    expect(rows.reduce((sum, row) => sum + renderedBlockHeight(row), 0)).toBeLessThanOrEqual(viewportHeight);
+  }
 });

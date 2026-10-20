@@ -121,7 +121,7 @@ export interface SettingsSnapshot {
   /** Native options for this exact active profile and selected target. Older snapshots omit this. */
   languageCapabilities?: LanguageCapabilitiesSnapshot;
   translationMode: TranslationMode;
-  /** 14..20 */
+  /** 14..48 */
   fontSize: number;
   /** Empty or omitted uses the language-aware system font stack. */
   subtitleFontFamily?: string;

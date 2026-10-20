@@ -279,7 +279,8 @@ from two original plus four translated lines to three plus three. The native
 minimum still keeps one line in each language. Independent wrapping and tail
 clipping do not provide sentence alignment; complete pairs and full reading
 remain intact. A sole language uses all the
-available height. Reference text is 90% of the primary size (82% in a short body)
+available height. Reference text is 90% of the primary size at every window height,
+as updated by the [readability design](2026-10-20-subtitle-readability-and-drag.md),
 and 86% white; integer line heights keep glyphs inside the clipping boundary.
 Upward reading intent restores full confirmed and current live text. No edge fade or continuation
 glyph is inserted into the text. The optional divider is one full CSS pixel, at

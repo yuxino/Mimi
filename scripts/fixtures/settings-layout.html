@@ -227,6 +227,7 @@ window.applyLayoutCase = async next => {
       systemAudioTarget: next.systemAudioTarget ?? { kind: "system" },
       microphoneInputAvailable: next.platform === "macos", windowsAudioSource: next.state === "missing" ? "removed-output" : "fixture-output",
       sourceLanguage, targetLanguage,
+      ...next.subtitleAppearance,
       ...(next.editor || next.surface || next.listProfiles || next.provider ? { profiles: next.profiles ?? (next.listProfiles
         ? [profile, { ...profile, id: "layout-other", name: next.profileName ?? "Other configuration" }]
         : [profile]), activeProfileId: next.activeProfileId ?? profile.id } : {}),

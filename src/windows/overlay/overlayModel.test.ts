@@ -420,22 +420,19 @@ describe("compact lane budget", () => {
   });
 
   it("balances long original and translation lanes at the measured native reading height", () => {
-    for (const sourceScale of [0.88, 0.9]) {
-      const pair = subtitleLaneBudget("bilingual", true, 143, 17,
-        { source: 420, translation: 460 }, sourceScale);
-      expect(pair).toEqual({ source: 3, translation: 3 });
-      const sourceLine = Math.ceil(17 * sourceScale * 1.32);
-      expect(pair.source * sourceLine + pair.translation * 23).toBeLessThanOrEqual(143);
-    }
+    const pair = subtitleLaneBudget("bilingual", true, 143, 17,
+      { source: 420, translation: 460 });
+    expect(pair).toEqual({ source: 3, translation: 3 });
+    expect(pair.source * 21 + pair.translation * 23).toBeLessThanOrEqual(143);
     expect(subtitleLaneBudget("bilingual", true, 49, 17,
       { source: 420, translation: 460 })).toEqual({ source: 1, translation: 1 });
   });
 
   it("preserves short-lane borrowing at the same native height", () => {
     expect(subtitleLaneBudget("bilingual", true, 143, 17,
-      { source: 20, translation: 690 }, 0.88)).toEqual({ source: 1, translation: 5 });
+      { source: 20, translation: 690 })).toEqual({ source: 1, translation: 5 });
     expect(subtitleLaneBudget("bilingual", true, 143, 17,
-      { source: 660, translation: 23 }, 0.88)).toEqual({ source: 6, translation: 1 });
+      { source: 660, translation: 23 })).toEqual({ source: 5, translation: 1 });
   });
 
   it("uses a tall window instead of clipping every language to two lines", () => {

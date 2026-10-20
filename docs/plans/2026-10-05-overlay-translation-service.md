@@ -20,7 +20,8 @@ Keep the existing dark overlay, shared typography and provider assets. The
 metadata row reserves the centered drag target at normal widths. Below 552 px,
 put metadata below that target, using 20 px of additional header height so both
 timing values remain readable. Native and browser resize minima reserve this
-20 px at every width (single-source minimum 156 px), so narrowing cannot clip
+20 px at every width (156 px for the default 16 px system-only case without
+timestamps; larger fonts and source metadata increase the minimum), so narrowing cannot clip
 bilingual or timestamped dual-source text. Preserve the older saved-frame
 validation floor while expanding its current minimum in place. Bound longer
 names with single-line ellipsis, reserve readable text space for both stages and

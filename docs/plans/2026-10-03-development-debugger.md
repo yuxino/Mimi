@@ -133,6 +133,11 @@ validation. Native geometry is a separate acceptance case.
 
 ## Second phase: native height for independent source rows
 
+The geometry figures below record the original implementation. Current font
+bounds and metadata/divider budgets follow the
+[readability design](2026-10-20-subtitle-readability-and-drag.md) and
+`shared/overlay-layout-contracts.json`.
+
 The expanded native minimum was 136px regardless of selected sources. In the
 active, narrow layout, the 61px controls, 12px outside inset, 10px inner padding
 and 2px border leave a 51px Timeline body. Two independent bilingual live blocks

@@ -19,6 +19,7 @@ use crate::core::models::{
     SourceLanguage, SubtitleColor, SubtitleDisplayMode, TargetLanguage, TranslationMode,
 };
 use crate::core::network_proxy::ProxyConfig;
+use crate::core::overlay_layout::normalize_font_size;
 use crate::core::provider::{
     CustomSpeechLanguagesPatch, ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation,
     TextTranslationName, DEFAULT_ALIBABA_PROFILE_ID,
@@ -199,8 +200,7 @@ impl TextTranslationDestination {
 }
 
 pub const MAXIMUM_PROFILE_COUNT: usize = 20;
-pub const FONT_SIZE_RANGE: std::ops::RangeInclusive<f64> = 14.0..=20.0;
-pub const DEFAULT_FONT_SIZE: f64 = crate::core::overlay_layout::DEFAULT_FONT_SIZE;
+pub use crate::core::overlay_layout::DEFAULT_FONT_SIZE;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -853,9 +853,7 @@ impl SettingsStore {
             .map_err(|_| "saved_development_settings_required")?;
         let secret = file_credentials::FileCredentialStore::for_read_only_manual_probe(&directory)
             .map_err(|_| "saved_development_credentials_required")?;
-        prefs.font_size = prefs
-            .font_size
-            .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
+        prefs.font_size = normalize_font_size(prefs.font_size);
         prefs.subtitle_font_family = normalize_family_name(&prefs.subtitle_font_family)
             .unwrap_or_default()
             .to_owned();
@@ -901,9 +899,7 @@ impl SettingsStore {
             .ok()
             .and_then(|text| serde_json::from_str::<Preferences>(&text).ok())
             .unwrap_or_default();
-        let font_size = prefs
-            .font_size
-            .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
+        let font_size = normalize_font_size(prefs.font_size);
         let prefs = Preferences {
             font_size,
             subtitle_font_family: normalize_family_name(&prefs.subtitle_font_family)
@@ -1045,9 +1041,7 @@ impl SettingsStore {
         );
         store.prefs_path = prefs_path;
         store.ui_test_preferences_writable = true;
-        let font_size = prefs
-            .font_size
-            .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
+        let font_size = normalize_font_size(prefs.font_size);
         *store.prefs.lock().unwrap() = Preferences {
             font_size,
             subtitle_font_family: normalize_family_name(&prefs.subtitle_font_family)
@@ -1104,9 +1098,7 @@ impl SettingsStore {
         update(&mut next);
         validate(&current, &mut next)?;
         next.translation_mode = TranslationMode::Turbo;
-        next.font_size = next
-            .font_size
-            .clamp(*FONT_SIZE_RANGE.start(), *FONT_SIZE_RANGE.end());
+        next.font_size = normalize_font_size(next.font_size);
         next.subtitle_background_opacity = next.subtitle_background_opacity.min(100);
         next.subtitle_font_family = normalize_family_name(&next.subtitle_font_family)?.to_owned();
         next.network_proxy = next
@@ -3791,7 +3783,7 @@ mod read_only_manual_probe_tests {
         let store = SettingsStore::load_for_read_only_manual_probe(directory.clone()).unwrap();
         let prefs = store.preferences();
         assert_eq!(prefs.translation_mode, TranslationMode::Turbo);
-        assert_eq!(prefs.font_size, 20.0);
+        assert_eq!(prefs.font_size, 48.0);
         assert_eq!(prefs.subtitle_font_family, "Synthetic Font");
         assert_eq!(prefs.subtitle_background_opacity, 100);
         let profile = store.active_profile().unwrap();
@@ -10804,6 +10796,78 @@ mod tests {
         assert!(!preferences.show_subtitle_dividers);
         assert!(!preferences.show_subtitle_timestamps);
         assert_eq!(preferences.pulse_style, PulseStyle::Ribbon);
+    }
+
+    #[test]
+    fn subtitle_font_size_keeps_saved_choices_and_persists_larger_fonts() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        assert_eq!(store.preferences().font_size, 16.0);
+
+        // Existing 14–20px choices survive the wider range without migration.
+        // Both the ordinary and active-profile save routes retain larger sizes.
+        for font_size in [14.0, 16.0, 18.5, 20.0, 24.0, 32.0, 48.0] {
+            store
+                .save_preferences(|prefs| prefs.font_size = font_size)
+                .unwrap();
+            let restarted = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(restarted.preferences().font_size, font_size);
+            restarted
+                .save_preferences_for_active_profile(|prefs| prefs.font_size = font_size)
+                .unwrap();
+            let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(reloaded.preferences().font_size, font_size);
+        }
+    }
+
+    #[test]
+    fn subtitle_font_size_normalization_is_durable_for_invalid_inputs() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+        for (input, expected) in [
+            (-1.0, 14.0),
+            (100.0, 48.0),
+            (f64::NAN, 16.0),
+            (f64::INFINITY, 16.0),
+            (f64::NEG_INFINITY, 16.0),
+        ] {
+            store
+                .save_preferences(|prefs| prefs.font_size = input)
+                .unwrap();
+            assert_eq!(store.preferences().font_size, expected);
+            let saved: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(directory.path().join("preferences.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(saved["font_size"].as_f64(), Some(expected));
+            let reloaded = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(reloaded.preferences().font_size, expected);
+        }
+    }
+
+    #[test]
+    fn subtitle_font_size_load_normalizes_only_out_of_range_values() {
+        let directory = tempfile::tempdir().unwrap();
+        let fake = FakeSecretStore::default();
+        for (saved, expected) in [
+            (14.0, 14.0),
+            (16.0, 16.0),
+            (20.0, 20.0),
+            (32.0, 32.0),
+            (48.0, 48.0),
+            (-1.0, 14.0),
+            (100.0, 48.0),
+        ] {
+            std::fs::write(
+                directory.path().join("preferences.json"),
+                serde_json::to_vec(&serde_json::json!({ "font_size": saved })).unwrap(),
+            )
+            .unwrap();
+            let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
+            assert_eq!(store.preferences().font_size, expected);
+        }
     }
 
     #[test]

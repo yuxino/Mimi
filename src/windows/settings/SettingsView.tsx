@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SubtitleSessionControls } from "./SubtitleSessionControls";
 import { Icon } from "../../components/Icon";
 import { Switch } from "../../components/Switch";
@@ -7,8 +7,9 @@ import { announceSettingsNavigationReady, isTauri, listenSettingsNavigation, typ
 import { selectSessionStatusKind, useStore } from "../../lib/store";
 import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
 import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
-import { subtitleBackgroundColor, subtitleColorHex } from "../../lib/subtitleColor";
+import { subtitleBackgroundColor } from "../../lib/subtitleColor";
 import type { SubtitleDisplayMode } from "../../lib/types";
+import { MAX_SUBTITLE_FONT_SIZE, MIN_SUBTITLE_FONT_SIZE, subtitleTextStyle } from "../../lib/subtitleTypography";
 import { subtitleFontFamily } from "../../lib/subtitleFont";
 import { SubtitleFontControl } from "./SubtitleFontControl";
 import { SubtitleColorControl } from "./SubtitleColorControl";
@@ -77,6 +78,16 @@ export function SettingsView() {
   const { runWithToast } = useSettingsToast();
   const savePreference = (draft: SettingsDraft, label: string) =>
     runWithToast(() => saveSettings(draft), I18N.settings.settingSaveFailed(label));
+  const previewFontFamily = useMemo(() => subtitleFontFamily(subtitleFontPreview ?? settings.subtitleFontFamily),
+    [subtitleFontPreview, settings.subtitleFontFamily]);
+  const previewTextStyle = (kind: "source" | "translation") => subtitleTextStyle({
+    fontSize: settings.fontSize,
+    fontFamily: previewFontFamily,
+    displayMode: settings.subtitleDisplayMode,
+    kind,
+    color: settings.audioInput === "microphone" ? settings.microphoneSubtitleColor ?? "yellow" : settings.subtitleColor,
+    blendsWithBackground: settings.subtitleBlendsWithBackground,
+  });
 
   const activeProfile =
     settings.profiles.find((profile) => profile.id === settings.activeProfileId) ??
@@ -284,14 +295,13 @@ export function SettingsView() {
                       </div>
                       <div
                         className="subtitle-preview__text"
-                        style={{ fontSize: settings.fontSize, fontFamily: subtitleFontFamily(subtitleFontPreview ?? settings.subtitleFontFamily), color: subtitleColorHex(settings.subtitleColor),
-                          background: settings.subtitleBlendsWithBackground ? "transparent" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity) }}
+                        style={{ background: settings.subtitleBlendsWithBackground ? "transparent" : subtitleBackgroundColor(settings.subtitleBackgroundOpacity) }}
                       >
                         {settings.subtitleDisplayMode !== "translation" && (
-                          <span style={{ color: settings.subtitleDisplayMode === "original" ? "inherit" : "rgba(255,255,255,0.72)" }}>{I18N.settings.previewOriginal}</span>
+                          <span style={previewTextStyle("source")}>{I18N.settings.previewOriginal}</span>
                         )}
                         {settings.subtitleDisplayMode !== "original" && (
-                          <strong>{I18N.settings.previewTranslation}</strong>
+                          <strong style={previewTextStyle("translation")}>{I18N.settings.previewTranslation}</strong>
                         )}
                       </div>
                     </div>
@@ -385,8 +395,8 @@ export function SettingsView() {
                           </span>
                           <input
                             type="range"
-                            min={14}
-                            max={20}
+                            min={MIN_SUBTITLE_FONT_SIZE}
+                            max={MAX_SUBTITLE_FONT_SIZE}
                             step={1}
                             value={settings.fontSize}
                             aria-label={I18N.settings.fontSize}

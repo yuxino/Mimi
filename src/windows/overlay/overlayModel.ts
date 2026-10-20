@@ -1,5 +1,6 @@
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { credentialErrorMessage } from "../../lib/connectionDiagnostics";
+import { subtitleLaneFontSize, subtitleLineHeight } from "../../lib/subtitleTypography";
 /**
  * Pure derived state for the subtitle overlay. Keeping these transformations
  * outside React makes the phase and row logic deterministic and testable.
@@ -214,24 +215,15 @@ export function timelineClassName(blendsWithBackground: boolean): string {
  * A short lane gives its spare space to the other language. Full confirmed
  * text remains available when reading history.
  */
-export const SUBTITLE_LINE_HEIGHT = 1.32;
-export const SUBTITLE_SOURCE_SCALE = 0.9;
-
-export function subtitleSourceScale(availableLaneHeight: number | null): number {
-  return availableLaneHeight !== null && availableLaneHeight < 78 ? 0.82 : SUBTITLE_SOURCE_SCALE;
-}
-
 export function subtitleLaneBudget(
   displayMode: SettingsSnapshot["subtitleDisplayMode"],
   hasTranslation: boolean,
   availableLaneHeight: number | null = null,
   fontSize = 18,
   measured: { source: number; translation: number } | null = null,
-  sourceScale = subtitleSourceScale(availableLaneHeight),
 ): { source: number; translation: number } {
-  const sourceLine = Math.ceil((displayMode === "bilingual"
-    ? Math.max(12, fontSize * sourceScale) : fontSize) * SUBTITLE_LINE_HEIGHT);
-  const translationLine = Math.ceil(fontSize * SUBTITLE_LINE_HEIGHT);
+  const sourceLine = subtitleLineHeight(subtitleLaneFontSize(fontSize, displayMode, "source"));
+  const translationLine = subtitleLineHeight(fontSize);
   const linesThatFit = (lineHeight: number, remaining = availableLaneHeight) =>
     remaining === null ? 2 : Math.max(1, Math.floor(remaining / lineHeight));
   switch (displayMode) {

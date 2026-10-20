@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
@@ -11,6 +12,7 @@ import { sourceLanguagesForSettings, targetLanguagesForSettings } from "../../li
 import { profileCredentialEditorState, profileRevealCredential } from "../../lib/ipc";
 import { settingsPageCopy } from "./SettingsPageCopy";
 import { SettingsView } from "./SettingsView";
+import { Timeline } from "../overlay/Timeline";
 
 vi.mock("../../lib/ipc", async (original) => ({ ...await original<typeof import("../../lib/ipc")>(), profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn() }));
 
@@ -255,6 +257,58 @@ it("keeps an explicit subtitle save alive while the user navigates to another ca
   await act(async () => complete());
   await select("subtitles");
   expect(host.querySelector<HTMLInputElement>('input[type="range"]')?.value).toBe("20");
+});
+
+it("preserves the saved subtitle size and allows selecting a larger reading size", async () => {
+  useStore.setState(state => ({ settings: { ...state.settings, fontSize: 19 } }));
+  saveSettings.mockImplementation(async (draft: SettingsDraft) => {
+    useStore.setState({ settings: { ...useStore.getState().settings, ...draft } });
+  });
+  await mount();
+  const slider = host.querySelector<HTMLInputElement>(`input[aria-label="${I18N.settings.fontSize}"]`)!;
+  expect(slider.min).toBe("14");
+  expect(slider.max).toBe("48");
+  expect(slider.value).toBe("19");
+  expect(saveSettings).not.toHaveBeenCalled();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider, "48");
+    slider.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ fontSize: 48 });
+  expect(slider.value).toBe("48");
+});
+
+it.each(["original", "translation", "bilingual"] as const)("previews the actual %s lane typography at a large size", async displayMode => {
+  useStore.setState(state => ({ settings: { ...state.settings, fontSize: 48, subtitleDisplayMode: displayMode,
+    subtitleFontFamily: "Synthetic Caption Font", subtitleColor: "#f5c07c", microphoneSubtitleColor: "#b8d7ef" } }));
+  await mount();
+  for (const audioInput of ["system", "microphone"] as const) {
+    for (const immersive of [false, true]) {
+      await act(() => useStore.setState(state => ({ settings: { ...state.settings, audioInput,
+        subtitleBlendsWithBackground: immersive } })));
+      const overlay = document.createElement("div");
+      overlay.innerHTML = renderToStaticMarkup(<Timeline blocks={[{
+        id: "preview-parity", presentation: "latestCommitted", createdAt: null, audioSource: audioInput,
+        source: displayMode === "translation" ? null : I18N.settings.previewOriginal,
+        translation: displayMode === "original" ? null : I18N.settings.previewTranslation,
+      }]} fontSize={48} fontFamily="Synthetic Caption Font" color="#f5c07c" microphoneColor="#b8d7ef"
+        displayMode={displayMode} alignment="center" audioInput={audioInput} blendsWithBackground={immersive} />);
+      for (const [selector, text] of [
+        ["span", I18N.settings.previewOriginal], ["strong", I18N.settings.previewTranslation],
+      ]) {
+        const preview = host.querySelector<HTMLElement>(`.subtitle-preview__text ${selector}`);
+        const live = [...overlay.querySelectorAll<HTMLElement>("[aria-label]:not([role])")]
+          .find(lane => lane.getAttribute("aria-label") === text)?.firstElementChild as HTMLElement | undefined;
+        expect(preview !== null).toBe(live !== undefined);
+        if (!preview || !live) continue;
+        for (const property of ["fontSize", "fontFamily", "fontWeight", "lineHeight", "color", "textShadow", "overflowWrap"] as const) {
+          expect(preview.style[property]).toBe(live.style[property]);
+        }
+        expect(preview.style.fontSize).toBe(selector === "span" && displayMode === "bilingual" ? "43.2px" : "48px");
+        expect(preview.style.textShadow.length > 0).toBe(immersive);
+      }
+    }
+  }
 });
 
 it("saves background transparency, previews it and preserves it in immersive mode", async () => {

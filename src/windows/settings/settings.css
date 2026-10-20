@@ -2164,18 +2164,11 @@
 .subtitle-preview__pulse { display: flex; justify-content: center; padding-bottom: 8px; }
 .subtitle-preview__text {
   display: grid;
-  gap: 5px;
-  line-height: 1.5;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   padding: 12px 16px;
   border-radius: 9px;
   background: #101010;
-}
-.subtitle-preview__text span {
-  font-size: 0.78em;
-  color: var(--settings-text-muted);
-}
-.subtitle-preview__text strong {
-  font-weight: 550;
 }
 .subtitle-preview[data-immersive="true"] .subtitle-preview__text {
   background: transparent;

@@ -1,8 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import { hexToRgba } from "../../lib/types";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
 import { subtitleFontFamily } from "../../lib/subtitleFont";
-import { subtitleColorHex } from "../../lib/subtitleColor";
+import { IMMERSIVE_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../lib/subtitleTypography";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
 import { TimelineScroll } from "./timelineScroll";
@@ -10,15 +9,10 @@ import { Icon } from "../../components/Icon";
 import { compactRepetition } from "./compactRepetition";
 import {
   subtitleLaneBudget,
-  subtitleSourceScale,
-  SUBTITLE_LINE_HEIGHT,
-  SUBTITLE_SOURCE_SCALE,
   timelineClassName,
   type SubtitleBlock,
 } from "./overlayModel";
 
-const IMMERSIVE_TEXT_SHADOW =
-  "0 2px 5px rgba(0,0,0,0.98), 0 0 2px rgba(0,0,0,0.95), 0 0 12px rgba(0,0,0,0.72)";
 // SVG strokes do not receive text-shadow. Keep small source icons legible
 // over light video frames without adding a background to immersive subtitles.
 const IMMERSIVE_ICON_FILTER = "drop-shadow(0 1px 1px #000) drop-shadow(0 0 2px #000)";
@@ -289,15 +283,11 @@ export const Timeline = memo(function Timeline({
         const metadataHeight = hasMetadata ? METADATA_HEIGHT : 0;
         const availableLaneHeight = blockViewportHeight === null ? null
           : blockViewportHeight - paddingTop - paddingBottom - metadataHeight - (block.source !== null && block.translation !== null ? laneGap : 0);
-        // A bilingual original keeps its reference font while waiting for MT.
-        // Only its line budget changes when the translation takes its space.
-        const sourceScale = subtitleSourceScale(blockViewportHeight === null ? null
-          : blockViewportHeight - paddingTop - paddingBottom - metadataHeight - (displayMode === "bilingual" ? laneGap : 0));
         // When the original has not arrived, the translation owns the full
         // viewport rather than reserving height for an absent reference lane.
         const budgetMode = displayMode === "bilingual" && block.source === null ? "translation" : displayMode;
         const budget = subtitleLaneBudget(budgetMode, block.translation !== null, availableLaneHeight, fontSize,
-          isLast && laneMeasurements.blockId === block.id ? laneMeasurements : null, sourceScale);
+          isLast && laneMeasurements.blockId === block.id ? laneMeasurements : null);
         // A new sentence must not collapse the previous phrase to its last
         // word. Every following row keeps the viewport's bounded lane budget;
         // the timeline's outer scroll chooses which rows remain in view.
@@ -316,7 +306,7 @@ export const Timeline = memo(function Timeline({
               paddingRight: 10,
               paddingTop,
               paddingBottom: tight ? 1 : isLast ? LAST_BLOCK_PADDING_Y : BLOCK_PADDING_Y,
-              // New blocks settle in with a brief rise-and-fade; the class runs
+              // New blocks settle in with a brief rise; the class runs
               // the animation once on mount (the key is stable per block, so
               // streaming text updates do not re-trigger it) and is skipped
               // when motion is off.
@@ -354,7 +344,6 @@ export const Timeline = memo(function Timeline({
                   entering={entering}
                   keepTextOpaque={keepTextOpaque}
                   preserveLineBreaks={preserveLiveLineBreaks && block.presentation === "live"}
-                  sourceScale={sourceScale}
                   onMeasure={isLast ? measureSource : undefined}
                 />
               ) : null}
@@ -416,7 +405,6 @@ interface LaneProps {
   entering: boolean;
   hidden?: boolean;
   onMeasure?: (height: number) => void;
-  sourceScale?: number;
   tintReference?: boolean;
   keepTextOpaque?: boolean;
   preserveLineBreaks?: boolean;
@@ -436,28 +424,13 @@ const Lane = memo(function Lane({
   entering,
   hidden = false,
   onMeasure,
-  sourceScale = SUBTITLE_SOURCE_SCALE,
   tintReference = false,
   keepTextOpaque = false,
   preserveLineBreaks = false,
 }: LaneProps) {
-  const isSource = kind === "source";
-  // In bilingual mode the recognized original is the reference lane: neutral
-  // white, slightly smaller. In a single-language mode the visible lane is the
-  // reading target and uses the user's subtitle color.
-  const isReference = isSource && displayMode === "bilingual";
-  const laneFontSize = isReference ? Math.max(12, fontSize * sourceScale) : fontSize;
-  const lineHeightPx = Math.ceil(laneFontSize * SUBTITLE_LINE_HEIGHT);
-  const textStyle = {
-    fontSize: laneFontSize,
-    fontFamily,
-    fontWeight: isReference ? 400 : 500,
-    color: hexToRgba(isReference && !tintReference ? "#FFFFFF" : subtitleColorHex(color), isReference && !keepTextOpaque ? 0.86 : 1),
-    lineHeight: `${lineHeightPx}px`,
-    overflowWrap: "break-word" as const,
-    whiteSpace: preserveLineBreaks ? "pre-line" as const : undefined,
-    textShadow: blendsWithBackground ? IMMERSIVE_TEXT_SHADOW : undefined,
-  };
+  const textStyle = subtitleTextStyle({ fontSize, fontFamily, displayMode, kind, color,
+    blendsWithBackground, tintReference, keepTextOpaque, preserveLineBreaks });
+  const lineHeightPx = subtitleLineHeight(textStyle.fontSize);
 
   if (lines === null) {
     return (
@@ -498,16 +471,7 @@ interface CompactLaneProps {
   alignment: SubtitleAlignment;
   hidden?: boolean;
   onMeasure?: (height: number) => void;
-  textStyle: {
-    fontSize: number;
-    fontFamily: string;
-    fontWeight: number;
-    color: string;
-    lineHeight: string;
-    overflowWrap: "break-word";
-    textShadow: string | undefined;
-    whiteSpace: "pre-line" | undefined;
-  };
+  textStyle: ReturnType<typeof subtitleTextStyle>;
 }
 
 /**

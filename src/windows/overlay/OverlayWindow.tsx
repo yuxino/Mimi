@@ -13,7 +13,7 @@ import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "
 import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
 import { OVERLAY_ACTIVITY_PHASES, hexToRgba } from "../../lib/types";
 import { ControlButton } from "./ControlButton";
-import { DragHandle } from "./DragHandle";
+import { DragHandle, OverlayDragArea } from "./DragHandle";
 import { PulseRing } from "./PulseRing";
 import { OverlayLatency } from "./OverlayLatency";
 import { OverlayTranslationService } from "./OverlayTranslationService";
@@ -376,23 +376,25 @@ export function OverlayWindow() {
       >
         <div className="relative flex h-full flex-col" style={{ padding: 5 }}>
           {renderStatusLine()}
-          {/* Top band: the drag handle is absolutely positioned — centered
-              horizontally on the window (left 50% + translateX) and pinned
-              to the band's bottom — so no flex layout or the capsule/button
-              widths can shift it. The band itself only carries the opacity
-              fade and lets pointer events through except on the handle. */}
+          {/* The empty top band shares the handle's native gesture. Controls
+              and metadata sit above this layer; subtitle content and resize
+              edges retain their own pointer handling. */}
           <div
             className="absolute inset-x-0 top-0"
             style={{
               height: topChromeLayout.topBandHeight,
               pointerEvents: "none",
-              // Always-visible drag affordance: dimmed while idle, full on
-              // hover. A fully transparent handle leaves no cue that the
-              // overlay can be moved.
-              opacity: isHovering ? 1 : session.isActive ? 0.45 : 0.6,
+              // Keep the drag affordance legible before the user discovers it.
+              opacity: isHovering ? 1 : 0.8,
               transition: "opacity 160ms ease-out",
             }}
           >
+            <OverlayDragArea
+              onToggleCollapsed={toggleCollapsed}
+              disabled={presentationLocked || controlAction.pending}
+              collapseDisabled={hasSessionError}
+              busy={pendingControl === "collapse"}
+            />
             <div
               style={{
                 position: "absolute",
@@ -405,7 +407,7 @@ export function OverlayWindow() {
               <DragHandle
                 onToggleCollapsed={toggleCollapsed}
                 width={topChromeLayout.dragHandleWidth}
-                disabled={controlAction.pending}
+                disabled={presentationLocked || controlAction.pending}
                 collapseDisabled={hasSessionError}
                 busy={pendingControl === "collapse"}
               />
