@@ -10,12 +10,12 @@ Choose a service, get its credentials, and set it up in Mimi. You only need to e
 
 | What you want | Choose |
 | --- | --- |
-| One service for recognition and translation | [Volcano Engine](#volcano-engine), [Gemini](#google-gemini), [Tencent Cloud](#tencent-cloud), [Baidu](#baidu-translate), or [OpenAI](#openai-realtime); use [Azure OpenAI](#azure-openai) if you have Azure deployments |
-| Use Alibaba simultaneous translation | [LiveTranslate](#alibaba-livetranslate) returns original and translated text from one service; available on desktop and Android in the current development build |
-| Use DeepL, Grok, or another text translator | [Alibaba Cloud’s ASR + MT mode](#alibaba-cloud) or [xAI streaming recognition](#xai-grok), with text translation configured separately |
+| Already have OpenAI or Gemini API access | [OpenAI](#openai-realtime) or [Gemini](#google-gemini). Choose simultaneous translation, or ASR + MT to use a separate text translator |
+| Already have an xAI API key | [xAI streaming recognition](#xai-grok), then [Grok text translation](#grok-text-translation) or another text service |
 | Process locally on a Mac | [Apple Speech](#apple-speech) recognizes speech; [Apple Translation](#apple-translation) translates text. Requires Apple silicon, macOS 26+, and the language packs |
+| Use another service for recognition and translation together | [Alibaba LiveTranslate](#alibaba-livetranslate), [Volcano Engine](#volcano-engine), [Tencent Cloud](#tencent-cloud), or [Baidu](#baidu-translate); use [Azure OpenAI](#azure-openai) if you have Azure deployments |
+| Use DeepL, Grok, or another text translator | Choose ASR + MT with [Alibaba Cloud](#alibaba-cloud), [OpenAI](#openai-realtime), [Gemini](#google-gemini), or [Azure](#azure-openai), or use [xAI streaming recognition](#xai-grok). Then [set up text translation](#text-translation) |
 | Use your own recognition endpoint | [Custom recognition](#custom-recognition), with translation configured separately; the service must support the matching realtime speech protocol |
-| Use your xAI account | [xAI streaming recognition](#xai-grok) with your choice of text translator, or [Grok text translation](#grok-text-translation) with another supported recognizer |
 
 Choose based on the languages you need, your accounts, and your budget. [Text translators](#text-translation) such as DeepL and Index-Translate only process text; they cannot listen to audio by themselves.
 
@@ -40,11 +40,11 @@ Cloud recognition receives audio from the selected source, and remote text trans
 | --- | --- | --- |
 | [Alibaba Cloud](#alibaba-cloud) | [Beijing API Keys](https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key) · [Workspaces](https://bailian.console.aliyun.com/cn-beijing/settings/workspace) | A Beijing Model Studio API key; [LiveTranslate](#alibaba-livetranslate) also needs its workspace ID |
 | [Volcano Engine](#volcano-engine) | [Doubao Speech API Key management](https://console.volcengine.com/speech/new/setting/apikeys?projectName=default) | An API key from the same project where Simultaneous Interpretation 2.0 is enabled |
-| [Google Gemini](#google-gemini) | [Google AI Studio](https://aistudio.google.com/api-keys) | An API key with access to the Gemini Live translation model |
+| [Google Gemini](#google-gemini) | [Google AI Studio](https://aistudio.google.com/api-keys) | An API key with access to the translation or transcription model for your selected mode |
 | [Tencent Cloud](#tencent-cloud) | [ASR console](https://console.cloud.tencent.com/asr) | AppID, SecretID, and SecretKey |
 | [Baidu Translate](#baidu-translate) | [Machine Translation console](https://console.bce.baidu.com/ai-engine/machinetranslation/overview/index) | The application's AppID and API Key; enter the API Key in Mimi's AppKey field |
 | [OpenAI Realtime](#openai-realtime) | [OpenAI API Keys](https://platform.openai.com/api-keys) | An API key for your OpenAI project |
-| [Azure OpenAI](#azure-openai) | [Azure Portal](https://portal.azure.com/) / [Microsoft Foundry](https://ai.azure.com/) | Resource endpoint, translation deployment name, transcription deployment name, and API key |
+| [Azure OpenAI](#azure-openai) | [Azure Portal](https://portal.azure.com/) / [Microsoft Foundry](https://ai.azure.com/) | Resource endpoint, transcription deployment name, and API key; simultaneous translation also needs a translation deployment |
 | [xAI Grok](#xai-grok) | [xAI Console](https://console.x.ai/) | An xAI API key for the selected team |
 | [Apple Speech](#apple-speech) | Choose and download a language inside Mimi | A supported Mac; no key is needed for recognition |
 | [Custom Recognition (DashScope Protocol)](#custom-recognition) | Your DashScope-compatible service | Full WebSocket URL, recognition model, and API key |
@@ -56,7 +56,7 @@ Only setting up text translation? Go to [Grok](#grok-text-translation), [Apple T
 
 ## Alibaba Cloud (Model Studio)
 
-**LiveTranslate** returns original and translated text from one service. **ASR + MT** lets you choose a separate text translator. New configurations in the current development build start with LiveTranslate; existing ones keep their mode.
+**LiveTranslate** returns original and translated text from one service. **ASR + MT** lets you choose a separate text translator. New configurations start with LiveTranslate; existing ones keep their mode.
 
 Links: [Beijing API Key management](https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key) · [Beijing workspace management](https://bailian.console.aliyun.com/cn-beijing/settings/workspace) · [Official activation guidance](https://help.aliyun.com/zh/model-studio/faq-about-alibaba-cloud-model-studio) · [Get an API key](https://help.aliyun.com/zh/model-studio/get-api-key)
 
@@ -113,10 +113,10 @@ Billing: check the project's remaining trial allowance, resource packages, and p
 Links: [Google AI Studio API Keys](https://aistudio.google.com/api-keys) · [Official key guide](https://ai.google.dev/gemini-api/docs/api-key) · [Live translation documentation](https://ai.google.dev/gemini-api/docs/live-api/live-translate)
 
 1. Sign in to Google AI Studio, accept the terms when prompted, and create or select an associated Google Cloud project.
-2. Create a key for that project in API Keys and confirm that the project has access to the Live translation model.
-3. Add **Google Gemini** in Mimi, enter the **API Key**, and save.
+2. Create a key for that project in API Keys and confirm access to the model for the mode you want to use.
+3. Add **Google Gemini** in Mimi and choose **Simultaneous translation** or **ASR + MT**. Enter the **API Key** and save. For ASR + MT, [configure text translation](#text-translation) separately.
 
-Mimi currently uses `gemini-3.5-live-translate-preview`. It requires a Gemini Developer API key; a normal Gemini website login or other Vertex AI credentials cannot be entered directly in this field. Preview model access, quotas, and network availability depend on the project you use.
+Simultaneous translation uses `gemini-3.5-live-translate-preview`; ASR + MT uses `gemini-3.5-transcribe-live` for recognition, then the text service you choose. Use a Gemini Developer API key, not a Gemini website login or Vertex AI credentials. Model access, quotas, and network availability depend on your project.
 
 Billing: check usage and the billing tier of the associated project in AI Studio, along with [Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing). Do not assume that another Gemini model's free allowance applies to Live translation.
 
@@ -161,10 +161,10 @@ Billing: see [realtime speech translation pricing](https://ai.baidu.com/ai-doc/M
 Links: [OpenAI API Keys](https://platform.openai.com/api-keys) · [Realtime translation guide](https://developers.openai.com/api/docs/guides/realtime-translation)
 
 1. Sign in to the OpenAI developer platform and select the project you want to use.
-2. Set up API billing for the project and confirm access to Realtime translation and the required transcription model.
-3. Create a project key in API Keys, paste it into **OpenAI Realtime → API Key** in Mimi, and save.
+2. Set up API billing for the project and confirm access to the models for the mode you want to use.
+3. Create a project key in API Keys. In Mimi's **OpenAI** configuration, choose **Simultaneous translation** or **ASR + MT**, enter the key, and save. For ASR + MT, [configure text translation](#text-translation) separately.
 
-Mimi currently calls `gpt-realtime-translate` and uses `gpt-realtime-whisper` for the original text. Enter an OpenAI API key, not a ChatGPT password or login token. **ChatGPT subscriptions and API billing are separate**; see the [official explanation](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform).
+Simultaneous translation calls `gpt-realtime-translate` and uses `gpt-realtime-whisper` for the original text. ASR + MT uses `gpt-live-transcribe` for recognition, then the text service you choose. Enter an OpenAI API key, not a ChatGPT password or login token. **ChatGPT subscriptions and API billing are separate**; see the [official explanation](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform).
 
 Billing: check [API pricing](https://developers.openai.com/api/docs/pricing) and project usage. Creating a key alone does not mean model access or API credits are ready.
 
@@ -175,14 +175,14 @@ Billing: check [API pricing](https://developers.openai.com/api/docs/pricing) and
 Links: [Azure Portal](https://portal.azure.com/) · [Microsoft Foundry](https://ai.azure.com/) · [Official Realtime WebSocket guide](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets#translate-audio-in-real-time)
 
 1. Create or select an **Azure OpenAI resource** in an active Azure subscription and a region that supports the required models.
-2. Deploy `gpt-realtime-translate` in that resource. Following the [official realtime transcription guidance](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-realtime-whisper), also prepare a compatible deployment for original transcription, such as `gpt-realtime-whisper`. Confirm model availability, region, and access permissions. If the required model is unavailable, do not substitute an ordinary chat deployment.
-3. Record **both actual deployment names**, then copy the resource endpoint and key from its **Keys and Endpoint** page.
-4. Fill in Mimi's **Azure OpenAI** configuration using the table below and save.
+2. Choose the mode you want in Mimi. **Simultaneous translation** needs a `gpt-realtime-translate` deployment and a compatible original-transcription deployment, such as `gpt-realtime-whisper`. **ASR + MT** needs only a realtime transcription deployment; [text translation](#text-translation) is configured separately. Check the [official transcription guidance](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-realtime-whisper) and your region's model availability. An ordinary chat deployment cannot replace a realtime model.
+3. Copy the actual deployment names you need, plus the resource endpoint and key from **Keys and Endpoint**.
+4. Fill in Mimi's **Azure OpenAI** configuration using the table below and save. ASR + MT does not require the Translation Deployment field.
 
 | Mimi field | What to enter |
 | --- | --- |
 | Azure Resource Endpoint | The resource root URL, such as `https://YOUR-RESOURCE.openai.azure.com` |
-| Translation Deployment | The actual deployment name for `gpt-realtime-translate` in this resource |
+| Translation Deployment | For simultaneous translation: the actual deployment name for `gpt-realtime-translate` in this resource |
 | Transcription Deployment | The actual deployment name for a compatible realtime transcription model in the same resource |
 | API Key | The key for this Azure OpenAI resource |
 
@@ -202,7 +202,7 @@ Links: [xAI Console](https://console.x.ai/) · [Official quickstart](https://doc
 4. Recognition and translation save their credentials separately. You may enter the same existing xAI key in both fields or use different keys; Mimi does not borrow a missing translation key from recognition. Check each stage separately.
 5. Choose **No translation (original only)** or **Skip translation** when you do not need translated text. Recognition continues without text translation requests.
 
-The streaming mode uses `grok-voice-transcribe-2.0` for recognition. Confirmed segments go to the independently selected text service; changing that service or its model does not change recognition. Grok text translation is also available with Alibaba ASR, Apple Speech, and custom recognition. See [Grok text translation](#grok-text-translation).
+The streaming mode uses `grok-voice-transcribe-2.0` for recognition. Confirmed segments go to the independently selected text service; changing that service or its model does not change recognition. Grok text translation also works with the [other supported recognizers](#text-translation).
 
 Existing Voice configurations retain **Grok Voice**, which uses `grok-voice-latest` and translates after speech pauses. Change the speech mode explicitly to try ASR, then configure text translation. If you tested the earlier unreleased combined ASR/Grok mode, Mimi copies that profile's saved key and model into its independent text settings once; later credential deletions are preserved.
 
@@ -238,7 +238,9 @@ A normal webpage URL, HTTP file-transcription endpoint, or Chat Completions endp
 
 ## Independent text translation
 
-On desktop, **Alibaba Cloud’s ASR + MT mode, xAI streaming recognition, Apple Speech, and both custom recognition options** support independent text translation. Android supports it with **Alibaba ASR and xAI ASR**. Integrated modes such as Grok Voice use their own translation pipelines.
+On desktop and Android, **ASR + MT with Alibaba Cloud, OpenAI, Gemini or Azure OpenAI**, and **xAI streaming recognition** let you choose a separate text translator. Desktop also supports **Apple Speech and both custom recognition options**. Simultaneous translation and Grok Voice use their service's own translation.
+
+Stop subtitles before changing modes. For OpenAI, Gemini and Azure, choose **Translation mode → ASR + MT** in the configuration. For Alibaba, choose **ASR + MT**; for xAI, choose **Streaming speech recognition (ASR)**.
 
 Complete the **Speech recognition** section first, then choose a service under **Text translation**. When you select Grok, DeepL, DeepLX, ChatMock, or an OpenAI-compatible API, save its translation credentials separately. Mimi does not use the recognition key in place of a missing translation key. Default Alibaba Cloud translation is covered in the [Alibaba Cloud section](#alibaba-cloud).
 
@@ -347,7 +349,7 @@ If a key was previously saved for this same address, choose **Remove translation
 
 ### Original text only
 
-In configurations that support independent text translation, enable **Skip translation** to stop sending text translation requests. Apple Speech, custom recognition, and xAI ASR also offer **No translation (original only)**. On Android, select **No translation (original only)** in Alibaba ASR or xAI ASR text translation options.
+In configurations that support independent text translation, enable **Skip translation** or choose **No translation (original only)** to stop text translation requests. On Android, choose **No translation (original only)** in the text translation options of an ASR + MT or xAI ASR configuration.
 
 **Subtitle display → Original only** changes only what is displayed; it does not disable translation requests. To reduce translation calls, use Skip translation or No translation as described above. Cloud recognition usage continues to accrue.
 
@@ -382,12 +384,15 @@ This table describes the desktop app's default and optional request paths. Model
 | --- | --- | --- |
 | Alibaba Cloud — ASR + MT | Recognition: `qwen-audio-3.0-asr-flash-streaming`; default text translation: `qwen-mt-lite` | Fixed built-in models; the text translation service can be changed independently |
 | Alibaba Cloud — LiveTranslate | `qwen3.8-livetranslate-flash-realtime`; original and translated text come from one realtime session | Select **Simultaneous translation** under **Recognition and translation**; [setup](#alibaba-livetranslate) |
-| Google Gemini | `gemini-3.5-live-translate-preview`; original and translated text come from the same Live session, with no separate ASR model to enter | Fixed built-in model |
+| Google Gemini — simultaneous translation | `gemini-3.5-live-translate-preview`; original and translated text come from the same Live session | Select Simultaneous translation; built-in model |
+| Google Gemini — ASR + MT | Recognition: `gemini-3.5-transcribe-live`; text translation is configured separately | Select ASR + MT, then choose a text translator |
 | Volcano Engine | Doubao Simultaneous Interpretation 2.0, resource ID `volc.service_type.10053`; `/api/v4/ast/v2/translate` | Built-in service endpoint; the request does not specify a public model ID |
 | Tencent Cloud | ASR realtime speech translation; translation model: `hunyuan-translation-lite` | Fixed built-in configuration; the service provides recognition without a separate ASR model ID in the request |
 | Baidu Translate | Realtime speech translation at `/ws/realtime_speech_trans` | Built-in service endpoint; the request does not specify a public model ID |
-| OpenAI Realtime | Translation: `gpt-realtime-translate`; original transcription: `gpt-realtime-whisper` | Fixed built-in models using the dedicated Realtime translation endpoint |
-| Azure OpenAI | Translation: your deployment of `gpt-realtime-translate`; original text: your compatible realtime transcription deployment | Enter both actual deployment names; Mimi does not choose the transcription model for you |
+| OpenAI — simultaneous translation | Translation: `gpt-realtime-translate`; original transcription: `gpt-realtime-whisper` | Select Simultaneous translation; built-in models |
+| OpenAI — ASR + MT | Recognition: `gpt-live-transcribe`; text translation is configured separately | Select ASR + MT, then choose a text translator |
+| Azure OpenAI — simultaneous translation | Translation: your deployment of `gpt-realtime-translate`; original text: your compatible realtime transcription deployment | Enter both actual deployment names |
+| Azure OpenAI — ASR + MT | Recognition: your realtime transcription deployment; text translation is configured separately | Enter the resource endpoint, transcription deployment and key, then choose a text translator |
 | xAI ASR | Recognition: `grok-voice-transcribe-2.0`; text translation is configured separately | Select ASR, then choose a text service and save each stage’s key |
 | xAI Grok Voice | `grok-voice-latest`; recognition and translation share one Voice session | Existing Voice configurations retain this mode |
 | Apple Speech | macOS `SpeechTranscriber` with downloaded language packs; text translation is configured separately | Select a local language pack; there is no cloud model ID |
@@ -395,14 +400,15 @@ This table describes the desktop app's default and optional request paths. Model
 
 Alibaba Cloud’s ASR + MT mode uses `qwen-mt-lite` as its built-in text translator by default. It does not automatically switch to `qwen-mt-flash` or `qwen-mt-plus` for different recognition languages. In this mode, recognition receives a continuous audio stream over WebSocket, while remote independent text translation sends recognized text over HTTP. Apple Translation runs locally. Changing text translation does not change the recognition model.
 
-Model and routing references: [New and existing desktop configurations](../src-tauri/src/settings_store.rs) · [Shared service selection](../shared/mimi-runtime/src/clients/translation_client.rs) · [Current translation modes](../shared/mimi-runtime/src/core/configuration.rs) · [Provider protocols](../shared/mimi-runtime/src/core/protocols/) · [Default Qwen-MT model](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
+Model and routing references: [New and existing desktop configurations](../src-tauri/src/settings_store.rs) · [Shared service selection](../shared/mimi-runtime/src/clients/translation_client.rs) · [Current translation modes](../shared/mimi-runtime/src/core/configuration.rs) · [Shared recognizers](../shared/mimi-runtime/src/clients/recognition_client.rs) · [Provider protocols](../shared/mimi-runtime/src/core/protocols/) · [Default Qwen-MT model](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
 
 ### Alibaba Cloud on Android
 
 | Android mode | Current default models and requests |
 | --- | --- |
-| Built-in recognition + translation | Uses the shared Audio3 recognizer (`qwen-audio-3.0-asr-flash-streaming`) and Qwen-MT; Lite is the default |
-| Independent text translation / no translation | Uses the same Audio3 recognizer, then the selected text service if translation is enabled |
+| Simultaneous translation | Uses `qwen3.8-livetranslate-flash-realtime`; requires a Beijing workspace ID and key |
+| ASR + MT | Uses the shared Audio3 recognizer (`qwen-audio-3.0-asr-flash-streaming`) and Qwen-MT; Lite is the default |
+| ASR + MT with independent text translation / no translation | Uses the same Audio3 recognizer, then the selected text service if translation is enabled |
 
 Production Android sessions use the same shared Rust provider factory as desktop. Historical Kotlin transport classes remain for offline regressions; their models are not the current production defaults. Saved advanced preferences do not override unsupported built-in transports. See [shared provider selection](../shared/mimi-runtime/src/clients/translation_client.rs) and [platform parity](development/platform-parity.md).
 

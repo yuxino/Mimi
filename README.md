@@ -2,49 +2,47 @@
   <img src="src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>Mimi</h1>
   <p>把电脑或麦克风声音转成实时翻译字幕。</p>
+  <p>Live translated subtitles from computer or microphone audio.</p>
+  <p><a href="README_EN.md"><strong>English quick start →</strong></a></p>
+  <p><a href="https://github.com/yuxino/mimi/releases/latest"><strong>下载 Mimi</strong></a> · <a href="https://mimi.yuxino.cn/">官网</a> · <a href="docs/usage.zh-CN.md">使用指南</a></p>
+  <p>macOS 13+（Apple 芯片 / Intel） · Windows x64 · Linux x86_64 · <a href="android/README.zh-CN.md#start">Android 10+</a></p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="最新版本"></a>
-    <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="总下载量"></a>
-    <a href="https://github.com/yuxino/mimi/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/yuxino/mimi/ci.yml?style=flat&amp;logo=githubactions&amp;logoColor=white&amp;branch=main&amp;event=push&amp;label=CI" alt="main 分支 CI 状态"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="MIT 许可证"></a>
   </p>
   <p>
-    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/macOS-13%2B-555?style=flat&amp;logo=apple&amp;logoColor=white" alt="macOS 13+"></a>
-    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-0078D4?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTF2MTFIMHptMTMgMGgxMXYxMUgxM3pNMCAxM2gxMXYxMUgwem0xMyAwaDExdjExSDEzeiIvPjwvc3ZnPg%3D%3D&amp;logoColor=white" alt="Windows x64"></a>
-    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat&amp;logo=linux&amp;logoColor=white" alt="Linux"></a>
-    <a href="android/README.zh-CN.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
-  </p>
-  <p>
-    <a href="README_EN.md"><strong>English</strong></a> · <a href="docs/readme/zh-CN.md">简体中文</a> · <a href="docs/readme/zh-TW.md">繁體中文</a> · <a href="docs/readme/ja.md">日本語</a> · <a href="docs/readme/th.md">ภาษาไทย</a> · <a href="docs/readme/ko.md">한국어</a> · <a href="docs/readme/fr.md">Français</a> · <a href="docs/readme/de.md">Deutsch</a>
+    <a href="README_EN.md">English</a> · <a href="docs/readme/zh-CN.md"><strong>简体中文</strong></a> · <a href="docs/readme/zh-TW.md">繁體中文</a> · <a href="docs/readme/ja.md">日本語</a> · <a href="docs/readme/th.md">ภาษาไทย</a> · <a href="docs/readme/ko.md">한국어</a> · <a href="docs/readme/fr.md">Français</a> · <a href="docs/readme/de.md">Deutsch</a>
   </p>
 </div>
+
+## 开始使用
+
+Mimi 本身免费。使用云服务需要自己的密钥（API Key），服务商可能收费；采集的音频或识别文字会发给你选择的服务。
+
+Apple 芯片 Mac（macOS 26+）也可使用 [Apple 本地服务](docs/provider-setup.zh-CN.md#apple-speech)，下载所需语言资源后无需 API Key。
+
+1. **下载安装**：在[下载页](https://github.com/yuxino/mimi/releases/latest)选择对应系统的安装包。Mac 选 DMG，Windows 选 EXE，Linux 选 AppImage 或 DEB；手机看 [Android 安装说明](android/README.zh-CN.md#start)。
+2. **配置服务**：打开「设置 → 模型与服务」，添加 OpenAI、Gemini、xAI 或其他支持的服务，填写凭据并保存。[配置指南](docs/provider-setup.zh-CN.md#choose)里有密钥获取和填写方法。
+3. **选择声音和语言**：打开「声音与语言」，选择识别语言和翻译语言。默认使用电脑声音；想翻译自己说的话时，再选麦克风，也可以同时开启两路。
+4. **开启字幕**：在「字幕」页打开「实时字幕」，按提示允许所需权限，再播放含有人声的视频、直播或其他内容。
 
 ![Mimi 双语字幕示意：原创插画与示例对白](docs/assets/readme-preview.png)
 
 字幕显示示意，使用示例对白。[看字幕与沉浸模式演示（旧版界面）](docs/demos/README.md)。
 
-## 实时字幕与翻译
+## 常用功能
 
-- **悬浮字幕**：为电影、直播、网课实时显示字幕，支持双语、仅译文或仅原文。
-- **选择音源**：采集电脑声音、麦克风，或同时采集两路。macOS / Windows 11 支持指定应用，Linux 支持选择单独的播放流。
-- **调整显示**：桌面端可调整位置、14–48 px 字号和颜色，显示全部或最近 1–10 条字幕，上翻查看已有历史；沉浸模式只显示文字，点击穿透可让你继续操作下方应用。
-- **保存字幕和录音**：桌面端可将字幕导出为 TXT 或 Markdown，也可将所选音源录制为 WAV。两项保存功能均需手动开启。
+- 显示双语字幕，也可以只看译文或原文。
+- 移动字幕、调整字号和颜色；沉浸模式只留文字，点击可穿透到下方应用。
+- 桌面端可只听指定应用的声音（macOS / Windows 11），Linux 可选单独的播放流。
+- 桌面端可手动开启字幕保存或录音，再导出 TXT / Markdown 字幕或 WAV 音频。默认不保存字幕和录音。
 
-## 开始使用
+## 有问题？
 
-[下载桌面版](https://github.com/yuxino/mimi/releases/latest) · [Android 安装与使用](android/README.zh-CN.md#start)
+安装、权限、显示和保存方法见[使用指南](docs/usage.zh-CN.md)。没有字幕时先看[识别错误](docs/usage.zh-CN.md#errors)，仍有问题可[提交反馈](https://github.com/yuxino/mimi/issues)。
 
-桌面版支持 macOS 13+（Apple 芯片和 Intel）、Windows x64、Linux x86_64。
-
-1. **配置服务**：在「设置 → 模型与服务」中添加语音服务。服务选择和密钥获取方法见[配置指南](docs/provider-setup.zh-CN.md#choose)。
-2. **选择声音和语言**：在「声音与语言」中选择要采集的音源、识别语言和翻译语言。
-3. **开启字幕**：在「字幕」页打开「实时字幕」，按提示授予所需权限，再播放想看的内容。
-
-Mimi 本身免费，云服务可能收费。使用云端识别或翻译时，音频或识别文字会发送给相应服务。Apple 本地服务的适用条件见[配置指南](docs/provider-setup.zh-CN.md#apple-speech)。
-
-## 使用中遇到问题？
-
-[使用指南](docs/usage.zh-CN.md)包含安装、权限、字幕显示和保存记录。没有字幕或连接失败，先看[识别错误](docs/usage.zh-CN.md#errors)；仍未解决可[反馈问题](https://github.com/yuxino/mimi/issues)。
+<details>
+<summary>贡献者与社区致谢</summary>
 
 ## 贡献者
 
@@ -81,5 +79,7 @@ Mimi 本身免费，云服务可能收费。使用云端识别或翻译时，音
 ## 社区致谢
 
 也感谢 [V2EX](https://www.v2ex.com/)、[LINUX DO](https://linux.do/)、[小众软件](https://meta.appinn.net/)、[NodeLoc](https://www.nodeloc.com/)、[Solo](https://solo.xin/)、[新趣集](https://xinquji.com/posts/859305)和[电鸭](https://eleduck.com/)社区朋友的试用、反馈与分享。
+
+</details>
 
 [MIT](LICENSE) © 2026 yuxino

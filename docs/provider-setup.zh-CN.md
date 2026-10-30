@@ -10,12 +10,12 @@
 
 | 你想怎么用 | 对应选择 |
 | --- | --- |
-| 用一家服务完成识别和翻译 | [火山引擎](#volcano-engine)、[Gemini](#google-gemini)、[腾讯云](#tencent-cloud)、[百度](#baidu-translate)、[OpenAI](#openai-realtime)；已有 Azure 部署可用 [Azure OpenAI](#azure-openai) |
-| 用阿里云同声传译 | [同声传译](#alibaba-livetranslate)由同一个服务输出原文和译文；当前开发版的桌面与安卓均支持 |
-| 需要搭配 DeepL、Grok 等文字翻译服务 | [阿里云的「ASR + MT」](#alibaba-cloud)或 [xAI 流式识别](#xai-grok)，文字翻译另选 |
+| 已有 OpenAI 或 Gemini API 账号 | [OpenAI](#openai-realtime) 或 [Gemini](#google-gemini)。可用同声传译，也可选 ASR + MT 搭配其他文字翻译 |
+| 已有 xAI API Key | [xAI 流式识别](#xai-grok)，再配置 [Grok 文字翻译](#grok-text-translation)或其他文字服务 |
 | 在 Mac 本地处理 | [Apple Speech](#apple-speech)识别人声，[Apple 翻译](#apple-translation)翻译文字；需 Apple 芯片、macOS 26+ 和对应语言包 |
+| 用其他服务同时完成识别和翻译 | [阿里云同声传译](#alibaba-livetranslate)、[火山引擎](#volcano-engine)、[腾讯云](#tencent-cloud)或[百度](#baidu-translate)；已有 Azure 部署可用 [Azure OpenAI](#azure-openai) |
+| 需要搭配 DeepL、Grok 等文字翻译服务 | 在[阿里云](#alibaba-cloud)、[OpenAI](#openai-realtime)、[Gemini](#google-gemini) 或 [Azure](#azure-openai) 选择 ASR + MT，或使用 [xAI 流式识别](#xai-grok)，再[配置文字翻译](#text-translation) |
 | 已有自己的识别接口 | [自定义识别](#custom-recognition)，文字翻译另选；必须支持相应的实时语音协议 |
-| 使用 xAI 账号 | [xAI 流式识别](#xai-grok)搭配自选文字翻译，或用其他支持的识别服务搭配 [Grok 文字翻译](#grok-text-translation) |
 
 语言范围和费用各不相同，按需要的语言、已有账号和预算选择。DeepL、Index-Translate 等[文字翻译服务](#text-translation)只处理文字，不能单独听声音。
 
@@ -40,11 +40,11 @@
 | --- | --- | --- |
 | [Alibaba Cloud / 阿里云](#alibaba-cloud) | [北京 API Key](https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key) · [业务空间管理](https://bailian.console.aliyun.com/cn-beijing/settings/workspace) | 北京地域的百炼 API Key；[同声传译](#alibaba-livetranslate)另需对应业务空间 ID |
 | [Volcano Engine / 火山引擎](#volcano-engine) | [豆包语音 API Key 管理](https://console.volcengine.com/speech/new/setting/apikeys?projectName=default) | 已开通同声传译 2.0 的同一项目内的 API Key |
-| [Google Gemini](#google-gemini) | [Google AI Studio](https://aistudio.google.com/api-keys) | 可调用 Gemini Live 翻译模型的 API Key |
+| [Google Gemini](#google-gemini) | [Google AI Studio](https://aistudio.google.com/api-keys) | 可调用所选模式对应翻译或转写模型的 API Key |
 | [Tencent Cloud / 腾讯云](#tencent-cloud) | [ASR 控制台](https://console.cloud.tencent.com/asr) | AppID、SecretID、SecretKey |
 | [Baidu Translate / 百度](#baidu-translate) | [机器翻译控制台](https://console.bce.baidu.com/ai-engine/machinetranslation/overview/index) | 应用的 AppID、API Key（填入 Mimi 的 AppKey） |
 | [OpenAI Realtime](#openai-realtime) | [OpenAI API Keys](https://platform.openai.com/api-keys) | OpenAI 项目的 API Key |
-| [Azure OpenAI](#azure-openai) | [Azure Portal](https://portal.azure.com/) / [Microsoft Foundry](https://ai.azure.com/) | 资源端点、翻译部署名、转写部署名、API Key |
+| [Azure OpenAI](#azure-openai) | [Azure Portal](https://portal.azure.com/) / [Microsoft Foundry](https://ai.azure.com/) | 资源端点、转写部署名和 API Key；同声传译另需翻译部署 |
 | [xAI Grok](#xai-grok) | [xAI Console](https://console.x.ai/) | 所选团队的 xAI API Key |
 | [Apple Speech](#apple-speech) | 在 Mimi 内选择语言并下载 | 符合条件的 Mac；识别无需 Key |
 | [自定义识别（DashScope 协议）](#custom-recognition) | 你使用的 DashScope 兼容服务 | 完整 WebSocket URL、识别模型、API Key |
@@ -56,7 +56,7 @@
 
 ## 阿里云（百炼）
 
-阿里云有两种模式：**同声传译**由同一个服务输出原文和译文；**先识别，再翻译**可搭配其他文字翻译服务。当前开发版新建配置默认选同声传译，已有配置保留原模式。
+阿里云有两种模式：**同声传译**由同一个服务输出原文和译文；**先识别，再翻译**可搭配其他文字翻译服务。新建配置默认选同声传译，已有配置保留原模式。
 
 入口：[北京地域 API Key 管理](https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key) · [北京业务空间管理](https://bailian.console.aliyun.com/cn-beijing/settings/workspace) · [官方开通说明](https://help.aliyun.com/zh/model-studio/faq-about-alibaba-cloud-model-studio) · [获取 API Key](https://help.aliyun.com/zh/model-studio/get-api-key)
 
@@ -113,10 +113,10 @@ Mimi 当前只需要**一个新版豆包语音 API Key**，使用同声传译 2.
 入口：[Google AI Studio API Keys](https://aistudio.google.com/api-keys) · [官方 Key 指引](https://ai.google.dev/gemini-api/docs/api-key) · [Live 翻译文档](https://ai.google.dev/gemini-api/docs/live-api/live-translate)
 
 1. 登录 Google AI Studio，按提示接受条款，并创建或选择关联的 Google Cloud 项目。
-2. 在 API Keys 中为该项目创建 Key，确认该项目可以使用 Live 翻译模型。
-3. 在 Mimi 添加 **Google Gemini**，填入 **API Key** 并保存。
+2. 在 API Keys 中为该项目创建 Key，确认可以使用所选模式需要的模型。
+3. 在 Mimi 添加 **Google Gemini**，选择「**同声传译**」或「**ASR + MT**」，填入 **API Key** 并保存。ASR + MT 还需单独[配置文字翻译](#text-translation)。
 
-Mimi 当前使用 `gemini-3.5-live-translate-preview`。需要 Gemini Developer API 的 Key；普通 Gemini 网页登录或 Vertex AI 的其他认证方式不能直接填入此字段。预览模型的开放范围、额度和网络可达性均以你所用项目为准。
+同声传译使用 `gemini-3.5-live-translate-preview`；ASR + MT 使用 `gemini-3.5-transcribe-live` 识别，再交给所选文字服务。需要 Gemini Developer API 的 Key，不能填 Gemini 网页登录信息或 Vertex AI 凭据。模型权限、额度和网络可达性以你所用项目为准。
 
 计费：查看 AI Studio 中关联项目的用量和计费层级，以及[Gemini API 定价](https://ai.google.dev/gemini-api/docs/pricing)。不要将其他 Gemini 模型的免费额度直接套用到 Live 翻译模型。
 
@@ -161,10 +161,10 @@ Mimi 的 `AppKey` 对应实时接口里的 `app_key`，官方定义为应用的 
 入口：[OpenAI API Keys](https://platform.openai.com/api-keys) · [Realtime 翻译指南](https://developers.openai.com/api/docs/guides/realtime-translation)
 
 1. 登录 OpenAI 开发者平台，选择要使用的项目。
-2. 为项目配置 API 计费，确认具备 Realtime 翻译及所需转写模型的访问权限。
-3. 在 API Keys 创建项目 Key，复制到 Mimi 的 **OpenAI Realtime → API Key** 并保存。
+2. 为项目配置 API 计费，确认可以使用所选模式需要的模型。
+3. 在 API Keys 创建项目 Key。在 Mimi 的 **OpenAI** 配置中选择「**同声传译**」或「**ASR + MT**」，填入 Key 并保存。ASR + MT 还需单独[配置文字翻译](#text-translation)。
 
-Mimi 当前调用 `gpt-realtime-translate`，同时使用 `gpt-realtime-whisper` 获取原文。需要 OpenAI API Key，不是 ChatGPT 密码或登录令牌。**ChatGPT 订阅与 API 计费分开**；详见[官方说明](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform)。
+同声传译调用 `gpt-realtime-translate`，同时使用 `gpt-realtime-whisper` 获取原文；ASR + MT 使用 `gpt-live-transcribe` 识别，再交给所选文字服务。需要 OpenAI API Key，不是 ChatGPT 密码或登录令牌。**ChatGPT 订阅与 API 计费分开**；详见[官方说明](https://help.openai.com/en/articles/9039756-managing-billing-for-chatgpt-and-the-api-platform)。
 
 计费：查看[API 定价](https://developers.openai.com/api/docs/pricing)及项目用量；创建 Key 本身不代表模型权限或 API 额度已就绪。
 
@@ -175,14 +175,14 @@ Mimi 当前调用 `gpt-realtime-translate`，同时使用 `gpt-realtime-whisper`
 入口：[Azure Portal](https://portal.azure.com/) · [Microsoft Foundry](https://ai.azure.com/) · [官方 Realtime WebSocket 指南](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets#translate-audio-in-real-time)
 
 1. 在可用的 Azure 订阅和支持相应模型的地域中，创建或选择 **Azure OpenAI 资源**。
-2. 在该资源中部署实时翻译模型 `gpt-realtime-translate`，并按[官方实时转写说明](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-realtime-whisper)准备兼容的原文转写部署，例如 `gpt-realtime-whisper`。确认模型、地域和访问权限；找不到对应模型时，不要拿普通聊天部署名代替。
-3. 记录**两个实际部署名称**，并在该资源的「Keys and Endpoint」中复制资源端点和 Key。
-4. 在 Mimi 的 **Azure OpenAI** 配置中按下表填写并保存。
+2. 先在 Mimi 选择模式。「**同声传译**」需要 `gpt-realtime-translate` 翻译部署，以及兼容的原文转写部署，如 `gpt-realtime-whisper`。「**ASR + MT**」只需要实时转写部署，[文字翻译](#text-translation)另行配置。请对照[官方转写说明](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/gpt-realtime-whisper)确认地域和模型权限，普通聊天部署不能代替实时模型。
+3. 复制所需的实际部署名称，并在该资源的「Keys and Endpoint」中复制资源端点和 Key。
+4. 在 Mimi 的 **Azure OpenAI** 配置中按下表填写并保存。ASR + MT 无需填写「翻译部署名称」。
 
 | Mimi 字段 | 填写内容 |
 | --- | --- |
 | Azure 资源端点 | 资源根地址，例如 `https://YOUR-RESOURCE.openai.azure.com` |
-| 翻译部署名称 | 该资源内 `gpt-realtime-translate` 的实际部署名 |
+| 翻译部署名称 | 同声传译时填写：该资源内 `gpt-realtime-translate` 的实际部署名 |
 | 转写部署名称 | 同一资源内兼容实时转写模型的实际部署名 |
 | API Key | 该 Azure OpenAI 资源的 Key |
 
@@ -202,7 +202,7 @@ Mimi 这项服务接的是 **Azure OpenAI**，不是 Azure Speech 资源。普�
 4. 识别与翻译分别保存凭据。两处可以填写同一个已有 xAI Key，也可以使用不同 Key；Mimi 不会拿识别 Key 补上缺失的翻译 Key。分别运行两项检查。
 5. 不需要译文时，选择「**不翻译（仅原文）**」或开启「**跳过翻译**」；识别继续运行，不会请求文字翻译。
 
-流式模式的识别模型是 `grok-voice-transcribe-2.0`，已确认的语音片段交给独立选择的文字服务。更换文字服务或其模型不会更换识别模型。阿里云识别、Apple Speech 和自定义识别也可使用 Grok，见 [Grok 文字翻译](#grok-text-translation)。
+流式模式的识别模型是 `grok-voice-transcribe-2.0`，已确认的语音片段交给独立选择的文字服务。更换文字服务或其模型不会更换识别模型。Grok 文字翻译也可搭配[其他支持的识别服务](#text-translation)。
 
 已有 Voice 配置保留「**Grok Voice**」，使用 `grok-voice-latest` 在讲话停顿后分段翻译。需要体验 ASR 时，手动切换语音模式，再配置文字翻译。如果曾试用未发布的旧版 ASR/Grok 组合，Mimi 会将同一配置已保存的 Key 和模型复制到独立文字设置一次；之后删除凭据不会自动恢复。
 
@@ -238,7 +238,9 @@ Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引�
 
 ## 独立文字翻译
 
-桌面端的 **阿里云「ASR + MT」、xAI 流式识别、Apple Speech、两种自定义识别**支持独立文字翻译。Android 的 **阿里云 ASR 和 xAI ASR** 也支持。Grok Voice 等一体模式仍使用各自的翻译链路。
+桌面和安卓均可用**阿里云、OpenAI、Gemini、Azure OpenAI 的 ASR + MT**，或 **xAI 流式识别**，再单独选择文字翻译。桌面端还支持 **Apple Speech 和两种自定义识别**。同声传译和 Grok Voice 使用服务自身的翻译。
+
+切换模式前先停止字幕。OpenAI、Gemini 和 Azure 在配置中选择「**翻译模式 → ASR + MT**」；阿里云选择「**ASR + MT**」，xAI 选择「**流式语音识别（ASR）**」。
 
 先在「语音识别」部分完成配置，再在「文字翻译」选择服务。选择 Grok、DeepL、DeepLX、ChatMock 或 OpenAI 兼容接口时，分别保存对应的翻译凭据；Mimi 不会拿识别 Key 代替缺失的翻译 Key。默认阿里云翻译已在[阿里云章节](#alibaba-cloud)说明。
 
@@ -347,7 +349,7 @@ Apple Speech 只在**Apple 芯片、macOS 26 或更新版本、系统识别引�
 
 ### 仅显示原文
 
-在支持独立文字翻译的配置中，开启「**跳过翻译**」即可停止发送文字翻译请求；Apple / 自定义识别及 xAI ASR 也可选择「**不翻译（仅原文）**」。Android 在阿里云 ASR 和 xAI ASR 的文字翻译选项中选择「**不翻译（仅原文）**」。
+在支持独立文字翻译的配置中，开启「**跳过翻译**」或选择「**不翻译（仅原文）**」，即可停止文字翻译请求。安卓可在 ASR + MT 或 xAI 流式识别配置的文字翻译选项中选择「**不翻译（仅原文）**」。
 
 「字幕显示 → 仅原文」只改变显示方式，不等于关闭翻译请求。需要减少翻译调用时，请使用前面的跳过 / 不翻译设置。云端语音识别的用量仍会继续计算。
 
@@ -382,12 +384,15 @@ Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple
 | --- | --- | --- |
 | 阿里云 — 先识别，再翻译 | 识别：`qwen-audio-3.0-asr-flash-streaming`；默认文字翻译：`qwen-mt-lite` | 内置固定；可单独更换文字翻译服务 |
 | 阿里云 — LiveTranslate 同声 | `qwen3.8-livetranslate-flash-realtime`；原文和译文来自同一实时会话 | 在「识别与翻译」中选择「同声传译」；见[配置步骤](#alibaba-livetranslate) |
-| Google Gemini | `gemini-3.5-live-translate-preview`；原文和译文来自同一 Live 会话，没有另填 ASR 模型 | 内置固定 |
+| Google Gemini — 同声传译 | `gemini-3.5-live-translate-preview`；原文和译文来自同一 Live 会话 | 选择「同声传译」；模型内置 |
+| Google Gemini — ASR + MT | 识别：`gemini-3.5-transcribe-live`；文字翻译另选 | 选择 ASR + MT 后配置文字服务 |
 | Volcano Engine | 豆包同声传译 2.0，资源 ID `volc.service_type.10053`；`/api/v4/ast/v2/translate` | 内置服务接口；请求未指定公开模型 ID |
 | Tencent Cloud | ASR 实时语音翻译；翻译模型 `hunyuan-translation-lite` | 内置固定；识别由该服务提供，未单独指定 ASR 模型 ID |
 | Baidu Translate | 实时语音翻译 `/ws/realtime_speech_trans` | 内置服务接口；请求未指定公开模型 ID |
-| OpenAI Realtime | 翻译：`gpt-realtime-translate`；原文转写：`gpt-realtime-whisper` | 内置固定，使用专用 Realtime 翻译接口 |
-| Azure OpenAI | 翻译：用户部署的 `gpt-realtime-translate`；原文：用户指定的兼容实时转写部署 | 填写两个实际部署名；Mimi 不替用户选择转写模型 |
+| OpenAI — 同声传译 | 翻译：`gpt-realtime-translate`；原文转写：`gpt-realtime-whisper` | 选择「同声传译」；模型内置 |
+| OpenAI — ASR + MT | 识别：`gpt-live-transcribe`；文字翻译另选 | 选择 ASR + MT 后配置文字服务 |
+| Azure OpenAI — 同声传译 | 翻译：用户部署的 `gpt-realtime-translate`；原文：用户指定的兼容实时转写部署 | 填写两个实际部署名 |
+| Azure OpenAI — ASR + MT | 识别：用户的实时转写部署；文字翻译另选 | 填写资源端点、转写部署名和 Key，再配置文字服务 |
 | xAI ASR | 识别：`grok-voice-transcribe-2.0`；文字翻译另选 | 选择 ASR 后配置文字服务，分别保存两阶段的 Key |
 | xAI Grok Voice | `grok-voice-latest`；识别和翻译来自同一 Voice 会话 | 已有 Voice 配置保留此模式 |
 | Apple Speech | macOS `SpeechTranscriber` 与已下载语言包；文字翻译单独配置 | 选择本机语言包；无云端模型 ID |
@@ -395,14 +400,15 @@ Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple
 
 阿里云「ASR + MT」的内置文字翻译默认使用 `qwen-mt-lite`，不会因识别语言不同自动切换到 `qwen-mt-flash` 或 `qwen-mt-plus`。该模式的识别经 WebSocket 持续送入音频，远程独立文字翻译通过 HTTP 发送识别文字，Apple 翻译则在本地执行；更换文字翻译不会更换识别模型。
 
-模型与路由依据：[桌面新建配置与旧配置](../src-tauri/src/settings_store.rs) · [共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/configuration.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols/) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
+模型与路由依据：[桌面新建配置与旧配置](../src-tauri/src/settings_store.rs) · [共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/configuration.rs) · [共享识别服务](../shared/mimi-runtime/src/clients/recognition_client.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols/) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
 
 ### Android 的阿里云链路
 
 | Android 使用方式 | 当前默认模型与调用方式 |
 | --- | --- |
-| 内置识别 + 翻译 | 共享 Audio3 识别（`qwen-audio-3.0-asr-flash-streaming`）＋Qwen-MT，默认 Lite |
-| 独立文字翻译 / 不翻译 | 使用同一 Audio3 识别；启用翻译时调用所选文字服务 |
+| 同声传译 | `qwen3.8-livetranslate-flash-realtime`；需北京业务空间 ID 和 Key |
+| ASR + MT | 共享 Audio3 识别（`qwen-audio-3.0-asr-flash-streaming`）＋Qwen-MT，默认 Lite |
+| ASR + MT 搭配独立文字翻译 / 不翻译 | 使用同一 Audio3 识别；启用翻译时调用所选文字服务 |
 
 Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotlin 传输类保留用于离线回归，其中的模型不是当前正式链路的默认模型。保存的高级设置不会覆盖内置链路不支持的端点或模型。实现见[共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs)和[平台差异（英文）](development/platform-parity.md)。
 

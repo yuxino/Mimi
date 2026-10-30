@@ -8,12 +8,12 @@
 | --- | --- |
 | 安装、权限、字幕显示与保存 / Install, permissions, subtitles, saving | [使用指南](usage.zh-CN.md) · [Usage](usage.md) |
 | 选服务、获取 Key、填写配置 / Choose and configure a service | [服务配置](provider-setup.zh-CN.md#choose) · [Service setup](provider-setup.md#choose) |
-| 在手机上使用 / Use Mimi on a phone | [Android setup (English)](../android/README.md#start) |
+| 在手机上使用 / Use Mimi on a phone | [安卓安装与使用](../android/README.zh-CN.md#start) · [Android setup](../android/README.md#start) |
 | 配好后仍没有字幕 / Troubleshoot missing subtitles | [排查服务问题](provider-setup.zh-CN.md#troubleshooting) · [Troubleshooting](provider-setup.md#troubleshooting) |
 
 使用指南其他语言 / More usage languages: [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
 
-详细服务配置提供中、英文；Android 文档为英文。 / Detailed service setup is available in Chinese and English; Android docs are in English.
+服务配置和安卓上手指南均提供中、英文；安卓开发说明见英文文档。 / Service setup and Android getting started are available in Chinese and English; Android development notes are in English.
 
 ## 更新记录 / Release notes
 

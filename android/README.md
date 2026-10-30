@@ -9,19 +9,21 @@ follow a class, or translate a conversation with the original text and translati
 
 ## Start here
 
-1. [Download the Android APK](https://github.com/yuxino/mimi/releases/latest) and install it on Android 10 or later.
-2. Open **Services → Add**, choose a service, enter its credentials, and save. The first configuration is selected automatically; tap a saved configuration to switch later. The [service setup guide](../docs/provider-setup.md#choose) explains where to get them; cloud usage may cost money.
-3. In **Captions**, choose the audio input and languages, then start. System audio is the default; microphone capture requires choosing Microphone or Both. Allow display over other apps and audio recording. The system capture prompt appears only for inputs that include app playback.
-4. Switch to the app you want to hear and play speech. Subtitles appear over it; use Immersive Mode to keep just the text and pass touches through.
+1. **Install Mimi.** [Download the APK](https://github.com/yuxino/mimi/releases/latest) for Android 10 or later.
+2. **Add a service.** Open **Services → Add**, choose a service, enter its credentials, and save. The first configuration is selected automatically. The [setup guide](../docs/provider-setup.md#choose) explains which service to choose and where to get a key.
+3. **Start captions.** In **Captions**, choose the audio input and languages, then start. Allow display over other apps and audio recording. If you selected system audio or both inputs, also accept Android's playback-capture prompt.
+4. **Play something.** Switch to a video, stream, or other app and play speech. Subtitles appear over it. Immersive Mode leaves just the text and lets touches pass through.
 
-System-only sessions never open the microphone. Android still requires the
-audio-recording permission for playback capture. Some apps block capture, so protected
-content may produce no subtitles. Cloud recognition receives the captured audio;
-remote text translation receives recognized text. New installs retain the three most recent
-confirmed captions in memory; existing installations keep their previous setting.
-Stopping keeps the bounded confirmed captions readable until the next session. Enable
-**Save captions** before starting to keep a private local transcript. **Saved sessions**
-lets you read, export TXT/Markdown, or explicitly delete it; saving is off by default.
+Mimi is free. Cloud services may charge for API usage: recognition sends your selected
+audio to the service, and remote text translation sends the recognized text.
+Set up your credentials on the phone; they do not sync from the desktop app.
+
+## Using subtitles
+
+- **Audio input:** system audio is selected by default. Choose **Microphone** or **Both** to translate your voice. Both keeps the inputs separate and labels their captions. Stop before switching inputs. System-only capture never opens the microphone, but Android still requires audio-recording permission for playback capture.
+- **No subtitles:** make sure captions are running, a saved service is selected, and speech is playing. Some apps block playback capture; protected audio cannot be captured. Android asks for playback-capture consent each time you start system audio.
+- **Recent captions:** new installs keep the three most recent confirmed captions in memory; existing installations keep their previous setting. You can change that limit. Stopping leaves these captions readable; the next session clears them.
+- **Saved sessions:** **Save captions** is off by default. Turn it on before starting to write a private local transcript. Open **Saved sessions** to read it, export TXT/Markdown, or delete it. Turning saving off deletes the current session's saved content; older sessions need to be deleted separately. Android does not export recorded audio.
 
 Need to change the text translator? See [independent text translation](#independent-text-translation).
 Android has no Apple Speech or custom recognition setup. See [known limits](#known-limits)
@@ -48,12 +50,13 @@ code does not prove availability on every device; see [verification status](#ver
   (`USAGE_MEDIA/GAME/UNKNOWN`), 48 kHz stereo float, box-filter downmix +
   resample to the provider's target rate (16 kHz / 24 kHz mono PCM16).
 - **Microphone and Both** — explicit microphone capture uses a separate mono AudioRecord. Both keeps independent capture buffers, recognition sessions and source-labeled captions; audio is never mixed and a failed input never silently falls back. Stop before changing the input. Microphone-only does not request screen capture permission.
-- **Services** — Alibaba Cloud DashScope, OpenAI Realtime Translation, Google Gemini Live,
-  Azure OpenAI, Volcano Engine Doubao, Tencent Cloud, Baidu realtime translation and xAI Grok Voice.
-  Their production clients are shared with desktop. Grok is turn-based voice translation;
-  generated audio is discarded. Each service has its own encrypted credential fields and supported language choices.
+- **Services** — Alibaba Cloud, OpenAI, Google Gemini, Azure OpenAI, Volcano Engine,
+  Tencent Cloud, Baidu and xAI. Alibaba, OpenAI, Gemini and Azure offer **ASR + MT**
+  with a separate text translator; xAI offers streaming recognition or Grok Voice.
+  See the [service setup guide](../docs/provider-setup.md#choose) for modes and credentials.
+  Production clients are shared with desktop. Each configuration keeps its own encrypted credentials.
 - **Configuration** — save multiple named configurations, including more than one for the same service. Each keeps its own credentials and text translator. Tap a configuration to select it; Settings edits it without switching. Duplicate and Delete are in the editor’s More menu. Stop captions before changing configurations. Azure requires a
-  resource endpoint and translation/transcription deployment names; Tencent requires AppID, SecretID and
+  resource endpoint and transcription deployment; simultaneous translation also needs a translation deployment. Tencent requires AppID, SecretID and
   SecretKey; Baidu requires AppID and AppKey. Other services use an API key. Built-in service models,
   endpoints and language capabilities follow the shared factory. Stored secrets are not filled back into the editor;
   leaving a secret field empty preserves its saved value. Changes are written only with Save; backing out of a new editor adds nothing. Existing service settings migrate automatically.
@@ -85,7 +88,7 @@ code does not prove availability on every device; see [verification status](#ver
   for Audio3 + text translation and sentence-identified realtime previews for
   integrated live clients. New sentence identities never borrow old final lines;
   the current complete pair remains available independently of saved history.
-- **Alibaba Cloud** — choose simultaneous translation or ASR + MT. New configurations start with simultaneous translation; existing ones keep ASR + MT. Both modes use the desktop runtime. Follow the shared [Alibaba setup guide](../docs/provider-setup.md#alibaba-livetranslate) for workspace and key requirements. ASR + MT uses Audio3 with Qwen-MT Lite/Flash/Plus or an independent text translator; Lite is the default. Historical built-in custom
+- **Alibaba Cloud** — choose simultaneous translation or ASR + MT. New configurations start with simultaneous translation; existing ones keep their mode. Follow the shared [Alibaba setup guide](../docs/provider-setup.md#alibaba-cloud) for workspace, key and model requirements. Historical built-in custom
   endpoint/model/hotword keys are retained without enabling unsupported overrides.
 - **Credentials** — EncryptedSharedPreferences (Android Keystore master key),
   stored separately from profile metadata and isolated per configuration.
@@ -111,10 +114,12 @@ Setup, permission and audio-recovery instructions remain visible.
 
 ## Requirements
 
-- Android 10+ (API 29); the original contributor reported Android 17 testing,
-  and the updated interface is checked on an Android 15 emulator
+- Android 10+ (API 29)
 - Credentials for one supported service (usage may incur provider charges)
 - The "Display over other apps" and `RECORD_AUDIO` grants, plus per-start MediaProjection consent for system playback
+
+<details>
+<summary>Build and development</summary>
 
 ## Build
 
@@ -261,37 +266,26 @@ Pass
 `-e demo true` for a paced walkthrough suitable for emulator screen recording;
 it demonstrates the labeled sample, not live translation.
 
+</details>
+
 ## Independent text translation
 
-In Services → Alibaba Cloud, **Text translation** offers the built-in translation,
-**DeepL**, **DeepLX**, **ChatMock**, **OpenAI-compatible API**, and **No translation (original only)**.
-Independent modes use Alibaba Cloud's `qwen3-asr-flash-realtime` for recognition; the selected
-text service translates confirmed text. Original-only mode makes no text translation request.
-Choose **ASR + MT** in the Alibaba configuration and enable that ASR model for its key. Other speech providers keep their built-in translation. This is not an OpenAI Realtime endpoint override.
+Use this when you want one service to recognize speech and another to translate it.
 
-- **DeepL** needs a separate DeepL API key. Mimi chooses the official Free endpoint for
-  keys ending in `:fx`, otherwise the Pro endpoint. No custom URL or model is needed.
-- **DeepLX** needs your service address and an optional Bearer token. Mimi appends
-  `/translate` when missing; the service must accept `text`, `source_lang`, `target_lang`
-  and return integer `code: 200` with translated text in `data`.
-- **ChatMock** starts with `http://127.0.0.1:8000/v1`. Enter a model ID from your running
-  server; Mimi does not choose a model or enable local HTTP for you.
-- **OpenAI-compatible API** takes your service endpoint, model and optional key, with no
-  ChatMock address prefilled. Each translator retains its own encrypted configuration.
+1. Stop captions and open a configuration in **Services**.
+2. For Alibaba Cloud, OpenAI, Gemini or Azure OpenAI, choose **ASR + MT**. For xAI, choose **Streaming speech recognition (ASR)**.
+3. Under **Text translation**, choose Grok, DeepL, DeepLX, ChatMock or an OpenAI-compatible service. Fill in that service's settings and save. Recognition and translation have separate credentials; Mimi does not reuse a missing translation key from recognition.
+4. Check recognition and text translation separately, then start captions. Choose **No translation (original only)** if you only need the recognized text. Changing the subtitle display to Original only does not stop translation requests.
 
-The old combined entry remains **OpenAI-compatible API**, including its selected state,
-endpoint, model and key. Nothing is copied to the new ChatMock entry or inferred from a
-localhost URL. Select ChatMock and configure it separately to use the new entry.
+Follow the shared [text translation guide](../docs/provider-setup.md#text-translation)
+for keys, addresses and models. Recognition still uses your selected speech service
+and may incur charges. Android does not offer Apple local services or custom speech recognition.
 
-Run [ChatMock](https://github.com/RayBytes/ChatMock) yourself and enter its `/v1` base URL
-(or full `/v1/chat/completions` URL), a model ID from its `/v1/models`, and an optional
-Bearer key if your reverse proxy requires one. The endpoint must accept non-streaming
-Chat Completions (`model`, `messages`, `stream: false`) and return a final
-`choices[0].message.content`. Recommended ChatMock options are
-`--reasoning-compat legacy --reasoning-summary none`; Mimi also removes complete leading
-`<think>` blocks and rejects missing final text.
-The local address describes where the ChatMock API runs. Translation models are still
-called online through the account signed in to ChatMock; they do not run on the phone or computer.
+<details>
+<summary>Local services and translation implementation</summary>
+
+Existing OpenAI-compatible configurations stay under that entry, including their
+saved address, model and key. To use the separate ChatMock entry, select and configure it explicitly.
 
 Use HTTPS for computers and servers, including LAN addresses. With explicit local HTTP
 permission, only `localhost`, `127.0.0.1`, `[::1]` and Android emulator host `10.0.2.2`
@@ -312,6 +306,11 @@ and retries. Explicit stop drains accepted work within finite shared grace windo
 errors and permission revocation abort. Overflow rejects new work and drains accepted
 work. Late results cannot enter a newer session. These checks do not
 prove a live DeepL, DeepLX or ChatMock account or physical Android device until those are tested separately.
+
+</details>
+
+<details>
+<summary>Architecture and verification</summary>
 
 ## Architecture
 
@@ -345,7 +344,7 @@ emulator with Firefox. The bundled Chrome tested there explicitly disables playb
 samples; this finding is specific to that browser package. The additional provider adapters have protocol tests,
 including Tencent signing and Volcano binary frames, but have not been verified against live accounts. Do not
 interpret build or protocol-test success as physical-device or all-provider acceptance. The original contributor’s
-reported device test applies to the original port, not every subsequent change.
+reported Android 17 device test applies to the original port, not every subsequent change.
 
 For real playback acceptance, use the independent debug app with a stable local
 signing identity. `LiveAcceptanceChecks` requires native Start and fresh platform
@@ -374,6 +373,8 @@ glyph and visible-rectangle comparisons in the same root-window coordinate
 system; screen offsets of floating windows must not become clipping failures.
 Browser media keys alone do not prove audio, and zero-duration injected taps
 can miss Firefox controls; verify the player after a native short press.
+
+</details>
 
 ## Known limits
 
