@@ -38,6 +38,9 @@ Preserve these product constraints:
 - `README.md`: the Simplified Chinese entry point; `README_EN.md` is English.
   Other localized READMEs live in `docs/readme/`; contribution and security
   guides live in `.github/`.
+  Preserve the release, download-count, CI, license and platform badges when
+  simplifying READMEs. Keep language switching in one navigation row; the
+  Chinese entry does not need a second English pitch or quick-start banner.
 - `docs/plans/`: current accepted design records; completed checklists and
   superseded designs stay in Git history. Put reusable rules in the owning
   development guide instead of duplicating task notes. Dated QA, release and

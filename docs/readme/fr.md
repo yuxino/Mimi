@@ -1,28 +1,24 @@
 <div align="center">
   <img src="../../src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>Mimi</h1>
-  <p>Des sous-titres traduits en direct à partir du son de votre ordinateur ou du microphone.</p>
-  <p><a href="https://github.com/yuxino/mimi/releases/latest"><strong>Télécharger Mimi</strong></a> · <a href="https://mimi.yuxino.cn/fr/">Site web</a> · <a href="../usage.fr.md">Mode d’emploi</a></p>
-  <p>macOS 13+ (Apple silicon / Intel) · Windows x64 · Linux x86_64 · <a href="../../android/README.md#start">Android 10+</a></p>
+  <p>Des sous-titres traduits en direct pour les vidéos que vous regardez.</p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="Dernière version"></a>
+    <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="Nombre total de téléchargements"></a>
+    <a href="https://github.com/yuxino/mimi/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/yuxino/mimi/ci.yml?style=flat&amp;logo=githubactions&amp;logoColor=white&amp;branch=main&amp;event=push&amp;label=CI" alt="État de la CI sur main"></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="Licence MIT"></a>
   </p>
+  <p>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/macOS-13%2B-555?style=flat&amp;logo=apple&amp;logoColor=white" alt="macOS 13+"></a>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-0078D4?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTF2MTFIMHptMTMgMGgxMXYxMUgxM3pNMCAxM2gxMXYxMUgwem0xMyAwaDExdjExSDEzeiIvPjwvc3ZnPg%3D%3D&amp;logoColor=white" alt="Windows x64"></a>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat&amp;logo=linux&amp;logoColor=white" alt="Linux"></a>
+    <a href="../../android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
+  </p>
+  <p><a href="https://github.com/yuxino/mimi/releases/latest"><strong>Télécharger Mimi</strong></a> · <a href="https://mimi.yuxino.cn/fr/">Site web</a> · <a href="../usage.fr.md">Mode d’emploi</a></p>
   <p>
     <a href="../../README_EN.md">English</a> · <a href="../../README.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ja.md">日本語</a> · <a href="th.md">ภาษาไทย</a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a>
   </p>
 </div>
-
-## Premiers pas
-
-Mimi est gratuit et open source. Les services cloud nécessitent vos propres identifiants API et peuvent être payants. L’audio ou le texte reconnu est envoyé au service choisi.
-
-Sur un Mac compatible avec puce Apple et macOS 26+, les [services locaux Apple](../provider-setup.md#apple-speech) fonctionnent sans clé API après le téléchargement des ressources linguistiques.
-
-1. **Téléchargez et installez Mimi** : choisissez le fichier adapté sur la [page de téléchargement](https://github.com/yuxino/mimi/releases/latest) : DMG pour Mac, EXE pour Windows ou AppImage / DEB pour Linux. Pour les téléphones, suivez le [guide Android (anglais)](../../android/README.md#start).
-2. **Configurez un service** dans Réglages → Modèles et services. Ajoutez OpenAI, Gemini, xAI ou un autre service pris en charge, saisissez vos identifiants API, puis enregistrez. Le [guide de configuration (anglais)](../provider-setup.md#choose) explique où les obtenir et quoi saisir.
-3. **Choisissez le son et les langues** dans les réglages audio : langue parlée et langue de traduction. Le son de l’ordinateur est sélectionné par défaut. Choisissez le microphone pour votre propre voix, ou activez les deux sources.
-4. **Lancez les sous-titres** depuis la page Sous-titres. Activez les sous-titres en direct, accordez les autorisations demandées, puis lancez une vidéo, une diffusion ou un autre contenu avec des voix.
 
 ![Illustration des sous-titres bilingues de Mimi avec un dialogue fictif](../assets/readme-preview.png)
 
@@ -30,10 +26,21 @@ Illustration de l’interface avec un dialogue d’exemple. [Voir les sous-titre
 
 ## Ce que vous pouvez faire
 
-- Affichez les deux langues, la traduction seule ou l’original seul.
-- Déplacez les sous-titres et réglez la taille du texte et sa couleur. Le mode immersif garde seulement le texte et laisse passer les clics.
-- Sur ordinateur, sélectionnez une application sous macOS / Windows 11 ou un flux de lecture sous Linux.
-- Sur ordinateur, activez la sauvegarde des sous-titres ou l’enregistrement audio pour exporter en TXT / Markdown ou WAV. Ces deux options sont désactivées par défaut.
+- **Suivez dans deux langues** : pour les vidéos, les directs et les cours en langue étrangère, affichez les deux langues, la traduction seule ou l’original seul.
+- **Gardez seulement les sous-titres** : déplacez-les et réglez la taille du texte et sa couleur. Le mode immersif garde seulement le texte et laisse passer les clics.
+- **Choisissez la source audio** : sur ordinateur, sélectionnez une application sous macOS / Windows 11 ou un flux de lecture sous Linux.
+- **Gardez une copie** : sur ordinateur, activez la sauvegarde des sous-titres ou l’enregistrement audio pour exporter en TXT / Markdown ou WAV. Ces deux options sont désactivées par défaut.
+
+## Premiers pas
+
+Mimi est gratuit et open source, sans abonnement. Les services cloud nécessitent vos propres identifiants API et peuvent être payants. L’audio ou le texte reconnu est envoyé au service choisi.
+
+Sur un Mac compatible avec puce Apple et macOS 26+, les [services locaux Apple](../provider-setup.md#apple-speech) fonctionnent sans clé API après le téléchargement des ressources linguistiques.
+
+1. **Téléchargez et installez Mimi** : choisissez le fichier adapté sur la [page de téléchargement](https://github.com/yuxino/mimi/releases/latest) : DMG pour macOS 13+ (puce Apple / Intel), EXE pour Windows x64 ou AppImage / DEB pour Linux x86_64. Pour les téléphones sous Android 10 ou ultérieur, suivez le [guide Android (anglais)](../../android/README.md#start).
+2. **Configurez un service** dans Réglages → Modèles et services. Ajoutez OpenAI, Gemini, xAI ou un autre service pris en charge, saisissez vos identifiants API, puis enregistrez. Le [guide de configuration (anglais)](../provider-setup.md#choose) explique où les obtenir et quoi saisir.
+3. **Choisissez le son et les langues** dans les réglages audio : langue parlée et langue de traduction. Le son de l’ordinateur est sélectionné par défaut. Choisissez le microphone pour votre propre voix, ou activez les deux sources.
+4. **Lancez les sous-titres** depuis la page Sous-titres. Activez les sous-titres en direct, accordez les autorisations demandées, puis lancez une vidéo, une diffusion ou un autre contenu avec des voix.
 
 ## Besoin d’aide ?
 

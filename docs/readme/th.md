@@ -1,28 +1,24 @@
 <div align="center">
   <img src="../../src-tauri/icons/128x128@2x.png" width="96" alt="mimi">
   <h1>Mimi</h1>
-  <p>แสดงคำบรรยายแปลสดจากเสียงคอมพิวเตอร์หรือไมโครโฟน</p>
-  <p><a href="https://github.com/yuxino/mimi/releases/latest"><strong>ดาวน์โหลด Mimi</strong></a> · <a href="https://mimi.yuxino.cn/th/">เว็บไซต์</a> · <a href="../usage.th.md">คู่มือใช้งาน</a></p>
-  <p>macOS 13+ (Apple silicon / Intel) · Windows x64 · Linux x86_64 · <a href="../../android/README.md#start">Android 10+</a></p>
+  <p>เพิ่มคำบรรยายแปลสดให้วิดีโอที่กำลังเล่น</p>
   <p>
     <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/github/v/release/yuxino/mimi?style=flat&amp;logo=github&amp;logoColor=white" alt="รุ่นล่าสุด"></a>
+    <a href="https://github.com/yuxino/mimi/releases"><img src="https://img.shields.io/github/downloads/yuxino/mimi/total?style=flat&amp;labelColor=a85f82&amp;color=e889b5" alt="ยอดดาวน์โหลดทั้งหมด"></a>
+    <a href="https://github.com/yuxino/mimi/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/yuxino/mimi/ci.yml?style=flat&amp;logo=githubactions&amp;logoColor=white&amp;branch=main&amp;event=push&amp;label=CI" alt="สถานะ CI บน main"></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/github/license/yuxino/mimi?style=flat&amp;logo=opensourceinitiative&amp;logoColor=white" alt="สัญญาอนุญาต MIT"></a>
   </p>
+  <p>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/macOS-13%2B-555?style=flat&amp;logo=apple&amp;logoColor=white" alt="macOS 13+"></a>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Windows-x64-0078D4?style=flat&amp;logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0wIDBoMTF2MTFIMHptMTMgMGgxMXYxMUgxM3pNMCAxM2gxMXYxMUgwem0xMyAwaDExdjExSDEzeiIvPjwvc3ZnPg%3D%3D&amp;logoColor=white" alt="Windows x64"></a>
+    <a href="https://github.com/yuxino/mimi/releases/latest"><img src="https://img.shields.io/badge/Linux-x86__64-FCC624?style=flat&amp;logo=linux&amp;logoColor=white" alt="Linux"></a>
+    <a href="../../android/README.md"><img src="https://img.shields.io/badge/Android-app-3DDC84?style=flat&amp;logo=android&amp;logoColor=white" alt="Android"></a>
+  </p>
+  <p><a href="https://github.com/yuxino/mimi/releases/latest"><strong>ดาวน์โหลด Mimi</strong></a> · <a href="https://mimi.yuxino.cn/th/">เว็บไซต์</a> · <a href="../usage.th.md">คู่มือใช้งาน</a></p>
   <p>
     <a href="../../README_EN.md">English</a> · <a href="../../README.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ja.md">日本語</a> · <a href="th.md"><strong>ภาษาไทย</strong></a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a>
   </p>
 </div>
-
-## เริ่มใช้งาน
-
-Mimi ใช้ฟรีและเป็นโอเพนซอร์ส บริการคลาวด์ต้องใช้ API key ของคุณเองและอาจมีค่าใช้จ่าย เสียงหรือข้อความที่รู้จำได้จะถูกส่งไปยังบริการที่เลือก
-
-Mac ที่ใช้ชิป Apple และรองรับ macOS 26+ สามารถใช้[บริการ Apple ในเครื่องโดยไม่ต้องมี API key](../provider-setup.md#apple-speech) หลังดาวน์โหลดทรัพยากรภาษาแล้ว
-
-1. **ดาวน์โหลดและติดตั้ง**: เลือกไฟล์จาก[หน้าดาวน์โหลด](https://github.com/yuxino/mimi/releases/latest) โดยใช้ DMG สำหรับ Mac, EXE สำหรับ Windows หรือ AppImage / DEB สำหรับ Linux สำหรับโทรศัพท์ ดู[คู่มือ Android (ภาษาอังกฤษ)](../../android/README.md#start)
-2. **ตั้งค่าบริการ**: ใน การตั้งค่า → โมเดลและบริการ เพิ่ม OpenAI, Gemini, xAI หรือบริการอื่นที่รองรับ ใส่ API key ของคุณเองและข้อมูลที่บริการต้องการ แล้วบันทึก ดูวิธีรับคีย์และข้อมูลที่ต้องกรอกใน[คู่มือตั้งค่า (ภาษาอังกฤษ)](../provider-setup.md#choose)
-3. **เลือกเสียงและภาษา**: ในการตั้งค่าเสียงและภาษา เลือกภาษาที่พูดและภาษาแปล เสียงคอมพิวเตอร์จะถูกเลือกไว้ก่อน หากต้องการแปลเสียงของคุณเอง ให้เลือกไมโครโฟน หรือเลือกทั้งสองแหล่งเสียงได้
-4. **เริ่มคำบรรยาย**: เปิดคำบรรยายสดในหน้าคำบรรยาย อนุญาตสิทธิ์ที่ระบบขอ แล้วเล่นเนื้อหาที่มีเสียงพูด
 
 ![ภาพตัวอย่างคำบรรยายสองภาษาของ Mimi พร้อมบทสนทนาสมมติ](../assets/readme-preview.png)
 
@@ -30,10 +26,21 @@ Mac ที่ใช้ชิป Apple และรองรับ macOS 26+ ส�
 
 ## สิ่งที่ทำได้
 
-- เลือกแสดงสองภาษา เฉพาะคำแปล หรือเฉพาะต้นฉบับได้
-- ย้ายคำบรรยายและปรับขนาดตัวอักษรกับสีได้ โหมดเต็มอารมณ์เหลือเฉพาะข้อความ และคลิกผ่านไปยังแอปด้านล่างได้
-- บนเดสก์ท็อป เลือกแอปใน macOS / Windows 11 หรือเลือกสตรีมการเล่นเสียงใน Linux ได้
-- บนเดสก์ท็อป เปิดบันทึกคำบรรยายหรือเสียงเพื่อส่งออกเป็น TXT / Markdown หรือ WAV ทั้งสองตัวเลือกปิดไว้เป็นค่าเริ่มต้น
+- **อ่านสองภาษาคู่กัน**: ดูวิดีโอ ไลฟ์ หรือเรียนออนไลน์ในภาษาต่างประเทศ โดยเลือกแสดงสองภาษา เฉพาะคำแปล หรือเฉพาะต้นฉบับได้
+- **เหลือแค่คำบรรยาย**: ย้ายคำบรรยายและปรับขนาดตัวอักษรกับสีได้ โหมดเต็มอารมณ์เหลือเฉพาะข้อความ และคลิกผ่านไปยังแอปด้านล่างได้
+- **เลือกเสียงที่ต้องการ**: บนเดสก์ท็อป เลือกแอปใน macOS / Windows 11 หรือเลือกสตรีมการเล่นเสียงใน Linux ได้
+- **เก็บไว้อ่านภายหลัง**: บนเดสก์ท็อป เปิดบันทึกคำบรรยายหรือเสียงเพื่อส่งออกเป็น TXT / Markdown หรือ WAV ทั้งสองตัวเลือกปิดไว้เป็นค่าเริ่มต้น
+
+## เริ่มใช้งาน
+
+Mimi ใช้ฟรี เป็นโอเพนซอร์ส และไม่เก็บค่าสมาชิก บริการคลาวด์ต้องใช้ API key ของคุณเองและอาจมีค่าใช้จ่าย เสียงหรือข้อความที่รู้จำได้จะถูกส่งไปยังบริการที่เลือก
+
+Mac ที่ใช้ชิป Apple และรองรับ macOS 26+ สามารถใช้[บริการ Apple ในเครื่องโดยไม่ต้องมี API key](../provider-setup.md#apple-speech) หลังดาวน์โหลดทรัพยากรภาษาแล้ว
+
+1. **ดาวน์โหลดและติดตั้ง**: เลือกไฟล์จาก[หน้าดาวน์โหลด](https://github.com/yuxino/mimi/releases/latest): DMG สำหรับ macOS 13+ (ชิป Apple / Intel), EXE สำหรับ Windows x64 หรือ AppImage / DEB สำหรับ Linux x86_64 โทรศัพท์ Android 10 ขึ้นไป ดู[คู่มือ Android (ภาษาอังกฤษ)](../../android/README.md#start)
+2. **ตั้งค่าบริการ**: ใน การตั้งค่า → โมเดลและบริการ เพิ่ม OpenAI, Gemini, xAI หรือบริการอื่นที่รองรับ ใส่ API key ของคุณเองและข้อมูลที่บริการต้องการ แล้วบันทึก ดูวิธีรับคีย์และข้อมูลที่ต้องกรอกใน[คู่มือตั้งค่า (ภาษาอังกฤษ)](../provider-setup.md#choose)
+3. **เลือกเสียงและภาษา**: ในการตั้งค่าเสียงและภาษา เลือกภาษาที่พูดและภาษาแปล เสียงคอมพิวเตอร์จะถูกเลือกไว้ก่อน หากต้องการแปลเสียงของคุณเอง ให้เลือกไมโครโฟน หรือเลือกทั้งสองแหล่งเสียงได้
+4. **เริ่มคำบรรยาย**: เปิดคำบรรยายสดในหน้าคำบรรยาย อนุญาตสิทธิ์ที่ระบบขอ แล้วเล่นเนื้อหาที่มีเสียงพูด
 
 ## ต้องการความช่วยเหลือ?
 
