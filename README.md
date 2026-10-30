@@ -20,6 +20,8 @@
   </p>
 </div>
 
+**不用再为字幕软件单独买会员。** Mimi 免费开源，用你自己的服务商 API Key，就能给视频、直播和网课加上实时翻译字幕。
+
 ![Mimi 双语字幕示意：原创插画与示例对白](docs/assets/readme-preview.png)
 
 字幕显示示意，使用示例对白。[看字幕与沉浸模式演示（旧版界面）](docs/demos/README.md)。
@@ -33,7 +35,7 @@
 
 ## 开始使用
 
-Mimi 免费开源，不收会员费。使用云服务需要自己的密钥（API Key），服务商可能收费；采集的音频或识别文字会发给你选择的服务。
+使用云服务需要自己的密钥（API Key），服务商可能收费；采集的音频或识别文字会发给你选择的服务。
 
 Apple 芯片 Mac（macOS 26+）也可使用 [Apple 本地服务](docs/provider-setup.zh-CN.md#apple-speech)，下载所需语言资源后无需 API Key。
 

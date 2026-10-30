@@ -20,6 +20,8 @@
   </p>
 </div>
 
+**Live translated subtitles without another subscription.** Mimi is a free, open-source alternative to paid live subtitle apps. Connect your own speech and translation service to add subtitles to videos, streams and online classes.
+
 ![Mimi bilingual subtitle illustration with fictional dialogue](docs/assets/readme-preview.png)
 
 Interface illustration with sample dialogue. [Watch subtitles and Immersive Mode (older UI)](docs/demos/README.md).
@@ -33,7 +35,7 @@ Interface illustration with sample dialogue. [Watch subtitles and Immersive Mode
 
 ## Get started
 
-Mimi is free and open source, with no membership fee. Cloud services need your own API key and may charge for usage. Captured audio or recognized text is sent to the service you choose.
+Cloud services need your own API key and may charge for usage. Captured audio or recognized text is sent to the service you choose.
 
 Supported Apple silicon Macs on macOS 26+ can also use [Apple local services](docs/provider-setup.md#apple-speech) without API keys after downloading the required language resources.
 

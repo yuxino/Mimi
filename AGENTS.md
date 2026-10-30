@@ -41,6 +41,8 @@ Preserve these product constraints:
   Preserve the release, download-count, CI, license and platform badges when
   simplifying READMEs. Keep language switching in one navigation row; the
   Chinese entry does not need a second English pitch or quick-start banner.
+  Lead with Mimi as a free, open-source alternative to paid live subtitle
+  software; distinguish that value from any separate provider API charges.
 - `docs/plans/`: current accepted design records; completed checklists and
   superseded designs stay in Git history. Put reusable rules in the owning
   development guide instead of duplicating task notes. Dated QA, release and

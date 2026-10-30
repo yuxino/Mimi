@@ -20,6 +20,8 @@
   </p>
 </div>
 
+**Live übersetzte Untertitel, ohne noch ein Abo.** Mimi ist eine kostenlose Open-Source-Alternative zu kostenpflichtigen Untertitel-Apps. Verbinde deine eigenen Dienste für Spracherkennung und Übersetzung, um Videos, Streams und Onlinekurse mit übersetzten Untertiteln zu verfolgen.
+
 ![Mimis zweisprachige Untertitel mit fiktivem Beispieldialog](../assets/readme-preview.png)
 
 Oberflächenillustration mit Beispieldialog. [Untertitel und immersiven Modus ansehen (ältere Oberfläche)](../demos/README.md).
@@ -33,7 +35,7 @@ Oberflächenillustration mit Beispieldialog. [Untertitel und immersiven Modus an
 
 ## Erste Schritte
 
-Mimi ist kostenlos und Open Source, ohne Abo. Für Cloud-Dienste brauchst du eigene API-Zugangsdaten; Gebühren können anfallen. Audio oder erkannter Text wird an den gewählten Dienst gesendet.
+Für Cloud-Dienste brauchst du eigene API-Zugangsdaten; Gebühren können anfallen. Audio oder erkannter Text wird an den gewählten Dienst gesendet.
 
 Auf einem unterstützten Mac mit Apple-Chip und macOS 26+ kannst du nach dem Laden der Sprachressourcen [lokale Apple-Dienste ohne API-Schlüssel](../provider-setup.md#apple-speech) verwenden.
 
