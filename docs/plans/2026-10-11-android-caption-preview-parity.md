@@ -117,6 +117,13 @@ visible across an empty opening draft, but remains unconfirmed without a time.
 Exercise both atomic and realtime projections
 through JNI, native previews and real original-only playback handoffs.
 
+For #336, a pause between realtime updates keeps an already visible translated
+draft readable even before the first confirmation. The idle timer still applies
+to an unfinished source alone. If the service retires an atomic preview, the
+frame can use the latest confirmed row retained for that input, with its own
+timestamp, until the next pair arrives. An empty history provides no fallback.
+This reading choice neither preserves withdrawn drafts nor adds history rows.
+
 Keep realtime intermediate captions without adding a reading-speed switch or
 filtering drafts. Normal-mode text follows the desktop bottom reading edge:
 short current content sits above the footer and grows upward. Increasing the

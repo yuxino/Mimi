@@ -15,7 +15,9 @@ import android.view.ViewGroup
 import android.view.inspector.WindowInspector
 import android.widget.TextView
 import app.yuxino.mimi.android.capture.MimiService
+import app.yuxino.mimi.android.provider.SharedSubtitleCore
 import app.yuxino.mimi.android.provider.SubtitleBus
+import org.json.JSONObject
 import java.io.File
 
 /** API 33+ native service-resource and waiting-card regression; no capture or network. */
@@ -50,6 +52,71 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         }
         bitmap.recycle()
+    }
+
+    /** Drive the native reading surface from real JNI snapshots without starting audio or a provider. */
+    private fun checkCaptionPauses() {
+        fun create() = SharedSubtitleCore.exchange(JSONObject().put("operation",
+            JSONObject().put("type", "create").put("history_limit", 3)))
+        var lane = create()
+        fun publish(event: JSONObject, atomic: Boolean = false) {
+            lane = SharedSubtitleCore.exchange(JSONObject().put("state", lane.getString("state"))
+                .put("operation", JSONObject().put("type", "apply").put("event", event)))
+            SubtitleBus.onRuntimeSnapshot(JSONObject().put("atomicPreview", atomic).put("detectedLanguage", "ja")
+                .put("snapshot", lane.getJSONObject("snapshot")), false)
+        }
+        fun visible(source: String, translation: String): Boolean {
+            val panel = root().findViewWithTag<CaptionPanelView>("expanded-subtitles")
+            return panel.source.isShown && panel.source.text.toString() == source &&
+                panel.translation.isShown && panel.translation.text.toString() == translation && !panel.status.isShown
+        }
+        val source = "次の駅で降ります。"
+        val translated = "我们在下一站下车。"
+        stage = "first_bilingual_draft"
+        ui {
+            SubtitleBus.clear()
+            for ((role, value) in listOf("source" to source, "translation" to translated)) {
+                publish(JSONObject().put("type", "utterance_text").put("utterance_id", "first")
+                    .put("role", role).put("text", value).put("is_final", false))
+            }
+            // The preview service has no provider listener to arm its production watchdog.
+            MimiService::class.java.getDeclaredMethod("cancelAutoHide").apply {
+                isAccessible = true; invoke(root().context)
+            }
+        }
+        await { visible(source, translated) }
+        stage = "four_second_pause_before_first_final"
+        SystemClock.sleep(4_000)
+        ui {
+            check(visible(source, translated)) { "Pause replaced the bilingual draft; listening placeholder visible=" +
+                root().findViewWithTag<CaptionPanelView>("expanded-subtitles").status.isShown }
+            check(SubtitleBus.historySnapshot().isEmpty() && !SubtitleBus.displaySnapshot().confirmed)
+        }
+
+        stage = "atomic_preview_before_late_confirmation"
+        lane = create()
+        val confirmedSource = "先に着きました。"
+        val confirmedTranslation = "我们已经到了。"
+        ui {
+            SubtitleBus.clear()
+            publish(JSONObject().put("type", "source_utterance_draft").put("utterance_id", 2).put("text", source), true)
+            publish(JSONObject().put("type", "preview_pair").put("source_utterance_id", 2)
+                .put("source", source).put("translation", translated), true)
+            publish(JSONObject().put("type", "confirmed_pair").put("utterance_id", 1).put("source_utterance_id", 1)
+                .put("source", confirmedSource).put("translation", confirmedTranslation), true)
+        }
+        await { visible(source, translated) && SubtitleBus.historySnapshot().size == 1 }
+        stage = "retired_preview_and_empty_next_sentence"
+        ui {
+            publish(JSONObject().put("type", "clear_preview"), true)
+            publish(JSONObject().put("type", "source_utterance_draft").put("utterance_id", 3).put("text", ""), true)
+        }
+        await { visible(confirmedSource, confirmedTranslation) }
+        ui {
+            check(!root().findViewWithTag<CaptionPanelView>("expanded-subtitles").history.isShown) {
+                "The current confirmed caption was rendered twice"
+            }
+        }
     }
 
     fun run(arguments: Bundle?) {
@@ -156,6 +223,7 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
                 check(root().height == readingHeight && root() === window) { "History divider changed the reading window" }
             }
             capture("$tag-expanded-history")
+            checkCaptionPauses()
             stage = "immersive_waiting_restoration"
             ui {
                 SubtitleBus.clear()
@@ -182,7 +250,7 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (failure == null)
-                "Waiting overlay passed ($tag/API ${Build.VERSION.SDK_INT}): explicit/system locale, single panel, bounded history viewport, settings return and caption/immersive restoration; no capture or providers.\n"
+                "Waiting overlay passed ($tag/API ${Build.VERSION.SDK_INT}): waiting and caption restoration, bounded history, four-second draft pause and confirmed caption after preview withdrawal; no capture or providers.\n"
             else "Waiting overlay failed at $stage: ${failure.javaClass.simpleName}: ${failure.message}; ${failure.stackTrace.firstOrNull { it.className.contains("OverlayListeningChecks") }}\n")
         })
     }

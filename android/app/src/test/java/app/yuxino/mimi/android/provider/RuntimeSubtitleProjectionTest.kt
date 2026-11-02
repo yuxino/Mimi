@@ -41,6 +41,57 @@ class RuntimeSubtitleProjectionTest {
     private fun draft(role: String, text: String) = JSONObject().put("type", "utterance_text")
         .put("utterance_id", "B").put("role", role).put("text", text).put("is_final", false)
 
+    @Test fun idleWatchdogKeepsTheFirstRealtimeTranslationReadableWithoutConfirmingIt() {
+        SubtitleBus.setHistoryLimit(3)
+        val lane = Snapshots(false, 3)
+        lane.apply(draft("source", "最初の文"))
+        SubtitleBus.hideLive()
+        assertTrue(SubtitleBus.displaySnapshot().hidden)
+        lane.apply(draft("translation", "第一句"))
+        val reading = SubtitleBus.displaySnapshots().single()
+        assertEquals("最初の文", reading.source)
+        assertEquals("第一句", reading.translation)
+        assertFalse(reading.confirmed)
+        assertTrue(reading.history.isEmpty())
+        SubtitleBus.hideLive()
+        assertEquals(reading, SubtitleBus.displaySnapshots().single())
+        SubtitleBus.finishSnapshot()
+        assertFalse(SubtitleBus.hasRetainedContent)
+    }
+
+    @Test fun emptyAtomicHandoffReadsTheLastConfirmedRowFromItsOwnSource() {
+        SubtitleBus.setHistoryLimit(3)
+        val system = Snapshots(true, 3)
+        val microphone = Snapshots(true, 3, "microphone")
+        fun source(id: Int, text: String) = JSONObject().put("type", "source_utterance_draft")
+            .put("utterance_id", id).put("text", text)
+        system.apply(source(2, "次の文"))
+        system.apply(JSONObject().put("type", "preview_pair").put("source_utterance_id", 2)
+            .put("source", "次の文").put("translation", "下一句草稿"))
+        // A's final arrived late while B owned the on-screen preview.
+        system.apply(JSONObject().put("type", "confirmed_pair").put("utterance_id", 1)
+            .put("source_utterance_id", 1).put("source", "最初の文。").put("translation", "第一句。"))
+        microphone.apply(pair("M", "Mic.", "麦克风。"))
+        system.apply(JSONObject().put("type", "clear_preview"))
+        system.apply(source(3, ""))
+        val row = SubtitleBus.historySnapshotWithTime().single { it.pair.audioSource == "system" }
+        fun systemReading(mode: CaptionDisplayMode) =
+            SubtitleBus.displaySnapshots().single { it.audioSource == "system" }.forReading(mode)
+        for (mode in CaptionDisplayMode.entries) {
+            val reading = systemReading(mode)
+            assertFalse(reading.hidden)
+            assertEquals("最初の文。", reading.source)
+            if (mode.translationVisible) assertEquals("第一句。", reading.translation)
+            assertTrue(reading.confirmed)
+            assertEquals(row.createdAt, reading.createdAt)
+        }
+        system.apply(source(3, "新しい文"))
+        assertEquals("新しい文", systemReading(CaptionDisplayMode.ORIGINAL).source)
+        assertEquals("最初の文。", systemReading(CaptionDisplayMode.BILINGUAL).source)
+        system.apply(JSONObject().put("type", "clear"))
+        assertEquals("", systemReading(CaptionDisplayMode.BILINGUAL).translation)
+    }
+
     @Test fun independentSourcesPreservePairsAndBoundedHistoryAcrossStop() {
         val system = Snapshots(false, 2, "system")
         val microphone = Snapshots(false, 2, "microphone")

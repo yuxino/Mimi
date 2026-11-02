@@ -158,13 +158,12 @@ class MimiService : Service() {
         }
     }
 
-    /** Hides the live lines after the sentence-final lands and speech pauses. */
+    /** Recheck idle visibility after the sentence finishes. */
     private val autoHideRunnable = Runnable { SubtitleBus.hideLive() }
 
     /**
-     * Fallback hide: providers may never send a sentence-final when background
-     * music keeps their VAD from firing, so any gap in streaming deltas also
-     * hides the card.
+     * An unfinished recognition-only draft can expire during a pause. The bus
+     * keeps visible translations and confirmed pairs readable across this check.
      */
     private val watchdogRunnable = Runnable { SubtitleBus.hideLive() }
 

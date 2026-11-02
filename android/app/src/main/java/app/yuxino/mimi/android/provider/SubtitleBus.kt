@@ -196,24 +196,28 @@ object SubtitleBus {
         }
     }
     private fun display(value: JSONObject, audioSource: String, activity: RuntimeFeedback): DisplaySnapshot {
-        val pair = value.optJSONObject("displayPair")?.takeIf { value.optBoolean("displayPairFinal") }
+        val display = value.optJSONObject("displayPair")
+        val pair = display?.takeIf { value.optBoolean("displayPairFinal") }
+        val rows = history(value, audioSource)
+        // Retiring a newer preview can leave the last accepted pair only in this input's history.
+        val historyFallback = if (display == null) rows.lastOrNull { it.pair.audioSource == audioSource } else null
         val retained = pair?.let {
             TimedPair(Pair(it.optString("source"), if (originalOnly) "" else it.optString("translation"), audioSource),
                 value.optLong("displayPairCreatedAt").takeIf { time -> time > 0 })
-        }
+        } ?: historyFallback
         val line = value.optJSONObject("source")
         val text = line?.optString("text").orEmpty()
         val sourceConfirmed = line?.optBoolean("isFinal") == true && pair != null &&
             text == pair.optString("source") && line.opt("utteranceId") == pair.opt("utteranceId")
         val preview = value.optJSONObject("realtimePreview")?.takeUnless { atomicPreview }
-        val display = value.optJSONObject("displayPair")
         val source = if (originalOnly) text else preview?.optJSONObject("source")?.optString("text")
-            ?: display?.optString("source") ?: text
+            ?: display?.optString("source") ?: historyFallback?.pair?.source ?: text
         val translation = if (originalOnly) "" else preview?.optJSONObject("translation")?.optString("text")
-            ?: display?.optString("translation") ?: value.optJSONObject("translation")?.optString("text").orEmpty()
-        val confirmed = preview == null && value.optBoolean("displayPairFinal")
+            ?: display?.optString("translation") ?: historyFallback?.pair?.translation
+            ?: value.optJSONObject("translation")?.optString("text").orEmpty()
+        val confirmed = preview == null && retained != null
         return DisplaySnapshot(source, translation, liveHidden, confirmed,
-            retained?.createdAt.takeIf { confirmed }, history(value, audioSource), statusLine, activity, retained,
+            retained?.createdAt.takeIf { confirmed }, rows, statusLine, activity, retained,
             SourceReading(text, sourceConfirmed, retained?.createdAt.takeIf { sourceConfirmed }), audioSource)
     }
     fun historySnapshotWithTime(): List<TimedPair> = synchronized(lock) { history(snapshot, "system") }
@@ -236,6 +240,9 @@ object SubtitleBus {
             if (snapshot.optJSONObject("displayPair") != null) return
             val tracks = snapshot.optJSONArray("tracks")
             if (tracks != null && (0 until tracks.length()).any { tracks.getJSONObject(it).optJSONObject("displayPair") != null }) return
+            // Independent live lanes can already show a translation before the first final.
+            // A gap in provider updates does not withdraw it or the last retained reading pair.
+            if (displaySnapshots().any { it.translation.isNotBlank() || it.retainedConfirmed != null }) return
             liveHidden = true
         }
         notifyListeners()
