@@ -814,14 +814,96 @@ impl AlibabaRealtimeEventDecoder {
 
 /// Preserve only exact recognized error codes; arbitrary error prose and
 /// unknown failures must never acquire automatic retry authority.
+fn common_response_stream_timeout(error: Option<&Value>) -> bool {
+    let Some(error) = error else { return false };
+    if error.get("code").and_then(Value::as_str) != Some("COMMON_ERROR")
+        || match error.get("type") {
+            None => false,
+            Some(Value::String(kind)) => kind != "server_error",
+            Some(_) => true,
+        }
+    {
+        return false;
+    }
+    let Some(message) = error.get("message").and_then(Value::as_str) else {
+        return false;
+    };
+    // The observed service reason has two timing fields. Parse its complete
+    // grammar; a timeout word inside unrelated provider prose grants no retry.
+    let message = message.strip_suffix('.').unwrap_or(message);
+    if message.len() > 160
+        || !message.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || byte.is_ascii_whitespace()
+                || matches!(byte, b':' | b'=' | b',' | b'(' | b')' | b'_')
+        })
+    {
+        return false;
+    }
+    let fields: Vec<_> = message
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|field| !field.is_empty())
+        .collect();
+    let [response, stream, first_timeout, second_timeout, first, second, elapsed, third, fourth] =
+        fields.as_slice()
+    else {
+        return false;
+    };
+    // Accept the provider's timeout_seconds / elapsed_ms fields as well as
+    // the equivalent explicit numeric-unit spelling. Every token is consumed.
+    let (seconds, unit_seconds, milliseconds, unit_ms) = if first.eq_ignore_ascii_case("seconds") {
+        (*second, *first, *fourth, *third)
+    } else {
+        (*first, *second, *third, *fourth)
+    };
+    if ![
+        (response, "response"),
+        (stream, "stream"),
+        (first_timeout, "timeout"),
+        (second_timeout, "timeout"),
+        (&unit_seconds, "seconds"),
+        (elapsed, "elapsed"),
+        (&unit_ms, "ms"),
+    ]
+    .iter()
+    .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+    {
+        return false;
+    }
+    let canonical_number = |value: &str, maximum: usize| {
+        if value.is_empty() || value.len() > maximum || !value.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let number = value.parse::<u64>().ok()?;
+        (number.to_string() == value).then_some(number)
+    };
+    match (
+        canonical_number(seconds, 6),
+        canonical_number(milliseconds, 12),
+    ) {
+        (Some(seconds), Some(milliseconds)) => seconds == 60 && milliseconds >= seconds * 1000,
+        _ => false,
+    }
+}
+
 fn safe_realtime_error(error: Option<&Value>, response_failed: bool) -> LiveTranslateServerEvent {
     let wire_code = error
         .and_then(|error| error.get("code"))
         .and_then(Value::as_str);
+    let response_stream_timeout = common_response_stream_timeout(error);
     crate::pipeline_log!(
         "live translate service error kind={}",
         match wire_code {
             Some("response_idle_timeout") => "response_idle_timeout",
+            Some("COMMON_ERROR") if response_stream_timeout => "response_stream_timeout",
+            Some("COMMON_ERROR") => match error
+                .and_then(|error| error.get("type"))
+                .and_then(|value| value.as_str())
+            {
+                Some("server_error") => "common_server_error",
+                Some("invalid_request_error") => "common_invalid_request",
+                _ => "common_error",
+            },
             Some("RequestTimeOut") => "request_timeout",
             Some("ResponseTimeout") => "response_timeout",
             Some("InternalError.Timeout") => "internal_timeout",
@@ -839,6 +921,10 @@ fn safe_realtime_error(error: Option<&Value>, response_failed: bool) -> LiveTran
         // connection through the same bounded policy as a transport loss;
         // do not invent audio, assume a fixed lifetime or retry every error.
         Some("response_idle_timeout") => (
+            "alibaba_realtime_idle_timeout",
+            "The Alibaba realtime session timed out while idle.",
+        ),
+        Some("COMMON_ERROR") if response_stream_timeout => (
             "alibaba_realtime_idle_timeout",
             "The Alibaba realtime session timed out while idle.",
         ),
@@ -981,6 +1067,132 @@ mod tests {
                 .iter()
                 .any(|(event, _)| matches!(event, LiveTranslateServerEvent::TranslationFinal(_))));
         }
+    }
+
+    #[test]
+    fn common_response_timeout_requires_the_complete_observed_service_reason() {
+        use crate::core::recovery::{normalize_provider_error_code, provider_error_is_retryable};
+        let reason = "Response stream timeout: timeout=60 seconds, elapsed=60001 ms";
+        let mut cases = vec![
+            (
+                json!({"code":"COMMON_ERROR","message":"response_stream_timeout(timeout_seconds=60, elapsed_ms=101831)"}),
+                true,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","message":"response_stream_timeout(timeout_seconds=.60, elapsed_ms=101831)"}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","message":"response_stream_timeout(timeout_seconds=60, elapsed_ms=101831) private"}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","type":"server_error","message":reason}),
+                true,
+            ),
+            (json!({"code":"COMMON_ERROR","message":reason}), true),
+            (
+                json!({"code":"COMMON_ERROR","message":format!("{reason}. ")}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","message":format!("{reason}.private")}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","message":format!("private {reason}")}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","message":format!("{reason} private")}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR","message":"A different timeout occurred."}),
+                false,
+            ),
+            (
+                json!({"code":"COMMON_ERROR.private","message":reason}),
+                false,
+            ),
+            (json!({"code":null,"message":reason}), false),
+            (json!({"code":50002,"message":reason}), false),
+            (json!({"message":reason}), false),
+        ];
+        for kind in [
+            "authentication_error",
+            "authorization_error",
+            "invalid_request_error",
+            "insufficient_quota",
+            "rate_limit_error",
+            "private-error-type",
+        ] {
+            cases.push((
+                json!({"code":"COMMON_ERROR","type":kind,"message":reason}),
+                false,
+            ));
+        }
+        for kind in [Value::Null, json!(401), json!(false), json!([]), json!({})] {
+            cases.push((
+                json!({"code":"COMMON_ERROR","type":kind,"message":reason}),
+                false,
+            ));
+        }
+        for changed in [
+            "-60", "+60", ".60", "60.0", "6e1", "60/1", "060", "0", "59", "61", "6000000",
+        ] {
+            cases.push((json!({"code":"COMMON_ERROR","message":reason.replace("=60 seconds", &format!("={changed} seconds"))}), false));
+        }
+        for changed in [
+            "59999",
+            "060001",
+            "60001.0",
+            ".60001",
+            "18446744073709551616",
+            "60001 1",
+        ] {
+            cases.push((json!({"code":"COMMON_ERROR","message":reason.replace("60001 ms", &format!("{changed} ms"))}), false));
+        }
+        for changed in [
+            reason.replace("seconds", "minutes"),
+            reason.replace(' ', "\u{a0}"),
+            reason.replace("elapsed", "elapsed_private"),
+            format!("{reason} https://private.invalid/key"),
+        ] {
+            cases.push((json!({"code":"COMMON_ERROR","message":changed}), false));
+        }
+        for (error, expected_retry) in cases {
+            for wire in [
+                json!({"type":"error","error":error}),
+                json!({"type":"conversation.item.input_audio_transcription.failed","error":error}),
+                json!({"type":"response.done","response":{"id":"test","status":"failed","status_details":{"error":error},"output":[]}}),
+            ] {
+                let mut decoder =
+                    AlibabaRealtimeEventDecoder::new(AlibabaRealtimeMode::LiveTranslate);
+                let events = decoder.decode(&wire.to_string()).unwrap();
+                let failure = events
+                    .iter()
+                    .find_map(|(event, _)| match event {
+                        LiveTranslateServerEvent::Error { code, message } => Some((code, message)),
+                        _ => None,
+                    })
+                    .unwrap();
+                let code = normalize_provider_error_code(failure.0);
+                assert_eq!(provider_error_is_retryable(code), expected_retry, "{wire}");
+                if expected_retry {
+                    assert_eq!(code, "alibaba_realtime_idle_timeout");
+                }
+                assert!(!failure.1.contains("private"));
+                assert!(!failure.1.contains("60001"));
+            }
+        }
+        let authentication = safe_realtime_error(
+            Some(&json!({"code":"InvalidApiKey","message":reason})),
+            false,
+        );
+        assert!(
+            matches!(authentication, LiveTranslateServerEvent::Error {code,..} if code == "credential_authentication_failed")
+        );
     }
 
     #[test]

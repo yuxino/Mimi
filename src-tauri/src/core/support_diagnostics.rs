@@ -52,7 +52,7 @@ pub struct SafeFailure {
     category: &'static str,
     code: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    provider_status_code: Option<u32>,
+    provider_status_code: Option<i64>,
 }
 
 impl SafeFailure {
@@ -75,6 +75,12 @@ impl SafeFailure {
         if let Some(failure) = Self::from_alibaba_connection_error(error) {
             return failure;
         }
+        if let Some(failure) = Self::from_baidu_or_tencent_error(error) {
+            return failure;
+        }
+        if let Some(failure) = Self::from_deeplx_error(error) {
+            return failure;
+        }
         let translation_failure = match error {
             "translation_rate_limited" => Some(("rate_limit", "TRANSLATION_RATE_LIMITED")),
             "translation_temporarily_unavailable" => {
@@ -95,6 +101,20 @@ impl SafeFailure {
             };
         }
         let runtime_failure = match error {
+            "gemini_live_service_unavailable" => Some((
+                "websocket_connection",
+                "service_error",
+                "GEMINI_LIVE_SERVICE_UNAVAILABLE",
+            )),
+            "openai_realtime_provider_error"
+            | "xai_realtime_provider_error"
+            | "gemini_live_provider_error"
+            | "baidu_realtime_provider_error"
+            | "audio3_provider_error" => Some((
+                "websocket_connection",
+                "request_rejected",
+                "PROVIDER_REQUEST_REJECTED",
+            )),
             "alibaba_realtime_idle_timeout"
             | "The Alibaba realtime session timed out while idle." => Some((
                 "websocket_connection",
@@ -376,7 +396,7 @@ impl SafeFailure {
                 phase: "websocket_connection",
                 category: "service_error",
                 code: "VOLCANO_PROVIDER_ERROR",
-                provider_status_code: Some(status),
+                provider_status_code: Some(i64::from(status)),
             });
         }
         let (phase, category, code) = match error {
@@ -434,12 +454,111 @@ impl SafeFailure {
         })
     }
 
+    /// These clients format typed i64 codes; accept precisely that formatting,
+    /// never a prefix plus arbitrary provider text or a noncanonical number.
+    fn canonical_status_code(value: &str) -> Option<i64> {
+        if value.len() > 20 {
+            return None;
+        }
+        let status = value.parse::<i64>().ok()?;
+        (status.to_string() == value).then_some(status)
+    }
+
+    fn from_baidu_or_tencent_error(error: &str) -> Option<Self> {
+        for (prefix, code) in [
+            ("baidu_provider_", "BAIDU_PROVIDER_ERROR"),
+            ("tencent_provider_", "TENCENT_PROVIDER_ERROR"),
+        ] {
+            if let Some(value) = error.strip_prefix(prefix) {
+                if let Some(status) = Self::canonical_status_code(value) {
+                    return Some(Self {
+                        phase: "websocket_connection",
+                        category: "request_rejected",
+                        code,
+                        provider_status_code: Some(status),
+                    });
+                }
+            }
+        }
+        let (category, code) = match error {
+            "baidu_protocol_error" | "Baidu realtime translation returned an invalid response." => {
+                ("protocol", "BAIDU_PROTOCOL_ERROR")
+            }
+            "tencent_configuration_rejected" => ("configuration", "TENCENT_CONFIGURATION_REJECTED"),
+            "tencent_service_activation_required" => {
+                ("configuration", "TENCENT_SERVICE_ACTIVATION_REQUIRED")
+            }
+            "tencent_quota_exhausted" => ("quota", "TENCENT_QUOTA_EXHAUSTED"),
+            "tencent_capacity_exceeded" => ("rate_limit", "TENCENT_CAPACITY_EXCEEDED"),
+            "tencent_provider_rejected" => ("request_rejected", "TENCENT_PROVIDER_REJECTED"),
+            _ => return None,
+        };
+        Some(Self {
+            phase: "websocket_connection",
+            category,
+            code,
+            // A fixed Display can represent more than one numeric status.
+            provider_status_code: None,
+        })
+    }
+
+    fn from_deeplx_error(error: &str) -> Option<Self> {
+        let rejected = error
+            .strip_prefix("DeepLX rejected the request (code ")
+            .and_then(|value| value.strip_suffix("). Check the endpoint and optional Bearer token with your server administrator."))
+            .or_else(|| error.strip_prefix("deeplx.rejected(code=").and_then(|value| value.strip_suffix(')')));
+        if let Some(value) = rejected {
+            let status = u16::try_from(Self::canonical_status_code(value)?).ok()?;
+            return Some(Self {
+                phase: "text_translation",
+                category: "request_rejected",
+                code: "DEEPLX_REQUEST_REJECTED",
+                provider_status_code: Some(i64::from(status)),
+            });
+        }
+        let (category, code) = match error {
+            "deeplx.endpoint"
+            | "Check the DeepLX endpoint in Settings. Use HTTPS, or HTTP on localhost, without URL credentials, query or fragment." => {
+                ("configuration", "DEEPLX_ENDPOINT_INVALID")
+            }
+            "deeplx.timeout"
+            | "DeepLX timed out. Check the endpoint, network and server, then restart subtitles." => {
+                ("timeout", "DEEPLX_TIMEOUT")
+            }
+            "deeplx.connection"
+            | "Could not connect to DeepLX. Check the endpoint, network and server, then restart subtitles." => {
+                ("transport", "DEEPLX_CONNECTION_FAILED")
+            }
+            "deeplx.response"
+            | "DeepLX returned an invalid or empty translation. Check that the endpoint supports the DeepLX /translate JSON API." => {
+                ("protocol", "DEEPLX_INVALID_RESPONSE")
+            }
+            "deeplx.too_large"
+            | "DeepLX returned too much data. Check the server's /translate response." => {
+                ("size_limit", "DEEPLX_RESPONSE_TOO_LARGE")
+            }
+            _ => return None,
+        };
+        Some(Self {
+            phase: "text_translation",
+            category,
+            code,
+            provider_status_code: None,
+        })
+    }
+
     /// Known local transport/MT labels win over arbitrary provider messages.
     pub fn from_provider_error(code: &str, message: &str) -> Self {
         if let Some(failure) = Self::from_apple_speech_error(code) {
             return failure;
         }
         if let Some(failure) = Self::from_volcano_error(code) {
+            return failure;
+        }
+        if let Some(failure) = Self::from_baidu_or_tencent_error(code) {
+            return failure;
+        }
+        if let Some(failure) = Self::from_deeplx_error(code) {
             return failure;
         }
         match code {
@@ -454,6 +573,12 @@ impl SafeFailure {
             | "alibaba_realtime_idle_timeout"
             | "alibaba_realtime_provider_error"
             | "alibaba_realtime_response_failed"
+            | "gemini_live_service_unavailable"
+            | "openai_realtime_provider_error"
+            | "xai_realtime_provider_error"
+            | "gemini_live_provider_error"
+            | "baidu_realtime_provider_error"
+            | "audio3_provider_error"
             | "baidu_unexpected_session_end" => Self::from_error(code),
             _ => Self::from_error(message),
         }
@@ -714,6 +839,225 @@ pub fn render(facts: DiagnosticFacts) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn signed_provider_status_diagnostics_retain_only_canonical_numeric_codes() {
+        let marker = "synthetic-secret https://private.invalid /private/caption";
+        for (prefix, code) in [
+            ("baidu_provider_", "BAIDU_PROVIDER_ERROR"),
+            ("tencent_provider_", "TENCENT_PROVIDER_ERROR"),
+        ] {
+            for status in [i64::MIN, -1, 0, 6_004, 31_003, i64::MAX] {
+                let label = format!("{prefix}{status}");
+                let failure = SafeFailure::from_provider_error(&label, marker);
+                assert_eq!(failure, SafeFailure::from_error(&label));
+                assert_eq!(failure.phase, "websocket_connection");
+                assert_eq!(failure.category, "request_rejected");
+                assert_eq!(failure.code, code);
+                let mut journal = DiagnosticJournal::default();
+                journal.record(
+                    DiagnosticEvent::Failure {
+                        audio_source: None,
+                        classification: failure,
+                    },
+                    20,
+                );
+                let report = render(DiagnosticFacts {
+                    last_error: Some((failure, 0)),
+                    journal: journal.snapshot(),
+                    ..Default::default()
+                });
+                let value: serde_json::Value = serde_json::from_str(&report).unwrap();
+                assert_eq!(
+                    value["last_error"]["classification"]["provider_status_code"],
+                    status
+                );
+                assert_eq!(
+                    value["journal"]["recent_events"][0]["classification"]["provider_status_code"],
+                    status
+                );
+                for excluded in [
+                    "synthetic-secret",
+                    "private.invalid",
+                    "/private/caption",
+                    prefix,
+                ] {
+                    assert!(!report.contains(excluded));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn signed_provider_status_diagnostics_reject_noncanonical_and_overflow_values() {
+        for prefix in ["baidu_provider_", "tencent_provider_"] {
+            for suffix in [
+                "",
+                "+1",
+                "01",
+                "-01",
+                "-0",
+                "9223372036854775808",
+                "-9223372036854775809",
+                "6004.private",
+                "6004\n",
+                " 6004",
+                "６００４",
+                "private-token",
+            ] {
+                let label = format!("{prefix}{suffix}");
+                for failure in [
+                    SafeFailure::from_error(&label),
+                    SafeFailure::from_provider_error(&label, "private-message"),
+                ] {
+                    assert_eq!(failure.code, "OTHER", "{label:?}");
+                    assert_eq!(failure.provider_status_code, None);
+                    assert!(!serde_json::to_string(&failure).unwrap().contains("private"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn baidu_protocol_diagnostics_recognize_only_client_owned_labels() {
+        let label = "baidu_protocol_error";
+        let message = "Baidu realtime translation returned an invalid response.";
+        let failure = SafeFailure::from_provider_error(label, "synthetic-private-detail");
+        assert_eq!(failure, SafeFailure::from_error(label));
+        assert_eq!(failure, SafeFailure::from_error(message));
+        assert_eq!(
+            failure,
+            SafeFailure::from_provider_error("unknown", message)
+        );
+        assert_eq!(failure.phase, "websocket_connection");
+        assert_eq!(failure.category, "protocol");
+        assert_eq!(failure.code, "BAIDU_PROTOCOL_ERROR");
+        assert_eq!(failure.provider_status_code, None);
+        for unsafe_value in [format!("{label}.private"), format!("{message} private")] {
+            assert_eq!(SafeFailure::from_error(&unsafe_value).code, "OTHER");
+        }
+    }
+
+    #[test]
+    fn tencent_rejection_display_diagnostics_never_invent_ambiguous_status() {
+        use crate::clients::tencent_cloud_client::TencentCloudClientError;
+        for (status, category, code) in [
+            (6001, "configuration", "TENCENT_CONFIGURATION_REJECTED"),
+            (6003, "configuration", "TENCENT_SERVICE_ACTIVATION_REQUIRED"),
+            (6004, "quota", "TENCENT_QUOTA_EXHAUSTED"),
+            (6005, "quota", "TENCENT_QUOTA_EXHAUSTED"),
+            (6006, "rate_limit", "TENCENT_CAPACITY_EXCEEDED"),
+            (9999, "request_rejected", "TENCENT_PROVIDER_REJECTED"),
+        ] {
+            let message = TencentCloudClientError::ProviderRejected { code: status }.to_string();
+            let failure = SafeFailure::from_error(&message);
+            assert_eq!(
+                failure,
+                SafeFailure::from_provider_error(&message, "private detail")
+            );
+            assert_eq!(failure.category, category);
+            assert_eq!(failure.code, code);
+            assert_eq!(failure.provider_status_code, None);
+            assert_eq!(
+                SafeFailure::from_error(&format!("{message} private")).code,
+                "OTHER"
+            );
+        }
+    }
+
+    #[test]
+    fn deeplx_diagnostics_keep_fixed_display_categories_and_typed_rejection_status() {
+        use crate::core::protocols::deeplx::DeepLXError;
+        for (error, category, code) in [
+            (
+                DeepLXError::Endpoint,
+                "configuration",
+                "DEEPLX_ENDPOINT_INVALID",
+            ),
+            (DeepLXError::Timeout, "timeout", "DEEPLX_TIMEOUT"),
+            (
+                DeepLXError::Connection,
+                "transport",
+                "DEEPLX_CONNECTION_FAILED",
+            ),
+            (DeepLXError::Response, "protocol", "DEEPLX_INVALID_RESPONSE"),
+            (
+                DeepLXError::TooLarge,
+                "size_limit",
+                "DEEPLX_RESPONSE_TOO_LARGE",
+            ),
+        ] {
+            let expected = SafeFailure::from_error(&error.to_string());
+            assert_eq!(expected.phase, "text_translation");
+            assert_eq!(expected.category, category);
+            assert_eq!(expected.code, code);
+            assert_eq!(expected.provider_status_code, None);
+            assert_eq!(expected, SafeFailure::from_error(&error.diagnostic_label()));
+            assert_eq!(
+                expected,
+                SafeFailure::from_provider_error("unknown", &error.to_string())
+            );
+            assert_eq!(
+                expected,
+                SafeFailure::from_provider_error(
+                    &error.diagnostic_label(),
+                    "synthetic-private-detail"
+                )
+            );
+            for unsafe_value in [
+                format!("{} private", error),
+                format!("{} private", error.diagnostic_label()),
+            ] {
+                assert_eq!(SafeFailure::from_error(&unsafe_value).code, "OTHER");
+            }
+        }
+        for status in [0, 302, 401, 403, 429, 500, u16::MAX] {
+            let error = DeepLXError::Rejected(status);
+            for failure in [
+                SafeFailure::from_error(&error.to_string()),
+                SafeFailure::from_error(&error.diagnostic_label()),
+                SafeFailure::from_provider_error(
+                    &error.diagnostic_label(),
+                    "synthetic-private-detail",
+                ),
+            ] {
+                let value = serde_json::to_value(failure).unwrap();
+                assert_eq!(failure.phase, "text_translation");
+                assert_eq!(failure.category, "request_rejected");
+                assert_eq!(failure.code, "DEEPLX_REQUEST_REJECTED");
+                assert_eq!(value["provider_status_code"], status);
+                assert!(!value.to_string().contains("synthetic-private-detail"));
+            }
+        }
+        for status in ["-1", "+401", "0401", "65536", "401.private", "401\n"] {
+            for label in [format!("deeplx.rejected(code={status})"), format!("DeepLX rejected the request (code {status}). Check the endpoint and optional Bearer token with your server administrator.")] {
+                assert_eq!(SafeFailure::from_error(&label).code, "OTHER", "{label:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn built_in_setup_failures_keep_only_fixed_diagnostic_labels() {
+        for label in [
+            "openai_realtime_provider_error",
+            "xai_realtime_provider_error",
+            "gemini_live_provider_error",
+            "baidu_realtime_provider_error",
+            "audio3_provider_error",
+            "gemini_live_service_unavailable",
+        ] {
+            let failure = SafeFailure::from_provider_error(label, "synthetic-private-detail");
+            assert_eq!(failure, SafeFailure::from_error(label));
+            assert_ne!(failure.code, "OTHER");
+            assert_eq!(
+                SafeFailure::from_error(&format!("{label}: synthetic-private-detail")).code,
+                "OTHER"
+            );
+            assert!(!serde_json::to_string(&failure)
+                .unwrap()
+                .contains("synthetic-private-detail"));
+        }
+    }
 
     #[test]
     fn unsupported_recognition_language_is_safe_configuration_diagnostic() {
@@ -1130,7 +1474,7 @@ mod tests {
             assert_eq!(failure.phase, "websocket_connection");
             assert_eq!(failure.category, "service_error");
             assert_eq!(failure.code, "VOLCANO_PROVIDER_ERROR");
-            assert_eq!(failure.provider_status_code, Some(status as u32));
+            assert_eq!(failure.provider_status_code, Some(i64::from(status)));
             assert_eq!(SafeFailure::from_error(&label), failure);
             let mut journal = DiagnosticJournal::default();
             journal.record(

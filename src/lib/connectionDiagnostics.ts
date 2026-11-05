@@ -273,6 +273,7 @@ const builtinServiceErrors = {
     "alibaba_realtime_service_unavailable",
     "The Alibaba realtime service is temporarily unavailable.",
     "alibaba_realtime_idle_timeout",
+    "gemini_live_service_unavailable",
     "The Alibaba realtime session timed out while idle.",
     "alibaba_realtime_response_failed",
     "The Alibaba realtime response failed.",
@@ -300,7 +301,7 @@ const tencentErrorReasons = {
 
 function builtinServiceErrorMessage(error: string): string | null {
   const labels = diagnosticCopy();
-  if (error === "alibaba_realtime_provider_error" || error === "The Alibaba realtime service rejected the request.") return labels.reasons.serviceRejected;
+  if (["alibaba_realtime_provider_error", "openai_realtime_provider_error", "xai_realtime_provider_error", "gemini_live_provider_error", "baidu_realtime_provider_error", "audio3_provider_error", "The Alibaba realtime service rejected the request."].includes(error)) return labels.reasons.serviceRejected;
   if (Object.hasOwn(tencentErrorReasons, error)) return labels.reasons[tencentErrorReasons[error as keyof typeof tencentErrorReasons]];
   if (builtinServiceErrors.unreachable.has(error)) return labels.unreachable;
   if (builtinServiceErrors.timeout.has(error)) return labels.timeout;

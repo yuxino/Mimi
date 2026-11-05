@@ -466,6 +466,13 @@ impl Audio3ASRClient {
                         }
                     };
                     let is_task_finished = matches!(&event, Audio3ASRServerEvent::TaskFinished);
+                    if is_task_finished && !inner.finishing.load(Ordering::SeqCst) {
+                        // Only an explicit finish may seal the recognition tail.
+                        // Retire an unsolicited end before any late final can
+                        // enter the bridge; native drivers own bounded recovery.
+                        fail_transport(&inner, &events, generation).await;
+                        return;
+                    }
                     match &event {
                         Audio3ASRServerEvent::TaskStarted => {
                             if !inner.task_started.load(Ordering::SeqCst) {
@@ -1084,6 +1091,200 @@ mod streaming_tests {
             Some(LiveTranslateServerEvent::SessionCreated)
         );
         (client, receiver, socket)
+    }
+
+    #[tokio::test]
+    async fn unsolicited_task_finish_requests_recovery_without_promoting_a_draft() {
+        let (client, mut receiver, mut socket) = connected_finish_fixture().await;
+        socket.send(Message::Text(serde_json::json!({
+            "header":{"event":"result-generated","task_id":"finish-fixture"},
+            "payload":{"output":{"sentence":{"text":"Synthetic unfinished caption", "sentence_id":7,"sentence_end":false}}}
+        }).to_string().into())).await.unwrap();
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+                .await
+                .unwrap(),
+            Some(LiveTranslateServerEvent::SourceUtteranceDraft {
+                utterance_id: 7,
+                ..
+            })
+        ));
+        socket
+            .send(Message::Text(
+                r#"{"header":{"event":"task-finished","task_id":"finish-fixture"}}"#.into(),
+            ))
+            .await
+            .unwrap();
+        socket.send(Message::Text(serde_json::json!({
+            "header":{"event":"result-generated","task_id":"finish-fixture"},
+            "payload":{"output":{"sentence":{"text":"Synthetic late final", "sentence_id":7,"sentence_end":true}}}
+        }).to_string().into())).await.unwrap();
+        let event = tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            event,
+            LiveTranslateServerEvent::Error {
+                code: "transport_error".into(),
+                message: GENERIC_TRANSPORT_ERROR.into(),
+            }
+        );
+        let task = client.inner.receive_task.lock().await.take().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receiver.try_recv().is_err());
+        assert!(!client.inner.task_finished.load(Ordering::SeqCst));
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn requested_finish_preserves_final_tail_but_does_not_authorize_reused_task_end() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = Audio3ASRClient::new("synthetic-key", SourceLanguage::English).unwrap();
+        client.endpoint.url =
+            url::Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).unwrap();
+        let (sender, mut receiver) = provider_event_channel();
+        client.set_event_sender(sender).await;
+        let (trigger, triggered) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let mut triggered = Some(triggered);
+            for connection in 0..2 {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = accept_async(stream).await.unwrap();
+                assert!(socket
+                    .next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .to_text()
+                    .unwrap()
+                    .contains("run-task"));
+                socket
+                    .send(Message::Text(
+                        r#"{"header":{"event":"task-started"}}"#.into(),
+                    ))
+                    .await
+                    .unwrap();
+                if connection == 0 {
+                    assert!(socket
+                        .next()
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .to_text()
+                        .unwrap()
+                        .contains("finish-task"));
+                    socket.send(Message::Text(serde_json::json!({
+                        "header":{"event":"result-generated"},
+                        "payload":{"output":{"sentence":{"text":"Synthetic final tail", "sentence_id":3,"sentence_end":true}}}
+                    }).to_string().into())).await.unwrap();
+                } else {
+                    triggered.take().unwrap().await.unwrap();
+                }
+                socket
+                    .send(Message::Text(
+                        r#"{"header":{"event":"task-finished"}}"#.into(),
+                    ))
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    socket.next().await,
+                    None | Some(Ok(Message::Close(_)))
+                ));
+            }
+        });
+        client
+            .connect_for_probe("synthetic-reused-task")
+            .await
+            .unwrap();
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionCreated)
+        );
+        client.finish(Duration::from_secs(1)).await;
+        assert!(matches!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SourceUtteranceFinal {
+                utterance_id: 3,
+                ..
+            })
+        ));
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionFinished)
+        );
+        client
+            .connect_for_probe("synthetic-reused-task")
+            .await
+            .unwrap();
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionCreated)
+        );
+        trigger.send(()).unwrap();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+                .await
+                .unwrap(),
+            Some(LiveTranslateServerEvent::Error {
+                code: "transport_error".into(),
+                message: GENERIC_TRANSPORT_ERROR.into(),
+            })
+        );
+        client.disconnect().await;
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receiver.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn unsolicited_task_finish_during_setup_is_an_immediate_transport_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = Audio3ASRClient::new("synthetic-key", SourceLanguage::English).unwrap();
+        client.endpoint.url =
+            url::Url::parse(&format!("ws://{}", listener.local_addr().unwrap())).unwrap();
+        let (sender, mut receiver) = provider_event_channel();
+        client.set_event_sender(sender).await;
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let _run = socket.next().await.unwrap().unwrap();
+            socket
+                .send(Message::Text(
+                    r#"{"header":{"event":"task-finished"}}"#.into(),
+                ))
+                .await
+                .unwrap();
+            assert!(matches!(
+                socket.next().await,
+                None | Some(Ok(Message::Close(_)))
+            ));
+        });
+        let error = tokio::time::timeout(
+            Duration::from_secs(2),
+            client.connect_for_probe("synthetic-setup"),
+        )
+        .await
+        .expect("an unexpected finish must not wait for the setup deadline")
+        .unwrap_err();
+        assert!(error.is_unreachable());
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::Error {
+                code: "transport_error".into(),
+                message: GENERIC_TRANSPORT_ERROR.into(),
+            })
+        );
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receiver.try_recv().is_err());
     }
 
     #[tokio::test]

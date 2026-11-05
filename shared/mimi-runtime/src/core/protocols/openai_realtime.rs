@@ -188,6 +188,22 @@ impl OpenAIRealtimeServerEvent {
                     .and_then(Value::as_str)
                     .unwrap_or(raw_type);
                 let sanitized_type = sanitize_label(raw_type, 64, "provider_error");
+                // Keep an exact authentication category even when the service adds
+                // a new detail code. Existing authentication aliases stay intact.
+                let raw_code = if matches!(raw_type, "authentication_error" | "authorization_error")
+                    && !matches!(
+                        raw_code,
+                        "invalid_api_key"
+                            | "authentication_error"
+                            | "authorization_error"
+                            | "unauthorized"
+                            | "forbidden"
+                            | "permission_denied"
+                    ) {
+                    raw_type
+                } else {
+                    raw_code
+                };
                 let code = sanitize_label(raw_code, 64, "provider_error");
                 let related_event_id = error
                     .and_then(|error| error.get("event_id"))
@@ -256,6 +272,49 @@ fn is_recoverable_provider_error(kind: &str, code: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_authentication_type_survives_an_unrecognized_error_code() {
+        for (kind, code, expected) in [
+            (
+                "authentication_error",
+                "key_expired",
+                "authentication_error",
+            ),
+            (
+                "authorization_error",
+                "invalid_event",
+                "authorization_error",
+            ),
+            (
+                "authentication_error",
+                "unknown_provider_detail",
+                "authentication_error",
+            ),
+        ] {
+            let event = OpenAIRealtimeServerEvent::decode_value(&serde_json::json!({
+                "type": "error",
+                "error": { "type": kind, "code": code, "event_id": "foreign-request", "message": "private payload" }
+            })).unwrap();
+            assert_eq!(
+                event,
+                OpenAIRealtimeServerEvent::ProviderError {
+                    code: expected.into(),
+                    is_recoverable: false,
+                    related_event_id: Some("foreign-request".into())
+                }
+            );
+        }
+        for kind in ["server_error", "authentication_error!"] {
+            let event = OpenAIRealtimeServerEvent::decode_value(&serde_json::json!({
+                "type": "error",
+                "error": { "type": kind, "code": "unknown_provider_detail", "message": "authentication_error authorization_error" }
+            })).unwrap();
+            assert!(
+                matches!(event, OpenAIRealtimeServerEvent::ProviderError { code, .. } if code == "unknown_provider_detail")
+            );
+        }
+    }
 
     #[test]
     fn expanded_app_targets_do_not_expand_this_wire_contract() {

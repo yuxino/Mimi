@@ -815,6 +815,100 @@ class NativeRuntimeJniTest {
         verifyLiveTranslateRecoveryCases("liveTranslateRecovery")
     }
 
+    @Test fun openaiSetupClassificationAndRecoveredPcmCrossActualJni() {
+        verifyBuiltinRealtimeRecovery(ServiceProvider.OPENAI)
+    }
+
+    @Test fun grokVoiceSetupClassificationAndRecoveredPcmCrossActualJni() {
+        verifyBuiltinRealtimeRecovery(ServiceProvider.XAI)
+    }
+
+    @Test fun geminiSetupClassificationAndUnavailableRecoveryCrossActualJni() {
+        verifyBuiltinRealtimeRecovery(ServiceProvider.GEMINI)
+    }
+
+    @Test fun audio3SetupRejectionAndUnsolicitedFinishRecoveryCrossActualJni() {
+        verifyBuiltinRealtimeRecovery(ServiceProvider.DASHSCOPE)
+    }
+
+    @Test fun baiduSetupRejectionsAndTransportRecoveryCrossActualJni() {
+        verifyBuiltinRealtimeRecovery(ServiceProvider.BAIDU)
+    }
+
+    private fun verifyBuiltinRealtimeRecovery(provider: ServiceProvider) {
+        val cases = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONArray("builtinRealtimeRecovery")
+        val matching = (0 until cases.length()).map(cases::getJSONObject).filter { it.getString("provider") == provider.id }
+        assertTrue("Missing builtin recovery contracts for $provider", matching.isNotEmpty())
+        for (case in matching) {
+            val id = case.getString("id")
+            RealtimeLoopback(provider, builtinRecovery = case).use { fixture ->
+                val config = configuration(provider)
+                    .put("sourceLanguage", if (provider == ServiceProvider.XAI || provider == ServiceProvider.DASHSCOPE || provider == ServiceProvider.BAIDU) "en" else "auto")
+                    .put("targetLanguage", if (provider == ServiceProvider.DASHSCOPE) "original" else "zh")
+                val handle = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "create")
+                    .put("configuration", config).put("network", fixture.network)).getLong("handle")
+                try {
+                    NativeRuntimeConfiguration.command("start", handle)
+                    if (!case.getBoolean("duringSetup") && !case.optBoolean("repeatFailures")) {
+                        awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
+                        fixture.nextMid.countDown()
+                    }
+                    if (case.isNull("expectedErrorCode")) {
+                        awaitRuntimeState(handle, fixture) {
+                            assertFalse("$id stopped instead of reconnecting", it.getBoolean("finished"))
+                            fixture.reconnected.count == 0L && it.getString("connectionStatus") == "listening"
+                        }
+                        val frameBytes = when (provider) {
+                            ServiceProvider.OPENAI, ServiceProvider.XAI -> 9_600
+                            ServiceProvider.BAIDU -> 1_280
+                            else -> 3_200
+                        }
+                        repeat(5) { assertTrue("$id rejected recovered PCM", NativeRuntimeConfiguration.pcmRaw(handle, ByteArray(frameBytes) { 7 })) }
+                        val receivedAudio = fixture.recoveredAudio.await(3, TimeUnit.SECONDS)
+                        fixture.checkFailure()
+                        assertTrue("$id did not send recovered PCM", receivedAudio)
+                        if (provider == ServiceProvider.XAI || provider == ServiceProvider.DASHSCOPE) {
+                            val recovered = awaitRuntimeState(handle, fixture) {
+                                val snapshot = it.getJSONObject("snapshot")
+                                val source = snapshot.getJSONObject("source")
+                                source.optString("text") == "Synthetic recovered caption." && source.getBoolean("isFinal") &&
+                                    (provider != ServiceProvider.XAI || snapshot.getJSONObject("translation").let { translation ->
+                                        translation.optString("text") == "合成恢复字幕。" && translation.getBoolean("isFinal")
+                                    })
+                            }.getJSONObject("snapshot")
+                            if (provider == ServiceProvider.XAI) {
+                                assertEquals(id, "合成恢复字幕。", recovered.getJSONObject("translation").getString("text"))
+                                assertTrue(id, recovered.getJSONObject("translation").getBoolean("isFinal"))
+                                // Grok normal finish is covered by client regressions; here
+                                // prove hard Stop cannot reconnect the recovered engine.
+                                stopAndAwaitTransportClosed(handle, fixture, fixture.recoveredTransportClosed)
+                            } else {
+                                NativeRuntimeConfiguration.command("finish", handle)
+                                awaitRuntimeState(handle, fixture) { it.getBoolean("finished") }
+                            }
+                        } else {
+                            NativeRuntimeConfiguration.command("finish", handle)
+                            val finished = awaitRuntimeState(handle, fixture) { it.getBoolean("finished") }.getJSONObject("snapshot")
+                            assertEquals(id, "Synthetic recovered caption.", finished.getJSONObject("source").getString("text"))
+                            assertTrue(id, finished.getJSONObject("source").getBoolean("isFinal"))
+                            assertEquals(id, "合成恢复字幕。", finished.getJSONObject("translation").getString("text"))
+                            assertTrue(id, finished.getJSONObject("translation").getBoolean("isFinal"))
+                        }
+                    } else {
+                        val failed = awaitRuntimeState(handle, fixture, expectedError = case.getString("expectedErrorCode"),
+                            timeoutSeconds = case.optLong("timeoutSeconds", 5)) { it.getBoolean("finished") }
+                        assertEquals(id, case.getString("expectedErrorCode"), failed.getString("errorCode"))
+                        assertFalse(id, failed.toString().contains("synthetic-private-detail"))
+                    }
+                    assertTrue("$id opened another connection", fixture.noFurtherConnections.await(2, TimeUnit.SECONDS))
+                    fixture.checkFailure()
+                    assertEquals(id, case.getInt("expectedConnections"), fixture.connectionCount.get())
+                } finally { NativeRuntimeConfiguration.command("stop", handle) }
+            }
+        }
+    }
+
     @Test fun liveTranslateSetupRejectionsPreserveRecoveryClassificationAcrossActualJni() {
         verifyLiveTranslateRecoveryCases("liveTranslateSetupRecovery")
     }
@@ -1255,15 +1349,23 @@ class NativeRuntimeJniTest {
         private val holdSetup: Boolean = false, private val recoverOverflow: Boolean = false,
         private val lateFinalReplay: Boolean = false, private val sourceOrderReplay: Boolean = false,
         private val translationStartReplay: Boolean = false, private val finishTailCount: Int = 1,
-        private val xaiRecovery: JSONObject? = null, private val liveRecovery: JSONObject? = null) : AutoCloseable {
+        private val xaiRecovery: JSONObject? = null, private val liveRecovery: JSONObject? = null,
+        private val builtinRecovery: JSONObject? = null) : AutoCloseable {
         private val tencent = provider == ServiceProvider.TENCENT
-        private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate
-        private val host = if (xaiRecovery != null) "api.x.ai"
+        private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate && builtinRecovery == null
+        private val host = if (builtinRecovery != null) when (provider) {
+            ServiceProvider.OPENAI -> "api.openai.com"
+            ServiceProvider.XAI -> "api.x.ai"
+            ServiceProvider.GEMINI -> "generativelanguage.googleapis.com"
+            ServiceProvider.DASHSCOPE -> "dashscope.aliyuncs.com"
+            ServiceProvider.BAIDU -> "aip.baidubce.com"
+            else -> error("Unsupported builtin recovery fixture")
+        } else if (xaiRecovery != null) "api.x.ai"
             else if (liveTranslate) "synthetic-workspace.cn-beijing.maas.aliyuncs.com"
             else if (qwen) "dashscope.aliyuncs.com" else if (tencent) "asr.cloud.tencent.com" else "aip.baidubce.com"
         private val phases = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
             .bufferedReader().use { it.readText() }).let { contract ->
-            if (xaiRecovery != null) JSONArray()
+            if (xaiRecovery != null || builtinRecovery != null) JSONArray()
             else if (translationStartReplay) JSONObject(requireNotNull(javaClass.getResourceAsStream("/live-pair-contracts.json"))
                 .bufferedReader().use { it.readText() }).getJSONObject("translationStartActivity").getJSONArray("phases")
             else if (sourceOrderReplay) JSONArray(listOf(
@@ -1376,6 +1478,10 @@ class NativeRuntimeJniTest {
             worker = thread(name = "mimi-realtime-loopback", isDaemon = true) {
                 try {
                     server.soTimeout = 5_000
+                    if (builtinRecovery != null) {
+                        builtinRecoverySession(tls)
+                        return@thread
+                    }
                     if (xaiRecovery != null) {
                         xaiRecoverySession(tls)
                         return@thread
@@ -1448,13 +1554,139 @@ class NativeRuntimeJniTest {
             socket = secure
             val input = DataInputStream(secure.inputStream)
             val request = headers(input)
-            check(request.startsWith(if (xaiRecovery != null) "GET /v1/stt?model=grok-voice-transcribe-2.0&sample_rate=16000&encoding=pcm&interim_results=true&language=en HTTP/1.1\r\n"
+            check(request.startsWith(if (builtinRecovery != null) when (provider) {
+                ServiceProvider.OPENAI -> "GET /v1/realtime/translations?model=gpt-realtime-translate HTTP/1.1\r\n"
+                ServiceProvider.XAI -> "GET /v1/realtime?model=grok-voice-latest HTTP/1.1\r\n"
+                ServiceProvider.GEMINI -> "GET /ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=synthetic-apiKey HTTP/1.1\r\n"
+                ServiceProvider.DASHSCOPE -> "GET /api-ws/v1/inference HTTP/1.1\r\n"
+                ServiceProvider.BAIDU -> "GET /ws/realtime_speech_trans HTTP/1.1\r\n"
+                else -> error("Unsupported builtin recovery fixture")
+            } else if (xaiRecovery != null) "GET /v1/stt?model=grok-voice-transcribe-2.0&sample_rate=16000&encoding=pcm&interim_results=true&language=en HTTP/1.1\r\n"
                 else if (liveTranslate) "GET /api-ws/v1/realtime?model=qwen3.8-livetranslate-flash-realtime HTTP/1.1\r\n"
                 else if (qwen) "GET /api-ws/v1/inference HTTP/1.1\r\n" else if (tencent) "GET /asr/speech_translate/123456789?" else "GET /ws/realtime_speech_trans HTTP/1.1\r\n"))
             val key = request.lineSequence().first { it.startsWith("sec-websocket-key:", true) }.substringAfter(':').trim()
             val accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray(Charsets.US_ASCII)))
             secure.outputStream.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $accept\r\n\r\n".toByteArray(Charsets.US_ASCII))
             return secure
+        }
+
+        private fun builtinRecoverySession(tls: SSLContext) {
+            val recovery = requireNotNull(builtinRecovery)
+            repeat(recovery.getInt("expectedConnections")) { index ->
+                val connection = index + 1
+                acceptWebSocket(tls).use { secure ->
+                    val input = DataInputStream(secure.inputStream)
+                    val output = secure.outputStream
+                    val setup = JSONObject(readText(input, output, connection))
+                    when (provider) {
+                        ServiceProvider.GEMINI -> check(setup.getJSONObject("setup").getJSONObject("generationConfig")
+                            .getJSONObject("translationConfig").getString("targetLanguageCode") == "zh-Hans")
+                        ServiceProvider.DASHSCOPE -> check(setup.getJSONObject("header").getString("action") == "run-task")
+                        ServiceProvider.BAIDU -> {
+                            check(setup.getString("type") == "START")
+                            check(setup.getString("from") == "en" && setup.getString("to") == "zh")
+                            check(setup.getInt("sampling_rate") == 16_000)
+                        }
+                        else -> check(setup.getString("type") == "session.update")
+                    }
+                    if (index > 0 || !recovery.getBoolean("duringSetup")) send(output, builtinReadyFrame())
+                    if (recovery.optBoolean("repeatFailures")) {
+                        send(output, recovery.getJSONObject("failureFrame").toString())
+                    } else if (index == 0) {
+                        if (!recovery.getBoolean("duringSetup")) check(nextMid.await(5, TimeUnit.SECONDS))
+                        if (recovery.isNull("failureFrame")) frame(output, 8, byteArrayOf(3, -24))
+                        else send(output, recovery.getJSONObject("failureFrame").toString())
+                    } else {
+                        reconnected.countDown()
+                        if (provider == ServiceProvider.DASHSCOPE || provider == ServiceProvider.BAIDU) {
+                            // These providers send binary PCM; emit captions only after all
+                            // recovered frames have crossed JNI and the real socket.
+                            val frameBytes = if (provider == ServiceProvider.BAIDU) 1_280 else 3_200
+                            val finish = JSONObject(readText(input, output, connection, onBinary = { pcm ->
+                                check(pcm.contentEquals(ByteArray(frameBytes) { 7 }))
+                                recoveredAudioFrames.incrementAndGet()
+                                recoveredAudio.countDown()
+                                if (recoveredAudioFrames.get() == 5) {
+                                    if (provider == ServiceProvider.BAIDU) builtinRecoveredCaption(output)
+                                    else send(output, """{"header":{"event":"result-generated"},"payload":{"output":{"sentence":{"sentence_id":1,"sentence_end":true,"text":"Synthetic recovered caption."}}}}""")
+                                }
+                            }))
+                            check(recoveredAudioFrames.get() == 5)
+                            if (provider == ServiceProvider.BAIDU) {
+                                check(finish.getString("type") == "FINISH")
+                                send(output, """{"code":0,"data":{"status":"END"}}""")
+                            } else {
+                                check(finish.getJSONObject("header").getString("action") == "finish-task")
+                                send(output, """{"header":{"event":"task-finished"}}""")
+                            }
+                        } else {
+                            repeat(5) {
+                                val audio = JSONObject(readText(input, output, connection))
+                                val encoded = if (provider == ServiceProvider.GEMINI) {
+                                    val value = audio.getJSONObject("realtimeInput").getJSONObject("audio")
+                                    check(value.getString("mimeType") == "audio/pcm;rate=16000")
+                                    value.getString("data")
+                                } else {
+                                    val expectedType = if (provider == ServiceProvider.OPENAI) "session.input_audio_buffer.append" else "input_audio_buffer.append"
+                                    check(audio.getString("type") == expectedType) { "Unexpected recovered audio frame type" }
+                                    audio.getString("audio")
+                                }
+                                val frameBytes = if (provider == ServiceProvider.GEMINI) 3_200 else 9_600
+                                check(Base64.getDecoder().decode(encoded).contentEquals(ByteArray(frameBytes) { 7 }))
+                                recoveredAudioFrames.incrementAndGet()
+                                recoveredAudio.countDown()
+                            }
+                            builtinRecoveredCaption(output)
+                            when (provider) {
+                                ServiceProvider.OPENAI -> {
+                                    check(JSONObject(readText(input, output, connection)).getString("type") == "session.close")
+                                    send(output, """{"type":"session.closed"}""")
+                                }
+                                ServiceProvider.GEMINI -> {
+                                    check(JSONObject(readText(input, output, connection)).getJSONObject("realtimeInput").getBoolean("audioStreamEnd"))
+                                    send(output, """{"serverContent":{"turnComplete":true}}""")
+                                }
+                                // Grok is hard-stopped after its final pair is observed.
+                                ServiceProvider.XAI -> Unit
+                                else -> error("Unsupported recovered caption fixture")
+                            }
+                        }
+                    }
+                    check(readText(input, output, connection).isEmpty())
+                }
+            }
+            server.soTimeout = 500
+            try {
+                server.accept().use { connectionCount.incrementAndGet(); error("Unexpected extra builtin connection") }
+            } catch (_: java.net.SocketTimeoutException) { noFurtherConnections.countDown() }
+        }
+
+        private fun builtinReadyFrame(): String = when (provider) {
+            ServiceProvider.OPENAI -> """{"type":"session.updated","session":{"audio":{"input":{"transcription":{"model":"gpt-realtime-whisper"}},"output":{"language":"zh"}}}}"""
+            ServiceProvider.XAI -> """{"type":"session.updated","session":{"reasoning":{"effort":"none"},"turn_detection":{"type":"server_vad"},"audio":{"input":{"format":{"type":"audio/pcm","rate":24000},"transcription":{"model":"grok-transcribe"}}}}}"""
+            ServiceProvider.GEMINI -> """{"setupComplete":{}}"""
+            ServiceProvider.DASHSCOPE -> """{"header":{"event":"task-started"}}"""
+            ServiceProvider.BAIDU -> """{"code":0,"data":{"status":"STA"}}"""
+            else -> error("Unsupported builtin ready fixture")
+        }
+
+        private fun builtinRecoveredCaption(output: OutputStream) {
+            val frames = when (provider) {
+                ServiceProvider.OPENAI -> listOf(
+                    """{"type":"session.input_transcript.delta","delta":"Synthetic recovered caption."}""",
+                    """{"type":"session.output_transcript.delta","delta":"合成恢复字幕。"}""",
+                )
+                ServiceProvider.XAI -> listOf(
+                    """{"type":"conversation.item.input_audio_transcription.completed","item_id":"recovered-source","transcript":"Synthetic recovered caption."}""",
+                    """{"type":"response.created","response":{"id":"recovered-response"}}""",
+                    """{"type":"response.output_audio_transcript.done","response_id":"recovered-response","transcript":"合成恢复字幕。"}""",
+                    """{"type":"response.done","response":{"id":"recovered-response","status":"completed"}}""",
+                )
+                ServiceProvider.GEMINI -> listOf("""{"serverContent":{"inputTranscription":{"text":"Synthetic recovered caption."},"outputTranscription":{"text":"合成恢复字幕。"}}}""")
+                ServiceProvider.BAIDU -> listOf("""{"code":0,"data":{"status":"TRN","result":{"type":"FIN","asr":"","asr_trans":"","sentence":"Synthetic recovered caption.","sentence_trans":"合成恢复字幕。"}}}""")
+                else -> error("Unsupported builtin subtitle fixture")
+            }
+            frames.forEach { send(output, it) }
         }
 
         private fun xaiRecoverySession(tls: SSLContext) {
@@ -1626,20 +1858,28 @@ class NativeRuntimeJniTest {
             output.write(bytes)
             output.flush()
         }
-        private fun readText(input: DataInputStream, output: OutputStream, connection: Int = 1, afterPong: (() -> Unit)? = null): String {
+        private fun readText(input: DataInputStream, output: OutputStream, connection: Int = 1,
+            onBinary: ((ByteArray) -> Unit)? = null, afterPong: (() -> Unit)? = null): String {
             try {
                 while (true) {
                     val opcode = input.readUnsignedByte() and 15
                     val flags = input.readUnsignedByte()
                     check(flags and 128 != 0)
                     val size = when (val short = flags and 127) { 126 -> input.readUnsignedShort(); 127 -> error("Oversized loopback frame"); else -> short }
-                    check(size <= if (liveTranslate) 8_192 else 4_096)
+                    check(size <= if (builtinRecovery != null) 16_384 else if (liveTranslate) 8_192 else 4_096)
                     val mask = ByteArray(4).also(input::readFully)
                     val payload = ByteArray(size).also(input::readFully)
                     for (index in payload.indices) payload[index] = (payload[index].toInt() xor mask[index % 4].toInt()).toByte()
-                    if ((qwen || liveTranslate || xaiRecovery != null) && opcode == 8) {
-                        if (liveTranslate) observeTransportClosed(connection)
+                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null) && opcode == 8) {
+                        if (liveTranslate || builtinRecovery != null) observeTransportClosed(connection)
                         return ""
+                    }
+                    if (builtinRecovery != null && opcode == 2) {
+                        check((provider == ServiceProvider.DASHSCOPE || provider == ServiceProvider.BAIDU) && onBinary != null) {
+                            "Unexpected binary frame for builtin recovery protocol"
+                        }
+                        onBinary(payload)
+                        continue
                     }
                     if ((qwen || liveTranslate) && opcode == 2) continue
                     if (opcode == 9) {
@@ -1651,7 +1891,7 @@ class NativeRuntimeJniTest {
                     }
                 }
             } catch (error: java.io.EOFException) {
-                if (!liveTranslate && xaiRecovery == null) throw error
+                if (!liveTranslate && xaiRecovery == null && builtinRecovery == null) throw error
                 observeTransportClosed(connection)
                 return ""
             }

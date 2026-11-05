@@ -158,24 +158,15 @@ impl GeminiLiveServerEvent {
     }
 
     pub fn decode_value(value: &Value) -> Result<Vec<Self>, GeminiLiveProtocolError> {
+        if let Some(error) = value.get("error") {
+            let (code, is_recoverable) = classify_provider_error(error);
+            return Ok(vec![Self::ProviderError {
+                code: code.into(),
+                is_recoverable,
+            }]);
+        }
         if value.get("setupComplete").is_some() {
             return Ok(vec![Self::SetupComplete]);
-        }
-        if let Some(error) = value.get("error") {
-            let raw_status = error.get("status").and_then(Value::as_str).unwrap_or("");
-            let code = if raw_status.is_empty() {
-                error
-                    .get("code")
-                    .and_then(Value::as_i64)
-                    .map(|code| format!("http_{code}"))
-                    .unwrap_or_else(|| "provider_error".to_string())
-            } else {
-                sanitize_label(raw_status, 64, "provider_error")
-            };
-            return Ok(vec![Self::ProviderError {
-                is_recoverable: is_recoverable_provider_error(&code),
-                code,
-            }]);
         }
         if value.get("goAway").is_some() {
             return Ok(vec![Self::GoAway]);
@@ -294,25 +285,127 @@ fn sanitize_label(value: &str, maximum_length: usize, fallback: &str) -> String 
     }
 }
 
-fn is_recoverable_provider_error(code: &str) -> bool {
-    const TERMINAL: [&str; 10] = [
-        "failed_precondition",
-        "http_400",
-        "http_401",
-        "http_403",
-        "http_404",
-        "invalid_argument",
-        "not_found",
-        "permission_denied",
-        "unauthenticated",
-        "unimplemented",
-    ];
-    !TERMINAL.contains(&code)
+fn classify_provider_error(error: &Value) -> (&'static str, bool) {
+    let status = error.get("status");
+    let numeric_code = error.get("code").and_then(Value::as_i64);
+    // Authentication evidence takes precedence over conflicting transient fields.
+    if status.and_then(Value::as_str) == Some("UNAUTHENTICATED") || numeric_code == Some(401) {
+        return ("unauthenticated", false);
+    }
+    if status.and_then(Value::as_str) == Some("PERMISSION_DENIED") || numeric_code == Some(403) {
+        return ("permission_denied", false);
+    }
+    // Only exact, consistent service-unavailable evidence permits recovery.
+    // Never turn arbitrary status/message text into authority by sanitizing it.
+    let unavailable = match status {
+        Some(Value::String(status)) if status == "UNAVAILABLE" => {
+            error.get("code").is_none() || numeric_code == Some(503)
+        }
+        None => numeric_code == Some(503),
+        _ => false,
+    };
+    if unavailable {
+        ("unavailable", true)
+    } else {
+        ("provider_error", false)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gemini_recovery_classification_requires_exact_transient_evidence() {
+        for (error, expected_code, expected_recoverable) in [
+            (
+                serde_json::json!({"status":"UNAVAILABLE","code":503}),
+                "unavailable",
+                true,
+            ),
+            (
+                serde_json::json!({"status":"UNAVAILABLE"}),
+                "unavailable",
+                true,
+            ),
+            (serde_json::json!({"code":503}), "unavailable", true),
+            (
+                serde_json::json!({"status":"PERMISSION_DENIED","code":403}),
+                "permission_denied",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"RESOURCE_EXHAUSTED","code":429}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"INVALID_ARGUMENT","code":400}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"UNKNOWN"}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"UNAVAILABLE!"}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"UNAVAILABLE","code":429}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"RESOURCE_EXHAUSTED","code":503}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"status":"UNAVAILABLE","code":401}),
+                "unauthenticated",
+                false,
+            ),
+            (
+                serde_json::json!({"status":false,"code":503}),
+                "provider_error",
+                false,
+            ),
+            (
+                serde_json::json!({"message":"UNAVAILABLE authentication temporary retry"}),
+                "provider_error",
+                false,
+            ),
+        ] {
+            assert_eq!(
+                GeminiLiveServerEvent::decode_value(&serde_json::json!({"error":error})).unwrap(),
+                vec![GeminiLiveServerEvent::ProviderError {
+                    code: expected_code.into(),
+                    is_recoverable: expected_recoverable
+                }],
+                "error={error}"
+            );
+        }
+    }
+
+    #[test]
+    fn gemini_recovery_error_takes_precedence_over_setup_complete() {
+        let events = GeminiLiveServerEvent::decode_value(&serde_json::json!({
+            "setupComplete": {},
+            "error": {"status": "PERMISSION_DENIED", "code": 403}
+        }))
+        .unwrap();
+        assert_eq!(
+            events,
+            vec![GeminiLiveServerEvent::ProviderError {
+                code: "permission_denied".into(),
+                is_recoverable: false
+            }]
+        );
+    }
 
     #[test]
     fn expanded_app_targets_do_not_expand_this_wire_contract() {

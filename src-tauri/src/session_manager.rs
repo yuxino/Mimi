@@ -452,6 +452,11 @@ fn session_error_requires_user_action(error: &str) -> bool {
                 | "Microphone capture permission was denied."
                 | "System audio capture was stopped by the user."
                 | "alibaba_realtime_provider_error"
+                | "openai_realtime_provider_error"
+                | "xai_realtime_provider_error"
+                | "gemini_live_provider_error"
+                | "baidu_realtime_provider_error"
+                | "audio3_provider_error"
         )
 }
 
@@ -8334,20 +8339,63 @@ mod lifecycle_tests {
     }
 
     #[test]
-    fn alibaba_setup_rejection_stops_recovery_with_the_current_failure() {
+    fn tencent_permanent_setup_rejection_does_not_retry_or_erase_the_new_reason() {
+        use crate::clients::tencent_cloud_client::TencentCloudClientError;
+        for code in [6001, 6003, 6004, 6005] {
+            let error = session_connect_error(ConnectError::TencentCloud(
+                TencentCloudClientError::ProviderRejected { code },
+            ));
+            assert!(session_error_requires_user_action(&error), "{error}");
+            let mut controller = TranslationSessionController::default();
+            controller.begin_connecting();
+            apply_establish_failure_state(&mut controller, error.clone(), true);
+            assert_eq!(controller.state.status, SessionStatus::Error(error));
+        }
+    }
+
+    #[test]
+    fn built_in_setup_rejection_stops_recovery_with_the_current_failure() {
+        use crate::clients::baidu_translate_client::BaiduTranslateClientError;
+        use crate::clients::gemini_live_client::GeminiLiveClientError;
         use crate::clients::live_translate_client::LiveTranslateClientError;
+        use crate::clients::openai_realtime_client::OpenAIRealtimeClientError;
+        use crate::clients::xai_realtime_client::XAIRealtimeClientError;
 
         for (failure, expected) in [
             (
-                LiveTranslateClientError::SessionSetupRejected,
+                ConnectError::Live(LiveTranslateClientError::SessionSetupRejected),
                 "alibaba_realtime_provider_error",
             ),
             (
-                LiveTranslateClientError::AuthenticationFailed,
+                ConnectError::Live(LiveTranslateClientError::AuthenticationFailed),
                 "credential_authentication_failed",
             ),
+            (
+                ConnectError::OpenAI(OpenAIRealtimeClientError::SessionSetupRejected),
+                "openai_realtime_provider_error",
+            ),
+            (
+                ConnectError::Xai(XAIRealtimeClientError::SessionSetupRejected),
+                "xai_realtime_provider_error",
+            ),
+            (
+                ConnectError::Gemini(GeminiLiveClientError::SessionSetupRejected),
+                "gemini_live_provider_error",
+            ),
+            (
+                ConnectError::BaiduTranslate(
+                    BaiduTranslateClientError::SessionSetupRejectedWithCode(20316),
+                ),
+                "baidu_realtime_provider_error",
+            ),
+            (
+                ConnectError::BaiduTranslate(
+                    BaiduTranslateClientError::SessionSetupRejectedWithCode(987654),
+                ),
+                "baidu_realtime_provider_error",
+            ),
         ] {
-            let error = session_connect_error(ConnectError::Live(failure));
+            let error = session_connect_error(failure);
             assert_eq!(error, expected);
             // This is the recovery loop's terminal branch: it must retain the
             // setup rejection rather than exhaust retries and report the idle

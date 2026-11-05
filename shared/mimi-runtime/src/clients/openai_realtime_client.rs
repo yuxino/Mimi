@@ -51,7 +51,19 @@ type Sink = futures_util::stream::SplitSink<WebSocketStream<MaybeTlsStream<TcpSt
 enum SetupState {
     Awaiting,
     Ready,
-    Rejected,
+    Rejected(OpenAIRealtimeClientError),
+}
+
+fn setup_provider_failure(code: &str) -> OpenAIRealtimeClientError {
+    match code {
+        "invalid_api_key"
+        | "authentication_error"
+        | "authorization_error"
+        | "unauthorized"
+        | "forbidden"
+        | "permission_denied" => OpenAIRealtimeClientError::AuthenticationFailed,
+        _ => OpenAIRealtimeClientError::SessionSetupRejected,
+    }
 }
 
 struct Inner {
@@ -205,8 +217,8 @@ impl OpenAIRealtimeClient {
             stream,
             events: self.events.clone(),
             target_language: self.target_language,
-            setup_event_id: setup_event_id.clone(),
             setup: setup_tx,
+            setup_event_id: setup_event_id.clone(),
             generation,
         }));
         *self.inner.receive_task.lock().await = Some(task);
@@ -225,9 +237,7 @@ impl OpenAIRealtimeClient {
             loop {
                 match setup_rx.borrow().clone() {
                     SetupState::Ready => return Ok(()),
-                    SetupState::Rejected => {
-                        return Err(OpenAIRealtimeClientError::SessionSetupRejected)
-                    }
+                    SetupState::Rejected(error) => return Err(error),
                     SetupState::Awaiting => {}
                 }
                 if setup_rx.changed().await.is_err() {
@@ -461,8 +471,8 @@ struct ReceiveContext {
     stream: futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     events: ProviderEventSender,
     target_language: TargetLanguage,
-    setup_event_id: String,
     setup: watch::Sender<SetupState>,
+    setup_event_id: String,
     generation: u64,
 }
 
@@ -506,7 +516,12 @@ async fn receive_loop(mut context: ReceiveContext) {
 
 async fn fail_receive_loop(context: &ReceiveContext, code: &str, message: &str) {
     if *context.setup.borrow() == SetupState::Awaiting {
-        let _ = context.setup.send(SetupState::Rejected);
+        let failure = if code == "transport_error" {
+            OpenAIRealtimeClientError::TransportFailure
+        } else {
+            OpenAIRealtimeClientError::SessionSetupRejected
+        };
+        let _ = context.setup.send(SetupState::Rejected(failure));
     } else {
         emit_if_current(
             context,
@@ -547,7 +562,9 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
                 || target_language != context.target_language.raw_value()
             {
                 if *context.setup.borrow() == SetupState::Awaiting {
-                    let _ = context.setup.send(SetupState::Rejected);
+                    let _ = context.setup.send(SetupState::Rejected(
+                        OpenAIRealtimeClientError::SessionSetupRejected,
+                    ));
                 } else {
                     emit_if_current(
                         context,
@@ -586,7 +603,9 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
         OpenAIRealtimeServerEvent::OutputAudioDelta => {}
         OpenAIRealtimeServerEvent::SessionClosed => {
             if *context.setup.borrow() == SetupState::Awaiting {
-                let _ = context.setup.send(SetupState::Rejected);
+                let _ = context.setup.send(SetupState::Rejected(
+                    OpenAIRealtimeClientError::TransportFailure,
+                ));
                 return true;
             }
             if !context.inner.is_closing.load(Ordering::SeqCst) {
@@ -614,11 +633,23 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
             is_recoverable,
             related_event_id,
         } => {
-            if *context.setup.borrow() == SetupState::Awaiting
-                && (related_event_id.as_deref() == Some(context.setup_event_id.as_str())
-                    || !is_recoverable)
-            {
-                let _ = context.setup.send(SetupState::Rejected);
+            if *context.setup.borrow() == SetupState::Awaiting {
+                if is_recoverable
+                    && related_event_id
+                        .as_deref()
+                        .is_some_and(|id| id != context.setup_event_id)
+                {
+                    // An explicit error for another request does not reject
+                    // our pending session.update acknowledgement.
+                    return false;
+                }
+                // A pre-ready rejection cannot become a timeout just because
+                // the service omitted its related event id. "Recoverable"
+                // means an established socket may continue, not permission to
+                // reconnect an unaccepted configuration or an unknown error.
+                let _ = context
+                    .setup
+                    .send(SetupState::Rejected(setup_provider_failure(&code)));
                 return true;
             }
             if is_recoverable {
@@ -630,7 +661,13 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
             emit_if_current(
                 context,
                 LiveTranslateServerEvent::Error {
-                    code: format!("openai_provider_error.{code}"),
+                    code: if setup_provider_failure(&code)
+                        == OpenAIRealtimeClientError::AuthenticationFailed
+                    {
+                        "credential_authentication_failed".into()
+                    } else {
+                        format!("openai_provider_error.{code}")
+                    },
                     message: GENERIC_PROVIDER_ERROR.into(),
                 },
             );
@@ -824,6 +861,207 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn pre_ready_provider_errors_keep_typed_failure() {
+        let mut observed = Vec::new();
+        let mut expected = Vec::new();
+        for (kind, code, related, failure) in [
+            (
+                "authentication_error",
+                "invalid_api_key",
+                false,
+                OpenAIRealtimeClientError::AuthenticationFailed,
+            ),
+            (
+                "authorization_error",
+                "permission_denied",
+                false,
+                OpenAIRealtimeClientError::AuthenticationFailed,
+            ),
+            (
+                "authentication_error",
+                "key_expired",
+                false,
+                OpenAIRealtimeClientError::AuthenticationFailed,
+            ),
+            (
+                "authorization_error",
+                "invalid_event",
+                true,
+                OpenAIRealtimeClientError::AuthenticationFailed,
+            ),
+            (
+                "invalid_request_error",
+                "insufficient_quota",
+                false,
+                OpenAIRealtimeClientError::SessionSetupRejected,
+            ),
+            (
+                "invalid_request_error",
+                "invalid_event",
+                false,
+                OpenAIRealtimeClientError::SessionSetupRejected,
+            ),
+            (
+                "server_error",
+                "unknown_service_code",
+                false,
+                OpenAIRealtimeClientError::SessionSetupRejected,
+            ),
+            (
+                "server_error",
+                "unknown_service_code",
+                true,
+                OpenAIRealtimeClientError::SessionSetupRejected,
+            ),
+        ] {
+            let (client, mut events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    let update = socket.next().await.unwrap().unwrap();
+                    let update: Value = serde_json::from_str(update.to_text().unwrap()).unwrap();
+                    let mut error = serde_json::json!({
+                        "type": kind,
+                        "code": code,
+                        "message": "private provider details",
+                    });
+                    if related {
+                        error["event_id"] = update["event_id"].clone();
+                    }
+                    socket
+                        .send(Message::Text(
+                            serde_json::json!({"type": "error", "error": error})
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .unwrap();
+                    while socket.next().await.is_some() {}
+                })
+            })
+            .await;
+            observed.push(
+                client
+                    .connect_with_timeout(Duration::from_millis(100))
+                    .await,
+            );
+            expected.push(Err(failure));
+            assert!(!client.inner.ready.load(Ordering::SeqCst));
+            assert!(events.try_recv().is_err());
+            client.disconnect().await;
+        }
+        assert_eq!(observed, expected);
+    }
+
+    #[tokio::test]
+    async fn active_authentication_errors_keep_the_fixed_terminal_label() {
+        for (kind, code, expected) in [
+            (
+                "invalid_request_error",
+                "invalid_api_key",
+                "credential_authentication_failed",
+            ),
+            (
+                "authentication_error",
+                "key_expired",
+                "credential_authentication_failed",
+            ),
+            (
+                "authorization_error",
+                "invalid_event",
+                "credential_authentication_failed",
+            ),
+            (
+                "authentication_error!",
+                "unknown_code",
+                "openai_provider_error.unknown_code",
+            ),
+        ] {
+            let (release, released) = tokio::sync::oneshot::channel();
+            let (client, mut events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    let _ = socket.next().await;
+                    socket.send(Message::Text(
+                        r#"{"type":"session.updated","session":{"audio":{"input":{"transcription":{"model":"gpt-realtime-whisper"}},"output":{"language":"ja"}}}}"#.into()
+                    )).await.unwrap();
+                    released.await.unwrap();
+                    socket.send(Message::Text(serde_json::json!({
+                        "type": "error", "error": {
+                            "type": kind, "code": code,
+                            "message": "private provider detail authentication_error"
+                        }
+                    }).to_string().into())).await.unwrap();
+                    socket.send(Message::Text(
+                        r#"{"type":"session.input_transcript.delta","delta":"must not be processed"}"#.into()
+                    )).await.unwrap();
+                    while socket.next().await.is_some() {}
+                })
+            }).await;
+            client.connect().await.unwrap();
+            release.send(()).unwrap();
+            let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let receive_task = client.inner.receive_task.lock().await.take().unwrap();
+            tokio::time::timeout(Duration::from_secs(1), receive_task)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(client.inner.committer.lock().await.finish().is_empty());
+            assert!(events.try_recv().is_err());
+            client.disconnect().await;
+            assert_eq!(
+                event,
+                LiveTranslateServerEvent::Error {
+                    code: expected.into(),
+                    message: GENERIC_PROVIDER_ERROR.into(),
+                },
+                "{kind}/{code}"
+            );
+            assert!(!crate::core::recovery::provider_error_is_retryable(
+                expected
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn pre_ready_recoverable_error_for_other_request_keeps_waiting() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await.unwrap().unwrap();
+                socket.send(Message::Text(r#"{"type":"error","error":{"type":"invalid_request_error","code":"invalid_event","event_id":"unrelated-fixture-request"}}"#.into())).await.unwrap();
+                socket.send(Message::Text(r#"{"type":"session.updated","session":{"audio":{"input":{"transcription":{"model":"gpt-realtime-whisper"}},"output":{"language":"ja"}}}}"#.into())).await.unwrap();
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        assert_eq!(
+            client.connect_with_timeout(Duration::from_secs(1)).await,
+            Ok(())
+        );
+        assert!(client.inner.ready.load(Ordering::SeqCst));
+        assert!(events.try_recv().is_err());
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn pre_ready_socket_close_remains_a_transport_failure() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket.close(None).await.unwrap();
+            })
+        })
+        .await;
+        assert_eq!(
+            client
+                .connect_with_timeout(Duration::from_millis(500))
+                .await,
+            Err(OpenAIRealtimeClientError::TransportFailure),
+        );
+        assert!(events.try_recv().is_err());
+        client.disconnect().await;
+    }
+
     #[test]
     fn frame_buffer_keeps_only_a_partial_tail() {
         let mut pending = vec![0x11; 9_600 * 2 + 17];
@@ -991,7 +1229,7 @@ mod tests {
         assert_eq!(
             event,
             LiveTranslateServerEvent::Error {
-                code: "openai_provider_error.invalid_api_key".into(),
+                code: "credential_authentication_failed".into(),
                 message: GENERIC_PROVIDER_ERROR.into(),
             }
         );

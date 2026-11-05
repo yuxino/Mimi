@@ -31,6 +31,7 @@ pub fn normalize_provider_error_code(code: &str) -> &'static str {
         "live_translate_unexpected_session_end" => "live_translate_unexpected_session_end",
         "alibaba_realtime_service_unavailable" => "alibaba_realtime_service_unavailable",
         "alibaba_realtime_idle_timeout" => "alibaba_realtime_idle_timeout",
+        "gemini_live_service_unavailable" => "gemini_live_service_unavailable",
         "translation_backlog_overflow" => "translation_backlog_overflow",
         "translation_rate_limited" => "translation_rate_limited",
         "translation_temporarily_unavailable" => "translation_temporarily_unavailable",
@@ -74,6 +75,9 @@ pub fn provider_error_requires_user_action(error: &str) -> bool {
                 | "xai_stt_credentials_missing"
                 | "xai_stt_language_unsupported"
                 | "text_translation_credentials_missing"
+                | "tencent_configuration_rejected"
+                | "tencent_service_activation_required"
+                | "tencent_quota_exhausted"
                 | "invalid_configuration"
         )
 }
@@ -176,6 +180,18 @@ impl RecoverySchedule {
     }
 }
 
+/// A successful health probe only proves stability for the connection it
+/// measured, after the existing full health interval has elapsed.
+pub fn connection_health_is_stable(
+    connected_generation: u64,
+    probe_generation: u64,
+    connected_at: Instant,
+    now: Instant,
+) -> bool {
+    connected_generation == probe_generation
+        && now.saturating_duration_since(connected_at) >= crate::core::health::HEALTH_CHECK_INTERVAL
+}
+
 /// Moves the same retry budget between native recovery owners. A setup
 /// acknowledgement is not evidence that a replacement connection is stable.
 /// Adapters retain ownership checks and report an actual successful health
@@ -201,9 +217,12 @@ impl RecoveryContinuity {
 
     pub fn health_succeeded(&mut self, generation: u64, now: Instant) -> bool {
         let stable = self.connected.as_ref().is_some_and(|connected| {
-            connected.schedule.generation() == generation
-                && now.saturating_duration_since(connected.connected_at)
-                    >= crate::core::health::HEALTH_CHECK_INTERVAL
+            connection_health_is_stable(
+                connected.schedule.generation(),
+                generation,
+                connected.connected_at,
+                now,
+            )
         });
         if stable {
             self.clear();
@@ -795,6 +814,7 @@ pub fn provider_error_is_retryable(code: &str) -> bool {
             | "live_translate_unexpected_session_end"
             | "alibaba_realtime_service_unavailable"
             | "alibaba_realtime_idle_timeout"
+            | "gemini_live_service_unavailable"
             | "translation_backlog_overflow"
             | "translation_rate_limited"
             | "translation_temporarily_unavailable"
@@ -813,6 +833,7 @@ pub fn provider_recovery_minimum_delay(code: &str) -> Duration {
         "translation_temporarily_unavailable"
         | "live_translate_unexpected_session_end"
         | "alibaba_realtime_idle_timeout"
+        | "gemini_live_service_unavailable"
         | "alibaba_realtime_service_unavailable" => Duration::from_millis(600),
         "apple_speech_runtime_service_unavailable"
         | "apple_speech_runtime_timeout"

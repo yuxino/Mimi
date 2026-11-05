@@ -35,6 +35,8 @@ mod live_translate_input_probe;
 mod mac_dock;
 #[cfg(target_os = "macos")]
 mod mac_native_quit;
+#[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+mod provider_public_audio_probe;
 mod session_export;
 mod session_history;
 mod session_manager;

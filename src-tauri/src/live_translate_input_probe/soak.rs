@@ -86,9 +86,11 @@ impl Scenario {
             }
         }
         let seconds = manifest.phases.iter().map(|p| p.seconds).sum();
+        // Reuse the same driver for a bounded failing slice and the remaining
+        // schedule after a long run stops; neither is a fresh full-run pass.
         assert!(
-            (7200..=10800).contains(&seconds),
-            "explicit 2–3 hour scope required"
+            (180..=10800).contains(&seconds),
+            "authorized scenario must be between 3 minutes and 3 hours"
         );
         Self {
             clips,

@@ -9,7 +9,7 @@ use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use futures_util::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio::sync::{watch, Mutex, Notify};
@@ -19,7 +19,6 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 const GENERIC_PROVIDER_ERROR: &str = "Gemini Live Translation rejected the session.";
-const GENERIC_PROTOCOL_ERROR: &str = "Gemini Live Translation returned an invalid response.";
 const GENERIC_TRANSPORT_ERROR: &str = "The Gemini Live Translation connection failed.";
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const ROTATION_SETUP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -68,6 +67,8 @@ pub enum GeminiLiveClientError {
     HealthCheckTimedOut,
     #[error("The Gemini Live Translation connection failed.")]
     TransportFailure,
+    #[error("gemini_live_service_unavailable")]
+    ServiceUnavailable,
     #[error("Gemini Live Translation rejected the session configuration.")]
     SessionSetupRejected,
     #[error("Gemini Live Translation did not confirm the session configuration in time.")]
@@ -81,7 +82,46 @@ type Stream = futures_util::stream::SplitStream<WebSocketStream<MaybeTlsStream<T
 enum SetupState {
     Awaiting,
     Ready,
-    Rejected,
+    Rejected(GeminiLiveClientError),
+}
+
+impl GeminiLiveClientError {
+    fn from_provider_code(code: &str) -> Self {
+        match code {
+            "unauthenticated" | "permission_denied" => Self::AuthenticationFailed,
+            "unavailable" => Self::ServiceUnavailable,
+            _ => Self::SessionSetupRejected,
+        }
+    }
+
+    fn server_event(self) -> LiveTranslateServerEvent {
+        let (code, message) = match self {
+            Self::AuthenticationFailed => {
+                ("credential_authentication_failed", GENERIC_PROVIDER_ERROR)
+            }
+            Self::ServiceUnavailable => ("gemini_live_service_unavailable", GENERIC_PROVIDER_ERROR),
+            Self::TransportFailure
+            | Self::NotConnected
+            | Self::HealthCheckTimedOut
+            | Self::SessionSetupTimedOut => ("transport_error", GENERIC_TRANSPORT_ERROR),
+            _ => ("gemini_live_provider_error", GENERIC_PROVIDER_ERROR),
+        };
+        LiveTranslateServerEvent::Error {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+}
+
+fn connection_error(error: tokio_tungstenite::tungstenite::Error) -> GeminiLiveClientError {
+    match error {
+        tokio_tungstenite::tungstenite::Error::Http(response) => match response.status().as_u16() {
+            401 | 403 => GeminiLiveClientError::AuthenticationFailed,
+            503 => GeminiLiveClientError::ServiceUnavailable,
+            _ => GeminiLiveClientError::SessionSetupRejected,
+        },
+        _ => GeminiLiveClientError::TransportFailure,
+    }
 }
 
 struct GeminiTranscriptPairCommitter {
@@ -185,6 +225,23 @@ impl GeminiTranscriptPairCommitter {
     }
 }
 
+#[derive(Clone, Copy)]
+struct TransportHealth {
+    generation: u64,
+    connected_at: Instant,
+    stable: bool,
+}
+
+impl TransportHealth {
+    fn connected(generation: u64) -> Self {
+        Self {
+            generation,
+            connected_at: Instant::now(),
+            stable: false,
+        }
+    }
+}
+
 struct Inner {
     // Serializes the content barrier with local assembly, never socket/audio state.
     content_lock: Mutex<()>,
@@ -203,6 +260,7 @@ struct Inner {
     transcript_notify: Notify,
     turn_boundary_epoch: AtomicU64,
     pong_notify: Notify,
+    transport_health: Mutex<Option<TransportHealth>>,
     generation: AtomicU64,
     #[cfg(test)]
     probe_transport_stop: std::sync::Mutex<Option<ProbeTransportStop>>,
@@ -317,6 +375,7 @@ impl GeminiLiveClient {
                 transcript_notify: Notify::new(),
                 turn_boundary_epoch: AtomicU64::new(0),
                 pong_notify: Notify::new(),
+                transport_health: Mutex::new(None),
                 generation: AtomicU64::new(0),
                 #[cfg(test)]
                 probe_transport_stop: std::sync::Mutex::new(None),
@@ -360,13 +419,7 @@ impl GeminiLiveClient {
         )
         .await
         .map_err(|_| GeminiLiveClientError::TransportFailure)?
-        .map_err(|error| {
-            if super::connection_diagnostics::authentication_rejected(&error) {
-                GeminiLiveClientError::AuthenticationFailed
-            } else {
-                GeminiLiveClientError::TransportFailure
-            }
-        })?;
+        .map_err(connection_error)?;
         let (sink, stream) = socket.split();
         *self.inner.sink.lock().await = Some(sink);
         self.inner.ready.store(false, Ordering::SeqCst);
@@ -397,9 +450,7 @@ impl GeminiLiveClient {
             loop {
                 match setup_rx.borrow().clone() {
                     SetupState::Ready => return Ok(()),
-                    SetupState::Rejected => {
-                        return Err(GeminiLiveClientError::SessionSetupRejected)
-                    }
+                    SetupState::Rejected(error) => return Err(error),
                     SetupState::Awaiting => {}
                 }
                 if setup_rx.changed().await.is_err() {
@@ -481,21 +532,54 @@ impl GeminiLiveClient {
             let pong = self.inner.pong_notify.notified();
             tokio::pin!(pong);
             pong.as_mut().enable();
-            {
+            let observed = {
                 let mut sink = self.inner.sink.lock().await;
                 let Some(sink) = sink.as_mut() else {
                     return Err(GeminiLiveClientError::NotConnected);
                 };
+                let observed = self
+                    .inner
+                    .transport_health
+                    .lock()
+                    .await
+                    .as_ref()
+                    .copied()
+                    .ok_or(GeminiLiveClientError::NotConnected)?;
                 sink.send(Message::Ping(tokio_tungstenite::tungstenite::Bytes::new()))
                     .await
                     .map_err(|_| GeminiLiveClientError::TransportFailure)?;
-            }
+                observed
+            };
             pong.await;
+            self.record_transport_health(observed, Instant::now()).await;
             Ok(())
         };
         tokio::time::timeout(timeout, operation)
             .await
             .map_err(|_| GeminiLiveClientError::HealthCheckTimedOut)?
+    }
+
+    async fn record_transport_health(&self, observed: TransportHealth, now: Instant) -> bool {
+        let mut transport = self.inner.transport_health.lock().await;
+        let Some(current) = transport.as_mut() else {
+            return false;
+        };
+        if self.inner.generation.load(Ordering::SeqCst) != observed.generation
+            || self.inner.is_closing.load(Ordering::SeqCst)
+            || current.generation != observed.generation
+            || current.connected_at != observed.connected_at
+        {
+            return false;
+        }
+        if crate::core::recovery::connection_health_is_stable(
+            current.generation,
+            observed.generation,
+            current.connected_at,
+            now,
+        ) {
+            current.stable = true;
+        }
+        current.stable
     }
 
     /// Flushes the final PCM frame, sends `audioStreamEnd`, then waits for the
@@ -629,6 +713,7 @@ impl GeminiLiveClient {
 
     pub async fn disconnect(&self) {
         self.inner.generation.fetch_add(1, Ordering::SeqCst);
+        *self.inner.transport_health.lock().await = None;
         cancel_normal_turn_boundary(&self.inner);
         self.inner.ready.store(false, Ordering::SeqCst);
         self.inner.rotating.store(false, Ordering::SeqCst);
@@ -769,14 +854,14 @@ async fn receive_loop(mut context: ReceiveContext) {
                     };
                     *context.inner.probe_transport_stop.lock().unwrap() = Some(reason);
                 }
-                fail_receive_loop(&context, "transport_error", GENERIC_TRANSPORT_ERROR).await;
+                fail_receive_loop(&context, GeminiLiveClientError::TransportFailure).await;
                 return;
             }
         };
         let events = match events {
             Ok(events) => events,
             Err(_) => {
-                fail_receive_loop(&context, "gemini_protocol_error", GENERIC_PROTOCOL_ERROR).await;
+                fail_receive_loop(&context, GeminiLiveClientError::SessionSetupRejected).await;
                 return;
             }
         };
@@ -785,15 +870,34 @@ async fn receive_loop(mut context: ReceiveContext) {
                 && *context.setup.borrow() == SetupState::Ready
                 && !context.inner.is_closing.load(Ordering::SeqCst)
             {
+                let stable = context
+                    .inner
+                    .transport_health
+                    .lock()
+                    .await
+                    .as_ref()
+                    .is_some_and(|health| health.generation == context.generation && health.stable);
+                if !stable {
+                    if handle_server_event(&context, GeminiLiveServerEvent::GoAway).await {
+                        return;
+                    }
+                    continue;
+                }
                 record_rotation(&context.inner, "geminiGoAwayReceived");
                 match rotate_connection(&mut context).await {
                     Ok(()) => continue,
-                    Err(_) => {
-                        // A failed planned rotation still has the existing
-                        // bounded SessionManager recovery as its fallback.
-                        handle_server_event(&context, GeminiLiveServerEvent::GoAway).await;
+                    Err(RotationFailure::Failed(error)) => {
+                        #[cfg(test)]
+                        {
+                            *context.inner.probe_transport_stop.lock().unwrap() =
+                                Some(ProbeTransportStop::GoAway);
+                        }
+                        // Replacement setup failures retain their classification;
+                        // permanent rejections must not become transport retries.
+                        fail_receive_loop(&context, error).await;
                         return;
                     }
+                    Err(RotationFailure::AlreadyReported) => return,
                 }
             }
             if handle_server_event(&context, event).await {
@@ -810,58 +914,87 @@ async fn receive_loop(mut context: ReceiveContext) {
             *context.inner.probe_transport_stop.lock().unwrap() =
                 Some(ProbeTransportStop::EndOfStream);
         }
-        fail_receive_loop(&context, "transport_error", GENERIC_TRANSPORT_ERROR).await;
+        fail_receive_loop(&context, GeminiLiveClientError::TransportFailure).await;
     }
 }
 
 /// Establish the replacement while capture/audio and old transcripts continue.
 /// No resumption handle or audio replay: neither has reliable alignment metadata
 /// for this continuous translation model. Only one socket receives input audio.
-async fn prepare_replacement(client: &GeminiLiveClient) -> Result<(Sink, Stream), ()> {
+async fn prepare_replacement(
+    client: &GeminiLiveClient,
+) -> Result<(Sink, Stream), GeminiLiveClientError> {
     let request = client
         .authenticated_endpoint()
         .into_client_request()
-        .map_err(|_| ())?;
+        .map_err(|_| GeminiLiveClientError::TransportFailure)?;
     let (socket, _) = super::provider_network::websocket(request, &client.network)
         .await
-        .map_err(|_| ())?;
+        .map_err(connection_error)?;
     let (mut sink, mut stream) = socket.split();
-    let setup = GeminiLiveRequestEncoder::setup(client.target_language).map_err(|_| ())?;
+    let setup = GeminiLiveRequestEncoder::setup(client.target_language)
+        .map_err(|_| GeminiLiveClientError::InvalidTargetLanguage)?;
     sink.send(Message::Text(setup.to_string().into()))
         .await
-        .map_err(|_| ())?;
+        .map_err(|_| GeminiLiveClientError::TransportFailure)?;
     while let Some(message) = stream.next().await {
-        let events = match message.map_err(|_| ())? {
-            Message::Text(text) => GeminiLiveServerEvent::decode(&text).map_err(|_| ())?,
-            Message::Binary(data) => {
-                GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data)).map_err(|_| ())?
-            }
+        let events = match message.map_err(|_| GeminiLiveClientError::TransportFailure)? {
+            Message::Text(text) => GeminiLiveServerEvent::decode(&text)
+                .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
+            Message::Binary(data) => GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data))
+                .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
-            Message::Close(_) => return Err(()),
+            Message::Close(_) => return Err(GeminiLiveClientError::TransportFailure),
         };
-        if events == [GeminiLiveServerEvent::SetupComplete] {
-            return Ok((sink, stream));
-        }
-        // Do not discard unexpected transcript or terminal events during setup.
-        return Err(());
+        return match events.as_slice() {
+            [GeminiLiveServerEvent::SetupComplete] => Ok((sink, stream)),
+            [GeminiLiveServerEvent::ProviderError { code, .. }] => {
+                Err(GeminiLiveClientError::from_provider_code(code))
+            }
+            [GeminiLiveServerEvent::GoAway] => Err(GeminiLiveClientError::TransportFailure),
+            _ => Err(GeminiLiveClientError::SessionSetupRejected),
+        };
     }
-    Err(())
+    Err(GeminiLiveClientError::TransportFailure)
 }
 
-async fn rotate_connection(context: &mut ReceiveContext) -> Result<(), ()> {
+enum RotationFailure {
+    Failed(GeminiLiveClientError),
+    AlreadyReported,
+}
+
+impl From<GeminiLiveClientError> for RotationFailure {
+    fn from(error: GeminiLiveClientError) -> Self {
+        Self::Failed(error)
+    }
+}
+
+async fn rotate_connection(context: &mut ReceiveContext) -> Result<(), RotationFailure> {
     let client = context.client.clone();
     let replacement = tokio::time::timeout(ROTATION_SETUP_TIMEOUT, prepare_replacement(&client));
     tokio::pin!(replacement);
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     let (mut next_sink, next_stream) = loop {
         tokio::select! {
-            result = &mut replacement => break result.map_err(|_| ())??,
+            result = &mut replacement => {
+                #[cfg(test)]
+                if !matches!(&result, Ok(Ok(_))) {
+                    record_rotation(&context.inner, "geminiReplacementSetupFailed");
+                }
+                let prepared = result.map_err(|_| GeminiLiveClientError::SessionSetupTimedOut).and_then(|result| result);
+                if prepared.is_err() && context.inner.is_closing.load(Ordering::SeqCst) {
+                    // Stop already owns the old socket. A rejected replacement
+                    // that never received audio cannot discard its closing tail.
+                    return Ok(());
+                }
+                break prepared?;
+            },
             message = context.stream.next() => {
                 process_rotation_message(context, message).await?;
             },
             _ = tick.tick() => {
                 let _content = context.inner.content_lock.lock().await;
-                if context.inner.generation.load(Ordering::SeqCst) != context.generation { return Err(()); }
+                if context.inner.generation.load(Ordering::SeqCst) != context.generation { return Err(RotationFailure::AlreadyReported); }
                 let mut committer = context.inner.committer.lock().await;
                 if !committer.turn_complete_received {
                     emit_all_if_current(context, committer.settle());
@@ -873,22 +1006,20 @@ async fn rotate_connection(context: &mut ReceiveContext) -> Result<(), ()> {
     let inner = Arc::clone(&context.inner);
     let _send = inner.audio_send_lock.lock().await;
     if inner.generation.load(Ordering::SeqCst) != context.generation {
-        return Err(());
+        return Err(RotationFailure::AlreadyReported);
     }
     if inner.is_closing.load(Ordering::SeqCst) {
         // Stop owns the old socket; leave its real closing boundary intact.
         let _ = tokio::time::timeout(Duration::from_millis(250), next_sink.close()).await;
         return Ok(());
     }
-    let partial =
-        take_padded_audio_message(&mut *inner.pending_audio.lock().await).map_err(|_| ())?;
+    let partial = take_padded_audio_message(&mut *inner.pending_audio.lock().await)?;
     if let Some(message) = partial {
-        client.send_text(message).await.map_err(|_| ())?;
+        client.send_text(message).await?;
     }
     client
         .send_text(GeminiLiveRequestEncoder::audio_stream_end().to_string())
-        .await
-        .map_err(|_| ())?;
+        .await?;
     inner.rotating.store(true, Ordering::SeqCst);
     let handoff = RotationHandoff {
         inner: Arc::clone(&inner),
@@ -903,7 +1034,7 @@ async fn rotate_connection(context: &mut ReceiveContext) -> Result<(), ()> {
     loop {
         tokio::select! {
             _ = tokio::time::sleep_until(quiet_since + TAIL_QUIET_PERIOD) => break,
-            _ = tokio::time::sleep_until(deadline) => return Err(()),
+            _ = tokio::time::sleep_until(deadline) => return Err(GeminiLiveClientError::TransportFailure.into()),
             message = context.stream.next() => {
                 let revision = inner.transcript_revision.load(Ordering::SeqCst);
                 process_rotation_message(context, message).await?;
@@ -917,7 +1048,7 @@ async fn rotate_connection(context: &mut ReceiveContext) -> Result<(), ()> {
     let _send = inner.audio_send_lock.lock().await;
     let _content = inner.content_lock.lock().await;
     if inner.generation.load(Ordering::SeqCst) != context.generation {
-        return Err(());
+        return Err(RotationFailure::AlreadyReported);
     }
     // Once audioStreamEnd was sent, Stop must finish the replacement and its
     // staged audio; it must never send those buffers into the ended old stream.
@@ -926,15 +1057,19 @@ async fn rotate_connection(context: &mut ReceiveContext) -> Result<(), ()> {
     // Stop may have observed the old socket's turnComplete during the drain.
     // The replacement must acknowledge its own audioStreamEnd before closing.
     inner.received_final_turn.store(false, Ordering::SeqCst);
-    let old_sink = inner.sink.lock().await.replace(next_sink);
+    let old_sink = {
+        let mut sink = inner.sink.lock().await;
+        *inner.transport_health.lock().await = Some(TransportHealth::connected(context.generation));
+        sink.replace(next_sink)
+    };
     context.stream = next_stream;
     drop(_content);
     let messages = {
         let mut pending = inner.pending_audio.lock().await;
-        take_complete_audio_messages(&mut pending).map_err(|_| ())?
+        take_complete_audio_messages(&mut pending)?
     };
     for message in messages {
-        client.send_text(message).await.map_err(|_| ())?;
+        client.send_text(message).await?;
     }
     record_rotation(&inner, "geminiConnectionRotated");
     drop(handoff);
@@ -980,42 +1115,46 @@ fn record_rotation(_inner: &Inner, kind: &'static str) {
 async fn process_rotation_message(
     context: &ReceiveContext,
     message: Option<Result<Message, tokio_tungstenite::tungstenite::Error>>,
-) -> Result<(), ()> {
-    let message = message.ok_or(())?.map_err(|_| ())?;
+) -> Result<(), RotationFailure> {
+    let message = message
+        .ok_or(GeminiLiveClientError::TransportFailure)?
+        .map_err(|_| GeminiLiveClientError::TransportFailure)?;
     let events = match message {
-        Message::Text(text) => GeminiLiveServerEvent::decode(&text).map_err(|_| ())?,
-        Message::Binary(data) => {
-            GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data)).map_err(|_| ())?
-        }
+        Message::Text(text) => GeminiLiveServerEvent::decode(&text)
+            .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
+        Message::Binary(data) => GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data))
+            .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
         Message::Pong(_) => {
             context.inner.pong_notify.notify_waiters();
             return Ok(());
         }
         Message::Ping(_) | Message::Frame(_) => return Ok(()),
-        Message::Close(_) => return Err(()),
+        Message::Close(_) => return Err(GeminiLiveClientError::TransportFailure.into()),
     };
     for event in events {
         if event != GeminiLiveServerEvent::GoAway && handle_server_event(context, event).await {
-            return Err(());
+            return Err(RotationFailure::AlreadyReported);
         }
     }
     Ok(())
 }
 
-async fn fail_receive_loop(context: &ReceiveContext, code: &str, message: &str) {
+fn report_failure(context: &ReceiveContext, error: GeminiLiveClientError) {
+    if *context.setup.borrow() == SetupState::Awaiting {
+        let _ = context.setup.send(SetupState::Rejected(error));
+    } else {
+        emit_if_current(context, error.server_event());
+    }
+}
+
+async fn fail_receive_loop(context: &ReceiveContext, error: GeminiLiveClientError) {
+    let _content = context.inner.content_lock.lock().await;
+    if context.inner.generation.load(Ordering::SeqCst) != context.generation {
+        return;
+    }
     cancel_normal_turn_boundary(&context.inner);
     context.inner.committer.lock().await.reset();
-    if *context.setup.borrow() == SetupState::Awaiting {
-        let _ = context.setup.send(SetupState::Rejected);
-    } else {
-        emit_if_current(
-            context,
-            LiveTranslateServerEvent::Error {
-                code: code.into(),
-                message: message.into(),
-            },
-        );
-    }
+    report_failure(context, error);
 }
 
 /// Returns true when the receive loop must stop.
@@ -1044,13 +1183,17 @@ async fn handle_server_event(context: &ReceiveContext, event: GeminiLiveServerEv
                 | GeminiLiveServerEvent::GoAway
         )
     {
-        let _ = context.setup.send(SetupState::Rejected);
+        let _ = context.setup.send(SetupState::Rejected(
+            GeminiLiveClientError::SessionSetupRejected,
+        ));
         return true;
     }
 
     match event {
         GeminiLiveServerEvent::SetupComplete => {
             if setup_is_awaiting {
+                *context.inner.transport_health.lock().await =
+                    Some(TransportHealth::connected(context.generation));
                 emit_if_current(context, LiveTranslateServerEvent::SessionCreated);
                 emit_if_current(context, LiveTranslateServerEvent::SessionUpdated);
                 let _ = context.setup.send(SetupState::Ready);
@@ -1104,6 +1247,11 @@ async fn handle_server_event(context: &ReceiveContext, event: GeminiLiveServerEv
             context.inner.committer.lock().await.reset();
         }
         GeminiLiveServerEvent::GoAway => {
+            // GoAway announces a future disconnect. During Stop, keep reading
+            // the existing socket's final transcripts and real turn boundary.
+            if context.inner.is_closing.load(Ordering::SeqCst) {
+                return false;
+            }
             #[cfg(test)]
             {
                 *context.inner.probe_transport_stop.lock().unwrap() =
@@ -1111,37 +1259,13 @@ async fn handle_server_event(context: &ReceiveContext, event: GeminiLiveServerEv
             }
             cancel_normal_turn_boundary(&context.inner);
             context.inner.committer.lock().await.reset();
-            if setup_is_awaiting {
-                let _ = context.setup.send(SetupState::Rejected);
-            } else {
-                emit_if_current(
-                    context,
-                    LiveTranslateServerEvent::Error {
-                        // GoAway is an expected server-driven connection
-                        // rotation. Reuse the session manager's bounded
-                        // transport recovery instead of surfacing a terminal
-                        // provider error to the user.
-                        code: "transport_error".into(),
-                        message: GENERIC_TRANSPORT_ERROR.into(),
-                    },
-                );
-            }
+            report_failure(context, GeminiLiveClientError::TransportFailure);
             return true;
         }
         GeminiLiveServerEvent::ProviderError { code, .. } => {
             cancel_normal_turn_boundary(&context.inner);
             context.inner.committer.lock().await.reset();
-            if setup_is_awaiting {
-                let _ = context.setup.send(SetupState::Rejected);
-            } else {
-                emit_if_current(
-                    context,
-                    LiveTranslateServerEvent::Error {
-                        code: format!("gemini_provider_error.{code}"),
-                        message: GENERIC_PROVIDER_ERROR.into(),
-                    },
-                );
-            }
+            report_failure(context, GeminiLiveClientError::from_provider_code(&code));
             return true;
         }
         GeminiLiveServerEvent::OutputAudio | GeminiLiveServerEvent::GenerationComplete => {}
@@ -1299,9 +1423,11 @@ fn emit_if_current(context: &ReceiveContext, event: LiveTranslateServerEvent) {
 #[cfg(test)]
 mod tests {
     #[tokio::test]
-    async fn handshake_authentication_rejections_preserve_transport_failures() {
+    async fn handshake_rejections_preserve_authentication_service_and_transport_categories() {
         for (status, expected_auth_label) in
             crate::clients::connection_diagnostics::handshake_failure_cases()
+                .into_iter()
+                .chain([400, 404, 429, 500, 503].map(|status| (Some(status), None)))
         {
             let (endpoint, server) =
                 crate::clients::connection_diagnostics::rejected_websocket_endpoint(status).await;
@@ -1327,7 +1453,12 @@ mod tests {
                 assert_eq!(error, GeminiLiveClientError::AuthenticationFailed);
                 assert_eq!(error.to_string(), expected_label);
             } else {
-                assert_eq!(error, GeminiLiveClientError::TransportFailure);
+                let expected = match status {
+                    Some(503) => GeminiLiveClientError::ServiceUnavailable,
+                    Some(_) => GeminiLiveClientError::SessionSetupRejected,
+                    None => GeminiLiveClientError::TransportFailure,
+                };
+                assert_eq!(error, expected, "HTTP status={status:?}");
             }
             assert!(!error.to_string().contains("private-handshake-body"));
             assert!(!client.inner.ready.load(Ordering::SeqCst));
@@ -1786,8 +1917,375 @@ mod tests {
                 .connect_with_timeout(Duration::from_millis(500))
                 .await
                 .unwrap_err(),
-            GeminiLiveClientError::SessionSetupRejected
+            GeminiLiveClientError::AuthenticationFailed
         );
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_setup_authentication_preserves_its_type() {
+        for (status, code, expected) in [
+            (
+                "PERMISSION_DENIED",
+                403,
+                GeminiLiveClientError::AuthenticationFailed,
+            ),
+            (
+                "UNAUTHENTICATED",
+                401,
+                GeminiLiveClientError::AuthenticationFailed,
+            ),
+            (
+                "UNAVAILABLE",
+                503,
+                GeminiLiveClientError::ServiceUnavailable,
+            ),
+            (
+                "RESOURCE_EXHAUSTED",
+                429,
+                GeminiLiveClientError::SessionSetupRejected,
+            ),
+            (
+                "INVALID_ARGUMENT",
+                400,
+                GeminiLiveClientError::SessionSetupRejected,
+            ),
+            (
+                "unknown-private-status",
+                503,
+                GeminiLiveClientError::SessionSetupRejected,
+            ),
+        ] {
+            let (client, _events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    assert_setup(socket.next().await.unwrap().unwrap());
+                    socket.send(Message::Text(json!({"error":{"status":status,"code":code,"message":"private payload"}}).to_string().into())).await.unwrap();
+                })
+            }).await;
+            assert_eq!(
+                client.connect().await.unwrap_err(),
+                expected,
+                "status={status}"
+            );
+        }
+    }
+
+    async fn next_recovery_error(events: &mut ProviderEventReceiver) -> String {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match events.recv().await.unwrap() {
+                    LiveTranslateServerEvent::Error { code, message } => {
+                        assert!(!message.contains("private payload"));
+                        return code;
+                    }
+                    LiveTranslateServerEvent::SessionFinished => {
+                        panic!("a rejected active session must not finish normally")
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .expect("provider failure must be surfaced")
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_active_error_uses_fixed_categories() {
+        for (status, code, expected) in [
+            ("UNAVAILABLE", 503, "gemini_live_service_unavailable"),
+            ("PERMISSION_DENIED", 403, "credential_authentication_failed"),
+            ("RESOURCE_EXHAUSTED", 429, "gemini_live_provider_error"),
+            ("INVALID_ARGUMENT", 400, "gemini_live_provider_error"),
+            ("unknown-private-status", 503, "gemini_live_provider_error"),
+        ] {
+            let (client, mut events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    assert_setup(socket.next().await.unwrap().unwrap());
+                    socket.send(Message::Text(r#"{"setupComplete":{}}"#.into())).await.unwrap();
+                    socket.send(Message::Text(json!({"error":{"status":status,"code":code,"message":"private payload"}}).to_string().into())).await.unwrap();
+                    while socket.next().await.is_some() {}
+                })
+            }).await;
+            client.connect().await.unwrap();
+            assert_eq!(
+                next_recovery_error(&mut events).await,
+                expected,
+                "status={status}"
+            );
+            client.disconnect().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_go_away_during_stop_preserves_the_closing_tail() {
+        let (client, mut events) = test_client(|mut socket| {
+            Box::pin(async move {
+                assert_setup(socket.next().await.unwrap().unwrap());
+                socket.send(Message::Text(r#"{"setupComplete":{}}"#.into())).await.unwrap();
+                let end: Value = serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+                assert_eq!(end["realtimeInput"]["audioStreamEnd"], true);
+                socket.send(Message::Text(r#"{"goAway":{"timeLeft":"10s"}}"#.into())).await.unwrap();
+                socket.send(Message::Text(r#"{"serverContent":{"inputTranscription":{"text":"Synthetic closing source"},"outputTranscription":{"text":"Synthetic closing translation"},"turnComplete":true}}"#.into())).await.unwrap();
+                while socket.next().await.is_some() {}
+            })
+        }).await;
+        client.connect().await.unwrap();
+        client.finish(Duration::from_secs(2)).await;
+        let mut received = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            received.push(event);
+        }
+        assert!(received.iter().any(|event| matches!(event, LiveTranslateServerEvent::SubtitleFinalPair { source, translation, .. } if source == "Synthetic closing source" && translation == "Synthetic closing translation")), "closing tail must survive the GoAway notice: {received:?}");
+        assert_eq!(
+            received
+                .iter()
+                .filter(|event| matches!(event, LiveTranslateServerEvent::SessionFinished))
+                .count(),
+            1
+        );
+        assert!(!received
+            .iter()
+            .any(|event| matches!(event, LiveTranslateServerEvent::Error { .. })));
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_stop_owns_old_tail_when_unused_replacement_is_rejected() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (allow_goaway, goaway_allowed) = tokio::sync::oneshot::channel();
+        let (replacement_waiting, replacement_ready) = tokio::sync::oneshot::channel();
+        let (stop_received, stop_owned) = tokio::sync::oneshot::channel();
+        let (reject_replacement, rejection_released) = tokio::sync::oneshot::channel();
+        let (release_tail, tail_released) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut old = tokio_tungstenite::accept_async(stream).await.unwrap();
+            assert_setup(old.next().await.unwrap().unwrap());
+            old.send(Message::Text(r#"{"setupComplete":{}}"#.into()))
+                .await
+                .unwrap();
+            old.send(Message::Text(
+                r#"{"serverContent":{"inputTranscription":{"text":"Synthetic owned source"}}}"#
+                    .into(),
+            ))
+            .await
+            .unwrap();
+            goaway_allowed.await.unwrap();
+            old.send(Message::Text(r#"{"goAway":{"timeLeft":"10s"}}"#.into()))
+                .await
+                .unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut replacement = tokio_tungstenite::accept_async(stream).await.unwrap();
+            assert_setup(replacement.next().await.unwrap().unwrap());
+            replacement_waiting.send(()).unwrap();
+            let end: Value =
+                serde_json::from_str(old.next().await.unwrap().unwrap().to_text().unwrap())
+                    .unwrap();
+            assert_eq!(end["realtimeInput"]["audioStreamEnd"], true);
+            stop_received.send(()).unwrap();
+            rejection_released.await.unwrap();
+            replacement.send(Message::Text(r#"{"error":{"code":403,"status":"PERMISSION_DENIED","message":"private payload"}}"#.into())).await.unwrap();
+            tail_released.await.unwrap();
+            // This arrives only after the rejected replacement has settled and
+            // Stop already owns the old socket's audioStreamEnd boundary.
+            let tail_sent = old.send(Message::Text(r#"{"serverContent":{"outputTranscription":{"text":"Synthetic owned translation"},"turnComplete":true}}"#.into())).await.is_ok();
+            while old.next().await.is_some() {}
+            tail_sent
+        });
+        let (sender, mut events) = provider_event_channel();
+        let client = GeminiLiveClient::with_endpoint(
+            "test-key",
+            TargetLanguage::Japanese,
+            sender,
+            url::Url::parse(&format!("ws://{address}/live")).unwrap(),
+            false,
+        )
+        .unwrap();
+        client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
+        allow_goaway.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), replacement_ready)
+            .await
+            .unwrap()
+            .unwrap();
+        let closing_client = client.clone();
+        let closing = tokio::spawn(async move {
+            closing_client.finish(Duration::from_secs(3)).await;
+        });
+        tokio::time::timeout(Duration::from_secs(2), stop_owned)
+            .await
+            .unwrap()
+            .unwrap();
+        reject_replacement.send(()).unwrap();
+        wait_for_rotation(&client, "geminiReplacementSetupFailed").await;
+        release_tail.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(4), closing)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(tokio::time::timeout(Duration::from_secs(1), server)
+            .await
+            .unwrap()
+            .unwrap());
+        let mut received = Vec::new();
+        while let Ok(event) = events.try_recv() {
+            received.push(event);
+        }
+        assert!(received.iter().any(|event| matches!(event, LiveTranslateServerEvent::SubtitleFinalPair { source, translation, .. } if source == "Synthetic owned source" && translation == "Synthetic owned translation")), "Stop must retain its old socket's tail: {received:?}");
+        assert_eq!(
+            received
+                .iter()
+                .filter(|event| matches!(event, LiveTranslateServerEvent::SessionFinished))
+                .count(),
+            1
+        );
+        assert!(!received
+            .iter()
+            .any(|event| matches!(event, LiveTranslateServerEvent::Error { .. })));
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_transport_stability_rejects_old_health_and_resets_on_handoff() {
+        let (client, _events, _) = rotating_test_client(Duration::ZERO).await;
+        client.connect().await.unwrap();
+        let old = client.inner.transport_health.lock().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
+        client
+            .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
+            .await
+            .unwrap();
+        wait_for_rotation(&client, "geminiConnectionRotated").await;
+        let replacement = client.inner.transport_health.lock().await.unwrap();
+        assert_ne!(replacement.connected_at, old.connected_at);
+        assert!(!replacement.stable);
+        let after_interval = replacement.connected_at + crate::core::health::HEALTH_CHECK_INTERVAL;
+        assert!(!client.record_transport_health(old, after_interval).await);
+        assert!(!client.inner.transport_health.lock().await.unwrap().stable);
+        let mut retired_generation = replacement;
+        retired_generation.generation = replacement.generation.wrapping_sub(1);
+        assert!(
+            !client
+                .record_transport_health(retired_generation, after_interval)
+                .await
+        );
+        client.inner.is_closing.store(true, Ordering::SeqCst);
+        assert!(
+            !client
+                .record_transport_health(replacement, after_interval)
+                .await
+        );
+        client.inner.is_closing.store(false, Ordering::SeqCst);
+        assert!(
+            client
+                .record_transport_health(replacement, after_interval)
+                .await
+        );
+        client.disconnect().await;
+        assert!(
+            !client
+                .record_transport_health(replacement, after_interval)
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_unstable_go_away_delegates_without_opening_replacement() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            assert_setup(socket.next().await.unwrap().unwrap());
+            socket
+                .send(Message::Text(r#"{"setupComplete":{}}"#.into()))
+                .await
+                .unwrap();
+            socket
+                .send(Message::Text(r#"{"goAway":{"timeLeft":"0s"}}"#.into()))
+                .await
+                .unwrap();
+            let opened_replacement =
+                tokio::time::timeout(Duration::from_millis(300), listener.accept())
+                    .await
+                    .is_ok();
+            while socket.next().await.is_some() {}
+            opened_replacement
+        });
+        let (sender, mut events) = provider_event_channel();
+        let client = GeminiLiveClient::with_endpoint(
+            "test-key",
+            TargetLanguage::Japanese,
+            sender,
+            url::Url::parse(&format!("ws://{address}/live")).unwrap(),
+            false,
+        )
+        .unwrap();
+        client.connect().await.unwrap();
+        assert_eq!(next_recovery_error(&mut events).await, "transport_error");
+        client.disconnect().await;
+        assert!(
+            !tokio::time::timeout(Duration::from_secs(1), server)
+                .await
+                .unwrap()
+                .unwrap(),
+            "unstable GoAway must leave retries to the shared bounded recovery driver"
+        );
+    }
+
+    #[tokio::test]
+    async fn gemini_recovery_go_away_replacement_preserves_setup_rejection() {
+        for (status, code, expected) in [
+            ("PERMISSION_DENIED", 403, "credential_authentication_failed"),
+            ("UNAVAILABLE", 503, "gemini_live_service_unavailable"),
+            ("RESOURCE_EXHAUSTED", 429, "gemini_live_provider_error"),
+            ("unknown-private-status", 503, "gemini_live_provider_error"),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let (allow_goaway, goaway_allowed) = tokio::sync::oneshot::channel();
+            let server = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut old = tokio_tungstenite::accept_async(stream).await.unwrap();
+                assert_setup(old.next().await.unwrap().unwrap());
+                old.send(Message::Text(r#"{"setupComplete":{}}"#.into()))
+                    .await
+                    .unwrap();
+                goaway_allowed.await.unwrap();
+                old.send(Message::Text(r#"{"goAway":{"timeLeft":"10s"}}"#.into()))
+                    .await
+                    .unwrap();
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut replacement = tokio_tungstenite::accept_async(stream).await.unwrap();
+                assert_setup(replacement.next().await.unwrap().unwrap());
+                replacement
+                    .send(Message::Text(
+                        json!({"error":{"status":status,"code":code,"message":"private payload"}})
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .unwrap();
+                while old.next().await.is_some() {}
+            });
+            let (sender, mut events) = provider_event_channel();
+            let client = GeminiLiveClient::with_endpoint(
+                "test-key",
+                TargetLanguage::Japanese,
+                sender,
+                url::Url::parse(&format!("ws://{address}/live")).unwrap(),
+                false,
+            )
+            .unwrap();
+            client.connect().await.unwrap();
+            mark_transport_stable_for_rotation(&client).await;
+            allow_goaway.send(()).unwrap();
+            assert_eq!(
+                next_recovery_error(&mut events).await,
+                expected,
+                "status={status}"
+            );
+            client.disconnect().await;
+            server.await.unwrap();
+        }
     }
 
     #[tokio::test]
@@ -1970,6 +2468,7 @@ mod tests {
     async fn planned_rotation_keeps_native_audio_queue_and_late_old_caption() {
         let (client, mut events, samples) = rotating_test_client(Duration::from_millis(300)).await;
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         let reader = tokio::spawn(async move {
             let mut received = Vec::new();
             while let Some(event) = events.recv().await {
@@ -2043,6 +2542,17 @@ mod tests {
         assert_eq!(client.probe_transport_stop(), None);
     }
 
+    async fn mark_transport_stable_for_rotation(client: &GeminiLiveClient) {
+        let observed = client.inner.transport_health.lock().await.unwrap();
+        let now = observed.connected_at + crate::core::health::HEALTH_CHECK_INTERVAL;
+        assert!(
+            !client
+                .record_transport_health(observed, now - Duration::from_nanos(1))
+                .await
+        );
+        assert!(client.record_transport_health(observed, now).await);
+    }
+
     async fn wait_for_rotation(client: &GeminiLiveClient, kind: &'static str) {
         tokio::time::timeout(Duration::from_secs(2), async {
             while !client
@@ -2071,6 +2581,7 @@ mod tests {
     async fn stop_during_handoff_drains_staged_pcm_into_replacement() {
         let (client, mut events, samples) = rotating_test_client(Duration::ZERO).await;
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         client
             .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
             .await
@@ -2156,6 +2667,7 @@ mod tests {
         )
         .unwrap();
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         client
             .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
             .await
@@ -2268,6 +2780,7 @@ mod tests {
         )
         .unwrap();
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         client
             .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
             .await
@@ -2342,6 +2855,7 @@ mod tests {
     async fn rotation_staging_rejects_pcm_beyond_two_seconds() {
         let (client, _events, _) = rotating_test_client(Duration::ZERO).await;
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         client
             .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
             .await
@@ -2368,6 +2882,7 @@ mod tests {
     async fn stop_during_rotation_setup_does_not_install_replacement() {
         let (client, mut events, _) = rotating_test_client(Duration::from_secs(2)).await;
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         client
             .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
             .await
@@ -2395,6 +2910,7 @@ mod tests {
     async fn clear_during_rotation_does_not_confirm_retired_text() {
         let (client, mut events, _) = rotating_test_client(Duration::from_millis(300)).await;
         client.connect().await.unwrap();
+        mark_transport_stable_for_rotation(&client).await;
         client
             .send_audio(&vec![1; GeminiLiveEndpoint::AUDIO_FRAME_BYTE_COUNT])
             .await
@@ -2737,7 +3253,6 @@ mod tests {
                 while let Some(Ok(message)) = socket.next().await {
                     if let Message::Ping(payload) = message {
                         socket.send(Message::Pong(payload)).await.unwrap();
-                        break;
                     }
                 }
             })
@@ -2748,6 +3263,20 @@ mod tests {
             .await
             .unwrap();
         client.ping(Duration::from_millis(200)).await.unwrap();
+        assert!(!client.inner.transport_health.lock().await.unwrap().stable);
+        // Advance only this transport's start time; the second real Pong must
+        // still be received before it can authorize planned rotation.
+        client
+            .inner
+            .transport_health
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .connected_at -= crate::core::health::HEALTH_CHECK_INTERVAL;
+        assert!(!client.inner.transport_health.lock().await.unwrap().stable);
+        client.ping(Duration::from_millis(200)).await.unwrap();
+        assert!(client.inner.transport_health.lock().await.unwrap().stable);
         client.disconnect().await;
     }
 

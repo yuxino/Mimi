@@ -586,6 +586,43 @@ impl ConnectError {
     /// instead of becoming generic transport failures. No arbitrary provider
     /// message is returned here.
     pub fn recognition_failure_label(&self) -> Option<&'static str> {
+        match self {
+            Self::OpenAI(OpenAIRealtimeClientError::AuthenticationFailed)
+            | Self::Gemini(GeminiLiveClientError::AuthenticationFailed)
+            | Self::Xai(XAIRealtimeClientError::AuthenticationFailed)
+            | Self::BaiduTranslate(BaiduTranslateClientError::AuthenticationFailed) => {
+                return Some("credential_authentication_failed");
+            }
+            Self::OpenAI(OpenAIRealtimeClientError::SessionSetupRejected) => {
+                return Some("openai_realtime_provider_error");
+            }
+            Self::Xai(XAIRealtimeClientError::SessionSetupRejected) => {
+                return Some("xai_realtime_provider_error");
+            }
+            Self::Gemini(GeminiLiveClientError::SessionSetupRejected) => {
+                return Some("gemini_live_provider_error");
+            }
+            Self::Gemini(GeminiLiveClientError::ServiceUnavailable) => {
+                return Some("gemini_live_service_unavailable");
+            }
+            Self::BaiduTranslate(BaiduTranslateClientError::SessionSetupRejectedWithCode(
+                20_314,
+            )) => {
+                // Preserve the existing documented no-packet timeout recovery.
+                return Some("transport_error");
+            }
+            Self::BaiduTranslate(
+                BaiduTranslateClientError::SessionSetupRejected
+                | BaiduTranslateClientError::SessionSetupRejectedWithCode(_),
+            ) => return Some("baidu_realtime_provider_error"),
+            Self::MT(QwenMTClientError::RequestFailed {
+                status_code: 0,
+                message,
+            }) if message == "audio3_error.setup.task_failed.OTHER" => {
+                return Some("audio3_provider_error");
+            }
+            _ => {}
+        }
         if let Self::Live(error) = self {
             return Some(match error {
                 LiveTranslateClientError::AuthenticationFailed => {
@@ -633,7 +670,15 @@ impl ConnectError {
         use crate::clients::connection_diagnostics::{
             connection_reason, ConnectionCheckReason as Reason,
         };
-        if matches!(self, Self::Live(_)) {
+        if matches!(
+            self,
+            Self::Live(_)
+                | Self::OpenAI(_)
+                | Self::Gemini(_)
+                | Self::Xai(_)
+                | Self::BaiduTranslate(_)
+        ) || self.recognition_failure_label() == Some("audio3_provider_error")
+        {
             if let Some(code) = self.recognition_failure_label() {
                 return crate::core::recovery::normalize_provider_error_code(code);
             }
@@ -755,6 +800,99 @@ mod tests {
     use super::*;
     use crate::clients::provider_events::provider_event_channel;
     use crate::core::models::{SourceLanguage, TargetLanguage};
+
+    #[test]
+    fn built_in_setup_rejections_do_not_become_transport_retries() {
+        use crate::core::recovery::provider_error_is_retryable;
+        for (error, label, code) in [
+            (
+                ConnectError::OpenAI(OpenAIRealtimeClientError::SessionSetupRejected),
+                "openai_realtime_provider_error",
+                "provider_error",
+            ),
+            (
+                ConnectError::Xai(XAIRealtimeClientError::SessionSetupRejected),
+                "xai_realtime_provider_error",
+                "provider_error",
+            ),
+            (
+                ConnectError::Gemini(GeminiLiveClientError::SessionSetupRejected),
+                "gemini_live_provider_error",
+                "provider_error",
+            ),
+            (
+                ConnectError::OpenAI(OpenAIRealtimeClientError::AuthenticationFailed),
+                "credential_authentication_failed",
+                "credential_authentication_failed",
+            ),
+            (
+                ConnectError::Xai(XAIRealtimeClientError::AuthenticationFailed),
+                "credential_authentication_failed",
+                "credential_authentication_failed",
+            ),
+            (
+                ConnectError::Gemini(GeminiLiveClientError::AuthenticationFailed),
+                "credential_authentication_failed",
+                "credential_authentication_failed",
+            ),
+            (
+                ConnectError::MT(QwenMTClientError::RequestFailed {
+                    status_code: 0,
+                    message: "audio3_error.setup.task_failed.OTHER".into(),
+                }),
+                "audio3_provider_error",
+                "provider_error",
+            ),
+        ] {
+            assert_eq!(error.recognition_failure_label(), Some(label));
+            assert_eq!(error.safe_code(), code);
+            assert!(!provider_error_is_retryable(code));
+        }
+        let temporary = ConnectError::Gemini(GeminiLiveClientError::ServiceUnavailable);
+        assert_eq!(temporary.safe_code(), "gemini_live_service_unavailable");
+        assert!(provider_error_is_retryable(temporary.safe_code()));
+        let untrusted = ConnectError::MT(QwenMTClientError::RequestFailed {
+            status_code: 0,
+            message: "audio3_error.setup.task_failed.OTHER: synthetic-private-detail".into(),
+        });
+        assert_eq!(untrusted.recognition_failure_label(), None);
+    }
+
+    #[test]
+    fn baidu_setup_bridge_stops_explicit_rejections_but_preserves_transport_and_auth() {
+        for error in [
+            BaiduTranslateClientError::SessionSetupRejected,
+            BaiduTranslateClientError::SessionSetupRejectedWithCode(20_316),
+            BaiduTranslateClientError::SessionSetupRejectedWithCode(99_999),
+            BaiduTranslateClientError::SessionSetupRejectedWithCode(i64::MIN),
+        ] {
+            let error = ConnectError::BaiduTranslate(error);
+            assert_eq!(
+                error.recognition_failure_label(),
+                Some("baidu_realtime_provider_error")
+            );
+            assert_eq!(error.safe_code(), "provider_error");
+            assert!(!crate::core::recovery::provider_error_is_retryable(
+                error.safe_code()
+            ));
+        }
+        for error in [
+            BaiduTranslateClientError::SessionSetupRejectedWithCode(20_314),
+            BaiduTranslateClientError::TransportFailure,
+        ] {
+            let error = ConnectError::BaiduTranslate(error);
+            assert_eq!(error.safe_code(), "transport_error");
+            assert!(crate::core::recovery::provider_error_is_retryable(
+                error.safe_code()
+            ));
+        }
+        let auth = ConnectError::BaiduTranslate(BaiduTranslateClientError::AuthenticationFailed);
+        assert_eq!(
+            auth.recognition_failure_label(),
+            Some("credential_authentication_failed")
+        );
+        assert_eq!(auth.safe_code(), "credential_authentication_failed");
+    }
 
     #[test]
     fn apple_recognition_failure_labels_preserve_only_exact_safe_codes() {

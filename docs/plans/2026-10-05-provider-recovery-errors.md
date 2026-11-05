@@ -140,3 +140,70 @@ and Cancel. Keep creation blocked for active, paused, connecting and stopping
 sessions, show a short translated stop-first instruction, and allow Cancel
 when no creation request is pending. Preserve the pending-request guard for
 both the picker and its provider confirmation.
+
+## November 6 shared recovery follow-up
+
+The issue #329 investigation extends the finite recovery window across short
+successful connections: a setup acknowledgement does not renew its attempts.
+`RecoveryContinuity` owns the consumed attempts and backoff; only a matching
+connection that passes a real health probe after the existing health interval
+may reset it. Explicit user start/stop/retry or configuration replacement owns a
+new window. Native adapters serialize failure ownership with health admission.
+
+Built-in setup errors keep their finite typed reason before readiness, including
+OpenAI Realtime, Grok Voice and Gemini Live. Authentication and permanent or
+unknown rejection stop; transport failures retain recovery. A recoverable event
+explicitly associated with another setup request remains unrelated, while a
+missing event id cannot turn a genuine rejection into a retryable timeout.
+Audio3's exact unknown setup token also stops at the shared adapter boundary.
+An unsolicited Audio3 `task-finished` is a transport interruption, not permission
+to commit drafts or report normal completion; explicit finish still accepts
+its final tail, and client reuse clears that authorization.
+
+Gemini preserves only exact, unambiguous `UNAVAILABLE` / 503 as temporarily
+unavailable. Quota, configuration and unknown errors remain terminal; setup
+and replacement failures cannot collapse to transport failures. A GoAway notice
+on an unstable transport enters the same bounded recovery policy. Planned
+rotation requires the current transport's successful health check after the
+existing interval; each handoff clears its stability evidence, and stale health
+results cannot restore it. Stop retains its old transport's tail if an unused
+replacement is rejected, and GoAway alone does not end a closing turn. See the
+[official GoAway definition](https://ai.google.dev/api/live) and
+[session management guide](https://ai.google.dev/gemini-api/docs/live-api/session-management).
+
+These rules use shared source and direct Rust / actual JNI regressions. Paid
+public-PCM probes remain explicit manual tests, read saved Dev credentials only,
+and store timing/counts/safe labels rather than transcripts. Test outcomes and
+provider availability belong in the integration ledger; no persistent testing
+authorization is implied by retaining the probe.
+
+Tencent's fixed configuration, service-activation and exhausted-quota setup
+labels require user action on both adapters; an automatic recovery cannot repair
+them. Keep temporary capacity and transport failures separate. Diagnostics may
+retain canonical signed Baidu/Tencent status numbers and fixed DeepLX error
+categories, but never guess a numeric status from a label shared by several
+service codes or preserve arbitrary provider strings.
+
+Baidu setup now keeps explicit numeric rejection separate from a socket close:
+unknown/configuration rejection stops recovery with its current reason, while
+the documented 20314 transport timeout remains retryable. This supersedes the
+older generic setup-rejection retry rule above. Established-session 20316 and
+unexpected END behavior are unchanged. The official API defines 20316 as invalid
+audio, not a transport timeout; the real zero-PCM observation does not authorize
+retrying every invalid-audio response. OpenAI/Grok authentication errors also
+retain their fixed actionable label after readiness, using the same finite
+classification as setup rather than provider-prefixed generic labels.
+
+The absent-input LiveTranslate replay identified a second finite idle reason:
+exact `COMMON_ERROR` with the complete structured message
+`response_stream_timeout(timeout_seconds=60, elapsed_ms=101831)`. Accept the
+observed field spelling or its equivalent explicit numeric-unit grammar only
+when every token is consumed, the timeout is exactly 60 seconds and elapsed
+milliseconds are at least 60,000. Numbers must be canonical bounded unsigned
+integers. The raw error type must be absent or exactly `server_error`; null,
+malformed, authentication, quota and other types cannot gain retry authority.
+Map that finite reason to the existing `alibaba_realtime_idle_timeout` and its
+bounded recovery schedule. Unknown COMMON_ERROR messages, extra prefixes or
+suffixes, malformed numbers and other timeout values remain terminal. Retain
+only the fixed `response_stream_timeout` diagnostic label, never the raw reason
+or the temporary inspection hooks used to establish its grammar.

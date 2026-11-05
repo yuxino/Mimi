@@ -5634,12 +5634,15 @@
 - The public Russian fixtures and completed content-free failure traces are
   retained in the private Dev `development-benchmarks/2026-11-06-issue329-russian-recovery`
   archive, including recorded manifests and reusable manifests with durable
-  paths. They are outside Git; the ongoing three-hour run is not yet complete.
-- A limited read-only sibling review identified later checks: untyped setup
+  paths. They are outside Git; the failed long-run result and bounded follow-up
+  below remain separate evidence.
+- At this earlier checkpoint, a limited read-only sibling review identified
+  later checks: untyped setup
   rejection in OpenAI/Gemini/Grok Voice, unsolicited Audio3 `task-finished`, and
   Gemini's lost `UNAVAILABLE` classification. These source-defined cases have
-  not been exercised against their real services and are not fixes claimed by
-  this Alibaba release. Preserve xAI STT versus Voice and normal finish versus
+  not yet been exercised against their real services; they were subsequently
+  investigated in the sibling-provider section below. Preserve xAI STT versus
+  Voice and normal finish versus
   unsolicited finish as separate cases when extending the provider matrix.
 - Release-candidate checks passed: canonical desktop 690, shared runtime 964,
   core 108, JNI Rust 31 and frontend 2,832 tests; Android Debug and Release each
@@ -5652,3 +5655,153 @@
   stopped/stale probes, and retain both deterministic regressions (old code
   fails, fixed code passes). The final shared check passed all 33 JNI Rust tests;
   both final JVM variants again passed 317/317 after this adapter-only change.
+- The corrected-classification long run stopped after 8,162.685 s (2h 16m),
+  not a three-hour pass. Seven earlier interruptions recovered: five exact
+  response-idle timeouts and two transport failures. The eighth connection
+  then failed during `long_wait_without_callbacks`, after both inputs stopped
+  supplying PCM; successful health probes did not prevent a different generic
+  service error and close 1007. The planned input stop preceded failure by
+  62.685 s; an exact last-send timestamp was not recorded. Last content was
+  64.044 s before the error. RSS minimum/median/maximum was 2,016 / 30,392 /
+  149,952 KiB over 272 samples (minimum includes startup); maximum pacing gap
+  was 78 ms. This trace alone did not identify its wire code.
+  This driver used the earlier 30 s harness recovery-window rule, not the later
+  production health-gated continuity fix verified by direct Rust/actual JNI.
+- The same-sample 300 s replay starts with the original pre-failure minute
+  (normal-speed Russian at offset 1,140 s, system lane; silent microphone),
+  then 180 s without either callback and 60 s resumed dual-source 1.5× Russian.
+  Baseline and diagnostic comparisons consistently stopped near 123 s on the
+  scenario clock. Content-free finite-word, numeric and separator observations
+  identified exact `COMMON_ERROR`, missing raw type and the structured reason
+  `response_stream_timeout(timeout_seconds=60, elapsed_ms=101831)`. An initial
+  explicit-number/unit-only parser still failed the same replay; the provider's
+  field-name grammar was required. All temporary observers were removed.
+- Accept only that complete finite grammar (or the equivalent explicit
+  numeric-unit form), exact 60-second timeout, canonical elapsed milliseconds
+  at least 60,000, and missing or exact `server_error` raw type. Reuse
+  `alibaba_realtime_idle_timeout`; unrelated COMMON_ERROR messages, noncanonical
+  fields, extra prose and other raw types remain terminal. Shared contract
+  cases cover ready/setup recovery and unknown/prefix/suffix rejection.
+- The corrected 300 s replay passed in 303.656 s wall time, using dirty
+  `b662764286413347b2ce8683f2b45aae5667fa96` and binary SHA-256
+  `bd8988a20e50acc2b31b616e70e3d7b94d224869d93003f1047deeb91b5f0d50`.
+  One idle-timeout recovery at 123.097 s opened a second generation. Resumed
+  speech sent 1,920,000 bytes per lane, produced 1 system / 10 microphone
+  confirmed pairs, and both lanes finished normally; maximum pacing gap was
+  28 ms. This is bounded recovery evidence, not a completed three-hour run or
+  native Windows capture/display acceptance.
+- The prior stale-binary launch was stopped after 19.241 s (exit -15) and is
+  explicitly excluded from post-fix evidence. The retained runner now requires
+  the expected binary SHA before any paid execution. Completed comparison
+  logs, metadata and resource samples, including failed parser comparisons and
+  the excluded launch, are archived privately with hashes. The original
+  three-hour failure remains FAILED. Its remaining original 135–180 minute
+  phases plus the same preceding minute form a separate 2,760 s replay;
+  that tail run is active and has no completed result at this checkpoint.
+
+### 2026-11-06 — sibling provider recovery and configured-service checks
+
+- Continued after candidate `b662764286413347b2ce8683f2b45aae5667fa96`; the user
+  explicitly expanded this task to all configured Dev keys. Eight short routes
+  use the same archived public English FLEURS sample, 60 s speech → 90 s silence
+  → 60 s resumed speech, then finish. Two processes at most; no native capture,
+  profile edits or transcript logs. OpenAI uses a verified 24 kHz derivation;
+  other routes use the original 16 kHz PCM. Missing Dev xAI/Azure credentials
+  prevent real-service acceptance for those providers.
+- Local socket replays reproduced OpenAI/Grok setup reason loss, Audio3
+  unsolicited finish, and Gemini temporary-error/rotation/Stop-tail failures
+  before their fixes (12 initial failed regressions). Unknown/permanent setup
+  rejection now stops, real transport interruption remains recoverable, and
+  recoverable errors explicitly tied to another request stay unrelated. A later
+  exact authentication type with an unknown code also failed two protocol
+  regressions before preserving the authentication reason; both protocol tests
+  and OpenAI/Grok client suites (16/29) passed after that correction.
+- Gemini's immediate setupComplete → GoAway loop opened eight sockets in
+  3,028 ms before the bounded experiment forced authentication rejection. The
+  persistent fix admits planned rotation only after the current transport's
+  real health check and existing interval; unstable GoAway uses the shared
+  recovery budget. The actual JNI matrix confirms initial plus four connections,
+  no sixth connection. Stop during replacement setup also has a deterministic
+  old-fails/new-passes tail-preservation regression.
+- Expanded canonical checks passed at the pre-auth-kind checkpoint: desktop
+  691, shared runtime 984, JNI Rust 33 and frontend 2,832, plus strict Clippy,
+  formatting and architecture checks. Actual JNI fixtures distinguish Grok
+  Voice from STT, OpenAI's translation-specific audio event name, Auto-only
+  source configuration and each provider's real PCM frame shape. Initial fixture
+  errors were corrected; they were not product failures. At that checkpoint,
+  verification after the authentication-kind and real-service follow-ups was
+  still pending; the latest completed checks are recorded below.
+- The first restricted executor could not resolve provider domains (0 PCM sent
+  on all routes). Repeating the identical authorized batch with network access
+  established real sessions; those DNS failures are not provider evidence.
+- Four short routes passed through silence, resumed speech and normal finish:
+  Gemini 213.411 s / finish 2,256 ms / 4 confirmed pairs; Volcano 211.207 s /
+  finish 860 ms / 28 translation finals; Audio3 + Qwen 211.936 s / finish
+  1,648 ms / 10 pairs; Audio3 + DeepL 212.594 s / finish 2,260 ms / 10 pairs.
+  Counts do not establish semantic translation quality or visible-subtitle latency.
+- Four routes need finer safe classification: OpenAI rejected setup at 960 ms,
+  Tencent at 217 ms, Baidu stopped at 95.964 s (about 31 s into silence), and
+  Audio3 + DeepLX failed at 15.032 s. Their normalized labels alone cannot
+  distinguish provider configuration, availability or a client bug. The probe
+  now preserves existing `SafeFailure` fields and typed Tencent numeric status;
+  raw response bodies, unknown code strings and endpoint URLs remain excluded.
+  A setup-only OpenAI comparison and same-sample failure replays are pending.
+- The finer Tencent setup observation retained typed status 6004, which the
+  [official speech-translation table](https://cloud.tencent.com/document/product/1093/127565)
+  identifies as an exhausted resource package. No account settings or purchases
+  were changed. A separate desktop regression showed that fixed Tencent
+  configuration/not-activated/quota labels could still continue a recovery
+  attempt; it failed before the shared terminal-label correction and passed
+  afterward. The same labels are now in the shared Rust/JNI recovery contract.
+- Two 0-PCM OpenAI comparisons used the production endpoint, request encoder and
+  network configuration: WebSocket 101 succeeded in 774 / 886 ms, then the
+  service returned `invalid_request_error` before session.created/updated. Its
+  specific code was outside the fixed allowlist and remains unknown. This is
+  not evidence of a ready-echo mismatch. No credentials/endpoint/model were
+  changed and no further OpenAI calls were made. The temporary example and
+  its 14 dedicated build artifacts were removed after completion.
+- A second Baidu run stopped at 96.888 s and DeepLX at 15.034 s. Their safe
+  diagnostics still returned OTHER, exposing missing report categories rather
+  than establishing a provider cause. Add exact Baidu/Tencent canonical signed
+  status parsing and fixed DeepLX Display categories; four prior diagnostic
+  regressions failed, all 28 diagnostic tests passed after the fix. Unknown
+  strings, noncanonical numbers, overflow and private suffixes stay excluded.
+- Expanded Android Debug and Release suites each passed 321 tests after the
+  authentication-kind fix; the later Tencent terminal-label additions require
+  their final contract verification.
+- Gemini's long run passed in 1,322.826 s: 20 minutes of zero PCM, 120 successful
+  silence-period health probes (maximum 267 ms), then resumed speech with first
+  content after 3,661 ms. Four confirmed pairs and one normal SessionFinished
+  included the final tail; finish took 2,051 ms. This used binary SHA-256
+  `29ed40348fc0174e916b43aca760894d3cf0c1b8cec8bda4e921311c4b5921de`,
+  before the later Tencent/diagnostic/Baidu follow-ups.
+- The final safe-classification replay used binary SHA-256
+  `5be732e9636fdd531dc3b5c624936131cf28c0ddfe552ecf29c59b4e83c0e4ba`.
+  DeepLX returned rejection status 404 at 15.002 s; the typed client does not
+  distinguish an HTTP status from the service JSON code here. Baidu returned
+  20316 at 96.148 s after 11 confirmed pairs and about 31 seconds of zero PCM.
+  Its [official API](https://ai.baidu.com/ai-doc/MT/Sl9p2h5k9) defines 20316 as
+  invalid audio; 20314 is the separate no-message timeout. This establishes a
+  service rejection of the tested silence, not a transport timeout or proof
+  that all invalid-audio responses should reconnect. No configuration was
+  changed or further paid retry made for these failures.
+- Final cross-review reproduced four additional socket/bridge failures before
+  repair: Baidu explicit setup rejection versus real transport loss, and
+  OpenAI/Grok authentication rejection after readiness. Preserve the typed
+  distinctions and latest terminal reason. Baidu's established 20316/END policy
+  is unchanged. The read-only probe now skips credential/profile migration even
+  with an unrelated legacy xAI profile, and uses the same typed diagnostic
+  priority as desktop; a local-file snapshot regression protects that boundary.
+- Completed sibling-service evidence, public PCM and hashes are archived beside
+  the Russian comparison in the private Dev benchmark directory. The latest
+  publish-candidate `CARGO_INCREMENTAL=0 ./scripts/check.sh` passed: desktop 697,
+  shared runtime 991, core 108 plus four contract tests, JNI Rust 33, and frontend
+  2,832 tests, with strict Clippy, formatting, architecture and production
+  debugger-boundary checks. The separate development-debugger strict Clippy
+  check also passed. The platform-dependent ignored tests and Windows
+  cross-check were not run. Full Android Debug and Release verification also
+  passed: each XML report totals 322 tests, zero failures/errors/skips across
+  44 suites, using the actual host JNI. The signed Dev rebuild/install with
+  `--no-launch` also passed in 40.82 s with the same designated requirement;
+  the formal app and running long-test binary were preserved. The 46-minute
+  remaining-tail run is a separate acceptance step, still unfinished here.

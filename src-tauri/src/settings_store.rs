@@ -1230,6 +1230,10 @@ impl SettingsStore {
     /// store. The durable catalog marker follows verified destination storage;
     /// retry never overwrites a destination written by an earlier attempt.
     fn migrate_xai_translation_profiles(&self) -> Result<(), String> {
+        #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+        if self.secret.is_read_only() {
+            return Ok(());
+        }
         if self.is_ui_test {
             return Ok(());
         }
@@ -4168,6 +4172,32 @@ mod read_only_manual_probe_tests {
             .is_err());
         assert!(store.delete_api_key(&profile.id).is_err());
         assert!(store.secret.migrate_legacy().is_err());
+        assert_eq!(snapshot(&directory), before);
+    }
+
+    #[test]
+    fn unrelated_legacy_xai_profile_does_not_block_read_only_catalog() {
+        let (_temporary, directory) = fixture();
+        let path = directory.join(PROFILE_CATALOG_FILE);
+        let mut catalog: ProfileCatalog =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let mut legacy =
+            ServiceProfile::new("legacy-xai", "Legacy", ProviderKind::XAIRealtime).unwrap();
+        legacy.xai_speech_mode = crate::core::provider::XAISpeechMode::AsrMt;
+        legacy.xai_independent_translation_migrated = false;
+        legacy.text_translation = None;
+        catalog.profiles.push(legacy);
+        std::fs::write(&path, serde_json::to_vec(&catalog).unwrap()).unwrap();
+        let before = snapshot(&directory);
+        let store = SettingsStore::load_for_read_only_manual_probe(directory.clone()).unwrap();
+        let (_, profiles) = store.profile_catalog().unwrap();
+        assert_eq!(profiles.len(), 2);
+        let legacy = profiles.iter().find(|p| p.id == "legacy-xai").unwrap();
+        assert!(!legacy.xai_independent_translation_migrated);
+        assert_eq!(legacy.text_translation, None);
+        assert!(store
+            .configuration_for_profile_probe(&store.active_profile().unwrap())
+            .is_ok());
         assert_eq!(snapshot(&directory), before);
     }
 
