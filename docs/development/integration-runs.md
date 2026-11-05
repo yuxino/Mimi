@@ -5697,7 +5697,25 @@
   the excluded launch, are archived privately with hashes. The original
   three-hour failure remains FAILED. Its remaining original 135–180 minute
   phases plus the same preceding minute form a separate 2,760 s replay;
-  that tail run is active and has no completed result at this checkpoint.
+  its completed result follows.
+- That separate 28-phase tail replay passed in 2,762.048 s wall time (exit 0,
+  scenario finish 2,761.961 s), with the same frozen source committed as
+  `d4004473529b35e3e55d22e74d53d6b992314baa` and binary SHA-256
+  `bd8988a20e50acc2b31b616e70e3d7b94d224869d93003f1047deeb91b5f0d50`.
+  Startup metadata retains its earlier dirty `b6627642` checkpoint. Two idle
+  recoveries occurred at 122.864 / 1,023.827 s: first the structured
+  `response_stream_timeout`, then exact `response_idle_timeout`; next-generation
+  ready progress appeared at 124.044 / 1,024.965 s. After the 20-minute absent
+  interval, both sources resumed and finished normally. The last generation
+  sent 48,000,000 bytes per lane and confirmed 13 system / 125 microphone pairs;
+  totals including the preceding minute were 49,903,360 bytes per lane and
+  14 / 125 pairs. Each lane passed 277 health probes (maximum 2,825 / 55 ms),
+  maximum pacing gap was 53 ms, and 93 RSS samples had minimum/median/maximum
+  1,568 / 34,240 / 146,848 KiB (minimum includes startup). Completed logs,
+  metadata, resource samples and macOS release-build evidence are privately
+  archived with hashes. The original 2h 16m failure is preserved: there is
+  **no uninterrupted three-hour post-fix pass**. These counts still do not
+  establish semantic quality, native capture or visible-subtitle latency.
 
 ### 2026-11-06 — sibling provider recovery and configured-service checks
 
@@ -5760,6 +5778,17 @@
   not evidence of a ready-echo mismatch. No credentials/endpoint/model were
   changed and no further OpenAI calls were made. The temporary example and
   its 14 dedicated build artifacts were removed after completion.
+- A read-only uncertainty audit found that the existing session-update builder
+  matches the current [Translation client event fields](https://developers.openai.com/api/reference/resources/realtime/translation-client-events);
+  the [official Cookbook](https://developers.openai.com/cookbook/examples/voice_solutions/realtime_translation_guide)
+  likewise sends the update after the socket opens. Safety identifiers are
+  [recommended, not required](https://developers.openai.com/api/docs/guides/safety-checks).
+  Two WebSocket-101, pre-ready rejections with zero PCM do not establish an
+  audio-format or ready-echo defect. `related_to_update=false` also does not
+  prove the update was unrelated: the error's client
+  [event_id is optional](https://developers.openai.com/api/reference/resources/realtime/translation-server-events).
+  The precise cause remains unresolved; account/model permission is not a
+  proven explanation. No additional API call or configuration change followed.
 - A second Baidu run stopped at 96.888 s and DeepLX at 15.034 s. Their safe
   diagnostics still returned OTHER, exposing missing report categories rather
   than establishing a provider cause. Add exact Baidu/Tencent canonical signed
@@ -5803,5 +5832,25 @@
   passed: each XML report totals 322 tests, zero failures/errors/skips across
   44 suites, using the actual host JNI. The signed Dev rebuild/install with
   `--no-launch` also passed in 40.82 s with the same designated requirement;
-  the formal app and running long-test binary were preserved. The 46-minute
-  remaining-tail run is a separate acceptance step, still unfinished here.
+  the formal app and running long-test binary were preserved. The separate
+  46-minute remaining-tail result is recorded above; it does not replace the
+  failed three-hour run.
+- [v1.6.16](https://github.com/yuxino/Mimi/releases/tag/v1.6.16) was published
+  at 2026-11-05 21:07:08 UTC from `d4004473529b35e3e55d22e74d53d6b992314baa`,
+  with 17 assets; [tag CI](https://github.com/yuxino/Mimi/actions/runs/42105844235)
+  and [Android CI](https://github.com/yuxino/Mimi/actions/runs/42105844176) passed.
+  Downloaded assets matched all 17 API digests and 16 checksum rows; the updater
+  verifier passed and release/updater bilingual notes matched. Anonymous tag,
+  canonical-latest and exact configured lowercase updater URLs returned HTTP
+  200 with identical bytes (SHA-256
+  `58ea4f5f55f7c8d26cb18d7d17de0711a71a4bae94e17fb3316e7c84dc8ee643`).
+  The public Contributors view loaded @ryannyui's avatar. A brief
+  [reporter reply](https://github.com/yuxino/Mimi/issues/329#issuecomment-6669603110)
+  was posted and read back; the issue remains open for the reporter's Windows
+  retest. Five content-free release proofs are archived privately, without
+  installers. Publication does not change the failed original long run or
+  establish an uninterrupted three-hour post-fix pass.
+- After hash-verifying the private archive, removed task-only media/log copies,
+  obsolete test executables, duplicate downloaded/package bundles and the
+  detached release worktree. Preserved the installed formal/Dev apps, current
+  reusable build dependencies, other worktrees and pre-existing document edits.
