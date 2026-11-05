@@ -613,10 +613,7 @@ impl AlibabaRealtimeEventDecoder {
             "error" | "conversation.item.input_audio_transcription.failed"
         ) {
             return Ok(vec![(
-                LiveTranslateServerEvent::Error {
-                    code: "alibaba_realtime_provider_error".into(),
-                    message: "The Alibaba realtime service rejected the request.".into(),
-                },
+                safe_realtime_error(json.get("error"), false),
                 LiveTranslateEventIdentity::default(),
             )]);
         }
@@ -807,14 +804,64 @@ impl AlibabaRealtimeEventDecoder {
         }
         if response.get("status").and_then(Value::as_str) == Some("failed") {
             events.push((
-                LiveTranslateServerEvent::Error {
-                    code: "alibaba_realtime_response_failed".into(),
-                    message: "The Alibaba realtime response failed.".into(),
-                },
+                safe_realtime_error(response.pointer("/status_details/error"), true),
                 LiveTranslateEventIdentity::default(),
             ));
         }
         Ok(events)
+    }
+}
+
+/// Preserve only exact recognized error codes; arbitrary error prose and
+/// unknown failures must never acquire automatic retry authority.
+fn safe_realtime_error(error: Option<&Value>, response_failed: bool) -> LiveTranslateServerEvent {
+    let wire_code = error
+        .and_then(|error| error.get("code"))
+        .and_then(Value::as_str);
+    crate::pipeline_log!(
+        "live translate service error kind={}",
+        match wire_code {
+            Some("response_idle_timeout") => "response_idle_timeout",
+            Some("RequestTimeOut") => "request_timeout",
+            Some("ResponseTimeout") => "response_timeout",
+            Some("InternalError.Timeout") => "internal_timeout",
+            Some("ServiceUnavailable" | "InternalError" | "internal_error") =>
+                "service_unavailable",
+            Some("InvalidApiKey" | "invalid_api_key" | "unauthorized" | "authentication_error") =>
+                "authentication",
+            Some("InvalidParameter" | "invalid_request_error") => "invalid_request",
+            Some("client_error") => "client_error",
+            _ => "other",
+        }
+    );
+    let (code, message) = match wire_code {
+        // Observed with a healthy but quiet 3.8 connection. Retire that
+        // connection through the same bounded policy as a transport loss;
+        // do not invent audio, assume a fixed lifetime or retry every error.
+        Some("response_idle_timeout") => (
+            "alibaba_realtime_idle_timeout",
+            "The Alibaba realtime session timed out while idle.",
+        ),
+        Some("InvalidApiKey" | "invalid_api_key" | "unauthorized" | "authentication_error") => (
+            "credential_authentication_failed",
+            "credential_authentication_failed",
+        ),
+        Some("ServiceUnavailable" | "InternalError" | "internal_error") => (
+            "alibaba_realtime_service_unavailable",
+            "The Alibaba realtime service is temporarily unavailable.",
+        ),
+        _ if response_failed => (
+            "alibaba_realtime_response_failed",
+            "The Alibaba realtime response failed.",
+        ),
+        _ => (
+            "alibaba_realtime_provider_error",
+            "The Alibaba realtime service rejected the request.",
+        ),
+    };
+    LiveTranslateServerEvent::Error {
+        code: code.into(),
+        message: message.into(),
     }
 }
 
@@ -933,6 +980,69 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|(event, _)| matches!(event, LiveTranslateServerEvent::TranslationFinal(_))));
+        }
+    }
+
+    #[test]
+    fn realtime_errors_retry_only_exact_known_transient_codes_and_never_keep_raw_details() {
+        use crate::core::recovery::{normalize_provider_error_code, provider_error_is_retryable};
+        for (code, expected, retryable) in [
+            (
+                "response_idle_timeout",
+                "alibaba_realtime_idle_timeout",
+                true,
+            ),
+            (
+                "ServiceUnavailable",
+                "alibaba_realtime_service_unavailable",
+                true,
+            ),
+            (
+                "InternalError",
+                "alibaba_realtime_service_unavailable",
+                true,
+            ),
+            (
+                "internal_error",
+                "alibaba_realtime_service_unavailable",
+                true,
+            ),
+            ("InvalidApiKey", "credential_authentication_failed", false),
+            ("invalid_api_key", "credential_authentication_failed", false),
+            ("unauthorized", "credential_authentication_failed", false),
+            (
+                "authentication_error",
+                "credential_authentication_failed",
+                false,
+            ),
+            ("ServiceUnavailable.private", "provider_error", false),
+            ("response_idle_timeout.private", "provider_error", false),
+            ("InvalidParameter", "provider_error", false),
+            ("insufficient_quota", "provider_error", false),
+            ("private-unknown-code", "provider_error", false),
+        ] {
+            let error =
+                json!({"code":code,"message":"private-server-detail","type":"private-error-type"});
+            for wire in [
+                json!({"type":"error","error":error}),
+                json!({"type":"conversation.item.input_audio_transcription.failed","error":error}),
+                json!({"type":"response.done","response":{"id":"test-response","status":"failed","status_details":{"error":error},"output":[]}}),
+            ] {
+                let mut decoder =
+                    AlibabaRealtimeEventDecoder::new(AlibabaRealtimeMode::LiveTranslate);
+                let decoded = decoder.decode(&wire.to_string()).unwrap();
+                let LiveTranslateServerEvent::Error {
+                    code: safe_code,
+                    message,
+                } = &decoded.last().unwrap().0
+                else {
+                    panic!("expected a classified error");
+                };
+                assert_eq!(normalize_provider_error_code(safe_code), expected, "{code}");
+                assert_eq!(provider_error_is_retryable(safe_code), retryable, "{code}");
+                assert!(!safe_code.contains("private"));
+                assert!(!message.contains("private"));
+            }
         }
     }
 

@@ -582,10 +582,26 @@ pub enum ConnectError {
 }
 
 impl ConnectError {
-    /// Send/health errors from the local Apple adapter keep their finite
-    /// classification instead of racing the result reader as generic transport
-    /// failures. No arbitrary provider message is returned here.
+    /// Setup/send/health errors keep their finite recognition classification
+    /// instead of becoming generic transport failures. No arbitrary provider
+    /// message is returned here.
     pub fn recognition_failure_label(&self) -> Option<&'static str> {
+        if let Self::Live(error) = self {
+            return Some(match error {
+                LiveTranslateClientError::AuthenticationFailed => {
+                    "credential_authentication_failed"
+                }
+                LiveTranslateClientError::SessionSetupRejected => "alibaba_realtime_provider_error",
+                LiveTranslateClientError::ServiceUnavailable => {
+                    "alibaba_realtime_service_unavailable"
+                }
+                LiveTranslateClientError::IdleTimeout => "alibaba_realtime_idle_timeout",
+                LiveTranslateClientError::UnexpectedSessionEnd => {
+                    "live_translate_unexpected_session_end"
+                }
+                _ => return None,
+            });
+        }
         let Self::MT(QwenMTClientError::RequestFailed { message, .. }) = self else {
             return None;
         };
@@ -617,6 +633,11 @@ impl ConnectError {
         use crate::clients::connection_diagnostics::{
             connection_reason, ConnectionCheckReason as Reason,
         };
+        if matches!(self, Self::Live(_)) {
+            if let Some(code) = self.recognition_failure_label() {
+                return crate::core::recovery::normalize_provider_error_code(code);
+            }
+        }
         if let Self::MT(error) = self {
             if error.is_authentication_failure() {
                 return "credential_authentication_failed";

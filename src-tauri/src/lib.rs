@@ -29,6 +29,8 @@ mod development_debugger;
 mod fonts;
 #[cfg(target_os = "linux")]
 mod linux_startup;
+#[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+mod live_translate_input_probe;
 #[cfg(any(target_os = "macos", test))]
 mod mac_dock;
 #[cfg(target_os = "macos")]

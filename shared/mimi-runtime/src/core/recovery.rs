@@ -8,7 +8,7 @@ use crate::core::preview_pacing::MTRequestBudget;
 use crate::core::protocols::qwen_mt::QwenMTModel;
 use crate::core::provider::ProviderKind;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const NO_GENERATION: u64 = 0;
 pub const RECOVERY_ATTEMPTS: usize = 4;
@@ -28,6 +28,9 @@ pub fn normalize_provider_error_code(code: &str) -> &'static str {
         | "gemini_transcribe_not_connected"
         | "gemini_transcribe_health_timeout" => "transport_error",
         "provider_event_backlog_overflow" => "provider_event_backlog_overflow",
+        "live_translate_unexpected_session_end" => "live_translate_unexpected_session_end",
+        "alibaba_realtime_service_unavailable" => "alibaba_realtime_service_unavailable",
+        "alibaba_realtime_idle_timeout" => "alibaba_realtime_idle_timeout",
         "translation_backlog_overflow" => "translation_backlog_overflow",
         "translation_rate_limited" => "translation_rate_limited",
         "translation_temporarily_unavailable" => "translation_temporarily_unavailable",
@@ -81,6 +84,7 @@ pub fn provider_error_requires_user_action(error: &str) -> bool {
 pub struct RecoverySchedule {
     failed_generation: u64,
     minimum_delay: Duration,
+    used_attempts_before_owner: usize,
     next_attempt_index: usize,
     generation: u64,
     epoch: u64,
@@ -88,7 +92,10 @@ pub struct RecoverySchedule {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoveryAttempt {
+    /// Index within this native recovery owner; zero uses its reserved generation.
     pub index: usize,
+    /// Index across connections that have not yet passed a stable health check.
+    pub budget_index: usize,
     pub delay: Duration,
 }
 
@@ -97,6 +104,7 @@ impl RecoverySchedule {
         Self {
             failed_generation,
             minimum_delay,
+            used_attempts_before_owner: 0,
             next_attempt_index: 0,
             generation: owner_generation,
             epoch: owner_generation,
@@ -104,14 +112,16 @@ impl RecoverySchedule {
     }
 
     pub fn next_attempt(&mut self) -> Option<RecoveryAttempt> {
-        if self.next_attempt_index == RECOVERY_ATTEMPTS {
+        let budget_index = self.used_attempts_before_owner + self.next_attempt_index;
+        if budget_index >= RECOVERY_ATTEMPTS {
             return None;
         }
         let index = self.next_attempt_index;
         self.next_attempt_index += 1;
         Some(RecoveryAttempt {
             index,
-            delay: recovery_delay(index, self.failed_generation).max(self.minimum_delay),
+            budget_index,
+            delay: recovery_delay(budget_index, self.failed_generation).max(self.minimum_delay),
         })
     }
 
@@ -166,9 +176,226 @@ impl RecoverySchedule {
     }
 }
 
+/// Moves the same retry budget between native recovery owners. A setup
+/// acknowledgement is not evidence that a replacement connection is stable.
+/// Adapters retain ownership checks and report an actual successful health
+/// probe; only this shared policy decides when the budget may reset.
+#[derive(Default)]
+pub struct RecoveryContinuity {
+    connected: Option<ConnectedRecovery>,
+}
+
+struct ConnectedRecovery {
+    schedule: RecoverySchedule,
+    connected_at: Instant,
+}
+
+impl RecoveryContinuity {
+    /// The caller must still own the successful schedule's generation.
+    pub fn record_connected(&mut self, schedule: RecoverySchedule, now: Instant) {
+        self.connected = Some(ConnectedRecovery {
+            schedule,
+            connected_at: now,
+        });
+    }
+
+    pub fn health_succeeded(&mut self, generation: u64, now: Instant) -> bool {
+        let stable = self.connected.as_ref().is_some_and(|connected| {
+            connected.schedule.generation() == generation
+                && now.saturating_duration_since(connected.connected_at)
+                    >= crate::core::health::HEALTH_CHECK_INTERVAL
+        });
+        if stable {
+            self.clear();
+        }
+        stable
+    }
+
+    pub fn take_for_failure(
+        &mut self,
+        failed_generation: u64,
+        owner_generation: u64,
+        minimum_delay: Duration,
+    ) -> RecoverySchedule {
+        let Some(connected) = self
+            .connected
+            .take()
+            .filter(|connected| connected.schedule.generation() == failed_generation)
+        else {
+            return RecoverySchedule::new(failed_generation, owner_generation, minimum_delay);
+        };
+        let mut schedule = connected.schedule;
+        schedule.used_attempts_before_owner += schedule.next_attempt_index;
+        schedule.next_attempt_index = 0;
+        schedule.minimum_delay = schedule.minimum_delay.max(minimum_delay);
+        schedule.generation = owner_generation;
+        schedule.epoch = owner_generation;
+        schedule
+    }
+
+    /// Explicit Stop, Start/Retry and configuration replacement own a new budget.
+    pub fn clear(&mut self) {
+        self.connected = None;
+    }
+}
+
 #[cfg(test)]
 mod schedule_tests {
     use super::*;
+
+    #[test]
+    fn shared_continuity_contract_bounds_connections_and_allows_a_healthy_new_window() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        for case in fixtures["liveTranslateRecoveryContinuity"]
+            .as_array()
+            .unwrap()
+        {
+            let mut continuity = RecoveryContinuity::default();
+            let now = Instant::now();
+            let mut generation = 1;
+            loop {
+                let mut schedule =
+                    continuity.take_for_failure(generation, generation + 1, Duration::ZERO);
+                if schedule.next_attempt().is_none() {
+                    break;
+                }
+                generation += 1;
+                assert!(generation < 16, "a recovery budget must terminate");
+                continuity.record_connected(schedule, now);
+                if case["stableConnection"].as_u64() == Some(generation) {
+                    assert!(continuity.health_succeeded(
+                        generation,
+                        now + crate::core::health::HEALTH_CHECK_INTERVAL
+                    ));
+                }
+            }
+            assert_eq!(
+                generation,
+                case["expectedConnections"].as_u64().unwrap(),
+                "{}",
+                case["id"]
+            );
+        }
+    }
+
+    #[test]
+    fn setup_acknowledgements_cannot_reset_the_shared_recovery_budget_or_backoff() {
+        let mut continuity = RecoveryContinuity::default();
+        let now = Instant::now();
+        let failed_generation = 10;
+        for budget_index in 0..RECOVERY_ATTEMPTS {
+            let generation = failed_generation + budget_index as u64;
+            let mut schedule =
+                continuity.take_for_failure(generation, generation + 1, Duration::ZERO);
+            let attempt = schedule.next_attempt().unwrap();
+            assert_eq!(
+                attempt.index, 0,
+                "each native owner uses its reserved generation first"
+            );
+            assert_eq!(attempt.budget_index, budget_index);
+            assert_eq!(
+                attempt.delay,
+                recovery_delay(budget_index, failed_generation)
+            );
+            continuity.record_connected(schedule, now);
+        }
+        let generation = failed_generation + RECOVERY_ATTEMPTS as u64;
+        assert!(continuity
+            .take_for_failure(generation, generation + 1, Duration::ZERO)
+            .next_attempt()
+            .is_none());
+    }
+
+    #[test]
+    fn only_a_current_successful_health_probe_after_the_shared_interval_resets_recovery() {
+        let now = Instant::now();
+        let interval = crate::core::health::HEALTH_CHECK_INTERVAL;
+        let mut continuity = RecoveryContinuity::default();
+        let mut schedule = continuity.take_for_failure(1, 2, Duration::ZERO);
+        schedule.next_attempt().unwrap();
+        continuity.record_connected(schedule, now);
+        assert!(!continuity.health_succeeded(2, now + interval - Duration::from_nanos(1)));
+        assert!(!continuity.health_succeeded(1, now + interval));
+        let mut resumed = continuity.take_for_failure(2, 3, Duration::ZERO);
+        assert_eq!(resumed.next_attempt().unwrap().budget_index, 1);
+        continuity.record_connected(resumed, now + interval);
+        assert!(!continuity.health_succeeded(2, now + interval * 2));
+        assert!(continuity.health_succeeded(3, now + interval * 2));
+        let mut fresh = continuity.take_for_failure(3, 4, Duration::ZERO);
+        for budget_index in 0..RECOVERY_ATTEMPTS {
+            assert_eq!(fresh.next_attempt().unwrap().budget_index, budget_index);
+        }
+        assert!(fresh.next_attempt().is_none());
+    }
+
+    #[test]
+    fn elapsed_time_without_successful_health_does_not_reset_recovery() {
+        let mut continuity = RecoveryContinuity::default();
+        let now = Instant::now();
+        let mut schedule = continuity.take_for_failure(1, 2, Duration::ZERO);
+        schedule.next_attempt().unwrap();
+        continuity.record_connected(schedule, now);
+        assert!(!continuity.health_succeeded(1, now + Duration::from_secs(900)));
+        assert_eq!(
+            continuity
+                .take_for_failure(2, 3, Duration::ZERO)
+                .next_attempt()
+                .unwrap()
+                .budget_index,
+            1
+        );
+    }
+
+    #[test]
+    fn continued_owners_count_failed_setup_attempts_and_preserve_service_cooldown() {
+        let mut continuity = RecoveryContinuity::default();
+        let mut schedule = continuity.take_for_failure(20, 21, Duration::from_secs(8));
+        schedule.next_attempt().unwrap();
+        assert!(schedule.accept_failure(22));
+        let sequence = AtomicU64::new(22);
+        assert_eq!(schedule.advance_for_retry(&sequence), Some(23));
+        assert_eq!(schedule.next_attempt().unwrap().budget_index, 1);
+        continuity.record_connected(schedule, Instant::now());
+        let mut resumed = continuity.take_for_failure(23, 24, Duration::ZERO);
+        let first = resumed.next_attempt().unwrap();
+        assert_eq!(first.index, 0);
+        assert_eq!(first.budget_index, 2);
+        assert_eq!(first.delay, Duration::from_secs(8));
+        assert!(resumed.accept_failure(25));
+        let sequence = AtomicU64::new(25);
+        assert_eq!(resumed.advance_for_retry(&sequence), Some(26));
+        let second = resumed.next_attempt().unwrap();
+        assert_eq!(second.index, 1);
+        assert_eq!(second.budget_index, 3);
+        assert!(resumed.next_attempt().is_none());
+    }
+
+    #[test]
+    fn explicit_reset_and_replacement_owners_cannot_inherit_an_old_retry_budget() {
+        for reset in [false, true] {
+            let mut continuity = RecoveryContinuity::default();
+            let mut schedule = continuity.take_for_failure(1, 2, Duration::ZERO);
+            for _ in 0..RECOVERY_ATTEMPTS {
+                schedule.next_attempt().unwrap();
+            }
+            continuity.record_connected(schedule, Instant::now());
+            let failed_generation = if reset {
+                continuity.clear();
+                2
+            } else {
+                9
+            };
+            assert_eq!(
+                continuity
+                    .take_for_failure(failed_generation, failed_generation + 1, Duration::ZERO)
+                    .next_attempt()
+                    .unwrap()
+                    .budget_index,
+                0
+            );
+        }
+    }
 
     #[test]
     fn recognition_recovery_contract_preserves_raw_and_normalized_decisions() {
@@ -565,6 +792,9 @@ pub fn provider_error_is_retryable(code: &str) -> bool {
         normalize_provider_error_code(code),
         "transport_error"
             | "provider_event_backlog_overflow"
+            | "live_translate_unexpected_session_end"
+            | "alibaba_realtime_service_unavailable"
+            | "alibaba_realtime_idle_timeout"
             | "translation_backlog_overflow"
             | "translation_rate_limited"
             | "translation_temporarily_unavailable"
@@ -580,7 +810,10 @@ pub fn provider_recovery_minimum_delay(code: &str) -> Duration {
         // A new client must not bypass the MT cooldown by replacing the
         // generation after finite retries or bounded final-queue pressure.
         "translation_rate_limited" | "translation_backlog_overflow" => Duration::from_secs(8),
-        "translation_temporarily_unavailable" => Duration::from_millis(600),
+        "translation_temporarily_unavailable"
+        | "live_translate_unexpected_session_end"
+        | "alibaba_realtime_idle_timeout"
+        | "alibaba_realtime_service_unavailable" => Duration::from_millis(600),
         "apple_speech_runtime_service_unavailable"
         | "apple_speech_runtime_timeout"
         | "apple_speech_stream_closed"

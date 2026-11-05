@@ -263,6 +263,19 @@ preferences, has no raw-log input, and excludes keys, text, endpoints, paths
 and device/profile names. Reports remain valid JSON within 16 KiB; oversized
 GitHub links use the existing fixed-destination manual-paste fallback.
 
+Health-probe failures also enter that journal before recovery is queued, under
+the generation gate, so a successful reconnect does not hide its trigger and a
+late old probe cannot replace a newer generation's observation. Exact local
+Alibaba LiveTranslate and ASR messages distinguish connection/setup/health
+timeouts, setup rejection, and disconnected/transport failures. They describe
+the observed boundary, not a proven network or provider root cause. Unknown or
+extended messages remain `OTHER`; raw transport/provider prose stays excluded.
+The additive `alibaba_realtime_mode` field copies only the typed active route
+(or selected profile route when idle), without loading credentials. `null` means
+unknown/not applicable. The legacy `mode` value alone does not identify whether
+Alibaba uses simultaneous LiveTranslate or ASR + MT. These diagnostics do not
+alter shared provider protocols, health deadlines or automatic recovery policy.
+
 Frontend session snapshots reuse the bounded confirmed-history array only when
 every item's timestamp, source and translation match. Drafts and lifecycle
 fields remain fresh. Timeline blocks depend on settled text and primitive
@@ -347,3 +360,9 @@ discarding unsaved profile fields. Supported protocols and deliberate exclusions
 are recorded in the separate provider-network-proxy design. Native system text
 translation is deferred at the user's request; this iteration retains third-party
 services and does not advertise a local translator.
+
+Provider and health failures carry an optional typed `audio_source` in the bounded
+support journal. A double-input session must identify the failing connection as
+`system` or `microphone`; source-unknown setup/capture failures omit the field.
+The source label and failure classification remain after successful recovery,
+without exposing device names or content.

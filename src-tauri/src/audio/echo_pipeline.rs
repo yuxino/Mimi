@@ -19,6 +19,9 @@ const MAX_CALLBACK_MS: usize = 250;
 const CAPTURE_BUFFER_MS: usize = 700;
 const REFERENCE_FRAMES: usize = 100;
 const FRAME_DURATION: Duration = Duration::from_millis(10);
+// DSP needs 10 ms frames, but publishing each frame halves the duration of
+// the 20-message provider queue relative to normal 20 ms capture packets.
+const OUTPUT_BATCH_WAIT: Duration = FRAME_DURATION;
 const CAPTURE_GAP: Duration = Duration::from_millis(100);
 const CAPTURE_DELAY: Duration = Duration::from_millis(350);
 const REFERENCE_LOOKAHEAD: Duration = Duration::from_millis(100);
@@ -404,7 +407,7 @@ impl ProcessorState {
     fn next_due(&self) -> Option<Instant> {
         self.queued_capture
             .front()
-            .map(|work| work.frame.at + CAPTURE_DELAY)
+            .map(|work| work.frame.at + CAPTURE_DELAY + OUTPUT_BATCH_WAIT)
     }
 
     fn push(&mut self, work: Work) -> Result<(), SystemAudioCaptureFailure> {
@@ -487,10 +490,17 @@ impl ProcessorState {
         now: Instant,
         force: bool,
     ) -> Result<(), SystemAudioCaptureFailure> {
+        if !force && self.next_due().is_none_or(|due| due > now) {
+            return Ok(());
+        }
         let mut result = Vec::new();
         // Retain each frame's guard until its output owns the network guard.
         let mut processed = Vec::new();
-        while self.next_due().is_some_and(|due| force || due <= now) {
+        while self
+            .queued_capture
+            .front()
+            .is_some_and(|work| force || work.frame.at + CAPTURE_DELAY <= now)
+        {
             let work = self.queued_capture.pop_front().unwrap();
             let reference = self.reference_for(work.frame.at + REFERENCE_LOOKAHEAD);
             let reference_epoch = reference.as_ref().map(|frame| frame.epoch);
@@ -802,11 +812,16 @@ mod tests {
             ))
             .unwrap();
         state
-            .process_ready(mic_at + CAPTURE_DELAY - Duration::from_millis(1), false)
+            .process_ready(
+                mic_at + CAPTURE_DELAY + OUTPUT_BATCH_WAIT - Duration::from_millis(1),
+                false,
+            )
             .unwrap();
         assert!(calls.capture.lock().unwrap().is_empty());
         assert!(network.pending_pcm_gate().has_pending());
-        state.process_ready(mic_at + CAPTURE_DELAY, false).unwrap();
+        state
+            .process_ready(mic_at + CAPTURE_DELAY + OUTPUT_BATCH_WAIT, false)
+            .unwrap();
         assert_eq!(*calls.render.lock().unwrap(), vec![vec![999; 160]]);
         assert!(network.finish(Duration::from_secs(1)).await);
         assert_eq!(*received.lock().unwrap(), encode(&vec![2_000; 160]));
@@ -965,6 +980,59 @@ mod tests {
         assert!(echo.finish(Duration::from_secs(1)).await);
         assert!(system_network.finish(Duration::from_secs(1)).await);
         assert!(mic_network.finish(Duration::from_secs(1)).await);
+    }
+
+    #[tokio::test]
+    async fn dual_input_absorbs_same_short_send_stall_as_microphone_only() {
+        for dual in [false, true] {
+            let sends = Arc::new(AtomicUsize::new(0));
+            let sent = Arc::clone(&sends);
+            let received = Arc::new(Mutex::new(Vec::new()));
+            let output = Arc::clone(&received);
+            let network = AudioSendPipeline::spawn(
+                move |pcm| {
+                    let first = sent.fetch_add(1, Ordering::SeqCst) == 0;
+                    let output = Arc::clone(&output);
+                    async move {
+                        if first {
+                            tokio::time::sleep(Duration::from_millis(300)).await;
+                        }
+                        output.lock().unwrap().extend(pcm);
+                        Ok::<_, ()>(())
+                    }
+                },
+                |_| {},
+            );
+            let (echo, _) = echo(16_000, false);
+            let ingress = if dual {
+                echo.ingress(AudioSource::Microphone, network.ingress().unwrap())
+            } else {
+                network.ingress().unwrap()
+            };
+            let mut tick = tokio::time::interval(Duration::from_millis(20));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut accepted = Vec::new();
+            let mut error = None;
+            for block in 0..50_i16 {
+                tick.tick().await;
+                let pcm = encode(&vec![block; 320]);
+                if let Err(failure) = ingress.try_send(pcm.clone()) {
+                    error = Some(failure);
+                    break;
+                }
+                accepted.extend(pcm);
+            }
+            let echo_drained = echo.finish(Duration::from_secs(1)).await;
+            let network_drained = network.finish(Duration::from_secs(1)).await;
+            assert!(error.is_none(), "dual={dual} ingress={error:?}");
+            assert!(echo_drained, "dual={dual} echo drain");
+            assert!(network_drained, "dual={dual} network drain");
+            assert_eq!(
+                *received.lock().unwrap(),
+                accepted,
+                "dual={dual} PCM sequence"
+            );
+        }
     }
 
     #[tokio::test]

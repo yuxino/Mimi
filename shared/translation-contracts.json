@@ -1,6 +1,10 @@
 {
   "schemaVersion": 1,
   "recognitionRecoveryErrors": [
+    { "id": "live-translate-unexpected-end", "code": "live_translate_unexpected_session_end", "normalized": "live_translate_unexpected_session_end", "retryable": true, "requiresUserAction": false },
+    { "id": "live-translate-service-unavailable", "code": "alibaba_realtime_service_unavailable", "normalized": "alibaba_realtime_service_unavailable", "retryable": true, "requiresUserAction": false },
+    { "id": "live-translate-idle-timeout", "code": "alibaba_realtime_idle_timeout", "normalized": "alibaba_realtime_idle_timeout", "retryable": true, "requiresUserAction": false },
+    { "id": "live-translate-untrusted-end", "code": "live_translate_unexpected_session_end: synthetic-private-detail", "normalized": "provider_error", "retryable": false, "requiresUserAction": false },
     { "id": "custom-disconnected", "code": "custom_speech_unreachable", "normalized": "transport_error", "retryable": true, "requiresUserAction": false },
     { "id": "custom-not-connected", "code": "custom_speech_not_connected", "normalized": "transport_error", "retryable": true, "requiresUserAction": false },
     { "id": "custom-health-timeout", "code": "custom_speech_health_timeout", "normalized": "transport_error", "retryable": true, "requiresUserAction": false },
@@ -25,6 +29,28 @@
   "xaiStreamingRecovery": [
     { "id": "established-transport-closes", "failureFrame": null, "expectedConnections": 2, "expectedErrorCode": null },
     { "id": "established-authentication-rejected", "failureFrame": { "type": "error", "code": "unauthorized", "message": "synthetic-private-detail" }, "expectedConnections": 1, "expectedErrorCode": "credential_authentication_failed" }
+  ],
+  "liveTranslateRecovery": [
+    { "id": "established-transport-closes", "failureFrame": null, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "unexpected-session-finish", "failureFrame": { "type": "session.finished" }, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "temporary-service-failure", "failureFrame": { "type": "error", "error": { "code": "ServiceUnavailable", "message": "synthetic-private-detail" } }, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "quiet-channel-timeout", "failureFrame": { "type": "error", "error": { "code": "response_idle_timeout", "message": "synthetic-private-detail" } }, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "unknown-rejection", "failureFrame": { "type": "error", "error": { "code": "unknown-synthetic-code", "message": "synthetic-private-detail" } }, "expectedConnections": 1, "expectedErrorCode": "provider_error" },
+    { "id": "authentication-rejection", "failureFrame": { "type": "error", "error": { "code": "unauthorized", "message": "synthetic-private-detail" } }, "expectedConnections": 1, "expectedErrorCode": "credential_authentication_failed" }
+  ],
+  "liveTranslateSetupRecovery": [
+    { "id": "setup-transport-closes", "duringSetup": true, "failureFrame": null, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "setup-unexpected-finish", "duringSetup": true, "failureFrame": { "type": "session.finished" }, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "setup-service-unavailable", "duringSetup": true, "failureFrame": { "type": "error", "error": { "code": "ServiceUnavailable", "message": "synthetic-private-detail" } }, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "setup-idle-timeout", "duringSetup": true, "failureFrame": { "type": "error", "error": { "code": "response_idle_timeout", "message": "synthetic-private-detail" } }, "expectedConnections": 2, "expectedErrorCode": null },
+    { "id": "setup-unknown-rejection", "duringSetup": true, "failureFrame": { "type": "error", "error": { "code": "unknown-synthetic-code", "message": "synthetic-private-detail" } }, "expectedConnections": 1, "expectedErrorCode": "provider_error" },
+    { "id": "setup-quota-rejection", "duringSetup": true, "failureFrame": { "type": "error", "error": { "code": "insufficient_quota", "message": "synthetic-private-detail" } }, "expectedConnections": 1, "expectedErrorCode": "provider_error" },
+    { "id": "setup-configuration-rejection", "duringSetup": true, "failureFrame": { "type": "error", "error": { "code": "InvalidParameter", "message": "synthetic-private-detail" } }, "expectedConnections": 1, "expectedErrorCode": "provider_error" },
+    { "id": "setup-authentication-rejection", "duringSetup": true, "failureFrame": { "type": "error", "error": { "code": "unauthorized", "message": "synthetic-private-detail" } }, "expectedConnections": 1, "expectedErrorCode": "credential_authentication_failed" }
+  ],
+  "liveTranslateRecoveryContinuity": [
+    { "id": "rapid-success-failure-exhausts-budget", "repeatFailures": true, "expectedConnections": 5, "timeoutSeconds": 15, "failureFrame": { "type": "error", "error": { "code": "ServiceUnavailable", "message": "synthetic-private-detail" } }, "expectedErrorCode": "alibaba_realtime_service_unavailable" },
+    { "id": "stable-health-opens-new-budget", "repeatFailures": true, "stableConnection": 5, "expectedConnections": 9, "timeoutSeconds": 40, "failureFrame": { "type": "error", "error": { "code": "ServiceUnavailable", "message": "synthetic-private-detail" } }, "expectedErrorCode": "alibaba_realtime_service_unavailable" }
   ],
   "textProbeRejections": [
     {

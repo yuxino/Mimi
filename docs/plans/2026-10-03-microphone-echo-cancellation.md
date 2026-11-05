@@ -67,7 +67,14 @@ not native hardware clock synchronization. Keep 1 second of bounded reference
 history. Process microphone frames after a 350 ms jitter window and select a
 reference 100 ms ahead on that timeline, covering reference callbacks batching
 up to 250 ms and keeping the tested capture-time offsets causal for the filter.
-This adds about 350 ms to the microphone path when both sources are enabled;
+Wait at most one additional 10 ms frame before publishing matured DSP output,
+coalescing normal output into 20 ms packets. A lone tail still has this finite
+deadline and explicit finish bypasses the wait. This preserves PCM order and
+keeps the existing 20-message provider queue from shrinking to roughly 200 ms
+merely because DSP uses 10 ms frames. A fixed 300 ms send-stall regression
+previously passed for 20 ms microphone-only capture and failed for dual input;
+both must now preserve all accepted PCM through the same stall.
+This adds about 350–360 ms to the microphone path when both sources are enabled;
 system forwarding and single-source modes do not acquire that fixed delay.
 
 Keep input queues bounded to 500 ms per source and the microphone processing

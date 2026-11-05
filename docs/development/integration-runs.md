@@ -5465,3 +5465,190 @@
   These checks do not establish a real release download/signature/install,
   Windows/Linux native interaction, capture or provider acceptance. Next:
   real updater acceptance on each target platform when preparing a release.
+
+### 2026-11-05 — issue #329 disconnect follow-up and LiveTranslate recovery
+
+- Reviewed source `1ff102de8d266b59e3515857192274479ea3a0d1` plus this patch,
+  preserving the pre-existing Grok probe notes. The reporter's
+  [new comment](https://github.com/yuxino/Mimi/issues/329#issuecomment-6658839730)
+  supplied a v1.6.15 Windows x64 report with Alibaba selected and both audio
+  inputs. Its legacy `turbo` field does not identify the actual Alibaba route;
+  the reporter describes simultaneous translation. No user audio was acquired.
+- The retained 24 of 54 journal entries show four automatic recoveries, in
+  3.373 / 18.492 / 5.437 / 4.652 seconds. One attempt failed as `OTHER` before
+  recovery succeeded. No terminal error or exhausted retry appears in this
+  retained window; 30 omitted events and the later idle snapshot prevent
+  identifying the separately reported manual-retry incident or its root cause.
+- Confirmed two diagnostic gaps: health-triggered recovery did not journal the
+  trigger, and fixed LiveTranslate/ASR failures collapsed to `OTHER`. Record the
+  admitted health failure under the generation gate, add exact safe labels,
+  and expose the typed Alibaba route without reading credentials or raw errors.
+- The shared LiveTranslate decoder also collapsed temporary provider failures
+  into a terminal generic rejection. Preserve only known transient/auth codes;
+  unknown/quota/configuration errors do not gain retry authority. An unsolicited
+  `session.finished` now enters the existing finite recovery schedule instead
+  of stopping or promoting unfinished drafts. Requested finish remains graceful;
+  resetting the finish marker protects reused clients. No fixed server lifetime
+  is inferred from the report or current official documentation.
+- Fixed local WebSocket cases and actual Android JNI replay cover unexpected
+  finish, temporary service failure, authentication/unknown rejection, resumed
+  PCM/captions, manual finish and client reuse. Both JNI variants passed 39 focused tests.
+  These use synthetic credentials and loopback services, not paid Alibaba calls.
+- Initial canonical `./scripts/check.sh` passed before input-scene expansion: desktop 681 tests, shared runtime
+  956, frontend 2,832, plus core/JNI, clippy, formatting and script checks. The
+  two existing device-dependent ignored tests remain unverified. Android debug
+  and release JVM suites each passed 314 tests through the actual host JNI. An
+  initial restricted desktop run could not bind loopback sockets; rerunning
+  with local-port access passed. No new checkout or target directory was used.
+- Subsequent user-authorized real-provider input experiment reused the saved Dev
+  LiveTranslate 3.8 profile read-only, automatic source → Simplified Chinese,
+  with public `fleurs-english-1527` PCM (16 kHz mono PCM16, 23.44 seconds,
+  SHA-256 `ac2a670639c88b69a7015c0e34a5bd83c2cf7b629fd5b101e649ccfdad51665e`).
+  The same clip looped at normal rate through the production independent send
+  queues and actual dual-input echo processor; events entered the shared
+  controller. No OS capture, window rendering, private recording or content
+  logging occurred. The reporter's Russian lecture and Windows hardware were
+  not reproduced; legacy `turbo` still cannot confirm the reporter's model.
+- First dual-input run: microphone speech + zero system PCM failed at 467.260 s
+  and then reported an audio-processing-path failure. A probe cleanup assertion
+  aborted before retaining the lane/typed cause, so this is an observed failure,
+  not proof of server timeout, DSP failure or the reporter's cause. The probe
+  now retains each lane's first failure and typed capture failure before cleanup.
+- Repeat with the same pre-buffer-fix code: dual input passed 600 s (480 s zero
+  system PCM, then 120 s without system callbacks), with 970 microphone content
+  events / 4 confirmed pairs, zero system content and no failure. Microphone-only
+  and system-only each passed 180 s, producing respectively 264 / 301 content
+  events and one confirmed pair each including normal finish. These are counts,
+  not semantic or visible-subtitle acceptance. The uninterrupted 16-minute dual
+  plan was shortened after the failed attempt to stay within the authorized cap.
+- A fixed local 300 ms sender stall then reproduced a specific discrepancy:
+  20 ms microphone-only packets survived, while the echo worker's 10 ms output
+  exhausted the same 20-message queue and closed dual-input ingress. Coalescing
+  mature DSP frames with at most 10 ms extra wait fixed that exact case without
+  increasing queue capacity. Accepted PCM bytes/order remain identical; all 11
+  echo-pipeline regressions pass, including real DSP at both sample rates,
+  jitter, source gaps, partial tails and cancellation. This proves the bounded
+  queue discrepancy; it does not identify the first cloud-run failure's trigger.
+- The patched real-service 45 s dual-input smoke sent exactly 1,440,000 bytes per
+  lane, received 95 microphone content events / one confirmed pair, and finished
+  normally. All three paid executions, including failure and setup/finish, took
+  468.42 + 965.27 + 47.89 = 1,481.58 seconds (24m 41.58s), below the authorized
+  approximately 25-minute cap for this initial English experiment. The later
+  Russian and long-run experiments below were separately authorized.
+- Provider and health failure journal entries now retain an optional typed
+  `audio_source`; source-unknown capture/setup failures remain unknown. Recovery
+  cannot erase the failing lane's safe record. This addresses the original
+  report's inability to distinguish system versus microphone connection failure.
+- Final `CARGO_INCREMENTAL=0 ./scripts/check.sh` passed after the input changes:
+  desktop 682, shared runtime 956, frontend 2,832, plus core/JNI, strict clippy,
+  format, architecture and script checks. The ignored paid probe is separate
+  from this automatic result; hardware-dependent ignored tests remain unrun.
+- At this checkpoint no native capture, recording, credential/configuration
+  change, app replacement or release was performed. The original Windows
+  device/network behavior remains unverified; continue with the authorized
+  Russian samples and longer quiet-input comparisons below.
+
+### 2026-11-06 — issue #329 Russian speed and quiet-channel comparison
+
+- Continued from `1ff102de8d266b59e3515857192274479ea3a0d1` plus the uncommitted
+  recovery/diagnostic/DSP patch. The user expanded the paid-service scope to
+  Russian, faster speech and a 2–3 hour multilingual scenario. The saved Dev
+  LiveTranslate 3.8 profile remained read-only, automatic source → Simplified
+  Chinese, direct provider networking. No capture, playback or transcript
+  recording occurred; the formal app and its settings were untouched.
+- Reused the public [PostNauka lecture #55](https://postnauka.org/tv/158066),
+  obtained through its official podcast feed. The first 1,440 seconds became
+  16 kHz mono PCM16, SHA-256
+  `dd66d1f957d26f2c8c0e71e22211a35e87139f954e038f8ca98880e1eded6e3c`.
+  Pitch-preserving `atempo=1.25` and `atempo=1.5` produced 1,152.006375 and
+  960.004375 seconds. All three comparisons kept system PCM silent and fed
+  Russian through the microphone lane, including the production echo processor.
+- The silent system connection failed at 899.741 / 899.721 / 899.761 seconds
+  for 1× / 1.25× / 1.5×. The microphone connection continued producing Cyrillic
+  source and Chinese translation events. The 1.25× and 1.5× runs exposed the
+  generic non-retryable `alibaba_realtime_provider_error`; the 1.5× trace also
+  observed WebSocket close 1007. The 1× sender failure won the observation race.
+  This reproduces a quiet-lane service boundary, not a faster-speech disconnect
+  or proof of the reporter's model/network cause.
+- Earlier single-threaded probe pacing had 2.2–2.7 second maximum gaps. Moving
+  the manual driver to two Tokio workers reduced the 1.5× maximum gap to 111 ms;
+  the same approximately 900-second quiet-lane failure remained. Pair/event
+  counts and source-final → translation-final timing do not measure semantic
+  quality or native capture-to-display delay.
+- A separate 1.5× attempt lost both connections through IO errors at about
+  257 seconds while the microphone was still productive. An independent
+  zero-PCM WebSocket control, without Mimi's decoder/DSP/controller, ended with
+  `io_UnexpectedEof` at 230.374 seconds after successful ping/pong exchanges.
+  These establish an external transport interruption is possible, without
+  distinguishing the provider from the network path. An earlier control reused
+  event IDs and is excluded from protocol conclusions.
+- The 3-hour manifest preflight passed: six public clips and 67 phases cover
+  Russian at three speeds, English/Japanese switching, overlapping sources,
+  background sound, zero PCM, absent callbacks and resumed speech. The manifest
+  SHA-256 is `ed96092b778e16656f9d006bacf8df679c5a3ac8bf3e507b379da0d1780525d6`.
+  This preflight is preparation, not a completed 3-hour result.
+- The instrumented baseline stopped at 1,804.837 seconds: three external
+  transport interruptions recovered first, then the fourth connection's quiet
+  system lane returned the exact `response_idle_timeout` code at 900.324 seconds
+  after connection setup. Its 90 health probes had succeeded; the microphone
+  had 1,926 source / 1,684 translation events and 32 confirmed pairs in that
+  generation. This separates a service idle timeout from transport health.
+  The temporary error-identifier inspection hook was removed after diagnosis.
+- Map only that exact service code to the shared retryable
+  `alibaba_realtime_idle_timeout` with the existing four-attempt schedule and
+  600 ms minimum delay. Add it to the direct Rust / actual JNI contract and
+  finite support labels. Desktop error presentation reuses existing localized
+  interruption text in all eight languages. No fixed-lifetime reset or fake
+  keepalive speech was introduced. Next: complete the full 3-hour schedule
+  against this corrected classification, then finish release acceptance.
+- Parallel review found a separate setup boundary: errors before
+  `session.updated` lost their reason and could be retried as transport errors.
+  Preserve typed setup classification and stop on authentication/unknown/quota/
+  configuration rejection. Eight setup cases use the shared socket/JNI contract;
+  all 40 focused LiveTranslate client tests passed. The three-hour driver was
+  already running its earlier compiled binary, so this later setup repair is
+  verified separately rather than attributed to that run.
+- A deterministic barrier replay of the desktop recovery-success handoff failed
+  with the old state transitions: a newly accepted source failure could leave
+  Connecting with no active generation, retry marker or recovery owner. The
+  repaired generation gate retires the successful recovery task/flag together
+  or preserves the current failure's retry ownership. Desktop lifecycle checks
+  passed 90 cases (85 existing, two setup and three handoff regressions). This is
+  a controlled concurrency regression, not a reproduction on the reporter's PC.
+- The fixed-signed 1.6.16 Dev bundle launched in UI-only mode. Injecting the
+  safe temporary-service label through its existing event bridge visibly showed
+  the localized Chinese interruption message in the native settings error
+  panel. No permanent QA hook was added. The offline process was closed to
+  discard the injected view state, and the previously idle formal app was
+  reopened and confirmed idle. This does not establish live native recovery.
+- A separate bounded real-JNI experiment confirmed that immediate
+  `session.updated` → `ServiceUnavailable` cycles reopened the recovery window:
+  both build variants made eight connections in about five seconds despite the
+  four-attempt policy. The eighth synthetic authentication rejection stopped
+  the experiment, preserving its new reason. The temporary experiment was
+  removed. The shared continuity fix preserves consumed attempts until the same
+  generation passes a health check after the existing health interval. Direct
+  Rust and actual JNI Debug/Release replays verify five total rapid connections
+  (initial plus four recoveries), and a fresh window after stable health.
+  No Alibaba credentials or external requests were used in this case.
+- The public Russian fixtures and completed content-free failure traces are
+  retained in the private Dev `development-benchmarks/2026-11-06-issue329-russian-recovery`
+  archive, including recorded manifests and reusable manifests with durable
+  paths. They are outside Git; the ongoing three-hour run is not yet complete.
+- A limited read-only sibling review identified later checks: untyped setup
+  rejection in OpenAI/Gemini/Grok Voice, unsolicited Audio3 `task-finished`, and
+  Gemini's lost `UNAVAILABLE` classification. These source-defined cases have
+  not been exercised against their real services and are not fixes claimed by
+  this Alibaba release. Preserve xAI STT versus Voice and normal finish versus
+  unsolicited finish as separate cases when extending the provider matrix.
+- Release-candidate checks passed: canonical desktop 690, shared runtime 964,
+  core 108, JNI Rust 31 and frontend 2,832 tests; Android Debug and Release each
+  passed all 317 JVM tests through the actual host JNI. The development-debugger
+  all-target strict Clippy check also passed. The latest desktop source rebuilt
+  into the canonical Dev bundle with its unchanged designated requirement; it
+  was not launched over the idle formal app. Final cross-review reproduced a
+  JNI race where a retired health result could clear the next recovery budget.
+  Serialize failure ownership and budget transfer with health admission, reject
+  stopped/stale probes, and retain both deterministic regressions (old code
+  fails, fixed code passes). The final shared check passed all 33 JNI Rust tests;
+  both final JVM variants again passed 317/317 after this adapter-only change.

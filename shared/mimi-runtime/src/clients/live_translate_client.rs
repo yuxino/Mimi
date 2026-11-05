@@ -48,6 +48,12 @@ pub enum LiveTranslateClientError {
     SessionSetupTimedOut,
     #[error("The live translation session setup was rejected.")]
     SessionSetupRejected,
+    #[error("alibaba_realtime_service_unavailable")]
+    ServiceUnavailable,
+    #[error("alibaba_realtime_idle_timeout")]
+    IdleTimeout,
+    #[error("live_translate_unexpected_session_end")]
+    UnexpectedSessionEnd,
     #[error("The live translation transport failed.")]
     TransportFailure,
     #[error("Enter the Beijing Model Studio workspace ID for this realtime model.")]
@@ -56,11 +62,22 @@ pub enum LiveTranslateClientError {
     InvalidConfiguration,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum SetupState {
     Awaiting,
     Ready,
-    Rejected,
+    Rejected(LiveTranslateClientError),
+}
+
+fn setup_failure(code: &str) -> LiveTranslateClientError {
+    match crate::core::recovery::normalize_provider_error_code(code) {
+        "credential_authentication_failed" => LiveTranslateClientError::AuthenticationFailed,
+        "alibaba_realtime_service_unavailable" => LiveTranslateClientError::ServiceUnavailable,
+        "alibaba_realtime_idle_timeout" => LiveTranslateClientError::IdleTimeout,
+        "live_translate_unexpected_session_end" => LiveTranslateClientError::UnexpectedSessionEnd,
+        "transport_error" => LiveTranslateClientError::TransportFailure,
+        _ => LiveTranslateClientError::SessionSetupRejected,
+    }
 }
 
 type Sink = futures_util::stream::SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
@@ -72,6 +89,7 @@ struct Inner {
     aligner: Mutex<LiveTranslatePairAligner>,
     decoder: Mutex<AlibabaRealtimeEventDecoder>,
     sink: Mutex<Option<Sink>>,
+    finish_requested: AtomicBool,
     received_session_finished: AtomicBool,
     pong_notify: Notify,
     receive_task: Mutex<Option<JoinHandle<()>>>,
@@ -244,6 +262,7 @@ impl LiveTranslateClient {
                 aligner: Mutex::new(LiveTranslatePairAligner::default()),
                 decoder: Mutex::new(AlibabaRealtimeEventDecoder::new(mode)),
                 sink: Mutex::new(None),
+                finish_requested: AtomicBool::new(false),
                 received_session_finished: AtomicBool::new(false),
                 pong_notify: Notify::new(),
                 receive_task: Mutex::new(None),
@@ -385,6 +404,7 @@ impl LiveTranslateClient {
         if self.inner.sink.lock().await.is_none() {
             return;
         }
+        self.inner.finish_requested.store(true, Ordering::SeqCst);
         if let Ok(message) = LiveTranslateRequestEncoder::finish(None) {
             let _ = self.send_text(message.to_string()).await;
         }
@@ -413,6 +433,7 @@ impl LiveTranslateClient {
         self.inner
             .received_session_finished
             .store(false, Ordering::SeqCst);
+        self.inner.finish_requested.store(false, Ordering::SeqCst);
     }
 
     async fn send_text(&self, text: String) -> Result<(), LiveTranslateClientError> {
@@ -427,7 +448,13 @@ impl LiveTranslateClient {
             evidence
                 .observe(sink.send(Message::Text(text.into())))
                 .await
-                .map_err(|_| LiveTranslateClientError::TransportFailure)
+                .map_err(|error| {
+                    pipeline_log!(
+                        "live translate send failed kind={}",
+                        transport_error_kind(&error)
+                    );
+                    LiveTranslateClientError::TransportFailure
+                })
         };
         let result = tokio::time::timeout(SEND_TIMEOUT, operation).await;
         timing.finished_at = Some(Instant::now());
@@ -444,9 +471,9 @@ async fn wait_for_setup(
     mut setup: watch::Receiver<SetupState>,
 ) -> Result<(), LiveTranslateClientError> {
     loop {
-        match *setup.borrow() {
+        match setup.borrow().clone() {
             SetupState::Ready => return Ok(()),
-            SetupState::Rejected => return Err(LiveTranslateClientError::SessionSetupRejected),
+            SetupState::Rejected(error) => return Err(error),
             SetupState::Awaiting => {}
         }
         if setup.changed().await.is_err() {
@@ -623,7 +650,26 @@ async fn receive_loop(
                 continue;
             }
             Ok(Message::Ping(_)) | Ok(Message::Frame(_)) => continue,
-            Ok(Message::Close(_)) | Err(_) => {
+            Ok(Message::Close(frame)) => {
+                // A numeric protocol status is safe; the peer's arbitrary
+                // reason can contain user data and must never enter traces.
+                pipeline_log!(
+                    "live translate receive close code={} requestedFinish={}",
+                    frame.as_ref().map_or(1005, |frame| u16::from(frame.code)),
+                    inner.finish_requested.load(Ordering::SeqCst)
+                );
+                if should_report_transport_end(
+                    inner.received_session_finished.load(Ordering::SeqCst),
+                ) {
+                    fail_receive_loop(&events, &setup, "transport_error", GENERIC_TRANSPORT_ERROR);
+                }
+                return;
+            }
+            Err(error) => {
+                pipeline_log!(
+                    "live translate receive failed kind={}",
+                    transport_error_kind(&error)
+                );
                 if should_report_transport_end(
                     inner.received_session_finished.load(Ordering::SeqCst),
                 ) {
@@ -649,6 +695,23 @@ async fn receive_loop(
             }
         };
         for (event, identity) in decoded {
+            if event == LiveTranslateServerEvent::SessionFinished
+                && !inner.finish_requested.load(Ordering::SeqCst)
+            {
+                // Only a locally requested finish may seal the pending tail
+                // and stop the native driver. An unsolicited end retires this
+                // connection through the shared bounded recovery policy.
+                inner
+                    .received_session_finished
+                    .store(true, Ordering::SeqCst);
+                fail_receive_loop(
+                    &events,
+                    &setup,
+                    "live_translate_unexpected_session_end",
+                    "The live translation session ended unexpectedly.",
+                );
+                return;
+            }
             if (revision != events.content_revision()
                 && crate::clients::provider_events::is_content_event(&event))
                 || (!target_language.translates_audio()
@@ -684,6 +747,26 @@ async fn receive_loop(
     }
 }
 
+fn transport_error_kind(error: &tokio_tungstenite::tungstenite::Error) -> &'static str {
+    use tokio_tungstenite::tungstenite::Error;
+    match error {
+        Error::ConnectionClosed => "connection_closed",
+        Error::AlreadyClosed => "already_closed",
+        Error::Io(error) => match error.kind() {
+            std::io::ErrorKind::ConnectionReset => "io_connection_reset",
+            std::io::ErrorKind::ConnectionAborted => "io_connection_aborted",
+            std::io::ErrorKind::BrokenPipe => "io_broken_pipe",
+            std::io::ErrorKind::TimedOut => "io_timed_out",
+            std::io::ErrorKind::UnexpectedEof => "io_unexpected_eof",
+            _ => "io",
+        },
+        Error::Tls(_) => "tls",
+        Error::Protocol(_) => "protocol",
+        Error::Capacity(_) => "capacity",
+        _ => "other",
+    }
+}
+
 #[cfg(test)]
 fn emit_server_event(
     inner: &Inner,
@@ -707,15 +790,17 @@ fn emit_server_event_with_source_order(
             .store(true, Ordering::SeqCst);
     }
     if *setup.borrow() == SetupState::Awaiting {
-        if matches!(event, LiveTranslateServerEvent::Error { .. }) {
-            let _ = setup.send(SetupState::Rejected);
+        if let LiveTranslateServerEvent::Error { code, .. } = &event {
+            let _ = setup.send(SetupState::Rejected(setup_failure(code)));
             return false;
         }
         if event == LiveTranslateServerEvent::SessionUpdated {
             // Publishing the acknowledgement also proves the bounded session
             // receiver is still alive before setup is marked ready.
             if events.send(event).is_err() {
-                let _ = setup.send(SetupState::Rejected);
+                let _ = setup.send(SetupState::Rejected(
+                    LiveTranslateClientError::SessionSetupRejected,
+                ));
                 return false;
             }
             return setup.send(SetupState::Ready).is_ok();
@@ -758,7 +843,9 @@ fn emit_server_event_with_source_order(
     };
     if result.is_err() {
         if *setup.borrow() == SetupState::Awaiting {
-            let _ = setup.send(SetupState::Rejected);
+            let _ = setup.send(SetupState::Rejected(
+                LiveTranslateClientError::SessionSetupRejected,
+            ));
         }
         return false;
     }
@@ -772,7 +859,7 @@ fn fail_receive_loop(
     message: &str,
 ) {
     if *setup.borrow() == SetupState::Awaiting {
-        let _ = setup.send(SetupState::Rejected);
+        let _ = setup.send(SetupState::Rejected(setup_failure(code)));
     } else {
         let _ = events.send(LiveTranslateServerEvent::Error {
             code: code.into(),
@@ -787,6 +874,25 @@ fn should_report_transport_end(received_session_finished: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transport_diagnostics_never_include_peer_or_io_details() {
+        use tokio_tungstenite::tungstenite::Error;
+        assert_eq!(
+            transport_error_kind(&Error::Io(std::io::Error::other(
+                "synthetic-private-detail"
+            ))),
+            "io"
+        );
+        assert_eq!(
+            transport_error_kind(&Error::ConnectionClosed),
+            "connection_closed"
+        );
+        assert_eq!(
+            transport_error_kind(&Error::AlreadyClosed),
+            "already_closed"
+        );
+    }
+
     #[test]
     fn cleared_item_identity_never_filters_lifecycle_or_provider_errors() {
         let mut aligner = LiveTranslatePairAligner::default();
@@ -953,6 +1059,239 @@ mod tests {
     use crate::clients::provider_events::provider_event_channel;
     use std::collections::HashSet;
 
+    #[tokio::test]
+    async fn setup_rejection_contract_preserves_safe_recovery_classification_over_a_real_socket() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        for case in fixtures["liveTranslateSetupRecovery"].as_array().unwrap() {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = LiveTranslateEndpoint {
+                url: format!("ws://{}", listener.local_addr().unwrap())
+                    .parse()
+                    .unwrap(),
+            };
+            let failure =
+                (!case["failureFrame"].is_null()).then(|| case["failureFrame"].to_string());
+            let server = tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+                assert!(matches!(
+                    ws.next().await.unwrap().unwrap(),
+                    Message::Text(_)
+                ));
+                if let Some(failure) = failure {
+                    ws.send(Message::Text(failure.into())).await.unwrap();
+                } else {
+                    ws.close(None).await.unwrap();
+                }
+                while let Some(Ok(message)) = ws.next().await {
+                    if matches!(message, Message::Close(_)) {
+                        break;
+                    }
+                }
+            });
+            let (sender, mut receiver) = provider_event_channel();
+            let client = LiveTranslateClient::build(
+                "synthetic-key",
+                SourceLanguage::Automatic,
+                TargetLanguage::SimplifiedChinese,
+                BTreeMap::new(),
+                sender,
+                AlibabaRealtimeMode::LiveTranslate,
+                endpoint,
+            )
+            .unwrap();
+            let error = crate::clients::translation_client::ConnectError::from(
+                client.connect().await.unwrap_err(),
+            );
+            let code = error.safe_code();
+            assert_eq!(
+                crate::core::recovery::provider_error_is_retryable(code),
+                case["expectedConnections"] == 2,
+                "{}",
+                case["id"]
+            );
+            if let Some(expected) = case["expectedErrorCode"].as_str() {
+                assert_eq!(code, expected, "{}", case["id"]);
+            }
+            assert!(!error.to_string().contains("synthetic-private-detail"));
+            assert!(
+                receiver.try_recv().is_err(),
+                "setup rejection must have one typed owner"
+            );
+            tokio::time::timeout(Duration::from_secs(2), server)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn unexpected_session_end_contract_reaches_shared_recovery_over_a_real_socket() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        for case in fixtures["liveTranslateRecovery"].as_array().unwrap() {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = LiveTranslateEndpoint {
+                url: format!("ws://{}", listener.local_addr().unwrap())
+                    .parse()
+                    .unwrap(),
+            };
+            let failure =
+                (!case["failureFrame"].is_null()).then(|| case["failureFrame"].to_string());
+            let (trigger, triggered) = tokio::sync::oneshot::channel();
+            let server = tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+                let Message::Text(update) = ws.next().await.unwrap().unwrap() else {
+                    panic!("expected setup")
+                };
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&update).unwrap()["type"],
+                    "session.update"
+                );
+                ws.send(Message::Text(r#"{"type":"session.updated"}"#.into()))
+                    .await
+                    .unwrap();
+                triggered.await.unwrap();
+                if let Some(failure) = failure {
+                    ws.send(Message::Text(failure.into())).await.unwrap();
+                } else {
+                    ws.close(None).await.unwrap();
+                }
+                while let Some(Ok(message)) = ws.next().await {
+                    if matches!(message, Message::Close(_)) {
+                        break;
+                    }
+                }
+            });
+            let (sender, mut receiver) = provider_event_channel();
+            let client = LiveTranslateClient::build(
+                "synthetic-key",
+                SourceLanguage::Automatic,
+                TargetLanguage::SimplifiedChinese,
+                BTreeMap::new(),
+                sender,
+                AlibabaRealtimeMode::LiveTranslate,
+                endpoint,
+            )
+            .unwrap();
+            client.connect().await.unwrap();
+            trigger.send(()).unwrap();
+            let error = tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    match receiver.recv().await.unwrap() {
+                        LiveTranslateServerEvent::Error { code, .. } => break code,
+                        LiveTranslateServerEvent::SessionFinished => {
+                            panic!("unexpected end stopped the session")
+                        }
+                        _ => {}
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                crate::core::recovery::provider_error_is_retryable(&error),
+                case["expectedConnections"] == 2
+            );
+            if !case["expectedErrorCode"].is_null() {
+                assert_eq!(
+                    crate::core::recovery::normalize_provider_error_code(&error),
+                    case["expectedErrorCode"].as_str().unwrap()
+                );
+            }
+            client.disconnect().await;
+            tokio::time::timeout(Duration::from_secs(2), server)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn requested_finish_stops_normally_but_reused_client_rejects_unsolicited_finish() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = LiveTranslateEndpoint {
+            url: format!("ws://{}", listener.local_addr().unwrap())
+                .parse()
+                .unwrap(),
+        };
+        let (trigger, triggered) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let mut triggered = Some(triggered);
+            for connection in 0..2 {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+                assert!(matches!(
+                    ws.next().await.unwrap().unwrap(),
+                    Message::Text(_)
+                ));
+                ws.send(Message::Text(r#"{"type":"session.updated"}"#.into()))
+                    .await
+                    .unwrap();
+                if connection == 0 {
+                    let Message::Text(finish) = ws.next().await.unwrap().unwrap() else {
+                        panic!("expected finish")
+                    };
+                    assert_eq!(
+                        serde_json::from_str::<serde_json::Value>(&finish).unwrap()["type"],
+                        "session.finish"
+                    );
+                } else {
+                    triggered.take().unwrap().await.unwrap();
+                }
+                ws.send(Message::Text(r#"{"type":"session.finished"}"#.into()))
+                    .await
+                    .unwrap();
+                while let Some(Ok(message)) = ws.next().await {
+                    if matches!(message, Message::Close(_)) {
+                        break;
+                    }
+                }
+            }
+        });
+        let (sender, mut receiver) = provider_event_channel();
+        let client = LiveTranslateClient::build(
+            "synthetic-key",
+            SourceLanguage::Automatic,
+            TargetLanguage::SimplifiedChinese,
+            BTreeMap::new(),
+            sender,
+            AlibabaRealtimeMode::LiveTranslate,
+            endpoint,
+        )
+        .unwrap();
+        client.connect().await.unwrap();
+        client.finish(Duration::from_secs(1)).await;
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionUpdated)
+        );
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionFinished)
+        );
+        client.connect().await.unwrap();
+        trigger.send(()).unwrap();
+        assert_eq!(
+            receiver.recv().await,
+            Some(LiveTranslateServerEvent::SessionUpdated)
+        );
+        let event = tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(event, LiveTranslateServerEvent::Error { code, .. } if code == "live_translate_unexpected_session_end")
+        );
+        client.disconnect().await;
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
     #[test]
     fn livetranslate_wire_pairs_actual_item_identity_after_response_success() {
         let mut decoder = AlibabaRealtimeEventDecoder::new(AlibabaRealtimeMode::LiveTranslate);
@@ -1028,6 +1367,7 @@ mod tests {
                 AlibabaRealtimeMode::Disabled,
             )),
             sink: Mutex::new(None),
+            finish_requested: AtomicBool::new(false),
             received_session_finished: AtomicBool::new(false),
             pong_notify: Notify::new(),
             receive_task: Mutex::new(None),

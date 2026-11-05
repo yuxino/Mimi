@@ -15,7 +15,7 @@ use crate::audio::{
     AudioCapture, AudioCaptureFormat, CaptureFailureSender, SystemAudioCaptureFailure,
 };
 use crate::clients::provider_events::{provider_event_channel, ProviderEvent};
-use crate::clients::translation_client::TranslationClient;
+use crate::clients::translation_client::{ConnectError, TranslationClient};
 use crate::core::audio_input::{AudioInput, AudioSource};
 use crate::core::configuration::LiveTranslationConfiguration;
 #[cfg(test)]
@@ -451,7 +451,18 @@ fn session_error_requires_user_action(error: &str) -> bool {
             "System audio capture permission was denied."
                 | "Microphone capture permission was denied."
                 | "System audio capture was stopped by the user."
+                | "alibaba_realtime_provider_error"
         )
+}
+
+fn session_connect_error(error: ConnectError) -> String {
+    // Setup can reject before the provider event pump observes its error.
+    // Preserve the shared typed classification across this String boundary so
+    // recovery cannot turn a permanent rejection into another transport retry.
+    error
+        .recognition_failure_label()
+        .map(str::to_owned)
+        .unwrap_or_else(|| error.to_string())
 }
 
 /// A successful repair may retire only the error observed before that write.
@@ -577,6 +588,80 @@ fn invalidate_audio_attempt_atoms(
     let epoch = invalidate_generation_atoms(active_generation, lifecycle_sequence, generation)?;
     *owner = None;
     Some(epoch)
+}
+
+/// The caller holds generation_transition, also used by recovery completion.
+fn claim_generation_recovery_atoms(
+    active_generation: &AtomicU64,
+    lifecycle_sequence: &AtomicU64,
+    is_recovering: &AtomicBool,
+    retry_generation: &AtomicU64,
+    generation: u64,
+) -> Option<bool> {
+    invalidate_generation_atoms(active_generation, lifecycle_sequence, generation)?;
+    let recovering = is_recovering.load(Ordering::SeqCst);
+    if recovering {
+        retry_generation.store(generation, Ordering::SeqCst);
+    }
+    Some(recovering)
+}
+
+/// The caller holds generation_transition. Retire the successful task before
+/// releasing its recovery flag, so the next failure can queue a new owner.
+fn commit_recovery_success_atoms(
+    active_generation: &AtomicU64,
+    lifecycle_sequence: &AtomicU64,
+    is_recovering: &AtomicBool,
+    retry_generation: &AtomicU64,
+    generation: u64,
+    retire_task: impl FnOnce() -> bool,
+) -> bool {
+    if active_generation.load(Ordering::SeqCst) != generation
+        || lifecycle_sequence.load(Ordering::SeqCst) != generation
+        || !is_recovering.load(Ordering::SeqCst)
+        || !retire_task()
+    {
+        return false;
+    }
+    clear_recovery_atoms(is_recovering, retry_generation);
+    true
+}
+
+/// Called under the generation and health-task gates only after every selected
+/// source has completed its probe. Stability duration and retry counts remain
+/// the shared runtime's policy.
+fn complete_recovery_health_round(
+    continuity: &mut RecoveryContinuity,
+    current: (u64, u64, u64),
+    probed: (u64, u64),
+    sources: (usize, usize),
+    now: Instant,
+) -> bool {
+    let (generation, task_id) = probed;
+    if generation == NO_GENERATION
+        || task_id == NO_GENERATION
+        || current != (generation, generation, task_id)
+        || sources.1 == 0
+        || sources.0 != sources.1
+    {
+        return false;
+    }
+    continuity.health_succeeded(generation, now);
+    true
+}
+
+/// Recovery may claim only the invalidation immediately following its failed
+/// generation. A delayed task cannot adopt a newer manual request's budget.
+fn advance_recovery_request_atoms(
+    active_generation: &AtomicU64,
+    lifecycle_sequence: &AtomicU64,
+    failed_generation: u64,
+) -> Option<u64> {
+    if active_generation.load(Ordering::SeqCst) != NO_GENERATION {
+        return None;
+    }
+    let failed_epoch = failed_generation.wrapping_add(1).max(1);
+    advance_lifecycle_sequence_if_current(lifecycle_sequence, failed_epoch)
 }
 
 fn resume_failure_is_still_owned(
@@ -1067,6 +1152,7 @@ pub struct SessionManager {
     health_task_id: Arc<AtomicU64>,
     recovery_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     recovery_task_id: Arc<AtomicU64>,
+    recovery_continuity: Arc<Mutex<RecoveryContinuity>>,
     /// Marks a provider transport failure that cancelled the current recovery
     /// attempt. The existing recovery owner consumes it and performs the next
     /// retry instead of trying to enqueue a second recovery task.
@@ -1147,6 +1233,7 @@ impl SessionManager {
             health_task_id: Arc::new(AtomicU64::new(NO_GENERATION)),
             recovery_task: Arc::new(Mutex::new(None)),
             recovery_task_id: Arc::new(AtomicU64::new(NO_GENERATION)),
+            recovery_continuity: Default::default(),
             recovery_retry_generation: Arc::new(AtomicU64::new(NO_GENERATION)),
             background_task_sequence: Arc::new(AtomicU64::new(0)),
             lifecycle_lock: Arc::new(TokioMutex::new(())),
@@ -1220,15 +1307,21 @@ impl SessionManager {
 
     /// Does not start capture, erase subtitles or clear a newer session's error.
     pub fn configuration_saved(self: &Arc<Self>, expected: Option<(u64, String)>, changed: bool) {
-        if self.active_generation.load(Ordering::SeqCst) != NO_GENERATION {
-            return;
-        }
-        let cleared = clear_stale_configuration_error(
-            &mut self.controller.lock().unwrap(),
-            expected.as_ref(),
-            self.lifecycle_sequence.load(Ordering::SeqCst),
-            changed,
-        );
+        let cleared = {
+            let _transition = self.generation_transition.lock().unwrap();
+            if self.active_generation.load(Ordering::SeqCst) != NO_GENERATION {
+                return;
+            }
+            if changed {
+                self.recovery_continuity.lock().unwrap().clear();
+            }
+            clear_stale_configuration_error(
+                &mut self.controller.lock().unwrap(),
+                expected.as_ref(),
+                self.lifecycle_sequence.load(Ordering::SeqCst),
+                changed,
+            )
+        };
         if cleared {
             self.publish_state();
         }
@@ -1239,8 +1332,19 @@ impl SessionManager {
     }
 
     fn record_safe_failure(&self, classification: SafeFailure) {
+        self.record_source_failure(None, classification);
+    }
+
+    fn record_source_failure(
+        &self,
+        audio_source: Option<AudioSource>,
+        classification: SafeFailure,
+    ) {
         *self.diagnostic_error.lock().unwrap() = Some((classification, Instant::now()));
-        self.record_diagnostic_event(DiagnosticEvent::Failure { classification });
+        self.record_diagnostic_event(DiagnosticEvent::Failure {
+            classification,
+            audio_source,
+        });
     }
 
     fn record_diagnostic_event(&self, event: DiagnosticEvent) {
@@ -1254,6 +1358,7 @@ impl SessionManager {
     /// No journal or generation lock crosses an await.
     fn record_accepted_provider_event(
         &self,
+        source: AudioSource,
         generation: u64,
         event: &LiveTranslateServerEvent,
     ) -> bool {
@@ -1262,7 +1367,10 @@ impl SessionManager {
             return false;
         }
         if let LiveTranslateServerEvent::Error { code, message } = event {
-            self.record_safe_failure(SafeFailure::from_provider_error(code, message));
+            self.record_source_failure(
+                Some(source),
+                SafeFailure::from_provider_error(code, message),
+            );
         }
         let mut journal = self.diagnostic_journal.lock().unwrap();
         let text_kind = match event {
@@ -1465,18 +1573,26 @@ impl SessionManager {
     fn diagnostic_facts(&self) -> DiagnosticFacts {
         let now = Instant::now();
         let prefs = self.settings.preferences();
-        let provider = self
-            .settings
-            .active_profile()
-            .ok()
-            .map(|profile| profile.effective_provider());
-        let (provider, mode) = self
+        let profile = self.settings.active_profile().ok();
+        let provider = profile.as_ref().map(|profile| profile.effective_provider());
+        let alibaba_realtime_mode = profile.as_ref().and_then(|profile| {
+            (profile.effective_provider() == ProviderKind::AlibabaCloud)
+                .then_some(profile.alibaba_realtime_mode)
+        });
+        let (provider, mode, alibaba_realtime_mode) = self
             .active_settings
             .lock()
             .unwrap()
             .as_ref()
-            .map(|config| (Some(config.provider), config.effective_translation_mode()))
-            .unwrap_or((provider, prefs.translation_mode));
+            .map(|config| {
+                (
+                    Some(config.provider),
+                    config.effective_translation_mode(),
+                    (config.provider == ProviderKind::AlibabaCloud)
+                        .then_some(config.alibaba_realtime_mode),
+                )
+            })
+            .unwrap_or((provider, prefs.translation_mode, alibaba_realtime_mode));
         let generation = self.active_generation.load(Ordering::SeqCst);
         let (
             status,
@@ -1588,6 +1704,7 @@ impl SessionManager {
         DiagnosticFacts {
             provider,
             mode,
+            alibaba_realtime_mode,
             status,
             output_selection,
             output_availability,
@@ -2086,7 +2203,7 @@ impl SessionManager {
                     return Err(error);
                 }
             };
-            connect_result.map_err(|error| error.to_string())?;
+            connect_result.map_err(session_connect_error)?;
             tokio::task::yield_now().await;
             if let Err(error) = self.ensure_generation_current(generation) {
                 self.cleanup_generation_without_pump(generation).await;
@@ -2143,13 +2260,18 @@ impl SessionManager {
                             return;
                         }
                     }
+                    let classification = failure
+                        .as_ref()
+                        .map(|error| SafeFailure::from_error(&error.to_string()));
                     let manager = Arc::clone(&on_error_self);
                     tokio::spawn(async move {
                         manager
                             .handle_audio_transport_failure(
                                 generation,
                                 attempt,
+                                source,
                                 AudioPipelineFailure::TransportStopped,
+                                classification,
                             )
                             .await;
                     });
@@ -2546,6 +2668,7 @@ impl SessionManager {
                 input,
                 persist,
             )?;
+            self.recovery_continuity.lock().unwrap().clear();
             *self.active_audio_input.lock().unwrap() = input;
             self.lifecycle_notify.notify_waiters();
             boundary
@@ -2768,6 +2891,7 @@ impl SessionManager {
                     .map_err(|_| "profile_switch_save_failed".to_string())
                 },
             )?;
+            self.recovery_continuity.lock().unwrap().clear();
         }
         // The persisted selection repairs only the failure observed under
         // this lifecycle guard. Keep subtitles and never start an idle session.
@@ -3584,7 +3708,7 @@ impl SessionManager {
         }
         let event = &envelope.event;
 
-        if !self.record_accepted_provider_event(generation, event) {
+        if !self.record_accepted_provider_event(source, generation, event) {
             debug_event(
                 event,
                 crate::core::development_debug::Admission::StaleGeneration,
@@ -3597,25 +3721,20 @@ impl SessionManager {
             if provider_error_is_retryable(code) {
                 let _teardown = self.begin_teardown_operation();
                 let _operation = self.begin_lifecycle_operation();
-                let recovery_owns_attempt = self.is_recovering.load(Ordering::SeqCst);
-                if recovery_owns_attempt {
-                    // Register the handoff before invalidation wakes the
-                    // generation-bound connect future. The current recovery
-                    // task consumes this marker and owns the next retry.
-                    self.recovery_retry_generation
-                        .store(generation, Ordering::SeqCst);
-                }
-                if !self.invalidate_generation(generation) {
-                    if recovery_owns_attempt {
-                        let _ = self.recovery_retry_generation.compare_exchange(
-                            generation,
-                            NO_GENERATION,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                        );
-                    }
-                    return;
-                }
+                let recovery_owns_attempt = {
+                    let _transition = self.generation_transition.lock().unwrap();
+                    let Some(recovering) = claim_generation_recovery_atoms(
+                        &self.active_generation,
+                        &self.lifecycle_sequence,
+                        &self.is_recovering,
+                        &self.recovery_retry_generation,
+                        generation,
+                    ) else {
+                        return;
+                    };
+                    self.lifecycle_notify.notify_waiters();
+                    recovering
+                };
                 pipeline_log!("session recoverable provider error code={}", code);
                 self.cancel_translation_timeout();
                 self.controller.lock().unwrap().begin_connecting();
@@ -3834,6 +3953,8 @@ impl SessionManager {
             attempt,
             failure.to_string(),
             failure.diagnostic_label(),
+            None,
+            None,
         )
         .await;
     }
@@ -3842,13 +3963,17 @@ impl SessionManager {
         self: &Arc<Self>,
         generation: u64,
         attempt: u64,
+        source: AudioSource,
         failure: AudioPipelineFailure,
+        classification: Option<SafeFailure>,
     ) {
         self.handle_recoverable_runtime_failure(
             generation,
             attempt,
             failure.to_string(),
             failure.diagnostic_label(),
+            Some(source),
+            classification,
         )
         .await;
     }
@@ -3859,6 +3984,8 @@ impl SessionManager {
         attempt: u64,
         message: String,
         diagnostic_label: &'static str,
+        source: Option<AudioSource>,
+        classification: Option<SafeFailure>,
     ) {
         let _teardown = self.begin_teardown_operation();
         let _operation = self.begin_lifecycle_operation();
@@ -3878,6 +4005,12 @@ impl SessionManager {
             {
                 return;
             }
+            // Keep the accepted failing source attached to this generation
+            // before a concurrent manual start can replace its diagnostics.
+            self.record_source_failure(
+                source,
+                classification.unwrap_or_else(|| SafeFailure::from_error(diagnostic_label)),
+            );
             self.lifecycle_notify.notify_waiters();
             let recovering = self.is_recovering.load(Ordering::SeqCst);
             if recovering {
@@ -3887,7 +4020,6 @@ impl SessionManager {
             recovering
         };
         pipeline_log!("runtime stream failed label={}", diagnostic_label);
-        self.record_diagnostic_failure(diagnostic_label);
         self.controller.lock().unwrap().begin_connecting();
         self.publish_state();
         let _lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
@@ -3940,7 +4072,9 @@ impl SessionManager {
             .as_ref()
             .is_none_or(|configuration| configuration.provider != ProviderKind::AppleSpeech);
         let mut maximum_latency_ms = 0;
-        for &source in self.sources() {
+        let sources = self.sources();
+        let mut completed_sources = 0;
+        for &source in sources {
             let Some(client) = self.client_for_generation(source, generation) else {
                 return false;
             };
@@ -3965,6 +4099,7 @@ impl SessionManager {
                             });
                     }
                     maximum_latency_ms = maximum_latency_ms.max(elapsed_ms);
+                    completed_sources += 1;
                 }
                 Err(error) => {
                     if !self.is_generation_current(generation)
@@ -3995,11 +4130,49 @@ impl SessionManager {
                         .await;
                         return false;
                     }
-                    if self.invalidate_generation(generation) {
+                    let invalidated = {
+                        let _transition = self.generation_transition.lock().unwrap();
+                        if invalidate_generation_atoms(
+                            &self.active_generation,
+                            &self.lifecycle_sequence,
+                            generation,
+                        )
+                        .is_some()
+                        {
+                            // Record the trigger before recovery can succeed or
+                            // a new generation can replace this observation.
+                            self.record_source_failure(
+                                Some(source),
+                                SafeFailure::from_error(&error.to_string()),
+                            );
+                            self.lifecycle_notify.notify_waiters();
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if invalidated {
                         self.queue_recovery(generation, error.to_string()).await;
                     }
                     return false;
                 }
+            }
+        }
+        {
+            let _transition = self.generation_transition.lock().unwrap();
+            let _health_task = self.health_task.lock().unwrap();
+            if !complete_recovery_health_round(
+                &mut self.recovery_continuity.lock().unwrap(),
+                (
+                    self.active_generation.load(Ordering::SeqCst),
+                    self.lifecycle_sequence.load(Ordering::SeqCst),
+                    self.health_task_id.load(Ordering::SeqCst),
+                ),
+                (generation, task_id),
+                (completed_sources, sources.len()),
+                Instant::now(),
+            ) {
+                return false;
             }
         }
         self.publish_state();
@@ -4029,7 +4202,7 @@ impl SessionManager {
         let self_arc = self.clone();
         let task = tokio::spawn(async move {
             self_arc
-                .recover_connection(failed_generation, failure_message, minimum_delay)
+                .recover_connection(task_id, failed_generation, failure_message, minimum_delay)
                 .await;
             self_arc.clear_recovery_task_if_id(task_id);
         });
@@ -4038,6 +4211,7 @@ impl SessionManager {
 
     async fn recover_connection(
         self: &Arc<Self>,
+        task_id: u64,
         failed_generation: u64,
         failure_message: String,
         minimum_delay: Duration,
@@ -4046,11 +4220,24 @@ impl SessionManager {
             return;
         }
         let _operation = self.begin_lifecycle_operation();
-        let mut recovery_generation = self.next_lifecycle_request();
-        let lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
-        if !self.is_lifecycle_request_current(recovery_generation) {
+        let Some(mut recovery_generation) = self.next_recovery_request(failed_generation) else {
             return;
-        }
+        };
+        let lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
+        let mut schedule = {
+            let _transition = self.generation_transition.lock().unwrap();
+            if !self.is_lifecycle_request_current(recovery_generation) {
+                return;
+            }
+            // A retained budget may already be exhausted, so this owner must
+            // also own settings when it terminates without a new connect.
+            self.retag_active_settings(recovery_generation);
+            self.recovery_continuity.lock().unwrap().take_for_failure(
+                failed_generation,
+                recovery_generation,
+                minimum_delay,
+            )
+        };
         self.record_recovery_if_current(RecoveryAction::Retrying, recovery_generation);
         pipeline_log!("session recovery started");
         prepare_recovery_cleanup(
@@ -4066,16 +4253,13 @@ impl SessionManager {
         )
         .await;
 
-        let mut recovered = false;
         let mut terminal_failure = None;
-        let mut schedule =
-            RecoverySchedule::new(failed_generation, recovery_generation, minimum_delay);
         while let Some(retry) = schedule.next_attempt() {
             let attempt = retry.index;
             let delay = retry.delay;
             pipeline_log!(
                 "session recovery attempt={} delayMs={}",
-                attempt + 1,
+                retry.budget_index + 1,
                 delay.as_millis()
             );
             if !delay.is_zero() {
@@ -4104,66 +4288,80 @@ impl SessionManager {
                 .store(recovery_generation, Ordering::SeqCst);
             self.retag_active_settings(recovery_generation);
             drop(lifecycle);
-            match self.establish_session(recovery_generation).await {
+            let error = match self.establish_session(recovery_generation).await {
                 Ok(()) => {
-                    self.record_recovery_if_current(RecoveryAction::Recovered, recovery_generation);
-                    recovered = true;
-                    break;
+                    let _transition = self.generation_transition.lock().unwrap();
+                    if commit_recovery_success_atoms(
+                        &self.active_generation,
+                        &self.lifecycle_sequence,
+                        &self.is_recovering,
+                        &self.recovery_retry_generation,
+                        recovery_generation,
+                        || self.clear_recovery_task_if_id(task_id),
+                    ) {
+                        self.recovery_continuity
+                            .lock()
+                            .unwrap()
+                            .record_connected(schedule, Instant::now());
+                        self.record_recovery_action(RecoveryAction::Recovered);
+                        return;
+                    }
+                    // A source can fail after establish's last validity check
+                    // but before this success claim. Keep its retry handoff.
+                    SESSION_START_CANCELLED.to_string()
                 }
-                Err(error) if error == SESSION_START_CANCELLED => {
+                Err(error) => error,
+            };
+            if error == SESSION_START_CANCELLED {
+                let retry_accepted = {
+                    let _transition = self.generation_transition.lock().unwrap();
                     let retry_generation = self
                         .recovery_retry_generation
                         .swap(NO_GENERATION, Ordering::SeqCst);
                     let current_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
-                    if self.is_recovering.load(Ordering::SeqCst)
+                    self.is_recovering.load(Ordering::SeqCst)
                         && schedule.accept_cancelled_attempt(
                             retry_generation,
                             current_epoch,
                             self.active_settings.lock().unwrap().is_some(),
                         )
-                    {
-                        continue;
-                    }
-                    clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
-                    return;
+                };
+                if retry_accepted {
+                    continue;
                 }
-                Err(error) => {
-                    if !schedule.accept_failure(self.lifecycle_sequence.load(Ordering::SeqCst)) {
-                        clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
-                        return;
-                    }
-                    if session_error_requires_user_action(&error) {
-                        terminal_failure = Some(error);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if !recovered {
-            let _lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
-            if !schedule.owns_exhaustion(
-                self.lifecycle_sequence.load(Ordering::SeqCst),
-                self.active_generation.load(Ordering::SeqCst),
-            ) {
                 clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
                 return;
             }
-            if terminal_failure.is_none() {
-                self.record_recovery_if_current(RecoveryAction::RetriesExhausted, schedule.epoch());
-                pipeline_log!("session recovery exhausted");
+            if !schedule.accept_failure(self.lifecycle_sequence.load(Ordering::SeqCst)) {
+                clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
+                return;
             }
-            // Preserve the permission/stop result instead of covering it with
-            // the transient error that originally initiated this recovery.
-            let failure_message = terminal_failure.unwrap_or(failure_message);
-            self.record_diagnostic_failure(&failure_message);
-            self.clear_active_settings_for_generation(recovery_generation);
+            if session_error_requires_user_action(&error) {
+                terminal_failure = Some(error);
+                break;
+            }
+        }
+
+        let _lifecycle = Arc::clone(&self.lifecycle_lock).lock_owned().await;
+        if !schedule.owns_exhaustion(
+            self.lifecycle_sequence.load(Ordering::SeqCst),
+            self.active_generation.load(Ordering::SeqCst),
+        ) {
             clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
-            self.controller.lock().unwrap().did_fail(failure_message);
-            self.publish_state();
             return;
         }
+        if terminal_failure.is_none() {
+            self.record_recovery_if_current(RecoveryAction::RetriesExhausted, schedule.epoch());
+            pipeline_log!("session recovery exhausted");
+        }
+        // Preserve the permission/stop result instead of covering it with
+        // the transient error that originally initiated this recovery.
+        let failure_message = terminal_failure.unwrap_or(failure_message);
+        self.record_diagnostic_failure(&failure_message);
+        self.clear_active_settings_for_generation(recovery_generation);
         clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
+        self.controller.lock().unwrap().did_fail(failure_message);
+        self.publish_state();
     }
 
     async fn cancel_recovery(&self) {
@@ -4234,6 +4432,7 @@ impl SessionManager {
 
     fn next_lifecycle_request(&self) -> u64 {
         let _transition = self.generation_transition.lock().unwrap();
+        self.recovery_continuity.lock().unwrap().clear();
         let generation = self
             .lifecycle_sequence
             .fetch_add(1, Ordering::SeqCst)
@@ -4250,6 +4449,18 @@ impl SessionManager {
     fn advance_lifecycle_request_if_current(&self, expected: u64) -> Option<u64> {
         let _transition = self.generation_transition.lock().unwrap();
         let generation = advance_lifecycle_sequence_if_current(&self.lifecycle_sequence, expected)?;
+        self.recovery_continuity.lock().unwrap().clear();
+        self.lifecycle_notify.notify_waiters();
+        Some(generation)
+    }
+
+    fn next_recovery_request(&self, failed_generation: u64) -> Option<u64> {
+        let _transition = self.generation_transition.lock().unwrap();
+        let generation = advance_recovery_request_atoms(
+            &self.active_generation,
+            &self.lifecycle_sequence,
+            failed_generation,
+        )?;
         self.lifecycle_notify.notify_waiters();
         Some(generation)
     }
@@ -7025,6 +7236,271 @@ mod lifecycle_tests {
     }
 
     #[test]
+    fn recovery_success_handoff_preserves_an_already_accepted_failure() {
+        let transition = Arc::new(Mutex::new(()));
+        let active = Arc::new(AtomicU64::new(41));
+        let sequence = Arc::new(AtomicU64::new(41));
+        let recovering = Arc::new(AtomicBool::new(true));
+        let retry = Arc::new(AtomicU64::new(NO_GENERATION));
+        let accepted = Arc::new(std::sync::Barrier::new(2));
+        let failure = std::thread::spawn({
+            let transition = Arc::clone(&transition);
+            let active = Arc::clone(&active);
+            let sequence = Arc::clone(&sequence);
+            let recovering = Arc::clone(&recovering);
+            let retry = Arc::clone(&retry);
+            let accepted = Arc::clone(&accepted);
+            move || {
+                {
+                    let _transition = transition.lock().unwrap();
+                    assert_eq!(
+                        claim_generation_recovery_atoms(
+                            &active,
+                            &sequence,
+                            &recovering,
+                            &retry,
+                            41,
+                        ),
+                        Some(true)
+                    );
+                }
+                accepted.wait();
+            }
+        });
+        // Establish already returned Ok, but either lane fails before the
+        // recovery task claims success. The original owner must keep retrying.
+        accepted.wait();
+        let task_present = AtomicBool::new(true);
+        {
+            let _transition = transition.lock().unwrap();
+            assert!(!commit_recovery_success_atoms(
+                &active,
+                &sequence,
+                &recovering,
+                &retry,
+                41,
+                || task_present.swap(false, Ordering::SeqCst),
+            ));
+        }
+        failure.join().unwrap();
+        assert!(task_present.load(Ordering::SeqCst));
+        assert!(recovering.load(Ordering::SeqCst));
+        let mut schedule = RecoverySchedule::new(39, 41, Duration::ZERO);
+        assert!(schedule.next_attempt().is_some());
+        assert!(schedule.accept_cancelled_attempt(
+            retry.swap(NO_GENERATION, Ordering::SeqCst),
+            sequence.load(Ordering::SeqCst),
+            true,
+        ));
+        assert_eq!(schedule.advance_for_retry(&sequence), Some(43));
+    }
+
+    #[test]
+    fn recovery_success_handoff_retires_the_task_before_a_later_failure() {
+        let transition = Arc::new(Mutex::new(()));
+        let active = Arc::new(AtomicU64::new(41));
+        let sequence = Arc::new(AtomicU64::new(41));
+        let recovering = Arc::new(AtomicBool::new(true));
+        let retry = Arc::new(AtomicU64::new(NO_GENERATION));
+        let task_present = Arc::new(AtomicBool::new(true));
+        let (retiring, retired) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let completion = std::thread::spawn({
+            let transition = Arc::clone(&transition);
+            let active = Arc::clone(&active);
+            let sequence = Arc::clone(&sequence);
+            let recovering = Arc::clone(&recovering);
+            let retry = Arc::clone(&retry);
+            let task_present = Arc::clone(&task_present);
+            move || {
+                let _transition = transition.lock().unwrap();
+                commit_recovery_success_atoms(&active, &sequence, &recovering, &retry, 41, || {
+                    let retired = task_present.swap(false, Ordering::SeqCst);
+                    retiring.send(()).unwrap();
+                    released.recv_timeout(Duration::from_secs(2)).unwrap();
+                    retired
+                })
+            }
+        });
+        retired.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(transition.try_lock().is_err());
+        // No failure may observe the still-recovering flag after the task was
+        // retired; both operations use this gate.
+        release.send(()).unwrap();
+        assert!(completion.join().unwrap());
+        let _transition = transition.lock().unwrap();
+        assert_eq!(
+            claim_generation_recovery_atoms(&active, &sequence, &recovering, &retry, 41),
+            Some(false)
+        );
+        assert!(!task_present.load(Ordering::SeqCst));
+        assert_eq!(retry.load(Ordering::SeqCst), NO_GENERATION);
+        // queue_recovery now has a vacant task slot for the newly failed lane.
+        assert!(!task_present.swap(true, Ordering::SeqCst));
+    }
+
+    #[test]
+    fn recovery_success_handoff_cannot_retire_a_stop_or_new_generation() {
+        for (active, epoch) in [(NO_GENERATION, 42), (43, 43), (41, 42)] {
+            let active = AtomicU64::new(active);
+            let sequence = AtomicU64::new(epoch);
+            let recovering = AtomicBool::new(true);
+            let retry = AtomicU64::new(43);
+            let task_present = AtomicBool::new(true);
+            assert!(!commit_recovery_success_atoms(
+                &active,
+                &sequence,
+                &recovering,
+                &retry,
+                41,
+                || task_present.swap(false, Ordering::SeqCst),
+            ));
+            assert_eq!(
+                claim_generation_recovery_atoms(&active, &sequence, &recovering, &retry, 41),
+                None,
+            );
+            assert!(task_present.load(Ordering::SeqCst));
+            assert!(recovering.load(Ordering::SeqCst));
+            assert_eq!(retry.load(Ordering::SeqCst), 43);
+            assert_eq!(sequence.load(Ordering::SeqCst), epoch);
+        }
+    }
+
+    #[test]
+    fn desktop_recovery_budget_survives_short_success_across_task_owners() {
+        let active = AtomicU64::new(1);
+        let sequence = AtomicU64::new(1);
+        let recovering = AtomicBool::new(false);
+        let retry = AtomicU64::new(NO_GENERATION);
+        let mut continuity = RecoveryContinuity::default();
+        let mut failed_generation = 1;
+        let now = Instant::now();
+
+        for budget_index in 0..=RECOVERY_ATTEMPTS {
+            assert_eq!(
+                claim_generation_recovery_atoms(
+                    &active,
+                    &sequence,
+                    &recovering,
+                    &retry,
+                    failed_generation,
+                ),
+                Some(false)
+            );
+            let generation =
+                advance_recovery_request_atoms(&active, &sequence, failed_generation).unwrap();
+            let mut schedule = continuity.take_for_failure(
+                failed_generation,
+                generation,
+                Duration::from_millis(600),
+            );
+            if budget_index == RECOVERY_ATTEMPTS {
+                assert!(schedule.next_attempt().is_none());
+                assert!(schedule.owns_exhaustion(
+                    sequence.load(Ordering::SeqCst),
+                    active.load(Ordering::SeqCst),
+                ));
+                break;
+            }
+            let attempt = schedule.next_attempt().unwrap();
+            assert_eq!(
+                attempt.index, 0,
+                "each task starts with its own first attempt"
+            );
+            assert_eq!(attempt.budget_index, budget_index);
+            active.store(generation, Ordering::SeqCst);
+            recovering.store(true, Ordering::SeqCst);
+            let task_present = AtomicBool::new(true);
+            assert!(commit_recovery_success_atoms(
+                &active,
+                &sequence,
+                &recovering,
+                &retry,
+                generation,
+                || task_present.swap(false, Ordering::SeqCst),
+            ));
+            continuity.record_connected(schedule, now);
+            assert!(!task_present.load(Ordering::SeqCst));
+            failed_generation = generation;
+        }
+    }
+
+    #[test]
+    fn desktop_recovery_health_requires_all_sources_and_the_current_round() {
+        let now = Instant::now();
+        for (sources, current, elapsed, round_is_current, resets_budget) in [
+            ((1, 2), (3, 3, 8), HEALTH_CHECK_INTERVAL, false, false),
+            ((2, 2), (3, 3, 8), HEALTH_CHECK_INTERVAL, true, true),
+            ((1, 1), (3, 3, 8), HEALTH_CHECK_INTERVAL, true, true),
+            ((0, 0), (3, 3, 8), HEALTH_CHECK_INTERVAL, false, false),
+            ((2, 2), (5, 5, 8), HEALTH_CHECK_INTERVAL, false, false),
+            ((2, 2), (3, 4, 8), HEALTH_CHECK_INTERVAL, false, false),
+            ((2, 2), (3, 3, 9), HEALTH_CHECK_INTERVAL, false, false),
+            ((2, 2), (3, 3, 8), Duration::ZERO, true, false),
+        ] {
+            let mut continuity = RecoveryContinuity::default();
+            let mut schedule = RecoverySchedule::new(1, 3, Duration::ZERO);
+            assert!(schedule.next_attempt().is_some());
+            continuity.record_connected(schedule, now);
+            assert_eq!(
+                complete_recovery_health_round(
+                    &mut continuity,
+                    current,
+                    (3, 8),
+                    sources,
+                    now + elapsed,
+                ),
+                round_is_current,
+            );
+            let mut next = continuity.take_for_failure(3, 5, Duration::ZERO);
+            assert_eq!(
+                next.next_attempt().unwrap().budget_index,
+                usize::from(!resets_budget),
+                "sources={sources:?} current={current:?} elapsed={elapsed:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn desktop_recovery_budget_rejects_old_owners_after_manual_replacement() {
+        let now = Instant::now();
+        let mut continuity = RecoveryContinuity::default();
+        let mut old = RecoverySchedule::new(1, 3, Duration::ZERO);
+        assert!(old.next_attempt().is_some());
+        continuity.record_connected(old, now);
+        // Accepted manual Start/Stop/Retry/configuration changes clear under
+        // the same generation gate before the replacement can connect.
+        continuity.clear();
+        let mut current = continuity.take_for_failure(5, 7, Duration::ZERO);
+        assert_eq!(current.next_attempt().unwrap().budget_index, 0);
+        continuity.record_connected(current, now);
+        let active = AtomicU64::new(7);
+        let sequence = AtomicU64::new(7);
+        let recovering = AtomicBool::new(false);
+        let retry = AtomicU64::new(NO_GENERATION);
+        assert!(!commit_recovery_success_atoms(
+            &active,
+            &sequence,
+            &recovering,
+            &retry,
+            3,
+            || panic!("a stale success cannot retire the replacement task"),
+        ));
+        assert!(advance_recovery_request_atoms(&active, &sequence, 3).is_none());
+        active.store(NO_GENERATION, Ordering::SeqCst);
+        assert!(advance_recovery_request_atoms(&active, &sequence, 3).is_none());
+        assert!(!complete_recovery_health_round(
+            &mut continuity,
+            (7, 7, 9),
+            (3, 8),
+            (2, 2),
+            now + HEALTH_CHECK_INTERVAL,
+        ));
+        let mut next = continuity.take_for_failure(7, 9, Duration::ZERO);
+        assert_eq!(next.next_attempt().unwrap().budget_index, 1);
+    }
+
+    #[test]
     fn concurrent_double_start_has_one_owner() {
         let in_progress = Arc::new(AtomicBool::new(false));
         assert!(try_begin_start(&in_progress));
@@ -7854,6 +8330,63 @@ mod lifecycle_tests {
             "xai_stt_authentication_failed: private-detail",
         ] {
             assert!(!session_error_requires_user_action(error));
+        }
+    }
+
+    #[test]
+    fn alibaba_setup_rejection_stops_recovery_with_the_current_failure() {
+        use crate::clients::live_translate_client::LiveTranslateClientError;
+
+        for (failure, expected) in [
+            (
+                LiveTranslateClientError::SessionSetupRejected,
+                "alibaba_realtime_provider_error",
+            ),
+            (
+                LiveTranslateClientError::AuthenticationFailed,
+                "credential_authentication_failed",
+            ),
+        ] {
+            let error = session_connect_error(ConnectError::Live(failure));
+            assert_eq!(error, expected);
+            // This is the recovery loop's terminal branch: it must retain the
+            // setup rejection rather than exhaust retries and report the idle
+            // timeout that originally caused recovery.
+            assert!(session_error_requires_user_action(&error));
+            let mut controller = TranslationSessionController::default();
+            controller.begin_connecting();
+            apply_establish_failure_state(&mut controller, error.clone(), true);
+            assert_eq!(controller.state.status, SessionStatus::Error(error));
+            assert!(!SessionStateEvent::from(&controller.state).is_active);
+        }
+    }
+
+    #[test]
+    fn alibaba_transient_setup_failures_keep_bounded_recovery() {
+        use crate::clients::live_translate_client::LiveTranslateClientError;
+
+        for (failure, expected) in [
+            (
+                LiveTranslateClientError::ServiceUnavailable,
+                "alibaba_realtime_service_unavailable",
+            ),
+            (
+                LiveTranslateClientError::IdleTimeout,
+                "alibaba_realtime_idle_timeout",
+            ),
+            (
+                LiveTranslateClientError::UnexpectedSessionEnd,
+                "live_translate_unexpected_session_end",
+            ),
+        ] {
+            let error = session_connect_error(ConnectError::Live(failure));
+            assert_eq!(error, expected);
+            assert!(provider_error_is_retryable(&error));
+            assert!(!session_error_requires_user_action(&error));
+            let mut controller = TranslationSessionController::default();
+            controller.begin_connecting();
+            apply_establish_failure_state(&mut controller, error, true);
+            assert_eq!(controller.state.status, SessionStatus::Connecting);
         }
     }
 

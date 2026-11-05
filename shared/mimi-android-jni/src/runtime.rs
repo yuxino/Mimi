@@ -29,7 +29,8 @@ use mimi_runtime::{
         },
         recovery::{
             advance_lifecycle_sequence_if_current, provider_error_is_retryable,
-            provider_recovery_minimum_delay, MTBudgetContinuity, MTBudgetScope, RecoverySchedule,
+            provider_recovery_minimum_delay, MTBudgetContinuity, MTBudgetScope, RecoveryContinuity,
+            RecoverySchedule,
         },
         session::TranslationSessionController,
     },
@@ -196,6 +197,7 @@ struct Session {
     signal: Notify,
     error_code: Mutex<Option<String>>,
     budget: Mutex<MTBudgetContinuity>,
+    recovery_continuity: Mutex<RecoveryContinuity>,
 }
 impl Session {
     #[cfg(test)]
@@ -416,6 +418,7 @@ impl Session {
         if self.stopping.load(Ordering::SeqCst) {
             return Err("native_runtime_stale_handle");
         }
+        self.recovery_continuity.lock().unwrap().clear();
         let _runtime = executor().enter();
         let receiver = self.connection(1)?;
         *task = Some(executor().spawn(self.clone().drive(receiver)));
@@ -425,6 +428,7 @@ impl Session {
     fn begin_stop(self: &Arc<Self>) -> CleanupTicket {
         self.stopping.store(true, Ordering::SeqCst);
         self.epoch.fetch_add(1, Ordering::SeqCst);
+        self.recovery_continuity.lock().unwrap().clear();
         let task = self.task.lock().unwrap().take();
         if let Some(task) = &task {
             task.abort();
@@ -454,6 +458,32 @@ impl Session {
         self.publish(|controller| controller.did_fail(code));
         self.mark_finished();
     }
+    fn record_health_success(&self, generation: u64, now: std::time::Instant) -> bool {
+        let mut continuity = self.recovery_continuity.lock().unwrap();
+        if self.epoch.load(Ordering::SeqCst) != generation || self.stopping.load(Ordering::SeqCst) {
+            return false;
+        }
+        continuity.health_succeeded(generation, now)
+    }
+    fn claim_recovery(
+        &self,
+        generation: u64,
+        recovery: &mut Option<RecoverySchedule>,
+        minimum_delay: std::time::Duration,
+    ) -> bool {
+        // Health success and failure ownership must linearize under the same
+        // lock. A retired probe may finish its synchronous tail after abort.
+        let mut continuity = self.recovery_continuity.lock().unwrap();
+        let Some(next) = advance_lifecycle_sequence_if_current(&self.epoch, generation) else {
+            return false;
+        };
+        if let Some(schedule) = recovery.as_mut() {
+            schedule.accept_failure(next)
+        } else {
+            *recovery = Some(continuity.take_for_failure(generation, next, minimum_delay));
+            true
+        }
+    }
     async fn drive(self: Arc<Self>, mut receiver: ProviderEventReceiver) {
         let mut generation = 1;
         let mut recovery: Option<RecoverySchedule> = None;
@@ -482,8 +512,16 @@ impl Session {
                     connection.ready.send_replace(true);
                 }
                 self.publish(TranslationSessionController::did_connect);
-                recovery = None;
+                if let Some(schedule) = recovery.take() {
+                    let mut continuity = self.recovery_continuity.lock().unwrap();
+                    if self.epoch.load(Ordering::SeqCst) == generation
+                        && !self.stopping.load(Ordering::SeqCst)
+                    {
+                        continuity.record_connected(schedule, std::time::Instant::now());
+                    }
+                }
                 let health_client = client.clone();
+                let health_session = Arc::clone(&self);
                 let health_events = self
                     .connection
                     .lock()
@@ -508,6 +546,7 @@ impl Session {
                             });
                             return;
                         }
+                        health_session.record_health_success(generation, std::time::Instant::now());
                     }
                 }));
                 let mut ticks =
@@ -548,19 +587,12 @@ impl Session {
                 self.fail(code);
                 return;
             }
-            let Some(next) = advance_lifecycle_sequence_if_current(&self.epoch, generation) else {
+            if !self.claim_recovery(
+                generation,
+                &mut recovery,
+                provider_recovery_minimum_delay(code),
+            ) {
                 return;
-            };
-            if let Some(schedule) = recovery.as_mut() {
-                if !schedule.accept_failure(next) {
-                    return;
-                }
-            } else {
-                recovery = Some(RecoverySchedule::new(
-                    generation,
-                    next,
-                    provider_recovery_minimum_delay(code),
-                ));
             }
             let schedule = recovery.as_mut().unwrap();
             let Some(attempt) = schedule.next_attempt() else {
@@ -590,6 +622,7 @@ impl Session {
         }
     }
     async fn finish_connection(&self, receiver: &mut ProviderEventReceiver) {
+        self.recovery_continuity.lock().unwrap().clear();
         self.publish(TranslationSessionController::begin_stopping);
         let connection = self.take_connection_owned();
         if let Some(connection) = connection {
@@ -1154,6 +1187,7 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
                 signal: Notify::new(),
                 error_code: Mutex::new(None),
                 budget: Mutex::new(Default::default()),
+                recovery_continuity: Mutex::new(Default::default()),
             });
             native.publish(|controller| {
                 controller.set_audio_input(match audio_source {
@@ -1368,10 +1402,97 @@ mod tests {
             signal: Notify::new(),
             error_code: Mutex::new(None),
             budget: Mutex::new(Default::default()),
+            recovery_continuity: Mutex::new(Default::default()),
         })
     }
     fn configuration() -> LiveTranslationConfiguration {
         serde_json::from_value(json!({"provider":"alibabaCloud","qwenMtModel":"lite","credentials":{"kind":"apiKey","apiKey":"synthetic-key"},"textCredentials":null,"sourceLanguage":"en","targetLanguage":"zh","translationMode":"turbo","networkProxy":{"mode":"direct"},"textNetworkProxy":{"mode":"direct"}})).unwrap()
+    }
+
+    #[test]
+    fn retired_health_waiting_for_continuity_cannot_refresh_the_next_owner_budget() {
+        for stopping in [false, true] {
+            let native = fixture(configuration());
+            native.epoch.store(2, Ordering::SeqCst);
+            let now = std::time::Instant::now();
+            let mut schedule = RecoverySchedule::new(1, 2, Duration::ZERO);
+            schedule.next_attempt().unwrap();
+            let mut continuity = native.recovery_continuity.lock().unwrap();
+            continuity.record_connected(schedule, now);
+            let (entered, waiting) = std::sync::mpsc::channel();
+            let health = std::thread::spawn({
+                let native = Arc::clone(&native);
+                move || {
+                    entered.send(()).unwrap();
+                    native.record_health_success(
+                        2,
+                        now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL,
+                    )
+                }
+            });
+            waiting.recv_timeout(Duration::from_secs(1)).unwrap();
+            // A completed probe cannot acquire continuity until this exact
+            // failure/stop transition has already retired its authority.
+            if stopping {
+                native.stopping.store(true, Ordering::SeqCst);
+            } else {
+                assert_eq!(
+                    advance_lifecycle_sequence_if_current(&native.epoch, 2),
+                    Some(3)
+                );
+            }
+            drop(continuity);
+            let reset = health.join().unwrap();
+            let next = native
+                .recovery_continuity
+                .lock()
+                .unwrap()
+                .take_for_failure(2, 3, Duration::ZERO)
+                .next_attempt()
+                .unwrap();
+            assert!(!reset, "retired health must not reset recovery continuity");
+            assert_eq!(
+                next.budget_index, 1,
+                "the already-used recovery must survive the late probe"
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_claim_transfers_used_budget_and_rejects_the_retired_probe() {
+        let native = fixture(configuration());
+        native.epoch.store(2, Ordering::SeqCst);
+        let now = std::time::Instant::now();
+        let mut prior = RecoverySchedule::new(1, 2, Duration::ZERO);
+        prior.next_attempt().unwrap();
+        native
+            .recovery_continuity
+            .lock()
+            .unwrap()
+            .record_connected(prior, now);
+
+        let mut recovery = None;
+        assert!(native.claim_recovery(2, &mut recovery, Duration::ZERO));
+        assert_eq!(native.epoch.load(Ordering::SeqCst), 3);
+        assert!(!native
+            .record_health_success(2, now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL));
+        let mut resumed = recovery.unwrap();
+        assert_eq!(resumed.generation(), 3);
+        let attempt = resumed.next_attempt().unwrap();
+        assert_eq!(attempt.index, 0);
+        assert_eq!(attempt.budget_index, 1);
+        native
+            .recovery_continuity
+            .lock()
+            .unwrap()
+            .record_connected(resumed, now);
+        assert!(!native
+            .record_health_success(2, now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL));
+        assert!(native
+            .record_health_success(3, now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL));
+        let mut fresh = None;
+        assert!(native.claim_recovery(3, &mut fresh, Duration::ZERO));
+        assert_eq!(fresh.unwrap().next_attempt().unwrap().budget_index, 0);
     }
 
     struct PollSession {

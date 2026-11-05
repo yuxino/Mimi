@@ -811,6 +811,71 @@ class NativeRuntimeJniTest {
         } finally { SubtitleBus.clear(); SubtitleBus.setHistoryLimit(0) }
     }
 
+    @Test fun liveTranslateUnexpectedEndReconnectsButAuthenticationAndManualFinishStopAcrossActualJni() {
+        verifyLiveTranslateRecoveryCases("liveTranslateRecovery")
+    }
+
+    @Test fun liveTranslateSetupRejectionsPreserveRecoveryClassificationAcrossActualJni() {
+        verifyLiveTranslateRecoveryCases("liveTranslateSetupRecovery")
+    }
+
+    @Test fun liveTranslateRecoveryBudgetSurvivesSetupSuccessUntilStableHealthAcrossActualJni() {
+        verifyLiveTranslateRecoveryCases("liveTranslateRecoveryContinuity")
+    }
+
+    @Test fun liveTranslateRecoverySetupAuthenticationKeepsLatestFailureAcrossActualJni() {
+        verifyLiveTranslateRecoveryCases(JSONArray().put(JSONObject("""{
+            "id":"recovery-setup-authentication", "expectedConnections":2,
+            "failureFrame":{"type":"error","error":{"code":"response_idle_timeout","message":"synthetic-private-detail"}},
+            "retrySetupFailureFrame":{"type":"error","error":{"code":"unauthorized","message":"synthetic-private-detail"}},
+            "expectedErrorCode":"credential_authentication_failed"
+        }""")))
+    }
+
+    private fun verifyLiveTranslateRecoveryCases(contract: String) {
+        val cases = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONArray(contract)
+        verifyLiveTranslateRecoveryCases(cases)
+    }
+
+    private fun verifyLiveTranslateRecoveryCases(cases: JSONArray) {
+        for (index in 0 until cases.length()) {
+            val case = cases.getJSONObject(index)
+            val id = case.getString("id")
+            RealtimeLoopback(ServiceProvider.DASHSCOPE, liveTranslate = true, liveRecovery = case).use { fixture ->
+                val handle = createLiveTranslate(fixture)
+                try {
+                    NativeRuntimeConfiguration.command("start", handle)
+                    if (!case.optBoolean("duringSetup") && !case.optBoolean("repeatFailures")) {
+                        awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
+                        fixture.nextMid.countDown()
+                    }
+                    if (case.isNull("expectedErrorCode")) {
+                        awaitRuntimeState(handle, fixture) {
+                            assertFalse("$id stopped instead of reconnecting", it.getBoolean("finished"))
+                            fixture.reconnected.count == 0L && it.getString("connectionStatus") == "listening"
+                        }
+                        repeat(5) { assertTrue(NativeRuntimeConfiguration.pcmRaw(handle, ByteArray(3_200) { 7 })) }
+                        assertTrue("Recovered audio did not arrive", fixture.recoveredAudio.await(3, TimeUnit.SECONDS))
+                        awaitRuntimeState(handle, fixture) {
+                            it.getJSONObject("snapshot").optJSONObject("displayPair")?.optString("translation") == "合成恢复字幕。"
+                        }
+                        NativeRuntimeConfiguration.command("finish", handle)
+                        awaitRuntimeState(handle, fixture) { it.getBoolean("finished") }
+                    } else {
+                        val failed = awaitRuntimeState(handle, fixture, expectedError = case.getString("expectedErrorCode"),
+                            timeoutSeconds = case.optLong("timeoutSeconds", 5)) { it.getBoolean("finished") }
+                        assertEquals(id, case.getString("expectedErrorCode"), failed.getString("errorCode"))
+                        assertFalse(failed.toString().contains("synthetic-private-detail"))
+                    }
+                    assertTrue("Manual finish opened another connection", fixture.noFurtherConnections.await(2, TimeUnit.SECONDS))
+                    fixture.checkFailure()
+                    assertEquals(id, case.getInt("expectedConnections"), fixture.connectionCount.get())
+                } finally { NativeRuntimeConfiguration.command("stop", handle) }
+            }
+        }
+    }
+
     @Test fun pcmBackpressureDuringSetupReconnectsTheSameHandleAndResumesAudioAcrossActualJni() {
         RealtimeLoopback(ServiceProvider.DASHSCOPE, liveTranslate = true, recoverOverflow = true).use { fixture ->
             val handle = createLiveTranslate(fixture)
@@ -1030,9 +1095,9 @@ class NativeRuntimeJniTest {
             .put("alibabaRealtimeMode", "liveTranslate").put("alibabaWorkspaceId", "synthetic-workspace")
             .put("sourceLanguage", "auto")).put("network", fixture.network)).getLong("handle")
 
-    private fun awaitRuntimeState(handle: Long, fixture: RealtimeLoopback, expectedError: String? = null,
+    private fun awaitRuntimeState(handle: Long, fixture: RealtimeLoopback, expectedError: String? = null, timeoutSeconds: Long = 5,
         predicate: (JSONObject) -> Boolean): JSONObject {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
         while (System.nanoTime() < deadline) {
             fixture.checkFailure()
             val state = NativeRuntimeConfiguration.command("poll", handle)
@@ -1190,7 +1255,7 @@ class NativeRuntimeJniTest {
         private val holdSetup: Boolean = false, private val recoverOverflow: Boolean = false,
         private val lateFinalReplay: Boolean = false, private val sourceOrderReplay: Boolean = false,
         private val translationStartReplay: Boolean = false, private val finishTailCount: Int = 1,
-        private val xaiRecovery: JSONObject? = null) : AutoCloseable {
+        private val xaiRecovery: JSONObject? = null, private val liveRecovery: JSONObject? = null) : AutoCloseable {
         private val tencent = provider == ServiceProvider.TENCENT
         private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate
         private val host = if (xaiRecovery != null) "api.x.ai"
@@ -1315,6 +1380,10 @@ class NativeRuntimeJniTest {
                         xaiRecoverySession(tls)
                         return@thread
                     }
+                    if (liveRecovery != null) {
+                        liveRecoverySession(tls)
+                        return@thread
+                    }
                     if (recoverOverflow) {
                         repeat(2) { index ->
                             acceptWebSocket(tls).use { secure ->
@@ -1418,6 +1487,61 @@ class NativeRuntimeJniTest {
             }
         }
 
+        private fun liveRecoverySession(tls: SSLContext) {
+            val recovery = requireNotNull(liveRecovery)
+            repeat(recovery.getInt("expectedConnections")) { connection ->
+                acceptWebSocket(tls).use { secure ->
+                    val input = DataInputStream(secure.inputStream)
+                    val output = secure.outputStream
+                    check(JSONObject(readText(input, output)).getString("type") == "session.update")
+                    val retrySetupFailure = if (connection > 0) recovery.optJSONObject("retrySetupFailureFrame") else null
+                    if (retrySetupFailure == null && (connection != 0 || !recovery.optBoolean("duringSetup"))) {
+                        send(output, """{"type":"session.updated"}""")
+                    }
+                    if (recovery.optBoolean("repeatFailures")) {
+                        if (connection + 1 == recovery.optInt("stableConnection")) {
+                            // The second periodic Ping proves the native health worker
+                            // completed its first successful probe; no arbitrary sleep
+                            // or subtitle event is used as a stability signal.
+                            secure.soTimeout = 15_000
+                            var healthProbes = 0
+                            check(readText(input, output, connection + 1) {
+                                healthProbes++
+                                if (healthProbes == 2) send(output, recovery.getJSONObject("failureFrame").toString())
+                            }.isEmpty())
+                            check(healthProbes == 2)
+                            return@use
+                        }
+                        send(output, recovery.getJSONObject("failureFrame").toString())
+                    } else if (retrySetupFailure != null) {
+                        send(output, retrySetupFailure.toString())
+                    } else if (connection == 0) {
+                        if (!recovery.optBoolean("duringSetup")) check(nextMid.await(5, TimeUnit.SECONDS))
+                        if (recovery.isNull("failureFrame")) frame(output, 8, byteArrayOf(3, -24))
+                        else send(output, recovery.getJSONObject("failureFrame").toString())
+                    } else {
+                        reconnected.countDown()
+                        repeat(5) {
+                            val audio = JSONObject(readText(input, output, 2))
+                            check(audio.getString("type") == "input_audio_buffer.append")
+                            check(Base64.getDecoder().decode(audio.getString("audio")).contentEquals(ByteArray(3_200) { 7 }))
+                            recoveredAudio.countDown()
+                        }
+                        send(output, """{"type":"conversation.item.input_audio_transcription.completed","item_id":"recovered-source","transcript":"Synthetic recovered caption."}""")
+                        send(output, """{"type":"conversation.item.created","previous_item_id":"recovered-source","item":{"id":"recovered-output","role":"assistant"}}""")
+                        send(output, """{"type":"response.done","response":{"id":"recovered-response","status":"completed","output":[{"id":"recovered-output","content":[{"type":"output_text","text":"合成恢复字幕。"}]}]}}""")
+                        check(JSONObject(readText(input, output, 2)).getString("type") == "session.finish")
+                        send(output, """{"type":"session.finished"}""")
+                    }
+                    check(readText(input, output, connection + 1).isEmpty())
+                }
+            }
+            server.soTimeout = 500
+            try {
+                server.accept().use { connectionCount.incrementAndGet(); error("Unexpected extra LiveTranslate connection") }
+            } catch (_: java.net.SocketTimeoutException) { noFurtherConnections.countDown() }
+        }
+
         private fun liveTranslateSession(input: DataInputStream, output: OutputStream, connection: Int = 1) {
             val update = JSONObject(readText(input, output, connection))
             check(update.getString("type") == "session.update")
@@ -1502,7 +1626,7 @@ class NativeRuntimeJniTest {
             output.write(bytes)
             output.flush()
         }
-        private fun readText(input: DataInputStream, output: OutputStream, connection: Int = 1): String {
+        private fun readText(input: DataInputStream, output: OutputStream, connection: Int = 1, afterPong: (() -> Unit)? = null): String {
             try {
                 while (true) {
                     val opcode = input.readUnsignedByte() and 15
@@ -1518,7 +1642,10 @@ class NativeRuntimeJniTest {
                         return ""
                     }
                     if ((qwen || liveTranslate) && opcode == 2) continue
-                    if (opcode == 9) frame(output, 10, payload) else {
+                    if (opcode == 9) {
+                        frame(output, 10, payload)
+                        afterPong?.invoke()
+                    } else {
                         check(opcode == 1) { "Unexpected loopback client frame" }
                         return payload.toString(Charsets.UTF_8)
                     }

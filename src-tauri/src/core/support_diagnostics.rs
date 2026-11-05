@@ -2,7 +2,7 @@
 //! profile/device names, paths, credentials, or subtitle content as inputs.
 use crate::core::diagnostics::{TranslationLatencyKind, TranslationRecovery};
 use crate::core::models::TranslationMode;
-use crate::core::provider::ProviderKind;
+use crate::core::provider::{AlibabaRealtimeMode, ProviderKind};
 use serde::Serialize;
 use std::collections::VecDeque;
 
@@ -72,6 +72,9 @@ impl SafeFailure {
         if let Some(failure) = Self::from_apple_speech_error(error) {
             return failure;
         }
+        if let Some(failure) = Self::from_alibaba_connection_error(error) {
+            return failure;
+        }
         let translation_failure = match error {
             "translation_rate_limited" => Some(("rate_limit", "TRANSLATION_RATE_LIMITED")),
             "translation_temporarily_unavailable" => {
@@ -92,6 +95,35 @@ impl SafeFailure {
             };
         }
         let runtime_failure = match error {
+            "alibaba_realtime_idle_timeout"
+            | "The Alibaba realtime session timed out while idle." => Some((
+                "websocket_connection",
+                "timeout",
+                "ALIBABA_REALTIME_IDLE_TIMEOUT",
+            )),
+            "alibaba_realtime_service_unavailable"
+            | "The Alibaba realtime service is temporarily unavailable." => Some((
+                "websocket_connection",
+                "service_error",
+                "ALIBABA_REALTIME_SERVICE_UNAVAILABLE",
+            )),
+            "alibaba_realtime_provider_error"
+            | "The Alibaba realtime service rejected the request." => Some((
+                "websocket_connection",
+                "request_rejected",
+                "ALIBABA_REALTIME_PROVIDER_ERROR",
+            )),
+            "alibaba_realtime_response_failed" | "The Alibaba realtime response failed." => Some((
+                "text_translation",
+                "service_error",
+                "ALIBABA_REALTIME_RESPONSE_FAILED",
+            )),
+            "live_translate_unexpected_session_end"
+            | "The live translation session ended unexpectedly." => Some((
+                "websocket_connection",
+                "service_error",
+                "LIVE_TRANSLATE_UNEXPECTED_SESSION_END",
+            )),
             "subtitle_text_too_large" => {
                 Some(("subtitles", "size_limit", "SUBTITLE_TEXT_TOO_LARGE"))
             }
@@ -214,6 +246,60 @@ impl SafeFailure {
             code,
             provider_status_code: None,
         }
+    }
+
+    /// Exact client-owned messages only: never copy arbitrary transport details
+    /// or infer a network/provider root cause from an unanswered health probe.
+    fn from_alibaba_connection_error(error: &str) -> Option<Self> {
+        let (phase, category, code) = match error {
+            "The live translation session is not connected." => (
+                "websocket_connection",
+                "transport",
+                "LIVE_TRANSLATE_NOT_CONNECTED",
+            ),
+            "The live translation connection stopped responding." => (
+                "websocket_connection",
+                "timeout",
+                "LIVE_TRANSLATE_HEALTH_TIMEOUT",
+            ),
+            "The live translation connection could not be established in time." => (
+                "websocket_connection",
+                "timeout",
+                "LIVE_TRANSLATE_CONNECTION_TIMEOUT",
+            ),
+            "The live translation session setup timed out." => {
+                ("setup", "timeout", "LIVE_TRANSLATE_SETUP_TIMEOUT")
+            }
+            "The live translation session setup was rejected." => {
+                ("setup", "request_rejected", "LIVE_TRANSLATE_SETUP_REJECTED")
+            }
+            "The live translation transport failed."
+            | "The live translation connection closed." => (
+                "websocket_connection",
+                "transport",
+                "LIVE_TRANSLATE_TRANSPORT_ERROR",
+            ),
+            "The speech recognition session is not connected." => {
+                ("websocket_connection", "transport", "ASR_NOT_CONNECTED")
+            }
+            "The speech recognition connection stopped responding." => {
+                ("websocket_connection", "timeout", "ASR_HEALTH_TIMEOUT")
+            }
+            "The speech recognition connection could not be established in time." => {
+                ("websocket_connection", "timeout", "ASR_CONNECTION_TIMEOUT")
+            }
+            "The speech recognition transport failed."
+            | "The speech recognition connection closed." => {
+                ("websocket_connection", "transport", "ASR_TRANSPORT_ERROR")
+            }
+            _ => return None,
+        };
+        Some(Self {
+            phase,
+            category,
+            code,
+            provider_status_code: None,
+        })
     }
 
     /// Preserve the observed Apple recognition boundary without retaining
@@ -363,6 +449,11 @@ impl SafeFailure {
             | "provider_event_backlog_overflow"
             | "subtitle_text_too_large"
             | "transport_error"
+            | "live_translate_unexpected_session_end"
+            | "alibaba_realtime_service_unavailable"
+            | "alibaba_realtime_idle_timeout"
+            | "alibaba_realtime_provider_error"
+            | "alibaba_realtime_response_failed"
             | "baidu_unexpected_session_end" => Self::from_error(code),
             _ => Self::from_error(message),
         }
@@ -401,11 +492,23 @@ pub enum LifecycleAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DiagnosticEvent {
-    Lifecycle { action: LifecycleAction },
-    Status { status: DiagnosticStatus },
-    Failure { classification: SafeFailure },
-    Recovery { action: RecoveryAction },
-    TranslationBackoff { recovery: TranslationRecovery },
+    Lifecycle {
+        action: LifecycleAction,
+    },
+    Status {
+        status: DiagnosticStatus,
+    },
+    Failure {
+        classification: SafeFailure,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_source: Option<crate::core::audio_input::AudioSource>,
+    },
+    Recovery {
+        action: RecoveryAction,
+    },
+    TranslationBackoff {
+        recovery: TranslationRecovery,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -522,6 +625,7 @@ pub enum Availability {
 pub struct DiagnosticFacts {
     pub provider: Option<ProviderKind>,
     pub mode: TranslationMode,
+    pub alibaba_realtime_mode: Option<AlibabaRealtimeMode>,
     pub status: DiagnosticStatus,
     pub output_selection: OutputSelection,
     pub output_availability: Availability,
@@ -544,6 +648,7 @@ impl Default for DiagnosticFacts {
         Self {
             provider: None,
             mode: TranslationMode::LowLatency,
+            alibaba_realtime_mode: None,
             status: DiagnosticStatus::Idle,
             output_selection: OutputSelection::PlatformSystemAudio,
             output_availability: Availability::Unknown,
@@ -572,6 +677,7 @@ pub fn render(facts: DiagnosticFacts) -> String {
         "provider": facts.provider,
         "credentials": { "state": "unknown", "authentication": "unknown" },
         "mode": facts.mode,
+        "alibaba_realtime_mode": facts.alibaba_realtime_mode,
         "session_status": facts.status,
         "capture": { "output_selection": facts.output_selection, "output_availability": facts.output_availability,
             "observation": facts.capture.map(|(observation, age)| serde_json::json!({ "pcm_data_recent": observation.pcm_data_recent, "sound_recent": observation.sound_recent, "observation_age_ms": age })) },
@@ -855,6 +961,7 @@ mod tests {
             let mut journal = DiagnosticJournal::default();
             journal.record(
                 DiagnosticEvent::Failure {
+                    audio_source: None,
                     classification: failure,
                 },
                 20,
@@ -930,6 +1037,7 @@ mod tests {
             let mut journal = DiagnosticJournal::default();
             journal.record(
                 DiagnosticEvent::Failure {
+                    audio_source: None,
                     classification: failure,
                 },
                 707_700,
@@ -989,6 +1097,7 @@ mod tests {
         let mut journal = DiagnosticJournal::default();
         journal.record(
             DiagnosticEvent::Failure {
+                audio_source: None,
                 classification: failure,
             },
             20,
@@ -1026,6 +1135,7 @@ mod tests {
             let mut journal = DiagnosticJournal::default();
             journal.record(
                 DiagnosticEvent::Failure {
+                    audio_source: None,
                     classification: failure,
                 },
                 20,
@@ -1149,6 +1259,216 @@ mod tests {
                 assert!(!json.contains("private"));
                 assert!(!json.contains("provider_status_code"));
             }
+        }
+    }
+
+    #[test]
+    fn alibaba_recovery_codes_preserve_safe_reasons_without_provider_messages() {
+        for (label, code) in [
+            (
+                "alibaba_realtime_idle_timeout",
+                "ALIBABA_REALTIME_IDLE_TIMEOUT",
+            ),
+            (
+                "live_translate_unexpected_session_end",
+                "LIVE_TRANSLATE_UNEXPECTED_SESSION_END",
+            ),
+            (
+                "alibaba_realtime_service_unavailable",
+                "ALIBABA_REALTIME_SERVICE_UNAVAILABLE",
+            ),
+            (
+                "alibaba_realtime_provider_error",
+                "ALIBABA_REALTIME_PROVIDER_ERROR",
+            ),
+            (
+                "alibaba_realtime_response_failed",
+                "ALIBABA_REALTIME_RESPONSE_FAILED",
+            ),
+        ] {
+            let failure = SafeFailure::from_provider_error(label, "private response body");
+            assert_eq!(failure.code, code);
+            assert_eq!(SafeFailure::from_error(label), failure);
+            assert!(!serde_json::to_string(&failure).unwrap().contains("private"));
+            assert_eq!(
+                SafeFailure::from_provider_error(&format!("{label}.private"), "private").code,
+                "OTHER"
+            );
+        }
+    }
+
+    #[test]
+    fn alibaba_connection_errors_keep_the_observed_boundary_without_private_details() {
+        use mimi_runtime::clients::audio3_client::Audio3ASRClientError as Asr;
+        use mimi_runtime::clients::live_translate_client::LiveTranslateClientError as Live;
+
+        let cases = [
+            (
+                Live::NotConnected.to_string(),
+                "websocket_connection",
+                "transport",
+                "LIVE_TRANSLATE_NOT_CONNECTED",
+            ),
+            (
+                Live::HealthCheckTimedOut.to_string(),
+                "websocket_connection",
+                "timeout",
+                "LIVE_TRANSLATE_HEALTH_TIMEOUT",
+            ),
+            (
+                Live::ConnectionTimedOut.to_string(),
+                "websocket_connection",
+                "timeout",
+                "LIVE_TRANSLATE_CONNECTION_TIMEOUT",
+            ),
+            (
+                Live::SessionSetupTimedOut.to_string(),
+                "setup",
+                "timeout",
+                "LIVE_TRANSLATE_SETUP_TIMEOUT",
+            ),
+            (
+                Live::SessionSetupRejected.to_string(),
+                "setup",
+                "request_rejected",
+                "LIVE_TRANSLATE_SETUP_REJECTED",
+            ),
+            (
+                Live::TransportFailure.to_string(),
+                "websocket_connection",
+                "transport",
+                "LIVE_TRANSLATE_TRANSPORT_ERROR",
+            ),
+            (
+                Asr::NotConnected.to_string(),
+                "websocket_connection",
+                "transport",
+                "ASR_NOT_CONNECTED",
+            ),
+            (
+                Asr::HealthCheckTimedOut.to_string(),
+                "websocket_connection",
+                "timeout",
+                "ASR_HEALTH_TIMEOUT",
+            ),
+            (
+                Asr::ConnectionTimedOut.to_string(),
+                "websocket_connection",
+                "timeout",
+                "ASR_CONNECTION_TIMEOUT",
+            ),
+            (
+                Asr::TransportFailure.to_string(),
+                "websocket_connection",
+                "transport",
+                "ASR_TRANSPORT_ERROR",
+            ),
+        ];
+        for (message, phase, category, code) in cases {
+            let failure = SafeFailure::from_error(&message);
+            assert_eq!(
+                (failure.phase, failure.category, failure.code),
+                (phase, category, code)
+            );
+            assert_eq!(
+                SafeFailure::from_provider_error("unknown", &message),
+                failure
+            );
+            assert_eq!(failure.provider_status_code, None);
+            for unsafe_message in [
+                format!("{message} private-detail"),
+                format!("private {message}"),
+                format!("{message}\n"),
+            ] {
+                assert_eq!(SafeFailure::from_error(&unsafe_message).code, "OTHER");
+            }
+        }
+    }
+
+    #[test]
+    fn recovered_health_failure_remains_in_the_bounded_support_report() {
+        use mimi_runtime::clients::live_translate_client::LiveTranslateClientError;
+        for audio_source in [
+            None,
+            Some(crate::core::audio_input::AudioSource::System),
+            Some(crate::core::audio_input::AudioSource::Microphone),
+        ] {
+            let failure =
+                SafeFailure::from_error(&LiveTranslateClientError::HealthCheckTimedOut.to_string());
+            let mut journal = DiagnosticJournal::default();
+            journal.record(
+                DiagnosticEvent::Failure {
+                    audio_source,
+                    classification: failure,
+                },
+                10,
+            );
+            journal.record(
+                DiagnosticEvent::Recovery {
+                    action: RecoveryAction::Retrying,
+                },
+                11,
+            );
+            journal.record(
+                DiagnosticEvent::Recovery {
+                    action: RecoveryAction::Recovered,
+                },
+                20,
+            );
+            let report: serde_json::Value = serde_json::from_str(&render(DiagnosticFacts {
+                last_error: Some((failure, 10)),
+                recovery: Some((RecoveryAction::Recovered, 0)),
+                journal: journal.snapshot(),
+                ..Default::default()
+            }))
+            .unwrap();
+            assert_eq!(
+                report["journal"]["recent_events"][0]["classification"]["code"],
+                "LIVE_TRANSLATE_HEALTH_TIMEOUT"
+            );
+            assert_eq!(
+                report["last_error"]["classification"]["code"],
+                "LIVE_TRANSLATE_HEALTH_TIMEOUT"
+            );
+            assert_eq!(report["recent_recovery"]["action"], "recovered");
+            assert_eq!(
+                report["journal"]["recent_events"][0]["audio_source"],
+                serde_json::to_value(audio_source).unwrap()
+            );
+            if audio_source.is_none() {
+                assert!(report["journal"]["recent_events"][0]
+                    .get("audio_source")
+                    .is_none());
+            }
+            assert!(report["unknown"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("root_cause")));
+        }
+    }
+
+    #[test]
+    fn alibaba_route_is_distinct_from_the_legacy_translation_mode() {
+        for (route, expected) in [
+            (
+                Some(AlibabaRealtimeMode::LiveTranslate),
+                serde_json::json!("liveTranslate"),
+            ),
+            (
+                Some(AlibabaRealtimeMode::Disabled),
+                serde_json::json!("disabled"),
+            ),
+            (None, serde_json::Value::Null),
+        ] {
+            let report: serde_json::Value = serde_json::from_str(&render(DiagnosticFacts {
+                provider: Some(ProviderKind::AlibabaCloud),
+                mode: TranslationMode::Turbo,
+                alibaba_realtime_mode: route,
+                ..Default::default()
+            }))
+            .unwrap();
+            assert_eq!(report["mode"], "turbo");
+            assert_eq!(report["alibaba_realtime_mode"], expected);
         }
     }
 

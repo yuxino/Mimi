@@ -268,6 +268,14 @@ const builtinServiceErrors = {
   ]),
   interrupted: new Set([
     "The live translation service returned invalid data.",
+    "live_translate_unexpected_session_end",
+    "The live translation session ended unexpectedly.",
+    "alibaba_realtime_service_unavailable",
+    "The Alibaba realtime service is temporarily unavailable.",
+    "alibaba_realtime_idle_timeout",
+    "The Alibaba realtime session timed out while idle.",
+    "alibaba_realtime_response_failed",
+    "The Alibaba realtime response failed.",
     "OpenAI Realtime Translation returned an invalid response.",
     "Gemini Live Translation returned an invalid response.",
     "Azure OpenAI Realtime Translation returned an invalid response.",
@@ -292,6 +300,7 @@ const tencentErrorReasons = {
 
 function builtinServiceErrorMessage(error: string): string | null {
   const labels = diagnosticCopy();
+  if (error === "alibaba_realtime_provider_error" || error === "The Alibaba realtime service rejected the request.") return labels.reasons.serviceRejected;
   if (Object.hasOwn(tencentErrorReasons, error)) return labels.reasons[tencentErrorReasons[error as keyof typeof tencentErrorReasons]];
   if (builtinServiceErrors.unreachable.has(error)) return labels.unreachable;
   if (builtinServiceErrors.timeout.has(error)) return labels.timeout;
