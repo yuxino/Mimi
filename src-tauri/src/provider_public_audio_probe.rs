@@ -30,8 +30,10 @@ const PHASES: [&str; 4] = ["speech", "silence", "resumed_speech", "finish"];
 struct PhaseCounts {
     source_events: u64,
     source_finals: u64,
+    source_clear_events: u64,
     translation_events: u64,
     translation_finals: u64,
+    translation_clear_events: u64,
     confirmed_pairs: u64,
     sent_frames: u64,
     sent_bytes: u64,
@@ -60,12 +62,16 @@ impl PhaseCounts {
         let before = self.source_events + self.translation_events;
         match event {
             Event::SourceDraft { text, .. } | Event::SourceUtteranceDraft { text, .. } => {
+                self.source_clear_events += u64::from(text.is_empty());
                 self.source(text, false);
             }
             Event::SourceFinal { text, .. } | Event::SourceUtteranceFinal { text, .. } => {
                 self.source(text, true);
             }
-            Event::TranslationDraft(text) => self.translation(text, false),
+            Event::TranslationDraft(text) => {
+                self.translation_clear_events += u64::from(text.is_empty());
+                self.translation(text, false);
+            }
             Event::TranslationFinal(text) => self.translation(text, true),
             Event::UtteranceText {
                 role,
@@ -195,7 +201,11 @@ impl Observation {
         match event {
             Event::Error { code, message } => self.fail_with_diagnostic(
                 "provider_event",
-                normalize_provider_error_code(code),
+                match code.as_str() {
+                    "openai_close_timeout" => "openai_close_timeout",
+                    "openai_session_close_failed" => "openai_session_close_failed",
+                    _ => normalize_provider_error_code(code),
+                },
                 Some(SafeFailure::from_provider_error(code, message)),
                 None,
                 started,
@@ -213,10 +223,17 @@ impl Observation {
 
 fn saved_configuration(
 ) -> Result<(String, &'static str, LiveTranslationConfiguration), &'static str> {
+    let scope = match std::env::var("MIMI_PROVIDER_PUBLIC_CONFIG_SCOPE").as_deref() {
+        Err(std::env::VarError::NotPresent) | Ok("development") => {
+            DEVELOPMENT_APPLICATION_IDENTIFIER
+        }
+        Ok("production") => "app.yuxino.mimi",
+        _ => return Err("manual_probe_scope_invalid"),
+    };
     let directory = PathBuf::from(std::env::var_os("HOME").ok_or("home_unavailable")?)
         .join("Library/Application Support")
-        .join(DEVELOPMENT_APPLICATION_IDENTIFIER);
-    let settings = SettingsStore::load_for_read_only_manual_probe(directory)?;
+        .join(scope);
+    let settings = SettingsStore::load_for_scoped_read_only_manual_probe(directory, scope)?;
     let id = std::env::var("MIMI_PROVIDER_PUBLIC_PROFILE").map_err(|_| "profile_required")?;
     let mut profile = settings
         .profile_catalog()
@@ -271,10 +288,12 @@ fn saved_configuration(
     Ok((id, route, configuration))
 }
 
-fn public_pcm(sample_rate: u32) -> Result<Vec<u8>, &'static str> {
-    let variable = match sample_rate {
-        16_000 => "MIMI_PROVIDER_PUBLIC_PCM16",
-        24_000 => "MIMI_PROVIDER_PUBLIC_PCM24",
+fn public_pcm(sample_rate: u32, resumed: bool) -> Result<Vec<u8>, &'static str> {
+    let variable = match (sample_rate, resumed) {
+        (16_000, false) => "MIMI_PROVIDER_PUBLIC_PCM16",
+        (24_000, false) => "MIMI_PROVIDER_PUBLIC_PCM24",
+        (16_000, true) => "MIMI_PROVIDER_PUBLIC_RESUMED_PCM16",
+        (24_000, true) => "MIMI_PROVIDER_PUBLIC_RESUMED_PCM24",
         _ => return Err("sample_rate_invalid"),
     };
     let path = PathBuf::from(std::env::var_os(variable).ok_or("public_pcm_required")?);
@@ -327,13 +346,48 @@ async fn run() -> Result<(), &'static str> {
     let (profile_id, route, configuration) = saved_configuration()?;
     let silence_seconds = match std::env::var("MIMI_PROVIDER_PUBLIC_SILENCE_SECONDS").as_deref() {
         Err(std::env::VarError::NotPresent) | Ok("90") => 90,
+        Ok("0") => 0,
         Ok("1200") => 1200,
         _ => return Err("silence_duration_invalid"),
     };
+    let send_silence_pcm = match std::env::var("MIMI_PROVIDER_PUBLIC_SILENCE_INPUT").as_deref() {
+        Err(std::env::VarError::NotPresent) | Ok("zero_pcm") => true,
+        Ok("no_pcm") => false,
+        _ => return Err("silence_input_invalid"),
+    };
     let sample_rate = configuration.capabilities().input_sample_rate_hz;
-    let pcm = public_pcm(sample_rate)?;
+    let pcm = public_pcm(sample_rate, false)?;
+    let resumed_pcm = if std::env::var("MIMI_PROVIDER_PUBLIC_SEPARATE_RESUME").as_deref() == Ok("1")
+    {
+        public_pcm(sample_rate, true)?
+    } else {
+        pcm.clone()
+    };
+    let sample = std::env::var("MIMI_PROVIDER_PUBLIC_SAMPLE_LABEL")
+        .unwrap_or_else(|_| "fleurs-english-1527".into());
+    if sample.is_empty()
+        || sample.len() > 64
+        || !sample
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return Err("sample_label_invalid");
+    }
     let frame_time = frame_duration(configuration.provider);
     let frame_bytes = (u128::from(sample_rate) * 2 * frame_time.as_millis() / 1000) as usize;
+    let play_once = std::env::var("MIMI_PROVIDER_PUBLIC_ONCE").as_deref() == Ok("1");
+    let speech_frames = |bytes: usize| {
+        if play_once {
+            bytes.div_ceil(frame_bytes) as u64
+        } else {
+            60_000 / frame_time.as_millis() as u64
+        }
+    };
+    let phase_frames = [
+        speech_frames(pcm.len()),
+        silence_seconds * 1000 / frame_time.as_millis() as u64,
+        speech_frames(resumed_pcm.len()),
+    ];
     let started = Instant::now();
     let observed = Arc::new(Mutex::new(Observation::default()));
     let phase = Arc::new(AtomicUsize::new(0));
@@ -341,6 +395,14 @@ async fn run() -> Result<(), &'static str> {
     let (sender, mut receiver) = provider_event_channel();
     let client = TranslationClient::new(&configuration, sender)
         .map_err(|_| "client_configuration_invalid")?;
+    let source_isolation_baseline =
+        std::env::var("MIMI_PROVIDER_PUBLIC_SOURCE_BASELINE").as_deref() == Ok("1");
+    if source_isolation_baseline {
+        let TranslationClient::OpenAIRealtime(openai) = &client else {
+            return Err("source_baseline_provider_invalid");
+        };
+        openai.disable_source_isolation_for_comparison().await;
+    }
     let reader_observed = Arc::clone(&observed);
     let reader_phase = Arc::clone(&phase);
     let reader_closing = Arc::clone(&closing);
@@ -371,8 +433,10 @@ async fn run() -> Result<(), &'static str> {
     println!(
         "{}",
         json!({"phase":"preflight","profile_id":profile_id,"provider":configuration.provider,
-        "route":route,"sample":"fleurs-english-1527","sample_rate":sample_rate,"sample_bytes":pcm.len(),
-        "frame_ms":frame_time.as_millis(),"source":configuration.source_language.raw_value(),"target":"zh","durations_seconds":[60,silence_seconds,60]})
+        "route":route,"sample":sample,"sample_rate":sample_rate,"sample_bytes":pcm.len(),"resumed_sample_bytes":resumed_pcm.len(),
+        "frame_ms":frame_time.as_millis(),"source":configuration.source_language.raw_value(),"target":"zh",
+        "silence_input": if send_silence_pcm { "zero_pcm" } else { "no_pcm" },
+        "play_once":play_once,"source_isolation_baseline":source_isolation_baseline,"phase_frames":phase_frames})
     );
     match tokio::time::timeout(Duration::from_secs(30), client.connect()).await {
         Ok(Ok(())) => {}
@@ -417,7 +481,7 @@ async fn run() -> Result<(), &'static str> {
             }
         }
     });
-    for (index, seconds) in [60, silence_seconds, 60].into_iter().enumerate() {
+    for (index, frames) in phase_frames.into_iter().enumerate() {
         if observed.lock().unwrap().first_failure.is_some() {
             break;
         }
@@ -427,18 +491,26 @@ async fn run() -> Result<(), &'static str> {
             json!({"phase":PHASES[index],"boundary":"start","elapsed_ms":started.elapsed().as_millis()})
         );
         let stage_started = tokio::time::Instant::now();
-        let frames = seconds * 1000 / frame_time.as_millis() as u64;
         let mut cursor = 0;
         for frame_index in 0..frames {
             tokio::time::sleep_until(stage_started + frame_time.mul_f64(frame_index as f64)).await;
             if observed.lock().unwrap().first_failure.is_some() {
                 break;
             }
+            if index == 1 && !send_silence_pcm {
+                continue;
+            }
             let mut frame = vec![0; frame_bytes];
             if index != 1 {
+                let pcm = if index == 2 { &resumed_pcm } else { &pcm };
                 for byte in &mut frame {
-                    *byte = pcm[cursor];
-                    cursor = (cursor + 1) % pcm.len();
+                    if cursor < pcm.len() {
+                        *byte = pcm[cursor];
+                        cursor += 1;
+                        if cursor == pcm.len() && !play_once {
+                            cursor = 0;
+                        }
+                    }
                 }
             }
             match tokio::time::timeout(Duration::from_secs(4), client.send_audio(&frame)).await {
@@ -464,7 +536,7 @@ async fn run() -> Result<(), &'static str> {
             }
         }
         if observed.lock().unwrap().first_failure.is_none() {
-            tokio::time::sleep_until(stage_started + Duration::from_secs(seconds)).await;
+            tokio::time::sleep_until(stage_started + frame_time.mul_f64(frames as f64)).await;
         }
         println!(
             "{}",
@@ -549,7 +621,7 @@ async fn run() -> Result<(), &'static str> {
 }
 
 #[tokio::test]
-#[ignore = "paid public-audio service check: explicit authorization, saved Dev profile and verified public PCM required"]
+#[ignore = "paid public-audio service check: explicit authorization, explicitly selected saved profile and verified public PCM required"]
 async fn manual_provider_public_audio_probe() {
     let result = run().await;
     if let Err(label) = result {

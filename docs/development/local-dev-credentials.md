@@ -37,6 +37,14 @@ Alibaba 或 Gemini 配置，并停止原生应用中的服务会话。
 环境变量仅提供非秘密的 manifest、输出路径和测试模式。运行付费探针仍需当次明确授权；
 普通自动检查不发送真实服务请求。
 
+`provider_public_audio_probe` 默认仍只读开发版。用户在当次排查明确要求使用
+正式版已保存的凭据时，可显式传入 `MIMI_PROVIDER_PUBLIC_CONFIG_SCOPE=production`
+和指定的 profile ID；它直接只读该应用命名空间，不复制凭据、不导入旧系统存储、
+不修改配置，也不在缺失时回退到另一应用。该入口仅编译进手动测试程序，
+不是正式应用的凭据共享功能。静音等待可选 `MIMI_PROVIDER_PUBLIC_SILENCE_INPUT=no_pcm`；
+原样短视频可用 `MIMI_PROVIDER_PUBLIC_ONCE=1`，仅尾帧补零，不循环内容。
+这些开关不是付费请求或操作当前原生会话的持续授权。
+
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
 ```

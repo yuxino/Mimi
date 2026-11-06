@@ -4,6 +4,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SharedTranscriptStreamTest {
+    @Test fun continuousLanguageAndSentenceBoundariesFollowSharedFixturesAcrossActualJni() {
+        val cases = org.json.JSONObject(requireNotNull(javaClass.getResourceAsStream("/transcript-continuity-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONArray("cases")
+        for (index in 0 until cases.length()) {
+            val case = cases.getJSONObject(index)
+            val listener = Listener()
+            val stream = SharedTranscriptStream(listener)
+            val steps = case.getJSONArray("steps")
+            for (stepIndex in 0 until steps.length()) {
+                val step = steps.getJSONObject(stepIndex)
+                when (step.getString("action")) {
+                    "source", "translation" -> stream.append(step.getString("action") == "source", step.getString("delta"),
+                        if (step.has("elapsed_ms")) step.getLong("elapsed_ms") else null)
+                    "finish" -> stream.finish()
+                    "reset" -> stream.reset()
+                }
+                val expected = step.getJSONArray("pairs")
+                assertEquals("${case.getString("id")} step $stepIndex", (0 until expected.length()).map {
+                    expected.getJSONArray(it).getString(0) to expected.getJSONArray(it).getString(1)
+                }, listener.pairs)
+            }
+        }
+    }
     private class Listener : EngineListener {
         val pairs = mutableListOf<Pair<String, String>>()
         override fun onSessionReady() = Unit

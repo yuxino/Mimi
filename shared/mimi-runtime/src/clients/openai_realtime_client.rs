@@ -101,6 +101,15 @@ impl OpenAIRealtimeClient {
         self.events.content_revision()
     }
 
+    #[cfg(feature = "test-support")]
+    pub async fn disable_source_isolation_for_comparison(&self) {
+        self.inner
+            .committer
+            .lock()
+            .await
+            .disable_source_isolation_for_comparison();
+    }
+
     /// Clears locally accepted subtitles without reconnecting or dropping audio.
     /// This protocol has no source-turn boundary: future deltas remain valid.
     pub async fn clear_content(&self) -> u64 {
@@ -477,6 +486,8 @@ struct ReceiveContext {
 }
 
 async fn receive_loop(mut context: ReceiveContext) {
+    #[cfg(feature = "test-support")]
+    let trace_started = std::time::Instant::now();
     while let Some(message) = context.stream.next().await {
         if context.inner.generation.load(Ordering::SeqCst) != context.generation {
             return;
@@ -503,6 +514,25 @@ async fn receive_loop(mut context: ReceiveContext) {
                 return;
             }
         };
+        #[cfg(feature = "test-support")]
+        if std::env::var("MIMI_REALTIME_METADATA_TRACE").as_deref() == Ok("1") {
+            let lane = match &event {
+                OpenAIRealtimeServerEvent::SourceTranscriptDelta { text, elapsed_ms } => {
+                    Some(("source", text.chars().count(), elapsed_ms))
+                }
+                OpenAIRealtimeServerEvent::TranslationTranscriptDelta { text, elapsed_ms } => {
+                    Some(("translation", text.chars().count(), elapsed_ms))
+                }
+                _ => None,
+            };
+            if let Some((lane, characters, alignment_ms)) = lane {
+                eprintln!(
+                    "{}",
+                    serde_json::json!({"phase":"wire_progress", "lane":lane, "characters":characters,
+                    "alignment_ms":alignment_ms, "received_ms":trace_started.elapsed().as_millis()})
+                );
+            }
+        }
         if handle_server_event(&context, event).await {
             return;
         }

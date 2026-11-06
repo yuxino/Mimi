@@ -54,11 +54,18 @@ pub(super) struct FileCredentialStore {
 impl FileCredentialStore {
     #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
     pub(super) fn for_read_only_manual_probe(directory: &Path) -> Result<Self, SecretStoreError> {
-        let mut store = Self::for_app(
+        Self::for_scoped_read_only_manual_probe(
             directory,
             super::DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
-            false,
-        );
+        )
+    }
+
+    #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+    pub(super) fn for_scoped_read_only_manual_probe(
+        directory: &Path,
+        service: &str,
+    ) -> Result<Self, SecretStoreError> {
+        let mut store = Self::for_app(directory, service, false);
         store.read_only = true;
         // Validate the existing document without creating files, repairing
         // permissions, or entering a native-store migration path.

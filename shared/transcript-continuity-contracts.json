@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "timed-unequal-sentence-progress",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "First. Second.",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "第一句。第二句",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "。",
+          "elapsed_ms": 1000,
+          "pairs": [
+            [
+              "First. Second.",
+              "第一句。第二句。"
+            ]
+          ]
+        },
+        {
+          "action": "finish",
+          "pairs": [
+            [
+              "First. Second.",
+              "第一句。第二句。"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "untimed-combined-translation-with-unfinished-source",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "First. Second",
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "合并的第一和第二句。",
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": ".",
+          "pairs": []
+        },
+        {
+          "action": "finish",
+          "pairs": [
+            [
+              "First. Second.",
+              "合并的第一和第二句。"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "language-switch-reset-retains-no-old-half",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "Old English.",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "reset",
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "新しい日本語。",
+          "elapsed_ms": 2000,
+          "pairs": []
+        },
+        {
+          "action": "finish",
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "中文原句。",
+          "elapsed_ms": 3000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "中文原句。",
+          "elapsed_ms": 3000,
+          "pairs": [
+            [
+              "中文原句。",
+              "中文原句。"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quoted-unicode-sentence-ends",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "「次の文。」",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "“下一句。” ",
+          "elapsed_ms": 1000,
+          "pairs": [
+            [
+              "「次の文。」",
+              "“下一句。”"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "newline-ends-remain-valid-boundaries",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "Next line\n  ",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "下一行\n  ",
+          "elapsed_ms": 1000,
+          "pairs": [
+            [
+              "Next line",
+              "下一行"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}
