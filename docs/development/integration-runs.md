@@ -6118,7 +6118,7 @@ playback remain unverified. Private evidence belongs to the existing
   API event counts had hidden that semantic error. The checkpoint was removed;
   its count-based pass above is historical rejected-candidate evidence. The
   divider exposes block boundaries but did not stop provider events. The final
-  source must be repackaged and replayed after this removal.
+  source was repackaged and replayed afterward, as recorded below.
 
 - Final retained source after removing the timed checkpoint passed canonical
   checks: core 112 plus five contract tests, runtime 999 (one ignored), JNI Rust
@@ -6127,3 +6127,26 @@ playback remain unverified. Private evidence belongs to the existing
   the silence test covers both immediate and 1.5-second delayed rejection after
   resumed PCM. Strict debugger-feature Clippy passed before the final core-only
   checkpoint removal; final canonical Clippy includes the changed shared code.
+
+- Final formal-app binary `5cd9d556` (runtime source `2839d6cf`, build started
+  before commit) replayed the same 50.54-second mixed sample. Originals and
+  translations updated continuously with the divider enabled and after disabling
+  it at 35.6 seconds. Diagnostics ended at 118 source/123 target events and one
+  confirmed tail after normal Stop, observed complete within 10.9 seconds. No
+  error/reconnect was observed. This accepts the bounded preview/stop path only:
+  Chinese paraphrasing, proper-name errors and one wrong translated ordinal
+  remain semantic failures. It does not establish exact sentence correspondence.
+- Both installed app identities verified. The independent development app was
+  refreshed with `--no-launch`; no configuration or credentials were copied.
+  Production was normally restarted to clear test-only previews and left stopped
+  on OpenAI automatic → Simplified Chinese, microphone/recording off and divider
+  restored off. User-owned browser tabs remain open; test media windows closed.
+- Private evidence was hash-verified into `2026-11-06-transcript-continuity`.
+  Removed 188 task paths including five failed/superseded app candidates,
+  duplicate packages, the stale manual-probe binary and temporary media/helpers.
+  Preserved the original release rollback separately from disposable builds.
+  Under Cargo/compiler locks, 153 superseded incremental sessions of identical
+  complete crate IDs were removed, freeing 10,402,521,088 allocated bytes;
+  every current session, other crate identity, source, credential and unrelated
+  dirty file was preserved. Cross-platform CI and merge are tracked in
+  [PR #337](https://github.com/yuxino/Mimi/pull/337).
