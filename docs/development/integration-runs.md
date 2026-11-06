@@ -5854,3 +5854,299 @@
   obsolete test executables, duplicate downloaded/package bundles and the
   detached release worktree. Preserved the installed formal/Dev apps, current
   reusable build dependencies, other worktrees and pre-existing document edits.
+
+### 2026-11-06 — reported OpenAI subtitle stall, live read-only diagnosis
+
+- The user confirmed the original trigger: switching from English to Japanese
+  content left the previous English/Chinese subtitles displayed. This is a
+  reported content-switch stall, distinct from the later observed pairing issue.
+- Inspected the already-running macOS production app, version 1.6.16; the
+  installed binary's exact revision was not independently verified. Source
+  inspection used `a27e9bc9` with pre-existing documentation edits. System audio,
+  automatic source language, Chinese output and intermediate subtitles were
+  selected; history retention and audio recording were off. No session restart,
+  capture, provider request or preference change was initiated by this check.
+- Ordinary stdout/stderr went to `/dev/null`; no production log file or saved
+  evidence case was available. The bounded in-app status history showed a
+  user-stop/start around 19:35 China time. It cannot reconstruct the earlier
+  screenshot's provider events or establish that stall's cause.
+- Diagnostics at 19:35:32 and 19:36:02 both observed recent PCM and sound, no
+  pending translation, and a listening session. Lifetime recognition updates
+  grew 204 → 256, translation updates 484 → 538, confirmed pairs 10 → 13;
+  latest connection round trips were 245 and 241 ms. These are event counts and
+  connection measurements, not semantic quality or end-to-end latency.
+- Native overlay inspection then showed multiple confirmed rows whose Chinese
+  text corresponded to the preceding English row. The currently displayed
+  source/result pairing is suspect even though events continue arriving. No
+  private subtitle text or screenshots were copied into the repository.
+  Inspect the shared OpenAI committer's independent punctuation cuts and timing
+  coverage next, using a deterministic synthetic replay; without the original
+  wire events, do not attribute this observation to a proven provider or reducer
+  cause. The original stall and actual source/result alignment remain unresolved.
+
+### 2026-11-06 — transcript continuity repair and production-provider comparison
+
+- Revision: `a27e9bc9` plus the transcript-continuity working tree; the final
+  verification receipt records the diff and binary hashes. Existing unrelated
+  documentation changes were preserved. The user subsequently authorized saved
+  production profiles, public-audio API checks and native computer control, and
+  explicitly requested the formal app and their existing X timeline. That is
+  authorization for this run, not a standing capture or paid-test permission.
+- Two synthetic fail-before cases establish a local pairing defect: independently
+  cutting source and translation at their own last punctuation can permanently
+  shift the two halves of one time interval. The shared committer now keeps the
+  complete joint interval together. Five reusable contracts cover unequal
+  progress, combined translations, reset, Unicode quotes and newline boundaries;
+  they run directly, through the serialized bridge and through actual JNI.
+- A production-key replay of the reported two-clip music post separated optional
+  original omission from transport loss. OpenAI kept returning translations while
+  originals stopped; Gemini returned both lanes before and after 90 seconds with
+  no PCM. OpenAI's second music clip also returned only one source event and no
+  translation on a fresh connection, while ordinary English immediately afterward
+  returned 48 source and 67 translation events. Sending zero PCM during the
+  90-second gap did not restore that music clip. These results do not establish
+  semantic quality or universal idle failure.
+- Ordinary English → 90 seconds of zero PCM → the same English resumed on
+  OpenAI: 43 source and 61 translation events in the resumed phase, first content
+  approximately 2.35 seconds after resume. The earlier idea of reconnecting on
+  absent originals was rejected: optional ASR omission must not interrupt useful
+  translation or spend a healthy connection's retry budget.
+- The retained fix isolates an original only after 20 seconds of continuing
+  translation, at least eight updates and 64 characters, without a gap over five
+  seconds. It clears the stale source, preserves the connection and bounds the
+  unpaired translation preview to 320 Unicode characters. A returning original
+  first clears that orphan translation, preventing it from becoming the new
+  original's confirmed partner. Quiet time alone cannot trigger this rule.
+  OpenAI/Azure use the shared path; Gemini keeps its block behavior.
+- Current-candidate real replay, music → 90-second quiet → English: the source
+  clear event occurred, translation continued, and resumed English produced
+  49 source / 56 translation events with one translation-clear event before the
+  new original. First resumed content arrived in about 2.14 seconds. The music
+  → quiet → second music comparison still produced no resumed text. Both runs
+  hit the existing two-second OpenAI graceful-close deadline; the overall probe
+  therefore remains failed, despite the specific isolation assertions passing.
+  No longer close deadline or network recovery change is shipped by this fix.
+- Installed the signed `local-package` candidate at the formal app path after
+  comparing its complete designated requirement with the installed release.
+  Version remains 1.6.16, locally patched; this is not a new public release.
+  Native capture restarted without a permission migration. History retention and
+  audio recording stayed off, microphone stayed off and system audio was used.
+  Native music playback showed the stale original disappear while translation
+  continued. Switching directly to a fixed 14.1-second synthetic Chinese sample
+  showed its complete Chinese text, matching the reference except punctuation
+  and spacing. This sample alone does not establish natural Chinese quality.
+- Native X timeline acceptance used three public clips, with actual media
+  `paused`/`muted`/time observations confirming audible playback. Chinese →
+  Japanese still exhibited missing originals: at 20:52:40 and 20:52:56 China
+  time, source updates stayed at 57 while translation updates grew 260 → 283,
+  sound was present and round trips were 320/293 ms. English playback after a
+  quiet interval updated both counters to 60/362 by 20:55:10. No manual restart
+  or clear occurred between clips. The original omission remains reproducible;
+  clearing stale display text is not a claim that upstream transcription quality
+  is repaired. Playback and the capture session were stopped after the check.
+- Replayed the same 45.2-second Japanese timeline clip on a fresh OpenAI
+  connection, then the fixed English control immediately afterward. Japanese
+  produced 21 source / 24 translation events, with first content about 20.4
+  seconds after audio began; English produced 44 / 48, first content about
+  1.83 seconds after the switch. This fresh connection differs from the native
+  mixed-history run and does not prove a local reset fixes provider recognition.
+  It again ended at the existing graceful-close deadline, not a full probe pass.
+- The sentence-divider preference was off during the observed omission. It only
+  changes rendering and cannot explain absent provider/source events. Existing
+  independent ASR + text-translation routes already skip the MT request when
+  a trustworthy source language matches the target; focused regressions cover
+  this. OpenAI integrated translation works from audio and has no equivalent
+  client-side per-utterance bypass. Han characters alone cannot safely distinguish
+  Chinese from Japanese; no script-guessing route change was introduced.
+- Other providers were reviewed at their actual identity/commit boundaries.
+  Gemini has the live comparison above; Azure, xAI, DashScope, Tencent, Baidu
+  and Volcengine have source/fixture review and automated regression evidence,
+  not new live acceptance for every provider. Do not generalize the two-provider
+  comparison into a claim that all services have been exercised or repaired.
+- Protocol cross-check: [OpenAI's translation guide](https://developers.openai.com/cookbook/examples/voice_solutions/realtime_translation_guide)
+  describes dynamic input language detection and possible suppression of
+  same-target-language translated audio; [the event contract](https://developers.openai.com/api/reference/resources/realtime/translation-server-events)
+  treats original transcription as an optional independent stream. Neither
+  supplies a reliable per-utterance source-language identity for this client to
+  bypass the integrated model using a script guess.
+- Final current-candidate verification passed with command-scoped
+  `CARGO_INCREMENTAL=0`: canonical checks include core 111 plus five contract
+  tests, runtime 997 (one ignored), JNI Rust 33, desktop 697 (one ignored), and
+  frontend 2,832 tests across 156 files. Strict debugger-feature Clippy passed
+  separately. Android Debug and Release each passed 324 tests across 44 suites,
+  zero failures/errors/skips; the actual JNI replay includes 15 seconds quiet,
+  continuing translation with absent originals, source return and explicit Stop
+  on one socket. These automated passes do not overwrite the failed real-provider
+  close results or establish Windows native capture acceptance.
+- Necessary public comparison samples, content-free traces, hashes, install
+  receipt and final check logs are retained in the private benchmark directory
+  `2026-11-06-transcript-continuity`. No timeline transcript, screenshot, recording
+  or credential is committed. Remaining checks are OpenAI original omission
+  after mixed-language history, natural Chinese quality beyond the fixed sample,
+  the graceful-close deadline, and native acceptance on other platforms/providers.
+
+## 2026-11-06 — Expanded production-provider continuity matrix (follow-up)
+
+The user explicitly requested more providers, longer investigation and special
+attention to OpenAI. This extends the preceding entry; its remaining gaps were
+not a completion claim for this expanded scope. Tests use production profiles
+read-only, public/synthetic fixed audio, at most two paid sessions concurrently,
+and no microphone, session recording or transcript retention. No public release
+is authorized. Private receipts identify each probe binary, exact sample hashes,
+parameters and failed boundary; timing below is event timing, not semantic lag.
+
+### Findings and current changes
+
+- OpenAI close comparisons with a diagnostic 15-second wait received valid
+  `session.closed` after 5,513 and 9,810 ms. The normal two-second deadline
+  truncated a healthy final flush. OpenAI now has 15 seconds inside a 17-second
+  provider bound; other providers keep their existing bounds. Both native drivers
+  use the client bound; the Android stop watchdog covers the longest operation.
+  A seven-second delayed close tail passes through actual JNI.
+- OpenAI's short unpunctuated Chinese can remain a live preview through a clip.
+  A ten-second timed checkpoint passed count-based API checks but failed native
+  semantic review: source and translation were cut at different positions across
+  Chinese/Japanese/English. **That checkpoint was removed.** The final change
+  retains conservative punctuation/size behavior and live previews, with a shared
+  regression against elapsed-time-only confirmation. Existing coarse timestamp
+  and bounded-size behavior still does not guarantee exact sentence alignment.
+- Gemini formal-app playback reproduced a Chinese original-only block retained
+  through a long idle and prepended to a following Japanese clip. A single lane
+  is now retired on new text after at least 20 seconds without either lane
+  advancing. Its preview stays visible during the wait; both old previews clear
+  when the next block begins. The same native Chinese → idle → Japanese case on
+  binary `d253e926faab656bf97c26bdd47b0c6cfbab2e312fbfdf436b5d6e08bd6273d9`
+  no longer prepended the old Chinese. Japanese recognition omissions and a
+  request-versus-statement translation error remained upstream quality failures.
+- Baidu twice rejected valid zero PCM after about 25 seconds with 20316. An
+  explicit diagnostic that ignored that code then observed an unsolicited END;
+  ignoring it cannot restore the socket. Only after 20 seconds of successfully
+  delivered all-zero PCM does 20316 now enter existing bounded transport recovery.
+  The last qualifying zero frame retains evidence for five seconds, covering a
+  late error after sound resumes; disconnect clears it. Setup/ordinary invalid-audio errors keep
+  their fatal classification. A real JNI replay sends 22 seconds of zero PCM,
+  reconnects and verifies resumed nonzero PCM and confirmed captions.
+- **The first native Baidu candidate still failed.** The formal app showed audio
+  backpressure followed by repeated reconnects and exhausted retries before the
+  planned resumed sample. Its 40-ms sender added wake/write overhead after every
+  frame; the next candidate preserves the scheduled cadence and discards catch-up
+  credit after a long stall. Sixteen focused Baidu tests pass, including a
+  simulated twenty-minute clock. Native acceptance was initially pending; see
+  the final bounded replay below.
+
+### Comparable live-provider evidence
+
+The mixed sample is Chinese TTS, one second quiet, Japanese TTS, one second quiet,
+public FLEURS English and a three-second tail (50.544 seconds), followed by
+90 seconds of zero PCM and the same mixed sample. Baidu/Tencent/Volcano use a
+fixed English sample because those configured routes require an explicit source.
+
+| Configured route | Result and limit |
+| --- | --- |
+| OpenAI integrated, old checkpoint + diagnostic close | First mixed phase 0 confirmed pairs; resumed 1. Close 5,513 ms. Failed first-phase final verification. |
+| OpenAI integrated, rejected timed checkpoint + normal close | First phase 3 pairs, resumed 4, final close 1; close 5,532 ms. Count-based probe passed, but later native semantic alignment failed; the timed checkpoint is removed. |
+| Gemini integrated, mixed/idle/mixed | 1 then 2 pairs; close 2,049 ms; 194.093-second probe passed. This does not establish semantic quality. |
+| Gemini, actual Japanese timeline clip then English | 2 then 1 pairs; close 2,052 ms; passed. First content after input start 2,845 ms, versus the earlier OpenAI case's 20,427 ms; these are not aligned spoken-word latency measurements. |
+| Alibaba Audio3 + Qwen MT | 4 then 4 pairs; close 53 ms; 191.578-second probe passed. |
+| Alibaba Audio3 + DeepL | 4 then 4 pairs; close 52 ms; 191.630-second probe passed. |
+| Alibaba LiveTranslate | 3 then 3 pairs; close 894 ms; 192.438-second probe passed. |
+| Volcano | 6 then 6 pairs; close 456 ms; 143.775-second English/idle/English probe passed. |
+| Baidu | Initial speech works; quiet phase rejects/ends before resume. Native follow-up also exposed backpressure; acceptance pending as above. |
+| Tencent | Setup rejects with 6004 / quota exhausted, zero PCM sent. Account-blocked; no paid retry loop. |
+| OpenAI existing recognition-only route | Same saved speech credentials, in-memory ASR mode and Original target; Chinese then Japanese yielded 2 then 2 confirmed originals in 30.239 seconds, no failure. Not an automatic provider/mode switch. |
+
+### Same-language limits demonstrated, not guessed
+
+Two identical Chinese samples through Audio3 + Qwen with automatic source produced
+17 independent MT requests and zero same-language final skips. The same samples
+with explicitly selected Chinese produced **zero** independent MT requests and
+2 same-language final skips (34.825 seconds). The fast path works when language is
+known; it does not currently eliminate MT for this automatic route. Audio3's
+[documented response](https://help.aliyun.com/en/model-studio/fun-asr-server-events)
+contains no detected-language field, and the decoder only knows an explicitly
+selected source. This is not a missing known language field to patch. Do not
+silently infer Chinese from Han characters in mixed Japanese/Chinese browsing or
+claim automatic same-language bypass is complete. A portable language-identification
+policy and comparable short/mixed-script evaluation remain follow-up work.
+
+Both OpenAI and Gemini sometimes supplied only original text for Chinese-to-Chinese
+in these tests. Their Chinese → Japanese short probes therefore failed the strict
+first-phase bilingual-final requirement even after the local fixes. Gemini's
+original script also varied between Traditional and Simplified across identical
+native samples. No local script conversion or fabricated translated counterpart
+was introduced. The original-only absence, music omission, rapid unmarked video
+switches and natural-language semantic quality remain explicit limitations.
+
+### Verification status
+
+Before the final Baidu cadence change, canonical checks passed, including core
+112 plus five contract tests, runtime 998 (one ignored), JNI Rust 33 and the full
+desktop/frontend pipeline. Android Debug and Release each passed 327 tests in
+44 suites with zero failures/errors/skips. New fixtures reject time-only confirmation of unpunctuated
+blocks, a stalled lane, incompatible timestamps, Gemini orphan retirement in
+both arrival orders, delayed counterparts and preview clearing. Initial restricted
+loopback runs failed with OS permission errors; the enabled local loopback run
+passed. Final cadence/native/CI verification will be recorded below.
+
+Production has no saved Azure or xAI profile, so this matrix makes no live claim
+for them; Apple native routes were not exercised in this expanded cloud-provider
+matrix. The divider remained off during reproduced stalls; it does not account
+for missing provider events. Windows/Linux native capture and Android device
+playback remain unverified. Private evidence belongs to the existing
+`2026-11-06-transcript-continuity` benchmark, never to Git.
+
+
+### Native recovery follow-up and rejected OpenAI candidate
+
+- Baidu cadence candidate `98409c25` removed observed backpressure: the first
+  English playback produced 42 source/42 target events and four confirmed
+  captions. After about 57 seconds quiet, 20316 arrived roughly 1.5 seconds after
+  sound resumed; immediately clearing silence evidence misclassified it as a
+  configuration rejection. The planned 90-second quiet was not reached in this
+  failed run. A five-second expiry from the last qualifying silent frame now
+  covers that in-flight reply; old evidence still expires and disconnect clears
+  it. Direct sockets and actual JNI cover ordinary, expired and late rejection.
+- Formal candidate `2447cb7b` then passed the same English sample with **107.3
+  seconds quiet**: source/target counts 41/41 → 83/83; confirmed captions 4 → 8.
+  Both playback phases visibly rendered, quiet disconnects recovered, no
+  backpressure was observed, and normal Stop completed. This is bounded capture
+  and recovery acceptance, not accurate proper-name recognition or a long-run
+  stability claim. No concurrent compiler load was present during playback.
+- The same candidate's 50.54-second Chinese/Japanese/English native replay with
+  divider lines enabled rejected the ten-second checkpoint: partial source and
+  target text landed in different confirmed blocks despite continuing updates.
+  API event counts had hidden that semantic error. The checkpoint was removed;
+  its count-based pass above is historical rejected-candidate evidence. The
+  divider exposes block boundaries but did not stop provider events. The final
+  source was repackaged and replayed afterward, as recorded below.
+
+- Final retained source after removing the timed checkpoint passed canonical
+  checks: core 112 plus five contract tests, runtime 999 (one ignored), JNI Rust
+  33, desktop 697 (one ignored), frontend 2,832 across 156 files. Android Debug
+  and Release each passed 327 tests across 44 suites, zero failures/errors/skips;
+  the silence test covers both immediate and 1.5-second delayed rejection after
+  resumed PCM. Strict debugger-feature Clippy passed before the final core-only
+  checkpoint removal; final canonical Clippy includes the changed shared code.
+
+- Final formal-app binary `5cd9d556` (runtime source `2839d6cf`, build started
+  before commit) replayed the same 50.54-second mixed sample. Originals and
+  translations updated continuously with the divider enabled and after disabling
+  it at 35.6 seconds. Diagnostics ended at 118 source/123 target events and one
+  confirmed tail after normal Stop, observed complete within 10.9 seconds. No
+  error/reconnect was observed. This accepts the bounded preview/stop path only:
+  Chinese paraphrasing, proper-name errors and one wrong translated ordinal
+  remain semantic failures. It does not establish exact sentence correspondence.
+- Both installed app identities verified. The independent development app was
+  refreshed with `--no-launch`; no configuration or credentials were copied.
+  Production was normally restarted to clear test-only previews and left stopped
+  on OpenAI automatic → Simplified Chinese, microphone/recording off and divider
+  restored off. User-owned browser tabs remain open; test media windows closed.
+- Private evidence was hash-verified into `2026-11-06-transcript-continuity`.
+  Removed 188 task paths including five failed/superseded app candidates,
+  duplicate packages, the stale manual-probe binary and temporary media/helpers.
+  Preserved the original release rollback separately from disposable builds.
+  Under Cargo/compiler locks, 153 superseded incremental sessions of identical
+  complete crate IDs were removed, freeing 10,402,521,088 allocated bytes;
+  every current session, other crate identity, source, credential and unrelated
+  dirty file was preserved. Cross-platform CI and merge are tracked in
+  [PR #337](https://github.com/yuxino/Mimi/pull/337).

@@ -84,12 +84,41 @@ impl SentenceContentState {
     }
 }
 
+// A server rejection can arrive just after speech resumes. Retain recent
+// delivered silence briefly without changing ordinary invalid-audio failures.
+#[derive(Default)]
+struct DeliveredSilence {
+    continuous_ms: u64,
+    last_qualifying_frame: Option<tokio::time::Instant>,
+}
+
+impl DeliveredSilence {
+    fn observe(&mut self, silent: bool, now: tokio::time::Instant) {
+        if silent {
+            self.continuous_ms = self
+                .continuous_ms
+                .saturating_add(u64::from(BaiduTranslateEndpoint::FRAME_DURATION_MS));
+            if self.continuous_ms >= 20_000 {
+                self.last_qualifying_frame = Some(now);
+            }
+        } else {
+            self.continuous_ms = 0;
+        }
+    }
+
+    fn qualifies(&self, now: tokio::time::Instant) -> bool {
+        self.last_qualifying_frame
+            .is_some_and(|last| now.saturating_duration_since(last) <= Duration::from_secs(5))
+    }
+}
+
 struct Inner {
     content_lock: Mutex<SentenceContentState>,
     sink: Mutex<Option<Sink>>,
     receive_task: Mutex<Option<JoinHandle<()>>>,
     audio_send_lock: Mutex<Option<tokio::time::Instant>>,
     pending_audio: Mutex<Vec<u8>>,
+    delivered_silence: Mutex<DeliveredSilence>,
     ready: AtomicBool,
     is_closing: AtomicBool,
     received_session_finished: AtomicBool,
@@ -174,6 +203,7 @@ impl BaiduTranslateClient {
                 receive_task: Mutex::new(None),
                 audio_send_lock: Mutex::new(None),
                 pending_audio: Mutex::new(Vec::new()),
+                delivered_silence: Mutex::new(DeliveredSilence::default()),
                 ready: AtomicBool::new(false),
                 is_closing: AtomicBool::new(false),
                 received_session_finished: AtomicBool::new(false),
@@ -412,6 +442,7 @@ impl BaiduTranslateClient {
         }
         self.inner.pending_audio.lock().await.clear();
         self.inner.finish_notify.notify_waiters();
+        *self.inner.delivered_silence.lock().await = DeliveredSilence::default();
     }
 
     async fn send_paced_binary(
@@ -422,9 +453,8 @@ impl BaiduTranslateClient {
     ) -> Result<(), BaiduTranslateClientError> {
         BaiduTranslateRequestEncoder::validate_audio_frame(&frame)
             .map_err(|_| BaiduTranslateClientError::TransportFailure)?;
-        if let Some(deadline) = *next_send_at {
-            tokio::time::sleep_until(deadline).await;
-        }
+        let scheduled_at = next_send_at.unwrap_or_else(tokio::time::Instant::now);
+        tokio::time::sleep_until(scheduled_at).await;
         let mut sink = self.inner.sink.lock().await;
         if self.inner.generation.load(Ordering::SeqCst) != generation {
             return Err(BaiduTranslateClientError::NotConnected);
@@ -434,6 +464,7 @@ impl BaiduTranslateClient {
         };
         let evidence =
             crate::development_audio::begin_pcm(&frame, BaiduTranslateEndpoint::SAMPLE_RATE_HZ);
+        let silent = frame.iter().all(|byte| *byte == 0);
         tokio::time::timeout(
             SEND_TIMEOUT,
             evidence.observe(sink.send(Message::Binary(frame.into()))),
@@ -441,10 +472,15 @@ impl BaiduTranslateClient {
         .await
         .map_err(|_| BaiduTranslateClientError::TransportFailure)?
         .map_err(|_| BaiduTranslateClientError::TransportFailure)?;
-        *next_send_at = Some(
-            tokio::time::Instant::now()
-                + Duration::from_millis(BaiduTranslateEndpoint::FRAME_DURATION_MS.into()),
-        );
+        self.inner
+            .delivered_silence
+            .lock()
+            .await
+            .observe(silent, tokio::time::Instant::now());
+        *next_send_at = Some(next_audio_frame_deadline(
+            scheduled_at,
+            tokio::time::Instant::now(),
+        ));
         Ok(())
     }
 
@@ -480,6 +516,16 @@ impl BaiduTranslateClient {
             self.disconnect().await;
         }
     }
+}
+
+fn next_audio_frame_deadline(
+    scheduled_at: tokio::time::Instant,
+    completed_at: tokio::time::Instant,
+) -> tokio::time::Instant {
+    // Preserve the 40-ms audio clock instead of adding every scheduler/write
+    // delay to it. Do not accumulate catch-up credit after a long network stall.
+    (scheduled_at + Duration::from_millis(BaiduTranslateEndpoint::FRAME_DURATION_MS.into()))
+        .max(completed_at)
 }
 
 fn map_protocol_configuration_error(
@@ -675,10 +721,20 @@ async fn handle_server_event(context: &ReceiveContext, event: BaiduTranslateServ
                 }
                 return false;
             }
+            // Production replays showed 20316 followed by END after 25 seconds
+            // of valid zero PCM. Recover only with delivered-silence evidence;
+            // malformed audio and setup rejection retain their fatal meaning.
+            let rejected_idle_audio = code == 20_316
+                && context
+                    .inner
+                    .delivered_silence
+                    .lock()
+                    .await
+                    .qualifies(tokio::time::Instant::now());
             emit_if_current(
                 context,
                 LiveTranslateServerEvent::Error {
-                    code: if code == 20_314 {
+                    code: if code == 20_314 || rejected_idle_audio {
                         // The documented idle disconnect uses the existing
                         // bounded transport recovery policy.
                         "transport_error".into()
@@ -743,6 +799,26 @@ fn emit_if_current(context: &ReceiveContext, event: LiveTranslateServerEvent) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn audio_clock_absorbs_small_send_delays_without_accumulating_catch_up_credit() {
+        let start = tokio::time::Instant::now();
+        let mut next = start;
+        // Twenty minutes of 3-ms wake/write overhead must not become 90
+        // seconds of queued audio behind a real-time capture producer.
+        for frame in 1..=30_000 {
+            next = next_audio_frame_deadline(next, next + Duration::from_millis(3));
+            assert_eq!(
+                next.duration_since(start),
+                Duration::from_millis(frame * 40)
+            );
+        }
+        let delayed = next + Duration::from_secs(5);
+        next = next_audio_frame_deadline(next, delayed);
+        assert_eq!(next, delayed);
+        next = next_audio_frame_deadline(next, delayed + Duration::from_millis(3));
+        assert_eq!(next, delayed + Duration::from_millis(40));
+    }
+
     #[tokio::test]
     async fn handshake_authentication_rejections_preserve_transport_failures() {
         for (status, expected_auth_label) in
@@ -913,6 +989,77 @@ mod tests {
         assert!(padded[17..].iter().all(|byte| *byte == 0));
     }
 
+    #[tokio::test]
+    async fn invalid_audio_only_recovers_with_recent_delivered_silence() {
+        for (quiet_ms, resume_sound, expired, expected) in [
+            (0, false, false, "baidu_provider_20316"),
+            (19_960, false, false, "baidu_provider_20316"),
+            (20_000, false, false, "transport_error"),
+            (20_000, true, false, "transport_error"),
+            (20_000, true, true, "baidu_provider_20316"),
+        ] {
+            let (reject, rejected) = tokio::sync::oneshot::channel();
+            let (client, mut events) = test_client(move |mut socket| {
+                Box::pin(async move {
+                    socket.next().await.unwrap().unwrap();
+                    socket
+                        .send(Message::Text(
+                            r#"{"code":0,"data":{"status":"STA"}}"#.into(),
+                        ))
+                        .await
+                        .unwrap();
+                    rejected.await.unwrap();
+                    socket
+                        .send(Message::Text(
+                            r#"{"code":20316,"msg":"private detail"}"#.into(),
+                        ))
+                        .await
+                        .unwrap();
+                    while socket.next().await.is_some() {}
+                })
+            })
+            .await;
+            client.connect().await.unwrap();
+            let evidence_time = tokio::time::Instant::now()
+                - if expired {
+                    Duration::from_secs(6)
+                } else {
+                    Duration::ZERO
+                };
+            for _ in 0..quiet_ms / 40 {
+                client
+                    .inner
+                    .delivered_silence
+                    .lock()
+                    .await
+                    .observe(true, evidence_time);
+            }
+            if resume_sound {
+                client
+                    .send_audio(&vec![7; BaiduTranslateEndpoint::AUDIO_FRAME_BYTE_COUNT])
+                    .await
+                    .unwrap();
+            }
+            reject.send(()).unwrap();
+            loop {
+                if let LiveTranslateServerEvent::Error { code, message } =
+                    next_event(&mut events).await
+                {
+                    assert_eq!(code, expected);
+                    assert!(!message.contains("private"));
+                    break;
+                }
+            }
+            client.disconnect().await;
+            assert!(!client
+                .inner
+                .delivered_silence
+                .lock()
+                .await
+                .qualifies(tokio::time::Instant::now()));
+        }
+    }
+
     async fn next_event(events: &mut ProviderEventReceiver) -> LiveTranslateServerEvent {
         tokio::time::timeout(Duration::from_secs(2), events.recv())
             .await
@@ -1054,6 +1201,7 @@ mod tests {
             (20_312, true),
             (20_315, true),
             (20_314, true),
+            (20_316, true),
             (20_312, false),
         ] {
             let (resume, resumed) = tokio::sync::oneshot::channel();
@@ -1082,7 +1230,7 @@ mod tests {
                         ))
                         .await
                         .unwrap();
-                    if code == 20_314 {
+                    if matches!(code, 20_314 | 20_316) {
                         return;
                     }
                     healthy_allowed.await.unwrap();
@@ -1117,8 +1265,18 @@ mod tests {
                 client.clear_content().await;
                 controller.clear_subtitles();
             }
+            if code == 20_316 {
+                for _ in 0..500 {
+                    client
+                        .inner
+                        .delivered_silence
+                        .lock()
+                        .await
+                        .observe(true, tokio::time::Instant::now());
+                }
+            }
             resume.send(()).unwrap();
-            if code == 20_314 {
+            if matches!(code, 20_314 | 20_316) {
                 let LiveTranslateServerEvent::Error { code, message } =
                     next_event(&mut events).await
                 else {

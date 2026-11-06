@@ -101,6 +101,15 @@ impl OpenAIRealtimeClient {
         self.events.content_revision()
     }
 
+    #[cfg(feature = "test-support")]
+    pub async fn disable_source_isolation_for_comparison(&self) {
+        self.inner
+            .committer
+            .lock()
+            .await
+            .disable_source_isolation_for_comparison();
+    }
+
     /// Clears locally accepted subtitles without reconnecting or dropping audio.
     /// This protocol has no source-turn boundary: future deltas remain valid.
     pub async fn clear_content(&self) -> u64 {
@@ -477,6 +486,8 @@ struct ReceiveContext {
 }
 
 async fn receive_loop(mut context: ReceiveContext) {
+    #[cfg(feature = "test-support")]
+    let trace_started = std::time::Instant::now();
     while let Some(message) = context.stream.next().await {
         if context.inner.generation.load(Ordering::SeqCst) != context.generation {
             return;
@@ -503,6 +514,31 @@ async fn receive_loop(mut context: ReceiveContext) {
                 return;
             }
         };
+        #[cfg(feature = "test-support")]
+        if std::env::var("MIMI_REALTIME_METADATA_TRACE").as_deref() == Ok("1") {
+            let lane = match &event {
+                OpenAIRealtimeServerEvent::SourceTranscriptDelta { text, elapsed_ms } => {
+                    Some(("source", text, elapsed_ms))
+                }
+                OpenAIRealtimeServerEvent::TranslationTranscriptDelta { text, elapsed_ms } => {
+                    Some(("translation", text, elapsed_ms))
+                }
+                _ => None,
+            };
+            if let Some((lane, text, alignment_ms)) = lane {
+                let sentence_end = text
+                    .trim_end_matches(|c: char| {
+                        c.is_whitespace()
+                            || matches!(c, '"' | '\'' | '”' | '’' | '」' | '』' | ')' | '）')
+                    })
+                    .ends_with(['.', '!', '?', '。', '！', '？']);
+                eprintln!(
+                    "{}",
+                    serde_json::json!({"phase":"wire_progress", "lane":lane, "characters":text.chars().count(), "sentence_end":sentence_end,
+                    "alignment_ms":alignment_ms, "received_ms":trace_started.elapsed().as_millis()})
+                );
+            }
+        }
         if handle_server_event(&context, event).await {
             return;
         }
@@ -1339,6 +1375,7 @@ mod tests {
                         .ok()
                         .is_some_and(|text| text.contains("session.close"))
                     {
+                        tokio::time::sleep(Duration::from_millis(2_100)).await;
                         socket
                             .send(Message::Text(r#"{"type":"session.closed"}"#.into()))
                             .await
@@ -1354,7 +1391,10 @@ mod tests {
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;
-        client.finish(Duration::from_millis(500)).await;
+        let client = crate::clients::translation_client::TranslationClient::OpenAIRealtime(client);
+        tokio::time::timeout(client.finish_timeout(), client.finish())
+            .await
+            .unwrap();
 
         let mut received = Vec::new();
         while let Ok(event) = events.try_recv() {

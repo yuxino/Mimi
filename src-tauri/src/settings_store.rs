@@ -855,8 +855,24 @@ impl SettingsStore {
     pub(crate) fn load_for_read_only_manual_probe(
         directory: PathBuf,
     ) -> Result<Self, &'static str> {
+        Self::load_for_scoped_read_only_manual_probe(directory, DEVELOPMENT_APPLICATION_IDENTIFIER)
+    }
+
+    /// The caller must explicitly select the app scope for this authorized
+    /// manual run. Never discover, copy or fall back to another app's store.
+    #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+    pub(crate) fn load_for_scoped_read_only_manual_probe(
+        directory: PathBuf,
+        application_identifier: &str,
+    ) -> Result<Self, &'static str> {
         use std::io::Read;
         use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+
+        let profile_keychain_service = match application_identifier {
+            DEVELOPMENT_APPLICATION_IDENTIFIER => DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            "app.yuxino.mimi" => PROFILE_KEYCHAIN_SERVICE,
+            _ => return Err("manual_probe_scope_invalid"),
+        };
 
         fn read_existing<T: serde::de::DeserializeOwned>(file: &Path) -> Result<T, &'static str> {
             const MAX_BYTES: u64 = 64 * 1024;
@@ -891,8 +907,7 @@ impl SettingsStore {
         let metadata = std::fs::symlink_metadata(&directory)
             .map_err(|_| "saved_development_credentials_required")?;
         if !directory.is_absolute()
-            || directory.file_name()
-                != Some(std::ffi::OsStr::new(DEVELOPMENT_APPLICATION_IDENTIFIER))
+            || directory.file_name() != Some(std::ffi::OsStr::new(application_identifier))
             || !metadata.is_dir()
             || metadata.file_type().is_symlink()
         {
@@ -903,8 +918,11 @@ impl SettingsStore {
         let catalog = catalog
             .validated()
             .map_err(|_| "saved_development_settings_required")?;
-        let secret = file_credentials::FileCredentialStore::for_read_only_manual_probe(&directory)
-            .map_err(|_| "saved_development_credentials_required")?;
+        let secret = file_credentials::FileCredentialStore::for_scoped_read_only_manual_probe(
+            &directory,
+            profile_keychain_service,
+        )
+        .map_err(|_| "saved_development_credentials_required")?;
         prefs.font_size = normalize_font_size(prefs.font_size);
         prefs.subtitle_font_family = normalize_family_name(&prefs.subtitle_font_family)
             .unwrap_or_default()
@@ -927,7 +945,7 @@ impl SettingsStore {
             catalog: Mutex::new(catalog),
             catalog_write_blocked: false,
             secret: Box::new(secret),
-            profile_keychain_service: DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+            profile_keychain_service,
             secret_cache: Mutex::new(HashMap::new()),
             xai_translation_upgrade: Mutex::new(()),
             is_ui_test: false,
@@ -4148,6 +4166,58 @@ mod read_only_manual_probe_tests {
             )
         })
         .collect()
+    }
+
+    #[test]
+    fn production_manual_probe_is_explicit_read_only_and_has_no_development_fallback() {
+        let (temporary, development) = fixture();
+        let production = temporary.path().join("app.yuxino.mimi");
+        std::fs::rename(&development, &production).unwrap();
+        let file = production.join("credentials/credentials.json");
+        let original = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            original.replace(
+                DEVELOPMENT_PROFILE_KEYCHAIN_SERVICE,
+                PROFILE_KEYCHAIN_SERVICE,
+            ),
+        )
+        .unwrap();
+        let before = snapshot(&production);
+        assert!(SettingsStore::load_for_read_only_manual_probe(production.clone()).is_err());
+        assert!(SettingsStore::load_for_scoped_read_only_manual_probe(
+            production.clone(),
+            "unknown"
+        )
+        .is_err());
+        let store = SettingsStore::load_for_scoped_read_only_manual_probe(
+            production.clone(),
+            "app.yuxino.mimi",
+        )
+        .unwrap();
+        let profile = store.active_profile().unwrap();
+        assert_eq!(
+            store
+                .configuration_for_profile_probe(&profile)
+                .unwrap()
+                .credentials
+                .alibaba_key(),
+            Some("synthetic-read-only-key")
+        );
+        assert!(store
+            .save_api_key(&profile.id, "synthetic-replacement")
+            .is_err());
+        assert!(store
+            .save_preferences(|prefs| prefs.font_size = 19.0)
+            .is_err());
+        assert!(store.secret.migrate_legacy().is_err());
+        assert_eq!(snapshot(&production), before);
+        // An entry from another app namespace is never a fallback.
+        std::fs::write(&file, original).unwrap();
+        let store =
+            SettingsStore::load_for_scoped_read_only_manual_probe(production, "app.yuxino.mimi")
+                .unwrap();
+        assert!(store.configuration_for_profile_probe(&profile).is_err());
     }
 
     #[test]

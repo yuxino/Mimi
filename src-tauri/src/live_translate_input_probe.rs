@@ -478,7 +478,7 @@ async fn observe_case(
             false
         } else {
             tokio::time::timeout(
-                mimi_runtime::core::health::PROVIDER_FINISH_TIMEOUT + Duration::from_secs(1),
+                lane.client.finish_timeout() + Duration::from_secs(1),
                 lane.client.finish(),
             )
             .await

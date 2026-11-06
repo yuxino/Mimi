@@ -10,6 +10,10 @@ pub const MAX_TRANSLATION_ATTEMPTS: usize = 3;
 pub const FINISH_DRAIN_TIMEOUT_MS: u64 = 3_000;
 pub const RECOGNITION_FINISH_TIMEOUT_MS: u64 = 1_000;
 pub const REALTIME_FINISH_TIMEOUT_MS: u64 = 2_000;
+// Real translation sessions can flush their last transcripts 5–10 seconds
+// after session.close. Keep this provider-specific and leave an outer margin.
+pub const OPENAI_FINISH_TIMEOUT_MS: u64 = 15_000;
+pub const OPENAI_PROVIDER_FINISH_TIMEOUT_MS: u64 = 17_000;
 // Continuous Gemini translation may omit turnComplete. Cover its two-second
 // transcript checkpoint plus late provider output within the outer stop bound.
 pub const GEMINI_FINISH_TIMEOUT_MS: u64 = 4_500;
@@ -24,6 +28,8 @@ pub struct TranslationPolicy {
     pub finish_drain_timeout_ms: u64,
     pub recognition_finish_timeout_ms: u64,
     pub realtime_finish_timeout_ms: u64,
+    pub openai_finish_timeout_ms: u64,
+    pub openai_provider_finish_timeout_ms: u64,
     pub gemini_finish_timeout_ms: u64,
     pub provider_finish_timeout_ms: u64,
     pub startup_audio_limit_ms: u64,
@@ -37,6 +43,8 @@ pub const fn policy() -> TranslationPolicy {
         finish_drain_timeout_ms: FINISH_DRAIN_TIMEOUT_MS,
         recognition_finish_timeout_ms: RECOGNITION_FINISH_TIMEOUT_MS,
         realtime_finish_timeout_ms: REALTIME_FINISH_TIMEOUT_MS,
+        openai_finish_timeout_ms: OPENAI_FINISH_TIMEOUT_MS,
+        openai_provider_finish_timeout_ms: OPENAI_PROVIDER_FINISH_TIMEOUT_MS,
         gemini_finish_timeout_ms: GEMINI_FINISH_TIMEOUT_MS,
         provider_finish_timeout_ms: PROVIDER_FINISH_TIMEOUT_MS,
         startup_audio_limit_ms: STARTUP_AUDIO_LIMIT_MS,
@@ -150,6 +158,23 @@ pub fn retry_decision(code: &str, attempt: usize, elapsed_ms: u64) -> RetryDecis
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openai_finish_policy_covers_delayed_acknowledgement_inside_provider_bound() {
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../../translation-contracts.json")).unwrap();
+        let expected = &contract["openaiFinishPolicy"];
+        assert_eq!(expected["finishTimeoutMs"], OPENAI_FINISH_TIMEOUT_MS);
+        assert_eq!(
+            expected["providerFinishTimeoutMs"],
+            OPENAI_PROVIDER_FINISH_TIMEOUT_MS
+        );
+        assert!(
+            expected["finishTimeoutMs"].as_u64().unwrap()
+                < expected["providerFinishTimeoutMs"].as_u64().unwrap()
+        );
+        assert_eq!(policy().realtime_finish_timeout_ms, 2_000);
+    }
 
     #[test]
     fn gemini_finish_policy_covers_shared_quiet_checkpoint_inside_provider_bound() {

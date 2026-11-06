@@ -2442,9 +2442,7 @@ impl SessionManager {
             };
             if let Some(client) = taken {
                 if tokio::time::timeout(
-                    Duration::from_millis(
-                        mimi_core::translation_policy::PROVIDER_FINISH_TIMEOUT_MS,
-                    ),
+                    client.finish_timeout(),
                     crate::development_audio::scope(source, stopping_generation, client.finish()),
                 )
                 .await

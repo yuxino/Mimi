@@ -24,6 +24,7 @@ pub enum TranscriptEvent {
 pub const GEMINI_TRANSCRIPT_QUIET_MS: u64 = 2_000;
 pub const GEMINI_TURN_TAIL_QUIET_MS: u64 = 500;
 const MAXIMUM_ALIGNMENT_SKEW_MS: u64 = 400;
+const UNPAIRED_BLOCK_IDLE_MS: u64 = 20_000;
 const MINIMUM_BUFFER_SAFETY_LIMIT: usize = 4_096;
 const BUFFER_SAFETY_LIMIT_MULTIPLIER: usize = 16;
 const SENTENCE_DELIMITERS: [char; 7] = ['.', '!', '?', '。', '！', '？', '\n'];
@@ -177,6 +178,8 @@ pub struct OpenAITranscriptPairCommitter {
     last_delta_ms: Option<u64>,
     #[serde(default)]
     explicit_turn: bool,
+    #[serde(default)]
+    source_isolated: bool,
     source: TimedTextBuffer,
     translation: TimedTextBuffer,
 }
@@ -213,6 +216,10 @@ impl OpenAITranscriptPairCommitter {
                 .is_none_or(crate::subtitle_text_within_limit)
             && valid_buffer(&self.source)
             && valid_buffer(&self.translation)
+            && (!self.source_isolated
+                || (!self.stable_block_mode
+                    && self.source.text.is_empty()
+                    && self.translation.character_count() <= self.maximum_pending_characters))
         {
             Ok(())
         } else {
@@ -232,6 +239,7 @@ impl OpenAITranscriptPairCommitter {
             stable_block_mode: false,
             last_delta_ms: None,
             explicit_turn: false,
+            source_isolated: false,
             source: TimedTextBuffer::default(),
             translation: TimedTextBuffer::default(),
         }
@@ -288,13 +296,41 @@ impl OpenAITranscriptPairCommitter {
         }
     }
 
+    fn retire_unpaired_block_before_append(&mut self, now_ms: Option<u64>) -> Vec<TranscriptEvent> {
+        if !self.stable_block_mode
+            || !(is_meaningful(&self.source.text) ^ is_meaningful(&self.translation.text))
+            || now_ms
+                .zip(self.last_delta_ms)
+                .is_none_or(|(now, last)| now.saturating_sub(last) < UNPAIRED_BLOCK_IDLE_MS)
+        {
+            return Vec::new();
+        }
+        // A long-idle single lane has no bilingual confirmation. Keep it
+        // visible during the wait, but never prepend it to a later clip.
+        self.reset();
+        vec![
+            TranscriptEvent::SourceDraft {
+                text: String::new(),
+                language: self.source_language.clone(),
+            },
+            TranscriptEvent::TranslationDraft(String::new()),
+        ]
+    }
+
     pub fn append_source_delta(
         &mut self,
         delta: &str,
         elapsed_ms: Option<u64>,
     ) -> Vec<TranscriptEvent> {
-        if delta.is_empty() {
+        if delta.is_empty() || (self.source_isolated && delta.trim().is_empty()) {
             return Vec::new();
+        }
+        let mut retired = self.retire_unpaired_block_before_append(elapsed_ms);
+        if self.source_isolated && !delta.trim().is_empty() {
+            // The returning original cannot own translation accumulated while
+            // originals were absent. Retire that preview before starting anew.
+            self.reset();
+            retired.push(TranscriptEvent::TranslationDraft(String::new()));
         }
         if self.stable_block_mode {
             if !self.source.merge_gemini(delta) {
@@ -308,7 +344,8 @@ impl OpenAITranscriptPairCommitter {
             text: self.source.text.clone(),
             language: self.source_language.clone(),
         };
-        self.events_after_append(preview)
+        retired.extend(self.events_after_append(preview));
+        retired
     }
 
     pub fn append_translation_delta(
@@ -319,6 +356,14 @@ impl OpenAITranscriptPairCommitter {
         if delta.is_empty() {
             return Vec::new();
         }
+        let mut retired = self.retire_unpaired_block_before_append(elapsed_ms);
+        if self.source_isolated {
+            self.translation.append(delta, elapsed_ms);
+            self.bound_isolated_translation();
+            return vec![TranscriptEvent::TranslationDraft(
+                self.translation.text.clone(),
+            )];
+        }
         if self.stable_block_mode {
             if !self.translation.merge_gemini(delta) {
                 return Vec::new();
@@ -328,7 +373,8 @@ impl OpenAITranscriptPairCommitter {
             self.translation.append(delta, elapsed_ms);
         }
         let preview = TranscriptEvent::TranslationDraft(self.translation.text.clone());
-        self.events_after_append(preview)
+        retired.extend(self.events_after_append(preview));
+        retired
     }
 
     fn events_after_append(&mut self, preview: TranscriptEvent) -> Vec<TranscriptEvent> {
@@ -359,11 +405,38 @@ impl OpenAITranscriptPairCommitter {
         is_meaningful(&self.source.text) || is_meaningful(&self.translation.text)
     }
 
+    /// Optional source transcription can omit music while translation continues.
+    /// Hide its stale original without terminating usable translated output or
+    /// promoting an unpaired preview into confirmed history.
+    pub fn isolate_source(&mut self) -> Vec<TranscriptEvent> {
+        if self.stable_block_mode || self.source_isolated {
+            return Vec::new();
+        }
+        self.source.reset();
+        self.source_isolated = true;
+        self.bound_isolated_translation();
+        vec![TranscriptEvent::SourceDraft {
+            text: String::new(),
+            language: self.source_language.clone(),
+        }]
+    }
+
+    fn bound_isolated_translation(&mut self) {
+        let excess = self
+            .translation
+            .character_count()
+            .saturating_sub(self.maximum_pending_characters);
+        if excess > 0 {
+            self.translation.consume(excess);
+        }
+    }
+
     pub fn reset(&mut self) {
         self.source.reset();
         self.translation.reset();
         self.last_delta_ms = None;
         self.explicit_turn = false;
+        self.source_isolated = false;
     }
 
     #[cfg(test)]
@@ -417,11 +490,13 @@ impl OpenAITranscriptPairCommitter {
             if !is_meaningful(&source_aligned) || !is_meaningful(&translation_aligned) {
                 return None;
             }
-            if let (Some(source_sentence), Some(translation_sentence)) = (
-                complete_prefix_boundary(&source_aligned),
-                complete_prefix_boundary(&translation_aligned),
-            ) {
-                return Some((source_sentence, translation_sentence));
+            // The two prefixes cover one interval. Cutting each at its own
+            // last punctuation can permanently pair source sentence N + 1
+            // with translation N. Keep the complete interval together.
+            if ends_at_sentence_boundary(&source_aligned)
+                && ends_at_sentence_boundary(&translation_aligned)
+            {
+                return Some((source_aligned_length, translation_aligned_length));
             }
             if self.reached_alignment_checkpoint() {
                 return Some((source_aligned_length, translation_aligned_length));
@@ -434,10 +509,14 @@ impl OpenAITranscriptPairCommitter {
         }
         let source_sentence_count = sentence_delimiter_count(&self.source.text);
         let translation_sentence_count = sentence_delimiter_count(&self.translation.text);
-        if source_sentence_count > 0 && source_sentence_count == translation_sentence_count {
+        if source_sentence_count > 0
+            && source_sentence_count == translation_sentence_count
+            && ends_at_sentence_boundary(&self.source.text)
+            && ends_at_sentence_boundary(&self.translation.text)
+        {
             return Some((
-                complete_prefix_boundary(&self.source.text)?,
-                complete_prefix_boundary(&self.translation.text)?,
+                self.source.character_count(),
+                self.translation.character_count(),
             ));
         }
         self.bounded_fallback_lengths()
@@ -483,9 +562,14 @@ impl OpenAITranscriptPairCommitter {
         {
             return None;
         }
-        let source_length = complete_prefix_boundary(&self.source.text)?;
-        let translation_length = complete_prefix_boundary(&self.translation.text)?;
-        (source_length > 0 && translation_length > 0).then_some((source_length, translation_length))
+        (ends_at_sentence_boundary(&self.source.text)
+            && ends_at_sentence_boundary(&self.translation.text))
+        .then(|| {
+            (
+                self.source.character_count(),
+                self.translation.character_count(),
+            )
+        })
     }
 }
 
@@ -499,15 +583,14 @@ fn char_prefix(text: &str, count: usize) -> String {
     text.chars().take(count).collect()
 }
 
-fn complete_prefix_boundary(text: &str) -> Option<usize> {
-    text.chars()
-        .enumerate()
-        .filter_map(|(index, character)| {
-            SENTENCE_DELIMITERS
-                .contains(&character)
-                .then_some(index + 1)
-        })
-        .last()
+fn ends_at_sentence_boundary(text: &str) -> bool {
+    text.trim_end_matches(|character: char| {
+        (character.is_whitespace() && character != '\n')
+            || matches!(character, '"' | '\'' | '”' | '’' | '」' | '』' | ')' | '）')
+    })
+    .chars()
+    .next_back()
+    .is_some_and(|character| SENTENCE_DELIMITERS.contains(&character))
 }
 
 fn sentence_delimiter_count(text: &str) -> usize {
@@ -524,6 +607,34 @@ fn is_meaningful(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn omitted_originals_keep_bounded_translation_and_cannot_contaminate_next_pair() {
+        let mut stream = OpenAITranscriptPairCommitter::new(8, None);
+        stream.append_source_delta("Old original", Some(0));
+        stream.append_translation_delta("先前译文", Some(30_000));
+        assert!(matches!(stream.isolate_source().as_slice(),
+            [TranscriptEvent::SourceDraft { text, .. }] if text.is_empty()));
+        for _ in 0..1_000 {
+            let events = stream.append_translation_delta("😀新译文", Some(40_000));
+            assert!(
+                matches!(events.as_slice(), [TranscriptEvent::TranslationDraft(text)] if text.chars().count() <= 8)
+            );
+            stream.validate_state(8).unwrap();
+        }
+        // This is still a preview, not a fabricated bilingual confirmation.
+        let state = serde_json::to_string(&stream).unwrap();
+        let mut restored: OpenAITranscriptPairCommitter = serde_json::from_str(&state).unwrap();
+        assert!(restored.finish().is_empty());
+        let events = stream.append_source_delta("New.", Some(50_000));
+        assert!(
+            matches!(events.as_slice(), [TranscriptEvent::TranslationDraft(text), TranscriptEvent::SourceDraft { .. }] if text.is_empty())
+        );
+        assert!(
+            matches!(stream.append_translation_delta("新的。", Some(50_000)).last(),
+            Some(TranscriptEvent::SubtitleFinalPair { source, translation, .. }) if source == "New." && translation == "新的。")
+        );
+    }
 
     #[test]
     fn gemini_keeps_split_translation_with_its_original_block() {
@@ -831,18 +942,17 @@ mod tests {
     }
 
     #[test]
-    fn restores_unmatched_tails_after_a_pair() {
+    fn untimed_partial_tails_stay_together_until_the_complete_block() {
         let mut committer = OpenAITranscriptPairCommitter::new(320, Some("en".into()));
         let _ = committer.append_source_delta("First. Tail", None);
         let events = committer.append_translation_delta("第一句。尾巴", None);
-        assert_eq!(events.len(), 4);
+        assert_eq!(events.len(), 1);
         assert!(matches!(
-            &events[1],
+            &committer.finish()[0],
             TranscriptEvent::SubtitleFinalPair { source, translation, .. }
-                if source == "First." && translation == "第一句。"
+                if source == "First. Tail" && translation == "第一句。尾巴"
         ));
-        assert_eq!(committer.pending_source_character_count(), 5);
-        assert_eq!(committer.pending_translation_character_count(), 2);
+        assert!(!committer.has_pending());
     }
 
     #[test]
@@ -855,6 +965,36 @@ mod tests {
             TranscriptEvent::SubtitleFinalPair { source, translation, .. }
                 if source == "A. B." && translation == "合并译文。"
         )));
+    }
+
+    #[test]
+    fn timed_pair_does_not_cut_different_sentence_prefixes_from_joint_coverage() {
+        let mut committer = OpenAITranscriptPairCommitter::default();
+        committer.append_source_delta("First. Second.", Some(1_000));
+        let events = committer.append_translation_delta("第一句。第二句", Some(1_000));
+        assert!(!events
+            .iter()
+            .any(|event| matches!(event, TranscriptEvent::SubtitleFinalPair { .. })));
+        let events = committer.append_translation_delta("。", Some(1_000));
+        assert!(events.iter().any(|event| matches!(event,
+            TranscriptEvent::SubtitleFinalPair { source, translation, .. }
+            if source == "First. Second." && translation == "第一句。第二句。")));
+        assert!(!committer.has_pending());
+    }
+
+    #[test]
+    fn untimed_pair_does_not_discard_an_unfinished_half_of_the_interval() {
+        let mut committer = OpenAITranscriptPairCommitter::default();
+        committer.append_source_delta("First. Second", None);
+        let events = committer.append_translation_delta("合并的第一和第二句。", None);
+        assert!(!events
+            .iter()
+            .any(|event| matches!(event, TranscriptEvent::SubtitleFinalPair { .. })));
+        committer.append_source_delta(".", None);
+        let events = committer.finish();
+        assert!(events.iter().any(|event| matches!(event,
+            TranscriptEvent::SubtitleFinalPair { source, translation, .. }
+            if source == "First. Second." && translation == "合并的第一和第二句。")));
     }
 
     #[test]

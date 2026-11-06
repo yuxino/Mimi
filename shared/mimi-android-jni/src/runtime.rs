@@ -634,7 +634,7 @@ impl Session {
                         .finish(mimi_runtime::core::health::AUDIO_DRAIN_TIMEOUT)
                         .await;
                     let _ = tokio::time::timeout(
-                        mimi_runtime::core::health::PROVIDER_FINISH_TIMEOUT,
+                        resources.client.finish_timeout(),
                         resources.client.finish(),
                     )
                     .await;

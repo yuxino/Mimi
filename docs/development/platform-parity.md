@@ -179,7 +179,18 @@ back over saved preferences.
   from separate confirmations stays independent on both production paths.
 - DashScope realtime pairs source and translation using conversation-item links;
   a known response without a source link cannot guess a source by arrival order.
-  OpenAI append-only streams share timing/punctuation alignment and safe tail flush.
+  OpenAI/Azure append-only streams share timing/punctuation alignment and safe
+  tail flush. A jointly covered interval stays whole: independently trimming
+  each lane at its last punctuation can put adjacent sentences in the wrong
+  pair. `transcript-continuity-contracts.json` checks this through direct Rust
+  and actual JNI. Their shared runtime detects sustained translation without
+  source progress (20 seconds, at least eight updates and 64 characters, with
+  no translation gap over five seconds); silence alone does not trigger it.
+  This retires the stale source preview, bounds the unpaired translation to
+  320 characters, and keeps the connection and translated output running. A new
+  original starts a fresh block without inheriting that orphan translation.
+  Missing optional source transcription is not a transport failure; Gemini's
+  separate block protocol does not use this rule.
   Gemini transcription options belong to setup, and language-only text updates
   are empty deltas. Its ID-less continuous transcript uses the shared complete-
   block checkpoint after 2 seconds without changing text, including unpunctuated
