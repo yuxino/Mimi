@@ -5984,3 +5984,146 @@
   or credential is committed. Remaining checks are OpenAI original omission
   after mixed-language history, natural Chinese quality beyond the fixed sample,
   the graceful-close deadline, and native acceptance on other platforms/providers.
+
+## 2026-11-06 — Expanded production-provider continuity matrix (follow-up)
+
+The user explicitly requested more providers, longer investigation and special
+attention to OpenAI. This extends the preceding entry; its remaining gaps were
+not a completion claim for this expanded scope. Tests use production profiles
+read-only, public/synthetic fixed audio, at most two paid sessions concurrently,
+and no microphone, session recording or transcript retention. No public release
+is authorized. Private receipts identify each probe binary, exact sample hashes,
+parameters and failed boundary; timing below is event timing, not semantic lag.
+
+### Findings and current changes
+
+- OpenAI close comparisons with a diagnostic 15-second wait received valid
+  `session.closed` after 5,513 and 9,810 ms. The normal two-second deadline
+  truncated a healthy final flush. OpenAI now has 15 seconds inside a 17-second
+  provider bound; other providers keep their existing bounds. Both native drivers
+  use the client bound; the Android stop watchdog covers the longest operation.
+  A seven-second delayed close tail passes through actual JNI.
+- OpenAI's short unpunctuated Chinese can remain a live preview through a clip.
+  A ten-second timed checkpoint passed count-based API checks but failed native
+  semantic review: source and translation were cut at different positions across
+  Chinese/Japanese/English. **That checkpoint was removed.** The final change
+  retains conservative punctuation/size behavior and live previews, with a shared
+  regression against elapsed-time-only confirmation. Existing coarse timestamp
+  and bounded-size behavior still does not guarantee exact sentence alignment.
+- Gemini formal-app playback reproduced a Chinese original-only block retained
+  through a long idle and prepended to a following Japanese clip. A single lane
+  is now retired on new text after at least 20 seconds without either lane
+  advancing. Its preview stays visible during the wait; both old previews clear
+  when the next block begins. The same native Chinese → idle → Japanese case on
+  binary `d253e926faab656bf97c26bdd47b0c6cfbab2e312fbfdf436b5d6e08bd6273d9`
+  no longer prepended the old Chinese. Japanese recognition omissions and a
+  request-versus-statement translation error remained upstream quality failures.
+- Baidu twice rejected valid zero PCM after about 25 seconds with 20316. An
+  explicit diagnostic that ignored that code then observed an unsolicited END;
+  ignoring it cannot restore the socket. Only after 20 seconds of successfully
+  delivered all-zero PCM does 20316 now enter existing bounded transport recovery.
+  The last qualifying zero frame retains evidence for five seconds, covering a
+  late error after sound resumes; disconnect clears it. Setup/ordinary invalid-audio errors keep
+  their fatal classification. A real JNI replay sends 22 seconds of zero PCM,
+  reconnects and verifies resumed nonzero PCM and confirmed captions.
+- **The first native Baidu candidate still failed.** The formal app showed audio
+  backpressure followed by repeated reconnects and exhausted retries before the
+  planned resumed sample. Its 40-ms sender added wake/write overhead after every
+  frame; the next candidate preserves the scheduled cadence and discards catch-up
+  credit after a long stall. Sixteen focused Baidu tests pass, including a
+  simulated twenty-minute clock. Native acceptance was initially pending; see
+  the final bounded replay below.
+
+### Comparable live-provider evidence
+
+The mixed sample is Chinese TTS, one second quiet, Japanese TTS, one second quiet,
+public FLEURS English and a three-second tail (50.544 seconds), followed by
+90 seconds of zero PCM and the same mixed sample. Baidu/Tencent/Volcano use a
+fixed English sample because those configured routes require an explicit source.
+
+| Configured route | Result and limit |
+| --- | --- |
+| OpenAI integrated, old checkpoint + diagnostic close | First mixed phase 0 confirmed pairs; resumed 1. Close 5,513 ms. Failed first-phase final verification. |
+| OpenAI integrated, rejected timed checkpoint + normal close | First phase 3 pairs, resumed 4, final close 1; close 5,532 ms. Count-based probe passed, but later native semantic alignment failed; the timed checkpoint is removed. |
+| Gemini integrated, mixed/idle/mixed | 1 then 2 pairs; close 2,049 ms; 194.093-second probe passed. This does not establish semantic quality. |
+| Gemini, actual Japanese timeline clip then English | 2 then 1 pairs; close 2,052 ms; passed. First content after input start 2,845 ms, versus the earlier OpenAI case's 20,427 ms; these are not aligned spoken-word latency measurements. |
+| Alibaba Audio3 + Qwen MT | 4 then 4 pairs; close 53 ms; 191.578-second probe passed. |
+| Alibaba Audio3 + DeepL | 4 then 4 pairs; close 52 ms; 191.630-second probe passed. |
+| Alibaba LiveTranslate | 3 then 3 pairs; close 894 ms; 192.438-second probe passed. |
+| Volcano | 6 then 6 pairs; close 456 ms; 143.775-second English/idle/English probe passed. |
+| Baidu | Initial speech works; quiet phase rejects/ends before resume. Native follow-up also exposed backpressure; acceptance pending as above. |
+| Tencent | Setup rejects with 6004 / quota exhausted, zero PCM sent. Account-blocked; no paid retry loop. |
+| OpenAI existing recognition-only route | Same saved speech credentials, in-memory ASR mode and Original target; Chinese then Japanese yielded 2 then 2 confirmed originals in 30.239 seconds, no failure. Not an automatic provider/mode switch. |
+
+### Same-language limits demonstrated, not guessed
+
+Two identical Chinese samples through Audio3 + Qwen with automatic source produced
+17 independent MT requests and zero same-language final skips. The same samples
+with explicitly selected Chinese produced **zero** independent MT requests and
+2 same-language final skips (34.825 seconds). The fast path works when language is
+known; it does not currently eliminate MT for this automatic route. Audio3's
+[documented response](https://help.aliyun.com/en/model-studio/fun-asr-server-events)
+contains no detected-language field, and the decoder only knows an explicitly
+selected source. This is not a missing known language field to patch. Do not
+silently infer Chinese from Han characters in mixed Japanese/Chinese browsing or
+claim automatic same-language bypass is complete. A portable language-identification
+policy and comparable short/mixed-script evaluation remain follow-up work.
+
+Both OpenAI and Gemini sometimes supplied only original text for Chinese-to-Chinese
+in these tests. Their Chinese → Japanese short probes therefore failed the strict
+first-phase bilingual-final requirement even after the local fixes. Gemini's
+original script also varied between Traditional and Simplified across identical
+native samples. No local script conversion or fabricated translated counterpart
+was introduced. The original-only absence, music omission, rapid unmarked video
+switches and natural-language semantic quality remain explicit limitations.
+
+### Verification status
+
+Before the final Baidu cadence change, canonical checks passed, including core
+112 plus five contract tests, runtime 998 (one ignored), JNI Rust 33 and the full
+desktop/frontend pipeline. Android Debug and Release each passed 327 tests in
+44 suites with zero failures/errors/skips. New fixtures reject time-only confirmation of unpunctuated
+blocks, a stalled lane, incompatible timestamps, Gemini orphan retirement in
+both arrival orders, delayed counterparts and preview clearing. Initial restricted
+loopback runs failed with OS permission errors; the enabled local loopback run
+passed. Final cadence/native/CI verification will be recorded below.
+
+Production has no saved Azure or xAI profile, so this matrix makes no live claim
+for them; Apple native routes were not exercised in this expanded cloud-provider
+matrix. The divider remained off during reproduced stalls; it does not account
+for missing provider events. Windows/Linux native capture and Android device
+playback remain unverified. Private evidence belongs to the existing
+`2026-11-06-transcript-continuity` benchmark, never to Git.
+
+
+### Native recovery follow-up and rejected OpenAI candidate
+
+- Baidu cadence candidate `98409c25` removed observed backpressure: the first
+  English playback produced 42 source/42 target events and four confirmed
+  captions. After about 57 seconds quiet, 20316 arrived roughly 1.5 seconds after
+  sound resumed; immediately clearing silence evidence misclassified it as a
+  configuration rejection. The planned 90-second quiet was not reached in this
+  failed run. A five-second expiry from the last qualifying silent frame now
+  covers that in-flight reply; old evidence still expires and disconnect clears
+  it. Direct sockets and actual JNI cover ordinary, expired and late rejection.
+- Formal candidate `2447cb7b` then passed the same English sample with **107.3
+  seconds quiet**: source/target counts 41/41 → 83/83; confirmed captions 4 → 8.
+  Both playback phases visibly rendered, quiet disconnects recovered, no
+  backpressure was observed, and normal Stop completed. This is bounded capture
+  and recovery acceptance, not accurate proper-name recognition or a long-run
+  stability claim. No concurrent compiler load was present during playback.
+- The same candidate's 50.54-second Chinese/Japanese/English native replay with
+  divider lines enabled rejected the ten-second checkpoint: partial source and
+  target text landed in different confirmed blocks despite continuing updates.
+  API event counts had hidden that semantic error. The checkpoint was removed;
+  its count-based pass above is historical rejected-candidate evidence. The
+  divider exposes block boundaries but did not stop provider events. The final
+  source must be repackaged and replayed after this removal.
+
+- Final retained source after removing the timed checkpoint passed canonical
+  checks: core 112 plus five contract tests, runtime 999 (one ignored), JNI Rust
+  33, desktop 697 (one ignored), frontend 2,832 across 156 files. Android Debug
+  and Release each passed 327 tests across 44 suites, zero failures/errors/skips;
+  the silence test covers both immediate and 1.5-second delayed rejection after
+  resumed PCM. Strict debugger-feature Clippy passed before the final core-only
+  checkpoint removal; final canonical Clippy includes the changed shared code.

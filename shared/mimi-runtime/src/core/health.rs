@@ -14,7 +14,7 @@ pub const PROVIDER_FINISH_TIMEOUT: Duration =
 /// leave two publication ticks for the final snapshot/acknowledgement.
 pub const SESSION_FINISH_TIMEOUT: Duration = Duration::from_millis(
     AUDIO_DRAIN_TIMEOUT.as_millis() as u64
-        + PROVIDER_FINISH_TIMEOUT.as_millis() as u64
+        + mimi_core::translation_policy::OPENAI_PROVIDER_FINISH_TIMEOUT_MS
         + DISCONNECT_TIMEOUT.as_millis() as u64
         + 2 * SNAPSHOT_PUBLISH_INTERVAL.as_millis() as u64,
 );

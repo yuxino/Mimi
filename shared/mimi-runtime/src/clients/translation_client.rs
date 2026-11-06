@@ -503,6 +503,17 @@ impl TranslationClient {
         }
     }
 
+    /// Bound the complete provider finish operation without preempting its
+    /// protocol-specific acknowledgement deadline.
+    pub fn finish_timeout(&self) -> Duration {
+        Duration::from_millis(match self {
+            Self::OpenAIRealtime(_) => {
+                mimi_core::translation_policy::OPENAI_PROVIDER_FINISH_TIMEOUT_MS
+            }
+            _ => mimi_core::translation_policy::PROVIDER_FINISH_TIMEOUT_MS,
+        })
+    }
+
     pub async fn finish(&self) {
         let realtime =
             Duration::from_millis(mimi_core::translation_policy::REALTIME_FINISH_TIMEOUT_MS);
@@ -515,7 +526,13 @@ impl TranslationClient {
                     .await
             }
             Self::HighQuality(client) => client.finish().await,
-            Self::OpenAIRealtime(client) => client.finish(realtime).await,
+            Self::OpenAIRealtime(client) => {
+                client
+                    .finish(Duration::from_millis(
+                        mimi_core::translation_policy::OPENAI_FINISH_TIMEOUT_MS,
+                    ))
+                    .await
+            }
             Self::GeminiLive(client) => {
                 client
                     .finish(Duration::from_millis(

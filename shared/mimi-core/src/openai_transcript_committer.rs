@@ -24,6 +24,7 @@ pub enum TranscriptEvent {
 pub const GEMINI_TRANSCRIPT_QUIET_MS: u64 = 2_000;
 pub const GEMINI_TURN_TAIL_QUIET_MS: u64 = 500;
 const MAXIMUM_ALIGNMENT_SKEW_MS: u64 = 400;
+const UNPAIRED_BLOCK_IDLE_MS: u64 = 20_000;
 const MINIMUM_BUFFER_SAFETY_LIMIT: usize = 4_096;
 const BUFFER_SAFETY_LIMIT_MULTIPLIER: usize = 16;
 const SENTENCE_DELIMITERS: [char; 7] = ['.', '!', '?', '。', '！', '？', '\n'];
@@ -295,6 +296,27 @@ impl OpenAITranscriptPairCommitter {
         }
     }
 
+    fn retire_unpaired_block_before_append(&mut self, now_ms: Option<u64>) -> Vec<TranscriptEvent> {
+        if !self.stable_block_mode
+            || !(is_meaningful(&self.source.text) ^ is_meaningful(&self.translation.text))
+            || now_ms
+                .zip(self.last_delta_ms)
+                .is_none_or(|(now, last)| now.saturating_sub(last) < UNPAIRED_BLOCK_IDLE_MS)
+        {
+            return Vec::new();
+        }
+        // A long-idle single lane has no bilingual confirmation. Keep it
+        // visible during the wait, but never prepend it to a later clip.
+        self.reset();
+        vec![
+            TranscriptEvent::SourceDraft {
+                text: String::new(),
+                language: self.source_language.clone(),
+            },
+            TranscriptEvent::TranslationDraft(String::new()),
+        ]
+    }
+
     pub fn append_source_delta(
         &mut self,
         delta: &str,
@@ -303,7 +325,7 @@ impl OpenAITranscriptPairCommitter {
         if delta.is_empty() || (self.source_isolated && delta.trim().is_empty()) {
             return Vec::new();
         }
-        let mut retired = Vec::new();
+        let mut retired = self.retire_unpaired_block_before_append(elapsed_ms);
         if self.source_isolated && !delta.trim().is_empty() {
             // The returning original cannot own translation accumulated while
             // originals were absent. Retire that preview before starting anew.
@@ -334,6 +356,7 @@ impl OpenAITranscriptPairCommitter {
         if delta.is_empty() {
             return Vec::new();
         }
+        let mut retired = self.retire_unpaired_block_before_append(elapsed_ms);
         if self.source_isolated {
             self.translation.append(delta, elapsed_ms);
             self.bound_isolated_translation();
@@ -350,7 +373,8 @@ impl OpenAITranscriptPairCommitter {
             self.translation.append(delta, elapsed_ms);
         }
         let preview = TranscriptEvent::TranslationDraft(self.translation.text.clone());
-        self.events_after_append(preview)
+        retired.extend(self.events_after_append(preview));
+        retired
     }
 
     fn events_after_append(&mut self, preview: TranscriptEvent) -> Vec<TranscriptEvent> {

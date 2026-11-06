@@ -518,17 +518,23 @@ async fn receive_loop(mut context: ReceiveContext) {
         if std::env::var("MIMI_REALTIME_METADATA_TRACE").as_deref() == Ok("1") {
             let lane = match &event {
                 OpenAIRealtimeServerEvent::SourceTranscriptDelta { text, elapsed_ms } => {
-                    Some(("source", text.chars().count(), elapsed_ms))
+                    Some(("source", text, elapsed_ms))
                 }
                 OpenAIRealtimeServerEvent::TranslationTranscriptDelta { text, elapsed_ms } => {
-                    Some(("translation", text.chars().count(), elapsed_ms))
+                    Some(("translation", text, elapsed_ms))
                 }
                 _ => None,
             };
-            if let Some((lane, characters, alignment_ms)) = lane {
+            if let Some((lane, text, alignment_ms)) = lane {
+                let sentence_end = text
+                    .trim_end_matches(|c: char| {
+                        c.is_whitespace()
+                            || matches!(c, '"' | '\'' | '”' | '’' | '」' | '』' | ')' | '）')
+                    })
+                    .ends_with(['.', '!', '?', '。', '！', '？']);
                 eprintln!(
                     "{}",
-                    serde_json::json!({"phase":"wire_progress", "lane":lane, "characters":characters,
+                    serde_json::json!({"phase":"wire_progress", "lane":lane, "characters":text.chars().count(), "sentence_end":sentence_end,
                     "alignment_ms":alignment_ms, "received_ms":trace_started.elapsed().as_millis()})
                 );
             }
@@ -1369,6 +1375,7 @@ mod tests {
                         .ok()
                         .is_some_and(|text| text.contains("session.close"))
                     {
+                        tokio::time::sleep(Duration::from_millis(2_100)).await;
                         socket
                             .send(Message::Text(r#"{"type":"session.closed"}"#.into()))
                             .await
@@ -1384,7 +1391,10 @@ mod tests {
             .await
             .unwrap();
         tokio::time::sleep(Duration::from_millis(20)).await;
-        client.finish(Duration::from_millis(500)).await;
+        let client = crate::clients::translation_client::TranslationClient::OpenAIRealtime(client);
+        tokio::time::timeout(client.finish_timeout(), client.finish())
+            .await
+            .unwrap();
 
         let mut received = Vec::new();
         while let Ok(event) = events.try_recv() {

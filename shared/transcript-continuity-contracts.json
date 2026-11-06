@@ -152,6 +152,264 @@
           ]
         }
       ]
+    },
+    {
+      "id": "elapsed-time-cannot-confirm-unpunctuated-cjk",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "今天先检查",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "今天先检查",
+          "elapsed_ms": 1200,
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "中文的完整字幕",
+          "elapsed_ms": 11400,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "中文的完整字幕",
+          "elapsed_ms": 11400,
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "再检查日文",
+          "elapsed_ms": 12000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "再检查日文",
+          "elapsed_ms": 12200,
+          "pairs": []
+        },
+        {
+          "action": "finish",
+          "pairs": [
+            [
+              "今天先检查中文的完整字幕再检查日文",
+              "今天先检查中文的完整字幕再检查日文"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "target-time-alone-cannot-confirm-stale-source",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "旧原文",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "新译文",
+          "elapsed_ms": 1400,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "仍在继续",
+          "elapsed_ms": 30000,
+          "pairs": []
+        },
+        {
+          "action": "reset",
+          "pairs": []
+        }
+      ]
+    },
+    {
+      "id": "long-but-misaligned-timed-lanes-stay-drafts",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "早期原文",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "早期译文",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "后期原文",
+          "elapsed_ms": 12000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "较晚译文",
+          "elapsed_ms": 30000,
+          "pairs": []
+        },
+        {
+          "action": "reset",
+          "pairs": []
+        }
+      ]
+    },
+    {
+      "id": "gemini-long-idle-unpaired-source",
+      "mode": "gemini",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "Old unpaired caption",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 31000,
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "New Japanese source",
+          "elapsed_ms": 32000,
+          "pairs": [],
+          "clear_previews": true
+        },
+        {
+          "action": "translation",
+          "delta": "新的中文字幕",
+          "elapsed_ms": 32500,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 34500,
+          "pairs": [
+            [
+              "New Japanese source",
+              "新的中文字幕"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemini-long-idle-unpaired-translation",
+      "mode": "gemini",
+      "steps": [
+        {
+          "action": "translation",
+          "delta": "Old unpaired caption",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 31000,
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "New Japanese source",
+          "elapsed_ms": 32000,
+          "pairs": [],
+          "clear_previews": true
+        },
+        {
+          "action": "translation",
+          "delta": "新的中文字幕",
+          "elapsed_ms": 32500,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 34500,
+          "pairs": [
+            [
+              "New Japanese source",
+              "新的中文字幕"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemini-delayed-counterpart-within-idle-bound",
+      "mode": "gemini",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "Source waits for translation",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 19000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "稍晚收到的译文",
+          "elapsed_ms": 20999,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 22999,
+          "pairs": [
+            [
+              "Source waits for translation",
+              "稍晚收到的译文"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gemini-long-idle-original-cleared-when-translation-arrives-first",
+      "mode": "gemini",
+      "steps": [
+        {
+          "action": "source",
+          "delta": "Old source only",
+          "elapsed_ms": 1000,
+          "pairs": []
+        },
+        {
+          "action": "translation",
+          "delta": "新译文",
+          "elapsed_ms": 21000,
+          "clear_previews": true,
+          "pairs": []
+        },
+        {
+          "action": "source",
+          "delta": "Fresh source",
+          "elapsed_ms": 21500,
+          "pairs": []
+        },
+        {
+          "action": "settle",
+          "elapsed_ms": 23500,
+          "pairs": [
+            [
+              "Fresh source",
+              "新译文"
+            ]
+          ]
+        }
+      ]
     }
   ]
 }

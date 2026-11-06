@@ -470,6 +470,10 @@
     { "id": "language-discovered", "previousDraft": "Synthetic preview", "draft": "Synthetic preview", "previousLanguage": null, "language": "en", "expected": true },
     { "id": "language-unreported-unchanged", "previousDraft": "Synthetic preview", "draft": "Synthetic  preview!", "previousLanguage": null, "language": null, "expected": false }
   ],
+  "openaiFinishPolicy": {
+    "finishTimeoutMs": 15000,
+    "providerFinishTimeoutMs": 17000
+  },
   "geminiFinishPolicy": {
     "quietCheckpointMs": 2000,
     "finishTimeoutMs": 4500,

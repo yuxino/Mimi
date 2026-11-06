@@ -10,7 +10,7 @@ class SharedTranscriptStreamTest {
         for (index in 0 until cases.length()) {
             val case = cases.getJSONObject(index)
             val listener = Listener()
-            val stream = SharedTranscriptStream(listener)
+            val stream = SharedTranscriptStream(listener, case.optString("mode", "openai"))
             val steps = case.getJSONArray("steps")
             for (stepIndex in 0 until steps.length()) {
                 val step = steps.getJSONObject(stepIndex)
@@ -18,21 +18,28 @@ class SharedTranscriptStreamTest {
                     "source", "translation" -> stream.append(step.getString("action") == "source", step.getString("delta"),
                         if (step.has("elapsed_ms")) step.getLong("elapsed_ms") else null)
                     "finish" -> stream.finish()
+                    "settle" -> stream.settle(step.getLong("elapsed_ms"))
                     "reset" -> stream.reset()
                 }
                 val expected = step.getJSONArray("pairs")
                 assertEquals("${case.getString("id")} step $stepIndex", (0 until expected.length()).map {
                     expected.getJSONArray(it).getString(0) to expected.getJSONArray(it).getString(1)
                 }, listener.pairs)
+                if (step.optBoolean("clear_previews")) {
+                    assertEquals(case.getString("id"), 1, listener.sourceClears)
+                    assertEquals(case.getString("id"), 1, listener.translationClears)
+                }
             }
         }
     }
     private class Listener : EngineListener {
         val pairs = mutableListOf<Pair<String, String>>()
+        var sourceClears = 0
+        var translationClears = 0
         override fun onSessionReady() = Unit
-        override fun onSourceDraft(text: String, language: String?) = Unit
+        override fun onSourceDraft(text: String, language: String?) { if (text.isEmpty()) sourceClears++ }
         override fun onSourceFinal(text: String, language: String?) = Unit
-        override fun onTranslationDraft(text: String) = Unit
+        override fun onTranslationDraft(text: String) { if (text.isEmpty()) translationClears++ }
         override fun onTranslationFinal(text: String) = Unit
         override fun onFinalPair(source: String, translation: String, language: String?) { pairs += source to translation }
         override fun onError(code: String, message: String) = fail(code)

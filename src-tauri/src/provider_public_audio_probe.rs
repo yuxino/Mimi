@@ -8,11 +8,14 @@ use crate::clients::translation_client::{ConnectError, TranslationClient};
 use crate::core::configuration::LiveTranslationConfiguration;
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode, UtteranceRole};
 use crate::core::protocols::live_translate::LiveTranslateServerEvent as Event;
-use crate::core::provider::{AlibabaRealtimeMode, ProviderKind, TextTranslation};
+use crate::core::provider::{
+    AlibabaRealtimeMode, ProfileLanguagePreset, ProviderKind, SpeechTranslationMode,
+    TextTranslation,
+};
 use crate::core::support_diagnostics::SafeFailure;
 use crate::settings_store::{SettingsStore, DEVELOPMENT_APPLICATION_IDENTIFIER};
 use mimi_runtime::core::health::{
-    probe_connection_health, DISCONNECT_TIMEOUT, HEALTH_CHECK_INTERVAL, PROVIDER_FINISH_TIMEOUT,
+    probe_connection_health, DISCONNECT_TIMEOUT, HEALTH_CHECK_INTERVAL,
 };
 use mimi_runtime::core::recovery::normalize_provider_error_code;
 use serde::Serialize;
@@ -242,7 +245,7 @@ fn saved_configuration(
         .into_iter()
         .find(|profile| profile.id == id)
         .ok_or("profile_unavailable")?;
-    let route = match std::env::var("MIMI_PROVIDER_PUBLIC_TEXT_ROUTE").as_deref() {
+    let mut route = match std::env::var("MIMI_PROVIDER_PUBLIC_TEXT_ROUTE").as_deref() {
         Err(std::env::VarError::NotPresent) => "saved",
         Ok("deepLX")
             if profile.provider == ProviderKind::AlibabaCloud
@@ -253,6 +256,19 @@ fn saved_configuration(
         }
         _ => return Err("route_invalid"),
     };
+    let recognition_only = match std::env::var("MIMI_PROVIDER_PUBLIC_RECOGNITION_ONLY").as_deref() {
+        Err(std::env::VarError::NotPresent) => false,
+        Ok("1") if profile.provider == ProviderKind::OpenAIRealtime && route == "saved" => true,
+        _ => return Err("recognition_route_invalid"),
+    };
+    if recognition_only {
+        profile.speech_translation_mode = SpeechTranslationMode::AsrMt;
+        profile.language_preset = Some(ProfileLanguagePreset {
+            source_language: SourceLanguage::Automatic,
+            target_language: TargetLanguage::Original,
+        });
+        route = "openai_asr_only";
+    }
     if !matches!(
         profile.provider,
         ProviderKind::AlibabaCloud
@@ -261,24 +277,32 @@ fn saved_configuration(
             | ProviderKind::BaiduTranslate
             | ProviderKind::TencentCloud
             | ProviderKind::VolcanoEngine
-    ) || profile.alibaba_realtime_mode != AlibabaRealtimeMode::Disabled
-        || profile.uses_realtime_asr()
+    ) || (profile.uses_realtime_asr() && !recognition_only)
     {
         return Err("profile_outside_probe_scope");
     }
-    let mut configuration = settings
-        .configuration_for_profile_probe(&profile)
-        .map_err(|_| "saved_configuration_incomplete")?;
+    let mut configuration = if recognition_only {
+        settings.configuration_for_profile_selection(&profile)
+    } else {
+        settings.configuration_for_profile_probe(&profile)
+    }
+    .map_err(|_| "saved_configuration_incomplete")?;
     // Only this in-memory run changes languages/mode; no active profile is selected.
-    configuration.source_language = if matches!(
+    let automatic = matches!(
         profile.provider,
         ProviderKind::OpenAIRealtime | ProviderKind::GoogleGeminiLive
-    ) {
-        SourceLanguage::Automatic
+    ) || profile.alibaba_realtime_mode == AlibabaRealtimeMode::LiveTranslate;
+    configuration.source_language = requested_source_language(
+        std::env::var("MIMI_PROVIDER_PUBLIC_SOURCE_LANGUAGE")
+            .ok()
+            .as_deref(),
+        automatic,
+    )?;
+    configuration.target_language = if recognition_only {
+        TargetLanguage::Original
     } else {
-        SourceLanguage::English
+        TargetLanguage::SimplifiedChinese
     };
-    configuration.target_language = TargetLanguage::SimplifiedChinese;
     if profile.provider == ProviderKind::AlibabaCloud {
         configuration.translation_mode = TranslationMode::Turbo;
     }
@@ -286,6 +310,20 @@ fn saved_configuration(
         .validated()
         .map_err(|_| "probe_configuration_invalid")?;
     Ok((id, route, configuration))
+}
+
+fn requested_source_language(
+    requested: Option<&str>,
+    automatic_default: bool,
+) -> Result<SourceLanguage, &'static str> {
+    match requested {
+        Some(code) => SourceLanguage::ALL
+            .into_iter()
+            .find(|language| language.raw_value() == code)
+            .ok_or("probe_source_language_invalid"),
+        None if automatic_default => Ok(SourceLanguage::Automatic),
+        None => Ok(SourceLanguage::English),
+    }
 }
 
 fn public_pcm(sample_rate: u32, resumed: bool) -> Result<Vec<u8>, &'static str> {
@@ -343,7 +381,33 @@ fn frame_duration(provider: ProviderKind) -> Duration {
 
 async fn run() -> Result<(), &'static str> {
     let _ = rustls::crypto::ring::default_provider().install_default();
+    use mimi_runtime::core::development_debug::{self, DebugEvent, TraceSink};
+    let mt_requests = Arc::new(AtomicUsize::new(0));
+    let same_language_finals = Arc::new(AtomicUsize::new(0));
+    let requests = Arc::clone(&mt_requests);
+    let passthrough = Arc::clone(&same_language_finals);
+    development_debug::initialize(true);
+    development_debug::set_enabled(true)?;
+    let counter_sink = TraceSink::new(move |entry| {
+        if let DebugEvent::Pipeline { label } = entry.event {
+            if label.starts_with("mt request started ") {
+                requests.fetch_add(1, Ordering::SeqCst);
+            } else if label.starts_with("mt final skipped label=same_language ") {
+                passthrough.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    });
+    development_debug::set_sink(Some(counter_sink.clone()))?;
     let (profile_id, route, configuration) = saved_configuration()?;
+    // A bounded diagnostic comparison, not a production finish-policy change.
+    let openai_finish_override =
+        match std::env::var("MIMI_PROVIDER_PUBLIC_OPENAI_FINISH_SECONDS").as_deref() {
+            Err(std::env::VarError::NotPresent) => None,
+            Ok("15") if configuration.provider == ProviderKind::OpenAIRealtime => {
+                Some(Duration::from_secs(15))
+            }
+            _ => return Err("probe_finish_override_invalid"),
+        };
     let silence_seconds = match std::env::var("MIMI_PROVIDER_PUBLIC_SILENCE_SECONDS").as_deref() {
         Err(std::env::VarError::NotPresent) | Ok("90") => 90,
         Ok("0") => 0,
@@ -434,9 +498,11 @@ async fn run() -> Result<(), &'static str> {
         "{}",
         json!({"phase":"preflight","profile_id":profile_id,"provider":configuration.provider,
         "route":route,"sample":sample,"sample_rate":sample_rate,"sample_bytes":pcm.len(),"resumed_sample_bytes":resumed_pcm.len(),
-        "frame_ms":frame_time.as_millis(),"source":configuration.source_language.raw_value(),"target":"zh",
+        "frame_ms":frame_time.as_millis(),"source":configuration.source_language.raw_value(),"target":configuration.target_language.raw_value(),
         "silence_input": if send_silence_pcm { "zero_pcm" } else { "no_pcm" },
-        "play_once":play_once,"source_isolation_baseline":source_isolation_baseline,"phase_frames":phase_frames})
+        "play_once":play_once,"source_isolation_baseline":source_isolation_baseline,"phase_frames":phase_frames,
+        "alibaba_realtime_mode":configuration.alibaba_realtime_mode,
+        "openai_finish_override_ms":openai_finish_override.map(|value| value.as_millis())})
     );
     match tokio::time::timeout(Duration::from_secs(30), client.connect()).await {
         Ok(Ok(())) => {}
@@ -550,10 +616,18 @@ async fn run() -> Result<(), &'static str> {
     closing.store(true, Ordering::SeqCst);
     let finish_started = Instant::now();
     let can_finish = observed.lock().unwrap().first_failure.is_none();
+    let finish = async {
+        match (&client, openai_finish_override) {
+            (TranslationClient::OpenAIRealtime(openai), Some(timeout)) => {
+                openai.finish(timeout).await
+            }
+            _ => client.finish().await,
+        }
+    };
     if can_finish
         && tokio::time::timeout(
-            PROVIDER_FINISH_TIMEOUT + Duration::from_secs(1),
-            client.finish(),
+            openai_finish_override.unwrap_or(client.finish_timeout()) + Duration::from_secs(1),
+            finish,
         )
         .await
         .is_err()
@@ -585,6 +659,10 @@ async fn run() -> Result<(), &'static str> {
             .unwrap()
             .fail("event_drain", "event_drain_timeout", started);
     }
+    development_debug::set_sink(None)?;
+    if !counter_sink.wait_idle(Duration::from_secs(1)) {
+        return Err("probe_counter_drain_timeout");
+    }
     let mut observed = observed.lock().unwrap();
     if observed.first_failure.is_none() {
         for pair in [[0, 1], [2, 3]] {
@@ -595,11 +673,12 @@ async fn run() -> Result<(), &'static str> {
                 == 0
             {
                 observed.fail("verification", "source_final_missing", started);
-            } else if pair
-                .iter()
-                .map(|&i| observed.phases[i].translation_finals)
-                .sum::<u64>()
-                == 0
+            } else if configuration.target_language.translates_audio()
+                && pair
+                    .iter()
+                    .map(|&i| observed.phases[i].translation_finals)
+                    .sum::<u64>()
+                    == 0
             {
                 observed.fail("verification", "translation_final_missing", started);
             }
@@ -611,13 +690,35 @@ async fn run() -> Result<(), &'static str> {
     println!(
         "{}",
         json!({"phase":"result","profile_id":profile_id,"provider":configuration.provider,
-        "route":route,"elapsed_ms":started.elapsed().as_millis(),"finish_ms":finish_ms,"observation":&*observed})
+        "route":route,"elapsed_ms":started.elapsed().as_millis(),"finish_ms":finish_ms,"observation":&*observed,
+        "independent_mt_requests":mt_requests.load(Ordering::SeqCst),"same_language_finals":same_language_finals.load(Ordering::SeqCst)})
     );
     if observed.first_failure.is_some() {
         Err("public_audio_probe_failed")
     } else {
         Ok(())
     }
+}
+
+#[test]
+fn manual_language_selection_does_not_guess_or_replace_requested_languages() {
+    assert_eq!(
+        requested_source_language(None, true),
+        Ok(SourceLanguage::Automatic)
+    );
+    assert_eq!(
+        requested_source_language(None, false),
+        Ok(SourceLanguage::English)
+    );
+    for (code, expected) in [
+        ("zh", SourceLanguage::Chinese),
+        ("ja", SourceLanguage::Japanese),
+        ("auto", SourceLanguage::Automatic),
+    ] {
+        assert_eq!(requested_source_language(Some(code), false), Ok(expected));
+    }
+    assert!(requested_source_language(Some(""), true).is_err());
+    assert!(requested_source_language(Some("unrecognized"), true).is_err());
 }
 
 #[tokio::test]

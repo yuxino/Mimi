@@ -3,13 +3,14 @@ package app.yuxino.mimi.android.provider
 import org.json.JSONObject
 
 /** Thin transport adapter; alignment and complete text retention execute in shared Rust. */
-internal class SharedTranscriptStream(private val listener: EngineListener) {
+internal class SharedTranscriptStream(private val listener: EngineListener, private val mode: String = "openai") {
     private var state: String? = null
     @Synchronized fun append(source: Boolean, delta: String, elapsedMs: Long?) {
-        exchange(JSONObject().put("type", "openai").put("action", if (source) "source" else "translation")
+        exchange(JSONObject().put("type", mode).put("action", if (source) "source" else "translation")
             .put("delta", delta).put("elapsed_ms", elapsedMs ?: JSONObject.NULL))
     }
-    @Synchronized fun finish() { exchange(JSONObject().put("type", "openai").put("action", "finish")) }
+    @Synchronized fun finish() { exchange(JSONObject().put("type", mode).put("action", "finish")) }
+    @Synchronized fun settle(nowMs: Long) { exchange(JSONObject().put("type", mode).put("action", "settle").put("elapsed_ms", nowMs)) }
     @Synchronized fun reset() { state = null }
     private fun exchange(operation: JSONObject) {
         val response = SharedSubtitleCore.exchange(JSONObject().put("state", state).put("operation", operation))

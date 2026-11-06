@@ -424,6 +424,8 @@ class NativeRuntimeJniTest {
         assertEquals(60L, policy.getLong("snapshotPublishIntervalMs"))
         val providerFinish = SharedSubtitleCore.policy.getLong("provider_finish_timeout_ms")
         assertTrue(policy.getLong("sessionFinishTimeoutMs") > providerFinish + 1_000L + 2_000L)
+        val openaiFinish = SharedSubtitleCore.policy.getLong("openai_provider_finish_timeout_ms")
+        assertTrue(policy.getLong("sessionFinishTimeoutMs") > openaiFinish + 1_000L + 2_000L)
         val geminiFinish = SharedSubtitleCore.policy.getLong("gemini_finish_timeout_ms")
         assertEquals(4_500L, geminiFinish)
         assertTrue(geminiFinish > 2_000L)
@@ -827,6 +829,15 @@ class NativeRuntimeJniTest {
         verifyBuiltinRealtimeRecovery(ServiceProvider.OPENAI, listOf(case))
     }
 
+    @Test fun openaiLateCloseTailSurvivesBothFinishDeadlinesAcrossActualJni() {
+        val case = JSONObject().put("id", "openai-late-close-tail")
+            .put("provider", ServiceProvider.OPENAI.id).put("duringSetup", false)
+            .put("expectedConnections", 2).put("expectedErrorCode", JSONObject.NULL)
+            .put("failureFrame", JSONObject.NULL).put("delayedCloseMs", 7_000)
+            .put("timeoutSeconds", 12)
+        verifyBuiltinRealtimeRecovery(ServiceProvider.OPENAI, listOf(case))
+    }
+
     @Test fun grokVoiceSetupClassificationAndRecoveredPcmCrossActualJni() {
         verifyBuiltinRealtimeRecovery(ServiceProvider.XAI)
     }
@@ -841,6 +852,17 @@ class NativeRuntimeJniTest {
 
     @Test fun baiduSetupRejectionsAndTransportRecoveryCrossActualJni() {
         verifyBuiltinRealtimeRecovery(ServiceProvider.BAIDU)
+    }
+
+    @Test fun baiduSilenceRejectionRecoversAndResumesPcmAcrossActualJni() {
+        val case = JSONObject().put("id", "baidu-silent-audio-rejection")
+            .put("provider", ServiceProvider.BAIDU.id).put("duringSetup", false)
+            .put("expectedConnections", 2).put("expectedErrorCode", JSONObject.NULL)
+            .put("failureFrame", JSONObject().put("code", 20316))
+            .put("quietAudioFailure", true).put("timeoutSeconds", 12)
+        val late = JSONObject(case.toString()).put("id", "baidu-late-silence-rejection")
+            .put("lateQuietAudioFailure", true)
+        verifyBuiltinRealtimeRecovery(ServiceProvider.BAIDU, listOf(case, late))
     }
 
     private fun verifyBuiltinRealtimeRecovery(provider: ServiceProvider, selected: List<JSONObject>? = null) {
@@ -861,6 +883,15 @@ class NativeRuntimeJniTest {
                     if (!case.getBoolean("duringSetup") && !case.optBoolean("repeatFailures")) {
                         awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
                         fixture.nextMid.countDown()
+                        if (case.optBoolean("quietAudioFailure")) {
+                            repeat(550) {
+                                assertTrue("$id rejected quiet PCM", NativeRuntimeConfiguration.pcmRaw(handle, ByteArray(1_280)))
+                                Thread.sleep(40)
+                            }
+                            if (case.optBoolean("lateQuietAudioFailure")) {
+                                assertTrue("$id rejected resumed PCM", NativeRuntimeConfiguration.pcmRaw(handle, ByteArray(1_280) { 7 }))
+                            }
+                        }
                     }
                     if (case.isNull("expectedErrorCode")) {
                         var resumedAfterQuiet = false
@@ -911,7 +942,9 @@ class NativeRuntimeJniTest {
                                 }
                             } else {
                                 NativeRuntimeConfiguration.command("finish", handle)
-                                val finished = awaitRuntimeState(handle, fixture) { it.getBoolean("finished") }.getJSONObject("snapshot")
+                                val finishedState = awaitRuntimeState(handle, fixture, timeoutSeconds = case.optLong("timeoutSeconds", 5)) { it.getBoolean("finished") }
+                                assertTrue(id, finishedState.isNull("errorCode"))
+                                val finished = finishedState.getJSONObject("snapshot")
                                 assertEquals(id, "Synthetic recovered caption.", finished.getJSONObject("source").getString("text"))
                                 assertTrue(id, finished.getJSONObject("source").getBoolean("isFinal"))
                                 assertEquals(id, "合成恢复字幕。", finished.getJSONObject("translation").getString("text"))
@@ -1618,7 +1651,23 @@ class NativeRuntimeJniTest {
                         send(output, recovery.getJSONObject("failureFrame").toString())
                     } else if (index == 0) {
                         if (!recovery.getBoolean("duringSetup")) check(nextMid.await(5, TimeUnit.SECONDS))
-                        if (recovery.optBoolean("sourceProgressReplay")) {
+                        if (recovery.optBoolean("quietAudioFailure")) {
+                            var quietFrames = 0
+                            check(readText(input, output, connection, onBinary = { pcm ->
+                                if (quietFrames < 550) {
+                                    check(pcm.contentEquals(ByteArray(1_280)))
+                                    if (++quietFrames == 550 && !recovery.optBoolean("lateQuietAudioFailure")) {
+                                        send(output, recovery.getJSONObject("failureFrame").toString())
+                                    }
+                                } else {
+                                    check(recovery.optBoolean("lateQuietAudioFailure"))
+                                    check(pcm.contentEquals(ByteArray(1_280) { 7 }))
+                                    Thread.sleep(1_500)
+                                    send(output, recovery.getJSONObject("failureFrame").toString())
+                                }
+                            }).isEmpty())
+                            check(quietFrames == 550)
+                        } else if (recovery.optBoolean("sourceProgressReplay")) {
                             // No microphone, system capture, provider account or wall-clock
                             // shortcut: exercise the real receiver and native health loop.
                             secure.soTimeout = 15_000
@@ -1688,10 +1737,14 @@ class NativeRuntimeJniTest {
                                 recoveredAudioFrames.incrementAndGet()
                                 recoveredAudio.countDown()
                             }
-                            builtinRecoveredCaption(output)
+                            if (recovery.optLong("delayedCloseMs") == 0L) builtinRecoveredCaption(output)
                             when (provider) {
                                 ServiceProvider.OPENAI -> {
                                     check(JSONObject(readText(input, output, connection)).getString("type") == "session.close")
+                                    if (recovery.optLong("delayedCloseMs") > 0L) {
+                                        Thread.sleep(recovery.getLong("delayedCloseMs"))
+                                        builtinRecoveredCaption(output)
+                                    }
                                     send(output, """{"type":"session.closed"}""")
                                 }
                                 ServiceProvider.GEMINI -> {
@@ -1704,7 +1757,7 @@ class NativeRuntimeJniTest {
                             }
                         }
                     }
-                    if (!(index == 0 && recovery.optBoolean("sourceProgressReplay"))) {
+                    if (!(index == 0 && (recovery.optBoolean("sourceProgressReplay") || recovery.optBoolean("quietAudioFailure")))) {
                         check(readText(input, output, connection).isEmpty())
                     }
                 }
