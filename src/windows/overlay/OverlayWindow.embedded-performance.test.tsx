@@ -302,7 +302,7 @@ it("keeps locale, settings, lifecycle, native mode and resize subscriptions live
   const island = host.querySelector<HTMLButtonElement>(".overlay-control-island")!;
   const panel = host.querySelector(".overlay-control-panel")!;
   const settings = useStore.getState().settings;
-  for (const language of ["zh", "zh-TW", "ja", "ko", "fr", "de", "th", "en"] as const) {
+  for (const language of ["zh", "zh-TW", "ja", "ko", "fr", "de", "th", "ru", "en"] as const) {
     await act(async () => setStoredUiLanguage(language));
     expect(useStore.getState().settings).toBe(settings);
     expect(host.querySelector(".overlay-control-panel")).toBe(panel);

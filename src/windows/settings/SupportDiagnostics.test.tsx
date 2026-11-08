@@ -82,7 +82,7 @@ it("keeps the existing reviewed public feedback action", async () => {
   expect(host.querySelector('[role="status"]')?.textContent).toContain("Review the report");
 });
 
-it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"] as const)("keeps refresh, copy and feedback actions labeled and keyboard-reachable in %s", async (language) => {
+it.each(["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"] as const)("keeps refresh, copy and feedback actions labeled and keyboard-reachable in %s", async (language) => {
   setStoredUiLanguage(language);
   await mount();
   expect(host.querySelector(".settings-diagnostic-privacy")).toBeNull();
@@ -352,6 +352,7 @@ it.each(UI_LANGUAGES)("renders a runtime recognition failure with a neutral stat
     ko: ["자막 오류", "음성 인식 실패"],
     fr: ["Erreur des sous-titres", "Échec de la reconnaissance vocale"],
     th: ["คำบรรยายเกิดข้อผิดพลาด", "การรู้จำเสียงไม่สำเร็จ"],
+    ru: ["Ошибка субтитров", "Ошибка распознавания речи"],
   }[language];
   const classification = { category: "recognition", phase: "asr_recognition", code: "APPLE_SPEECH_RECOGNITION_FAILED", description: "private-native-description" };
   mocks.invoke.mockResolvedValue(JSON.stringify({

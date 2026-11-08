@@ -64,6 +64,13 @@ export const recordingStatusCopy: Record<ResolvedUiLanguage, Record<VisibleRecor
     limited: { short: "เสียงเต็ม", label: "การบันทึกเสียงถึงขีดจำกัดพื้นที่แล้ว" },
     error: { short: "อัดเสียงผิดพลาด", label: "เกิดข้อผิดพลาดในการบันทึกเสียง" },
   },
+  ru: {
+    starting: { short: "Подготовка", label: "Подготовка к записи звука" },
+    recording: { short: "Запись", label: "Идёт запись звука" },
+    paused: { short: "Запись на паузе", label: "Запись звука приостановлена" },
+    limited: { short: "Лимит записи", label: "Достигнут лимит хранения звукозаписи" },
+    error: { short: "Ошибка записи", label: "Ошибка записи звука" },
+  },
 };
 
 /** Include this in a parent button's explicit accessible label as well. */

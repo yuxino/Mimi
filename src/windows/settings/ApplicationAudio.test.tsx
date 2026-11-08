@@ -55,7 +55,7 @@ async function choose(option: string) {
   await act(async () => node.click());
 }
 
-it.each(["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"] as const)("offers one picker and lists only after user intent in %s", async language => {
+it.each(["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"] as const)("offers one picker and lists only after user intent in %s", async language => {
   setStoredUiLanguage(language); await render();
   expect(invoke).not.toHaveBeenCalled();
   expect(host.querySelectorAll('button[role="combobox"]')).toHaveLength(1);

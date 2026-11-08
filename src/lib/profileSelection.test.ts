@@ -8,7 +8,7 @@ const ready: ServiceProfile = { id: "ready", name: "Saved service", provider: "a
 
 afterEach(() => setStoredUiLanguage("system"));
 
-it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th"] as const)(
+it.each(["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th", "ru"] as const)(
   "uses existing %s reasons without adding status text to ready choices", language => {
     setStoredUiLanguage(language);
     expect(profileSelectionState(ready, "zh")).toEqual({ disabled: false, description: undefined });

@@ -8,7 +8,7 @@ pub(crate) const MAX_TEXT_BYTES: usize = 65_536;
 pub(crate) fn supports_preparation_ui_language(language: &str) -> bool {
     matches!(
         language,
-        "en" | "zh" | "zh-TW" | "ja" | "de" | "fr" | "ko" | "th"
+        "en" | "zh" | "zh-TW" | "ja" | "de" | "fr" | "ko" | "th" | "ru"
     )
 }
 
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn preparation_accepts_resolved_interface_languages_only() {
-        for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"] {
+        for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"] {
             assert!(supports_preparation_ui_language(language), "{language}");
         }
         for language in ["system", "zh-Hant", "zh_tw", "fr-CA", "", "invalid"] {

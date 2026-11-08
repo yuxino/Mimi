@@ -62,7 +62,7 @@ it.each(["en", "zh", "ja"] as const)("marks disabled inputs off without stale ob
   expect(capturePresentation(value, { ...listening, status: { kind: "error", message: "synthetic-error" } }, language, "microphone", false).observation).toBe(view.observation);
 });
 
-it.each(["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"] as const)("presents a selected Linux stream on the system lane in %s", language => {
+it.each(["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"] as const)("presents a selected Linux stream on the system lane in %s", language => {
   vi.stubGlobal("navigator", { userAgent: "Linux" });
   const stream: CaptureStatus = { ...system, kind: "application", strategy: "selected_application",
     actualDeviceName: "Player · Media #7", systemOutputDeviceName: null };

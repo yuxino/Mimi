@@ -8,6 +8,7 @@ import { PROVIDER_COPY } from "./generated/providerCopy";
 import * as DE from "./locales/de";
 import * as FR from "./locales/fr";
 import * as KO from "./locales/ko";
+import * as RU from "./locales/ru";
 import * as TH from "./locales/th";
 import * as ZH_TW from "./locales/zh-TW";
 
@@ -15,13 +16,13 @@ import type { ServiceProvider, UiLanguage } from "./types";
 
 export type { UiLanguage } from "./types";
 export type ResolvedUiLanguage = Exclude<UiLanguage, "system">;
-export const UI_LANGUAGES = ["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th"] as const;
+export const UI_LANGUAGES = ["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th", "ru"] as const;
 export const UI_LANGUAGE_OPTIONS = [
   { value: "zh", label: "简体中文" }, { value: "zh-TW", label: "繁體中文" },
   { value: "en", label: "English" },
   { value: "ja", label: "日本語" }, { value: "de", label: "Deutsch" },
   { value: "ko", label: "한국어" }, { value: "fr", label: "Français" },
-  { value: "th", label: "ภาษาไทย" },
+  { value: "th", label: "ภาษาไทย" }, { value: "ru", label: "Русский" },
 ] as const;
 
 function isUiLanguage(value: string | null | undefined): value is ResolvedUiLanguage {
@@ -2010,6 +2011,7 @@ const COPY = {
   fr: { overlay: FR.OVERLAY, tray: FR.TRAY, settings: FR.SETTINGS, modes: FR.MODES },
   ko: { overlay: KO.OVERLAY, tray: KO.TRAY, settings: KO.SETTINGS, modes: KO.MODES },
   th: { overlay: TH.OVERLAY, tray: TH.TRAY, settings: TH.SETTINGS, modes: TH.MODES },
+  ru: { overlay: RU.OVERLAY, tray: RU.TRAY, settings: RU.SETTINGS, modes: RU.MODES },
 } satisfies Record<ResolvedUiLanguage, {
   overlay: typeof OVERLAY_EN; tray: typeof TRAY_EN; settings: SettingsCopy; modes: typeof MODES_EN;
 }>;

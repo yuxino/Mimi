@@ -137,6 +137,7 @@ fn placeholders(language: &str) -> (&'static str, &'static str) {
         crate::NativeMenuLanguage::German => ("Unbekannte Anwendung", "Unbenannter Audiostream"),
         crate::NativeMenuLanguage::French => ("Application inconnue", "Flux audio sans nom"),
         crate::NativeMenuLanguage::Thai => ("แอปที่ไม่รู้จัก", "สตรีมเสียงไม่มีชื่อ"),
+        crate::NativeMenuLanguage::Russian => ("Неизвестное приложение", "Аудиопоток без названия"),
         _ => ("Unknown application", "Unnamed audio stream"),
     }
 }
