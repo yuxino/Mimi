@@ -2,7 +2,7 @@
 
 [返回 README](../README.md)
 
-[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
+[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md) · [Русский](usage.ru.md)
 
 各家服务的开通入口、凭证字段和当前模型，见[服务开通指南](provider-setup.zh-CN.md)。
 
@@ -88,7 +88,7 @@ macOS 和 Windows build 20348+ 可通过应用选择器，选择要翻译的应�
 
 ## 字幕显示
 
-在「设置 → 通用」选择桌面界面语言：简体中文、繁体中文、英语、日语、德语、韩语、法语或泰语。「跟随系统」会使用对应系统语言；切换界面语言会保留当前编辑内容和字幕状态。识别和翻译语言需分别选择。
+在「设置 → 通用」选择桌面界面语言：简体中文、繁体中文、英语、日语、德语、韩语、法语、泰语或俄语。「跟随系统」会使用对应系统语言；切换界面语言会保留当前编辑内容和字幕状态。识别和翻译语言需分别选择。
 
 桌面端可在设置中点选五种预设色块（默认白色），或点击预设后面的自定义色块打开系统调色板。系统声音与麦克风分别设置颜色。预览与悬浮字幕立即更新，沉浸模式同样生效。双语模式下，原文以更柔和的明暗层级与译文区分。
 

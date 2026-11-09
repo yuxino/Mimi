@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mimi</string>
+    <string name="settings_title">Настройки Mimi</string>
+    <string name="start_capture">Включить субтитры</string>
+    <string name="stop_capture">Остановить субтитры</string>
+    <string name="open_settings">Настройки</string>
+    <string name="need_overlay_permission">Разрешите показ поверх других приложений в настройках системы.</string>
+    <string name="need_audio_permission">Для захвата звука из других приложений Android требует разрешение на запись аудио.</string>
+    <string name="capture_failed">Сеанс субтитров остановлен. Проверьте разрешения, настройки службы и сеть, затем повторите попытку.</string>
+    <string name="service_authentication_failed">Не удалось выполнить аутентификацию в службе. Проверьте учётные данные и права доступа текущей службы в настройках, затем снова включите субтитры.</string>
+    <string name="need_api_key">Сначала добавьте ключ API в настройках.</string>
+    <string name="notification_channel">Служба субтитров</string>
+    <string name="notification_title">Mimi захватывает звук воспроизведения</string>
+    <string name="notification_text">Создаются субтитры и перевод в реальном времени</string>
+    <string name="stop_action">Остановить</string>
+    <string name="overlay_font_description">Изменить размер субтитров</string>
+    <string name="overlay_language_description">Открыть настройки языка</string>
+    <string name="overlay_enter_immersive">Погружение</string>
+    <string name="overlay_exit_immersive">Выйти из иммерсивного режима</string>
+    <string name="overlay_exit_short">Выйти</string>
+    <string name="lang_auto">Автоопределение</string>
+    <string name="lang_zh">中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ja">日本語</string>
+    <string name="lang_ko">한국어</string>
+    <string name="tencent_configuration_rejected">Tencent Cloud отклонила конфигурацию сеанса. Проверьте AppID и выбранные языки.</string>
+    <string name="tencent_service_activation_required">Включите перевод речи в реальном времени в консоли Tencent Cloud ASR.</string>
+    <string name="tencent_quota_exhausted">Квота Tencent Cloud исчерпана или платёж просрочен. Проверьте пакеты, баланс и состояние оплаты в консоли.</string>
+    <string name="tencent_capacity_exceeded">Достигнут лимит одновременных сеансов Tencent Cloud. Закройте другие сеансы и повторите попытку или измените квоту параллельных сеансов в консоли.</string>
+    <string name="tencent_provider_rejected">Tencent Cloud отклонила сеанс. Проверьте состояние службы в консоли и повторите попытку.</string>
+    <string name="overlay_font_size">Размер %1$d</string>
+    <string name="overlay_font_failed">Не удалось открыть настройки размера субтитров. Повторите попытку.</string>
+    <string name="lang_shanghainese">Шанхайский диалект</string>
+    <string name="lang_chinese_english">Китайский и английский (смешанный)</string>
+    <string name="help_description">Справка: %1$s</string>
+    <string name="settings_height">Высота окна</string>
+    <string name="settings_alignment">Выравнивание субтитров</string>
+    <string name="settings_align_left">По левому краю</string>
+    <string name="settings_align_center">По центру</string>
+    <string name="settings_align_right">По правому краю</string>
+    <string name="settings_dividers">Разделители предложений</string>
+    <string name="settings_dividers_help">Полупрозрачные линии между предложениями; скрыты в иммерсивном режиме.</string>
+    <string name="settings_timestamps">Показывать время</string>
+    <string name="settings_timestamps_help">Показывать местное время подтверждения (HH:mm:ss) рядом с подтверждёнными субтитрами. Это не точное время начала речи. Также работает в иммерсивном режиме.</string>
+</resources>

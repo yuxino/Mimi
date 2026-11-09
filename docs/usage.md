@@ -2,7 +2,7 @@
 
 [Back to README](../README_EN.md)
 
-[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
+[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md) · [Русский](usage.ru.md)
 
 Provider activation links, credential fields, and current models are in the [provider setup guide](provider-setup.md).
 
@@ -89,7 +89,7 @@ Transcript retention is limited to 10,000 confirmed pairs / 2 MiB of text and au
 
 ## Subtitle display
 
-Choose the desktop interface language in Settings → General: Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean, French or Thai. The system option follows your system language; changing the interface language keeps current edits and subtitle state. Recognition and translation languages are separate choices.
+Choose the desktop interface language in Settings → General: Simplified Chinese, Traditional Chinese, English, Japanese, German, Korean, French, Thai or Russian. The system option follows your system language; changing the interface language keeps current edits and subtitle state. Recognition and translation languages are separate choices.
 
 In Settings, choose one of the five subtitle color swatches (white by default), or use the custom swatch after them to open the desktop color picker. System audio and microphone have separate color settings. The preview and floating subtitles update immediately, including immersive mode. In bilingual mode, the original stays visually softer than the translation.
 

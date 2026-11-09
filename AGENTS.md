@@ -34,7 +34,7 @@ Preserve these product constraints:
 - The product website lives in the separate `yuxino-labs/mimi-web`
   repository. Never add a website copy, subtree, or generated site assets to
   this application repository.
-- `shared/provider-copy.json`: shared service descriptions, setup prerequisites and Alibaba mode copy in all eight UI languages. Run `python3 -B scripts/sync-provider-copy.py` after editing; desktop TypeScript and Android resources are generated. Keep platform-specific permissions/navigation in their native resources. See `docs/development/shared-provider-copy.md`.
+- `shared/provider-copy.json`: shared service descriptions, setup prerequisites and Alibaba mode copy in all nine UI languages. Run `python3 -B scripts/sync-provider-copy.py` after editing; desktop TypeScript and Android resources are generated. Keep platform-specific permissions/navigation in their native resources. See `docs/development/shared-provider-copy.md`.
 - `README.md`: the Simplified Chinese entry point; `README_EN.md` is English.
   Other localized READMEs live in `docs/readme/`; contribution and security
   guides live in `.github/`.

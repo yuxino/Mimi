@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_heading">Настройки</string>
+    <string name="settings_interface_language">Язык интерфейса</string>
+    <string name="settings_language_system">Как в системе</string>
+    <string name="settings_language_failed">Не удалось изменить язык интерфейса. Повторите попытку.</string>
+    <string name="settings_back">Назад</string>
+    <string name="settings_advanced">Расширенные настройки</string>
+    <string name="settings_font">Размер субтитров</string>
+    <string name="settings_color">Цвет субтитров</string>
+    <string name="settings_opacity">Непрозрачность субтитров</string>
+    <string name="settings_background">Непрозрачность фона</string>
+    <string name="settings_immersive">Иммерсивные субтитры</string>
+    <string name="settings_immersive_help">Только текст, элементы управления видео остаются доступными. Изменения применяются сразу. Нажмите «Выйти» рядом с субтитрами или отключите этот режим на главном экране.</string>
+    <string name="settings_history">Сохранять историю субтитров</string>
+    <string name="settings_history_help">По умолчанию отключено. История хранится только в текущем сеансе и удаляется при отключении или остановке.</string>
+    <string name="settings_reset">Сбросить положение субтитров</string>
+    <string name="settings_reset_done">Положение внизу по центру восстановлено</string>
+    <string name="settings_save">Сохранить настройки службы</string>
+    <string name="settings_saved">Сохранено</string>
+    <string name="settings_font_value">%1$d sp</string>
+    <string name="settings_percent_value">%1$d%%</string>
+    <string name="settings_history_off">Выкл.</string>
+    <string name="settings_history_value">Строк: %1$d</string>
+    <string name="settings_color_white">Белый (по умолчанию)</string>
+    <string name="settings_color_teal">Бирюзовый</string>
+    <string name="settings_color_yellow">Жёлтый</string>
+    <string name="settings_color_green">Зелёный</string>
+    <string name="settings_color_pink">Розовый</string>
+    <string name="settings_advanced_collapse">Свернуть расширенные настройки</string>
+    <string name="settings_display_mode">Отображение</string>
+    <string name="display_translation">Только перевод</string>
+    <string name="display_original">Только оригинал</string>
+    <string name="display_bilingual">Оригинал + перевод</string>
+    <string name="settings_width">Ширина субтитров</string>
+    <string name="overlay_drag">Переместить субтитры</string>
+    <string name="overlay_resize">Изменить размер субтитров</string>
+    <string name="stopping_capture">Остановка субтитров…</string>
+    <string name="service_stop_failed">Не удалось остановить субтитры. Повторите попытку.</string>
+    <string name="settings_display_mode_help">Изменяется только отображение. Распознавание и перевод продолжают работать через выбранную службу.</string>
+</resources>

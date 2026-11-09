@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="brand_description">Значок персонажа Mimi</string>
+    <string name="home_kicker">Субтитры и перевод в реальном времени</string>
+    <string name="home_title">Субтитры в реальном времени</string>
+    <string name="home_description">Показывайте субтитры к звуку, воспроизводимому в других приложениях. Некоторые приложения ограничивают захват аудио.</string>
+    <string name="home_source">Язык речи</string>
+    <string name="home_target">Язык перевода</string>
+    <string name="home_service">Служба перевода</string>
+    <string name="home_service_unset">%1$s · требуется настройка</string>
+    <string name="home_service_ready">%1$s · настроено</string>
+    <string name="home_setup_action">Настроить службу перевода</string>
+    <string name="home_setup_status">Вы здесь впервые</string>
+    <string name="home_setup_hint">Выберите службу и добавьте свои учётные данные.</string>
+    <string name="home_ready_status">Готово к запуску</string>
+    <string name="home_ready_hint">После запуска субтитры появятся поверх других приложений.</string>
+    <string name="home_overlay_hint">Теперь разрешите показ поверх других приложений в настройках системы.</string>
+    <string name="home_starting_status">Ожидание разрешения</string>
+    <string name="preview_label">Пример субтитров</string>
+    <string name="preview_example">Пример текста</string>
+    <string name="preview_source">Это пример субтитра.</string>
+    <string name="preview_zh">这是一条示例字幕。</string>
+    <string name="preview_en">This is a sample subtitle.</string>
+    <string name="preview_ja">字幕の表示例です。</string>
+    <string name="language_source_title">На каком языке говорят?</string>
+    <string name="language_target_title">На каком языке показывать субтитры?</string>
+    <string name="language_sheet_hint">Выбор сохраняется автоматически и применяется при следующем запуске субтитров.</string>
+    <string name="language_saved">Выбрано: %1$s</string>
+    <string name="language_saved_next_session">%1$s будет использоваться в следующем сеансе</string>
+    <string name="undo">Отменить</string>
+    <string name="capture_audio_detected">Обнаружен звук воспроизведения</string>
+    <string name="capture_waiting">Ожидание звука воспроизведения</string>
+    <string name="capture_no_pcm">Аудиокадры пока не получены</string>
+    <string name="capture_silent">Полезный звук не обнаружен</string>
+    <string name="capture_no_sound_hint">Полезный звук не обнаружен. Проверьте воспроизведение; исходное приложение может ограничивать захват.</string>
+    <string name="capture_source_hint">Источник: звук воспроизведения в приложении. Обнаружение звука не гарантирует распознавание речи.</string>
+    <string name="copy_capture_diagnostics">Копировать диагностику захвата</string>
+    <string name="capture_diagnostics_copied">Скопировано без аудио, субтитров и учётных данных</string>
+    <string name="capture_diagnostics_copy_failed">Не удалось скопировать диагностику. Повторите попытку.</string>
+</resources>

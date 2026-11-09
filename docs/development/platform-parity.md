@@ -294,8 +294,8 @@ Desktop offers a default-on **Show interim subtitles** preference, including liv
 
 ## Interface languages
 
-Desktop and Android support Simplified Chinese, Traditional Chinese, English,
-Japanese, German, Korean, French and Thai interface languages. Desktop uses
+Desktop and Android support nine interface languages: Simplified Chinese,
+Traditional Chinese, English, Japanese, German, Korean, French, Thai and Russian. Desktop uses
 regional system-language detection and in-place window updates; Android keeps
 its native resource and locale selection path. Recognition/translation language
 support is independent of the interface language and still follows each

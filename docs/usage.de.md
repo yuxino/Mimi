@@ -2,7 +2,7 @@
 
 [Zurück zur README](readme/de.md)
 
-[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
+[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md) · [Русский](usage.ru.md)
 
 Links zur Freischaltung, Zugangsdaten und aktuelle Modelle findest du in der [Anleitung zur Anbietereinrichtung (Englisch)](provider-setup.md).
 
@@ -87,7 +87,7 @@ Die Grenzen sind 10.000 bestätigte Untertitelpaare / 2 MiB Text und 64 MiB Audi
 
 ## Untertitelanzeige
 
-Wähle die Oberflächensprache unter Einstellungen → Allgemein: vereinfachtes oder traditionelles Chinesisch, Englisch, Japanisch, Deutsch, Koreanisch, Französisch oder Thai. Die Systemoption folgt der Systemsprache. Ein Sprachwechsel erhält aktuelle Eingaben und den Untertitelzustand. Erkennungs- und Übersetzungssprache werden getrennt gewählt.
+Wähle die Oberflächensprache unter Einstellungen → Allgemein: vereinfachtes oder traditionelles Chinesisch, Englisch, Japanisch, Deutsch, Koreanisch, Französisch, Thai oder Russisch. Die Systemoption folgt der Systemsprache. Ein Sprachwechsel erhält aktuelle Eingaben und den Untertitelzustand. Erkennungs- und Übersetzungssprache werden getrennt gewählt.
 
 Wähle in Einstellungen eine von fünf Farben (standardmäßig Weiß) oder öffne die Systemfarbauswahl über das benutzerdefinierte Farbfeld dahinter. Systemaudio und Mikrofon haben getrennte Farben. Vorschau und schwebende Untertitel ändern sich sofort, auch im immersiven Modus. Zweisprachige Untertitel zeigen das Original dezenter als die Übersetzung.
 

@@ -71,13 +71,14 @@ class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: Att
         if (!live) {
             val original = context.getString(when (targetLang) {
                 "en" -> R.string.preview_zh
-                "th" -> R.string.preview_en
+                "th", "ru" -> R.string.preview_en
                 else -> R.string.preview_source
             })
             val translated = context.getString(when (targetLang) {
                 "en" -> R.string.preview_en
                 "ja" -> R.string.preview_ja
                 "th" -> R.string.preview_th
+                "ru" -> R.string.preview_ru
                 else -> R.string.preview_zh
             })
             showContent(CaptionFrameContent(original, translated, timestamp = if (SettingsStore.subtitleTimestamps(context)) "13:08:42" else ""))
