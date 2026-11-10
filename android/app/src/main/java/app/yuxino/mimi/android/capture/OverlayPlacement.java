@@ -54,6 +54,22 @@ public final class OverlayPlacement {
         return Math.max(1, total - Math.max(0, startInset) - Math.max(0, endInset));
     }
 
+    /** Bottom/right-gravity companion aligned with the normal panel's right edge. */
+    public static int adjustmentX(int availableWidth, int panelWidth, int panelX, int controlWidth, int padding) {
+        int desired = (availableWidth - panelWidth) / 2 - panelX + padding;
+        return Math.max(0, Math.min(desired, Math.max(0, availableWidth - controlWidth)));
+    }
+
+    /** Prefer outside above; use below at the top edge without moving saved captions. */
+    public static int adjustmentY(int availableHeight, int panelY, int panelHeight, int controlHeight, int gap) {
+        int above = panelY + panelHeight + gap;
+        if (above + controlHeight <= availableHeight) return Math.max(0, above);
+        int below = panelY - controlHeight - gap;
+        if (below >= 0) return clampY(below, availableHeight, controlHeight);
+        // A very short display may have no free slot; recovery must stay reachable.
+        return clampY(above, availableHeight, controlHeight);
+    }
+
     /** Keep the small restore control beside captions, below when space permits. */
     public static int exitY(int captionY, int captionHeight, int availableHeight, int controlHeight, int gap) {
         return exitY(captionY, captionHeight, availableHeight, controlHeight, gap, 0);

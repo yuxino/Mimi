@@ -60,6 +60,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
     fun run(arguments: Bundle?) {
         check(!MimiService.isRunning)
         check(!SettingsStore.isConfigured(context)) { "Streaming fixtures require blank private configuration" }
+        val adjustable = SettingsStore.overlayAdjustable(context)
         var home: MainActivity? = null
         var failure: Throwable? = null
         var draws = 0
@@ -77,6 +78,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
         try {
             ui {
                 check(context.getSharedPreferences("first_run", 0).edit().putBoolean("seen", true).commit())
+                SettingsStore.setOverlayAdjustable(context, true)
                 SettingsStore.setFontSize(context, 16)
                 SettingsStore.setHistoryLines(context, 0)
                 SettingsStore.setOverlayHeightPercent(context, 32)
@@ -219,7 +221,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                     ui { SettingsStore.setImmersiveSubtitles(context, false); SettingsStore.setDisplayMode(context, mode) }
                     context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
                     SystemClock.sleep(200)
-                    for (height in listOf(20, 50, 70, 32)) {
+                    for (height in listOf(10, 12, SettingsStore.DEFAULT_OVERLAY_HEIGHT, 20, 50, 70, 32)) {
                         ui { SettingsStore.setOverlayHeightPercent(context, height) }
                         context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
                         SystemClock.sleep(200)
@@ -229,7 +231,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                     cases++
                 }
                 if (arguments?.getString("skip_rotation") != "true") {
-                    for (mode in CaptionDisplayMode.entries) for (height in listOf(20, 32, 70)) {
+                    for (mode in CaptionDisplayMode.entries) for (height in listOf(10, 12, SettingsStore.DEFAULT_OVERLAY_HEIGHT, 20, 32, 70)) {
                         stage = "rotation/$mode/$height"
                         check(test.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0))
                         ui {
@@ -256,16 +258,38 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                         SystemClock.sleep(350)
                         resizeTouch(android.view.MotionEvent.ACTION_MOVE, 90f)
                         resizeTouch(android.view.MotionEvent.ACTION_UP, 90f)
-                        ui { assertVisibleLines() }
+                        ui { assertVisibleLines(); checkAdjustmentSwitchOnScreen() }
                         check(SettingsStore.overlayHeightPercent(context) == height && SettingsStore.overlayWidthPercent(context) == savedWidth) {
                             "Rotation overwrote saved dimensions at $stage"
                         }
                         check(test.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0))
                         waitFor { root()!!.width == before.first && root()!!.height == before.second }
                         ui { assertVisibleLines() }
-                        check(root()!!.findViewWithTag<View>("overlay-font").isClickable) { "Cancelled resize opened the quick editor at $stage" }
+                        ui { checkNoFloatingAppearanceEditor(root()!!); checkOverlayChromeAlignment(root()!!); checkAdjustmentSwitchOnScreen() }
+                        check(SettingsStore.overlayAdjustable(context)) { "Cancelled resize locked the normal frame at $stage" }
                         cases++
                     }
+                    stage = "locked-switch-rotation"
+                    ui { checkAdjustmentSwitchOnScreen().performClick() }
+                    waitFor { !SettingsStore.overlayAdjustable(context) }
+                    val width = SettingsStore.overlayWidthPercent(context)
+                    val height = SettingsStore.overlayHeightPercent(context)
+                    for (rotation in listOf(android.app.UiAutomation.ROTATION_FREEZE_90, android.app.UiAutomation.ROTATION_FREEZE_0)) {
+                        val before = root()!!.width
+                        check(test.uiAutomation.setRotation(rotation))
+                        waitFor { root()!!.width != before }
+                        ui {
+                            val toggle = checkAdjustmentSwitchOnScreen()
+                            check(!toggle.isChecked && !SettingsStore.overlayAdjustable(context))
+                            check((root()!!.layoutParams as android.view.WindowManager.LayoutParams).flags and
+                                android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0)
+                            checkOverlayChromeAlignment(root()!!)
+                        }
+                        check(SettingsStore.overlayWidthPercent(context) == width && SettingsStore.overlayHeightPercent(context) == height)
+                        cases++
+                    }
+                    ui { checkAdjustmentSwitchOnScreen().performClick() }
+                    waitFor { SettingsStore.overlayAdjustable(context) }
                 }
             }
         } catch (error: Throwable) { failure = error }
@@ -274,7 +298,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
             ui { observer?.takeIf { it.isAlive }?.removeOnDrawListener(drawListener) }
             context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_STOP))
             SystemClock.sleep(150)
-            ui { SubtitleBus.clear(); home?.finish() }
+            ui { SubtitleBus.clear(); home?.finish(); SettingsStore.setOverlayAdjustable(context, adjustable) }
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (failure == null) "Caption streaming passed: $cases cases, $updates updates, $draws native draws; 9 languages, 3 modes, normal/immersive; no capture/providers.\n"

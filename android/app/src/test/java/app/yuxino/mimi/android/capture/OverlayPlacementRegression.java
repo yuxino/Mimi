@@ -105,6 +105,34 @@ public final class OverlayPlacementRegression {
         equal(192, OverlayPlacement.windowWidth(200, 55, 280, 8));
         cases++;
 
+        // The independent adjustment switch follows the SAME normal panel. Its
+        // bottom/right coordinates remain reachable after drag, resize or rotation.
+        equal(48, OverlayPlacement.adjustmentX(720, 640, 0, 64, 8));
+        equal(8, OverlayPlacement.adjustmentX(720, 640, 40, 64, 8));
+        equal(88, OverlayPlacement.adjustmentX(720, 640, -40, 64, 8));
+        equal(656, OverlayPlacement.adjustmentX(720, 640, -1000, 64, 8));
+        equal(0, OverlayPlacement.adjustmentX(40, 640, 0, 64, 8));
+        equal(622, OverlayPlacement.adjustmentY(1600, 100, 512, 48, 10));
+        // At the top screen edge, the entire switch moves below the panel.
+        equal(1030, OverlayPlacement.adjustmentY(1600, 1088, 512, 48, 10));
+        equal(0, OverlayPlacement.adjustmentY(40, 0, 512, 48, 10));
+        equal(1552, OverlayPlacement.adjustmentY(1600, 0, 1600, 48, 4));
+        equal(40, OverlayPlacement.adjustmentX(720, 640, 0, 48, 0));
+        equal(0, OverlayPlacement.adjustmentX(720, 640, 40, 48, 0));
+        // The whole hit region clears captions whenever either outside slot fits.
+        for (int h : new int[] {240, 400, 900, 1600}) {
+            for (int ph : new int[] {100, 180, 200}) {
+                for (int py = 0; py <= h - ph; py += 8) {
+                    int cy = OverlayPlacement.adjustmentY(h, py, ph, 48, 4);
+                    check(cy >= 0 && cy + 48 <= h);
+                    if (py + ph + 52 <= h || py >= 52) {
+                        check(cy >= py + ph + 4 || cy + 48 + 4 <= py);
+                    }
+                }
+            }
+        }
+        cases++;
+
         // Restore stays adjacent to captions: below if possible, otherwise above.
         equal(66, OverlayPlacement.exitY(120, 100, 1000, 48, 6));
         equal(106, OverlayPlacement.exitY(0, 100, 1000, 48, 6));

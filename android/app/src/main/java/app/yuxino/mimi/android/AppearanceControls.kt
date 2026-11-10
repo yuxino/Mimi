@@ -18,20 +18,18 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 
-/** Same native controls in the caption page and overlay; never starts a provider or capture. */
+/** Native caption-page controls; never starts a provider or capture. */
 internal class AppearanceControls(
     context: Context,
-    private val floating: Boolean = false,
-    private val compactHome: Boolean = false,
     private val requestImmersive: (Boolean) -> Unit,
 ) : LinearLayout(context) {
     private val main = Handler(Looper.getMainLooper())
     private var observing: (() -> Unit)? = null
     private var syncing = false
     private val refreshers = mutableListOf<() -> Unit>()
-    private val styles = if (compactHome) LinearLayout(context).apply {
+    private val styles = LinearLayout(context).apply {
         id = R.id.appearance_panel; orientation = VERTICAL
-    } else this
+    }
     private val colorIndices = listOf(1, 0, 2, 3, 4)
 
     init {
@@ -45,7 +43,7 @@ internal class AppearanceControls(
             { SettingsStore.fontSize(context) }, { SettingsStore.setFontSize(context, it) }, R.string.settings_font_value, styles)
         slider(R.id.overlay_width, R.id.overlay_width_value, R.string.settings_width, 55, 100,
             { SettingsStore.overlayWidthPercent(context) }, { SettingsStore.setOverlayWidthPercent(context, it) }, parent = styles)
-        val height = slider(R.id.overlay_height, R.id.overlay_height_value, R.string.settings_height, 20, 70,
+        val height = slider(R.id.overlay_height, R.id.overlay_height_value, R.string.settings_height, 10, 70,
             { SettingsStore.overlayHeightPercent(context) }, { SettingsStore.setOverlayHeightPercent(context, it) }, parent = styles)
         picker(R.id.caption_alignment, R.string.settings_alignment, CaptionAlignment.entries.map { context.getString(it.label) },
             { SettingsStore.captionAlignment(context).ordinal }, { SettingsStore.setCaptionAlignment(context, CaptionAlignment.entries[it]) }, styles)
@@ -74,14 +72,12 @@ internal class AppearanceControls(
             opacity.isEnabled = !immersive.isChecked
             height.isEnabled = !immersive.isChecked
         }
-        if (compactHome) {
-            addView(View(context).apply { setBackgroundColor(color(R.color.mimi_border)) },
-                LayoutParams(-1, dp(1)).apply { topMargin = dp(24); bottomMargin = dp(16) })
-            addView(label(R.string.caption_style_controls).apply {
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            }, LayoutParams(-1, -2))
-            addView(styles, LayoutParams(-1, -2))
-        }
+        addView(View(context).apply { setBackgroundColor(color(R.color.mimi_border)) },
+            LayoutParams(-1, dp(1)).apply { topMargin = dp(24); bottomMargin = dp(16) })
+        addView(label(R.string.caption_style_controls).apply {
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }, LayoutParams(-1, -2))
+        addView(styles, LayoutParams(-1, -2))
         val more = LinearLayout(context).apply { orientation = VERTICAL }
         styles.addView(View(context).apply { setBackgroundColor(color(R.color.mimi_border)) },
             LayoutParams(-1, dp(1)).apply { topMargin = dp(24) })
@@ -185,7 +181,7 @@ internal class AppearanceControls(
         heading.addView(value, LayoutParams(-2, -2).apply { marginStart = dp(12) })
         parent.addView(heading, LayoutParams(-1, -2).apply { topMargin = dp(20) })
         val seek = SeekBar(context).apply {
-            this.id = id; min = low; max = high; tag = if (id == R.id.font_size && floating) "overlay-font-slider" else null
+            this.id = id; min = low; max = high
             contentDescription = context.getString(title)
             progressTintList = ContextCompat.getColorStateList(context, R.color.mimi_text)
             thumbTintList = progressTintList

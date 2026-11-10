@@ -132,6 +132,7 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
         val position = SettingsStore.overlayYOffset(context)
         val source = SettingsStore.sourceLang(context)
         val target = SettingsStore.targetLang(context)
+        val adjustable = SettingsStore.overlayAdjustable(context)
         val tag = (arguments?.getString("locale") ?: "zh-Hans").let { if (it == "system") "" else it }
         var home: MainActivity? = null
         var host: CaptureProbeActivity? = null
@@ -139,6 +140,7 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
         try {
             ui {
                 localeManager.applicationLocales = LocaleList.forLanguageTags(tag)
+                SettingsStore.setOverlayAdjustable(context, true)
                 SettingsStore.setImmersiveSubtitles(context, false)
                 SettingsStore.setDisplayMode(context, CaptionDisplayMode.BILINGUAL)
                 SettingsStore.setSubtitleDividers(context, false)
@@ -173,7 +175,9 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
                 val panel = root().findViewWithTag<ViewGroup>("expanded-subtitles")
                 val status = panel.findViewWithTag<TextView>("expanded-status")
                 check(panel.isShown && !compact().isShown) { "A session must show the interactive panel" }
-                check(panel.findViewWithTag<View>("collapse-overlay") == null) { "Obsolete collapse control remains" }
+                checkOverlayChromeAlignment(panel)
+                val adjustment = WindowInspector.getGlobalWindowViews().first { it.tag == "overlay-adjust" } as com.google.android.material.materialswitch.MaterialSwitch
+                check(adjustment.isShown && adjustment.isChecked)
                 check(status.isShown && status.text.toString() == expected) { "Waiting copy changed language" }
                 check(status.layout.height <= status.height - status.compoundPaddingTop - status.compoundPaddingBottom)
                 check(localeManager.applicationLocales.toLanguageTags() == tag)
@@ -183,7 +187,8 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
             for (id in listOf(R.id.tab_general, R.id.tab_service, R.id.tab_caption)) {
                 stage = "settings_hide_$id"
                 ui { host!!.finish(); host = null }
-                await { home.hasWindowFocus() && !root().isShown }
+                await { home.hasWindowFocus() && !root().isShown &&
+                    WindowInspector.getGlobalWindowViews().filter { it.tag == "overlay-adjust" }.none { it.isShown } }
                 ui { home.findViewById<View>(id).performClick() }
                 check(home.getString(R.string.overlay_listening_empty) == expected)
                 host = test.startActivitySync(Intent(context, CaptureProbeActivity::class.java)
@@ -238,6 +243,7 @@ internal class OverlayListeningChecks(private val test: Instrumentation) {
                 running(false)
                 context.stopService(Intent(context, MimiService::class.java))
                 host?.finish(); home?.finish()
+                SettingsStore.setOverlayAdjustable(context, adjustable)
                 SettingsStore.setImmersiveSubtitles(context, immersive)
                 SettingsStore.setDisplayMode(context, mode)
                 SettingsStore.setSubtitleDividers(context, dividers)

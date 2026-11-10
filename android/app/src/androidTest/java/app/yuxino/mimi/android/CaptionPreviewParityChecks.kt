@@ -57,51 +57,6 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
         is CompactCaptionView -> listOf(view.status, view.source, view.translation, view.timestamp)
         else -> error("Unexpected frame type")
     }
-    private fun quickEditor(actual: CaptionPanelView, name: String, screenshot: Boolean) {
-        location = "$name-quick-editor"
-        val ordinaryWidth = actual.width; val ordinaryHeight = actual.height
-        val scrollbar = actual.transcriptScroll.isVerticalScrollBarEnabled
-        ui { actual.transcriptScroll.isVerticalScrollBarEnabled = false }
-        val before = bitmap(actual)
-        try {
-            ui { actual.findViewWithTag<View>("overlay-font").performClick() }
-            fun editor() = WindowInspector.getGlobalWindowViews().firstOrNull {
-                it.findViewWithTag<View>("overlay-font-slider") != null
-            }
-            await {
-                editor() != null && !actual.findViewWithTag<View>("overlay-font").isClickable &&
-                    actual.scaleX == actual.scaleY && actual.scaleX > 0f && actual.scaleX <= 1f &&
-                    actual.height * actual.scaleY <= (root()?.height ?: 0) + 1
-            }
-            ui {
-                check(actual.width == ordinaryWidth && actual.height == ordinaryHeight) { "Quick editor rewrapped the native frame" }
-                check(actual.scaleX > 0f && actual.scaleX <= 1f && actual.height * actual.scaleY <= root()!!.height + 1) {
-                    "Quick editor frame exceeds its settled viewport: ${actual.height} × ${actual.scaleY} in ${root()!!.height}"
-                }
-                for (tag in listOf("overlay-toolbar", "overlay-drag-mark", "overlay-route", "overlay-actions", "overlay-model")) {
-                    check(actual.findViewWithTag<View>(tag).isShown) { "Quick editor hides $tag" }
-                }
-                val after = bitmap(actual)
-                try {
-                    check(before.sameAs(after)) { "Opening quick editor changed native frame pixels at $name" }
-                } finally { after.recycle() }
-            }
-            if (screenshot) {
-                SystemClock.sleep(350)
-                val image = checkNotNull(test.uiAutomation.takeScreenshot())
-                File(context.getExternalFilesDir("ui-preview"), "parity-$name-quick-screen.png").outputStream().use {
-                    check(image.compress(Bitmap.CompressFormat.PNG, 100, it))
-                }
-                image.recycle()
-            }
-            ui { editor()!!.findViewById<View>(android.R.id.button1).performClick() }
-            await { editor() == null && actual.findViewWithTag<View>("overlay-font").isClickable && actual.scaleX == 1f && actual.scaleY == 1f }
-            cases++
-        } finally {
-            before.recycle()
-            ui { actual.transcriptScroll.isVerticalScrollBarEnabled = scrollbar }
-        }
-    }
     private fun compare(home: MainActivity, name: String, screenshot: Boolean = false) {
         location = name
         context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
@@ -126,14 +81,15 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             }
             if (actual is CaptionPanelView) {
                 val sample = preview.frame as CaptionPanelView
+                checkOverlayChromeAlignment(actual); checkOverlayChromeAlignment(sample)
                 check(actual.chromeHeight() == sample.chromeHeight() && actual.transcriptScroll.scrollY == sample.transcriptScroll.scrollY) { "Reading viewport differs at $name" }
                 assertReadablePair(actual, name)
                 assertReadablePair(sample, "$name-preview")
-                for (tag in listOf("overlay-drag-mark", "overlay-route", "overlay-model", "overlay-providers", "enter-immersive")) {
+                for (tag in listOf("subtitle-transcript-scroll", "overlay-drag", "overlay-drag-mark", "overlay-resize")) {
                     val a = actual.findViewWithTag<View>(tag); val b = sample.findViewWithTag<View>(tag)
                     check(a.width == b.width && a.height == b.height && a.left == b.left && a.top == b.top) { "Frame chrome differs: $tag" }
                 }
-                for (tag in listOf("overlay-drag", "overlay-font", "overlay-providers", "enter-immersive", "overlay-resize")) {
+                for (tag in listOf("overlay-drag", "overlay-resize")) {
                     check(!sample.findViewWithTag<View>(tag).performClick()) { "Preview navigated away" }
                 }
             }
@@ -164,8 +120,31 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             File(context.getExternalFilesDir("ui-preview"), "parity-$name-screen.png").outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }; bitmap.recycle()
         }
         cases++
-        (actual() as? CaptionPanelView)?.let { quickEditor(it, name, screenshot) }
+        (actual() as? CaptionPanelView)?.let { checkNoFloatingAppearanceEditor(it) }
     }
+    private fun assertCompleteLaneBudget(panel: CaptionPanelView, name: String) {
+        for (row in listOf(panel.source, panel.translation).filter { it.visibility == View.VISIBLE }) {
+            check(row.maxLines >= 1) { "Visible caption lane has no complete row at $name" }
+        }
+        assertReadablePair(panel, name)
+        val source = panel.source
+        val translation = panel.translation
+        if (source.visibility != View.VISIBLE || translation.visibility != View.VISIBLE) return
+        val sourceLayout = checkNotNull(source.layout)
+        val translatedLayout = checkNotNull(translation.layout)
+        if (translatedLayout.lineCount < 2) return
+        val sourceLine = sourceLayout.getLineBottom(sourceLayout.lineCount - 1) -
+            sourceLayout.getLineTop(sourceLayout.lineCount - 1) + source.compoundPaddingTop + source.compoundPaddingBottom
+        val translatedPair = translatedLayout.getLineBottom(translatedLayout.lineCount - 1) -
+            translatedLayout.getLineTop(translatedLayout.lineCount - 2) + translation.compoundPaddingTop + translation.compoundPaddingBottom
+        val margin = (translation.layoutParams as android.widget.LinearLayout.LayoutParams).topMargin
+        val available = panel.transcriptScroll.height - margin -
+            (if (panel.timestamp.visibility == View.VISIBLE) panel.timestamp.height else 0)
+        if (available >= sourceLine + translatedPair) {
+            check(translation.maxLines >= 2) { "Measured reading space can fit a second translation row at $name" }
+        }
+    }
+
     private fun assertReadablePair(panel: CaptionPanelView, name: String) {
         if (!panel.followingLive) return
         for (row in listOf(panel.source, panel.translation).filter { it.visibility == View.VISIBLE }) {
@@ -179,7 +158,10 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             }
         }
         if (panel.timestamp.visibility == View.VISIBLE) {
-            check(panel.timestamp.top - panel.transcriptScroll.scrollY >= 0) { "Confirmation time pushed out of view at $name" }
+            check(panel.timestamp.top - panel.transcriptScroll.scrollY >= 0 &&
+                panel.timestamp.bottom - panel.transcriptScroll.scrollY <= panel.transcriptScroll.height) {
+                "Confirmation time pushed out of view at $name"
+            }
         }
     }
     fun run(arguments: Bundle?) {
@@ -187,8 +169,10 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             check(!MimiService.isRunning)
             ui { SettingsStore.setOverlayHeightPercent(context, SettingsStore.DEFAULT_OVERLAY_HEIGHT) }
             check(SettingsStore.flushPendingWritesForTests(context))
-            check(SettingsStore.overlayHeightPercent(context) == 32)
-            test.finish(Activity.RESULT_OK, Bundle().apply { putString("stream", "Default height 32% applied; other preferences retained.\n") }); return
+            check(SettingsStore.overlayHeightPercent(context) == SettingsStore.DEFAULT_OVERLAY_HEIGHT)
+            test.finish(Activity.RESULT_OK, Bundle().apply {
+                putString("stream", "Default height ${SettingsStore.DEFAULT_OVERLAY_HEIGHT}% applied; other preferences retained.\n")
+            }); return
         }
         if (arguments?.getString("apply_desktop_surface") == "true") {
             ui { SettingsStore.setOverlayOpacity(context, 100); SettingsStore.setOverlayBgAlpha(context, 80) }
@@ -205,6 +189,7 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             SettingsStore.overlayHeightPercent(context).let { { SettingsStore.setOverlayHeightPercent(context, it) } },
             SettingsStore.overlayBgAlpha(context).let { { SettingsStore.setOverlayBgAlpha(context, it) } },
             SettingsStore.overlayOpacity(context).let { { SettingsStore.setOverlayOpacity(context, it) } },
+            SettingsStore.overlayAdjustable(context).let { { SettingsStore.setOverlayAdjustable(context, it) } },
             SettingsStore.immersiveSubtitles(context).let { { SettingsStore.setImmersiveSubtitles(context, it) } },
             SettingsStore.displayMode(context).let { { SettingsStore.setDisplayMode(context, it) } },
             SettingsStore.captionAlignment(context).let { { SettingsStore.setCaptionAlignment(context, it) } },
@@ -221,10 +206,11 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
         try {
             if (arguments?.getString("fresh_defaults") == "true") {
                 check(SettingsStore.overlayBgAlpha(context) == 80 && SettingsStore.overlayOpacity(context) == 100)
-                check(SettingsStore.overlayHeightPercent(context) == 32)
+                check(SettingsStore.overlayHeightPercent(context) == 14)
+                check(SettingsStore.overlayAdjustable(context)) { "Fresh normal windows must be adjustable" }
                 check(!SettingsStore.subtitleDividers(context) && !SettingsStore.subtitleTimestamps(context))
             }
-            ui { check(seenPrefs.edit().putBoolean("seen", true).commit()); SettingsStore.setSourceLang(context, "ja"); SettingsStore.setTargetLang(context, "zh") }
+            ui { SettingsStore.setOverlayAdjustable(context, true); check(seenPrefs.edit().putBoolean("seen", true).commit()); SettingsStore.setSourceLang(context, "ja"); SettingsStore.setTargetLang(context, "zh") }
             val tags = arguments?.getString("locale")?.let { listOf(if (it == "system") "" else it) } ?: InterfaceLanguage.tags
             for (tag in tags) {
                 ui { manager.applicationLocales = LocaleList.forLanguageTags(tag) }
@@ -261,10 +247,8 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                 }
                 compare(home, "$prefix-default-bilingual", true)
                 ui {
-                    if (context.resources.configuration.fontScale <= 1.2f && root()!!.height > root()!!.width) {
-                        val panel = actual() as CaptionPanelView
-                        check(panel.source.maxLines >= 2 && panel.translation.maxLines >= 2) { "Default height lacks comfortable bilingual space" }
-                    }
+                    val panel = actual() as CaptionPanelView
+                    assertCompleteLaneBudget(panel, "$prefix-default-bilingual")
                 }
                 ui {
                     SubtitleBus.clear(); SubtitleBus.onSourceDraft("Synthetic caption with enough words to wrap onto multiple lines. ".repeat(5), "ja")
@@ -272,6 +256,13 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                     SettingsStore.setFontSize(context, 24); SettingsStore.setOverlayWidthPercent(context, 55); SettingsStore.setOverlayHeightPercent(context, 20)
                 }
                 compare(home, "$prefix-narrow-long", true)
+                ui {
+                    val panel = actual() as CaptionPanelView
+                    check(panel.translation.maxLines >= minOf(2, panel.translation.lineCount)) {
+                        "20% height at 24sp must retain two translated rows"
+                    }
+                    assertCompleteLaneBudget(panel, "$prefix-narrow-long")
+                }
                 ui {
                     SubtitleBus.onSourceDraft("A synthetic English caption wraps to several lines while its Chinese translation remains visible in the same small window.", "en")
                     SubtitleBus.onTranslationDraft("合成译文应与英文同时可见，不能被原文挤出窗口。")
@@ -284,7 +275,28 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                         "Minimum window leaves only a fragment of translation: reference=${panel.source.maxLines}, translation=${panel.translation.maxLines}, reading=${panel.transcriptScroll.height}, minimum=${panel.minimumReadingHeight()}"
                     }
                 }
+                for ((language, original, translated) in listOf(
+                    Triple("ja", "日が沈むと海岸は静かになります。".repeat(4), "日落时分，海岸渐渐安静下来。".repeat(4)),
+                    Triple("ar", "يصبح الساحل أكثر هدوءًا عند غروب الشمس. ".repeat(4), "太阳落山后，海岸变得更加安静。".repeat(4)),
+                    Triple("th", "ชายฝั่งเงียบสงบลงเมื่อพระอาทิตย์ตกดิน ".repeat(4), "暮色降临，海风吹过安静的海岸。".repeat(4)),
+                )) {
+                    ui {
+                        SettingsStore.setOverlayHeightPercent(context, 10)
+                        SettingsStore.setFontSize(context, 24)
+                        SettingsStore.setSubtitleTimestamps(context, true)
+                        SubtitleBus.clear()
+                        SubtitleBus.onFinalPair(original, translated, language)
+                    }
+                    compare(home, "$prefix-minimum-large-font-time-$language", true)
+                    ui {
+                        val panel = actual() as CaptionPanelView
+                        check(panel.timestamp.visibility == View.VISIBLE)
+                        assertCompleteLaneBudget(panel, "$prefix-minimum-large-font-time-$language")
+                    }
+                }
                 ui {
+                    SettingsStore.setOverlayHeightPercent(context, 20)
+                    SettingsStore.setFontSize(context, 15)
                     SettingsStore.setSubtitleTimestamps(context, true)
                     SubtitleBus.onFinalPair("Synthetic confirmed caption with a long English reference lane. ".repeat(4), "合成已确认译文必须和英文一起显示。".repeat(4), "en")
                 }

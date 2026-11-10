@@ -169,7 +169,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindSections(savedInstanceState: Bundle?) {
         InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
-        appearance = AppearanceControls(this, compactHome = true) { enabled ->
+        appearance = AppearanceControls(this) { enabled ->
             if (enabled) immersiveHelp.requestEnable(onConfirmed = {
                 runCatching { SettingsStore.setImmersiveSubtitles(this, true) }
                     .onFailure { Toast.makeText(this, R.string.service_save_failed, Toast.LENGTH_LONG).show() }

@@ -18,19 +18,21 @@ import android.view.View
 import android.view.inspector.WindowInspector
 import android.widget.SeekBar
 import android.widget.TextView
+import android.view.WindowManager
+import com.google.android.material.materialswitch.MaterialSwitch
 import android.util.TypedValue
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SubtitleBus
 import java.io.File
 import kotlin.math.abs
 
-/** Native one-panel size, alignment and direct live editing; no capture/providers. */
+/** Native one-panel adjustment, reading continuity and main-page appearance controls; no capture/providers. */
 internal class OverlayInteractionChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
     private fun root() = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
     private fun caption() = root().findViewWithTag<TextView>("expanded-translation")
     private fun captionPixels(sp: Int) = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_SP, sp.toFloat(), caption().resources.displayMetrics,
+        TypedValue.COMPLEX_UNIT_SP, sp.toFloat(), context.resources.displayMetrics,
     )
     private fun surface(): Pair<Int, Float> {
         val panel = root().findViewWithTag<View>("expanded-subtitles")
@@ -48,12 +50,12 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
     private fun nativeFrame(view: View): android.graphics.Rect? {
         val window = view.rootView
         if (window.width <= 0 || window.height <= 0) return null
-        if (window.tag != "mimi-overlay" && window.tag != "exit-immersive") {
+        if (window.tag != "mimi-overlay" && window.tag != "exit-immersive" && window.tag != "overlay-adjust") {
             val origin = IntArray(2).also(window::getLocationOnScreen)
             return android.graphics.Rect(origin[0], origin[1], origin[0] + window.width, origin[1] + window.height)
         }
         val wm = MimiService::class.java.getDeclaredField("windowManager").apply { isAccessible = true }
-            .get(window.context) as android.view.WindowManager
+            .get(root().context) as android.view.WindowManager
         val safe = if (android.os.Build.VERSION.SDK_INT >= 30) {
             val metrics = wm.currentWindowMetrics
             val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
@@ -80,7 +82,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         onUi {
             val visible = android.graphics.Rect()
             check(view.getGlobalVisibleRect(visible) && visible.width() == view.width && visible.height() == view.height) {
-                "Floating appearance action is clipped"
+                "Native action is clipped"
             }
             nativeOrigin(view).copyInto(origin)
         }
@@ -104,7 +106,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         test.waitForIdle { completed.countDown() }
         check(completed.await(10, TimeUnit.SECONDS)) { "Native UI did not become idle" }
     }
-    private fun waitFor(predicate: () -> Boolean) {
+    private fun waitFor(details: () -> String = { "" }, predicate: () -> Boolean) {
         repeat(60) {
             var ready = false
             onUi { ready = predicate() }
@@ -112,27 +114,33 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             SystemClock.sleep(100)
         }
         val caller = Throwable().stackTrace.first { it.methodName == "run" }
-        error("Overlay interaction did not settle at line ${caller.lineNumber}")
+        var diagnostic = ""
+        onUi { diagnostic = details() }
+        error("Overlay interaction did not settle at line ${caller.lineNumber}: $diagnostic")
     }
     private fun capture(name: String) {
         test.sendStatus(0, Bundle().apply { putString("stream", "OVERLAY_CHECK $name\n") })
         idle()
         SystemClock.sleep(350) // Wait for WindowManager/compositor bounds after overlay resizing.
         val bitmap = checkNotNull(test.uiAutomation.takeScreenshot())
-        File(checkNotNull(context.getExternalFilesDir("ui-preview")), "interaction-$name.png").outputStream().use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-        }
-        bitmap.recycle()
+        try {
+            val internal = File(context.filesDir, "ui-preview").apply {
+                check(isDirectory || mkdirs()) { "Cannot create private instrumentation evidence directory" }
+            }
+            // Secondary Android users may not expose external storage through adb's shell namespace.
+            for (directory in listOf(checkNotNull(context.getExternalFilesDir("ui-preview")), internal)) {
+                File(directory, "interaction-$name.png").outputStream().use {
+                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                }
+            }
+        } finally { bitmap.recycle() }
     }
 
-    private fun editor() = WindowInspector.getGlobalWindowViews().first {
-        it.findViewWithTag<SeekBar>("overlay-font-slider") != null
-    }
     private fun bringIntoView(view: View) {
         onUi { view.requestRectangleOnScreen(android.graphics.Rect(0, 0, view.width, view.height), true) }
     }
-    private fun setSlider(id: Int, value: Int) {
-        val seek = editor().findViewById<SeekBar>(id)
+    private fun setSlider(home: MainActivity, id: Int, value: Int) {
+        val seek = home.findViewById<SeekBar>(id)
         bringIntoView(seek)
         val origin = IntArray(2)
         onUi {
@@ -171,6 +179,9 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             event.source = InputDevice.SOURCE_TOUCHSCREEN
             try { check(test.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
             SystemClock.sleep(30)
+            if (action == MotionEvent.ACTION_MOVE && view.tag == "overlay-drag") {
+                onUi { checkAdjustmentSwitchOnScreen() }
+            }
         }
         idle()
     }
@@ -183,67 +194,324 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         SubtitlePreviewView::class.java.getDeclaredField(name).apply { isAccessible = true }
             .get(home.findViewById<SubtitlePreviewView>(R.id.subtitle_preview)) as TextView
     }
-    private fun assertEditorAndCaptionSeparated() {
-        // Nonfocusable overlays can retain a stale View/accessibility origin.
-        // Use native window attributes and verify the frame against compositor pixels.
-        waitFor {
-            val panelFrame = nativeFrame(root())
-            val editorFrame = nativeFrame(editor())
-            val restore = WindowInspector.getGlobalWindowViews().firstOrNull { it.tag == "exit-immersive" }
-            val restoreFrame = restore?.let(::nativeFrame)
-            panelFrame != null && editorFrame != null && panelFrame.bottom <= editorFrame.top &&
-                (restore == null || restoreFrame != null && restoreFrame.bottom <= editorFrame.top)
+    private var underlyingTaps = 0
+
+    private fun adjustment() = WindowInspector.getGlobalWindowViews().first { it.tag == "overlay-adjust" } as MaterialSwitch
+
+    private fun checkAdjustmentRoundTrip() {
+        val window = root()
+        val panel = window.findViewWithTag<CaptionPanelView>("expanded-subtitles")
+        val toggle = adjustment()
+        val params = window.layoutParams as WindowManager.LayoutParams
+        val flags = params.flags
+        val alpha = params.alpha
+        val frame = nativeFrame(window)
+        fun placement() = listOf(params.x, params.y, params.width, params.height, params.gravity, params.type)
+        val savedPlacement = placement()
+        fun geometry(view: View): List<Int> {
+            val location = IntArray(2).also(view::getLocationInWindow)
+            return listOf(location[0], location[1], view.width, view.height)
         }
-        onUi { check(editor().findViewById<View>(R.id.subtitle_preview) == null) { "Quick settings duplicated the preview" } }
+        val handles = listOf("overlay-drag-mark", "overlay-resize").map { panel.findViewWithTag<View>(it) }
+        val handleBounds = handles.map(::geometry)
+        val rows = listOf(panel.status, panel.source, panel.translation, panel.history, panel.timestamp)
+        val rowBounds = rows.map(::geometry)
+        val texts = rows.map { it.text.toString() }
+        val typography = rows.map { listOf(it.textSize, it.currentTextColor, it.gravity, it.maxLines, it.typeface) }
+        val style = surface()
+        val compositorPixel = backgroundPixel()
+        fun preferences() = listOf(SettingsStore.fontSize(context), SettingsStore.overlayOpacity(context),
+            SettingsStore.overlayBgAlpha(context), SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
+            SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context), SettingsStore.overlayYOffset(context), SettingsStore.displayMode(context),
+            SettingsStore.captionAlignment(context), SettingsStore.subtitleDividers(context), SettingsStore.subtitleTimestamps(context),
+            SettingsStore.historyLines(context), SettingsStore.translationColorIndex(context), SettingsStore.sourceLang(context),
+            SettingsStore.targetLang(context), SettingsStore.immersiveSubtitles(context))
+        val saved = preferences()
+        check(toggle.isChecked && SettingsStore.overlayAdjustable(context)) { "ON must mean adjustable" }
+        check(flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0)
+        repeat(2) {
+            tapVisible(toggle)
+            waitFor { !toggle.isChecked && !SettingsStore.overlayAdjustable(context) &&
+                params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0 }
+            onUi {
+                check(root() === window && window.findViewWithTag<View>("expanded-subtitles") === panel)
+                check(placement() == savedPlacement) { "Lock moved or resized the native caption window" }
+                check(nativeFrame(window) == frame && handles.map(::geometry) == handleBounds && rows.map(::geometry) == rowBounds)
+                check(handles.all { it.visibility == View.INVISIBLE }) { "OFF must hide handles without removing their bounds" }
+                check(params.flags == (flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE))
+                check(params.alpha == .8f && surface() == style) { "Lock changed saved appearance instead of only Android window alpha" }
+                check(rows.map { it.text.toString() } == texts && rows.map { listOf(it.textSize, it.currentTextColor, it.gravity, it.maxLines, it.typeface) } == typography)
+                check(preferences() == saved && !SettingsStore.immersiveSubtitles(context))
+                check(toggle.rootView !== window && toggle.isShown && toggle.isClickable && toggle.isEnabled)
+                val target = (48 * toggle.resources.displayMetrics.density).toInt()
+                check(toggle.width >= target && toggle.height >= target)
+                check((toggle.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0)
+                check((toggle.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) {
+                    "Separate switch cannot unlock the pass-through caption"
+                }
+                checkOverlayChromeAlignment(panel)
+                checkAdjustmentSwitchOnScreen()
+            }
+            check(backgroundPixel() == compositorPixel) { "Lock visibly dimmed the caption compositor surface" }
+            val beforePassThrough = underlyingTaps
+            tapVisible(panel)
+            waitFor { underlyingTaps == beforePassThrough + 1 }
+            check(preferences() == saved) { "Pass-through input changed caption preferences" }
+            capture("panel-locked-$it")
+            tapVisible(toggle) // Actual injected input, not merely a programmatic checked assignment.
+            waitFor { toggle.isChecked && SettingsStore.overlayAdjustable(context) && params.flags == flags }
+            onUi {
+                check(params.alpha == alpha && surface() == style && nativeFrame(window) == frame && placement() == savedPlacement)
+                check(root() === window && window.findViewWithTag<View>("expanded-subtitles") === panel)
+                check(handles.all { it.visibility == View.VISIBLE } && handles.map(::geometry) == handleBounds)
+                check(rows.map(::geometry) == rowBounds && preferences() == saved)
+                checkNoFloatingAppearanceEditor(panel)
+            }
+            check(backgroundPixel() == compositorPixel) { "Unlock changed the caption compositor surface" }
+            val beforeInteractive = underlyingTaps
+            tapVisible(panel)
+            check(underlyingTaps == beforeInteractive) { "Adjustable caption unexpectedly passed input through" }
+        }
+        check(SettingsStore.flushPendingWritesForTests(context))
     }
 
-    private fun assertCompleteInertPreview() {
-        assertEditorAndCaptionSeparated()
-        val window = root()
-        val dialog = editor()
-        val panel = window.findViewWithTag<CaptionPanelView>("expanded-subtitles")
-        val geometry = nativeFrame(window)
-        val bounds = listOf(SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
-            SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context))
-        onUi {
-            for (tag in listOf("overlay-toolbar", "overlay-drag-mark", "overlay-route", "overlay-actions", "overlay-providers")) {
-                check(panel.findViewWithTag<View>(tag).isShown) { "Quick preview hides $tag" }
+    private fun checkLockCancelsGestures() {
+        for (tag in listOf("overlay-drag", "overlay-resize")) {
+            val window = root()
+            val frame = nativeFrame(window)
+            fun bounds() = listOf(SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
+                SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context))
+            val saved = bounds()
+            val handle = window.findViewWithTag<View>(tag)
+            val down = SystemClock.uptimeMillis()
+            fun touch(action: Int, delta: Float) = onUi {
+                val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
+                    handle.width / 2f + delta, handle.height / 2f + delta, 0)
+                try { handle.dispatchTouchEvent(event) } finally { event.recycle() }
             }
-            check(panel.scaleX == panel.scaleY && panel.scaleY > 0f && panel.scaleY <= 1f)
-            check(panel.height * panel.scaleY <= window.height + 1) { "Quick preview clips the complete frame" }
-            check(panel.transcriptScroll.height >= (64 * context.resources.displayMetrics.density).toInt()) {
-                "Quick preview changed the native reading viewport"
+            touch(MotionEvent.ACTION_DOWN, 0f)
+            touch(MotionEvent.ACTION_MOVE, 55f)
+            tapVisible(adjustment())
+            waitFor { !adjustment().isChecked && nativeFrame(root()) == frame }
+            check(bounds() == saved) { "Lock persisted an unfinished $tag gesture" }
+            tapVisible(adjustment())
+            waitFor { adjustment().isChecked }
+            // Events from the pre-lock generation must not resume or commit after unlocking.
+            touch(MotionEvent.ACTION_MOVE, 90f)
+            touch(MotionEvent.ACTION_UP, 90f)
+            onUi {
+                check(root() === window && nativeFrame(window) == frame && bounds() == saved) {
+                    "Stale $tag input resumed after unlocking"
+                }
+                checkAdjustmentSwitchOnScreen()
+                checkOverlayChromeAlignment(window)
             }
         }
-        for (tag in listOf("overlay-drag", "overlay-font", "enter-immersive", "overlay-providers", "overlay-resize")) {
-            val control = panel.findViewWithTag<View>(tag)
-            var x = 0f; var y = 0f
-            onUi {
-                check(control.isShown && control.isEnabled && !control.isClickable && !control.isFocusable) {
-                    "Quick preview action $tag is not decorative"
-                }
-                val origin = nativeOrigin(control)
-                x = origin[0] + control.width * panel.scaleX / 2
-                y = origin[1] + control.height * panel.scaleY / 2
-            }
-            val time = SystemClock.uptimeMillis()
-            for ((action, offset) in listOf(MotionEvent.ACTION_DOWN to 0f, MotionEvent.ACTION_MOVE to 12f,
-                MotionEvent.ACTION_UP to 12f)) {
-                val delta = if (tag == "overlay-drag" || tag == "overlay-resize") offset * context.resources.displayMetrics.density else 0f
-                val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, x + delta, y - delta, 0)
-                event.source = InputDevice.SOURCE_TOUCHSCREEN
-                try { check(test.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
-            }
-            idle()
-            onUi { control.performClick() } // Also gate programmatic/accessibility actions.
-            check(root() === window && editor() === dialog && nativeFrame(window) == geometry &&
-                !SettingsStore.immersiveSubtitles(context)) { "Quick preview action $tag changed a window or mode" }
-            check(bounds == listOf(SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
-                SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context))) {
-                "Quick preview gesture changed saved bounds"
-            }
+        capture("panel-lock-cancelled-gestures")
+    }
+
+    private fun checkLockedPersistence() {
+        tapVisible(adjustment())
+        waitFor { !SettingsStore.overlayAdjustable(context) && !adjustment().isChecked }
+        val frame = nativeFrame(root())
+        onUi {
+            SubtitleBus.onSourceDraft("Synthetic locked source update.", "en")
+            SubtitleBus.onTranslationDraft("锁定时仍继续更新。")
+        }
+        waitFor { caption().text.toString() == "锁定时仍继续更新。" }
+        check(nativeFrame(root()) == frame) { "Locked draft changed the caption frame" }
+        onUi { SettingsStore.setImmersiveSubtitles(context, true) }
+        context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+        check(!SettingsStore.overlayAdjustable(context)) { "Legacy immersive mode overwrote adjustment preference" }
+        tapVisible(WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" })
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "overlay-adjust" } }
+        check(!SettingsStore.immersiveSubtitles(context) && !adjustment().isChecked)
+        check((root().layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0)
+        check(SettingsStore.flushPendingWritesForTests(context))
+        context.stopService(Intent(context, MimiService::class.java))
+        waitFor { WindowInspector.getGlobalWindowViews().none { it.tag in listOf("mimi-overlay", "overlay-adjust", "exit-immersive") } }
+        context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW).putExtra("preview_over_own_ui", true))
+        waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "mimi-overlay" } &&
+            WindowInspector.getGlobalWindowViews().any { it.tag == "overlay-adjust" && it.isShown } }
+        onUi {
+            running(true)
+            check(!SettingsStore.overlayAdjustable(context) && !adjustment().isChecked)
+            val params = root().layoutParams as WindowManager.LayoutParams
+            check(params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0 && params.alpha == .8f)
+            check(nativeFrame(root()) == frame) { "Recreated locked frame lost its saved bounds" }
+            checkOverlayChromeAlignment(root())
+        }
+        capture("panel-recreated-locked")
+        tapVisible(adjustment())
+        waitFor { SettingsStore.overlayAdjustable(context) && adjustment().isChecked &&
+            (root().layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0 }
+    }
+
+    private fun checkCompactHeightDefaults() {
+        // The caller already requires an idle, unconfigured fixture user. Touch only this appearance key.
+        SettingsStore.overlayHeightPercent(context)
+        val preferences = SettingsStore::class.java.getDeclaredField("prefs").apply { isAccessible = true }
+            .get(null) as android.content.SharedPreferences
+        val key = "overlay_height_percent"
+        val existed = preferences.contains(key)
+        val saved = preferences.getInt(key, SettingsStore.DEFAULT_OVERLAY_HEIGHT)
+        try {
+            check(preferences.edit().remove(key).commit())
+            check(SettingsStore.overlayHeightPercent(context) == 14) { "Unset height must use the compact 14% default" }
+            check(preferences.edit().putInt(key, 32).commit())
+            check(SettingsStore.overlayHeightPercent(context) == 32) { "Legacy saved height was replaced by the compact default" }
+            check(SettingsStore.flushPendingWritesForTests(context))
+            check(preferences.getInt(key, -1) == 32 && SettingsStore.overlayHeightPercent(context) == 32)
+        } finally {
+            val restore = preferences.edit()
+            if (existed) restore.putInt(key, saved) else restore.remove(key)
+            check(restore.commit())
         }
     }
+
+    /** A review pair uses ordinary caption paint and a labeled, deterministic playback backdrop. */
+    private fun captureCompactReview(host: CaptureProbeActivity) {
+        val history = SettingsStore.historyLines(context)
+        try {
+            onUi {
+                host.setContentView(CaptionReviewBackdrop(host))
+                SettingsStore.setOverlayBounds(context, 92, SettingsStore.DEFAULT_OVERLAY_HEIGHT, 0, 48)
+                SettingsStore.setFontSize(context, 16) // Match the fresh-install reading size.
+                SettingsStore.setOverlayBgAlpha(context, 80)
+                SettingsStore.setOverlayOpacity(context, 100)
+                SettingsStore.setTranslationColorIndex(context, 1)
+                SettingsStore.setCaptionAlignment(context, CaptionAlignment.CENTER)
+                SettingsStore.setDisplayMode(context, CaptionDisplayMode.BILINGUAL)
+                SettingsStore.setHistoryLines(context, 0)
+                SettingsStore.setSubtitleDividers(context, false)
+                SettingsStore.setSubtitleTimestamps(context, false)
+                SubtitleBus.clear()
+                SubtitleBus.onSourceDraft("The coast grows quieter as the sun sets.", "en")
+                SubtitleBus.onTranslationDraft("日落时分，海岸渐渐安静下来。")
+            }
+            context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
+            waitFor {
+                val panel = root().findViewWithTag<CaptionPanelView>("expanded-subtitles")
+                panel.isShown && panel.translation.text.toString() == "日落时分，海岸渐渐安静下来。" &&
+                    abs(panel.translation.textSize - captionPixels(16)) < 1 && adjustment().isChecked &&
+                    (root().layoutParams as WindowManager.LayoutParams).y == (48 * context.resources.displayMetrics.density).toInt()
+            }
+            val window = root()
+            val panel = window.findViewWithTag<CaptionPanelView>("expanded-subtitles")
+            val frame = checkNotNull(nativeFrame(window))
+            val scroll = panel.transcriptScroll
+            fun layout() = listOf<View>(scroll, panel.source, panel.translation).map {
+                listOf(it.left, it.top, it.width, it.height, it.scrollX, it.scrollY)
+            }
+            val originalLayout = layout()
+            val text = listOf(panel.source.text.toString(), panel.translation.text.toString())
+            val style = surface()
+            onUi {
+                checkOverlayChromeAlignment(panel)
+                checkAdjustmentSwitchOnScreen()
+                val dp = panel.resources.displayMetrics.density
+                check(abs(panel.height - scroll.height - 36 * dp) <= 2) { "Default caption regained reserved control rows" }
+                check(scroll.height >= 64 * dp - 2 && scroll.height >= panel.height * .60f) {
+                    "Default caption viewport is too small: frame=${panel.height} viewport=${scroll.height}"
+                }
+                check(!android.graphics.Rect.intersects(frame, checkNotNull(nativeFrame(adjustment())))) {
+                    "Compact review switch overlaps subtitle frame"
+                }
+                for (row in listOf(panel.source, panel.translation)) {
+                    val glyphs = checkNotNull(row.layout)
+                    check(glyphs.lineCount <= row.maxLines) { "Short review caption was truncated" }
+                    check(row.top - scroll.scrollY >= 0 && row.bottom - scroll.scrollY <= scroll.height) {
+                        "Short review caption is outside the reading viewport"
+                    }
+                }
+            }
+            capture("review-adjustable")
+            tapVisible(adjustment())
+            waitFor { !SettingsStore.overlayAdjustable(context) && !adjustment().isChecked &&
+                (window.layoutParams as WindowManager.LayoutParams).flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0 }
+            onUi {
+                check(root() === window && window.findViewWithTag<CaptionPanelView>("expanded-subtitles") === panel)
+                check(nativeFrame(window) == frame && layout() == originalLayout && surface() == style)
+                check(listOf(panel.source.text.toString(), panel.translation.text.toString()) == text)
+                checkOverlayChromeAlignment(panel)
+                checkAdjustmentSwitchOnScreen()
+            }
+            capture("review-locked")
+            onUi {
+                SubtitleBus.clear()
+                SubtitleBus.onSourceDraft("Along the shore, the last light catches the water while the distant hills slowly fade into the evening sky.", "en")
+                SubtitleBus.onTranslationDraft("沿着海岸，最后一缕阳光落在水面上，远处的山丘渐渐融入暮色。海风吹过，这段旅程仍在继续。")
+            }
+            waitFor { panel.translation.text.toString() == "沿着海岸，最后一缕阳光落在水面上，远处的山丘渐渐融入暮色。海风吹过，这段旅程仍在继续。" }
+            idle()
+            onUi {
+                check(nativeFrame(window) == frame) { "Long captions expanded the compact review frame" }
+                check(panel.translation.maxLines >= minOf(2, panel.translation.lineCount)) {
+                    "Fresh default must retain two translated rows for long captions"
+                }
+                for (row in listOf(panel.source, panel.translation)) {
+                    val glyphs = checkNotNull(row.layout)
+                    val first = (glyphs.lineCount - row.maxLines).coerceAtLeast(0)
+                    val origin = row.top - scroll.scrollY + row.compoundPaddingTop - row.scrollY
+                    check(origin + glyphs.getLineTop(first) >= 0 &&
+                        origin + glyphs.getLineBottom(glyphs.lineCount - 1) <= scroll.height) {
+                        "Long review caption glyphs are clipped in the reading viewport"
+                    }
+                }
+            }
+            capture("review-long-caption")
+            onUi { SubtitleBus.clear() }
+            waitFor { panel.status.isShown }
+            check(nativeFrame(window) == frame) { "Waiting changed the compact review frame" }
+            capture("review-waiting")
+        } finally {
+            onUi { SettingsStore.setHistoryLines(context, history) }
+        }
+    }
+
+    private fun checkPrimaryAppearance(home: MainActivity) {
+        onUi { openCaptionStyles(home) }
+        for (value in listOf(12, 24, 17)) {
+            setSlider(home, R.id.font_size, value)
+            val sourceSp = if (SettingsStore.originalTextOnly(context) || SettingsStore.displayMode(context) == CaptionDisplayMode.ORIGINAL)
+                value.toFloat() else (value * .9f).coerceAtLeast(12f)
+            val expected = listOf(sourceSp, value.toFloat(), value.toFloat()).map {
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, it, home.resources.displayMetrics)
+            }
+            waitFor(details = {
+                "primary_font expectedSp=$value expectedPx=$expected saved=${SettingsStore.fontSize(context)} " +
+                    "slider=${home.findViewById<SeekBar>(R.id.font_size).progress} " +
+                    "previewPx=${previewRows(home).map { it.textSize }} " +
+                    "serviceWindows=${WindowInspector.getGlobalWindowViews().count { it.tag == "mimi-overlay" }}"
+            }) {
+                SettingsStore.fontSize(context) == value && previewRows(home).zip(expected).all { (row, px) -> abs(row.textSize - px) < 1 }
+            }
+        }
+        for ((id, values, read) in listOf(
+            Triple(R.id.overlay_width, listOf(55, 92), { SettingsStore.overlayWidthPercent(context) }),
+            Triple(R.id.overlay_height, listOf(10, 12, SettingsStore.DEFAULT_OVERLAY_HEIGHT, 20, 70, 30), { SettingsStore.overlayHeightPercent(context) }),
+            Triple(R.id.overlay_bg_alpha, listOf(90, 37), { SettingsStore.overlayBgAlpha(context) }),
+            Triple(R.id.overlay_opacity, listOf(100, 60), { SettingsStore.overlayOpacity(context) }),
+        )) for (value in values) {
+            setSlider(home, id, value)
+            waitFor(details = { "primary_slider id=${home.resources.getResourceEntryName(id)} expected=$value saved=${read()} control=${home.findViewById<SeekBar>(id).progress}" }) {
+                read() == value
+            }
+        }
+        for (choice in CaptionAlignment.entries) {
+            val spinner = home.findViewById<android.widget.Spinner>(R.id.caption_alignment)
+            bringIntoView(spinner); onUi { spinner.setSelection(choice.ordinal) }
+            waitFor(details = { "primary_alignment expected=$choice saved=${SettingsStore.captionAlignment(context)} control=${spinner.selectedItemPosition} rowGravity=${previewRows(home).map { it.gravity }}" }) {
+                SettingsStore.captionAlignment(context) == choice && previewRows(home).all { aligned(it, choice) }
+            }
+        }
+        val green = home.findViewById<View>(android.R.id.content).findViewWithTag<View>("caption-color-3")
+        bringIntoView(green); tapVisible(green)
+        waitFor(details = { "primary_color expected=3 saved=${SettingsStore.translationColorIndex(context)}" }) { SettingsStore.translationColorIndex(context) == 3 }
+        checkNoFloatingAppearanceEditor(home.window.decorView)
+    }
+
     // The first badge sample can create a profile; restoring empty values would retain that profile and translator draft.
     private fun providerMarkChecks(home: MainActivity) = ProfileSettingsSnapshot(context).use {
         val provider = app.yuxino.mimi.android.provider.ServiceProvider.DASHSCOPE
@@ -273,24 +541,13 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             waitFor { home.findViewById<View>(R.id.translation_provider_icon).isShown == independent }
             waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
             onUi {
-                val marks = root().findViewWithTag<android.widget.LinearLayout>("overlay-providers")
-                check(marks.childCount == if (independent) 3 else 2)
+                checkNoFloatingAppearanceEditor(root())
                 val preview = home.findViewById<SubtitlePreviewView>(R.id.subtitle_preview).frame as CaptionPanelView
-                val previewMarks = preview.findViewWithTag<android.widget.LinearLayout>("overlay-providers")
-                check(previewMarks.childCount == marks.childCount && previewMarks.contentDescription == marks.contentDescription)
-                check(previewMarks.width == marks.width) { "Preview provider group differs from the floating frame" }
+                checkNoFloatingAppearanceEditor(preview)
+                check(home.findViewById<View>(R.id.provider_icon).isShown)
                 checkOverlayChromeAlignment(root())
             }
-            capture(if (independent) "two-provider-marks" else "one-provider-mark")
-            tapVisible(root().findViewWithTag("overlay-font"))
-            waitFor { !root().findViewWithTag<View>("overlay-font").isClickable }
-            assertCompleteInertPreview()
-            capture(if (independent) "quick-two-provider-marks" else "quick-one-provider-mark")
-            tapVisible(editor().findViewById(android.R.id.button1))
-            waitFor { root().findViewWithTag<View>("overlay-providers").isClickable }
-            tapVisible(root().findViewWithTag("overlay-providers"))
-            waitFor { home.hasWindowFocus() && home.findViewById<android.widget.RadioGroup>(R.id.settings_tabs)
-                .checkedRadioButtonId == R.id.tab_service }
+            capture(if (independent) "two-provider-main-icons" else "one-provider-main-icon")
             onUi { home.findViewById<android.widget.RadioGroup>(R.id.settings_tabs).check(R.id.tab_caption) }
         }
     }
@@ -303,6 +560,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         val alignment = SettingsStore.captionAlignment(context)
         val font = SettingsStore.fontSize(context)
         val immersive = SettingsStore.immersiveSubtitles(context)
+        val adjustable = SettingsStore.overlayAdjustable(context)
         val color = SettingsStore.translationColorIndex(context)
         val opacity = SettingsStore.overlayOpacity(context)
         val background = SettingsStore.overlayBgAlpha(context)
@@ -318,8 +576,10 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         var failure: Throwable? = null
         try {
             check(!MimiService.isRunning && !SettingsStore.isConfigured(context)) { "Use a blank idle emulator" }
+            onUi { checkCompactHeightDefaults() }
             onUi {
                 SettingsStore.setImmersiveSubtitles(context, false)
+                SettingsStore.setOverlayAdjustable(context, true)
                 SettingsStore.setOverlayBounds(context, 92, 30, 0, 0)
                 SettingsStore.setFontSize(context, 16)
                 SettingsStore.setOverlayBgAlpha(context, 37)
@@ -337,7 +597,13 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW).putExtra("preview_over_own_ui", true))
             waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "mimi-overlay" } }
             host = test.startActivitySync(Intent(context, CaptureProbeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as CaptureProbeActivity
-            onUi { host!!.setContentView(View(context).apply { setBackgroundColor(android.graphics.Color.WHITE) }) }
+            onUi { host!!.setContentView(View(context).apply {
+                setBackgroundColor(android.graphics.Color.WHITE)
+                setOnTouchListener { _, event ->
+                    if (event.actionMasked == MotionEvent.ACTION_UP) underlyingTaps++
+                    true
+                }
+            }) }
             val window = root()
             onUi { running(true); SubtitleBus.clear() }
             waitFor { root().findViewWithTag<TextView>("expanded-status").isShown }
@@ -349,137 +615,22 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             }
             val initialPixel = backgroundPixel()
             val panel = root().findViewWithTag<CaptionPanelView>("expanded-subtitles")
-            val route = panel.findViewWithTag<TextView>("overlay-route").text.toString()
-            val provider = panel.findViewWithTag<View>("overlay-providers").contentDescription
-            val ordinaryHeight = panel.height
             capture("panel-waiting")
-            tapVisible(root().findViewWithTag("overlay-font"))
-            capture("quick-settings-open")
-            waitFor { WindowInspector.getGlobalWindowViews().any { it.findViewWithTag<SeekBar>("overlay-font-slider") != null } }
-            waitFor { !root().findViewWithTag<View>("overlay-font").isClickable }
-            assertCompleteInertPreview()
-            check(panel === root().findViewWithTag<View>("expanded-subtitles") && panel.height == ordinaryHeight &&
-                panel.findViewWithTag<TextView>("overlay-route").text.toString() == route &&
-                panel.findViewWithTag<View>("overlay-providers").contentDescription == provider) {
-                "Opening quick settings replaced or altered the live frame"
-            }
-            val status = root().findViewWithTag<TextView>("expanded-status")
+            checkAdjustmentRoundTrip()
+            val status = panel.status
             onUi { SubtitleBus.onStatus("Synthetic status fixture.") }
             waitFor { status.text.toString() == "Synthetic status fixture." }
-            capture("quick-settings-live-status")
-            onUi {
-                SubtitleBus.onSourceDraft("Synthetic live preview.", "en")
-                SubtitleBus.onTranslationDraft("合成实时预览。")
-            }
+            onUi { SubtitleBus.onSourceDraft("Synthetic live preview.", "en"); SubtitleBus.onTranslationDraft("合成实时预览。") }
             waitFor { panel.source.text.toString() == "Synthetic live preview." && panel.translation.text.toString() == "合成实时预览。" }
-            capture("quick-settings-live-content")
-            assertCompleteInertPreview()
+            checkAdjustmentRoundTrip()
             onUi { SubtitleBus.clear() }
             waitFor { status.text.toString() == InterfaceLanguage.context(context).getString(R.string.overlay_listening_empty) }
             for (value in listOf(12, 24, 17)) {
-                setSlider(R.id.font_size, value)
-                waitFor { SettingsStore.fontSize(context) == value && abs(status.textSize - captionPixels(value)) < 1 }
+                onUi { SettingsStore.setFontSize(context, value) }
+                waitFor { abs(status.textSize - captionPixels(value)) < 1 }
                 check(surface() == initialSurface && backgroundPixel() == initialPixel) { "Font adjustment changed caption background" }
-                assertEditorAndCaptionSeparated()
             }
-            setSlider(R.id.overlay_opacity, 100)
-            waitFor { surface().second == 1f }
-            val opaquePixel = backgroundPixel()
-            for (value in listOf(24, 12, 17)) {
-                setSlider(R.id.font_size, value)
-                waitFor { SettingsStore.fontSize(context) == value }
-                check(surface().first == initialSurface.first && backgroundPixel() == opaquePixel) {
-                    "Font adjustment changed background at 100% opacity"
-                }
-            }
-            setSlider(R.id.overlay_opacity, 60)
-            waitFor { surface() == initialSurface }
-            check(backgroundPixel() == initialPixel) { "Opacity round-trip did not restore the original pixels" }
             val initialWidth = root().width
-            setSlider(R.id.overlay_width, 55)
-            waitFor { SettingsStore.overlayWidthPercent(context) == 55 && root().width < initialWidth }
-            setSlider(R.id.overlay_width, 92)
-            waitFor { root().width == initialWidth }
-            // Large system fonts can give both height endpoints the same
-            // bilingual minimum. Use a readable smaller font to exercise
-            // actual resizing, then restore the large-font reading case.
-            setSlider(R.id.font_size, 12)
-            waitFor { SettingsStore.fontSize(context) == 12 }
-            setSlider(R.id.overlay_height, 20)
-            waitFor { SettingsStore.overlayHeightPercent(context) == 20 }
-            val shortHeight = panel.height
-            setSlider(R.id.overlay_height, 70)
-            waitFor { SettingsStore.overlayHeightPercent(context) == 70 }
-            onUi {
-                test.sendStatus(0, Bundle().apply { putString("stream", "HEIGHT_GEOMETRY short=$shortHeight tall=${panel.height}\n") })
-            }
-            waitFor {
-                val wm = panel.context.getSystemService(android.view.WindowManager::class.java)
-                val available = if (android.os.Build.VERSION.SDK_INT >= 30) {
-                    val metrics = wm.currentWindowMetrics
-                    val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
-                        android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
-                    metrics.bounds.height() - insets.top - insets.bottom
-                } else panel.resources.displayMetrics.heightPixels
-                val minimum = panel.chromeHeight() + panel.minimumReadingHeight()
-                val expectedShort = maxOf(minimum, available * 20 / 100).coerceAtMost(available)
-                val expectedTall = maxOf(minimum, available * 70 / 100).coerceAtMost(available)
-                shortHeight == expectedShort && panel.height == expectedTall
-            }
-            assertCompleteInertPreview()
-            setSlider(R.id.overlay_height, 30)
-            setSlider(R.id.font_size, 17)
-            waitFor { SettingsStore.fontSize(context) == 17 }
-            for (choice in CaptionAlignment.entries) {
-                val spinner = editor().findViewById<android.widget.Spinner>(R.id.caption_alignment)
-                bringIntoView(spinner)
-                onUi { spinner.setSelection(choice.ordinal) }
-                waitFor { SettingsStore.captionAlignment(context) == choice && aligned(status, choice) }
-            }
-            val green = editor().findViewWithTag<View>("caption-color-3")
-            bringIntoView(green); tapVisible(green)
-            waitFor { SettingsStore.translationColorIndex(context) == 3 && status.currentTextColor == SettingsStore.translationColor(context) }
-            assertEditorAndCaptionSeparated()
-            capture("quick-settings-live-green")
-            context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW_HISTORY))
-            waitFor { panel.history.text.isNotBlank() }
-            val dividerToggle = editor().findViewById<android.widget.CompoundButton>(R.id.subtitle_dividers)
-            val timeToggle = editor().findViewById<android.widget.CompoundButton>(R.id.subtitle_timestamps)
-            check(!dividerToggle.isChecked && !timeToggle.isChecked && !panel.findViewWithTag<View>("history-divider").isShown)
-            bringIntoView(dividerToggle); tapVisible(dividerToggle)
-            waitFor { SettingsStore.subtitleDividers(context) && panel.findViewWithTag<View>("history-divider").isShown }
-            onUi { SubtitleBus.onFinalPair("Synthetic confirmed caption.", "合成已确认字幕。", "en") }
-            bringIntoView(timeToggle); tapVisible(timeToggle)
-            waitFor { SettingsStore.subtitleTimestamps(context) && panel.timestamp.isShown }
-            check(panel.timestamp.text.toString().matches(Regex("[0-9]{2}:[0-9]{2}:[0-9]{2}")))
-            assertCompleteInertPreview()
-            capture("quick-settings-reading-options")
-            bringIntoView(timeToggle); tapVisible(timeToggle)
-            waitFor { !SettingsStore.subtitleTimestamps(context) && !panel.timestamp.isShown }
-            bringIntoView(dividerToggle); tapVisible(dividerToggle)
-            waitFor { !SettingsStore.subtitleDividers(context) && !panel.findViewWithTag<View>("history-divider").isShown }
-            val immersionSwitch = editor().findViewById<View>(R.id.immersive_subtitles)
-            bringIntoView(immersionSwitch); tapVisible(immersionSwitch)
-            waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
-            val restore = WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" }
-            waitFor { !restore.isClickable && !restore.isFocusable &&
-                (restore.layoutParams as android.view.WindowManager.LayoutParams).flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0 }
-            tapVisible(restore)
-            onUi { restore.performClick() }
-            check(SettingsStore.immersiveSubtitles(context)) { "Quick preview restore action changed immersion" }
-            assertEditorAndCaptionSeparated()
-            capture("quick-settings-immersive")
-            tapVisible(immersionSwitch)
-            waitFor { root().findViewWithTag<View>("expanded-subtitles").isShown }
-            assertCompleteInertPreview()
-            setSlider(R.id.overlay_bg_alpha, 90)
-            waitFor { SettingsStore.overlayBgAlpha(context) == 90 }
-            setSlider(R.id.overlay_opacity, 60)
-            waitFor { abs(root().findViewWithTag<View>("expanded-subtitles").alpha - .6f) < .01f }
-            tapVisible(editor().findViewById(android.R.id.button1))
-            waitFor { root().findViewWithTag<View>("overlay-font").isClickable && panel.scaleX == 1f && panel.scaleY == 1f }
-            check(root() === window && SettingsStore.expandedYOffset(context) == 0) { "Closing editor changed saved placement or window" }
-            capture("panel-style-applied")
             onUi {
                 SettingsStore.setOverlayBounds(context, 55, 30, 0, 128)
                 SettingsStore.setOverlayOpacity(context, 100)
@@ -493,9 +644,10 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             val bitmap = checkNotNull(test.uiAutomation.takeScreenshot())
             try {
                 val middle = frame.centerX()
-                check(android.graphics.Color.red(bitmap.getPixel(middle, frame.top + 2)) < 160 &&
-                    android.graphics.Color.red(bitmap.getPixel(middle, frame.top - 2)) > 200) {
-                    "Native caption frame did not match compositor pixels: $frame"
+                val inside = android.graphics.Color.red(bitmap.getPixel(middle, frame.top + 2))
+                val outside = android.graphics.Color.red(bitmap.getPixel(middle, frame.top - 2))
+                check(outside > 200 && outside - inside >= 30) {
+                    "Native caption frame did not match compositor pixels: $frame, inside=$inside outside=$outside"
                 }
             } finally { bitmap.recycle() }
             val beforeWidth = root().width; val beforeHeight = root().height
@@ -526,6 +678,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             waitFor { SettingsStore.expandedYOffset(context) != beforeY }
             onUi { checkOverlayChromeAlignment(root()) }
             capture("panel-direct-resize-and-drag")
+            checkLockCancelsGestures()
             val captionPair = SubtitleBus.displaySource to SubtitleBus.displayTranslation
             for (display in CaptionDisplayMode.entries) {
                 onUi { SettingsStore.setDisplayMode(context, display) }
@@ -583,12 +736,13 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             capture("panel-return-to-bilingual-live")
             val savedX = SettingsStore.overlayXOffset(context, true); val savedY = SettingsStore.expandedYOffset(context)
             repeat(2) {
-                tapVisible(root().findViewWithTag("enter-immersive"))
+                onUi { SettingsStore.setImmersiveSubtitles(context, true) }
+                context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
                 waitFor { WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
                 onUi {
                     val restore = WindowInspector.getGlobalWindowViews().first { it.tag == "exit-immersive" }
                     check(restore.isClickable && (restore.layoutParams as android.view.WindowManager.LayoutParams).flags and
-                        android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) { "Restore action remained touch-through after editing" }
+                        android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) { "Legacy immersive exit remained touch-through" }
                 }
                 for (choice in CaptionAlignment.entries) {
                     onUi { SettingsStore.setCaptionAlignment(context, choice) }
@@ -601,12 +755,14 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             }
             onUi { checkOverlayChromeAlignment(root()) }
             capture("panel-after-immersive")
+            checkLockedPersistence()
+            if (arguments?.getString("overlay_visual_review") == "true") captureCompactReview(checkNotNull(host))
             onUi { running(false); host!!.finish(); host = null }
             waitFor { home.hasWindowFocus() }
             // This fixture explicitly shows an overlay over Mimi's own UI.
             // Stop that fixture before testing ordinary primary-page touches.
             context.stopService(Intent(context, MimiService::class.java))
-            waitFor { WindowInspector.getGlobalWindowViews().none { it.tag == "mimi-overlay" } }
+            waitFor { WindowInspector.getGlobalWindowViews().none { it.tag in listOf("mimi-overlay", "overlay-adjust", "exit-immersive") } }
             onUi {
                 home.findViewById<android.widget.RadioGroup>(R.id.settings_tabs).check(R.id.tab_caption)
                 // The history fixture enabled dividers above. Establish the
@@ -614,6 +770,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 SettingsStore.setSubtitleDividers(context, false)
                 SettingsStore.setSubtitleTimestamps(context, false)
             }
+            checkPrimaryAppearance(home)
             for ((id, read) in listOf(R.id.subtitle_dividers to { SettingsStore.subtitleDividers(context) },
                 R.id.subtitle_timestamps to { SettingsStore.subtitleTimestamps(context) })) {
                 val control = home.findViewById<android.widget.CompoundButton>(id)
@@ -647,6 +804,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 SettingsStore.setOverlayBounds(context, width, height, x, y)
                 SettingsStore.setCaptionAlignment(context, alignment)
                 SettingsStore.setFontSize(context, font); SettingsStore.setImmersiveSubtitles(context, immersive)
+                SettingsStore.setOverlayAdjustable(context, adjustable)
                 SettingsStore.setTranslationColorIndex(context, color)
                 SettingsStore.setOverlayBgAlpha(context, background); SettingsStore.setOverlayOpacity(context, opacity)
                 SettingsStore.setSubtitleDividers(context, dividers); SettingsStore.setSubtitleTimestamps(context, timestamps)
@@ -658,7 +816,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             check(SettingsStore.flushPendingWritesForTests(context))
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
-            putString("stream", if (failure == null) "Native overlay interaction passed: one panel, actual size gestures, live quick settings, waiting typography, alignment, bounded history, both provider badge cases and immersion restoration; no capture/providers.\n"
+            putString("stream", if (failure == null) "Native overlay interaction passed: one panel, actual size gestures, lock/unlock frame and flags, retained main appearance controls, waiting typography, alignment, bounded history, both main provider icon cases and legacy immersion restoration; no capture/providers.\n"
                 else "Native overlay interaction failed: ${failure.javaClass.simpleName}: ${failure.message}\n")
         })
     }

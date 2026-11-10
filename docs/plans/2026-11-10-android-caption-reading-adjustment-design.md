@@ -1,76 +1,73 @@
-# Android caption reading and adjustment Implementation Plan
+# Android caption adjustment switch Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> Execute in the current checkout; preserve unrelated pending edits. No extra worktree.
 
-**Goal:** Make the Android caption overlay show only caption-related content while retaining an explicit switch between touch-through reading and temporary move/resize adjustment.
+**Goal:** Implement issue #338 exactly as annotated: remove yellow-marked non-caption chrome and use a switch whose ON state enables move/resize and OFF state passes touches to the underlying app.
 
-**Architecture:** Reuse the existing normal `CaptionPanelView` as the adjustment state and `CompactCaptionView` as the reading state. Remove duplicated route/provider/style chrome from the normal panel, keep its existing native drag/resize gestures, and retain the immersive window's `FLAG_NOT_TOUCHABLE`, alpha and separate touchable restore companion. Do not add a third mode or change shared Rust, capture, recognition, translation or saved normal/immersive position semantics.
+**Architecture:** Keep the same `CaptionPanelView`, measured bounds, style, reading anchor and saved normal position in both adjustment states. Add a separately touchable switch window anchored to the panel's top-right corner; embedding the only recovery control inside `FLAG_NOT_TOUCHABLE` would lock the user out. The existing optional immersive presentation remains an independent in-app setting, not the new switch implementation. Both normal adjustment states use the same Android-safe 0.8 window alpha so switching does not dim the rendered captions; no text/background style preferences change.
 
-**Tech Stack:** Android native Kotlin/Java views, `WindowManager`, Android resource XML, JVM and instrumentation fixtures.
+**Tech Stack:** Kotlin native Android views, WindowManager, existing Material switch and Android resource translations; JVM/native instrumentation regressions.
 
----
+## User correction / acceptance boundary
 
-## Design decisions
+The screenshot explicitly says ON = move/resize, OFF = click through. It crosses out route/settings and provider/Immersive footer chrome. The earlier plan to alternate ordinary and compact immersive frames was incorrect and is superseded. Switching must not select another presentation or another saved position.
 
-- Normal mode is the temporary adjustment state. Remove the language route, provider row/marks and top font-settings button. Keep the top drag handle, bottom-right resize handle and one visible action for entering the reading state. Appearance editing remains in `MainActivity`; the floating quick editor is removed.
-- Immersive mode is the reading state. Keep original/translation text, necessary runtime status, optional timestamps and source identity. The caption window remains touch-through at alpha 0.8. Its independent 48dp companion stays clickable and returns to adjustment mode.
-- Use localized action names `Watch` and `Adjust captions` rather than adding another preference. Keep current saved mode and separate normal/immersive position keys; do not copy one mode's position into the other.
-- Keep MainActivity Start/Stop, notification Stop, service recovery, normal/immersive status, dual-source labels, reading history, accessibility descriptions and keyboard/TalkBack paths. Preview-only controls remain inert.
-- Update the accepted single-panel design from `2026-10-11`: this issue intentionally supersedes route/provider/style chrome, not the one-panel rule or native geometry safeguards.
+## Accepted compact visual redesign
 
-## Task 1: Simplify the normal adjustment panel
+The initial functionally verified layout was rejected by the user: hiding two
+48dp chrome rows preserved too much empty space, and the full-size switch
+competed with captions. The accepted direction is a compact subtitle surface,
+not a settings card. Functional test success is not visual acceptance.
 
-**Files:**
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/CaptionPanelView.kt`
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/capture/MimiService.kt`
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/SubtitlePreviewView.kt`
+- Use a FrameLayout with a full-size transcript viewport, 16dp horizontal and
+  20dp top / 16dp bottom insets, and a 12dp surface radius. No toolbar/footer rows.
+- Overlay 48dp drag and resize hit targets at the top center / bottom right;
+  draw only a 24×3dp top grip and a small bottom-corner resize mark, outside
+  the glyph viewport. They consume no layout rows. While adjusting, their hit
+  areas can overlap the viewport edge; the rest remains available for reading.
+- Use a compact switch drawing within an independent 48dp target, outside the
+  top-right edge, with a 4dp gap. Fall back below when at the top screen edge,
+  then clamp for constrained displays. Do not move the caption to fit controls.
+- New unset defaults: 14% frame height (10–70% selectable), 48dp bottom offset.
+  Native visual review rejected 12% because long translated captions reduced to
+  a one-row tail, sometimes a single character. At default 16sp/92% width, keep
+  enough room for one source row and two translated rows without a large card.
+  Minimum readable source/translation lines (one full glyph row each, with a
+  64dp viewport floor) still bound actual height; do not reserve three worst-case
+  fallback-font rows for every short sentence. Preserve
+  every explicit saved size, position, opacity, color, alignment and history setting.
+- Keep the same frame, reading anchor, alpha and text layout on ON/OFF. The
+  control is a toggle, not normal/immersive mode selection; failures roll back.
+- Verify exact viewport geometry, new minimum slider/resize values, saved-size
+  preservation, top-edge companion fallback, rotation and same-frame toggle.
+- Inspect actual native ON/OFF captures on the same deterministic playback
+  backdrop, plus waiting/long text. Clearly label synthetic visual fixtures;
+  they do not establish real audio/provider or cross-UID touch acceptance.
+- Publish only related code/docs in the PR. Attach review images in its comment,
+  not Git. Preserve unrelated work in AGENTS and the existing integration ledger.
 
-1. Add failing native assertions that `overlay-route`, `overlay-font`, `overlay-providers` and `overlay-model` are absent while `overlay-drag`, `enter-immersive` and `overlay-resize` retain 48dp targets.
-2. Run the selected fixture and confirm it fails on the existing chrome.
-3. Remove the route/provider/style views and unused constructor/callback data. Keep drag-to-move, resize-to-adjust-bounds, completed-gesture persistence and cancellation behavior unchanged.
-4. Remove the floating quick editor and its duplicate-preview geometry. MainActivity appearance controls remain available.
-5. Update the preview to construct the same simplified frame and remove stale route/provider identity work.
-6. Run the selected fixture and confirm the simplified controls and preview pass.
+## Task 1: Native panel and preview
 
-## Task 2: Clarify reading/adjustment switching
+- Modify `android/app/src/main/java/app/yuxino/mimi/android/CaptionPanelView.kt`: remove route/provider/style/Watch action and its constructor/callback data. Keep drag/resize targets; hide their visual marks while locked without changing measured chrome. Keep preview controls inert.
+- Modify `android/app/src/main/java/app/yuxino/mimi/android/SubtitlePreviewView.kt`: construct the simplified panel and stop calculating removed provider/route identity. Preserve actual measured preview parity.
+- Keep status, source identity, timestamps, bounded history, intentional reading and original/translation modes.
 
-**Files:**
-- Modify `android/app/src/main/res/values/strings.xml` and all localized `values-*/strings.xml`
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/capture/MimiService.kt`
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/CompactCaptionView.kt` only if required by the final companion presentation
+## Task 2: Independent adjustment switch
 
-1. Add localized `overlay_watch` and `overlay_adjust` strings in all nine interface languages.
-2. Use `overlay_watch` for the normal-panel reading action and `overlay_adjust` for the independent immersive companion's accessible action.
-3. Keep `FLAG_NOT_TOUCHABLE`, alpha 0.8, separate companion touch handling, existing saved mode and separate position preferences unchanged.
-4. Confirm status, source identity, silence-time recovery and preview-only accessibility remain intact.
+- Modify `android/app/src/main/java/app/yuxino/mimi/android/SettingsStore.kt`: persist a separate adjustment-enabled preference, default true, without repurposing immersive or position keys.
+- Modify `android/app/src/main/java/app/yuxino/mimi/android/capture/MimiService.kt`: create a minimum 48dp separately touchable switch for the normal panel. ON allows gestures; OFF sets FLAG_NOT_TOUCHABLE and Android-safe alpha, preserving panel identity and geometry. Save before applying; roll back the switch and show a sanitized failure if saving fails.
+- Invalidate drag/resize generations when locking, rotating or changing presentation; do not commit interrupted gestures. Keep companion layout within display safe bounds and hide/clean up with the owned overlay.
+- Remove the now-unreachable floating appearance editor. MainActivity remains the owner of appearance/service settings. Retain legacy immersive setting and its independent restore control.
+- Use `overlay_adjust` in all nine locales; remove unused pending Watch copy.
 
-## Task 3: Update native regression coverage
+## Task 3: Regression tests
 
-**Files:**
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/OverlayInteractionChecks.kt`
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/CaptionPreviewParityChecks.kt`
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/InterfaceLanguageChecks.kt`
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/UiSmokeInstrumentation.kt`
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/OverlayChromeGeometry.kt`
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/CaptionStreamingChecks.kt`
-- Modify `android/app/src/androidTest/java/app/yuxino/mimi/android/LiveAcceptanceChecks.kt` if its provider-label assertion remains
+- Update instrumentation under `android/app/src/androidTest/java/app/yuxino/mimi/android/`: assert removed chrome, real drag/resize, switch direction and separate touchability, identical bounds/style/frame across lock/unlock, preview parity, all locales, cancellation, silence recovery and legacy immersive restore.
+- Replace obsolete floating-editor assertions with the same relevant checks in MainActivity or explicit absence assertions. Do not delete unrelated behavioral coverage.
+- Run `python3 -B scripts/check-android-overlay-placement.py` and targeted Android JVM/build/lint/instrumentation commands supported by the installed SDK/device. Report missing infrastructure explicitly; synthetic fixtures do not establish provider/audio acceptance.
 
-1. Replace route/provider/quick-editor assertions with simplified-chrome assertions and no-floating-editor checks.
-2. Retain actual drag/resize injection, rotation cancellation, reading history, dual-source identity, all nine languages/System, large fonts and preview pixel parity.
-3. Retain immersive flags and companion recovery checks. Add an end-to-end fixture touch assertion when the existing harness supports a second recipient view; otherwise record the device-only limit explicitly.
-4. Run static XML/key/placeholder checks and `python3 -B scripts/check-android-overlay-placement.py` where applicable.
+## Task 4: Documentation and review
 
-## Task 4: Documentation and acceptance
-
-**Files:**
-- Modify `android/README.md`
-- Modify `android/README.zh-CN.md`
-- Modify `docs/development/platform-parity.md` if it describes the removed chrome
-- Modify `docs/development/ui-guidelines.md` to reference the simplified adjustment/read states
-
-1. Document the simple interaction model: Watch = touch-through captions, Adjust = move/resize; appearance controls live in the app.
-2. Run canonical desktop/shared checks only if shared files change; otherwise run Android JVM/lint/build checks through CI and all available local static checks.
-3. On an Android device, verify ordinary drag/resize, rotation cancellation, actual underlying-app touch delivery, TalkBack, silence recovery, long captions and all nine languages. Record device/API and evidence limits in the PR.
-4. Upload before/after screenshots as PR comments, not repository assets. Do not claim real-provider or audio acceptance from synthetic fixtures.
-
-Expected commits: this design record, then one focused Android implementation/test commit. PR closes #338 only after the simplified interaction and available checks are verified.
+- Update `android/README.md`, `android/README.zh-CN.md` and relevant owning UI/parity guides with the exact switch semantics.
+- Inspect diff for unrelated edits, secrets, source/content privacy and build artifacts. Preserve existing user changes in AGENTS and integration ledger.
+- Record verified revision/build/evidence limitations only after an actual native run. The user authorized a PR and its screenshot attachments; do not merge or release. No screenshot assets in Git.
