@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="navigation_captions">Субтитры</string>
+    <string name="navigation_services">Службы</string>
+    <string name="navigation_more">Ещё</string>
+    <string name="overlay_listening_empty">Идёт прослушивание — переводы будут отображаться здесь</string>
+    <string name="caption_style_controls">Стиль субтитров</string>
+</resources>

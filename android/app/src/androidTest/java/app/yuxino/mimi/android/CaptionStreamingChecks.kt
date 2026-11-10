@@ -94,6 +94,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                 "Les sous-titres restent lisibles pendant la mise à jour d’une longue phrase. ",
                 "Längere Untertitel müssen während jeder Aktualisierung stabil lesbar bleiben. ",
                 "คำบรรยายที่ยาวขึ้นควรแสดงอย่างมั่นคงและอ่านได้ชัดเจนตลอดเวลา ",
+                "Длинные русские субтитры должны оставаться читаемыми при каждом обновлении. ",
             )
             // Match the desktop bottom reading edge. An unchanged translated
             // line must not move down when its reference sentence grows.
@@ -276,7 +277,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
             ui { SubtitleBus.clear(); home?.finish() }
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
-            putString("stream", if (failure == null) "Caption streaming passed: $cases cases, $updates updates, $draws native draws; 8 languages, 3 modes, normal/immersive; no capture/providers.\n"
+            putString("stream", if (failure == null) "Caption streaming passed: $cases cases, $updates updates, $draws native draws; 9 languages, 3 modes, normal/immersive; no capture/providers.\n"
                 else "Caption streaming failed at $stage: ${failure!!.stackTraceToString()}\n")
         })
     }

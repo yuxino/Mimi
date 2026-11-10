@@ -8,7 +8,7 @@ export default async function verifySoftwareUpdate(page, baseUrl = "http://127.0
   try {
     for (const width of [520, 760]) {
       await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-      for (const language of ["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th"]) for (const theme of ["light", "dark"]) {
+      for (const language of ["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th", "ru"]) for (const theme of ["light", "dark"]) {
         const cases = ["normal", "checking", "noUpdate", "available", "checkError", "downloading", "downloadingUnknown", "verifying", "downloaded", "downloadError", "installing", "installError", "restartReady", "restarting", "restartError", "windowsInstallerStarted"]
           .flatMap(state => [{ width, language, theme, state, notesOpen: false },
             ...(["normal", "checking", "noUpdate", "checkError"].includes(state) ? [] : [{ width, language, theme, state, notesOpen: true }])]);

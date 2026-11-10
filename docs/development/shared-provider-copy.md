@@ -1,7 +1,7 @@
 # 共用服务说明
 
 桌面和 Android 的服务能力、开通条件及阿里云模式说明，统一维护在
-[`shared/provider-copy.json`](../../shared/provider-copy.json)。八种界面语言必须一起更新。
+[`shared/provider-copy.json`](../../shared/provider-copy.json)。九种界面语言必须一起更新。
 
 修改后运行：
 
@@ -23,7 +23,7 @@ python3 -B scripts/sync-provider-copy.py --check
 生成检查也覆盖预设字段、地址限制和两端输出。服务能力仍由共享 Rust 运行时决定。
 
 每项预设还维护 `apiKeyUrl`、`guideUrl`、`setupKind` 和 `setupHelpKey`。帮助内容说明
-从哪里创建 Key、模型如何填写及该服务必要的地域或产品限制；八种语言共用同一入口。
+从哪里创建 Key、模型如何填写及该服务必要的地域或产品限制；九种语言共用同一入口。
 云端服务提供获取 Key 和配置指南，本机服务提供安装设置，免 Key 服务明确说明无需 Key。
 设置页只在用户点击后打开目录中的固定官方 HTTPS 页面，不打开可编辑的接口地址，
 不因选择预设而跳转、保存或检查连接。官方控制台的固定查询参数与片段可以保留；

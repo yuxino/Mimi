@@ -10,6 +10,7 @@ const copy = {
   de: { models: "Modelle", setup: "Diensteinrichtung", languages: "Sprachvorlage", management: "Konfiguration" },
   fr: { models: "Modèles", setup: "Configuration du service", languages: "Préréglage de langues", management: "Gestion de la configuration" },
   th: { models: "โมเดล", setup: "ตั้งค่าบริการ", languages: "ภาษาที่ตั้งไว้", management: "จัดการการตั้งค่า" },
+  ru: { models: "Модели", setup: "Настройка сервиса", languages: "Языковая пара", management: "Управление конфигурацией" },
 };
 
 export function ServiceEditorModule({ kind, children }: { kind: keyof typeof copy.zh; children: ReactNode }) {

@@ -1,7 +1,7 @@
 // Import these helpers from the existing browser controller with its managed
 // Page. They do not start a server/browser or access native services/user files.
 // Warm the Vite root once before opening optimized-dependency fixtures.
-const languages = ["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th"];
+const languages = ["zh", "zh-TW", "en", "ja", "de", "ko", "fr", "th", "ru"];
 const savedTitle = "Synthetic product review · 字幕と書き出し · ".repeat(3).trim();
 
 async function openWorkspaceFixture(page, baseUrl) {

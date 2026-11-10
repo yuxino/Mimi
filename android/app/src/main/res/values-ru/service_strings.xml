@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="services_heading">Службы перевода</string>
+    <string name="services_hint">Нажмите на настроенную службу, чтобы переключиться.</string>
+    <string name="services_key_note">Используйте собственные учётные данные. Провайдер взимает плату за использование. Учётные данные хранятся в зашифрованном хранилище на этом устройстве.</string>
+    <string name="service_active">Активна</string>
+    <string name="service_configured">Настроено · нажмите для переключения</string>
+    <string name="service_missing">Требуется настройка</string>
+    <string name="service_edit">Настройки</string>
+    <string name="service_configure">Настроить</string>
+    <string name="service_edit_named">Настроить %1$s</string>
+    <string name="service_stop_first">Остановите субтитры перед сменой службы или учётных данных.</string>
+    <string name="service_secret_saved">Сохранено · оставьте поле пустым, чтобы сохранить текущее значение</string>
+    <string name="service_endpoint">Пользовательская конечная точка (необязательно)</string>
+    <string name="service_model">Пользовательская модель (необязательно)</string>
+    <string name="service_glossary">Глоссарий терминов (необязательно)</string>
+    <string name="service_save_use">Сохранить и выбрать</string>
+    <string name="service_required">Обязательно</string>
+    <string name="service_invalid">Недопустимая конфигурация. Проверьте конечную точку и поля учётных данных.</string>
+    <string name="service_save_failed">Не удалось сохранить. Повторите попытку.</string>
+</resources>

@@ -30,6 +30,7 @@ it.each([undefined, null, "off"] as const)("leaves no recording claim or chrome 
 const recordingLabels: Record<ResolvedUiLanguage, string> = {
   zh: "正在录音", "zh-TW": "正在錄音", en: "Recording audio", ja: "録音中",
   ko: "녹음 중", de: "Audioaufnahme läuft", fr: "Enregistrement audio en cours", th: "กำลังบันทึกเสียง",
+  ru: "Идёт запись звука",
 };
 const states = ["starting", "recording", "paused", "limited", "error"] as const satisfies AudioRecordingStatus[];
 

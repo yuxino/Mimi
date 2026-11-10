@@ -16,7 +16,7 @@
   </p>
   <p><a href="https://github.com/yuxino/mimi/releases/latest"><strong>Mimi 다운로드</strong></a> · <a href="https://mimi.yuxino.cn/ko/">웹사이트</a> · <a href="../usage.ko.md">사용 안내</a></p>
   <p>
-    <a href="../../README_EN.md">English</a> · <a href="../../README.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ja.md">日本語</a> · <a href="th.md">ภาษาไทย</a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a>
+    <a href="../../README_EN.md">English</a> · <a href="../../README.md">简体中文</a> · <a href="zh-TW.md">繁體中文</a> · <a href="ja.md">日本語</a> · <a href="th.md">ภาษาไทย</a> · <a href="ko.md">한국어</a> · <a href="fr.md">Français</a> · <a href="de.md">Deutsch</a> · <a href="ru.md">Русский</a>
   </p>
 </div>
 

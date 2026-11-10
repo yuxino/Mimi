@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profiles_add">Добавить конфигурацию</string>
+    <string name="profiles_empty">Выберите службу, чтобы создать первую конфигурацию.</string>
+    <string name="profiles_name">Название конфигурации</string>
+    <string name="profiles_save">Сохранить</string>
+    <string name="profiles_duplicate">Дублировать</string>
+    <string name="profiles_delete">Удалить</string>
+    <string name="profiles_delete_title">Удалить «%1$s»?</string>
+    <string name="profiles_delete_message">Будут удалены эта конфигурация и её учётные данные. Другие конфигурации сохранятся.</string>
+    <string name="profiles_copy_name">%1$s (копия)</string>
+    <string name="profiles_limit">Можно сохранить до 20 конфигураций.</string>
+    <string name="profiles_retry">Повторить</string>
+    <string name="profile_none">Конфигурация не выбрана</string>
+    <string name="profiles_list_help">Сохраняйте несколько конфигураций, в том числе несколько для одной службы. Нажмите на конфигурацию, чтобы использовать её; в настройках откроется её редактор. Дублирование и удаление находятся в меню редактора.</string>
+    <string name="profiles_translation_help_save">При проверке отправляется фиксированный пример, изменения не сохраняются. При переключении служб черновики в этом редакторе сохраняются. Кнопка «Сохранить» применяет выбранную службу. Ключи остаются в зашифрованном хранилище на этом устройстве.</string>
+    <string name="guide_add_provider">Добавить %1$s</string>
+    <string name="profiles_load_failed">Не удалось загрузить эту конфигурацию. Повторите попытку из настроек.</string>
+    <string name="profiles_add_short">Добавить</string>
+    <string name="profiles_use_named">Использовать %1$s</string>
+    <string name="profiles_duplicated">Конфигурация продублирована</string>
+</resources>

@@ -1,7 +1,7 @@
 // Real browser geometry for the desktop subtitle range and settings preview.
 // Pass an Ego Lite managed Page; all text and IPC responses are synthetic.
 export async function verifySubtitlePreviewLayout(page, baseUrl = "http://127.0.0.1:1420", {
-  languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"],
+  languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"],
   widths = [520, 952], fontSizes = [16, 20, 24, 32, 40, 48],
 } = {}) {
   await page.goto(`${baseUrl}/scripts/fixtures/settings-layout.html`);

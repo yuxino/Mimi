@@ -220,6 +220,7 @@ private func preparationInstruction(_ uiLanguage: String) -> String {
     case "fr": "Suivez les indications de macOS pour télécharger ou activer les langues de traduction."
     case "ko": "macOS 안내에 따라 번역 언어를 다운로드하거나 활성화하세요."
     case "th": "ทำตามคำแนะนำของ macOS เพื่อดาวน์โหลดหรือเปิดใช้ภาษาสำหรับการแปล"
+    case "ru": "Следуйте указаниям macOS, чтобы загрузить или включить языки перевода."
     default: "Follow the macOS prompt to download or enable translation languages."
     }
 }
@@ -233,6 +234,7 @@ private func preparationCancelLabel(_ uiLanguage: String) -> String {
     case "fr": "Annuler"
     case "ko": "취소"
     case "th": "ยกเลิก"
+    case "ru": "Отмена"
     default: "Cancel"
     }
 }
@@ -479,7 +481,7 @@ public func mimiAppleTranslationStatus(_ identifier: UInt64, _ source: UnsafePoi
 }
 
 private func supportsPreparationUiLanguage(_ language: String) -> Bool {
-    ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"].contains(language)
+    ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"].contains(language)
 }
 
 @_cdecl("mimi_apple_translation_prepare")
@@ -654,7 +656,7 @@ func runTranslationReadinessTests() async throws {
 // TranslationSession, showing UI, querying assets, or accessing the network.
 @MainActor
 func runTranslationBridgeInvariantTests() throws {
-    for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"] {
+    for language in ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"] {
         precondition(supportsPreparationUiLanguage(language))
     }
     for language in ["system", "zh-Hant", "zh_tw", "fr-CA", "invalid", ""] {
@@ -665,6 +667,8 @@ func runTranslationBridgeInvariantTests() throws {
     precondition(preparationCancelLabel("zh-TW") == "取消")
     precondition(preparationInstruction("th") != preparationInstruction("en"))
     precondition(preparationCancelLabel("th") == "ยกเลิก")
+    precondition(preparationInstruction("ru") != preparationInstruction("en"))
+    precondition(preparationCancelLabel("ru") == "Отмена")
     let registry = TranslationRequests()
     let requests = (1...8).map { TranslationRequest(UInt64($0), .query, testCallback) }
     for request in requests { precondition(registry.insert(request)) }

@@ -8,7 +8,7 @@ export async function verifyXaiSettingsLayout(page, baseUrl = "http://127.0.0.1:
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   const failures = [];
   let checked = 0;
-  for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"]) for (const theme of ["light", "dark"]) for (const mode of ["voice", "asrMt"]) {
+  for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"]) for (const theme of ["light", "dark"]) for (const mode of ["voice", "asrMt"]) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
     const issues = await page.evaluate(async next => {
@@ -33,7 +33,7 @@ export async function verifyXaiSettingsLayout(page, baseUrl = "http://127.0.0.1:
   return { checked, failures };
 }
 
-export async function verifyProfileActionsLayout(page, baseUrl = "http://127.0.0.1:1420", { platforms = ["macos", "windows", "linux"], states = ["idle", "paused", "confirmation"], widths = [520, 828, 952, 1600], languages = ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"], themes = ["light", "dark"] } = {}) {
+export async function verifyProfileActionsLayout(page, baseUrl = "http://127.0.0.1:1420", { platforms = ["macos", "windows", "linux"], states = ["idle", "paused", "confirmation"], widths = [520, 828, 952, 1600], languages = ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"], themes = ["light", "dark"] } = {}) {
   await page.goto(new URL("/scripts/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);
   await page.cdp("Page.bringToFront", {});
@@ -108,7 +108,7 @@ export async function verifyQwenMTModelLayout(page, baseUrl = "http://127.0.0.1:
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   const failures = [];
   let checked = 0;
-  for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"]) for (const theme of ["light", "dark"]) {
+  for (const width of [520, 952]) for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"]) for (const theme of ["light", "dark"]) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
     for (const credentialStorage of storageModes) for (const model of ["lite", "flash", "plus"]) {
@@ -151,7 +151,7 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
   let checked = 0;
   for (const width of widths) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-    for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th"]) for (const theme of ["light", "dark"]) {
+    for (const language of ["en", "zh", "zh-TW", "ja", "de", "fr", "ko", "th", "ru"]) for (const theme of ["light", "dark"]) {
       await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
       for (const platform of (appleOnly || appleTranslationOnly ? ["macos"] : ["windows", "macos", "linux"])) {
         const cases = (appleOnly || appleTranslationOnly ? [] : platform === "windows" ? ["idle", "receiving", "silent", "noData", "paused", "missing", "empty", "failed"] : ["idle"])
@@ -366,7 +366,7 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
   for (const surface of ["settings", "overlay"]) {
     for (const width of surface === "settings" ? [520, 952] : [360, 420]) {
       await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-      for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th"]) for (const theme of ["light", "dark"]) {
+      for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"]) for (const theme of ["light", "dark"]) {
         await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
         const cases = surface === "settings"
           ? [{ provider: "googleGeminiLive", sourceLanguage: "auto", targetLanguage: "pt-BR", count: 78, targetMenu: true },

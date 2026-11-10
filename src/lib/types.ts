@@ -172,7 +172,7 @@ export interface NetworkProxyConfig {
   url: string | null;
 }
 
-export type UiLanguage = "system" | "zh" | "zh-TW" | "en" | "ja" | "de" | "fr" | "ko" | "th";
+export type UiLanguage = "system" | "zh" | "zh-TW" | "en" | "ja" | "de" | "fr" | "ko" | "th" | "ru";
 export type AudioSource = "system" | "microphone";
 export type AudioInput = AudioSource | "both";
 export type SystemAudioTarget = { kind: "system" } | { kind: "application"; id: string; name: string };
@@ -524,16 +524,16 @@ function languageNamesForCodes<Code extends LanguageDisplayCode>(
 
 export function sourceLanguageDisplayName(language: SourceLanguage, locale = languageDisplayLocale()): string {
   return language === "auto"
-    ? { "zh-TW": "自動辨識", zh: "自动识别", en: "Auto Detect", ja: "自動認識", de: "Automatisch", fr: "Détection auto", ko: "자동 감지", th: "ตรวจจับอัตโนมัติ" }[locale]
+    ? { "zh-TW": "自動辨識", zh: "自动识别", en: "Auto Detect", ja: "自動認識", de: "Automatisch", fr: "Détection auto", ko: "자동 감지", th: "ตรวจจับอัตโนมัติ", ru: "Автоопределение" }[locale]
     : languageDisplayNames(locale)[language];
 }
 
 export function targetLanguageDisplayName(language: TargetLanguage, locale = languageDisplayLocale()): string {
   if (language === "original") {
-    return { "zh-TW": "只顯示原文", zh: "只显示原文", en: "Original only", ja: "原文のみ", de: "Nur Original", fr: "Original uniquement", ko: "원문만", th: "แสดงต้นฉบับเท่านั้น" }[locale];
+    return { "zh-TW": "只顯示原文", zh: "只显示原文", en: "Original only", ja: "原文のみ", de: "Nur Original", fr: "Original uniquement", ko: "원문만", th: "แสดงต้นฉบับเท่านั้น", ru: "Только оригинал" }[locale];
   }
-  if (language === "zh") return { "zh-TW": "簡體中文", zh: "简体中文", en: "Simplified Chinese", ja: "簡体中国語", de: "Chinesisch (vereinfacht)", fr: "Chinois simplifié", ko: "중국어 간체", th: "จีนตัวย่อ" }[locale];
-  if (language === "tl") return { "zh-TW": "塔加洛語", zh: "塔加洛语", en: "Tagalog", ja: "タガログ語", de: "Tagalog", fr: "Tagalog", ko: "타갈로그어", th: "ตากาล็อก" }[locale];
+  if (language === "zh") return { "zh-TW": "簡體中文", zh: "简体中文", en: "Simplified Chinese", ja: "簡体中国語", de: "Chinesisch (vereinfacht)", fr: "Chinois simplifié", ko: "중국어 간체", th: "จีนตัวย่อ", ru: "Китайский (упрощённый)" }[locale];
+  if (language === "tl") return { "zh-TW": "塔加洛語", zh: "塔加洛语", en: "Tagalog", ja: "タガログ語", de: "Tagalog", fr: "Tagalog", ko: "타갈로그어", th: "ตากาล็อก", ru: "Тагальский" }[locale];
   return languageDisplayNames(locale)[language];
 }
 

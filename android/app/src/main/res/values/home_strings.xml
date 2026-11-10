@@ -22,6 +22,7 @@
     <string name="preview_en">This is a sample subtitle.</string>
     <string name="preview_ja">字幕の表示例です。</string>
     <string name="preview_th" translatable="false">นี่คือตัวอย่างคำบรรยาย</string>
+    <string name="preview_ru" translatable="false">Это пример субтитра.</string>
     <string name="language_source_title">What language is being spoken?</string>
     <string name="language_target_title">Which caption language would you like?</string>
     <string name="language_sheet_hint">Saved automatically and used when captions next start.</string>

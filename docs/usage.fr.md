@@ -2,7 +2,7 @@
 
 [Retour au README](readme/fr.md)
 
-[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
+[English](usage.md) · [简体中文](usage.zh-CN.md) · [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md) · [Русский](usage.ru.md)
 
 Les liens d’activation, les identifiants et les modèles actuels sont dans le [guide de configuration des fournisseurs (anglais)](provider-setup.md).
 
@@ -87,7 +87,7 @@ Les limites sont 10 000 paires confirmées / 2 MiB de texte et 64 MiB d’audio.
 
 ## Affichage des sous-titres
 
-Choisissez la langue de l’interface dans Réglages → Général : chinois simplifié ou traditionnel, anglais, japonais, allemand, coréen, français ou thaï. L’option système suit la langue du système. Changer de langue conserve les saisies en cours et l’état des sous-titres. Les langues de reconnaissance et de traduction se choisissent séparément.
+Choisissez la langue de l’interface dans Réglages → Général : chinois simplifié ou traditionnel, anglais, japonais, allemand, coréen, français, thaï ou russe. L’option système suit la langue du système. Changer de langue conserve les saisies en cours et l’état des sous-titres. Les langues de reconnaissance et de traduction se choisissent séparément.
 
 Dans Réglages, choisissez l’une des cinq couleurs (blanc par défaut), ou ouvrez le sélecteur système depuis la couleur personnalisée placée après elles. Les couleurs du système et du microphone sont distinctes. L’aperçu et les sous-titres flottants changent immédiatement, y compris en mode immersif. En affichage bilingue, l’original est visuellement plus discret que la traduction.
 

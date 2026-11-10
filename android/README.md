@@ -99,8 +99,8 @@ code does not prove availability on every device; see [verification status](#ver
   keep confirmed original/translation pairs and source identity, and survive Stop/restart.
   Disable saving to discard the current session; older saved sessions require explicit deletion.
   Saving must be enabled before Start. Audio recording/export remains desktop-only.
-- **Interface language** — More offers Follow system and the same eight interface
-  languages as desktop: 简体中文, 繁體中文, English, 日本語, Deutsch, 한국어, Français and ภาษาไทย.
+- **Interface language** — More offers Follow system and the same nine interface
+  languages as desktop: 简体中文, 繁體中文, English, 日本語, Deutsch, 한국어, Français, ภาษาไทย and Русский.
   Changes apply immediately and persist after restart, independently of subtitle
   source and target languages. Android 13+ also exposes this choice in system App languages.
   Unsupported system languages fall back to English.
@@ -256,7 +256,7 @@ are decorative during editing; closing restores the same window. Limited space
 scales the complete frame rather than hiding its toolbar/footer.
 The `interaction-*.png` screenshots show the actual panel and edits.
 On a blank, idle API 35 device, `-e preview_parity true` compares both preview
-entries with the native frame across all eight languages plus System, waiting,
+entries with the native frame across all nine languages plus System, waiting,
 no-sound/connection feedback, long captions, history and appearance endpoints.
 Use `-e locale ja` (or another supported tag) for one language. Normalized pixels,
 wrapping and frame geometry must match; quick editing preserves frame pixels.

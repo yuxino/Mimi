@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xai_mode">Речь и перевод</string>
+    <string name="xai_asr_mt">Потоковое распознавание + перевод текста</string>
+    <string name="xai_voice">Grok Voice</string>
+    <string name="xai_help">Для потокового распознавания можно выбрать любую службу перевода текста ниже. Grok Voice переводит после пауз в речи.</string>
+    <string name="xai_check_speech">Проверить распознавание</string>
+    <string name="translation_xai">xAI Grok</string>
+    <string name="translation_help_xai">Выберите текстовую модель Grok и введите отдельный ключ API xAI для неё. Её можно использовать с любой поддерживаемой службой распознавания.</string>
+    <string name="translation_help_xai_original">Показывать распознанную речь без обращения к службе перевода текста.</string>
+    <string name="translation_xai_original">xAI (только оригинал)</string>
+</resources>

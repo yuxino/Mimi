@@ -11,7 +11,7 @@
 | 在手机上使用 / Use Mimi on a phone | [安卓安装与使用](../android/README.zh-CN.md#start) · [Android setup](../android/README.md#start) |
 | 配好后仍没有字幕 / Troubleshoot missing subtitles | [排查服务问题](provider-setup.zh-CN.md#troubleshooting) · [Troubleshooting](provider-setup.md#troubleshooting) |
 
-使用指南其他语言 / More usage languages: [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md)
+使用指南其他语言 / More usage languages: [繁體中文](usage.zh-TW.md) · [日本語](usage.ja.md) · [ภาษาไทย](usage.th.md) · [한국어](usage.ko.md) · [Français](usage.fr.md) · [Deutsch](usage.de.md) · [Русский](usage.ru.md)
 
 服务配置和安卓上手指南均提供中、英文；安卓开发说明见英文文档。 / Service setup and Android getting started are available in Chinese and English; Android development notes are in English.
 

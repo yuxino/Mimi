@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="runtime_connecting">Подключение…</string>
+    <string name="runtime_rate_retry">Лимит запросов на перевод · ожидание повторной попытки</string>
+    <string name="runtime_rate_wait">Лимит запросов на перевод · ожидание новой речи</string>
+    <string name="runtime_unavailable_retry">Перевод недоступен · ожидание повторной попытки</string>
+    <string name="runtime_unavailable_wait">Перевод недоступен · ожидание новой речи</string>
+    <string name="runtime_translation_delayed">Перевод задерживается · прослушивание продолжается</string>
+</resources>

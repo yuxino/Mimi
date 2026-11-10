@@ -533,6 +533,7 @@ enum NativeMenuLanguage {
     French,
     Korean,
     Thai,
+    Russian,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -655,7 +656,7 @@ fn effective_native_menu_language(
 ) -> NativeMenuLanguage {
     let language = match override_language {
         Some("zh") | Some("zh-TW") | Some("en") | Some("ja") | Some("de") | Some("fr")
-        | Some("ko") | Some("th") => override_language,
+        | Some("ko") | Some("th") | Some("ru") => override_language,
         _ => system_language,
     }
     .unwrap_or("en")
@@ -687,6 +688,8 @@ fn effective_native_menu_language(
         NativeMenuLanguage::Korean
     } else if language.starts_with("th") {
         NativeMenuLanguage::Thai
+    } else if language.starts_with("ru") {
+        NativeMenuLanguage::Russian
     } else {
         NativeMenuLanguage::English
     }
@@ -778,6 +781,17 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             display_modes: ["คำแปลเท่านั้น", "ต้นฉบับและคำแปล", "ต้นฉบับเท่านั้น"],
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "แสดงใน Dock",
+        },
+        NativeMenuLanguage::Russian => NativeMenuLabels {
+            start_subtitles: "Запустить субтитры",
+            stop_subtitles: "Остановить субтитры",
+            toggle_devtools: "Открыть инструменты разработчика",
+            settings: "Настройки…",
+            quit: "Выйти из Mimi",
+            subtitle_display: "Отображение субтитров",
+            display_modes: ["Только перевод", "Оригинал и перевод", "Только оригинал"],
+            #[cfg(any(target_os = "macos", test))]
+            show_in_dock: "Показывать в Dock",
         },
         NativeMenuLanguage::English => NativeMenuLabels {
             start_subtitles: "Start Subtitles",
@@ -1357,6 +1371,7 @@ mod tests {
             ("fr", "fr-CA", NativeMenuLanguage::French, "Réglages…"),
             ("ko", "ko-KR", NativeMenuLanguage::Korean, "설정…"),
             ("th", "TH_th", NativeMenuLanguage::Thai, "การตั้งค่า…"),
+            ("ru", "RU_ru", NativeMenuLanguage::Russian, "Настройки…"),
         ] {
             assert_eq!(
                 effective_native_menu_language(Some(code), Some("en-US")),

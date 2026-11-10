@@ -32,8 +32,8 @@ it.each(UI_LANGUAGES)("keeps shared quota and rate-limit recovery independent of
     expect(message).not.toBe(diagnosticCopy().unavailable);
   }
   const limited = messages[1];
-  expect(limited).toMatch(/later|稍后|稍後|しばらく|später|잠시 후|plus tard|ภายหลัง/i);
-  expect(limited).toMatch(/requests|请求|請求|リクエスト|Anfragen|요청|requêtes|คำขอ/i);
+  expect(limited).toMatch(/later|稍后|稍後|しばらく|später|잠시 후|plus tard|ภายหลัง|позже/i);
+  expect(limited).toMatch(/requests|请求|請求|リクエスト|Anfragen|요청|requêtes|คำขอ|запросов/i);
   const activation = connectionDiagnosticMessage({
     credential: "present", service: "unavailable", reason: "serviceNotActivated",
   });

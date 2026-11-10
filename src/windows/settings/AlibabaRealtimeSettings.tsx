@@ -17,6 +17,7 @@ const copy = {
   ko: { saved: "저장했습니다.", save: "저장", failed: "저장하지 못했습니다. 워크스페이스 ID를 확인한 후 다시 시도하세요." },
   fr: { saved: "Enregistré.", save: "Enregistrer", failed: "Échec de l’enregistrement. Vérifiez l’ID d’espace et réessayez." },
   th: { saved: "บันทึกแล้ว", save: "บันทึก", failed: "บันทึกไม่ได้ ตรวจสอบ ID เวิร์กสเปซแล้วลองอีกครั้ง" },
+  ru: { saved: "Сохранено.", save: "Сохранить", failed: "Не удалось сохранить. Проверьте ID рабочей области и повторите попытку." },
 };
 
 export function AlibabaRealtimeSettings({ profile, disabled, onSave }: {

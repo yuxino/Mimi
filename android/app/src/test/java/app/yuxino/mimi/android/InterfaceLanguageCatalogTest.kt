@@ -13,7 +13,7 @@ class InterfaceLanguageCatalogTest {
     private val directories = mapOf(
         "zh-Hans" to "values-b+zh+Hans", "zh-Hant" to "values-b+zh+Hant",
         "en" to "values", "ja" to "values-ja", "de" to "values-de",
-        "ko" to "values-ko", "fr" to "values-fr", "th" to "values-th",
+        "ko" to "values-ko", "fr" to "values-fr", "th" to "values-th", "ru" to "values-ru",
     )
     private fun strings(directory: String): Map<String, String> = buildMap {
         resources.resolve(directory).listFiles()!!.filter { it.name.endsWith("strings.xml") }.forEach { file ->
@@ -72,6 +72,12 @@ class InterfaceLanguageCatalogTest {
     @Test fun thaiRegionalLocaleSelectsThaiInterface() {
         listOf("th", "th-TH").forEach {
             assertEquals("th", InterfaceLanguage.tags[InterfaceLanguage.indexOf(Locale.forLanguageTag(it))])
+        }
+    }
+
+    @Test fun russianRegionalLocaleSelectsRussianInterface() {
+        listOf("ru", "ru-RU").forEach {
+            assertEquals("ru", InterfaceLanguage.tags[InterfaceLanguage.indexOf(Locale.forLanguageTag(it))])
         }
     }
 }

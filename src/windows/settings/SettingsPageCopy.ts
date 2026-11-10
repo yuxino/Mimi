@@ -9,5 +9,6 @@ const copy = {
   de: { voice: "Audio & Sprachen", models: "Modelle & Dienste", selection: "Aktive Konfiguration" },
   fr: { voice: "Audio et langues", models: "Modèles et services", selection: "Configuration active" },
   th: { voice: "เสียงและภาษา", models: "โมเดลและบริการ", selection: "การตั้งค่าที่ใช้" },
+  ru: { voice: "Звук и языки", models: "Модели и сервисы", selection: "Активная конфигурация" },
 };
 export function settingsPageCopy() { return copy[effectiveUiLanguage()]; }

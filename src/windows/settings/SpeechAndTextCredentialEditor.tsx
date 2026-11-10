@@ -34,6 +34,7 @@ const XAI_TRANSLATION_HELP = {
   ko: "xAI Grok 텍스트 모델로 인식 결과를 번역합니다. 이 API 키는 음성 인식과 별도로 텍스트 번역용으로 저장됩니다.",
   fr: "Traduisez le texte reconnu avec un modèle de texte Grok de xAI. Cette clé API est enregistrée séparément pour la traduction, indépendamment de la reconnaissance vocale.",
   th: "แปลข้อความที่รู้จำด้วยโมเดลข้อความ Grok ของ xAI โดยบันทึก API key นี้สำหรับการแปลข้อความแยกจากการรู้จำเสียง",
+  ru: "Переводите распознанный текст с помощью текстовой модели xAI Grok. Этот ключ API сохраняется отдельно для перевода текста, независимо от распознавания речи.",
 };
 
 /** Shared speech/text editor. Independent text destinations own their credentials and drafts. */

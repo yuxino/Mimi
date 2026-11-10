@@ -12,6 +12,7 @@ const copy = {
   ko: { guide: "설정 안내", apiKey: "API 키 가져오기", workspace: "워크스페이스 ID 가져오기", failed: "Model Studio 설정 페이지를 열지 못했습니다. 다시 시도하세요." },
   fr: { guide: "Guide de configuration", apiKey: "Obtenir la clé API", workspace: "Obtenir l’ID d’espace", failed: "Impossible d’ouvrir la configuration Model Studio. Réessayez." },
   th: { guide: "คู่มือการตั้งค่า", apiKey: "รับ API Key", workspace: "รับ ID เวิร์กสเปซ", failed: "เปิดหน้าการตั้งค่า Model Studio ไม่ได้ ลองอีกครั้ง" },
+  ru: { guide: "Руководство по настройке", apiKey: "Получить ключ API", workspace: "Получить ID рабочей области", failed: "Не удалось открыть страницу настройки Model Studio. Повторите попытку." },
 };
 
 /** Native code permits only these fixed public setup destinations. */
