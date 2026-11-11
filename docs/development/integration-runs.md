@@ -6287,3 +6287,20 @@ playback remain unverified. Private evidence belongs to the existing
   Removed the task-only JDK/archive after verifying no task Java executable was
   running. Preserved current APKs, distinct canonical caches, review evidence,
   Owner data and unrelated dirty work; no extra checkout/cache was created.
+
+### 2026-11-11 — Android caption touch-through across apps and Russian desktop preview
+
+- Reviewed PR #340 at `3f9a1cbf4240913b0b882dd0693701962b27f98a`. Verified the
+  existing Debug APK SHA-256
+  `ac5971b2bb2a98583acd3f54e5d8b97b13071e1b1cacfd1e9ed4d76d38140de8`
+  against the inset revision run above. On a read-only API 35 arm64 AVD with
+  a disposable user, a separate native Activity confirmed a different UID.
+  Injected touchscreen events reached that app through the locked panel:
+  one tap and one swipe. The adjustable panel intercepted both taps on its body,
+  the inset switch remained reachable for unlocking, and both native window
+  frames stayed fixed across the round trip.
+- The same source ran in the signed macOS `mimi-dev.app` UI-only watch preview.
+  Switched the interface to Russian and observed the General and Subtitles
+  pages, including the localized caption sample and controls. Restored System
+  language and quit normally. The Android and desktop checks used synthetic
+  captions. Physical-device/OEM overlay behavior and real audio remain open.
