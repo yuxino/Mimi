@@ -42,6 +42,7 @@ import android.widget.ScrollView
 import android.widget.Toast
 import android.widget.ImageView
 import com.google.android.material.materialswitch.MaterialSwitch
+import app.yuxino.mimi.android.CaptionAdjustmentSwitch
 import app.yuxino.mimi.android.CaptionDisplayMode
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
@@ -929,25 +930,10 @@ class MimiService : Service() {
     private fun showAdjustmentSwitch(wm: WindowManager) {
         if (adjustmentSwitch != null) return
         val themed = ContextThemeWrapper(InterfaceLanguage.context(this), R.style.Theme_Mimi)
-        val control = MaterialSwitch(themed).apply {
+        // Paint belongs to CaptionPanelView so native and preview share one
+        // surface. This fully inset window owns only input and accessibility.
+        val control = CaptionAdjustmentSwitch(themed, paintsControl = false).apply {
             tag = "overlay-adjust"
-            contentDescription = interfaceString(R.string.overlay_adjust)
-            minimumWidth = dp(48); minimumHeight = dp(48)
-            setPadding(dp(4), 0, dp(4), 0)
-            switchMinWidth = dp(40)
-            thumbIconDrawable = null
-            trackDecorationDrawable = null
-            thumbDrawable = android.graphics.drawable.InsetDrawable(
-                android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(android.graphics.Color.WHITE); setSize(dp(20), dp(20))
-                }, 0, dp(2), 0, dp(2))
-            trackDrawable = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(android.graphics.Color.GRAY); setSize(dp(40), dp(24))
-            }
-            trackTintList = ContextCompat.getColorStateList(themed, R.color.mimi_switch_track)
-            thumbTintList = ContextCompat.getColorStateList(themed, R.color.mimi_switch_thumb)
             isChecked = adjustable
             setOnCheckedChangeListener { _, enabled ->
                 if (!syncingAdjustment) {
@@ -971,7 +957,7 @@ class MimiService : Service() {
                 if (adjustmentSwitch === this) updateOverlayGeometry()
             }
         }
-        val params = WindowManager.LayoutParams(dp(48), dp(48),
+        val params = WindowManager.LayoutParams(dp(CaptionAdjustmentSwitch.TARGET_DP), dp(CaptionAdjustmentSwitch.TARGET_DP),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT).apply {
@@ -1120,10 +1106,11 @@ class MimiService : Service() {
             windowManager?.updateViewLayout(root, params)
         }
         adjustmentParams?.let { controlParams ->
-            val controlWidth = dp(48)
-            val controlHeight = dp(48)
-            val x = OverlayPlacement.adjustmentX(width, desiredWidth, params.x, controlWidth, 0)
-            val y = OverlayPlacement.adjustmentY(height, params.y, desiredHeight, controlHeight, dp(4))
+            val controlWidth = dp(CaptionAdjustmentSwitch.TARGET_DP)
+            val controlHeight = dp(CaptionAdjustmentSwitch.TARGET_DP)
+            val x = OverlayPlacement.adjustmentX(width, desiredWidth, params.x, controlWidth,
+                dp(CaptionAdjustmentSwitch.RIGHT_INSET_DP))
+            val y = OverlayPlacement.adjustmentY(height, params.y, desiredHeight, controlHeight, 0)
             if (controlParams.x != x || controlParams.y != y) {
                 controlParams.x = x; controlParams.y = y
                 adjustmentSwitch?.let { windowManager?.updateViewLayout(it, controlParams) }
@@ -1146,7 +1133,7 @@ class MimiService : Service() {
     private fun expandedPanelHeight(): Int {
         val availableHeight = overlayAvailableSize().second
         val panel = expandedView as? app.yuxino.mimi.android.CaptionPanelView
-        val chrome = panel?.chromeHeight() ?: dp(36)
+        val chrome = panel?.chromeHeight() ?: dp(app.yuxino.mimi.android.CaptionPanelView.CHROME_HEIGHT_DP)
         val reading = panel?.minimumReadingHeight() ?: dp(64)
         return app.yuxino.mimi.android.captionPanelHeight(availableHeight,
             resizeHeightPercent ?: SettingsStore.overlayHeightPercent(this), chrome, reading)

@@ -123,10 +123,17 @@ internal class CaptionPanelView(
         transcript.addView(translation, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         scroll.addView(transcript)
         panel.addView(scroll, FrameLayout.LayoutParams(-1, -1).apply {
-            setMargins(dp(16), dp(20), dp(16), dp(16))
+            setMargins(dp(16), dp(CaptionAdjustmentSwitch.TARGET_DP), dp(16), dp(8))
         })
-        // Edge affordances float above the viewport instead of reserving two
-        // empty toolbar rows. Their 48dp hit areas remain accessible while ON.
+        // One surface: the inset control targets clear the reading viewport.
+        // No separate toolbar background, side column or footer row.
+        panel.addView(CaptionAdjustmentSwitch(context).apply {
+            tag = "overlay-adjust-mark"
+            isChecked = SettingsStore.overlayAdjustable(context)
+            isClickable = false; isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(dp(CaptionAdjustmentSwitch.TARGET_DP), dp(CaptionAdjustmentSwitch.TARGET_DP),
+            Gravity.TOP or Gravity.RIGHT).apply { rightMargin = dp(CaptionAdjustmentSwitch.RIGHT_INSET_DP) })
         panel.addView(FrameLayout(context).apply {
             tag = "overlay-drag"; isClickable = true; isFocusable = true
             contentDescription = interfaceString(R.string.overlay_drag)
@@ -137,16 +144,14 @@ internal class CaptionPanelView(
                     cornerRadius = dp(2).toFloat(); setColor(0xFFB9B9B9.toInt())
                 }
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, FrameLayout.LayoutParams(dp(24), dp(3), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                topMargin = dp(6)
-            })
+            }, FrameLayout.LayoutParams(dp(24), dp(3), Gravity.CENTER))
         }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         panel.addView(panelIcon(R.drawable.ic_overlay_resize, R.string.overlay_resize).apply {
             tag = "overlay-resize"
             // Keep the visible mark in the bottom/right inset, not over a glyph.
-            setPadding(dp(30), dp(30), dp(4), dp(4))
+            setPadding(dp(32), dp(32), dp(4), dp(4))
         }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM or Gravity.RIGHT))
-        setPreviewOnly(actions.home == null)
+        setAdjustable(SettingsStore.overlayAdjustable(context))
     }
 
     /** Disable actions without dimming or changing the frame's visible appearance. */
@@ -165,6 +170,7 @@ internal class CaptionPanelView(
 
     /** Keep bounds and reading position unchanged when the window stops receiving touches. */
     fun setAdjustable(adjustable: Boolean) {
+        findViewWithTag<CaptionAdjustmentSwitch>("overlay-adjust-mark").isChecked = adjustable
         findViewWithTag<View>("overlay-drag-mark").visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
         findViewWithTag<View>("overlay-resize").visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
         setPreviewOnly(!adjustable)
@@ -273,6 +279,10 @@ internal class CaptionPanelView(
 
     fun chromeHeight(): Int = (transcriptScroll.layoutParams as FrameLayout.LayoutParams).let {
         it.topMargin + it.bottomMargin
+    }
+
+    companion object {
+        const val CHROME_HEIGHT_DP = CaptionAdjustmentSwitch.TARGET_DP + 8
     }
 
     private fun interfaceString(id: Int): String = InterfaceLanguage.context(context).getString(id)

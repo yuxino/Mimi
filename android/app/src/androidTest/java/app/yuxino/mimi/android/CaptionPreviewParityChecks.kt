@@ -85,7 +85,12 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                 check(actual.chromeHeight() == sample.chromeHeight() && actual.transcriptScroll.scrollY == sample.transcriptScroll.scrollY) { "Reading viewport differs at $name" }
                 assertReadablePair(actual, name)
                 assertReadablePair(sample, "$name-preview")
-                for (tag in listOf("subtitle-transcript-scroll", "overlay-drag", "overlay-drag-mark", "overlay-resize")) {
+                checkAdjustmentSwitchOnScreen()
+                val nativeSwitch = actual.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>("overlay-adjust-mark")
+                val previewSwitch = sample.findViewWithTag<com.google.android.material.materialswitch.MaterialSwitch>("overlay-adjust-mark")
+                check(nativeSwitch.isChecked == previewSwitch.isChecked &&
+                    nativeSwitch.isChecked == SettingsStore.overlayAdjustable(context)) { "Preview/native painted switch states differ at $name" }
+                for (tag in listOf("subtitle-transcript-scroll", "overlay-drag", "overlay-drag-mark", "overlay-resize", "overlay-adjust-mark")) {
                     val a = actual.findViewWithTag<View>(tag); val b = sample.findViewWithTag<View>(tag)
                     check(a.width == b.width && a.height == b.height && a.left == b.left && a.top == b.top) { "Frame chrome differs: $tag" }
                 }
@@ -206,7 +211,7 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
         try {
             if (arguments?.getString("fresh_defaults") == "true") {
                 check(SettingsStore.overlayBgAlpha(context) == 80 && SettingsStore.overlayOpacity(context) == 100)
-                check(SettingsStore.overlayHeightPercent(context) == 14)
+                check(SettingsStore.overlayHeightPercent(context) == 17)
                 check(SettingsStore.overlayAdjustable(context)) { "Fresh normal windows must be adjustable" }
                 check(!SettingsStore.subtitleDividers(context) && !SettingsStore.subtitleTimestamps(context))
             }
@@ -220,7 +225,7 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                 val prefix = tag.ifEmpty { "system" }
                 ui {
                     SettingsStore.setImmersiveSubtitles(context, false); SettingsStore.setDisplayMode(context, CaptionDisplayMode.BILINGUAL)
-                    SettingsStore.setFontSize(context, 17); SettingsStore.setOverlayWidthPercent(context, 92)
+                    SettingsStore.setFontSize(context, 16); SettingsStore.setOverlayWidthPercent(context, 92)
                     SettingsStore.setOverlayHeightPercent(context, SettingsStore.DEFAULT_OVERLAY_HEIGHT); SettingsStore.setOverlayBgAlpha(context, 80); SettingsStore.setOverlayOpacity(context, 100)
                     SettingsStore.setSubtitleDividers(context, false); SettingsStore.setSubtitleTimestamps(context, false)
                 }
@@ -249,6 +254,9 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                 ui {
                     val panel = actual() as CaptionPanelView
                     assertCompleteLaneBudget(panel, "$prefix-default-bilingual")
+                    check(panel.source.maxLines >= 1 && panel.translation.lineCount >= 2 && panel.translation.maxLines >= 2) {
+                        "17% default at 16sp must preserve one source and two translated rows"
+                    }
                 }
                 ui {
                     SubtitleBus.clear(); SubtitleBus.onSourceDraft("Synthetic caption with enough words to wrap onto multiple lines. ".repeat(5), "ja")

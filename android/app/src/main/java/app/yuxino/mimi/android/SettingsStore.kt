@@ -40,7 +40,7 @@ object SettingsStore {
 
     const val PROVIDER_DASHSCOPE = "dashscope"
     const val PROVIDER_OPENAI = "openai"
-    const val DEFAULT_OVERLAY_HEIGHT = 14
+    const val DEFAULT_OVERLAY_HEIGHT = 17
 
     @Volatile private var prefs: SharedPreferences? = null
 

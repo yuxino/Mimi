@@ -385,12 +385,18 @@ not start capture or change modes; do not dim the frame. Fit it into its preview
 stage, scaling uniformly when necessary without changing saved bounds. Appearance,
 language, service and Start/Stop controls remain in the app. Inspect each preview
 entry when checking frame parity.
-The normal frame uses edge-overlay drag/resize affordances, not reserved toolbar
-and footer rows. Use 16dp horizontal and 20dp top / 16dp bottom reading insets;
-changing adjustment state must not change these insets or the viewport. The
-48dp switch target sits outside the top-right edge, falling below near the top
-screen edge. Do not move saved captions to make room for controls. New unset
-height/offset defaults are 14% / 48dp; preserve explicit saved geometry.
+The normal frame uses one surface, without a separate toolbar background,
+divider or footer row. Inset the full 48dp switch target at top0/right4dp and
+align the centered grip with it. Reserve 48dp above the reading viewport, 8dp
+below and 16dp horizontally; do not squeeze a whole-text side column or let the
+inset target steal text gestures. These insets stay unchanged across ON/OFF.
+Paint the inert switch inside the caption frame for native/preview parity;
+keep an exactly aligned non-painting input/accessibility window so OFF remains
+recoverable. Check odd-pixel center/right-gravity conversion, not only even
+screen widths. Do not double-paint the control or change window alpha on toggle.
+New unset height/offset defaults are 17% / 48dp; preserve explicit saved geometry.
+Judge total occupied screen area, including any detached controls, rather than
+reducing the panel height alone.
 At the default font/width, retain room for a source row and two translation rows;
 a minimal one-row tail can strand a single trailing character on long captions. Clamp
 actual height for one complete fallback-font row per active language and at least

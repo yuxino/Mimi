@@ -54,20 +54,16 @@ public final class OverlayPlacement {
         return Math.max(1, total - Math.max(0, startInset) - Math.max(0, endInset));
     }
 
-    /** Bottom/right-gravity companion aligned with the normal panel's right edge. */
+    /** Bottom/right-gravity target aligned with the inset marker, including odd pixel widths. */
     public static int adjustmentX(int availableWidth, int panelWidth, int panelX, int controlWidth, int padding) {
-        int desired = (availableWidth - panelWidth) / 2 - panelX + padding;
+        int panelLeft = (availableWidth - panelWidth) / 2 + panelX;
+        int desired = availableWidth - panelLeft - panelWidth + padding;
         return Math.max(0, Math.min(desired, Math.max(0, availableWidth - controlWidth)));
     }
 
-    /** Prefer outside above; use below at the top edge without moving saved captions. */
-    public static int adjustmentY(int availableHeight, int panelY, int panelHeight, int controlHeight, int gap) {
-        int above = panelY + panelHeight + gap;
-        if (above + controlHeight <= availableHeight) return Math.max(0, above);
-        int below = panelY - controlHeight - gap;
-        if (below >= 0) return clampY(below, availableHeight, controlHeight);
-        // A very short display may have no free slot; recovery must stay reachable.
-        return clampY(above, availableHeight, controlHeight);
+    /** Fully inset at the panel's top edge; bottom-gravity coordinates never need an outside fallback. */
+    public static int adjustmentY(int availableHeight, int panelY, int panelHeight, int controlHeight, int topInset) {
+        return clampY(panelY + panelHeight - controlHeight - Math.max(0, topInset), availableHeight, controlHeight);
     }
 
     /** Keep the small restore control beside captions, below when space permits. */

@@ -19,27 +19,34 @@ The initial functionally verified layout was rejected by the user: hiding two
 competed with captions. The accepted direction is a compact subtitle surface,
 not a settings card. Functional test success is not visual acceptance.
 
-- Use a FrameLayout with a full-size transcript viewport, 16dp horizontal and
-  20dp top / 16dp bottom insets, and a 12dp surface radius. No toolbar/footer rows.
-- Overlay 48dp drag and resize hit targets at the top center / bottom right;
-  draw only a 24×3dp top grip and a small bottom-corner resize mark, outside
-  the glyph viewport. They consume no layout rows. While adjusting, their hit
-  areas can overlap the viewport edge; the rest remains available for reading.
-- Use a compact switch drawing within an independent 48dp target, outside the
-  top-right edge, with a 4dp gap. Fall back below when at the top screen edge,
-  then clamp for constrained displays. Do not move the caption to fit controls.
-- New unset defaults: 14% frame height (10–70% selectable), 48dp bottom offset.
-  Native visual review rejected 12% because long translated captions reduced to
-  a one-row tail, sometimes a single character. At default 16sp/92% width, keep
-  enough room for one source row and two translated rows without a large card.
-  Minimum readable source/translation lines (one full glyph row each, with a
-  64dp viewport floor) still bound actual height; do not reserve three worst-case
-  fallback-font rows for every short sentence. Preserve
-  every explicit saved size, position, opacity, color, alignment and history setting.
+The user subsequently rejected the detached switch and approved an inset
+upper-right switch (2026-11-11). This supersedes outside-above/below placement.
+
+- Use one FrameLayout surface with a 12dp radius: no second background, divider,
+  full toolbar or footer. Reserve the actual 48dp top touch region, not an entire
+  side column; reading insets are 16dp horizontal / 48dp top / 8dp bottom.
+- Center the 24×3dp grip vertically in its top-center 48dp target, aligned with
+  the switch. Retain the small bottom-right resize mark and its 48dp target.
+- Inset the switch's full 48dp target at top 0 / right 4dp. Its visible track is
+  32×20dp with a 16dp circular thumb. No outside fallback or protruding base.
+  The target must clear the transcript viewport and the other gesture targets.
+- Paint one decorative switch in CaptionPanelView for both native and preview.
+  An independently touchable, non-painting MaterialSwitch window has exactly
+  those bounds and owns input/accessibility. This preserves recovery while the
+  caption is FLAG_NOT_TOUCHABLE, without double-painting or alpha changes.
+  The decorative copy is inert and excluded from accessibility; saved state
+  drives both copies. Toggle changes only control state/handles, never text.
+- New unset default: 17% frame height (10–70% selectable), 48dp bottom offset.
+  This budgets the inset target plus one source and two translated rows at
+  default 16sp/92% width, while removing the old outside 52dp footprint.
+  Native review must verify both readability and total occupied screen area.
+  Minimum full fallback-font rows and the 64dp reading floor still bound actual
+  height. Do not reserve three worst-case rows for every short sentence.
+  Preserve explicit saved size, position, opacity, color, alignment and history.
 - Keep the same frame, reading anchor, alpha and text layout on ON/OFF. The
   control is a toggle, not normal/immersive mode selection; failures roll back.
 - Verify exact viewport geometry, new minimum slider/resize values, saved-size
-  preservation, top-edge companion fallback, rotation and same-frame toggle.
+  preservation, inset containment at screen edges, rotation and same-frame toggle.
 - Inspect actual native ON/OFF captures on the same deterministic playback
   backdrop, plus waiting/long text. Clearly label synthetic visual fixtures;
   they do not establish real audio/provider or cross-UID touch acceptance.

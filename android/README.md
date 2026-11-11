@@ -62,10 +62,11 @@ code does not prove availability on every device; see [verification status](#ver
   leaving a secret field empty preserves its saved value. Changes are written only with Save; backing out of a new editor adds nothing. Existing service settings migrate automatically.
 - **Subtitle overlay** — one `TYPE_APPLICATION_OVERLAY` reading panel with
   current source and translation, without a language route, settings button,
-  provider badges or an Immersive footer action. Edge handles no longer reserve
-  empty toolbar/footer rows. A compact independent 48dp switch target sits just
-  outside the top-right edge (below near the screen's top) and remains reachable
-  even when the panel passes touches through. Unset placement starts 48dp above
+  provider badges or an Immersive footer action. The grip and compact switch
+  sit inside the top edge on the same surface, with a 48dp touch region clear
+  of caption text; there is no separate toolbar background or footer row.
+  The switch remains independently touchable even when the panel passes touches
+  through. Unset placement starts 48dp above
   the bottom safe edge; explicit saved size and position are preserved.
   **Adjust captions ON** enables moving from the top handle and resizing width
   and height from the corner; **OFF** passes touches to the app below. Switching
@@ -74,7 +75,7 @@ code does not prove availability on every device; see [verification status](#ver
   label is **Adjust captions**; Android exposes its checked ON/OFF state.
   Confirmed lines appear only when bounded history is enabled; history stays
   inside the chosen height. Display mode, alignment, width (55–100 %), height
-  (10–70 % of the safe viewport, 14 % by default with a readable-line minimum), background, text color, font and whole-window
+  (10–70 % of the safe viewport, 17 % by default with a readable-line minimum), background, text color, font and whole-window
   opacity remain available in the app's Captions appearance controls; language,
   service and Start/Stop controls also remain in the app. Saved background and
   opacity apply from the first frame; changing font size preserves them.

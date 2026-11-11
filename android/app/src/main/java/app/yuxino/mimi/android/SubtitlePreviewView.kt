@@ -56,7 +56,10 @@ class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: Att
         }
         val style = CaptionFrameStyle(fontSize, color, opacity.coerceIn(20, 100), backgroundAlpha, displayMode, alignment, SettingsStore.subtitleDividers(context))
         when (val current = frame) {
-            is CaptionPanelView -> current.applyStyle(style)
+            is CaptionPanelView -> {
+                current.applyStyle(style)
+                current.setAdjustable(SettingsStore.overlayAdjustable(context))
+            }
             is CompactCaptionView -> current.applyStyle(style, true)
         }
         stage.configure(widthPercent, heightPercent, immersive)

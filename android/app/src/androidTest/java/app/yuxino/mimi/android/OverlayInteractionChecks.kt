@@ -47,6 +47,27 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             image.getPixel(frame.centerX(), frame.top + (4 * context.resources.displayMetrics.density * scale).toInt().coerceAtLeast(1))
         } finally { image.recycle() }
     }
+    private fun compositorPixels(frame: android.graphics.Rect, excluded: List<android.graphics.Rect> = emptyList()): IntArray {
+        idle(); SystemClock.sleep(350)
+        val image = checkNotNull(test.uiAutomation.takeScreenshot())
+        return try {
+            val pixels = IntArray(frame.width() * frame.height())
+            image.getPixels(pixels, 0, frame.width(), frame.left, frame.top, frame.width(), frame.height())
+            for (y in 0 until frame.height()) for (x in 0 until frame.width()) {
+                if (excluded.any { it.contains(frame.left + x, frame.top + y) }) pixels[y * frame.width() + x] = 0
+            }
+            pixels
+        } finally { image.recycle() }
+    }
+    private fun captionCompositorPixels(): IntArray {
+        val panel = root().findViewWithTag<CaptionPanelView>("expanded-subtitles")
+        val excluded = listOf("overlay-adjust-mark", "overlay-drag", "overlay-resize").map { tag ->
+            val view = panel.findViewWithTag<View>(tag)
+            val origin = nativeOrigin(view)
+            android.graphics.Rect(origin[0], origin[1], origin[0] + view.width, origin[1] + view.height)
+        }
+        return compositorPixels(checkNotNull(nativeFrame(root())), excluded)
+    }
     private fun nativeFrame(view: View): android.graphics.Rect? {
         val window = view.rootView
         if (window.width <= 0 || window.height <= 0) return null
@@ -76,7 +97,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         location[0] += frame.left - rootLocation[0]; location[1] += frame.top - rootLocation[1]
         return location
     }
-    private fun tapVisible(view: View) {
+    private fun tapVisible(view: View, xFraction: Float = .5f, yFraction: Float = .5f) {
         waitFor { view.isShown && view.width > 0 && view.height > 0 && nativeFrame(view) != null }
         val origin = IntArray(2)
         onUi {
@@ -89,7 +110,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         val time = SystemClock.uptimeMillis()
         for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
             val event = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action,
-                origin[0] + view.width / 2f, origin[1] + view.height / 2f, 0)
+                origin[0] + view.width * xFraction, origin[1] + view.height * yFraction, 0)
             event.source = InputDevice.SOURCE_TOUCHSCREEN
             try { check(test.uiAutomation.injectInputEvent(event, true)) } finally { event.recycle() }
         }
@@ -220,6 +241,8 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         val typography = rows.map { listOf(it.textSize, it.currentTextColor, it.gravity, it.maxLines, it.typeface) }
         val style = surface()
         val compositorPixel = backgroundPixel()
+        val captionPixels = captionCompositorPixels()
+        val switchPixels = compositorPixels(checkNotNull(nativeFrame(toggle)))
         fun preferences() = listOf(SettingsStore.fontSize(context), SettingsStore.overlayOpacity(context),
             SettingsStore.overlayBgAlpha(context), SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
             SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context), SettingsStore.overlayYOffset(context), SettingsStore.displayMode(context),
@@ -253,6 +276,8 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 checkAdjustmentSwitchOnScreen()
             }
             check(backgroundPixel() == compositorPixel) { "Lock visibly dimmed the caption compositor surface" }
+            check(captionCompositorPixels().contentEquals(captionPixels)) { "Lock changed caption pixels outside controls/handles" }
+            check(!compositorPixels(checkNotNull(nativeFrame(toggle))).contentEquals(switchPixels)) { "Locked switch paint did not change state" }
             val beforePassThrough = underlyingTaps
             tapVisible(panel)
             waitFor { underlyingTaps == beforePassThrough + 1 }
@@ -268,11 +293,49 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 checkNoFloatingAppearanceEditor(panel)
             }
             check(backgroundPixel() == compositorPixel) { "Unlock changed the caption compositor surface" }
+            onUi { checkAdjustmentSwitchOnScreen() }
+            check(captionCompositorPixels().contentEquals(captionPixels)) { "Unlock changed caption pixels outside controls/handles" }
+            check(compositorPixels(checkNotNull(nativeFrame(toggle))).contentEquals(switchPixels)) { "Unlocked switch paint did not restore" }
             val beforeInteractive = underlyingTaps
             tapVisible(panel)
             check(underlyingTaps == beforeInteractive) { "Adjustable caption unexpectedly passed input through" }
         }
+        checkInsetSwitchCorners()
         check(SettingsStore.flushPendingWritesForTests(context))
+    }
+
+    private fun checkInsetSwitchCorners() {
+        val window = root()
+        val panel = window.findViewWithTag<CaptionPanelView>("expanded-subtitles")
+        val toggle = adjustment()
+        val frame = nativeFrame(window)
+        fun bounds() = listOf(SettingsStore.overlayWidthPercent(context), SettingsStore.overlayHeightPercent(context),
+            SettingsStore.overlayXOffset(context, true), SettingsStore.expandedYOffset(context))
+        val saved = bounds()
+        val text = listOf(panel.source.text.toString(), panel.translation.text.toString())
+        val pixels = captionCompositorPixels()
+        check(toggle.isChecked)
+        // All four corners are outside the small painted track, but inside the 48dp input target.
+        for ((x, y) in listOf(.05f to .05f, .95f to .05f, .05f to .95f, .95f to .95f)) {
+            repeat(2) { iteration ->
+                val before = underlyingTaps
+                tapVisible(toggle, x, y)
+                val expected = iteration == 1
+                waitFor { toggle.isChecked == expected && SettingsStore.overlayAdjustable(context) == expected }
+                onUi {
+                    checkAdjustmentSwitchOnScreen()
+                    check(root() === window && nativeFrame(window) == frame && bounds() == saved) {
+                        "Inset corner tap dragged or resized captions"
+                    }
+                    check(underlyingTaps == before) { "Inset switch corner passed through to the underlying activity" }
+                    check(listOf(panel.source.text.toString(), panel.translation.text.toString()) == text)
+                    val flags = (window.layoutParams as WindowManager.LayoutParams).flags
+                    check((flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0) == expected)
+                }
+                check(captionCompositorPixels().contentEquals(pixels)) { "Inset corner tap changed caption pixels" }
+            }
+        }
+        capture("panel-inset-switch-corners")
     }
 
     private fun checkLockCancelsGestures() {
@@ -358,7 +421,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
         val saved = preferences.getInt(key, SettingsStore.DEFAULT_OVERLAY_HEIGHT)
         try {
             check(preferences.edit().remove(key).commit())
-            check(SettingsStore.overlayHeightPercent(context) == 14) { "Unset height must use the compact 14% default" }
+            check(SettingsStore.overlayHeightPercent(context) == 17) { "Unset height must use the inset-control 17% default" }
             check(preferences.edit().putInt(key, 32).commit())
             check(SettingsStore.overlayHeightPercent(context) == 32) { "Legacy saved height was replaced by the compact default" }
             check(SettingsStore.flushPendingWritesForTests(context))
@@ -411,12 +474,22 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 checkOverlayChromeAlignment(panel)
                 checkAdjustmentSwitchOnScreen()
                 val dp = panel.resources.displayMetrics.density
-                check(abs(panel.height - scroll.height - 36 * dp) <= 2) { "Default caption regained reserved control rows" }
-                check(scroll.height >= 64 * dp - 2 && scroll.height >= panel.height * .60f) {
+                check(abs(panel.height - scroll.height - 56 * dp) <= 2) { "Inset control chrome must remain 48dp top / 8dp bottom" }
+                check(scroll.height >= 64 * dp - 2) {
                     "Default caption viewport is too small: frame=${panel.height} viewport=${scroll.height}"
                 }
-                check(!android.graphics.Rect.intersects(frame, checkNotNull(nativeFrame(adjustment())))) {
-                    "Compact review switch overlaps subtitle frame"
+                check(frame.contains(checkNotNull(nativeFrame(adjustment())))) {
+                    "Compact review switch escaped the subtitle frame"
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    val metrics = context.getSystemService(WindowManager::class.java).currentWindowMetrics
+                    val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                        android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+                    val safeHeight = metrics.bounds.height() - insets.top - insets.bottom
+                    val previousFootprint = safeHeight * .14f + 52 * dp
+                    check(frame.height() <= previousFootprint + 2) {
+                        "Inset review occupies more height than the former 14% panel plus external 48dp switch/4dp gap"
+                    }
                 }
                 for (row in listOf(panel.source, panel.translation)) {
                     val glyphs = checkNotNull(row.layout)
@@ -426,6 +499,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                     }
                 }
             }
+            val reviewPixels = captionCompositorPixels()
             capture("review-adjustable")
             tapVisible(adjustment())
             waitFor { !SettingsStore.overlayAdjustable(context) && !adjustment().isChecked &&
@@ -437,6 +511,7 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
                 checkOverlayChromeAlignment(panel)
                 checkAdjustmentSwitchOnScreen()
             }
+            check(captionCompositorPixels().contentEquals(reviewPixels)) { "Review ON/OFF changed caption compositor pixels" }
             capture("review-locked")
             onUi {
                 SubtitleBus.clear()
@@ -447,7 +522,8 @@ internal class OverlayInteractionChecks(private val test: Instrumentation) {
             idle()
             onUi {
                 check(nativeFrame(window) == frame) { "Long captions expanded the compact review frame" }
-                check(panel.translation.maxLines >= minOf(2, panel.translation.lineCount)) {
+                checkAdjustmentSwitchOnScreen()
+                check(panel.translation.lineCount >= 2 && panel.translation.maxLines >= 2) {
                     "Fresh default must retain two translated rows for long captions"
                 }
                 for (row in listOf(panel.source, panel.translation)) {
