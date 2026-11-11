@@ -402,6 +402,9 @@ a minimal one-row tail can strand a single trailing character on long captions. 
 actual height for one complete fallback-font row per active language and at least
 64dp of reading viewport, without overwriting the chosen percentage. Extra
 translated lines use the available viewport rather than enlarging every short caption.
+When chrome changes, retain compact-size complete-glyph cases and compare strict
+multi-line fixtures at equivalent reading-viewport budgets; do not silently enlarge
+saved geometry or relax the multi-line assertion to make an old fixture pass.
 Review real native ON/OFF frames against the same representative playback
 backdrop; a white touch-probe screenshot and passing tests are not visual approval.
 Direct color swatches

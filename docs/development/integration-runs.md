@@ -6236,3 +6236,54 @@ playback remain unverified. Private evidence belongs to the existing
   stopped the task emulator and removed its task-only JDK/archive after Java
   builds exited. Owner data, current APKs, evidence and distinct canonical build
   variants remain; no new worktree/cache or unrelated dirty work was removed.
+
+## 2026-11-11 — PR #340 inset adjustment revision
+
+- Implements the approved correction: inset the adjustment control into the
+  upper-right of the same caption surface, without a detached base or toolbar.
+  Production revision `7cdb4cabcf4de31dd991e7f07dff55d176e93d05`; final tested
+  implementation/test revision `bc67ae12b8828311a5743c726f2d80dab8600c9b`.
+  The publication follow-up only records verification and reusable UI guidance.
+- One panel-owned painter and an exactly aligned transparent input/accessibility
+  window preserve OFF recovery without double alpha. The 48dp target is inset
+  top0/right4dp, clear of text and gesture targets; exact odd-width placement,
+  corner taps and transparent proxy rendering have regressions. ON/OFF preserve
+  the panel, viewport, text, opacity and position; legacy immersion is separate.
+  New unset height is 17%, with existing explicit settings preserved. At the
+  720×1600 review size, total layout/touch footprint is 234px versus 284px for
+  the preceding 14% panel plus 52dp outside target footprint. Default 16sp retains
+  one source row and two translated rows, with complete fallback-font glyphs.
+- Native preview preceded complete acceptance. API 35 arm64 emulator, disposable
+  user 10, same-UID capture probe; no capture/provider requests. Initial interaction
+  was blocked by that user's lock screen; waking/unlocking resolved it. The first
+  full parity run then exposed an obsolete reading-budget assumption: 20%/24sp
+  now has a 178px viewport rather than 213px with old 36dp chrome. Retained that
+  compact geometry/full-glyph case and added 23%/24sp (219px viewport) for the
+  strict two-translation-row assertion. The 15sp case explicitly retains 20%;
+  default 17% two-row and 10% multilingual timestamp/glyph checks remain strict.
+  Production minimum-height rules were not enlarged to satisfy a fixture.
+- Complete acceptance used command-scoped `CARGO_INCREMENTAL=0`, JDK 17 and
+  canonical build directories: Debug app/test APKs, Debug/Release JVM suites
+  (329 each, zero failures/errors/skips), and Debug/Release lint (zero errors,
+  77/76 warnings). Four JNI ABIs are present. Host placement's 13 scenarios,
+  exhaustive safe extents/odd-even widths, architecture/provider-copy guards and
+  whitespace checks passed. No unrelated desktop/release build was performed.
+- Debug APK SHA-256: `ac5971b2bb2a98583acd3f54e5d8b97b13071e1b1cacfd1e9ed4d76d38140de8`;
+  final test APK: `8bc4761a33077f2e63a4018846e54cf605c37e4b88053d9253e3c6d4319544a6`.
+  Final native acceptance passed 260 preview-parity cases with identical frame
+  pixels/geometry, and 92 streaming cases / 1,296 updates / 2,074 native draws
+  across nine languages, three modes and normal/immersive. Waiting/restoration
+  passed; nine interface languages passed in light/dark themes. Interaction passed
+  actual toggle-corner taps, drag/resize, fixed-frame lock, interrupted gestures,
+  history, recreation, main appearance/provider controls and legacy restoration.
+- [Updated four native screenshot attachments](https://github.com/yuxino/Mimi/pull/340#issuecomment-6787256313)
+  show inset ON/OFF, long caption and waiting. All four rendered at 720×1600;
+  the older outside-control comment is marked superseded. Captures use the same
+  production APK and a labeled synthetic playback backdrop, not real playback.
+  No images in Git. Same-UID emulator evidence does not establish physical
+  OEM/cross-UID touch behavior; that and authorized real sessions remain open.
+  No desktop acceptance, provider/audio session, release or merge is claimed.
+- Restored Owner and verified only user 0 remained; stopped the task emulator.
+  Removed the task-only JDK/archive after verifying no task Java executable was
+  running. Preserved current APKs, distinct canonical caches, review evidence,
+  Owner data and unrelated dirty work; no extra checkout/cache was created.
