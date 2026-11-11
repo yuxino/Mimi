@@ -263,18 +263,31 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                     SubtitleBus.onTranslationDraft("合成字幕用于检查字号和窗口宽度，换行必须与外面完全相同。".repeat(6))
                     SettingsStore.setFontSize(context, 24); SettingsStore.setOverlayWidthPercent(context, 55); SettingsStore.setOverlayHeightPercent(context, 20)
                 }
+                compare(home, "$prefix-narrow-small", true)
+                ui {
+                    val panel = actual() as CaptionPanelView
+                    assertCompleteLaneBudget(panel, "$prefix-narrow-small")
+                    check(SettingsStore.overlayHeightPercent(context) == 20)
+                    println("READING_GEOMETRY $prefix-narrow-small frame=${panel.height} viewport=${panel.transcriptScroll.height}")
+                    // Inset chrome is 56dp instead of 36dp. Preserve the old
+                    // two-row fixture's reading budget, not its obsolete total
+                    // height; keep the 20% case above for complete-glyph parity.
+                    SettingsStore.setOverlayHeightPercent(context, 23)
+                }
                 compare(home, "$prefix-narrow-long", true)
                 ui {
                     val panel = actual() as CaptionPanelView
                     check(panel.translation.maxLines >= minOf(2, panel.translation.lineCount)) {
-                        "20% height at 24sp must retain two translated rows"
+                        "23% height at 24sp must retain two translated rows with inset chrome"
                     }
                     assertCompleteLaneBudget(panel, "$prefix-narrow-long")
+                    println("READING_GEOMETRY $prefix-narrow-long frame=${panel.height} viewport=${panel.transcriptScroll.height}")
                 }
                 ui {
                     SubtitleBus.onSourceDraft("A synthetic English caption wraps to several lines while its Chinese translation remains visible in the same small window.", "en")
                     SubtitleBus.onTranslationDraft("合成译文应与英文同时可见，不能被原文挤出窗口。")
                     SettingsStore.setFontSize(context, 15); SettingsStore.setOverlayWidthPercent(context, 92)
+                    SettingsStore.setOverlayHeightPercent(context, 20)
                 }
                 compare(home, "$prefix-bilingual-small", true)
                 ui {
