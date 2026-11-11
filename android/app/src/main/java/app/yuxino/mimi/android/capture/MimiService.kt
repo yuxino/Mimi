@@ -38,18 +38,12 @@ import android.view.WindowManager
 import android.view.WindowInsets
 import android.widget.TextView
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
 import android.widget.ImageView
-import app.yuxino.mimi.android.AppearanceControls
+import com.google.android.material.materialswitch.MaterialSwitch
+import app.yuxino.mimi.android.CaptionAdjustmentSwitch
 import app.yuxino.mimi.android.CaptionDisplayMode
-import app.yuxino.mimi.android.serviceProviderIcon
-import app.yuxino.mimi.android.translationProviderIcon
-import app.yuxino.mimi.android.provider.ServiceProvider
-import app.yuxino.mimi.android.provider.TextTranslationProvider
-import androidx.appcompat.app.AlertDialog
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -142,7 +136,10 @@ class MimiService : Service() {
     private var interfaceLocaleTags = ""
     private val interfaceLanguageListener: () -> Unit = { mainHandler.post { refreshInterfaceLanguage() } }
     private var stopObservingAppearance: (() -> Unit)? = null
-    private var appearanceDialog: AlertDialog? = null
+    private var adjustmentSwitch: MaterialSwitch? = null
+    private var adjustmentParams: WindowManager.LayoutParams? = null
+    private var adjustable = true
+    private var syncingAdjustment = false
     private val appearanceUpdate = Runnable { applyAppearance() }
     private val captionUpdatePending = AtomicBoolean(false)
     private val captionUpdate = Runnable {
@@ -203,7 +200,6 @@ class MimiService : Service() {
             mainHandler.removeCallbacks(ownUiUpdate)
             if (ownUiVisible) {
                 if (!previewOverOwnUi) {
-                    appearanceDialog?.dismiss()
                     immersiveHelp.dismiss()
                 }
                 renderBus()
@@ -484,8 +480,6 @@ class MimiService : Service() {
 
     private fun releaseSession() {
         immersiveHelp.dismiss()
-        appearanceDialog?.dismiss()
-        appearanceDialog = null
         ++generation
         finishingSession = false
         isStopping = false
@@ -615,7 +609,6 @@ class MimiService : Service() {
         if (localeTags == interfaceLocaleTags) return
         interfaceLocaleTags = localeTags
         immersiveHelp.dismiss()
-        appearanceDialog?.dismiss()
         immersiveHelp = ImmersiveModeHelp(ContextThemeWrapper(InterfaceLanguage.context(this), R.style.Theme_Mimi), overlayWindow = true)
         fun label(tag: String, text: Int?, description: Int) {
             val control = overlayView?.findViewWithTag<View>(tag)
@@ -624,20 +617,11 @@ class MimiService : Service() {
             control.contentDescription = interfaceString(description)
             control.tooltipText = control.contentDescription
         }
-        label("enter-immersive", R.string.overlay_enter_immersive, R.string.overlay_enter_immersive)
-        label("overlay-font", null, R.string.caption_style_controls)
         updateOverlayFontSize()
         label("exit-immersive", null, R.string.overlay_exit_immersive)
         label("overlay-drag", null, R.string.overlay_drag)
         label("overlay-resize", null, R.string.overlay_resize)
-        label("overlay-route", null, R.string.overlay_language_description)
-        overlayView?.findViewWithTag<TextView>("overlay-route")?.text =
-            if (sessionOriginalOnly) languageName(sessionSourceLanguage)
-            else "${languageName(sessionSourceLanguage)} → ${languageName(sessionTargetLanguage)}"
-        overlayView?.findViewWithTag<View>("overlay-providers")?.let { providers ->
-            providers.contentDescription = overlayProviderLabel()
-            overlayView?.findViewWithTag<TextView>("overlay-model")?.text = providers.contentDescription
-        }
+        adjustmentSwitch?.contentDescription = interfaceString(R.string.overlay_adjust)
         expandedView?.requestLayout()
         renderBus()
         if (isRunning) {
@@ -658,6 +642,7 @@ class MimiService : Service() {
         val wm = overlayContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
 
+        adjustable = SettingsStore.overlayAdjustable(this)
         overlayPlacement.reset(SettingsStore.overlayYOffset(this), SettingsStore.immersiveSubtitles(this))
         overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
         val compact = app.yuxino.mimi.android.CompactCaptionView(this)
@@ -682,7 +667,7 @@ class MimiService : Service() {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                or (if (immersiveSession) WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else 0),
+                or (if (immersiveSession || !adjustable) WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else 0),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
@@ -690,7 +675,9 @@ class MimiService : Service() {
             fitOverlayInsets(this)
             // Android 12+ passes touches through an untrusted overlay only when
             // its window opacity stays at or below the system threshold (0.8).
-            if (immersiveSession) alpha = 0.8f
+            // Android blocks touches through an obscuring overlay above .8.
+            // Keep this cap in BOTH adjustment states so toggling never dims captions.
+            alpha = 0.8f
         }
 
         fun attachDrag(control: View) {
@@ -701,8 +688,7 @@ class MimiService : Service() {
             var dragged = false
             var gestureGeneration = -1
             control.setOnTouchListener { _, event ->
-                if (appearanceDialog?.isShowing == true) return@setOnTouchListener true
-                if (immersiveSession) return@setOnTouchListener false
+                if (immersiveSession || !adjustable) return@setOnTouchListener false
                 if (event.actionMasked != MotionEvent.ACTION_DOWN && gestureGeneration != overlayGeometryGeneration)
                     return@setOnTouchListener true
                 when (event.actionMasked) {
@@ -721,6 +707,7 @@ class MimiService : Service() {
                             params.y = OverlayPlacement.clampY((initialY - (event.rawY - touchY)).toInt(), height, root.height)
                             params.x = OverlayPlacement.clampX((initialX + event.rawX - touchX).toInt(), width, root.width)
                             wm.updateViewLayout(root, params)
+                            updateOverlayGeometry()
                         }
                         true
                     }
@@ -751,7 +738,7 @@ class MimiService : Service() {
         var resizeStartOffsetY = 0
         var resizeGestureGeneration = -1
         panel.findViewWithTag<View>("overlay-resize").setOnTouchListener { control, event ->
-            if (appearanceDialog?.isShowing == true) return@setOnTouchListener true
+            if (immersiveSession || !adjustable) return@setOnTouchListener false
             if (event.actionMasked != MotionEvent.ACTION_DOWN && resizeGestureGeneration != overlayGeometryGeneration)
                 return@setOnTouchListener true
             when (event.actionMasked) {
@@ -769,7 +756,7 @@ class MimiService : Service() {
                         val (width, height) = overlayAvailableSize()
                         draggingOverlay = true
                         resizeWidthPercent = ((resizeStartWidth + deltaX) * 100 / width).toInt().coerceIn(55, 100)
-                        resizeHeightPercent = ((resizeStartHeight + deltaY) * 100 / height).toInt().coerceIn(20, 70)
+                        resizeHeightPercent = ((resizeStartHeight + deltaY) * 100 / height).toInt().coerceIn(10, 70)
                         // Keep the top-left corner fixed while the touched corner follows the finger.
                         params.x = resizeStartOffsetX + ((captionWindowWidth(true) - resizeStartWidth) / 2)
                         params.y = resizeStartOffsetY - (expandedPanelHeight() - resizeStartHeight)
@@ -834,7 +821,8 @@ class MimiService : Service() {
                 stateListeners.forEach { it() }
             }
         }
-        if (immersiveSession) showImmersiveExitControl(wm)
+        if (immersiveSession) showImmersiveExitControl(wm) else showAdjustmentSwitch(wm)
+        (panel as app.yuxino.mimi.android.CaptionPanelView).setAdjustable(adjustable)
         updateOverlayFontSize()
         renderBus()
     }
@@ -852,7 +840,7 @@ class MimiService : Service() {
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
             minimumWidth = dp(48); minimumHeight = dp(48)
-            setOnClickListener { if (appearanceDialog?.isShowing != true) setImmersiveMode(false) }
+            setOnClickListener { setImmersiveMode(false) }
             addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 if (immersiveExitView === this) updateOverlayGeometry()
             }
@@ -879,7 +867,7 @@ class MimiService : Service() {
     private fun exitControlY(): Int = OverlayPlacement.exitY(
         overlayParams?.y ?: 0, compactView?.height ?: 0, overlayAvailableSize().second,
         immersiveExitView?.height?.takeIf { it > 0 } ?: dp(48), dp(6),
-        editorOffset(),
+        0,
     )
 
     private fun setImmersiveMode(enabled: Boolean) {
@@ -904,22 +892,14 @@ class MimiService : Service() {
     }
 
     private fun buildExpandedPanel(): View {
-        val route = if (sessionOriginalOnly) languageName(sessionSourceLanguage)
-            else "${languageName(sessionSourceLanguage)} → ${languageName(sessionTargetLanguage)}"
-        val panel = app.yuxino.mimi.android.CaptionPanelView(this, route, overlayProviderLabel(), if (testCaptureMode) listOf(R.drawable.ic_mimi) else app.yuxino.mimi.android.captionProviderMarks(this),
+        val panel = app.yuxino.mimi.android.CaptionPanelView(this,
             app.yuxino.mimi.android.CaptionPanelActions(
                 home = { startActivity(Intent(this, app.yuxino.mimi.android.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-                style = { showAppearanceControls() },
-                immerse = { setImmersiveMode(true) },
-                services = { startActivity(Intent(this, app.yuxino.mimi.android.MainActivity::class.java)
-                    .putExtra("settings_section", "services")
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)) },
             ))
         panel.applyStyle(app.yuxino.mimi.android.CaptionFrameStyle.saved(this, sessionOriginalOnly))
         expandedStatusView = panel.status; expandedSourceView = panel.source
         expandedTranslationView = panel.translation; historyView = panel.history
         transcriptScrollView = panel.transcriptScroll
-        panel.findViewWithTag<View>("overlay-actions").addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateOverlayGeometry() }
         panel.status.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateOverlayGeometry() }
         listOf(panel.source, panel.translation, panel.timestamp).forEach { row ->
             row.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -946,119 +926,98 @@ class MimiService : Service() {
         SubtitleBus.onTranslationDraft("再往前走一会儿吧。")
     }
 
-    private fun languageName(code: String): String = app.yuxino.mimi.android.languageDisplayName(InterfaceLanguage.context(this), code)
-
-    private fun showAppearanceControls() {
-        if (appearanceDialog != null) return
+    /** A separate touchable window is essential: the locked caption receives no input. */
+    private fun showAdjustmentSwitch(wm: WindowManager) {
+        if (adjustmentSwitch != null) return
         val themed = ContextThemeWrapper(InterfaceLanguage.context(this), R.style.Theme_Mimi)
-        val controls = AppearanceControls(themed, floating = true) { enabled -> setImmersiveMode(enabled) }
-        controls.setPadding(dp(20), dp(8), dp(20), dp(16))
-        val scroll = app.yuxino.mimi.android.ControlScrollView(themed).apply {
-            tag = "overlay-appearance-scroll"
-            addView(controls)
-        }
-        val maxBodyHeight = (overlayAvailableSize().second * .58f - dp(72)).toInt().coerceAtLeast(dp(96))
-        val body = object : FrameLayout(themed) {
-            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                val available = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) maxBodyHeight
-                    else minOf(maxBodyHeight, MeasureSpec.getSize(heightMeasureSpec))
-                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(available, MeasureSpec.AT_MOST))
+        // Paint belongs to CaptionPanelView so native and preview share one
+        // surface. This fully inset window owns only input and accessibility.
+        val control = CaptionAdjustmentSwitch(themed, paintsControl = false).apply {
+            tag = "overlay-adjust"
+            isChecked = adjustable
+            setOnCheckedChangeListener { _, enabled ->
+                if (!syncingAdjustment) {
+                    val previous = adjustable
+                    try {
+                        SettingsStore.setOverlayAdjustable(this@MimiService, enabled)
+                        applyAdjustment(enabled)
+                    } catch (_: RuntimeException) {
+                        if (adjustable != previous) runCatching {
+                            SettingsStore.setOverlayAdjustable(this@MimiService, previous)
+                            applyAdjustment(previous)
+                        }
+                        syncingAdjustment = true
+                        isChecked = previous
+                        syncingAdjustment = false
+                        Toast.makeText(themed, R.string.service_save_failed, Toast.LENGTH_LONG).show()
+                    }
+                }
             }
-        }.apply { addView(scroll, FrameLayout.LayoutParams(-1, -1)) }
-        val surface = GradientDrawable().apply { cornerRadius = dp(24).toFloat() }
-        val dialog = MaterialAlertDialogBuilder(themed).setBackground(surface)
-            // Material's centered-dialog insets waste the caption space above
-            // this bottom editor, especially with a large system font.
-            .setBackgroundInsetStart(0).setBackgroundInsetEnd(0)
-            .setBackgroundInsetTop(0).setBackgroundInsetBottom(0)
-            .setView(body).setPositiveButton(R.string.guide_finish, null).create()
-        dialog.setCanceledOnTouchOutside(false)
-        dialog.setOnDismissListener {
-            if (appearanceDialog === dialog) {
-                appearanceDialog = null
-                updateEditorPresentation()
-                updateOverlayGeometry()
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (adjustmentSwitch === this) updateOverlayGeometry()
             }
         }
-        appearanceDialog = dialog
-        try {
-            val window = checkNotNull(dialog.window)
-            window.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-            dialog.show()
-            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
-            window.setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-            window.attributes = window.attributes.apply { y = dp(12) }
-            window.setLayout(minOf(overlayAvailableSize().first - dp(24), dp(480)), WindowManager.LayoutParams.WRAP_CONTENT)
-            window.decorView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                if (appearanceDialog === dialog) mainHandler.post { updateOverlayGeometry() }
-            }
-            surface.setColor(ContextCompat.getColor(dialog.context, R.color.mimi_surface))
-            updateEditorPresentation()
-            updateOverlayGeometry()
-        } catch (_: RuntimeException) {
-            appearanceDialog = null
-            dialog.dismiss()
-            updateEditorPresentation()
-            updateOverlayGeometry()
-            Toast.makeText(themed, R.string.overlay_font_failed, Toast.LENGTH_LONG).show()
+        val params = WindowManager.LayoutParams(dp(CaptionAdjustmentSwitch.TARGET_DP), dp(CaptionAdjustmentSwitch.TARGET_DP),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.BOTTOM or Gravity.RIGHT
+            fitOverlayInsets(this)
         }
+        wm.addView(control, params)
+        adjustmentSwitch = control
+        adjustmentParams = params
+        updateOverlayGeometry()
     }
 
-    private fun updateEditorPresentation() {
-        // This is the actual live window, including its chrome and current
-        // state. Editing only makes it inert; never strip its visible controls.
-        val editing = appearanceDialog?.isShowing == true
-        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)?.setPreviewOnly(editing)
-        immersiveExitView?.apply {
-            isClickable = !editing; isFocusable = !editing
-            importantForAccessibility = if (editing) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-                else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+    private fun applyAdjustment(enabled: Boolean) {
+        if (adjustable != enabled) {
+            // Cancel, rather than persist, a gesture whose input ownership changed.
+            overlayGeometryGeneration++
+            draggingOverlay = false
+            resizeWidthPercent = null
+            resizeHeightPercent = null
+            adjustable = enabled
         }
-        immersiveExitParams?.let { params ->
-            val flags = if (editing) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        syncingAdjustment = true
+        adjustmentSwitch?.isChecked = enabled
+        syncingAdjustment = false
+        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)?.setAdjustable(enabled)
+        overlayParams?.let { params ->
+            val flags = if (immersiveSession || !enabled) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                 else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-            if (flags != params.flags) {
-                params.flags = flags
-                immersiveExitView?.let { windowManager?.updateViewLayout(it, params) }
+            val alpha = .8f
+            if (params.flags != flags || params.alpha != alpha) {
+                params.flags = flags; params.alpha = alpha
+                overlayView?.let { windowManager?.updateViewLayout(it, params) }
             }
         }
-    }
-
-    private fun editorOffset(): Int {
-        val editor = appearanceDialog?.takeIf { it.isShowing }?.window?.decorView ?: return 0
-        if (editor.height <= 0) return 0
-        val origin = IntArray(2)
-        editor.getLocationOnScreen(origin)
-        val wm = windowManager ?: return 0
-        val safeBottom = if (Build.VERSION.SDK_INT >= 30) {
-            val metrics = wm.currentWindowMetrics
-            metrics.bounds.bottom - metrics.windowInsets.getInsetsIgnoringVisibility(
-                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()).bottom
-        } else {
-            val frame = Rect(); overlayView?.getWindowVisibleDisplayFrame(frame); frame.bottom
-        }
-        return (safeBottom - origin[1] + dp(12)).coerceAtLeast(0)
+        updateOverlayGeometry()
     }
 
     private fun applyAppearance() {
         val root = overlayView ?: return
         if (overlayPlacement.setImmersive(SettingsStore.immersiveSubtitles(this))) {
             draggingOverlay = false
+            resizeWidthPercent = null; resizeHeightPercent = null
+            overlayGeometryGeneration++
             val params = checkNotNull(overlayParams)
-            params.flags = if (immersiveSession) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            params.flags = if (immersiveSession || !adjustable) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                 else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-            params.alpha = if (immersiveSession) 0.8f else 1f
+            params.alpha = 0.8f
             // Update child presentation before WindowManager measures the new
             // compact frame or positions its companion restore control.
             compactView?.visibility = if (expanded) View.GONE else View.VISIBLE
             expandedView?.visibility = if (expanded) View.VISIBLE else View.GONE
             if (immersiveSession) {
+                adjustmentSwitch?.let { windowManager?.removeView(it) }
+                adjustmentSwitch = null; adjustmentParams = null
                 showImmersiveExitControl(checkNotNull(windowManager))
             } else {
                 immersiveExitView?.let { windowManager?.removeView(it) }
                 immersiveExitView = null
                 immersiveExitParams = null
+                showAdjustmentSwitch(checkNotNull(windowManager))
             }
             // Keep the same caption views, reading position and compact anchor.
             windowManager?.updateViewLayout(root, params)
@@ -1073,7 +1032,7 @@ class MimiService : Service() {
         overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
         updateOverlayGeometry()
         expandedView?.requestLayout()
-        updateEditorPresentation()
+        applyAdjustment(SettingsStore.overlayAdjustable(this))
         renderBus()
     }
 
@@ -1128,16 +1087,14 @@ class MimiService : Service() {
         }
         val desiredWidth = windowWidth
         val frameHeight = if (expanded) expandedPanelHeight() else WindowManager.LayoutParams.WRAP_CONTENT
-        val editing = expanded && appearanceDialog?.isShowing == true
-        val desiredHeight = if (editing) minOf(frameHeight, (height - editorOffset()).coerceAtLeast(1)) else frameHeight
-        (root as app.yuxino.mimi.android.CaptionOverlayHost).showPreview(if (editing) frameHeight else null)
+        val desiredHeight = frameHeight
         val captionHeight = compactView?.height ?: 0
         val preferredY = when {
             draggingOverlay -> OverlayPlacement.clampY(params.y, height, if (expanded) desiredHeight else captionHeight)
             expanded -> overlayPlacement.expandedY(resources.displayMetrics.density, height, desiredHeight)
             else -> overlayPlacement.compactY(resources.displayMetrics.density, height, captionHeight)
         }
-        val desiredY = OverlayPlacement.clampY(maxOf(preferredY, editorOffset()), height,
+        val desiredY = OverlayPlacement.clampY(preferredY, height,
             if (expanded) desiredHeight else captionHeight)
         val desiredX = OverlayPlacement.clampX(if (draggingOverlay) params.x else
             (SettingsStore.overlayXOffset(this, expanded) * resources.displayMetrics.density).toInt(), width, desiredWidth)
@@ -1147,6 +1104,17 @@ class MimiService : Service() {
             params.height = desiredHeight
             params.y = desiredY
             windowManager?.updateViewLayout(root, params)
+        }
+        adjustmentParams?.let { controlParams ->
+            val controlWidth = dp(CaptionAdjustmentSwitch.TARGET_DP)
+            val controlHeight = dp(CaptionAdjustmentSwitch.TARGET_DP)
+            val x = OverlayPlacement.adjustmentX(width, desiredWidth, params.x, controlWidth,
+                dp(CaptionAdjustmentSwitch.RIGHT_INSET_DP))
+            val y = OverlayPlacement.adjustmentY(height, params.y, desiredHeight, controlHeight, 0)
+            if (controlParams.x != x || controlParams.y != y) {
+                controlParams.x = x; controlParams.y = y
+                adjustmentSwitch?.let { windowManager?.updateViewLayout(it, controlParams) }
+            }
         }
         immersiveExitParams?.let { exitParams ->
             val y = exitControlY()
@@ -1164,18 +1132,16 @@ class MimiService : Service() {
 
     private fun expandedPanelHeight(): Int {
         val availableHeight = overlayAvailableSize().second
-        val panel = expandedView
-        val chrome = (panel?.paddingTop ?: dp(10)) + (panel?.paddingBottom ?: dp(10)) + dp(8) +
-                (panel?.findViewWithTag<View>("overlay-toolbar")?.height?.takeIf { it > 0 } ?: dp(48)) +
-                (panel?.findViewWithTag<View>("overlay-actions")?.height?.takeIf { it > 0 } ?: dp(48))
-        val reading = (panel as? app.yuxino.mimi.android.CaptionPanelView)?.minimumReadingHeight() ?: dp(64)
+        val panel = expandedView as? app.yuxino.mimi.android.CaptionPanelView
+        val chrome = panel?.chromeHeight() ?: dp(app.yuxino.mimi.android.CaptionPanelView.CHROME_HEIGHT_DP)
+        val reading = panel?.minimumReadingHeight() ?: dp(64)
         return app.yuxino.mimi.android.captionPanelHeight(availableHeight,
             resizeHeightPercent ?: SettingsStore.overlayHeightPercent(this), chrome, reading)
     }
 
     private fun hideOverlay() {
-        appearanceDialog?.dismiss()
-        appearanceDialog = null
+        adjustmentSwitch?.let { windowManager?.removeView(it) }
+        adjustmentSwitch = null; adjustmentParams = null
         try {
             immersiveExitView?.let { windowManager?.removeView(it) }
         } catch (_: Exception) {
@@ -1225,16 +1191,11 @@ class MimiService : Service() {
         overlayView?.visibility = if (!coveredByOwnUi && (expanded || hasCaption || statusLine.isNotBlank()))
             View.VISIBLE else View.GONE
         immersiveExitView?.visibility = if (coveredByOwnUi) View.GONE else View.VISIBLE
+        adjustmentSwitch?.visibility = if (coveredByOwnUi) View.GONE else View.VISIBLE
     }
 
     private fun interfaceString(@androidx.annotation.StringRes id: Int): String =
         InterfaceLanguage.context(this).getString(id)
-
-    private fun overlayProviderLabel(): String = if (testCaptureMode) "Mimi"
-        else app.yuxino.mimi.android.overlayServiceLabel(InterfaceLanguage.context(this))
-
-    private fun interfaceString(@androidx.annotation.StringRes id: Int, value: Int): String =
-        InterfaceLanguage.context(this).getString(id, value)
 
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()

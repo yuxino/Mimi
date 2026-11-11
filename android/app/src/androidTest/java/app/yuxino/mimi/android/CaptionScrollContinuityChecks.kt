@@ -94,7 +94,7 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             }
             ui {
                 manager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                panel = CaptionPanelView(ContextThemeWrapper(context, R.style.Theme_Mimi), "EN → 中文", "Synthetic Audio3 + Qwen-MT", emptyList())
+                panel = CaptionPanelView(ContextThemeWrapper(context, R.style.Theme_Mimi))
                 panel!!.applyStyle(CaptionFrameStyle(16, Color.WHITE, 100, 80, CaptionDisplayMode.BILINGUAL, CaptionAlignment.LEFT))
                 manager!!.addView(panel, WindowManager.LayoutParams(dp(350), dp(300), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,

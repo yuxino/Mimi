@@ -9,7 +9,6 @@ import android.view.View
 import android.view.MotionEvent
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -17,19 +16,13 @@ import app.yuxino.mimi.android.capture.LatestCaptionTextView
 
 internal data class CaptionPanelActions(
     val home: (() -> Unit)? = null,
-    val style: (() -> Unit)? = null,
-    val immerse: (() -> Unit)? = null,
-    val services: (() -> Unit)? = null,
 )
 
 /** The same native caption frame in the system overlay and the settings preview. */
 internal class CaptionPanelView(
     context: Context,
-    route: String,
-    serviceLabel: String,
-    providerMarks: List<Int>,
     private val actions: CaptionPanelActions = CaptionPanelActions(),
-) : LinearLayout(context) {
+) : FrameLayout(context) {
     val status: TextView
     val source: TextView
     val translation: TextView
@@ -52,102 +45,8 @@ internal class CaptionPanelView(
 
     init {
         tag = "expanded-subtitles"
-        orientation = VERTICAL
-        setPadding(dp(12), dp(10), dp(12), dp(10))
-        background = GradientDrawable().apply { cornerRadius = dp(22).toFloat() }
+        background = GradientDrawable().apply { cornerRadius = dp(12).toFloat() }
         val panel = this
-        val header = FrameLayout(context).apply { tag = "overlay-toolbar" }
-        header.addView(FrameLayout(context).apply {
-            tag = "overlay-drag"; isClickable = true; isFocusable = true
-            contentDescription = interfaceString(R.string.overlay_drag)
-            setOnClickListener { if (interactive) actions.home?.invoke() }
-            addView(View(context).apply {
-                tag = "overlay-drag-mark"
-                background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(0xFF858585.toInt()) }
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, FrameLayout.LayoutParams(dp(36), dp(4), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-            addView(TextView(context).apply {
-                tag = "overlay-route"
-                text = route
-                contentDescription = interfaceString(R.string.overlay_language_description)
-                textSize = 14f; setTextColor(0xFFDDDDDD.toInt()); maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.CENTER
-            }, FrameLayout.LayoutParams(-1, -1).apply {
-                topMargin = dp(8); marginStart = dp(48); marginEnd = dp(48)
-            })
-        }, FrameLayout.LayoutParams(-1, dp(48)))
-        header.addView(panelIcon(R.drawable.ic_settings, R.string.caption_style_controls).apply {
-            tag = "overlay-font"; setOnClickListener { if (interactive) actions.style?.invoke() }
-        }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END))
-        panel.addView(header, LinearLayout.LayoutParams(-1, dp(48)))
-        val immersion = panelButton(interfaceString(R.string.overlay_enter_immersive)).apply {
-            contentDescription = text; tooltipText = text
-            tag = "enter-immersive"; setOnClickListener { if (interactive) actions.immerse?.invoke() }
-        }
-        val immersionMark = immersion.compoundDrawablesRelative[0]
-        val providerRow = LinearLayout(context).apply {
-            gravity = Gravity.CENTER; tag = "overlay-providers"
-            isClickable = true; isFocusable = true; minimumHeight = dp(48); minimumWidth = dp(48)
-            contentDescription = serviceLabel
-            setOnClickListener { if (interactive) actions.services?.invoke() }
-        }
-        fun mark(resource: Int) = ImageView(context).apply {
-            setImageResource(resource); scaleType = ImageView.ScaleType.FIT_CENTER
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        for (resource in providerMarks) {
-            providerRow.addView(mark(resource), LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(4) })
-        }
-        val providerModel = TextView(context).apply {
-            tag = "overlay-model"; text = providerRow.contentDescription
-            textSize = 14f; setTextColor(0xFFBBBBBB.toInt()); maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        }
-        providerRow.addView(providerModel, LinearLayout.LayoutParams(-2, -2))
-        val resize = panelIcon(R.drawable.ic_overlay_resize, R.string.overlay_resize).apply {
-            tag = "overlay-resize"; setOnClickListener { if (interactive) actions.style?.invoke() }
-        }
-        val footer = object : FrameLayout(context) {
-            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-                val available = MeasureSpec.getSize(widthMeasureSpec)
-                val maximumActionWidth = (available - dp(56)).coerceAtLeast(dp(48))
-                val labelWidth = kotlin.math.ceil(immersion.paint.measureText(immersion.text.toString())).toInt() +
-                    immersion.paddingLeft + immersion.paddingRight
-                val markWidth = (immersionMark?.bounds?.width() ?: 0) + immersion.compoundDrawablePadding
-                val visibleMark = immersionMark.takeIf { labelWidth + markWidth <= maximumActionWidth }
-                if (immersion.compoundDrawablesRelative[0] !== visibleMark) {
-                    immersion.setCompoundDrawablesRelative(visibleMark, null, null, null)
-                }
-                val actionWidth = (labelWidth + if (visibleMark != null) markWidth else 0)
-                    .coerceIn(dp(48), maximumActionWidth)
-                // Measure wrapping at the exact width FrameLayout will assign.
-                // AT_MOST can shrink to a rounded text width that gains another
-                // line during the subsequent exact pass after a locale change.
-                immersion.measure(MeasureSpec.makeMeasureSpec(actionWidth, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
-                val actionHeight = maxOf(immersion.measuredHeight, dp(48))
-                val marksWidth = (providerRow.childCount - 1) * dp(22)
-                val nameWidth = kotlin.math.ceil(providerModel.paint.measureText(providerModel.text.toString())).toInt()
-                val centerWidth = available - 2 * (actionWidth + dp(8))
-                val singleRow = centerWidth >= maxOf(dp(48), marksWidth + nameWidth)
-                // Keep the provider group centered against the whole window.
-                // Long names get their own row instead of shifting off-center
-                // or squeezing the localized immersion action.
-                providerModel.maxWidth = ((if (singleRow) centerWidth else available) - marksWidth).coerceAtLeast(0)
-                (providerRow.layoutParams as LayoutParams).apply {
-                    gravity = if (singleRow) Gravity.CENTER else Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                }
-                (immersion.layoutParams as LayoutParams).apply {
-                    width = actionWidth; height = actionHeight
-                }
-                val desiredHeight = actionHeight + if (singleRow) 0 else dp(48)
-                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(
-                    resolveSize(desiredHeight, heightMeasureSpec), MeasureSpec.EXACTLY))
-            }
-        }.apply { tag = "overlay-actions" }
-        footer.addView(providerRow, FrameLayout.LayoutParams(-2, dp(48), Gravity.CENTER))
-        footer.addView(immersion, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
-        footer.addView(resize, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM or Gravity.END))
 
         status = TextView(context).apply {
             tag = "expanded-status"
@@ -223,15 +122,42 @@ internal class CaptionPanelView(
         transcript.addView(source, LinearLayout.LayoutParams(-1, -2))
         transcript.addView(translation, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
         scroll.addView(transcript)
-        panel.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
-        panel.addView(footer, LinearLayout.LayoutParams(-1, -2))
-        setPreviewOnly(actions.home == null)
+        panel.addView(scroll, FrameLayout.LayoutParams(-1, -1).apply {
+            setMargins(dp(16), dp(CaptionAdjustmentSwitch.TARGET_DP), dp(16), dp(8))
+        })
+        // One surface: the inset control targets clear the reading viewport.
+        // No separate toolbar background, side column or footer row.
+        panel.addView(CaptionAdjustmentSwitch(context).apply {
+            tag = "overlay-adjust-mark"
+            isChecked = SettingsStore.overlayAdjustable(context)
+            isClickable = false; isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(dp(CaptionAdjustmentSwitch.TARGET_DP), dp(CaptionAdjustmentSwitch.TARGET_DP),
+            Gravity.TOP or Gravity.RIGHT).apply { rightMargin = dp(CaptionAdjustmentSwitch.RIGHT_INSET_DP) })
+        panel.addView(FrameLayout(context).apply {
+            tag = "overlay-drag"; isClickable = true; isFocusable = true
+            contentDescription = interfaceString(R.string.overlay_drag)
+            setOnClickListener { if (interactive) actions.home?.invoke() }
+            addView(View(context).apply {
+                tag = "overlay-drag-mark"
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(2).toFloat(); setColor(0xFFB9B9B9.toInt())
+                }
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }, FrameLayout.LayoutParams(dp(24), dp(3), Gravity.CENTER))
+        }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+        panel.addView(panelIcon(R.drawable.ic_overlay_resize, R.string.overlay_resize).apply {
+            tag = "overlay-resize"
+            // Keep the visible mark in the bottom/right inset, not over a glyph.
+            setPadding(dp(32), dp(32), dp(4), dp(4))
+        }, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.BOTTOM or Gravity.RIGHT))
+        setAdjustable(SettingsStore.overlayAdjustable(context))
     }
 
     /** Disable actions without dimming or changing the frame's visible appearance. */
     fun setPreviewOnly(preview: Boolean) {
         interactive = !preview && actions.home != null
-        listOf("overlay-drag", "overlay-font", "enter-immersive", "overlay-providers", "overlay-resize").forEach { tag ->
+        listOf("overlay-drag", "overlay-resize").forEach { tag ->
             findViewWithTag<View>(tag).apply {
                 if (actions.home == null) setOnClickListener(null)
                 isClickable = interactive; isFocusable = interactive
@@ -240,6 +166,14 @@ internal class CaptionPanelView(
                     else View.IMPORTANT_FOR_ACCESSIBILITY_NO
             }
         }
+    }
+
+    /** Keep bounds and reading position unchanged when the window stops receiving touches. */
+    fun setAdjustable(adjustable: Boolean) {
+        findViewWithTag<CaptionAdjustmentSwitch>("overlay-adjust-mark").isChecked = adjustable
+        findViewWithTag<View>("overlay-drag-mark").visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
+        findViewWithTag<View>("overlay-resize").visibility = if (adjustable) View.VISIBLE else View.INVISIBLE
+        setPreviewOnly(!adjustable)
     }
 
     fun applyStyle(style: CaptionFrameStyle) {
@@ -291,7 +225,7 @@ internal class CaptionPanelView(
             }
         }
         val both = source.visibility == View.VISIBLE && translation.visibility == View.VISIBLE
-        val translationParams = translation.layoutParams as LayoutParams
+        val translationParams = translation.layoutParams as LinearLayout.LayoutParams
         val margin = if (both) dp(6) else 0
         val marginChanged = translationParams.topMargin != margin
         translationParams.topMargin = margin
@@ -334,15 +268,22 @@ internal class CaptionPanelView(
     }
 
     fun minimumReadingHeight(): Int {
+        // Guarantee one complete fallback-font row per active lane. Additional
+        // translated lines use the chosen viewport budget, not permanent chrome.
         val mode = displayMode
         return maxOf(dp(64), (if (mode.sourceVisible) minimumSourceLine else 0) +
-            (if (mode.translationVisible) minimumTranslationLine * if (mode == CaptionDisplayMode.BILINGUAL) 2 else 1 else 0) +
+            (if (mode.translationVisible) minimumTranslationLine else 0) +
             (if (mode == CaptionDisplayMode.BILINGUAL) dp(6) else 0) +
             (if (SettingsStore.subtitleTimestamps(context)) minimumTimeLine else 0))
     }
 
-    fun chromeHeight(): Int = paddingTop + paddingBottom + dp(8) +
-        findViewWithTag<View>("overlay-toolbar").measuredHeight + findViewWithTag<View>("overlay-actions").measuredHeight
+    fun chromeHeight(): Int = (transcriptScroll.layoutParams as FrameLayout.LayoutParams).let {
+        it.topMargin + it.bottomMargin
+    }
+
+    companion object {
+        const val CHROME_HEIGHT_DP = CaptionAdjustmentSwitch.TARGET_DP + 8
+    }
 
     private fun interfaceString(id: Int): String = InterfaceLanguage.context(context).getString(id)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -352,29 +293,6 @@ internal class CaptionPanelView(
         setPadding(dp(12), dp(12), dp(12), dp(12)); setBackgroundColor(Color.TRANSPARENT)
         contentDescription = interfaceString(description); tooltipText = contentDescription
         isFocusable = true
-    }
-
-    private fun panelButton(label: String): TextView = TextView(context).apply {
-        text = label
-        textSize = 14f
-        minimumHeight = dp(48)
-        minimumWidth = dp(48)
-        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        setTextColor(Color.WHITE)
-        gravity = Gravity.CENTER
-        setPadding(dp(8), 0, dp(8), 0)
-        val icon = androidx.core.content.ContextCompat.getDrawable(context, R.drawable.ic_translation_captions)?.mutate()
-        icon?.setTint(Color.WHITE); icon?.setBounds(0, 0, dp(18), dp(18))
-        setCompoundDrawablesRelative(icon, null, null, null); compoundDrawablePadding = dp(6)
-        background = android.graphics.drawable.StateListDrawable().apply {
-            fun feedback() = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(0x30FFFFFF) }
-            addState(intArrayOf(android.R.attr.state_pressed), feedback())
-            addState(intArrayOf(android.R.attr.state_focused), feedback())
-            addState(intArrayOf(), android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        }
-        isClickable = true
-        isFocusable = true
-        pointerIcon = android.view.PointerIcon.getSystemIcon(context, android.view.PointerIcon.TYPE_HAND)
     }
 
 }

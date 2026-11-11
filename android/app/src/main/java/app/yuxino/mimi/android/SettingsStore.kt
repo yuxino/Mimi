@@ -21,6 +21,7 @@ object SettingsStore {
     private const val KEY_OVERLAY_OPACITY = "overlay_opacity"
     private const val KEY_OVERLAY_BG_ALPHA = "overlay_bg_alpha"
     private const val KEY_IMMERSIVE_SUBTITLES = "immersive_subtitles"
+    private const val KEY_OVERLAY_ADJUSTABLE = "overlay_adjustable"
     private const val KEY_HISTORY_LINES = "history_lines"
     private const val KEY_CAPTURE_INPUT = "capture_input"
     private const val KEY_RETAIN_SESSION_HISTORY = "retain_session_history"
@@ -39,7 +40,7 @@ object SettingsStore {
 
     const val PROVIDER_DASHSCOPE = "dashscope"
     const val PROVIDER_OPENAI = "openai"
-    const val DEFAULT_OVERLAY_HEIGHT = 32
+    const val DEFAULT_OVERLAY_HEIGHT = 17
 
     @Volatile private var prefs: SharedPreferences? = null
 
@@ -348,6 +349,20 @@ object SettingsStore {
     fun setOverlayBgAlpha(context: Context, value: Int) =
         writeAppearance(get(context).edit().putInt(KEY_OVERLAY_BG_ALPHA, value.coerceIn(0, 100)))
 
+    /** Separate from immersive presentation: locking never changes caption geometry or style. */
+    fun overlayAdjustable(context: Context): Boolean = get(context).getBoolean(KEY_OVERLAY_ADJUSTABLE, true)
+
+    fun setOverlayAdjustable(context: Context, enabled: Boolean) {
+        val preferences = get(context)
+        val previous = overlayAdjustable(context)
+        if (!preferences.edit().putBoolean(KEY_OVERLAY_ADJUSTABLE, enabled).commit()) {
+            // SharedPreferences changes memory even when its disk write fails.
+            // Restore that value too, so a later refresh cannot silently lock it.
+            preferences.edit().putBoolean(KEY_OVERLAY_ADJUSTABLE, previous).apply()
+            error("appearance_save_failed")
+        }
+    }
+
     /** Plain, touch-through subtitles; appearance updates the active views immediately. */
     fun immersiveSubtitles(context: Context): Boolean =
         get(context).getBoolean(KEY_IMMERSIVE_SUBTITLES, false)
@@ -365,7 +380,7 @@ object SettingsStore {
     /** Clears a persisted drag position so the card returns to bottom-center. */
     fun clearOverlayPosition(context: Context) =
         writeAppearance(get(context).edit().putInt(KEY_OVERLAY_Y, 48).putInt(KEY_OVERLAY_X, 0)
-            .putInt(KEY_EXPANDED_Y, 0).putInt(KEY_EXPANDED_X, 0))
+            .putInt(KEY_EXPANDED_Y, 48).putInt(KEY_EXPANDED_X, 0))
 
     private fun writeAppearance(editor: android.content.SharedPreferences.Editor) {
         check(editor.commit()) { "Appearance preference write failed" }
@@ -378,17 +393,17 @@ object SettingsStore {
     fun overlayWidthPercent(context: Context): Int = get(context).getInt(KEY_OVERLAY_WIDTH, 92).coerceIn(55, 100)
     fun setOverlayWidthPercent(context: Context, value: Int) =
         writeAppearance(get(context).edit().putInt(KEY_OVERLAY_WIDTH, value.coerceIn(55, 100)))
-    fun overlayHeightPercent(context: Context): Int = get(context).getInt(KEY_OVERLAY_HEIGHT, DEFAULT_OVERLAY_HEIGHT).coerceIn(20, 70)
+    fun overlayHeightPercent(context: Context): Int = get(context).getInt(KEY_OVERLAY_HEIGHT, DEFAULT_OVERLAY_HEIGHT).coerceIn(10, 70)
     fun setOverlayHeightPercent(context: Context, value: Int) =
-        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_HEIGHT, value.coerceIn(20, 70)))
+        writeAppearance(get(context).edit().putInt(KEY_OVERLAY_HEIGHT, value.coerceIn(10, 70)))
     fun setOverlayBounds(context: Context, width: Int, height: Int, x: Int, y: Int) =
         writeAppearance(get(context).edit().putInt(KEY_OVERLAY_WIDTH, width.coerceIn(55, 100))
-            .putInt(KEY_OVERLAY_HEIGHT, height.coerceIn(20, 70))
+            .putInt(KEY_OVERLAY_HEIGHT, height.coerceIn(10, 70))
             .putInt(KEY_EXPANDED_X, x.coerceIn(-2000, 2000)).putInt(KEY_EXPANDED_Y, y.coerceIn(0, 2000)))
     fun captionAlignment(context: Context): CaptionAlignment = CaptionAlignment.fromId(get(context).getString(KEY_CAPTION_ALIGNMENT, null))
     fun setCaptionAlignment(context: Context, alignment: CaptionAlignment) =
         writeAppearance(get(context).edit().putString(KEY_CAPTION_ALIGNMENT, alignment.id))
-    fun expandedYOffset(context: Context): Int = get(context).getInt(KEY_EXPANDED_Y, 0).coerceIn(0, 2000)
+    fun expandedYOffset(context: Context): Int = get(context).getInt(KEY_EXPANDED_Y, 48).coerceIn(0, 2000)
     fun overlayXOffset(context: Context, expanded: Boolean): Int =
         get(context).getInt(if (expanded) KEY_EXPANDED_X else KEY_OVERLAY_X, 0).coerceIn(-2000, 2000)
     fun setOverlayPosition(context: Context, expanded: Boolean, x: Int, y: Int) =

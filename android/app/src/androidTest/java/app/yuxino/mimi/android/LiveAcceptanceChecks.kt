@@ -13,7 +13,6 @@ import org.json.JSONObject
 import java.io.File
 import android.view.View
 import android.widget.Spinner
-import android.widget.TextView
 import android.view.inspector.WindowInspector
 import android.graphics.Bitmap
 import java.util.concurrent.atomic.AtomicInteger
@@ -37,6 +36,8 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
         val started = SystemClock.elapsedRealtime()
         var failure: String? = null
         var stage = "preconditions"
+        val immersive = SettingsStore.immersiveSubtitles(context)
+        val adjustable = SettingsStore.overlayAdjustable(context)
         var home: MainActivity? = null
         var temporary: TemporaryProviderAcceptance? = null
         var finalListener: SubtitleBus.Listener? = null
@@ -50,6 +51,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                 temporary.apply()
             }
             check(SettingsStore.isConfigured(context))
+            onUi { SettingsStore.setImmersiveSubtitles(context, false); SettingsStore.setOverlayAdjustable(context, true) }
             val configuration = SettingsStore.configuration(context)
             home = test.startActivitySync(Intent(context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
@@ -105,7 +107,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                 var previousCapture = ""
                 var lastSourceAt = begin
                 var largestSourceGap = 0L
-                var modelInspected = false
+                var normalChromeInspected = false
                 var nextProgressAt = begin + 30_000
                 fun observe() {
                     val now = SystemClock.elapsedRealtime()
@@ -149,39 +151,31 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                     }
                     var overlayVisible = false
                     onUi { overlayVisible = WindowInspector.getGlobalWindowViews().any { it.tag == "mimi-overlay" && it.isShown } }
-                    if (!modelInspected && overlayVisible && activeModels.isNotEmpty() && translationUpdates > 0 && SystemClock.elapsedRealtime() - begin > 10_000) {
-                        stage = "active_model_display_$round"
+                    if (!normalChromeInspected && overlayVisible && activeModels.isNotEmpty() && translationUpdates > 0 && SystemClock.elapsedRealtime() - begin > 10_000) {
+                        stage = "normal_caption_chrome_$round"
                         onUi {
                             val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
-                            root.findViewWithTag<View>("compact-subtitle").performClick()
+                            check(root.findViewWithTag<View>("expanded-subtitles").isShown)
+                            checkOverlayChromeAlignment(root)
+                            check(MimiService.activeModelNames == activeModels) { "Normal frame altered active model selection" }
                         }
-                        test.waitForIdleSync()
-                        onUi {
-                            val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
-                            val label = root.findViewWithTag<TextView>("overlay-model")
-                            check(label.isShown && label.text.toString() == modelNamesLabel(activeModels))
-                            check(label.layout.height <= label.height - label.paddingTop - label.paddingBottom)
-                        }
-                        SystemClock.sleep(120)
-                        val bitmap = checkNotNull(test.uiAutomation.takeScreenshot())
-                        File(context.getExternalFilesDir(null), "live-model.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                        bitmap.recycle()
-                        onUi {
-                            WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
-                                .findViewWithTag<View>("collapse-overlay").performClick()
-                        }
-                        modelInspected = true; stage = "observe_$round"
-                        status("LIVE_MODEL_DISPLAY_PASSED round=$round; native expanded model label and screenshot verified.")
+                        normalChromeInspected = true; stage = "observe_$round"
+                        status("LIVE_NORMAL_CAPTION_PASSED round=$round; normal frame has no appearance editor or model/provider controls; active model selection retained.")
                     }
                     SystemClock.sleep(100)
                 }
                 check(MimiService.isRunning) { "session_ended_during_observation" }
-                check(activeModels.isEmpty() || modelInspected) { "active_model_display_not_observed" }
+                check(activeModels.isEmpty() || normalChromeInspected) { "normal_caption_not_observed" }
                 stage = "compact_latest_$round"
-                onUi {
-                    val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
-                    root.findViewWithTag<View>("collapse-overlay").performClick()
+                onUi { SettingsStore.setImmersiveSubtitles(context, true) }
+                context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
+                val compactDeadline = SystemClock.elapsedRealtime() + 2_000
+                var compactReady = false
+                while (!compactReady && SystemClock.elapsedRealtime() < compactDeadline) {
+                    onUi { compactReady = WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+                    if (!compactReady) SystemClock.sleep(50)
                 }
+                check(compactReady && SettingsStore.immersiveSubtitles(context)) { "legacy_immersive_not_shown" }
                 test.waitForIdleSync()
                 SystemClock.sleep(120)
                 var compactOverflowViews = 0
@@ -203,6 +197,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
                     onUi { observe() }; SystemClock.sleep(100)
                 }
                 check(!MimiService.isRunning) { "stop_timeout" }
+                onUi { SettingsStore.setImmersiveSubtitles(context, false) }
                 results.put(JSONObject().put("round", round).put("observedMs", stop - begin)
                     .put("provider", configuration.provider.wireProvider).put("models", JSONArray(activeModels))
                     .put("sourceUpdates", sourceUpdates).put("translationUpdates", translationUpdates)
@@ -220,7 +215,7 @@ internal class LiveAcceptanceChecks(private val test: Instrumentation) {
             context.startService(MimiService.stopIntent(context))
             val deadline = SystemClock.elapsedRealtime() + 12_000
             while (MimiService.isRunning && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
-            onUi { home?.finish() }
+            onUi { home?.finish(); SettingsStore.setImmersiveSubtitles(context, immersive); SettingsStore.setOverlayAdjustable(context, adjustable) }
             try { check(!MimiService.isRunning); temporary?.close() }
             catch (_: Exception) { failure = "restore_saved_configuration" }
         }

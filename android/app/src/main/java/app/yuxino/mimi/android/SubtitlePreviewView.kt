@@ -44,15 +44,10 @@ class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: Att
                   heightPercent: Int = SettingsStore.DEFAULT_OVERLAY_HEIGHT) {
         displayMode = if (originalOnly) CaptionDisplayMode.ORIGINAL else mode
         val localized = InterfaceLanguage.context(context.applicationContext)
-        val route = languageDisplayName(localized, SettingsStore.sourceLang(context)).let {
-            if (originalOnly) it else "$it → ${languageDisplayName(localized, targetLang)}"
-        }
-        val label = overlayServiceLabel(localized)
-        val marks = captionProviderMarks(context)
-        val nextIdentity = "$immersive|${localized.resources.configuration.locales}|$route|$label|$marks"
+        val nextIdentity = "$immersive|${localized.resources.configuration.locales}"
         if (identity != nextIdentity) {
             identity = nextIdentity
-            frame = if (immersive) CompactCaptionView(localized) else CaptionPanelView(localized, route, label, marks)
+            frame = if (immersive) CompactCaptionView(localized) else CaptionPanelView(localized)
             stage.replaceFrame(frame)
             when (val current = frame) {
                 is CaptionPanelView -> { source = current.source; translation = current.translation; status = current.status }
@@ -61,7 +56,10 @@ class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: Att
         }
         val style = CaptionFrameStyle(fontSize, color, opacity.coerceIn(20, 100), backgroundAlpha, displayMode, alignment, SettingsStore.subtitleDividers(context))
         when (val current = frame) {
-            is CaptionPanelView -> current.applyStyle(style)
+            is CaptionPanelView -> {
+                current.applyStyle(style)
+                current.setAdjustable(SettingsStore.overlayAdjustable(context))
+            }
             is CompactCaptionView -> current.applyStyle(style, true)
         }
         stage.configure(widthPercent, heightPercent, immersive)
@@ -162,7 +160,7 @@ internal class CaptionPreviewStage(context: Context) : ViewGroup(context) {
             it.layout(x, y, x + it.measuredWidth, y + it.measuredHeight)
         }
     }
-    // This is a preview: decorative home/style/provider buttons must never navigate.
+    // This is a preview: decorative adjustment controls must never navigate.
     override fun onInterceptTouchEvent(event: android.view.MotionEvent) = true
     override fun onTouchEvent(event: android.view.MotionEvent) = true
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()

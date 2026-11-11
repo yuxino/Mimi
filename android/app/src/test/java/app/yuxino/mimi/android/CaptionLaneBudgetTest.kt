@@ -4,6 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CaptionLaneBudgetTest {
+    @Test fun compactViewportFitsOneCompleteRowPerLaneBeforeExpandingTranslation() {
+        assertEquals(1 to 1, captionLaneBudget(70, listOf(30, 60), listOf(40, 80)))
+        assertEquals(1 to 2, captionLaneBudget(110, listOf(30, 60), listOf(40, 80)))
+    }
     @Test fun aSmallerReferenceFontCannotTakeTheSecondTranslationLine() {
         assertEquals(1 to 2, captionLaneBudget(120, listOf(20, 40, 60, 80, 100, 120), listOf(50, 100, 150)))
         assertEquals(1 to 2, captionLaneBudget(160, listOf(36, 64, 92, 120), listOf(60, 120, 180)))

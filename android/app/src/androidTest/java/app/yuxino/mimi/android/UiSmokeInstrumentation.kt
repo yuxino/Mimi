@@ -516,54 +516,26 @@ class UiSmokeInstrumentation : Instrumentation() {
             onUi { appearance.findViewById<View>(R.id.tab_caption).performClick() }
             waitForIdleSync()
 
-            prefs.edit().remove("immersive_seen").commit()
-            targetContext.startService(Intent(targetContext, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW).putExtra("preview_over_own_ui", true))
+            targetContext.startService(Intent(targetContext, MimiService::class.java)
+                .setAction(MimiService.ACTION_UI_PREVIEW).putExtra("preview_over_own_ui", true))
             val overlay = checkNotNull(waitForOverlayTag("mimi-overlay"))
-            val entry = overlay.findViewWithTag<View>("enter-immersive")
-            onUi { entry.performClick(); entry.performClick() }
-            check(!SettingsStore.immersiveSubtitles(targetContext)) { "Overlay enabled immersion before acknowledgement" }
-            onUi {
-                val explanation = checkNotNull(immersiveHelpWindow()) { "Overlay explanation missing" }
-                check((explanation.layoutParams as WindowManager.LayoutParams).type == WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                check(WindowInspector.getGlobalWindowViews().count {
-                    containsText(it, targetContext.getString(R.string.guide_immersive_hint))
-                } == 1)
-            }
-            capture("immersive-overlay-before-confirm-$guideLocale-$theme")
-            checkImmersiveHelpContrast()
-            onUi { immersiveHelpWindow()!!.findViewById<View>(android.R.id.button2).performClick() }
-            waitForIdleSync()
-            check(!prefs.getBoolean("immersive_seen", false) && !SettingsStore.immersiveSubtitles(targetContext))
-            onUi { entry.performClick() }
-            acknowledgeImmersiveHelpIfShown()
+            onUi { checkNoFloatingAppearanceEditor(overlay) }
+            // Legacy mode remains independently available from settings, never a normal-caption action.
+            onUi { SettingsStore.setImmersiveSubtitles(targetContext, true) }
+            targetContext.startService(Intent(targetContext, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
             val exit = checkNotNull(waitForOverlayTag("exit-immersive"))
-            check(SettingsStore.immersiveSubtitles(targetContext) && prefs.getBoolean("immersive_seen", false))
-            capture("immersive-overlay-after-confirm-$guideLocale-$theme")
+            check(SettingsStore.immersiveSubtitles(targetContext))
+            capture("immersive-legacy-from-settings-$guideLocale-$theme")
             onUi { exit.performClick() }
             waitForIdleSync()
             check(!SettingsStore.immersiveSubtitles(targetContext))
             val restored = checkNotNull(waitForOverlayTag("mimi-overlay"))
             onUi {
-                check(restored === overlay && restored.findViewWithTag<View>("expanded-subtitles").isShown) {
-                    "Help flow did not restore the expanded reading window"
-                }
-                restored.findViewWithTag<View>("enter-immersive").performClick()
-                check(immersiveHelpWindow() == null) { "Acknowledged overlay explanation repeated" }
-            }
-            val secondExit = checkNotNull(waitForOverlayTag("exit-immersive"))
-            onUi { secondExit.performClick() }
-            waitForIdleSync()
-            // A pending overlay explanation belongs to its service lifecycle.
-            prefs.edit().remove("immersive_seen").commit()
-            val lastOverlay = checkNotNull(waitForOverlayTag("mimi-overlay"))
-            onUi {
-                check(lastOverlay.findViewWithTag<View>("expanded-subtitles").isShown)
-                lastOverlay.findViewWithTag<View>("enter-immersive").performClick()
-                check(immersiveHelpWindow() != null)
+                check(restored === overlay && restored.findViewWithTag<View>("expanded-subtitles").isShown)
+                checkNoFloatingAppearanceEditor(restored)
             }
             targetContext.startService(MimiService.stopIntent(targetContext))
             waitForIdleSync()
-            onUi { check(immersiveHelpWindow() == null) { "Stopped service retained its explanation" } }
             check(!MimiService.isRunning && !MimiService.firstRunEvidence.complete && !SettingsStore.immersiveSubtitles(targetContext))
         } finally {
             targetContext.startService(MimiService.stopIntent(targetContext))
@@ -730,6 +702,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         SettingsStore.setOverlayBgAlpha(targetContext, 65)
         SettingsStore.setOverlayOpacity(targetContext, 100)
         SettingsStore.setImmersiveSubtitles(targetContext, false)
+        SettingsStore.setOverlayAdjustable(targetContext, true)
         launchHome()
         try {
             check(targetContext.startService(Intent(targetContext, MimiService::class.java)
@@ -787,9 +760,9 @@ class UiSmokeInstrumentation : Instrumentation() {
             capture("overlay-after-expanded-history-$theme")
             checkCurrentCaptionStart(expanded)
             checkLongExpandedCaption(expanded)
-            onUi { check(expanded.findViewWithTag<View>("enter-immersive").performClick()) { "Immersive entry click failed" } }
-            acknowledgeImmersiveHelpIfShown()
-            check(SettingsStore.immersiveSubtitles(targetContext)) { "Immersive entry did not update preference" }
+            onUi { SettingsStore.setImmersiveSubtitles(targetContext, true) }
+            targetContext.startService(Intent(targetContext, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
+            check(SettingsStore.immersiveSubtitles(targetContext)) { "Legacy immersive setting did not update preference" }
             val exit = WindowInspector.getGlobalWindowViews()
                 .firstOrNull { it.tag == "exit-immersive" }
             check(exit?.isShown == true) { "Immersive mode has no in-overlay exit" }
@@ -858,28 +831,13 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     private fun checkOverlayHeaderLabels(panel: View) {
         onUi {
-            val panelLocation = IntArray(2)
-            panel.getLocationOnScreen(panelLocation)
-            check(panel.findViewWithTag<View>("collapse-overlay") == null)
-            for (tag in listOf("enter-immersive", "overlay-font", "overlay-route")) {
-                val label = checkNotNull(panel.findViewWithTag<View>(tag))
-                if (tag == "enter-immersive") check(label is TextView && label.text.toString() ==
-                    InterfaceLanguage.context(targetContext).getString(R.string.overlay_enter_immersive)) { "Immersion has no visible localized label" }
-                if (label is TextView && tag == "overlay-route") check(label.lineCount == 1) { "Overlay route wraps" }
-                if (tag != "overlay-route" && label is TextView) {
-                    check(label.layout.height <= label.height - label.paddingTop - label.paddingBottom) { "Overlay action clips vertically: $tag" }
-                    for (line in 0 until label.lineCount) check(label.layout.getEllipsisCount(line) == 0 &&
-                        label.layout.getLineWidth(line) <= label.width - label.paddingLeft - label.paddingRight + 1) {
-                        "Overlay action text does not fit: $tag"
-                    }
-                }
-                val location = IntArray(2)
-                label.getLocationOnScreen(location)
-                check(label.width > 0 && location[0] >= panelLocation[0] + panel.paddingLeft &&
-                    location[0] + label.width <= panelLocation[0] + panel.width - panel.paddingRight) {
-                    "Overlay action extends outside its panel: $tag"
-                }
-            }
+            checkOverlayChromeAlignment(panel)
+            val toggle = checkNotNull(WindowInspector.getGlobalWindowViews().firstOrNull { it.tag == "overlay-adjust" }) as MaterialSwitch
+            check(toggle.rootView !== panel.rootView && toggle.isShown && toggle.isClickable)
+            check(toggle.isChecked == SettingsStore.overlayAdjustable(targetContext))
+            check(toggle.contentDescription.toString() == InterfaceLanguage.context(targetContext).getString(R.string.overlay_adjust))
+            val size = (48 * panel.resources.displayMetrics.density).toInt()
+            check(toggle.width >= size && toggle.height >= size)
         }
     }
 
@@ -1298,6 +1256,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         private val background = restoreBackground ?: SettingsStore.overlayBgAlpha(targetContext)
         private val history = SettingsStore.historyLines(targetContext)
         private val immersive = SettingsStore.immersiveSubtitles(targetContext)
+        private val adjustable = SettingsStore.overlayAdjustable(targetContext)
         private val helpPrefs = targetContext.getSharedPreferences("first_run", 0)
         private val hadImmersiveSeen = helpPrefs.contains("immersive_seen")
         private val immersiveSeen = helpPrefs.getBoolean("immersive_seen", false)
@@ -1314,6 +1273,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             SettingsStore.setOverlayBgAlpha(targetContext, background)
             SettingsStore.setHistoryLines(targetContext, history)
             SettingsStore.setImmersiveSubtitles(targetContext, immersive)
+            SettingsStore.setOverlayAdjustable(targetContext, adjustable)
             helpPrefs.edit().apply {
                 if (hadImmersiveSeen) putBoolean("immersive_seen", immersiveSeen) else remove("immersive_seen")
             }.commit()

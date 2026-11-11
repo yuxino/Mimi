@@ -105,6 +105,46 @@ public final class OverlayPlacementRegression {
         equal(192, OverlayPlacement.windowWidth(200, 55, 280, 8));
         cases++;
 
+        // The independent adjustment switch follows the SAME normal panel. Its
+        // bottom/right coordinates remain reachable after drag, resize or rotation.
+        equal(48, OverlayPlacement.adjustmentX(720, 640, 0, 64, 8));
+        equal(8, OverlayPlacement.adjustmentX(720, 640, 40, 64, 8));
+        equal(88, OverlayPlacement.adjustmentX(720, 640, -40, 64, 8));
+        equal(656, OverlayPlacement.adjustmentX(720, 640, -1000, 64, 8));
+        equal(0, OverlayPlacement.adjustmentX(40, 640, 0, 64, 8));
+        equal(554, OverlayPlacement.adjustmentY(1600, 100, 512, 48, 10));
+        // Even flush with the top edge, the switch stays INSIDE the same panel.
+        equal(1542, OverlayPlacement.adjustmentY(1600, 1088, 512, 48, 10));
+        equal(564, OverlayPlacement.adjustmentY(1600, 100, 512, 48, 0));
+        equal(1552, OverlayPlacement.adjustmentY(1600, 1088, 512, 48, 0));
+        equal(0, OverlayPlacement.adjustmentY(40, 0, 512, 48, 10));
+        equal(1548, OverlayPlacement.adjustmentY(1600, 0, 1600, 48, 4));
+        equal(44, OverlayPlacement.adjustmentX(720, 640, 0, 48, 4));
+        equal(4, OverlayPlacement.adjustmentX(720, 640, 40, 48, 4));
+        equal(84, OverlayPlacement.adjustmentX(720, 640, -40, 48, 4));
+        equal(45, OverlayPlacement.adjustmentX(721, 640, 0, 48, 4));
+        equal(44, OverlayPlacement.adjustmentX(720, 641, 0, 48, 4));
+        // Exhaust every pixel of small safe extents: corners, drag positions,
+        // resized panels, odd/even centered widths and extents shorter than a target.
+        for (int extent = 1; extent <= 128; extent++) {
+            for (int panel = 1; panel <= extent; panel++) {
+                for (int y = 0; y <= extent - panel; y++) {
+                    for (int top : new int[] {0, 4, 10}) checkInsetY(extent, y, panel, top);
+                }
+                int limit = (extent - panel) / 2;
+                for (int x = -limit; x <= limit; x++) checkInsetX(extent, panel, x, 4);
+            }
+        }
+        // Ordinary portrait/landscape bounds, all vertical drag positions and both horizontal edges.
+        for (int extent : new int[] {240, 400, 721, 900, 1600}) {
+            for (int panel : new int[] {48, 52, 100, 181, 200}) {
+                for (int y = 0; y <= extent - panel; y++) checkInsetY(extent, y, panel, 0);
+                int limit = (extent - panel) / 2;
+                for (int x : new int[] {-limit, 0, limit}) checkInsetX(extent, panel, x, 4);
+            }
+        }
+        cases++;
+
         // Restore stays adjacent to captions: below if possible, otherwise above.
         equal(66, OverlayPlacement.exitY(120, 100, 1000, 48, 6));
         equal(106, OverlayPlacement.exitY(0, 100, 1000, 48, 6));
@@ -115,6 +155,28 @@ public final class OverlayPlacementRegression {
         equal(806, OverlayPlacement.exitY(700, 100, 1000, 48, 6, 700));
         equal(726, OverlayPlacement.exitY(780, 100, 1000, 48, 6, 700));
         cases++;
+    }
+    private static void checkInsetY(int safeHeight, int panelY, int panelHeight, int topInset) {
+        int y = OverlayPlacement.adjustmentY(safeHeight, panelY, panelHeight, 48, topInset);
+        check(y >= 0 && y <= Math.max(0, safeHeight - 48));
+        if (panelHeight >= 48 + topInset) {
+            check(y >= panelY && y + 48 <= panelY + panelHeight);
+            equal(topInset, panelY + panelHeight - (y + 48));
+        }
+        // Impossible full containment below 48px still clamps deterministically, never negative.
+        if (safeHeight < 48) equal(0, y);
+    }
+    private static void checkInsetX(int safeWidth, int panelWidth, int panelX, int rightInset) {
+        int x = OverlayPlacement.adjustmentX(safeWidth, panelWidth, panelX, 48, rightInset);
+        check(x >= 0 && x <= Math.max(0, safeWidth - 48));
+        if (panelWidth >= 48 + rightInset) {
+            int panelLeft = (safeWidth - panelWidth) / 2 + panelX;
+            int panelRight = panelLeft + panelWidth;
+            int right = safeWidth - x;
+            check(right - 48 >= panelLeft && right <= panelRight);
+            equal(rightInset, panelRight - right);
+        }
+        if (safeWidth < 48) equal(0, x);
     }
     public static void main(String[] args) {
         runAll();

@@ -15,9 +15,8 @@ import android.widget.RadioGroup
 import android.widget.ListView
 import android.widget.Spinner
 import android.widget.TextView
-import android.widget.ImageView
 import android.widget.ScrollView
-import android.widget.LinearLayout
+import com.google.android.material.materialswitch.MaterialSwitch
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.LocaleManagerCompat
 import app.yuxino.mimi.android.capture.MimiService
@@ -50,6 +49,8 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
         val prefs = context.getSharedPreferences("first_run", 0)
         val hadSeen = prefs.contains("seen")
         val previousSeen = prefs.getBoolean("seen", false)
+        val adjustable = SettingsStore.overlayAdjustable(context)
+        val immersive = SettingsStore.immersiveSubtitles(context)
         val source = SettingsStore.sourceLang(context)
         val target = SettingsStore.targetLang(context)
         val theme = arguments?.getString("theme") ?: "light"
@@ -57,6 +58,8 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
         try {
             check(!MimiService.isRunning && SettingsStore.profiles(context).isEmpty()) { "Use a blank idle emulator" }
             onUi {
+                SettingsStore.setOverlayAdjustable(context, true)
+                SettingsStore.setImmersiveSubtitles(context, false)
                 app.registerActivityLifecycleCallbacks(callbacks)
                 AppCompatDelegate.setDefaultNightMode(if (theme == "dark")
                     AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
@@ -103,11 +106,14 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                         openCaptionStyles(settings!!)
                         check(settings!!.findViewById<RadioGroup>(R.id.settings_tabs).checkedRadioButtonId == R.id.tab_caption)
                         check(WindowInspector.getGlobalWindowViews().none { it.findViewWithTag<View>("collapse-overlay") != null })
-                        val immersion = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
-                            .findViewWithTag<TextView>("enter-immersive")
-                        check(immersion.text.toString() == settings!!.getString(R.string.overlay_enter_immersive)) {
-                            "Immersion needs a visible localized label"
+                        val normal = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                        checkNoFloatingAppearanceEditor(normal)
+                        val adjustment = WindowInspector.getGlobalWindowViews().first { it.tag == "overlay-adjust" } as MaterialSwitch
+                        check(adjustment.contentDescription.toString() == settings!!.getString(R.string.overlay_adjust)) {
+                            "Adjustment switch kept a stale interface language"
                         }
+                        check(adjustment.isChecked && adjustment.isClickable)
+
                     }
                     check(SubtitleBus.historySnapshot() == history) { "Language change lost subtitle history" }
                     check(SettingsStore.sourceLang(context) == source && SettingsStore.targetLang(context) == target)
@@ -128,6 +134,8 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
                     AppCompatDelegate.setApplicationLocales(previousLocales)
                 }
                 activities.toList().forEach { it.finish() }
+                SettingsStore.setOverlayAdjustable(context, adjustable)
+                SettingsStore.setImmersiveSubtitles(context, immersive)
                 app.unregisterActivityLifecycleCallbacks(callbacks)
                 AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
             }
@@ -158,15 +166,11 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
         val touchSize = (48 * panel.resources.displayMetrics.density).toInt()
         check(panel.findViewWithTag<ScrollView>("subtitle-transcript-scroll").height >=
             (64 * panel.resources.displayMetrics.density).toInt()) { "Caption reading viewport is too short" }
-        val providers = panel.findViewWithTag<LinearLayout>("overlay-providers")
-        val providerLabel = overlayServiceLabel(settings!!)
-        check(providers.contentDescription == providerLabel &&
-            panel.findViewWithTag<TextView>("overlay-model").text.toString() == providerLabel) {
-            "Provider label kept a stale interface language"
-        }
-        check((0 until providers.childCount).map { providers.getChildAt(it) }.filterIsInstance<ImageView>()
-            .all { it.isShown && it.width > 0 }) { "Provider marks disappeared" }
-        for (tag in listOf("overlay-font", "enter-immersive", "overlay-resize", "overlay-providers")) {
+        checkNoFloatingAppearanceEditor(panel)
+        val adjustment = WindowInspector.getGlobalWindowViews().first { it.tag == "overlay-adjust" } as MaterialSwitch
+        check(adjustment.width >= touchSize && adjustment.height >= touchSize && adjustment.isShown)
+        check(adjustment.contentDescription.toString() == settings!!.getString(R.string.overlay_adjust))
+        for (tag in listOf("overlay-drag", "overlay-resize")) {
             val control = panel.findViewWithTag<View>(tag)
             val position = IntArray(2)
             control.getLocationOnScreen(position)
@@ -296,7 +300,7 @@ internal class InterfaceLanguageChecks(private val instrumentation: Instrumentat
             val foreign = context.createConfigurationContext(android.content.res.Configuration(context.resources.configuration).apply {
                 setLocales(android.os.LocaleList.forLanguageTags(if (language == "en") "de" else "en"))
             })
-            for (id in listOf(R.string.overlay_listening_empty, R.string.overlay_enter_immersive,
+            for (id in listOf(R.string.overlay_listening_empty, R.string.overlay_adjust,
                 R.string.settings_alignment, R.string.notification_channel, R.string.capture_failed)) {
                 check(InterfaceLanguage.context(foreign).getString(id) == settings!!.getString(id)) {
                     "Service resources diverged from interface language: $tag"

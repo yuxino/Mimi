@@ -6150,3 +6150,140 @@ playback remain unverified. Private evidence belongs to the existing
   every current session, other crate identity, source, credential and unrelated
   dirty file was preserved. Cross-platform CI and merge are tracked in
   [PR #337](https://github.com/yuxino/Mimi/pull/337).
+
+### 2026-11-10 — Android issue #338 initial same-panel candidate (superseded)
+
+- Visual layout was subsequently rejected; the compact redesign and final
+  acceptance below supersede this candidate, not its same-panel requirement.
+- Tested `8d7aa9f7353fb275587ca205d26663e6ff78f7b3` plus the dirty Android
+  patch; preserved unrelated pending edits. The annotated issue image defines
+  ON as move/resize and OFF as touch-through, not a normal/immersive transition.
+  Removed the crossed-out overlay chrome while retaining main-page controls.
+- Final development build: command-scoped `CARGO_INCREMENTAL=0`, JDK 17.0.21,
+  SDK/API 35; `assembleDebug assembleDebugAndroidTest lintDebug
+  testDebugUnitTest testReleaseUnitTest` passed. Debug and Release each passed
+  328 tests with zero failures/errors/skips. Lint reported 74 warnings, zero
+  errors. Shared-runtime/provider-copy guards and four-ABI APK checks passed;
+  the focused placement regression passed all 13 scenarios.
+- Final debug APK SHA-256:
+  `27ce2594b306dd32edcd4954803ed92c90c23abf1b1bddba6c03d619bb89a063`;
+  test APK:
+  `25cfad7bc593c343931a06e09048ca95dfdaee74842047e17a0221ea9592892a`.
+- On the API 35 arm64 emulator, final native `overlay_interaction` passed real
+  injected OFF/ON touches, unchanged panel instance/frame/content/paint and
+  compositor pixels, move/resize, lock-cancelled gestures, bounded history and
+  full-text reading, locked recreation, retained main appearance controls,
+  main provider icons and independent legacy immersive restoration.
+  `preview_parity` passed 22 native frame geometry/pixel cases.
+- Earlier candidate APKs of this same patch also passed waiting/listening,
+  all nine interface languages in light/dark, and 83 streaming cases with
+  1,296 updates across nine languages, three modes and normal/immersive frames.
+  Those adjacent fixtures were not rerun after the final removal of unused
+  floating-editor constructor parameters; final interaction/parity checks were.
+- Two failed assertions were fixture defects, repaired and rerun unchanged in
+  intent: bilingual source typography intentionally uses 90% size (minimum
+  12sp); scaled preview origins cannot be combined with unscaled child widths.
+  A separate keyguard interruption was resolved only for the disposable user.
+- Evidence is synthetic and retained outside Git; no attachments were published.
+  Touch dispatch used an underlying same-UID probe, not a cross-app physical
+  device. No capture, audio, provider requests, desktop acceptance or release
+  packaging was performed. Next unresolved acceptance: physical-device/OEM
+  cross-UID touch-through and separately authorized real caption sessions.
+- Restored Owner, removed the isolated fixture user and stopped the task-started
+  emulator. Existing Owner data was preserved; the Dev APK was updated in place
+  and its overlay permission allowed during setup. Removed the task-only JDK,
+  download and superseded diagnostics. Inspected canonical build variants and
+  locks; retained current builds and distinct ABI/profile caches rather than
+  treating different Cargo identities as obsolete duplicates. No commit/publish.
+
+### 2026-11-11 — Android #338 compact reading/adjustment acceptance
+
+- Tested implementation `5009b7b79e540c33191c880f39a4b1b4f9901b61`, published in
+  [PR #340](https://github.com/yuxino/Mimi/pull/340). The follow-up ledger commit
+  changes documentation only. Unrelated pending work remains outside the PR.
+- Removed toolbar/footer rows; small edge handles retain 48dp touch targets.
+  The separate switch follows the top-right edge and falls below near the top.
+  Native ON/OFF keeps one instance/frame/content/style/position, not immersion.
+  The fresh default is 14% height / 48dp bottom offset; saved geometry survives.
+  Actual 16sp long-caption review rejected 12% because only a one-row tail was
+  readable. The default now retains one source row plus two translated rows;
+  explicit 10%/12% choices still protect complete fallback-font glyphs.
+- Command-scoped `CARGO_INCREMENTAL=0`, JDK 17.0.21, SDK/API 35:
+  `assembleDebug assembleDebugAndroidTest lintDebug lintRelease
+  testDebugUnitTest testReleaseUnitTest` passed. Debug/Release each passed 329
+  JVM tests, zero failures/errors/skips; lint had zero errors and 75/74 warnings.
+  Placement passed 13 host-JVM cases; architecture/provider-copy guards and
+  four-ABI JNI APK inspection passed.
+- Final app APK SHA-256:
+  `6a4bb6793cb199b065072159d1b351b4682406b966e967d607ec5845bf6b52ec`;
+  instrumentation APK:
+  `621ca1c8104202a90af4c3733dc462255ad8768f34f6a13b130c388eb930bebd`.
+- The API 35 arm64 emulator passed injected toggle/drag/resize, mid-drag switch
+  following, cancellation, history, recreation, main controls and independent
+  legacy immersion. Preview parity passed 250 native cases with identical
+  frame pixels/geometry, including minimum-height multilingual glyph bounds.
+  Streaming passed 92 cases / 1,296 updates / 2,021 native draws, nine languages,
+  three modes and normal/immersive. Waiting/restoration and nine interface
+  languages passed separately in both light and dark themes.
+- [Four native screenshot attachments](https://github.com/yuxino/Mimi/pull/340#issuecomment-6773406631)
+  show ON/OFF, long text and waiting on the same labeled synthetic backdrop;
+  all four uploaded images were verified loaded. No review images are in Git.
+  Touch-through uses a same-UID underlying probe, not physical OEM/cross-UID
+  proof. No audio/capture/provider session, desktop acceptance, release or merge.
+  Next unresolved checks: physical-device cross-UID behavior and separately
+  authorized real caption sessions.
+- Restored Owner and verified only user 0 remains after disposable-user removal;
+  stopped the task emulator and removed its task-only JDK/archive after Java
+  builds exited. Owner data, current APKs, evidence and distinct canonical build
+  variants remain; no new worktree/cache or unrelated dirty work was removed.
+
+## 2026-11-11 — PR #340 inset adjustment revision
+
+- Implements the approved correction: inset the adjustment control into the
+  upper-right of the same caption surface, without a detached base or toolbar.
+  Production revision `7cdb4cabcf4de31dd991e7f07dff55d176e93d05`; final tested
+  implementation/test revision `bc67ae12b8828311a5743c726f2d80dab8600c9b`.
+  The publication follow-up only records verification and reusable UI guidance.
+- One panel-owned painter and an exactly aligned transparent input/accessibility
+  window preserve OFF recovery without double alpha. The 48dp target is inset
+  top0/right4dp, clear of text and gesture targets; exact odd-width placement,
+  corner taps and transparent proxy rendering have regressions. ON/OFF preserve
+  the panel, viewport, text, opacity and position; legacy immersion is separate.
+  New unset height is 17%, with existing explicit settings preserved. At the
+  720×1600 review size, total layout/touch footprint is 234px versus 284px for
+  the preceding 14% panel plus 52dp outside target footprint. Default 16sp retains
+  one source row and two translated rows, with complete fallback-font glyphs.
+- Native preview preceded complete acceptance. API 35 arm64 emulator, disposable
+  user 10, same-UID capture probe; no capture/provider requests. Initial interaction
+  was blocked by that user's lock screen; waking/unlocking resolved it. The first
+  full parity run then exposed an obsolete reading-budget assumption: 20%/24sp
+  now has a 178px viewport rather than 213px with old 36dp chrome. Retained that
+  compact geometry/full-glyph case and added 23%/24sp (219px viewport) for the
+  strict two-translation-row assertion. The 15sp case explicitly retains 20%;
+  default 17% two-row and 10% multilingual timestamp/glyph checks remain strict.
+  Production minimum-height rules were not enlarged to satisfy a fixture.
+- Complete acceptance used command-scoped `CARGO_INCREMENTAL=0`, JDK 17 and
+  canonical build directories: Debug app/test APKs, Debug/Release JVM suites
+  (329 each, zero failures/errors/skips), and Debug/Release lint (zero errors,
+  77/76 warnings). Four JNI ABIs are present. Host placement's 13 scenarios,
+  exhaustive safe extents/odd-even widths, architecture/provider-copy guards and
+  whitespace checks passed. No unrelated desktop/release build was performed.
+- Debug APK SHA-256: `ac5971b2bb2a98583acd3f54e5d8b97b13071e1b1cacfd1e9ed4d76d38140de8`;
+  final test APK: `8bc4761a33077f2e63a4018846e54cf605c37e4b88053d9253e3c6d4319544a6`.
+  Final native acceptance passed 260 preview-parity cases with identical frame
+  pixels/geometry, and 92 streaming cases / 1,296 updates / 2,074 native draws
+  across nine languages, three modes and normal/immersive. Waiting/restoration
+  passed; nine interface languages passed in light/dark themes. Interaction passed
+  actual toggle-corner taps, drag/resize, fixed-frame lock, interrupted gestures,
+  history, recreation, main appearance/provider controls and legacy restoration.
+- [Updated four native screenshot attachments](https://github.com/yuxino/Mimi/pull/340#issuecomment-6787256313)
+  show inset ON/OFF, long caption and waiting. All four rendered at 720×1600;
+  the older outside-control comment is marked superseded. Captures use the same
+  production APK and a labeled synthetic playback backdrop, not real playback.
+  No images in Git. Same-UID emulator evidence does not establish physical
+  OEM/cross-UID touch behavior; that and authorized real sessions remain open.
+  No desktop acceptance, provider/audio session, release or merge is claimed.
+- Restored Owner and verified only user 0 remained; stopped the task emulator.
+  Removed the task-only JDK/archive after verifying no task Java executable was
+  running. Preserved current APKs, distinct canonical caches, review evidence,
+  Owner data and unrelated dirty work; no extra checkout/cache was created.

@@ -281,10 +281,11 @@ subtitle views. Verify actual native text size after slider input; a changed
 saved integer or preview alone does not establish a live update. Preserve
 subtitle history and the reader's position for ordinary appearance changes.
 An empty live-caption flag is insufficient to show a padded overlay: require a
-nonblank displayed caption or actionable status, while retaining expanded
-controls and the immersive exit during silence. Check all nine interface
-languages at normal and large font scales; fixed-height labels and a nominal
-two-row toolbar can still clip long translations. Language resources, picker
+nonblank displayed caption or actionable status, while keeping the independent
+normal adjustment switch and legacy immersive exit reachable during silence.
+Check all nine interface languages at normal and large font scales, including
+native switch accessibility and caption glyph bounds; do not add toolbar/footer
+chrome to make room for explanatory labels. Language resources, picker
 and system locale configuration must match the owning desktop language catalog.
 
 Android help icons show explanatory copy on native pointer hover/long press and
@@ -307,10 +308,12 @@ display/window/service resource context matches an AppCompat activity. Following
 System resolves current system locales instead of trusting a stale resource
 context. Native language checks include a deliberately different resource locale
 and the actual waiting overlay after immersive restoration and returning from
-settings. New non-immersive sessions open the interactive panel so their state
-and actions are visible. Respect the user's height and bound its reading viewport
-independently of history length. Large font controls and caption reading space
-must both remain visible.
+settings. Non-immersive sessions use the simple normal reading panel, with its
+independent top-right adjustment switch reachable. ON enables move/resize; OFF
+makes the same panel touch-through without changing its bounds or appearance.
+Respect the user's height and bound its reading viewport independently of history
+length. Large fonts must not make the recovery switch or caption reading space
+unreachable.
 
 Android follows live captions with measured visual-line budgets for the selected
 languages. Neither original nor translation may occupy the other lane's last
@@ -374,13 +377,36 @@ content, display mode and style belong to the same section; do not split them
 into duplicate primary tabs or add another preview. Keep common controls
 visible without an accordion. Keep the single preview pinned while settings
 scroll, above the controls in portrait and alongside them on wide screens. The
-floating appearance dialog edits the actual caption window and has no duplicate
-preview. Keep its complete toolbar, provider footer, action appearances and live
-content/status visible, but disable preview clicks, scrolling, dragging, resizing
-and accessibility actions without dimming it. Fit the complete frame above the
-editor, scaling uniformly when necessary; restore interactions and ordinary
-geometry on dismissal without changing saved bounds. Inspect both this entry
-and the primary Captions preview when checking frame parity.
+appearance editor has no duplicate preview. Reuse the actual native caption
+frame and live content/status, without reintroducing the removed normal-panel
+route, settings entry, provider badges or Immersive footer. Preview clicks,
+scrolling, dragging, resizing and accessibility actions are decorative and must
+not start capture or change modes; do not dim the frame. Fit it into its preview
+stage, scaling uniformly when necessary without changing saved bounds. Appearance,
+language, service and Start/Stop controls remain in the app. Inspect each preview
+entry when checking frame parity.
+The normal frame uses one surface, without a separate toolbar background,
+divider or footer row. Inset the full 48dp switch target at top0/right4dp and
+align the centered grip with it. Reserve 48dp above the reading viewport, 8dp
+below and 16dp horizontally; do not squeeze a whole-text side column or let the
+inset target steal text gestures. These insets stay unchanged across ON/OFF.
+Paint the inert switch inside the caption frame for native/preview parity;
+keep an exactly aligned non-painting input/accessibility window so OFF remains
+recoverable. Check odd-pixel center/right-gravity conversion, not only even
+screen widths. Do not double-paint the control or change window alpha on toggle.
+New unset height/offset defaults are 17% / 48dp; preserve explicit saved geometry.
+Judge total occupied screen area, including any detached controls, rather than
+reducing the panel height alone.
+At the default font/width, retain room for a source row and two translation rows;
+a minimal one-row tail can strand a single trailing character on long captions. Clamp
+actual height for one complete fallback-font row per active language and at least
+64dp of reading viewport, without overwriting the chosen percentage. Extra
+translated lines use the available viewport rather than enlarging every short caption.
+When chrome changes, retain compact-size complete-glyph cases and compare strict
+multi-line fixtures at equivalent reading-viewport budgets; do not silently enlarge
+saved geometry or relax the multi-line assertion to make an old fixture pass.
+Review real native ON/OFF frames against the same representative playback
+backdrop; a white touch-probe screenshot and passing tests are not visual approval.
 Direct color swatches
 wrap before their touch targets shrink below 48dp. Retain section scroll positions and
 selection through recreation. Keep status and Start/Stop visible in every
@@ -388,8 +414,10 @@ section. Use one footer row only when actual localized labels fit; stack otherwi
 Distinguish a new activity from explicit CLEAR_TOP/SINGLE_TOP navigation to an
 existing instance: `startActivitySync` waits for a new instance and hangs on reuse.
 
-Android immersive mode has a Captions entry/restore action backed by the same
-preference as the floating panel. Preview and overlay use `CaptionTypography`
+Android's existing immersive mode retains its Captions entry/restore action and
+stored preference, independent of the normal-panel adjustment switch. Do not
+repurpose that preference or make adjustment change compact immersive behavior.
+Preview and overlay use `CaptionTypography`
 for lighter text, chosen-size translation and a tight contrast shadow. Apply the
 chosen left/center/right alignment to both modes and the listening placeholder.
 Keep source text secondary and preserve the user's color/size preferences.
@@ -418,24 +446,33 @@ reading viewport as well as the panel's outer bounds at large fonts.
 Android appearance previews reuse the actual normal/immersive caption Views.
 Measure at the real safe window width and height, then scale the complete frame
 uniformly into a stable pinned stage; never independently restyle or rewrap a
-sample card. Include the actual toolbar, provider row, typography, alignment,
-waiting/error feedback and opted-in bounded history. Decorative preview actions
+sample card. Include the actual typography, alignment, waiting/error feedback
+and opted-in bounded history; the normal frame remains free of route, settings,
+provider and Immersive-footer chrome. Decorative preview actions
 must not navigate or start capture. Width, height, font and streaming changes
 must not move the sliders under the user's finger. Verify native frame geometry
 and normalized pixels, both slider endpoints and the control's screen position.
 The desktop/Android subtitle background is pure black, with default background
-opacity 80% and Android whole-window opacity 100%. Preserve explicitly saved
-values; background opacity must reach solid black at 100%. Font-only changes
-must not alter either alpha. Restore all fixture preferences after acceptance.
+opacity 80% and Android saved frame opacity 100%. Preserve explicitly saved
+values; background opacity must reach solid black within the frame at 100%.
+Android's application-overlay window alpha stays at or below the untrusted-overlay
+touch-through limit (0.8) in both normal interaction states; applying that cap only
+when OFF visibly dims captions. This system cap does not change saved appearance
+values. Font-only changes must not alter either alpha. Restore all fixture
+preferences after acceptance.
 
-Live native checks inspect external overlay labels only after their window is
-visible. Mimi intentionally hides the overlay over its own activities; checking
-the hidden model label before returning to the playback app is not acceptance.
+Live native checks inspect external captions and the adjustment switch only
+after their windows are visible. Mimi intentionally hides the overlay over its
+own activities; checking a hidden View before returning to the playback app is
+not acceptance. Model/service details stay in the app, not the normal panel.
 
 Android pinned-preview acceptance checks the rendered source/translation rows,
-not only the preview container. Inspect the floating dialog separately: the real
-caption window must stay visible above it, with live typography/color changes
-and reachable controls. Normalize
+not only the preview container. After editing in the app, return to an external
+activity and verify live typography/color changes on the real caption frame,
+without restoring removed chrome. Outside decorative previews, verify the
+independently touchable recovery switch in both interaction states. Compare
+native frame geometry in caption-local coordinates: a scaled preview's window
+origin and unscaled child widths are different coordinate spaces. Normalize
 `getGlobalVisibleRect` root coordinates with the root window origin before
 comparing them with `getLocationOnScreen` glyph positions.
 
@@ -477,28 +514,30 @@ consume the entire caption area at large fonts. Native checks compare selected
 height endpoints, actual caption space and editor separation; correct saved
 percentages alone do not prove that the window changed size.
 
-Android normal captions use one panel with a saved width and height; do not add
-expand/collapse states. Drag the top handle to move and the corner to resize both
-dimensions. Keep complete action targets and at least 64dp of reading space,
-clamping only displayed bounds at large fonts or small screens. History must
-not enlarge the user's chosen frame. Waiting copy uses the chosen font, color
-and alignment so live edits are visible even before speech.
+Android normal captions use one simple panel with a saved width and height;
+do not add expand/collapse states or a route/settings/provider toolbar or an
+Immersive footer action. Keep language, service/model, appearance and Start/Stop
+controls in the app rather than removing those capabilities. The independent
+small top-right switch has the localized accessible name **Adjust captions**
+(简体中文：**调整字幕**); Android's checked state supplies ON/OFF, so do not add a
+second Watch label or state text to the panel. ON enables dragging the top handle
+and resizing both dimensions from the corner. OFF makes the caption window
+click-through while the switch remains separately touchable for recovery.
 
-Center Android's drag mark, language route and provider group against the whole
-caption window, not the remaining space beside an asymmetric action. Keep
-immersion left and resizing right; use a separate centered provider row when
-names cannot fit between symmetric action margins. Native geometry checks
-compare window-relative centers and action separation after resizing and locale
-changes, including both single and independent provider badges.
-Measure wrapped footer labels at the exact width assigned by their parent.
-An AT_MOST text measurement followed by a narrower exact width can add a line
-without reserving its height. Verify locale changes at font scale 2, including
-the complete action's rendered line height, rather than only its touch target.
-When space cannot fit both the immersion label and its redundant icon, omit
-the icon so the readable localized action takes precedence over decoration.
-Keep mobile floating service identities compact: show brands and marks, with
-model details available in Services. A tap opens that section in the existing
-main activity. Initialize background/opacity before adding the native window
-using the same paint path as preference updates; a font-only change must not
-apply a previously hidden background default. Native checks use nondefault
+This switch changes interaction only, not the panel's bounds, background/window
+opacity, typography, alignment, captions or bounded history. It must not write the
+legacy immersive setting, adopt compact immersive line limits, or move to the
+immersive anchor. Keep that separate setting and its existing exit behavior.
+Retain at least 64dp of reading space, clamping only displayed bounds at large
+fonts or small screens. History must not enlarge the chosen frame. Waiting copy
+uses the chosen font, color and alignment so live edits are visible before speech.
+
+Native checks compare actual compositor bounds and paint before/after both switch
+directions, test touch delivery to the underlying app when OFF, and move/resize
+when ON. Verify the independent switch remains reachable at narrow widths, large
+fonts, after rotation and during silent/listening states. Its checked state must
+match interaction, without changing the stored immersive preference. Host geometry
+and accessibility labels alone do not establish native touch dispatch. Initialize
+background/opacity before adding the window using the same paint path as updates;
+a font-only change must not apply a hidden background default. Use nondefault
 saved paint values and compare compositor pixels across font and opacity edits.

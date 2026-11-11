@@ -12,7 +12,7 @@ follow a class, or translate a conversation with the original text and translati
 1. **Install Mimi.** [Download the APK](https://github.com/yuxino/mimi/releases/latest) for Android 10 or later.
 2. **Add a service.** Open **Services → Add**, choose a service, enter its credentials, and save. The first configuration is selected automatically. The [setup guide](../docs/provider-setup.md#choose) explains which service to choose and where to get a key.
 3. **Start captions.** In **Captions**, choose the audio input and languages, then start. Allow display over other apps and audio recording. If you selected system audio or both inputs, also accept Android's playback-capture prompt.
-4. **Play something.** Switch to a video, stream, or other app and play speech. Subtitles appear over it. Immersive Mode leaves just the text and lets touches pass through.
+4. **Play something.** Switch to a video, stream, or other app and play speech. Subtitles appear over it. Turn the small top-right **Adjust captions** switch ON to move/resize, or OFF to pass touches to the app below without changing the panel's size, position or style.
 
 Mimi is free. Cloud services may charge for API usage: recognition sends your selected
 audio to the service, and remote text translation sends the recognized text.
@@ -61,29 +61,33 @@ code does not prove availability on every device; see [verification status](#ver
   endpoints and language capabilities follow the shared factory. Stored secrets are not filled back into the editor;
   leaving a secret field empty preserves its saved value. Changes are written only with Save; backing out of a new editor adds nothing. Existing service settings migrate automatically.
 - **Subtitle overlay** — one `TYPE_APPLICATION_OVERLAY` reading panel with
-  current source and translation. Drag its top handle to move it and its corner
-  to resize width and height. Confirmed lines appear only when bounded history
-  is enabled; history scrolls inside the chosen height. Main and floating controls
-  offer original/translation/bilingual display, left/center/right alignment,
-  width (55–100 %), height (20–70 % of the safe viewport), background alpha
-  (0–90 %), text color presets, font size and whole-window opacity.
-  Quick settings changes update the actual captions visibly above the editor.
-  The centered provider entry shows service brands; tap it to open Services and
-  inspect model details. Narrow panels place it on a separate row above immersion
-  and resize actions. Saved background and opacity apply from the first frame;
-  changing font size preserves them.
-  Before speech and
-  during a silent gap, an active session shows the same localized listening
-  message as desktop, using the selected typography and color. An optional
-  immersive mode shows lighter
-  typography and a compact contrast shadow, and passes touches
-  through to the app below. A small exit control follows the subtitle position;
-  The Captions page also enters/exits immersive mode without stopping the session.
-  Returning restores the normal panel's saved size and position.
+  current source and translation, without a language route, settings button,
+  provider badges or an Immersive footer action. The grip and compact switch
+  sit inside the top edge on the same surface, with a 48dp touch region clear
+  of caption text; there is no separate toolbar background or footer row.
+  The switch remains independently touchable even when the panel passes touches
+  through. Unset placement starts 48dp above
+  the bottom safe edge; explicit saved size and position are preserved.
+  **Adjust captions ON** enables moving from the top handle and resizing width
+  and height from the corner; **OFF** passes touches to the app below. Switching
+  changes interaction only: the same panel bounds, background, opacity, typography,
+  alignment and caption/history content remain. The switch's localized accessible
+  label is **Adjust captions**; Android exposes its checked ON/OFF state.
+  Confirmed lines appear only when bounded history is enabled; history stays
+  inside the chosen height. Display mode, alignment, width (55–100 %), height
+  (10–70 % of the safe viewport, 17 % by default with a readable-line minimum), background, text color, font and whole-window
+  opacity remain available in the app's Captions appearance controls; language,
+  service and Start/Stop controls also remain in the app. Saved background and
+  opacity apply from the first frame; changing font size preserves them.
+  Before speech and during a silent gap, an active session shows the same localized
+  listening message as desktop, using the selected typography and color.
+  The existing optional immersive mode remains a separate Captions preference,
+  not the adjustment switch: it retains lighter typography, a compact contrast
+  shadow, touch-through, its own exit control and compact line limits. Exiting
+  restores the normal panel's saved size and position.
   Floating captions temporarily hide while Mimi's own pages are open; Captions
   shows the current caption and capture continues. Leaving Mimi restores the
-  floating window. Immersive captions pass touches through; the normal reading
-  panel receives touches within its covered area.
+  floating window.
 - **Subtitle previews** — the shared factory selects complete paired previews
   for Audio3 + text translation and sentence-identified realtime previews for
   integrated live clients. New sentence identities never borrow old final lines;
@@ -200,15 +204,17 @@ Credentials require explicit Save; changing appearance never saves credentials. 
 The main page groups Captions, Services and More. Captions offers live
 original/translation/bilingual display, alignment, width, height, font, color and opacity controls.
 Its preview stays visible while styles scroll, above the controls in portrait
-and alongside them on wide screens. The floating style dialog has controls only;
-the existing caption window stays visible above it and responds to edits.
+and alongside them on wide screens. Appearance editing remains in the app;
+there is no settings or service entry on the normal floating panel.
 Direct color choices wrap to retain 48dp touch targets. The main preview
-keeps one latest line per language in a stable viewport, so adjusting width or
-size does not move the controls under your finger. Full current captions
-remain available in the normal reading panel.
-Sessions open that panel unless immersive mode is enabled. Its reading viewport
-is bounded by the selected height, and history does not enlarge it. The panel
-has drag and two-dimensional resize handles, quick styles and a labeled immersive action.
+uses the native caption frame in a stable viewport, so adjusting width or size
+does not move the controls under your finger. Full current captions remain
+available in the normal reading panel.
+Sessions open that panel unless the independent legacy immersive preference is
+enabled. Its reading viewport is bounded by the selected height, and history
+does not enlarge it. The top-right adjustment switch enables drag and
+two-dimensional resize when ON; OFF keeps the identical panel touch-through,
+with the switch independently reachable. It never changes the immersive setting.
 Display choices do not change recognition or translation requests. A running
 session keeps service editing locked with an explicit Stop action.
 
@@ -248,12 +254,15 @@ keyboard. Changed non-secret preferences are restored in a finally block; provid
 drafts are discarded without Save. No provider or audio capture session starts. Screenshots contain sample subtitles and empty key
 fields and are written to the app's external `files/ui-preview` directory. Pass
 `-e overlay_interaction true` on a blank idle device for actual two-dimensional
-resize/drag, live quick settings without a duplicate preview, all alignments,
-stable history height, both provider badge cases and repeated immersive restoration.
-Quick settings keep the full live caption frame, including its route, provider
-badges, controls and current status/content. Those caption actions and gestures
-are decorative during editing; closing restores the same window. Limited space
-scales the complete frame rather than hiding its toolbar/footer.
+resize/drag, all alignments, stable history height and repeated immersive
+restoration. Include both adjustment-switch directions: ON permits move/resize,
+OFF sends touches to the underlying app, and the independent top-right switch
+remains reachable. Compare bounds, paint, typography and content across toggles;
+verify that the legacy immersive preference is unchanged. The normal native
+caption frame has no route, settings entry, provider badges or Immersive footer.
+Appearance previews retain that simple frame and current status/content; preview
+actions and gestures remain decorative. Limited space scales the complete frame
+rather than restoring removed chrome.
 The `interaction-*.png` screenshots show the actual panel and edits.
 On a blank, idle API 35 device, `-e preview_parity true` compares both preview
 entries with the native frame across all nine languages plus System, waiting,
@@ -318,7 +327,7 @@ prove a live DeepL, DeepLX or ChatMock account or physical Android device until 
 app/src/main/java/app/yuxino/mimi/android/
   MainActivity.kt            start flow, overlay-permission gate, projection consent
   SettingsActivity.kt        service list and appearance settings
-  AppearanceControls.kt     shared native Settings/floating appearance controls
+  AppearanceControls.kt     native caption-page appearance controls
   ServiceSettingsActivity.kt provider-specific write-only credential editor
   ServiceSettingsUi.kt       compact service picker
   SettingsStore.kt           EncryptedSharedPreferences-backed settings

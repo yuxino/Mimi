@@ -54,6 +54,18 @@ public final class OverlayPlacement {
         return Math.max(1, total - Math.max(0, startInset) - Math.max(0, endInset));
     }
 
+    /** Bottom/right-gravity target aligned with the inset marker, including odd pixel widths. */
+    public static int adjustmentX(int availableWidth, int panelWidth, int panelX, int controlWidth, int padding) {
+        int panelLeft = (availableWidth - panelWidth) / 2 + panelX;
+        int desired = availableWidth - panelLeft - panelWidth + padding;
+        return Math.max(0, Math.min(desired, Math.max(0, availableWidth - controlWidth)));
+    }
+
+    /** Fully inset at the panel's top edge; bottom-gravity coordinates never need an outside fallback. */
+    public static int adjustmentY(int availableHeight, int panelY, int panelHeight, int controlHeight, int topInset) {
+        return clampY(panelY + panelHeight - controlHeight - Math.max(0, topInset), availableHeight, controlHeight);
+    }
+
     /** Keep the small restore control beside captions, below when space permits. */
     public static int exitY(int captionY, int captionHeight, int availableHeight, int controlHeight, int gap) {
         return exitY(captionY, captionHeight, availableHeight, controlHeight, gap, 0);

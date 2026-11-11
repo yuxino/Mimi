@@ -50,5 +50,5 @@ internal fun captionProviderMarks(context: Context): List<Int> {
 
 /** Native frame sizing shared by the preview and WindowManager adapter. */
 internal fun captionPanelHeight(availableHeight: Int, percent: Int, chromeHeight: Int, minimumReadingHeight: Int, limit: Int = availableHeight): Int {
-    return maxOf(chromeHeight + minimumReadingHeight, availableHeight * percent.coerceIn(20, 70) / 100).coerceAtMost(limit)
+    return maxOf(chromeHeight + minimumReadingHeight, availableHeight * percent.coerceIn(10, 70) / 100).coerceAtMost(limit)
 }

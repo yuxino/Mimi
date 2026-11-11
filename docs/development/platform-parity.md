@@ -219,7 +219,7 @@ Android production route.
 | Text service display names | Optional names per profile and independent route; shown in settings and subtitle service label | Existing provider labels |
 | Recognition selection | Eight built-in services plus custom DashScope/OpenAI ASR and Apple Speech on supported Apple silicon Macs running macOS 26+; optional per-profile user declaration narrows custom recognition languages | Eight built-in adapters; independent text pairs with Alibaba, xAI, OpenAI, Gemini and Azure ASR; no custom speech profile/declaration editor |
 | Profile activation languages | Optional saved source/target pair per configuration; defaults to keeping current languages. Temporary session changes do not rewrite the pair | No saved profile-language pair editor |
-| Active configuration/model changes | Saved profiles can switch through reconnect; editing a model requires Stop | Service/model editors require Stop and reject stale Save actions; Captions and expanded controls show the session's actual shared-factory model list |
+| Active configuration/model changes | Saved profiles can switch through reconnect; editing a model requires Stop | Service/model editors require Stop and reject stale Save actions; service/model details remain in the app, not on the simple floating caption panel |
 | Runtime recovery feedback | Shared connection/retry/timeout state in native UI | Same shared state, localized in floating subtitles; capture-no-audio guidance takes priority |
 | Apple local recognition | One language selector with runtime resource status; explicit Download and use prepares and applies a missing language, while ready languages can be applied directly; no speech API key; independent text translation keeps its own service and credentials | Not available; no Apple API or asset-management dependency |
 | Apple local text translation | Apple silicon with macOS 26+: runtime language-pair availability, explicit in-app model preparation, installed-only translation without API keys or a text proxy; pairs with independent recognition | Not available; Apple Translation is a native macOS adapter, not a shared HTTP provider |
@@ -228,12 +228,12 @@ Android production route.
 | Translation scheduling | Speculative drafts plus serial prioritized finals and provider recovery | Same Rust speculative preview, final priority, queues, retry/cooldown and MT budget continuity |
 | Opening MT previews | Shared opening length eligibility for the stability timer; a non-resetting maximum still permits short drafts after at least two seconds. Existing preview corrections and source finals retain their paths | Same Rust opening eligibility and wait bound; no native reading-speed toggle or separate MT scheduler |
 | Independent text HTTP bounds | HQ source fields up to 65,536 UTF-8 bytes; response bodies up to 1 MiB; decoded text uses native adapter bounds | Same shared clients and UTF-8/response bounds |
-| Subtitle display and appearance | Original/translation/bilingual presentation, alignment, source colors and background controls | Captions combines one pinned live preview, display mode, immersion and directly visible styles. Preview and scrollable controls stay together, above/below in portrait and side by side on wide screens. Native page/floating controls share left/center/right alignment, direct color swatches, width (55–100%), height (20–70%), font, caption color, background and window opacity. Floating quick settings update the actual caption window above the editor. Recognition without translation always shows original text. These choices do not change provider requests |
+| Subtitle display and appearance | Original/translation/bilingual presentation, alignment, source colors and background controls | Captions combines one pinned live preview, display mode, the independent legacy immersive setting and directly visible styles. Preview and scrollable controls stay together, above/below in portrait and side by side on wide screens. In-app appearance controls retain left/center/right alignment, direct color swatches, width (55–100%), height (10–70%, default 17% subject to a readable-line minimum), font, caption color, background and window opacity. The normal floating panel has no route, settings entry, provider badges or Immersive footer action. Recognition without translation always shows original text. These choices do not change provider requests |
 | Subtitle background | Adjustable card opacity (80% default); history does not fade with age | Pure black background matching desktop (80% default, 0–100%) and separate window opacity (100% default); explicit saved values survive updates. Immersion disables both controls while retaining their saved values |
 | Subtitle font family | Search installed computer fonts or use System default; one saved family applies to original/translation in standard and immersive subtitles, with glyph fallback | Native subtitle size controls; no installed-family picker |
 | Subtitle font size | 14–48 px, default 16; bilingual reference uses a stable 90% size, and the minimum window height grows with the selected font | Native 12–24 sp range; desktop sizing does not change Android typography |
-| Floating subtitle controls | Shared settings/control-panel time preference; pause/resume is reachable in Immersive Mode. Keyboard-accessible collapse and native window drag/resize | One normal panel moves from its top handle and resizes width/height from its corner. Normal and immersive positions remain independently saved. Immersion uses lighter text, chosen alignment and a 24dp exit inside a 48dp target. Exit restores normal size/position. Floating views hide above Mimi pages; Captions previews current captions and leaving restores the same views. Services exposes the active service restriction with Stop, while styles remain editable. The main footer keeps Stop visible in every section |
-| Reading long current subtitles | Bounded live tail with explicit history reading and return-to-live behavior | Normal panel follows complete glyph lines from the bottom reading edge, so a growing reference does not push an unchanged translation downward. It scrolls the complete bounded current pair and optional history inside the selected height; immersive captions keep two source and three translation lines. Captions reuses the actual normal/immersive native frame, including chrome and bounded history, measured at real window dimensions and uniformly scaled into a stable viewport. Before speech or during silence, an active overlay shows desktop's listening message with the selected typography/color/alignment |
+| Floating subtitle controls | Shared settings/control-panel time preference; pause/resume is reachable in Immersive Mode. Keyboard-accessible collapse and native window drag/resize | One simple normal panel has a small inset top-right switch, accessible as Adjust captions, without a separate background or divider. Checked/ON enables moving from its top handle and resizing width/height from its corner; OFF makes the caption window touch-through without changing its bounds, paint, typography or caption/history content. The switch remains separately touchable for recovery; Android exposes its checked state, without a second Watch label. This does not change the legacy immersive preference. Normal and immersive positions remain independently saved. Legacy immersion retains lighter text, chosen alignment, compact line limits and a 24dp exit inside a 48dp target; exit restores normal size/position. Floating views hide above Mimi pages; Captions previews current captions and leaving restores the same views. App language, service, appearance and Start/Stop controls remain available; the main footer keeps Stop visible in every section |
+| Reading long current subtitles | Bounded live tail with explicit history reading and return-to-live behavior | Normal panel follows complete glyph lines from the bottom reading edge, so a growing reference does not push an unchanged translation downward. It scrolls the complete bounded current pair and optional history inside the selected height; immersive captions keep two source and three translation lines. Captions reuses the actual normal/immersive native frame and bounded history, measured at real window dimensions and uniformly scaled into a stable viewport; normal previews do not reintroduce removed toolbar/footer chrome. Before speech or during silence, an active overlay shows desktop's listening message with the selected typography/color/alignment |
 | Audio capture | System audio by default; explicitly selected microphone or both sources with independent lanes. OS-specific desktop capture; selected-app audio on macOS and Windows build 20348+, Linux retains output-monitor capture | System playback by default, explicit microphone or both independent lanes with source labels and matching foreground-service types. Only apps that allow playback sharing; no selected-app picker. Android still requires RECORD_AUDIO for playback capture |
 | Caption reading metadata | Optional sentence dividers and local confirmation time, both off by default | Same optional appearance choices; time comes from the shared final, not Kotlin arrival time; dividers stay hidden in immersion |
 | Saved configurations | Multiple named profiles, including the same provider | Multiple named profiles with independent encrypted credentials and translators; Add, Settings, Duplicate and Delete, with tap-to-select. Legacy provider settings migrate once; saving an edit does not switch the active profile |
@@ -303,8 +303,21 @@ provider's capabilities.
 
 ## Android immersive placement
 
-Native mode changes update the existing window and caption views. The saved
-immersive bottom offset is independent of the normal-panel frame;
+The normal-panel adjustment switch is an interaction control, not an immersive
+mode selector. ON allows move/resize; OFF makes the same caption panel
+click-through. Keep its bounds, background/window opacity, typography, alignment
+and caption/history projection unchanged across this toggle. The top-right
+switch is visually inset, with its full 48dp target clear of the reading viewport.
+CaptionPanelView paints its inert marker in native and preview; an aligned,
+non-painting independent MaterialSwitch window owns touch/accessibility so it
+remains reachable when the caption window is not touchable, without compositing
+the control twice. Its localized accessible name is Adjust captions; use
+Android's checked state for ON/OFF.
+Do not repurpose the stored immersive setting or add a separate Watch label.
+
+Legacy immersive mode remains independent, with its existing compact line limits,
+anchor and restore control. Native mode changes update the existing window and
+caption views. The saved immersive bottom offset is independent of the normal-panel frame;
 exiting immersive returns to its saved normal size and placement. Only
 explicit completed caption drag/resize writes new bounds. Rotation, content/font
 reflow and inset constraints clamp the visible offset without replacing that
@@ -312,11 +325,11 @@ preference; a larger viewport restores it. Android 30+ fits system-bar/cutout
 insets once, ignoring bar visibility, and sizes against the same window metrics.
 API 29 uses its native visible display frame and still needs device acceptance.
 
-Captions and the floating controls use one preference and the existing
-first-use explanation. The small touchable restore window stays adjacent to
-caption text (below when there is space, otherwise above); the caption window
-remains touch-through. This is Android presentation adaptation, not another
-subtitle/translation implementation.
+The legacy Captions immersive setting retains its existing first-use explanation,
+independently of normal-panel adjustment. Its small touchable restore window stays
+adjacent to caption text (below when there is space, otherwise above); the immersive
+caption window remains touch-through. This is Android presentation adaptation,
+not another subtitle/translation implementation.
 
 `python3 scripts/check-android-overlay-placement.py` compiles the actual native
 placement class and runs the same cases used by Android JUnit without a SDK.
