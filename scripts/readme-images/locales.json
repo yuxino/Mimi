@@ -1,0 +1,83 @@
+{
+  "en": {
+    "uiLanguage": "en",
+    "sourceLanguage": "ja",
+    "targetLanguage": "en",
+    "readmes": ["README_EN.md"],
+    "alt": "Mimi — Japanese dialogue with English subtitles",
+    "source": ["あのチケット、まだ持ってたの？", "もちろん。一緒に行こうって言ったでしょ。", "忘れちゃったかと思ってた。"],
+    "translation": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."]
+  },
+  "zh-CN": {
+    "uiLanguage": "zh",
+    "sourceLanguage": "en",
+    "targetLanguage": "zh",
+    "readmes": ["README.md", "docs/readme/zh-CN.md"],
+    "alt": "Mimi — 外语对白，中文字幕",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["这张票你还留着？", "当然。你说过，我们要一起去。", "我还以为你忘了。"]
+  },
+  "zh-TW": {
+    "uiLanguage": "zh-TW",
+    "sourceLanguage": "en",
+    "targetLanguage": "zh_tw",
+    "readmes": ["docs/readme/zh-TW.md"],
+    "alt": "Mimi — 外語對白，中文字幕",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["這張票你還留著？", "當然。你說過，我們要一起去。", "我還以為你忘了。"]
+  },
+  "ja": {
+    "uiLanguage": "ja",
+    "sourceLanguage": "en",
+    "targetLanguage": "ja",
+    "readmes": ["docs/readme/ja.md"],
+    "alt": "Mimi — 英語の会話に日本語字幕を表示",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["あのチケット、まだ持ってたの？", "もちろん。一緒に行こうって言ったでしょ。", "忘れちゃったかと思ってた。"]
+  },
+  "th": {
+    "uiLanguage": "th",
+    "sourceLanguage": "en",
+    "targetLanguage": "th",
+    "readmes": ["docs/readme/th.md"],
+    "alt": "Mimi — บทสนทนาภาษาอังกฤษพร้อมคำบรรยายภาษาไทย",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["ยังเก็บตั๋วใบนั้นไว้อีกเหรอ?", "แน่นอนสิ เธอบอกว่าเราจะไปด้วยกันนี่นา", "นึกว่าเธอลืมไปแล้วซะอีก"]
+  },
+  "ko": {
+    "uiLanguage": "ko",
+    "sourceLanguage": "en",
+    "targetLanguage": "ko",
+    "readmes": ["docs/readme/ko.md"],
+    "alt": "Mimi — 영어 대화에 한국어 자막 표시",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["그 표 아직 갖고 있었어?", "그럼. 같이 가자고 했잖아.", "난 네가 잊은 줄 알았어."]
+  },
+  "fr": {
+    "uiLanguage": "fr",
+    "sourceLanguage": "en",
+    "targetLanguage": "fr",
+    "readmes": ["docs/readme/fr.md"],
+    "alt": "Mimi — dialogue anglais avec sous-titres français",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["Tu as gardé le billet ?", "Bien sûr. Tu avais dit qu’on irait ensemble.", "Je pensais que tu avais oublié."]
+  },
+  "de": {
+    "uiLanguage": "de",
+    "sourceLanguage": "en",
+    "targetLanguage": "de",
+    "readmes": ["docs/readme/de.md"],
+    "alt": "Mimi — englische Dialoge mit deutschen Untertiteln",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["Du hast die Karte aufgehoben?", "Klar. Du hast gesagt, wir gehen zusammen.", "Ich dachte, du hättest es vergessen."]
+  },
+  "ru": {
+    "uiLanguage": "ru",
+    "sourceLanguage": "en",
+    "targetLanguage": "ru",
+    "readmes": ["docs/readme/ru.md"],
+    "alt": "Mimi — английские диалоги с русскими субтитрами",
+    "source": ["You kept the ticket?", "Of course. You said we’d go together.", "I thought you’d forgotten."],
+    "translation": ["Ты сохранил билет?", "Конечно. Ты же сказала, что мы пойдём вместе.", "Я думала, ты забыл."]
+  }
+}

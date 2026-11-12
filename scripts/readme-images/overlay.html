@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Mimi localized overlay fixture</title></head>
+<body>
+<main id="root"></main>
+<script type="module">
+// Static public-documentation fixture. Import real components after replacing
+// the native boundary; never initialize the app, capture audio or load keys.
+window.readmeReady = (async () => {
+  const allowed = new Set([
+    "plugin:event|listen", "plugin:event|unlisten", "plugin:event|emit",
+    "overlay_control_set_island_width", "overlay_control_set_popup_bounds",
+  ]);
+  const commands = [];
+  window.__TAURI_INTERNALS__ = {
+    metadata: { currentWindow: { label: "overlay" }, currentWebview: { label: "overlay" } },
+    transformCallback: () => 0,
+    unregisterCallback: () => {},
+    invoke: async command => {
+      commands.push(command);
+      if (command === "overlay_control_state") return "island";
+      if (allowed.has(command)) return null;
+      throw new Error(`Documentation fixture blocked native command: ${command}`);
+    },
+  };
+  window.__MIMI_EMBEDDED_OVERLAY_CONTROL__ = true;
+  const { default: React } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  const { flushSync } = await import("react-dom");
+  const { OverlayWindow } = await import("/src/windows/overlay/OverlayWindow.tsx");
+  const { useStore } = await import("/src/lib/store.ts");
+  const { setStoredUiLanguage, UI_LANGUAGES } = await import("/src/lib/i18n.ts");
+  const { SOURCE_LANGUAGE_CODES, TARGET_LANGUAGE_CODES } = await import("/src/lib/types.ts");
+  const { default: locales } = await import("./locales.json");
+  await import("/src/index.css");
+  const locale = new URLSearchParams(location.search).get("locale");
+  const entry = locales[locale];
+  if (!entry || !UI_LANGUAGES.includes(entry.uiLanguage)
+      || !SOURCE_LANGUAGE_CODES.includes(entry.sourceLanguage)
+      || !TARGET_LANGUAGE_CODES.includes(entry.targetLanguage)) {
+    throw new Error(`Unsupported README locale: ${locale}`);
+  }
+  document.documentElement.lang = entry.uiLanguage === "zh" ? "zh-CN" : entry.uiLanguage;
+  setStoredUiLanguage(entry.uiLanguage);
+  const initial = useStore.getState();
+  useStore.setState({
+    settings: { ...initial.settings,
+      uiLanguage: entry.uiLanguage, sourceLanguage: entry.sourceLanguage,
+      targetLanguage: entry.targetLanguage, audioInput: "system",
+      fontSize: 25, subtitleDisplayMode: "bilingual", subtitleBackgroundOpacity: 64,
+      subtitleAlignment: "center", subtitleColor: "white",
+      pulseAnimation: false, subtitleAnimation: false,
+      retainSessionHistory: false, recordSessionAudio: false,
+    },
+    session: { ...initial.session, status: { kind: "listening" }, isActive: true,
+      detectedLanguage: entry.sourceLanguage,
+      subtitles: { ...initial.session.subtitles,
+        history: entry.source.map((source, index) => ({
+          source, translation: entry.translation[index], audioSource: "system",
+          createdAt: 1_700_000_000_000 + index * 3000,
+        })),
+      },
+    },
+  });
+  flushSync(() => createRoot(document.getElementById("root")).render(React.createElement(OverlayWindow)));
+  await document.fonts.ready;
+  // Let actual layout measurements and the control-island state settle.
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const timeline = document.querySelector(".overlay-timeline");
+  if (!timeline || timeline.scrollHeight > timeline.clientHeight + 1) {
+    throw new Error(`Subtitles are clipped for ${locale}; adjust the shared stage or font size.`);
+  }
+  for (const text of [...entry.source, ...entry.translation]) {
+    if (!timeline.textContent.includes(text)) throw new Error(`Missing subtitle in ${locale}`);
+  }
+  const unexpected = commands.filter(command => command !== "overlay_control_state" && !allowed.has(command));
+  if (unexpected.length) throw new Error(`Unexpected native calls: ${unexpected.join(", ")}`);
+  return { locale, uiLanguage: entry.uiLanguage, sourceLanguage: entry.sourceLanguage,
+    targetLanguage: entry.targetLanguage, subtitlePairs: entry.source.length };
+})();
+</script>
+</body>
+</html>
