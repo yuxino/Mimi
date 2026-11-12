@@ -2,7 +2,7 @@
 
 ## 2026-11-12 — Android native reading inputs
 
-- Tested source: `668fba0d` plus frozen native patch SHA-256
+- Tested source: `9169310c`, based on `668fba0d`, with frozen native patch SHA-256
   `5926fe85b82c0fec927c447350d9034e8785caed4c740ee7dca59af1932ccd9f`.
   Final debug APK SHA-256:
   `27254b993c8bd25c85186bbd8424deee9e6cfc89a870a8705e1341542aaae227`.
@@ -29,6 +29,8 @@
   Full TalkBack navigation, physical devices, API 29 and other-ABI native UI
   remain unverified. Private logs, source/APK hashes and images are under
   `android-accessibility-preparation` in `2026-11-12-optimization-cycle-2`.
+- [PR #358](https://github.com/yuxino/Mimi/pull/358) retains the
+  [native screenshots and exact tested artifacts](https://github.com/yuxino/Mimi/pull/358#issuecomment-6826817879).
 
 ## 2026-11-12 — Android build toolchain
 
