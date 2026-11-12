@@ -61,6 +61,7 @@ val verifySharedProviderCopy = tasks.register<Exec>("verifySharedProviderCopy") 
         repositoryRoot.resolve("src/lib/i18n.ts"),
         repositoryRoot.resolve("src/windows/settings/AlibabaRealtimeSettings.tsx"))
     inputs.files(fileTree(repositoryRoot.resolve("src/lib/locales")) { include("*.ts") },
+        fileTree(repositoryRoot.resolve("src/lib/generated/providerCopy")) { include("*.ts") },
         fileTree("src/main/res") { include("values*/*.xml") })
     // Verify every build; generation is explicit and never silently fixes drift.
 }

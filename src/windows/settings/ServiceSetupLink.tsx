@@ -1,6 +1,6 @@
 import { Icon } from "../../components/Icon";
-import { effectiveUiLanguage } from "../../lib/i18n";
-import { SERVICE_SETUPS, PROVIDER_COPY } from "../../lib/generated/providerCopy";
+import { I18N } from "../../lib/i18n";
+import { SERVICE_SETUPS } from "../../lib/generated/providerCopy";
 import { openServiceSetupPage, type TextTranslationSetupPage } from "../../lib/ipc";
 import { useSettingsToast } from "./useSettingsToast";
 
@@ -11,7 +11,7 @@ export function ServiceSetupLink({ serviceId, page = "apiKey", disabled = false 
   disabled?: boolean;
 }) {
   const service = SERVICE_SETUPS.find(item => item.id === serviceId);
-  const copy = PROVIDER_COPY[effectiveUiLanguage()];
+  const copy = I18N.provider;
   const { runWithToast } = useSettingsToast();
   if (!service || !(page === "apiKey" ? service.apiKeyUrl : service.guideUrl)) return null;
   const label = page === "apiKey" ? copy.compatibleSetupGetKey : copy.compatibleSetupGuide;

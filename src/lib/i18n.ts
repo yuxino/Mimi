@@ -109,17 +109,18 @@ export type SettingsCopy = {
 };
 
 const COPY = {
-  "zh-TW": { overlay: ZH_TW.OVERLAY, tray: ZH_TW.TRAY, settings: ZH_TW.SETTINGS, modes: ZH_TW.MODES },
-  zh: { overlay: ZH.OVERLAY, tray: ZH.TRAY, settings: ZH.SETTINGS, modes: ZH.MODES },
-  en: { overlay: EN.OVERLAY, tray: EN.TRAY, settings: EN.SETTINGS, modes: EN.MODES },
-  ja: { overlay: JA.OVERLAY, tray: JA.TRAY, settings: JA.SETTINGS, modes: JA.MODES },
-  de: { overlay: DE.OVERLAY, tray: DE.TRAY, settings: DE.SETTINGS, modes: DE.MODES },
-  fr: { overlay: FR.OVERLAY, tray: FR.TRAY, settings: FR.SETTINGS, modes: FR.MODES },
-  ko: { overlay: KO.OVERLAY, tray: KO.TRAY, settings: KO.SETTINGS, modes: KO.MODES },
-  th: { overlay: TH.OVERLAY, tray: TH.TRAY, settings: TH.SETTINGS, modes: TH.MODES },
-  ru: { overlay: RU.OVERLAY, tray: RU.TRAY, settings: RU.SETTINGS, modes: RU.MODES },
+  "zh-TW": { overlay: ZH_TW.OVERLAY, tray: ZH_TW.TRAY, settings: ZH_TW.SETTINGS, modes: ZH_TW.MODES, provider: ZH_TW.PROVIDER_COPY },
+  zh: { overlay: ZH.OVERLAY, tray: ZH.TRAY, settings: ZH.SETTINGS, modes: ZH.MODES, provider: ZH.PROVIDER_COPY },
+  en: { overlay: EN.OVERLAY, tray: EN.TRAY, settings: EN.SETTINGS, modes: EN.MODES, provider: EN.PROVIDER_COPY },
+  ja: { overlay: JA.OVERLAY, tray: JA.TRAY, settings: JA.SETTINGS, modes: JA.MODES, provider: JA.PROVIDER_COPY },
+  de: { overlay: DE.OVERLAY, tray: DE.TRAY, settings: DE.SETTINGS, modes: DE.MODES, provider: DE.PROVIDER_COPY },
+  fr: { overlay: FR.OVERLAY, tray: FR.TRAY, settings: FR.SETTINGS, modes: FR.MODES, provider: FR.PROVIDER_COPY },
+  ko: { overlay: KO.OVERLAY, tray: KO.TRAY, settings: KO.SETTINGS, modes: KO.MODES, provider: KO.PROVIDER_COPY },
+  th: { overlay: TH.OVERLAY, tray: TH.TRAY, settings: TH.SETTINGS, modes: TH.MODES, provider: TH.PROVIDER_COPY },
+  ru: { overlay: RU.OVERLAY, tray: RU.TRAY, settings: RU.SETTINGS, modes: RU.MODES, provider: RU.PROVIDER_COPY },
 } satisfies Record<ResolvedUiLanguage, {
   overlay: typeof EN.OVERLAY; tray: typeof EN.TRAY; settings: SettingsCopy; modes: typeof EN.MODES;
+  provider: { [Key in keyof typeof EN.PROVIDER_COPY]: string };
 }>;
 
 export const I18N = {
@@ -127,6 +128,7 @@ export const I18N = {
   get tray() { return COPY[effectiveUiLanguage()].tray; },
   get settings() { return COPY[effectiveUiLanguage()].settings; },
   get modes() { return COPY[effectiveUiLanguage()].modes; },
+  get provider() { return COPY[effectiveUiLanguage()].provider; },
 } as const;
 
 export function providerDisplayName(provider: ServiceProvider): string {

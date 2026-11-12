@@ -10,12 +10,16 @@ python3 -B scripts/sync-provider-copy.py
 python3 -B scripts/sync-provider-copy.py --check
 ```
 
-生成结果是桌面的 `src/lib/generated/providerCopy.ts`、Android 各语言的
-`provider_strings.xml` 和 `GeneratedTextTranslationPresets.kt`。不要直接改生成文件，也不要把同一句复制回平台语言文件。
+桌面文案按语言生成到 `src/lib/generated/providerCopy/<locale>.ts`，
+`src/lib/generated/providerCopy.ts` 只保留共用预设和服务入口元数据。
+Android 生成各语言的 `provider_strings.xml`、`GeneratedTextTranslationPresets.kt`
+和 `GeneratedServiceSetups.kt`。不要直接改生成文件，也不要把同一句复制回平台语言文件。
 桌面设置的服务商帮助和阿里云模式选择、Android 服务介绍／配置帮助／模式选择
 都读取这些结果；Android 的服务开通提示也放在这份目录里。
 
-检查会拒绝缺少语言、重复 Android 资源、失去桌面绑定以及未重新生成的文案。
+桌面语言模块只导入自己的服务文案；界面通过 `I18N.provider` 读取当前语言，
+元数据消费者不要重新导入九语言全集。检查会拒绝缺少语言、错误的语言导入、
+重复 Android 资源、失去桌面绑定以及未重新生成的文案。
 阿里同传的翻译语言数取自共享协议目录，不在两端分别填写。
 
 `compatiblePresets` 共用 OpenAI 兼容文字服务的名称、地址和示例模型。模型可为空，

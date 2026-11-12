@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/zh";
+export { PROVIDER_COPY };
 
 export const TRAY = {
   blendBackground: "沉浸模式",
@@ -459,20 +460,20 @@ export const SETTINGS = {
   providerTencentCloud: "腾讯云",
   providerBaiduTranslate: "百度翻译",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["zh"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["zh"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["zh"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["zh"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["zh"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["zh"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "凭证从哪里获取",
-  tencentSetupHelp: PROVIDER_COPY["zh"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "获取 AppID",
   tencentGetSecretPair: "获取密钥对",
   tencentEnableAsr: "开通 ASR",
   tencentSetupOpenFailed: "无法打开腾讯云控制台，请稍后重试。",
-  providerBaiduTranslateDescription: PROVIDER_COPY["zh"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["zh"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "连接凭证",
   credentialLocalFileHelp: "API Key 保存在本机。",
   credentialPresent: "凭证已保存",

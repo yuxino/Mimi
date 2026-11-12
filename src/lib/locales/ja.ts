@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/ja";
+export { PROVIDER_COPY };
 import type { SettingsCopy } from "../i18n";
 
 export const TRAY = {
@@ -468,20 +469,20 @@ export const SETTINGS = {
   providerTencentCloud: "Tencent Cloud",
   providerBaiduTranslate: "Baidu Translate",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["ja"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["ja"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["ja"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["ja"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["ja"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["ja"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "認証情報の取得先",
-  tencentSetupHelp: PROVIDER_COPY["ja"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "AppID を取得",
   tencentGetSecretPair: "キーのペアを取得",
   tencentEnableAsr: "ASR を有効化",
   tencentSetupOpenFailed: "Tencent Cloud コンソールを開けません。後でもう一度お試しください。",
-  providerBaiduTranslateDescription: PROVIDER_COPY["ja"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["ja"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "接続認証情報",
   credentialLocalFileHelp: "API キーはこの端末に保存されます。",
   credentialPresent: "認証情報は保存済みです",

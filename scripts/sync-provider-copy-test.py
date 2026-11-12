@@ -25,8 +25,12 @@ class SharedProviderCopyTest(unittest.TestCase):
     def test_platform_scope_preserves_setup_help_for_its_consumers(self):
         source = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))
         outputs = MODULE.generated_files()
-        desktop = json.loads(outputs[MODULE.TS_OUTPUT].split("export const PROVIDER_COPY = ", 1)[1]
-                             .split(" as const;\n", 1)[0])
+        desktop = {
+            path.stem: json.loads(content.split("export const PROVIDER_COPY = ", 1)[1]
+                                 .split(" as const;\n", 1)[0])
+            for path, content in outputs.items() if path.parent == MODULE.TS_OUTPUT.with_suffix("")
+        }
+        self.assertNotIn("PROVIDER_COPY", outputs[MODULE.TS_OUTPUT])
         android_only = {
             "providerAlibabaSetup": "guide_help_dashscope",
             "providerOpenAISetup": "guide_help_openai",
@@ -103,8 +107,12 @@ class SharedProviderCopyTest(unittest.TestCase):
                     MODULE.generated_files()
                 duplicate.unlink()
                 owner = MODULE.ROOT / "src/lib/locales/zh.ts"
-                owner.write_text(owner.read_text(encoding="utf-8").replace('PROVIDER_COPY["zh"].providerAlibabaDescription', '"Old text"'), encoding="utf-8")
+                original = owner.read_text(encoding="utf-8")
+                owner.write_text(original.replace('PROVIDER_COPY.providerAlibabaDescription', '"Old text"'), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "Missing desktop binding"):
+                    MODULE.generated_files()
+                owner.write_text(original.replace('generated/providerCopy/zh"', 'generated/providerCopy/en"'), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Missing desktop locale import"):
                     MODULE.generated_files()
 
     def test_check_detects_drift_without_overwriting_it(self):
@@ -114,9 +122,13 @@ class SharedProviderCopyTest(unittest.TestCase):
                     self.assertEqual(0, MODULE.main())
                 with patch("sys.argv", [str(SCRIPT), "--check"]):
                     self.assertEqual(0, MODULE.main())
-                    MODULE.TS_OUTPUT.write_text("// stale\n", encoding="utf-8")
-                    self.assertEqual(1, MODULE.main())
-                    self.assertEqual("// stale\n", MODULE.TS_OUTPUT.read_text(encoding="utf-8"))
+                    for output in (MODULE.TS_OUTPUT, MODULE.TS_OUTPUT.with_suffix("") / "zh.ts"):
+                        with self.subTest(output=output.name):
+                            original = output.read_text(encoding="utf-8")
+                            output.write_text("// stale\n", encoding="utf-8")
+                            self.assertEqual(1, MODULE.main())
+                            self.assertEqual("// stale\n", output.read_text(encoding="utf-8"))
+                            output.write_text(original, encoding="utf-8")
 
     def test_compatible_presets_share_order_and_values(self):
         presets = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))["compatiblePresets"]

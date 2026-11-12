@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
-import { PROVIDER_COPY } from "../../lib/generated/providerCopy";
-import { effectiveUiLanguage, I18N } from "../../lib/i18n";
+import { I18N } from "../../lib/i18n";
 import type { ServiceProfile, SettingsSnapshot, SpeechTranslationMode } from "../../lib/types";
 import { SettingsHelp } from "./SettingsHelp";
 import { SettingsSelect } from "./SettingsPrimitives";
@@ -11,7 +10,7 @@ export function SpeechTranslationModeSettings({ profile, disabled, onSave }: {
   disabled: boolean;
   onSave: (options: { speechTranslationMode: SpeechTranslationMode }) => Promise<SettingsSnapshot>;
 }) {
-  const copy = PROVIDER_COPY[effectiveUiLanguage()];
+  const copy = I18N.provider;
   const { runWithToast } = useSettingsToast();
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);

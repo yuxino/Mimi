@@ -2,7 +2,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { SERVICE_SETUPS, PROVIDER_COPY } from "../../lib/generated/providerCopy";
+import { SERVICE_SETUPS } from "../../lib/generated/providerCopy";
+import { PROVIDER_COPY as EN_PROVIDER_COPY } from "../../lib/generated/providerCopy/en";
 import { setStoredUiLanguage, UI_LANGUAGES } from "../../lib/i18n";
 import { openServiceSetupPage } from "../../lib/ipc";
 import { SettingsToastRegion } from "./SettingsToast";
@@ -31,7 +32,7 @@ it.each(SERVICE_SETUPS)("opens $label only after an explicit click", async servi
 it.each(UI_LANGUAGES)("keeps the key action readable in %s", async language => {
   setStoredUiLanguage(language);
   await act(async () => root.render(<ServiceSetupLink serviceId="openAIRealtime" />));
-  expect(host.textContent).toBe(PROVIDER_COPY[language].compatibleSetupGetKey);
+  expect(host.textContent).toBe((await import(`../../lib/generated/providerCopy/${language}.ts`)).PROVIDER_COPY.compatibleSetupGetKey);
 });
 
 it("hides unknown/custom services and reports sanitized opening failures", async () => {
@@ -40,7 +41,7 @@ it("hides unknown/custom services and reports sanitized opening failures", async
   vi.mocked(openServiceSetupPage).mockRejectedValue(new Error("private-browser-detail"));
   await act(async () => root.render(<><ServiceSetupLink serviceId="openAIRealtime" /><SettingsToastRegion /></>));
   await act(async () => host.querySelector<HTMLButtonElement>(".translation-setup-link")!.click());
-  expect(host.querySelector(".settings-toast")?.textContent).toContain(PROVIDER_COPY.en.compatibleSetupOpenFailed);
+  expect(host.querySelector(".settings-toast")?.textContent).toContain(EN_PROVIDER_COPY.compatibleSetupOpenFailed);
   expect(host.textContent).not.toContain("private-browser-detail");
   vi.mocked(openServiceSetupPage).mockClear();
   await act(async () => root.render(<ServiceSetupLink serviceId="openAIRealtime" disabled />));

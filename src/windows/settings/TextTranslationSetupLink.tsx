@@ -1,6 +1,6 @@
 import { Icon } from "../../components/Icon";
-import { effectiveUiLanguage } from "../../lib/i18n";
-import { OPENAI_COMPATIBLE_PRESETS, PROVIDER_COPY } from "../../lib/generated/providerCopy";
+import { I18N } from "../../lib/i18n";
+import { OPENAI_COMPATIBLE_PRESETS } from "../../lib/generated/providerCopy";
 import { openTextTranslationSetupPage, type TextTranslationSetupPage } from "../../lib/ipc";
 import { useSettingsToast } from "./useSettingsToast";
 
@@ -12,7 +12,7 @@ export function TextTranslationSetupLink({ preset, page, disabled = false }: {
   page: TextTranslationSetupPage;
   disabled?: boolean;
 }) {
-  const copy = PROVIDER_COPY[effectiveUiLanguage()];
+  const copy = I18N.provider;
   const { runWithToast } = useSettingsToast();
   if (page === "apiKey" && !preset.apiKeyUrl) return null;
   const label = page === "apiKey" ? copy.compatibleSetupGetKey

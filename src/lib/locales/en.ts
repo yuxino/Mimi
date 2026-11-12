@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/en";
+export { PROVIDER_COPY };
 import type { SettingsCopy } from "../i18n";
 
 export const TRAY = {
@@ -465,20 +466,20 @@ export const SETTINGS = {
   providerTencentCloud: "Tencent Cloud",
   providerBaiduTranslate: "Baidu Translate",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["en"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["en"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["en"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["en"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["en"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["en"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "Where to get credentials",
-  tencentSetupHelp: PROVIDER_COPY["en"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "Get AppID",
   tencentGetSecretPair: "Get secret pair",
   tencentEnableAsr: "Enable ASR",
   tencentSetupOpenFailed: "Could not open the Tencent Cloud console. Try again later.",
-  providerBaiduTranslateDescription: PROVIDER_COPY["en"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["en"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "Connection Credentials",
   credentialLocalFileHelp: "API keys are saved on this device.",
   credentialPresent: "Credential saved",
