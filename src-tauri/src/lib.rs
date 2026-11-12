@@ -1490,14 +1490,22 @@ mod tests {
 
     #[test]
     fn native_dock_visibility_labels_match_the_existing_frontend_copy() {
-        let frontend_i18n = include_str!("../../src/lib/i18n.ts");
-        for language in [
-            NativeMenuLanguage::Chinese,
-            NativeMenuLanguage::English,
-            NativeMenuLanguage::Japanese,
+        for (language, frontend_copy) in [
+            (
+                NativeMenuLanguage::Chinese,
+                include_str!("../../src/lib/locales/zh.ts"),
+            ),
+            (
+                NativeMenuLanguage::English,
+                include_str!("../../src/lib/locales/en.ts"),
+            ),
+            (
+                NativeMenuLanguage::Japanese,
+                include_str!("../../src/lib/locales/ja.ts"),
+            ),
         ] {
             let label = native_menu_labels(language).show_in_dock;
-            assert!(frontend_i18n.contains(&format!("showInDock: \"{label}\"")));
+            assert!(frontend_copy.contains(&format!("showInDock: \"{label}\"")));
         }
     }
 
