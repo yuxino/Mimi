@@ -22,9 +22,9 @@
 
 **Des sous-titres traduits en direct, sans un abonnement de plus.** Mimi est une alternative gratuite et open source aux applications de sous-titrage payantes. Configurez vos propres clés API pour suivre vos vidéos, directs et cours en ligne avec des sous-titres traduits.
 
-![Illustration des sous-titres bilingues de Mimi avec un dialogue fictif](../assets/readme-preview.png)
-
-Illustration de l’interface avec un dialogue d’exemple. [Voir les sous-titres et le mode immersif (ancienne interface)](../demos/README.md).
+<!-- mimi-preview:start -->
+![Mimi — dialogue anglais avec sous-titres français](../assets/readme-preview-fr.webp)
+<!-- mimi-preview:end -->
 
 ## Ce que vous pouvez faire
 

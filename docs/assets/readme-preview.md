@@ -1,23 +1,35 @@
-# README illustration
+# Localized README images
 
-Created on 2026-10-04.
+The public README uses a matching image for each language: UI labels and translated subtitles follow the reader’s language. English shows Japanese speech translated into English; other locales show English speech translated into that locale. Do not reuse the Chinese image in English posts.
 
-- `readme-background.png`: a new illustration generated with the built-in imagegen tool, 1672 × 941 pixels.
-- `readme-preview.png`: 3840 × 2160 pixels, combining the illustration with the current Mimi subtitle interface from `092a310`.
-- The isolated browser fixture imports the application's `OverlayWindow`, `OverlayControlWindow` and shared styles directly. No product component or internal style was changed.
-- The subtitle window renders at 720 × 292 logical pixels inside an iframe, then scales by 1.35 for the composition. This keeps the application's text measurements accurate.
-- Settings: bilingual English/Chinese, font size 24, white text, centered alignment, 64% black background, listening preview state, subtitle retention and audio recording off. Latency values are unavailable rather than invented.
-- This is an interface illustration with original example dialogue, not evidence of live recognition, native capture, provider connectivity or measured latency. No personal audio, transcripts or credentials were used.
+## Regenerate
 
-## Example dialogue
+```sh
+npm run readme:images
+npm run readme:images -- --locale en
+npm run readme:images -- --check
+```
 
-| English | 中文 |
-| --- | --- |
-| You kept the ticket? | 这张票你还留着？ |
-| Of course. You said we’d go together. | 当然。你说过，我们要一起去。 |
-| I thought you’d forgotten. | 我还以为你忘了。 |
+Requires the repository’s supported Node version, installed npm dependencies, and Chrome or Chromium. Set `MIMI_DOCS_BROWSER` to the executable if it is not in a standard location. Generation bundles only the documentation fixture, uses an isolated headless browser over a pipe, and removes its temporary files and browser profile on exit. It starts no server, reads no `.env`, and downloads no browser or dependencies. Font rendering depends on the host; macOS has the fonts used for the committed images. On Linux, install fonts covering CJK, Thai and Cyrillic before rendering.
 
-These lines are fictional and are not attributed to an existing film.
+The command writes `readme-preview-<locale>.webp`, updates only the marked image blocks in the registered READMEs, and records image hashes, UI source revision and whether the UI had local changes in `readme-images.json`. `--check` checks locale coverage, image hashes and Markdown references; it does not prove images still match later UI edits. Rerender after changing the overlay.
+
+## Add a language
+
+1. Ensure Mimi’s UI already supports the language in `src/lib/i18n.ts`.
+2. Add an entry to [locales.json](../../scripts/readme-images/locales.json): UI/source/target language codes, three original fictional lines and their translations, localized alt text, and the README paths. Use a different source language from the translation language.
+3. Add the localized README with one `<!-- mimi-preview:start -->` / `<!-- mimi-preview:end -->` block where its image belongs. Update the README language navigation as appropriate.
+4. Run `npm run readme:images`, inspect the output for glyphs, wrapping and readable subtitles, then run `npm run readme:images -- --check` and `git diff --check`.
+
+The check rejects missing artwork configurations for new UI languages or new localized READMEs. Generation verifies the actual UI language codes, all three subtitle pairs and vertical clipping before saving an image. Long translations may require adjusting the shared fixture dimensions or font size; do not alter product components to fit promotional material.
+
+## Sources and boundaries
+
+- `readme-background.png` is the original imagegen illustration from 2026-10-04 (1672 × 941). It is reused unchanged.
+- [stage.html](../../scripts/readme-images/stage.html) composes that background with a 760 × 300 logical-pixel overlay at 1.28 scale, in a 1920 × 1080 frame.
+- [overlay.html](../../scripts/readme-images/overlay.html) imports Mimi’s actual `OverlayWindow`, embedded controls, styles and localization. Native calls are stubbed and allowlisted; external requests are blocked. No product component or internal style is modified.
+- Captions are fictional dialogue, not a live recognition run. The image does not measure native capture, provider connectivity or latency. No personal audio, transcripts, API credentials or recording session is used. History and audio saving remain off; latency is unavailable rather than invented.
+- The retired video, poster and obsolete tour documentation have been removed. Do not re-add the old demo links or their explanatory paragraph to READMEs. A future video should be recorded anew from the current app, with matching UI/caption language and documented recording boundaries.
 
 ## Illustration prompt
 

@@ -22,9 +22,9 @@
 
 **Live translated subtitles without another subscription.** Mimi is a free, open-source alternative to paid live subtitle apps. Connect your own speech and translation service to add subtitles to videos, streams and online classes.
 
-![Mimi bilingual subtitle illustration with fictional dialogue](docs/assets/readme-preview.png)
-
-Interface illustration with sample dialogue. [Watch subtitles and Immersive Mode (older UI)](docs/demos/README.md).
+<!-- mimi-preview:start -->
+![Mimi — Japanese dialogue with English subtitles](docs/assets/readme-preview-en.webp)
+<!-- mimi-preview:end -->
 
 ## What you can do
 

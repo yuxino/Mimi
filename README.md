@@ -22,9 +22,9 @@
 
 **不用再为字幕软件单独买会员。** Mimi 免费开源，用你自己的服务商 API Key，就能给视频、直播和网课加上实时翻译字幕。
 
-![Mimi 双语字幕示意：原创插画与示例对白](docs/assets/readme-preview.png)
-
-字幕显示示意，使用示例对白。[看字幕与沉浸模式演示（旧版界面）](docs/demos/README.md)。
+<!-- mimi-preview:start -->
+![Mimi — 外语对白，中文字幕](docs/assets/readme-preview-zh-CN.webp)
+<!-- mimi-preview:end -->
 
 ## 常用功能
 

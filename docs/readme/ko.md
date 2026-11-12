@@ -22,9 +22,9 @@
 
 **자막 앱에 따로 구독료를 낼 필요가 없습니다.** Mimi는 유료 실시간 자막 앱을 대신할 수 있는 무료 오픈 소스 앱입니다. 본인의 API 키로 음성 인식·번역 서비스를 연결하면 영상, 방송, 온라인 수업에 실시간 번역 자막을 띄울 수 있습니다.
 
-![예시 대화를 사용한 Mimi 이중 언어 자막 이미지](../assets/readme-preview.png)
-
-예시 대화로 만든 화면 이미지입니다. [자막과 몰입 모드 데모 보기(이전 UI)](../demos/README.md).
+<!-- mimi-preview:start -->
+![Mimi — 영어 대화에 한국어 자막 표시](../assets/readme-preview-ko.webp)
+<!-- mimi-preview:end -->
 
 ## 주요 기능
 
