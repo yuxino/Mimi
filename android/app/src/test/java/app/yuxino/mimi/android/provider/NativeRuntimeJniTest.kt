@@ -818,6 +818,27 @@ class NativeRuntimeJniTest {
         } finally { SubtitleBus.clear(); SubtitleBus.setHistoryLimit(0) }
     }
 
+    @Test fun volcanoAudioFramesAndPaddedTailCrossActualJni() {
+        RealtimeLoopback(ServiceProvider.VOLCANO).use { fixture ->
+            val handle = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "create")
+                .put("configuration", configuration(ServiceProvider.VOLCANO).put("sourceLanguage", "en"))
+                .put("network", fixture.network)).getLong("handle")
+            try {
+                NativeRuntimeConfiguration.command("start", handle)
+                awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
+                assertTrue("Volcano rejected synthetic PCM", NativeRuntimeConfiguration.pcmRaw(handle, fixture.volcanoPcm))
+                assertTrue("Volcano did not send both complete frames", fixture.volcanoCompleteFrames.await(3, TimeUnit.SECONDS))
+                fixture.checkFailure()
+                NativeRuntimeConfiguration.command("finish", handle)
+                awaitRuntimeState(handle, fixture) { it.getBoolean("finished") }
+                assertTrue("Volcano did not send FinishSession", fixture.finishSeen.await(3, TimeUnit.SECONDS))
+                assertTrue("Volcano finish kept its transport open", fixture.transportClosed.await(3, TimeUnit.SECONDS))
+                fixture.checkFailure()
+                assertEquals(1, fixture.connectionCount.get())
+            } finally { NativeRuntimeConfiguration.command("stop", handle) }
+        }
+    }
+
     @Test fun liveTranslateUnexpectedEndReconnectsButAuthenticationAndManualFinishStopAcrossActualJni() {
         verifyLiveTranslateRecoveryCases("liveTranslateRecovery")
     }
@@ -1412,9 +1433,10 @@ class NativeRuntimeJniTest {
         private val translationStartReplay: Boolean = false, private val finishTailCount: Int = 1,
         private val xaiRecovery: JSONObject? = null, private val liveRecovery: JSONObject? = null,
         private val builtinRecovery: JSONObject? = null) : AutoCloseable {
+        private val volcano = provider == ServiceProvider.VOLCANO
         private val tencent = provider == ServiceProvider.TENCENT
         private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate && builtinRecovery == null
-        private val host = if (builtinRecovery != null) when (provider) {
+        private val host = if (volcano) "openspeech.bytedance.com" else if (builtinRecovery != null) when (provider) {
             ServiceProvider.OPENAI -> "api.openai.com"
             ServiceProvider.XAI -> "api.x.ai"
             ServiceProvider.GEMINI -> "generativelanguage.googleapis.com"
@@ -1426,7 +1448,7 @@ class NativeRuntimeJniTest {
             else if (qwen) "dashscope.aliyuncs.com" else if (tencent) "asr.cloud.tencent.com" else "aip.baidubce.com"
         private val phases = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
             .bufferedReader().use { it.readText() }).let { contract ->
-            if (xaiRecovery != null || builtinRecovery != null) JSONArray()
+            if (volcano || xaiRecovery != null || builtinRecovery != null) JSONArray()
             else if (translationStartReplay) JSONObject(requireNotNull(javaClass.getResourceAsStream("/live-pair-contracts.json"))
                 .bufferedReader().use { it.readText() }).getJSONObject("translationStartActivity").getJSONArray("phases")
             else if (sourceOrderReplay) JSONArray(listOf(
@@ -1489,6 +1511,14 @@ class NativeRuntimeJniTest {
         val noFurtherConnections = CountDownLatch(1)
         val connectionCount = AtomicInteger(0)
         val progressPongs = AtomicInteger(0)
+        private val volcanoWire by lazy {
+            JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+                .bufferedReader().use { it.readText() }).getJSONObject("volcanoAudioRequests")
+        }
+        val volcanoPcm: ByteArray by lazy {
+            ByteArray(2 * volcanoWire.getInt("frameBytes") + 6) { (it * 73 + it / 256 + 19).toByte() }
+        }
+        val volcanoCompleteFrames = CountDownLatch(2)
         val finishSeen = CountDownLatch(1)
         val transportClosed = CountDownLatch(1)
         val network: JSONObject
@@ -1572,7 +1602,10 @@ class NativeRuntimeJniTest {
                     val secure = acceptWebSocket(tls)
                     val input = DataInputStream(secure.inputStream)
                     val output = secure.outputStream
-                    if (liveTranslate) {
+                    if (volcano) {
+                        volcanoSession(input, output)
+                        return@thread
+                    } else if (liveTranslate) {
                         liveTranslateSession(input, output)
                         return@thread
                     } else if (qwen) {
@@ -1616,7 +1649,8 @@ class NativeRuntimeJniTest {
             socket = secure
             val input = DataInputStream(secure.inputStream)
             val request = headers(input)
-            check(request.startsWith(if (builtinRecovery != null) when (provider) {
+            check(request.startsWith(if (volcano) "GET /api/v4/ast/v2/translate HTTP/1.1\r\n"
+                else if (builtinRecovery != null) when (provider) {
                 ServiceProvider.OPENAI -> "GET /v1/realtime/translations?model=gpt-realtime-translate HTTP/1.1\r\n"
                 ServiceProvider.XAI -> "GET /v1/realtime?model=grok-voice-latest HTTP/1.1\r\n"
                 ServiceProvider.GEMINI -> "GET /ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=synthetic-apiKey HTTP/1.1\r\n"
@@ -1626,10 +1660,45 @@ class NativeRuntimeJniTest {
             } else if (xaiRecovery != null) "GET /v1/stt?model=grok-voice-transcribe-2.0&sample_rate=16000&encoding=pcm&interim_results=true&language=en HTTP/1.1\r\n"
                 else if (liveTranslate) "GET /api-ws/v1/realtime?model=qwen3.8-livetranslate-flash-realtime HTTP/1.1\r\n"
                 else if (qwen) "GET /api-ws/v1/inference HTTP/1.1\r\n" else if (tencent) "GET /asr/speech_translate/123456789?" else "GET /ws/realtime_speech_trans HTTP/1.1\r\n"))
+            if (volcano) {
+                fun header(name: String) = request.lineSequence().first { it.startsWith("$name:", true) }.substringAfter(':').trim()
+                check(header("X-Api-Key") == "synthetic-apiKey")
+                check(header("X-Api-Resource-Id") == "volc.service_type.10053")
+            }
             val key = request.lineSequence().first { it.startsWith("sec-websocket-key:", true) }.substringAfter(':').trim()
             val accept = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-1").digest((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").toByteArray(Charsets.US_ASCII)))
             secure.outputStream.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $accept\r\n\r\n".toByteArray(Charsets.US_ASCII))
             return secure
+        }
+
+        private fun volcanoSession(input: DataInputStream, output: OutputStream) {
+            fun hexBytes(hex: String) = hex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            val wire = volcanoWire
+            val metadataPrefix = hexBytes(wire.getString("metadataPrefixHex"))
+            val setup = checkNotNull(readBinary(input, output))
+            val sessionEnd = metadataPrefix.size + wire.getInt("sessionBytes")
+            check(setup.size >= sessionEnd)
+            assertArrayEquals(metadataPrefix, setup.copyOfRange(0, metadataPrefix.size))
+            val session = setup.copyOfRange(metadataPrefix.size, sessionEnd)
+            java.util.UUID.fromString(session.toString(Charsets.US_ASCII))
+            val metadata = metadataPrefix + session
+            assertArrayEquals(metadata + hexBytes(wire.getString("startSuffixHex")), setup)
+            frame(output, 2, hexBytes(wire.getString("sessionStartedHex")))
+
+            val frameBytes = volcanoWire.getInt("frameBytes")
+            val audioPrefix = metadata + hexBytes(volcanoWire.getString("audioSuffixHex"))
+            repeat(2) { index ->
+                val expected = audioPrefix + volcanoPcm.copyOfRange(index * frameBytes, (index + 1) * frameBytes)
+                assertArrayEquals(expected, checkNotNull(readBinary(input, output)))
+                volcanoCompleteFrames.countDown()
+            }
+            val tail = ByteArray(frameBytes)
+            volcanoPcm.copyInto(tail, 0, frameBytes * 2)
+            assertArrayEquals(audioPrefix + tail, checkNotNull(readBinary(input, output)))
+            assertArrayEquals(metadata + hexBytes(wire.getString("finishSuffixHex")), checkNotNull(readBinary(input, output)))
+            finishSeen.countDown()
+            frame(output, 2, hexBytes(wire.getString("sessionFinishedHex")))
+            check(readBinary(input, output) == null) { "Volcano sent another request after FinishSession" }
         }
 
         private fun builtinRecoverySession(tls: SSLContext) {
@@ -1970,18 +2039,38 @@ class NativeRuntimeJniTest {
             output.write(bytes)
             output.flush()
         }
+        private fun readFrame(input: DataInputStream): Pair<Int, ByteArray> {
+            val opcode = input.readUnsignedByte() and 15
+            val flags = input.readUnsignedByte()
+            check(flags and 128 != 0)
+            val size = when (val short = flags and 127) { 126 -> input.readUnsignedShort(); 127 -> error("Oversized loopback frame"); else -> short }
+            check(size <= if (builtinRecovery != null) 16_384 else if (liveTranslate) 8_192 else 4_096)
+            val mask = ByteArray(4).also(input::readFully)
+            val payload = ByteArray(size).also(input::readFully)
+            for (index in payload.indices) payload[index] = (payload[index].toInt() xor mask[index % 4].toInt()).toByte()
+            return opcode to payload
+        }
+        private fun readBinary(input: DataInputStream, output: OutputStream): ByteArray? {
+            try {
+                while (true) {
+                    val (opcode, payload) = readFrame(input)
+                    when (opcode) {
+                        2 -> return payload
+                        9 -> frame(output, 10, payload)
+                        8 -> { observeTransportClosed(1); return null }
+                        else -> error("Unexpected Volcano client frame")
+                    }
+                }
+            } catch (_: java.io.EOFException) {
+                observeTransportClosed(1)
+                return null
+            }
+        }
         private fun readText(input: DataInputStream, output: OutputStream, connection: Int = 1,
             onBinary: ((ByteArray) -> Unit)? = null, afterPong: (() -> Unit)? = null): String {
             try {
                 while (true) {
-                    val opcode = input.readUnsignedByte() and 15
-                    val flags = input.readUnsignedByte()
-                    check(flags and 128 != 0)
-                    val size = when (val short = flags and 127) { 126 -> input.readUnsignedShort(); 127 -> error("Oversized loopback frame"); else -> short }
-                    check(size <= if (builtinRecovery != null) 16_384 else if (liveTranslate) 8_192 else 4_096)
-                    val mask = ByteArray(4).also(input::readFully)
-                    val payload = ByteArray(size).also(input::readFully)
-                    for (index in payload.indices) payload[index] = (payload[index].toInt() xor mask[index % 4].toInt()).toByte()
+                    val (opcode, payload) = readFrame(input)
                     if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null) && opcode == 8) {
                         if (liveTranslate || builtinRecovery != null) observeTransportClosed(connection)
                         return ""
