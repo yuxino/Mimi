@@ -57,6 +57,11 @@ Preserve these product constraints:
   sample comparison and regression-learning workflow. Read it before integration
   testing or investigating subtitle quality; keep verified runs and remaining
   gaps in `docs/development/integration-runs.md`.
+- `docs/development/provider-model-maintenance.md`: provider/model review and
+  upgrade SOP. Follow it for release preparation, provider changes and translation
+  quality investigations; compare actual quality, latency and cost before changing
+  defaults. Keep dated source checks and pending candidates in
+  `docs/development/provider-model-reviews.md`.
 - `config/`: frontend tool configuration (Vite, ESLint, PostCSS, Tailwind and
   TypeScript projects). Run the npm scripts so tools use these explicit paths.
   The root `tsconfig.json` remains the editor discovery entry point.
