@@ -27,10 +27,15 @@ optimized artifact. The existing source architecture guard remains required.
 
 `android/sign-release.sh [apk] [mapping]` defaults to the canonical release
 outputs. It snapshots the supplied mapping, validates that same copy before and
-after signing, then retains it as `mimi_<version>_android.mapping.txt` beside the
-signed APK. Local and unified release SHA-256 inventories include both files.
-The unified Android artifact includes the pair; ordinary Android CI uploads
-mapping separately to preserve the unsigned APK artifact's flat layout.
+after signing, then streams it through Python's standard-library `gzip.GzipFile`
+with `filename=""` and `mtime=0`. It retains the deterministic compressed output
+as `mimi_<version>_android.mapping.txt.gz` beside the signed APK. Local and unified
+release SHA-256 inventories cover the APK and compressed mapping. Decompress
+the mapping before verification, signing or R8 Retrace; the plain bytes and
+Gradle's mapping input remain unchanged.
+The unified Android artifact includes the pair; ordinary Android CI keeps its
+separate `mapping.txt` artifact, which GitHub already compresses, preserving
+the unsigned APK artifact's flat layout.
 The mapping is a release asset for future stack-trace retracing, not an updater
 payload. Updater targets, signing identities, tag checks, draft staging and
 separate publication authorization remain unchanged.

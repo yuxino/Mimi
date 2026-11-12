@@ -181,17 +181,21 @@ Build with `./gradlew testReleaseUnitTest lintRelease assembleRelease`, then run
 
 The script defaults to the release APK and mapping paths above. For downloaded
 artifacts, pass both absolute paths with `bash sign-release.sh <apk> <mapping>`.
-Use the APK and mapping from the same build.
+Use the APK and uncompressed mapping from the same build.
 
 The script verifies the compiled package/version and rejects debug builds,
 then checks the mapping's R8 content hash, ID and compiler metadata against the
 APK. It copies that mapping for the whole signing operation, aligns and signs
 the APK, and rechecks the same copy plus the pinned non-debug certificate.
 It writes `release/mimi_<version>_android.apk`,
-`release/mimi_<version>_android.mapping.txt` and `release/SHA256SUMS.txt`, which
-covers both files. Keep the mapping with its APK for retracing optimized stack
-traces. The R8 ID is short; this pairing check is not complete cryptographic
-provenance. The script never creates a temporary replacement signing identity.
+`release/mimi_<version>_android.mapping.txt.gz` and `release/SHA256SUMS.txt`, which
+covers the APK and compressed mapping. After validation, Python's standard
+library compresses the same plain mapping with no embedded filename and a zero
+timestamp. Keep the `.gz` with its APK; decompress it before passing the mapping
+to the verifier, signing script or R8 Retrace. Ordinary CI's separate mapping
+artifact keeps `mapping.txt`, since GitHub artifacts already compress it.
+The R8 ID is short; this pairing check is not complete cryptographic provenance.
+The script never creates a temporary replacement signing identity.
 
 For GitHub publishing, configure repository secrets `ANDROID_KEYSTORE_BASE64`
 (base64 of that same keystore), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`

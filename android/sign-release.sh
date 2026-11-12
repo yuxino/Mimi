@@ -35,7 +35,7 @@ mkdir -p release
 work="$(mktemp -d release/.sign-XXXXXX)"
 trap 'rm -rf "$work"' EXIT
 python_command="${MIMI_PYTHON:-python3}"
-# Use the same mapping bytes before signing, after signing and in the output.
+# Use one plain mapping copy for both checks and the compressed release asset.
 cp "$mapping" "$work/mapping.txt"
 "$python_command" ../scripts/verify-shared-core.py --apk "$input" --mapping "$work/mapping.txt"
 "$sdk_tools/zipalign" -f -P 16 4 "$input" "$work/aligned.apk"
@@ -51,9 +51,18 @@ if [[ "$actual" != "$expected" ]] || grep -qi 'CN=Android Debug' <<< "$verificat
 fi
 "$sdk_tools/zipalign" -c -P 16 4 "$work/signed.apk"
 "$python_command" ../scripts/verify-shared-core.py --apk "$work/signed.apk" --mapping "$work/mapping.txt"
+"$python_command" - "$work/mapping.txt" "$work/mapping.txt.gz" <<'PY'
+import gzip
+import shutil
+import sys
+
+with open(sys.argv[1], "rb") as source, open(sys.argv[2], "wb") as target:
+    with gzip.GzipFile(filename="", mode="wb", fileobj=target, mtime=0) as compressed:
+        shutil.copyfileobj(source, compressed)
+PY
 output="mimi_${version}_android.apk"
-mapping_output="mimi_${version}_android.mapping.txt"
+mapping_output="mimi_${version}_android.mapping.txt.gz"
 mv "$work/signed.apk" "release/$output"
-mv "$work/mapping.txt" "release/$mapping_output"
+mv "$work/mapping.txt.gz" "release/$mapping_output"
 (cd release && sha256sum "$output" "$mapping_output" > SHA256SUMS.txt)
 printf 'Verified release APK: %s\nR8 mapping: %s\nCertificate SHA-256: %s\n' "release/$output" "release/$mapping_output" "$actual"

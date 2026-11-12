@@ -76,5 +76,5 @@ jobs:
           name: mimi-release-android
           path: |
             android/release/*.apk
-            android/release/*.mapping.txt
+            android/release/*.mapping.txt.gz
           if-no-files-found: error

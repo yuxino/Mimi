@@ -816,7 +816,7 @@ jobs:
             "mimi_${version}_amd64.AppImage"
             "mimi_${version}_amd64.AppImage.sig"
             "mimi_${version}_android.apk"
-            "mimi_${version}_android.mapping.txt"
+            "mimi_${version}_android.mapping.txt.gz"
           )
           mapfile -t actual_names < <(printf '%s\n' "${assets[@]##*/}" | sort)
           mapfile -t expected_names < <(printf '%s\n' "${expected_names[@]}" | sort)
@@ -877,7 +877,7 @@ jobs:
               "mimi_${version}_amd64.AppImage" \
               "mimi_${version}_amd64.AppImage.sig" \
               "mimi_${version}_android.apk" \
-              "mimi_${version}_android.mapping.txt" \
+              "mimi_${version}_android.mapping.txt.gz" \
               latest.json > SHA256SUMS.txt
           )
 
