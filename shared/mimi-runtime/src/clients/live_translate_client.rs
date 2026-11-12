@@ -658,9 +658,7 @@ async fn receive_loop(
                     frame.as_ref().map_or(1005, |frame| u16::from(frame.code)),
                     inner.finish_requested.load(Ordering::SeqCst)
                 );
-                if should_report_transport_end(
-                    inner.received_session_finished.load(Ordering::SeqCst),
-                ) {
+                if !inner.received_session_finished.load(Ordering::SeqCst) {
                     fail_receive_loop(&events, &setup, "transport_error", GENERIC_TRANSPORT_ERROR);
                 }
                 return;
@@ -670,9 +668,7 @@ async fn receive_loop(
                     "live translate receive failed kind={}",
                     transport_error_kind(&error)
                 );
-                if should_report_transport_end(
-                    inner.received_session_finished.load(Ordering::SeqCst),
-                ) {
+                if !inner.received_session_finished.load(Ordering::SeqCst) {
                     fail_receive_loop(&events, &setup, "transport_error", GENERIC_TRANSPORT_ERROR);
                 }
                 return;
@@ -742,7 +738,7 @@ async fn receive_loop(
         }
     }
 
-    if should_report_transport_end(inner.received_session_finished.load(Ordering::SeqCst)) {
+    if !inner.received_session_finished.load(Ordering::SeqCst) {
         fail_receive_loop(&events, &setup, "transport_error", GENERIC_TRANSPORT_ERROR);
     }
 }
@@ -866,10 +862,6 @@ fn fail_receive_loop(
             message: message.into(),
         });
     }
-}
-
-fn should_report_transport_end(received_session_finished: bool) -> bool {
-    !received_session_finished
 }
 
 #[cfg(test)]
@@ -1597,12 +1589,6 @@ mod tests {
             wait_for_setup(rx).await,
             Err(LiveTranslateClientError::SessionSetupRejected)
         );
-    }
-
-    #[test]
-    fn only_a_confirmed_session_finish_makes_socket_end_expected() {
-        assert!(should_report_transport_end(false));
-        assert!(!should_report_transport_end(true));
     }
 
     fn identity(item_id: &str, previous_item_id: Option<&str>) -> LiveTranslateEventIdentity {

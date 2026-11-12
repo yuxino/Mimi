@@ -415,7 +415,7 @@ impl Audio3ASRClient {
                     return;
                 }
                 let Some(message) = message else {
-                    if should_report_transport_end(inner.task_finished.load(Ordering::SeqCst)) {
+                    if !inner.task_finished.load(Ordering::SeqCst) {
                         fail_transport(&inner, &events, generation).await;
                     }
                     return;
@@ -431,13 +431,13 @@ impl Audio3ASRClient {
                         continue;
                     }
                     Ok(Message::Close(_)) => {
-                        if should_report_transport_end(inner.task_finished.load(Ordering::SeqCst)) {
+                        if !inner.task_finished.load(Ordering::SeqCst) {
                             fail_transport(&inner, &events, generation).await;
                         }
                         return;
                     }
                     Err(_) => {
-                        if should_report_transport_end(inner.task_finished.load(Ordering::SeqCst)) {
+                        if !inner.task_finished.load(Ordering::SeqCst) {
                             fail_transport(&inner, &events, generation).await;
                         }
                         return;
@@ -790,10 +790,6 @@ async fn fail_transport(inner: &Inner, events: &ProviderEventSender, generation:
     );
 }
 
-fn should_report_transport_end(task_finished: bool) -> bool {
-    !task_finished
-}
-
 fn task_failure_token(code: &str, category: &str, started: bool) -> String {
     let phase = if started { "recognition" } else { "setup" };
     // Inputs have already passed the protocol decoder's exact allowlists.
@@ -1017,12 +1013,6 @@ mod tests {
         unseen.clear(1);
         // No observed sentence means there is no honest capture-time cutoff.
         assert!(unseen.accepts(&caption(Some(1), false)));
-    }
-
-    #[test]
-    fn socket_end_is_failure_only_before_task_finished() {
-        assert!(should_report_transport_end(false));
-        assert!(!should_report_transport_end(true));
     }
 
     #[test]

@@ -164,7 +164,8 @@ def check(root=ROOT):
     android_ci = read(".github/workflows/android.yml")
     for event in ("pull_request", "push"):
         section = re.search(rf"(?ms)^  {event}:\n(.*?)(?=^  \w+:|^\w|\Z)", android_ci)
-        for pattern in ("android/**", "shared/**", "src-tauri/**", "src/**", "scripts/**", ".github/workflows/**"):
+        for pattern in ("android/**", "shared/**", "src-tauri/**", "src/**", "scripts/**", ".github/workflows/**",
+                        "docs/demos/english-film/response.json"):
             require(bool(section and re.search(rf"(?m)^      - '{re.escape(pattern)}'\s*$", section[1])),
                     f"Android CI must follow desktop/shared changes: {event}: {pattern}")
     return errors

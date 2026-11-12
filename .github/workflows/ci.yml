@@ -29,6 +29,7 @@ jobs:
   scope:
     runs-on: ubuntu-latest
     outputs:
+      frontend: ${{ steps.plan.outputs.frontend }}
       native: ${{ steps.plan.outputs.native }}
       rust_os: ${{ steps.plan.outputs.rust_os }}
       windows_arm: ${{ steps.plan.outputs.windows_arm }}
@@ -268,6 +269,8 @@ jobs:
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml
 
   frontend:
+    needs: scope
+    if: ${{ needs.scope.outputs.frontend != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -425,8 +428,10 @@ jobs:
           python3 - <<'PY'
           import json, os
           results = json.loads(os.environ["RESULTS"])
-          required = ["scope", "frontend"]
+          required = ["scope"]
           plan = results["scope"]["outputs"]
+          if plan.get("frontend") != "false":
+              required.append("frontend")
           if plan.get("native") == "true":
               required += ["rust", "msrv"]
           if plan.get("windows_arm") == "true":

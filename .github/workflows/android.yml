@@ -5,6 +5,7 @@ on:
     paths:
       - 'android/**'
       - 'shared/**'
+      - 'docs/demos/english-film/response.json'
       - 'src-tauri/**'
       - 'src/**'
       - 'scripts/**'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'android/**'
       - 'shared/**'
+      - 'docs/demos/english-film/response.json'
       - 'src-tauri/**'
       - 'src/**'
       - 'scripts/**'
