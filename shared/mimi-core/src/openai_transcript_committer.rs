@@ -326,7 +326,7 @@ impl OpenAITranscriptPairCommitter {
             return Vec::new();
         }
         let mut retired = self.retire_unpaired_block_before_append(elapsed_ms);
-        if self.source_isolated && !delta.trim().is_empty() {
+        if self.source_isolated {
             // The returning original cannot own translation accumulated while
             // originals were absent. Retire that preview before starting anew.
             self.reset();
@@ -621,6 +621,11 @@ mod tests {
                 matches!(events.as_slice(), [TranscriptEvent::TranslationDraft(text)] if text.chars().count() <= 8)
             );
             stream.validate_state(8).unwrap();
+        }
+        for whitespace in [" \t\r\n", "\u{2003}\u{3000}"] {
+            assert!(stream
+                .append_source_delta(whitespace, Some(45_000))
+                .is_empty());
         }
         // This is still a preview, not a fabricated bilingual confirmation.
         let state = serde_json::to_string(&stream).unwrap();
