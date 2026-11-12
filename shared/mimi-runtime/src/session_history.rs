@@ -1114,27 +1114,6 @@ mod tests {
         assert_eq!(fs::read_dir(&history.directory).unwrap().count(), 0);
     }
 
-    #[test]
-    fn saved_transcript_export_options_use_the_shared_formatter() {
-        use crate::core::session_archive::{TranscriptExportContent, TranscriptExportFormat};
-        let (_directory, history, id) = history_with_saved_pair();
-        let options = TranscriptExportOptions {
-            format: TranscriptExportFormat::Markdown,
-            content: TranscriptExportContent::Translation,
-            include_timestamps: false,
-        };
-        let text = String::from_utf8(
-            history
-                .export_transcript_with_options(&id, options)
-                .unwrap(),
-        )
-        .unwrap();
-        assert!(text.starts_with("# Mimi transcript"));
-        assert!(text.contains("译文"));
-        assert!(!text.contains("Synthetic source"));
-        assert!(!text.contains("1970-01-01"));
-    }
-
     #[derive(Default)]
     struct TranscriptWriter {
         bytes: Vec<u8>,
@@ -1379,6 +1358,9 @@ mod tests {
                             include_timestamps,
                         };
                         let expected = saved.export_with_options(options).unwrap().into_bytes();
+                        if format == TranscriptExportFormat::Markdown {
+                            assert!(expected.starts_with(b"# Mimi transcript"));
+                        }
                         assert_eq!(
                             history
                                 .export_transcript_with_options(&saved.id, options)
