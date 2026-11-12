@@ -1,5 +1,45 @@
 # 集成实测记录
 
+## 2026-11-12 — Retired-code cleanup and native layout allocation
+
+- Source `bf4150075113040113fb8b83e51f6f78100070af`, based on `472f88ce`.
+  Removed retired JVM-only Kotlin engines/clients and their exclusive tests;
+  retained golden wire fixtures, direct Rust tests, actual JNI tests and native
+  adapter validation. These Kotlin engines were already excluded from APKs.
+  Retired 30 completed/superseded plans, moved reusable rules into the runtime
+  performance guide and preserved historical evidence links at their revision.
+- Removed 25 unused desktop copy keys across nine locales and 25 unused Android
+  resource IDs. Comparable production frontend builds contained 18 assets:
+  1,628,201 → 1,609,094 bytes, and 487,771 → 482,961 gzip bytes. The 19,107-byte
+  raw reduction was JavaScript; this is a bundle measurement, not process RSS.
+- Android 15 / API 35 arm64, debug APK SHA-256
+  `5cd4927a2cc4b7e732bca71a15e5b2c67e900c22b82637a10bda9686f27b2393`.
+  The installed dev signer matched before replacement. The same native workload
+  covered English/German/Japanese, 1.0/1.5 font scaling, portrait/landscape,
+  hidden previews, narrow width and transitions back to portrait. Across 30
+  cases × 50 forced layouts, child layout-parameter replacements fell from
+  6,000 to zero; the recorded geometry hash stayed `-1968188563`. Current display
+  bounds still refresh during measurement. No frame-rate or total-heap claim.
+- Existing native preview parity passed 26 English cases comparing the real
+  floating frame with its settings preview, including exact pixels/geometry,
+  long captions, empty handoffs, size and display-mode changes. Synthetic content
+  only; no capture, provider session or recording. Temporary preferences were
+  restored and the preview service stopped. Screenshots/logs remain outside Git.
+- Canonical `CARGO_INCREMENTAL=0 ./scripts/check.sh` passed after provider/test
+  cleanup: shared core 117 tests, runtime 999, JNI 33, updater verifier 4,
+  desktop 697, frontend 2,870; two existing Rust tests remain ignored. After
+  the final copy/layout/resource changes, the affected checks passed again:
+  frontend 2,870 plus production build, provider-copy generator 13, Android
+  Debug and Release each 229 tests (including actual JNI), both lints and debug
+  app/instrumentation assembly. The final workload also passed after rebuilding
+  instrumentation. Architecture and APK rejection guards were retained.
+- Android lint warnings: Debug 77 → 37; Release 76 → 36, with zero errors.
+  Unused-resource and layout-allocation warnings reached zero without suppression;
+  other existing categories remain. All 321 Markdown files had valid relative
+  link targets. No production installation, credentials or capture permission
+  was changed. Real-provider latency, device-wide RSS/frame timing and Android
+  10's legacy display-bounds branch remain outside this acceptance.
+
 ## 2026-11-12：保存页静态刷新与搜索响应
 
 - 源码 `6f327df8`，对照 main `4857196f`。同一组合成数据（20 个保存会话／
