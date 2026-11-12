@@ -43,6 +43,11 @@
   artifact verification only; physical devices, API 29, capture and non-empty
   saved history were not exercised. Private logs and hashes are under
   `android-toolchain-9.5.1-comparison` in `2026-11-12-optimization-cycle-2`.
+- [PR #353](https://github.com/yuxino/Mimi/pull/353) merged as `cbcaf0f5`.
+  [Desktop CI](https://github.com/yuxino/Mimi/actions/runs/43214922352) and
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/43214922081) passed
+  on final PR head `e028357e`; the [native screenshots](https://github.com/yuxino/Mimi/pull/353#issuecomment-6823220092)
+  retain the tested build and the evidence limits above.
 
 ## 2026-11-12 — Reusable native resampler output
 
