@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/th";
+export { PROVIDER_COPY };
 import type { SettingsCopy } from "../i18n";
 
 export const TRAY = {
@@ -456,20 +457,20 @@ export const SETTINGS = {
   providerTencentCloud: "Tencent Cloud",
   providerBaiduTranslate: "Baidu Translate",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["th"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["th"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["th"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["th"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["th"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["th"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "รับข้อมูลรับรองได้ที่ไหน",
-  tencentSetupHelp: PROVIDER_COPY["th"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "รับ AppID",
   tencentGetSecretPair: "รับคู่คีย์ลับ",
   tencentEnableAsr: "เปิดใช้ ASR",
   tencentSetupOpenFailed: "เปิดคอนโซล Tencent Cloud ไม่สำเร็จ ลองอีกครั้งภายหลัง",
-  providerBaiduTranslateDescription: PROVIDER_COPY["th"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["th"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "ข้อมูลรับรองการเชื่อมต่อ",
   credentialLocalFileHelp: "คีย์ API บันทึกบนอุปกรณ์นี้",
   credentialPresent: "บันทึกข้อมูลรับรองแล้ว",

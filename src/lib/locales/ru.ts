@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/ru";
+export { PROVIDER_COPY };
 import type { SettingsCopy } from "../i18n";
 
 function plural(count: number, one: string, few: string, many: string): string {
@@ -465,20 +466,20 @@ export const SETTINGS = {
   providerTencentCloud: "Tencent Cloud",
   providerBaiduTranslate: "Baidu Translate",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["ru"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["ru"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["ru"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["ru"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["ru"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["ru"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "Где получить учётные данные",
-  tencentSetupHelp: PROVIDER_COPY["ru"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "Получить AppID",
   tencentGetSecretPair: "Получить пару секретных ключей",
   tencentEnableAsr: "Включить ASR",
   tencentSetupOpenFailed: "Не удалось открыть консоль Tencent Cloud. Повторите попытку позже.",
-  providerBaiduTranslateDescription: PROVIDER_COPY["ru"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["ru"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "Учётные данные для подключения",
   credentialLocalFileHelp: "Ключи API сохраняются на этом устройстве.",
   credentialPresent: "Учётные данные сохранены",

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { OPENAI_COMPATIBLE_PRESETS, PROVIDER_COPY } from "../../lib/generated/providerCopy";
+import { OPENAI_COMPATIBLE_PRESETS } from "../../lib/generated/providerCopy";
+import { PROVIDER_COPY as EN_PROVIDER_COPY } from "../../lib/generated/providerCopy/en";
 import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -1093,7 +1094,7 @@ it.each(["zh", "en", "ja"] as const)("groups the service identity, credential st
   const integratedStage = connection.querySelector(".service-stage--integrated")!;
   expect(integratedStage.querySelector("h3")?.textContent).toBe(I18N.settings.voiceTranslation);
   expect(identity.querySelector('.provider-icon[data-provider="openAIRealtime"]')).not.toBeNull();
-  expect(integratedStage.querySelector(".settings-help-control__description")?.textContent).toBe(PROVIDER_COPY[language].speechTranslationModeHelp);
+  expect(integratedStage.querySelector(".settings-help-control__description")?.textContent).toBe((await import(`../../lib/generated/providerCopy/${language}.ts`)).PROVIDER_COPY.speechTranslationModeHelp);
   expect(integratedStage.querySelector('.speech-translation-mode-settings [role="combobox"]')).not.toBeNull();
   expect(integratedStage.querySelector("p")).toBeNull();
   expect(host.querySelector(".service-detail__name label")?.textContent).toBe(I18N.settings.profileName);
@@ -1368,7 +1369,7 @@ async function chooseStageProxy(index: number, label: string) {
 }
 
 async function chooseTranslationPreset(id: string) {
-  const copy = PROVIDER_COPY.en;
+  const copy = EN_PROVIDER_COPY;
   const label = id === "custom" ? copy.compatiblePresetCustom : OPENAI_COMPATIBLE_PRESETS.find(item => item.id === id)!.label;
   await act(async () => host.querySelector<HTMLButtonElement>(`.translation-preset-field [aria-label="${copy.compatiblePresetLabel}"]`)!.click());
   await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === label)!.click());
@@ -1386,7 +1387,7 @@ async function renderPresetEditor(endpoint = "https://api.openai.com/v1") {
 
 it("shows each text preset's brand in the menu and selected value without saving", async () => {
   await renderPresetEditor();
-  const picker = () => host.querySelector<HTMLButtonElement>(`.translation-preset-field [aria-label="${PROVIDER_COPY.en.compatiblePresetLabel}"]`)!;
+  const picker = () => host.querySelector<HTMLButtonElement>(`.translation-preset-field [aria-label="${EN_PROVIDER_COPY.compatiblePresetLabel}"]`)!;
   expect(picker().querySelector("[data-preset]")?.getAttribute("data-preset")).toBe("openai");
   await act(async () => picker().click());
   const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
@@ -1415,9 +1416,9 @@ it("keeps preset selection local and preserves unsaved model/key when opening it
   expect(testProfileConnection).not.toHaveBeenCalled();
   await change('.service-stage--translation input[id$="-model"]', "synthetic-edited-model");
   await change('.service-stage--translation input[id$="-token"]', "synthetic-edited-key");
-  await act(async () => host.querySelector<HTMLButtonElement>('.service-stage--translation .translation-setup-link[aria-label^="' + PROVIDER_COPY.en.compatibleSetupGetKey + '"]')!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>('.service-stage--translation .translation-setup-link[aria-label^="' + EN_PROVIDER_COPY.compatibleSetupGetKey + '"]')!.click());
   expect(openTextTranslationSetupPage).toHaveBeenLastCalledWith("kimi", "apiKey");
-  await act(async () => host.querySelector<HTMLButtonElement>('.service-stage--translation .translation-setup-link[aria-label^="' + PROVIDER_COPY.en.compatibleSetupGuide + '"]')!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>('.service-stage--translation .translation-setup-link[aria-label^="' + EN_PROVIDER_COPY.compatibleSetupGuide + '"]')!.click());
   expect(openTextTranslationSetupPage).toHaveBeenLastCalledWith("kimi", "guide");
   expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-model"]')!.value).toBe("synthetic-edited-model");
   expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-token"]')!.value).toBe("synthetic-edited-key");
@@ -1429,10 +1430,10 @@ it("keeps preset selection local and preserves unsaved model/key when opening it
 it("shows keyless/local guidance and removes provider links for explicit Custom", async () => {
   await renderPresetEditor();
   await chooseTranslationPreset("indexTranslate");
-  expect(host.querySelector(".translation-setup-keyless")?.textContent).toBe(PROVIDER_COPY.en.compatibleSetupNoKey);
-  expect([...host.querySelectorAll(".translation-setup-link")].map(node => node.textContent)).toEqual([PROVIDER_COPY.en.compatibleSetupGuide]);
+  expect(host.querySelector(".translation-setup-keyless")?.textContent).toBe(EN_PROVIDER_COPY.compatibleSetupNoKey);
+  expect([...host.querySelectorAll(".translation-setup-link")].map(node => node.textContent)).toEqual([EN_PROVIDER_COPY.compatibleSetupGuide]);
   await chooseTranslationPreset("ollama");
-  expect(host.querySelector(".translation-setup-link")?.textContent).toBe(PROVIDER_COPY.en.compatibleSetupLocalGuide);
+  expect(host.querySelector(".translation-setup-link")?.textContent).toBe(EN_PROVIDER_COPY.compatibleSetupLocalGuide);
   await chooseTranslationPreset("custom");
   expect(host.querySelector(".translation-setup-link")).toBeNull();
   expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-endpoint"]')!.value).toBe("http://127.0.0.1:11434/v1");
@@ -1475,7 +1476,7 @@ it("keeps a typed key for an equivalent destination and leaves fields editable i
   await chooseTranslationPreset("openai");
   expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-token"]')!.value).toBe("synthetic-same-token");
   await chooseTranslationPreset("custom");
-  expect(host.querySelector('.translation-preset-field [role="combobox"]')!.textContent).toBe(PROVIDER_COPY.en.compatiblePresetCustom);
+  expect(host.querySelector('.translation-preset-field [role="combobox"]')!.textContent).toBe(EN_PROVIDER_COPY.compatiblePresetCustom);
   expect(host.querySelector<HTMLInputElement>('.service-stage--translation input[id$="-endpoint"]')!.value).toBe("https://api.openai.com/v1/chat/completions/");
 });
 

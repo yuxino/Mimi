@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/ko";
+export { PROVIDER_COPY };
 import type { SettingsCopy } from '../i18n';
 
 export const TRAY = {
@@ -456,20 +457,20 @@ export const SETTINGS = {
   providerTencentCloud: "Tencent Cloud",
   providerBaiduTranslate: "Baidu Translate",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["ko"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["ko"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["ko"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["ko"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["ko"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["ko"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "인증 정보 발급 안내",
-  tencentSetupHelp: PROVIDER_COPY["ko"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "AppID 확인",
   tencentGetSecretPair: "키 쌍 발급",
   tencentEnableAsr: "ASR 활성화",
   tencentSetupOpenFailed: "Tencent Cloud 콘솔을 열 수 없습니다. 나중에 다시 시도하세요.",
-  providerBaiduTranslateDescription: PROVIDER_COPY["ko"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["ko"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "연결 인증 정보",
   credentialLocalFileHelp: "API 키는 이 기기에 저장됩니다.",
   credentialPresent: "인증 정보 저장됨",

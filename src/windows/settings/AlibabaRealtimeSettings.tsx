@@ -1,4 +1,3 @@
-import { PROVIDER_COPY } from "../../lib/generated/providerCopy";
 import { useRef, useState } from "react";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import type { AlibabaRealtimeMode, ServiceProfile } from "../../lib/types";
@@ -26,7 +25,7 @@ export function AlibabaRealtimeSettings({ profile, disabled, onSave }: {
   onSave: (mode: AlibabaRealtimeMode, workspaceId: string, savedMessage: string) => Promise<unknown>;
 }) {
   const language = effectiveUiLanguage();
-  const common = PROVIDER_COPY[language];
+  const common = I18N.provider;
   const strings = {
     ...copy[language],
     chainDescription: common.alibabaAsrMtDescription,

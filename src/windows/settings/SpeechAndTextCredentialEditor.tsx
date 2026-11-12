@@ -20,7 +20,7 @@ import { SavedCredentialInput } from "./SavedCredentialInput";
 import { useCredentialEditorState } from "./useCredentialEditorState";
 import { useAppleTranslationSupport } from "./useAppleTranslationSupport";
 import { AppleTranslationSettings } from "./AppleTranslationSettings";
-import { OPENAI_COMPATIBLE_PRESETS, PROVIDER_COPY } from "../../lib/generated/providerCopy";
+import { OPENAI_COMPATIBLE_PRESETS } from "../../lib/generated/providerCopy";
 import { compatiblePresetForEndpoint } from "../../lib/textTranslationPresets";
 import { TextTranslationSetupLink } from "./TextTranslationSetupLink";
 import { ServiceSetupLink } from "./ServiceSetupLink";
@@ -155,7 +155,7 @@ export function SpeechAndTextCredentialEditor({ profile, inputId, disabled, busy
   const endpointId = `${inputId}-endpoint`;
   const modelId = `${inputId}-model`;
   const noteId = storageNoteId ?? `${inputId}-storage-note`;
-  const presetCopy = PROVIDER_COPY[effectiveUiLanguage()];
+  const presetCopy = I18N.provider;
   const choosePreset = (id: string) => {
     const next = OPENAI_COMPATIBLE_PRESETS.find(item => item.id === id);
     // Custom leaves the editable destination intact. Selecting a preset is

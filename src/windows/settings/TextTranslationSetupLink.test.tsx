@@ -2,7 +2,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { OPENAI_COMPATIBLE_PRESETS, PROVIDER_COPY } from "../../lib/generated/providerCopy";
+import { OPENAI_COMPATIBLE_PRESETS } from "../../lib/generated/providerCopy";
+import { PROVIDER_COPY as EN_PROVIDER_COPY } from "../../lib/generated/providerCopy/en";
 import { setStoredUiLanguage, UI_LANGUAGES } from "../../lib/i18n";
 import { openTextTranslationSetupPage } from "../../lib/ipc";
 import { SettingsToastRegion } from "./SettingsToast";
@@ -43,7 +44,7 @@ it.each(UI_LANGUAGES)("labels local setup without a cloud-key action in %s", asy
   const preset = OPENAI_COMPATIBLE_PRESETS.find(item => item.id === "ollama")!;
   await act(async () => root.render(<><TextTranslationSetupLink preset={preset} page="apiKey" /><TextTranslationSetupLink preset={preset} page="guide" /></>));
   expect(host.querySelectorAll("button")).toHaveLength(1);
-  expect(host.textContent).toBe(PROVIDER_COPY[language].compatibleSetupLocalGuide);
+  expect(host.textContent).toBe((await import(`../../lib/generated/providerCopy/${language}.ts`)).PROVIDER_COPY.compatibleSetupLocalGuide);
 });
 
 it("shows a sanitized transient failure and keeps disabled actions inactive", async () => {
@@ -51,7 +52,7 @@ it("shows a sanitized transient failure and keeps disabled actions inactive", as
   vi.mocked(openTextTranslationSetupPage).mockRejectedValue(new Error("private-browser-detail"));
   await act(async () => root.render(<><TextTranslationSetupLink preset={preset} page="apiKey" /><SettingsToastRegion /></>));
   await act(async () => host.querySelector<HTMLButtonElement>(".translation-setup-link")!.click());
-  expect(host.querySelector(".settings-toast")?.textContent).toContain(PROVIDER_COPY.en.compatibleSetupOpenFailed);
+  expect(host.querySelector(".settings-toast")?.textContent).toContain(EN_PROVIDER_COPY.compatibleSetupOpenFailed);
   expect(host.textContent).not.toContain("private-browser-detail");
   vi.mocked(openTextTranslationSetupPage).mockClear();
   await act(async () => root.render(<TextTranslationSetupLink preset={preset} page="apiKey" disabled />));

@@ -1,4 +1,5 @@
-import { PROVIDER_COPY } from "../generated/providerCopy";
+import { PROVIDER_COPY } from "../generated/providerCopy/zh-TW";
+export { PROVIDER_COPY };
 import type { SettingsCopy } from '../i18n';
 
 export const TRAY = {
@@ -460,20 +461,20 @@ export const SETTINGS = {
   providerTencentCloud: "騰訊雲",
   providerBaiduTranslate: "百度翻譯",
   providerXAI: "xAI Grok",
-  providerAlibabaDescription: PROVIDER_COPY["zh-TW"].providerAlibabaDescription,
-  providerOpenAIDescription: PROVIDER_COPY["zh-TW"].providerOpenAIDescription,
-  providerGoogleGeminiDescription: PROVIDER_COPY["zh-TW"].providerGoogleGeminiDescription,
-  providerAzureOpenAIDescription: PROVIDER_COPY["zh-TW"].providerAzureOpenAIDescription,
-  providerVolcanoEngineDescription: PROVIDER_COPY["zh-TW"].providerVolcanoEngineDescription,
-  providerTencentCloudDescription: PROVIDER_COPY["zh-TW"].providerTencentCloudDescription,
+  providerAlibabaDescription: PROVIDER_COPY.providerAlibabaDescription,
+  providerOpenAIDescription: PROVIDER_COPY.providerOpenAIDescription,
+  providerGoogleGeminiDescription: PROVIDER_COPY.providerGoogleGeminiDescription,
+  providerAzureOpenAIDescription: PROVIDER_COPY.providerAzureOpenAIDescription,
+  providerVolcanoEngineDescription: PROVIDER_COPY.providerVolcanoEngineDescription,
+  providerTencentCloudDescription: PROVIDER_COPY.providerTencentCloudDescription,
   tencentSetupTitle: "認證資訊從哪裡獲取",
-  tencentSetupHelp: PROVIDER_COPY["zh-TW"].providerTencentCloudSetup,
+  tencentSetupHelp: PROVIDER_COPY.providerTencentCloudSetup,
   tencentGetAppId: "獲取 AppID",
   tencentGetSecretPair: "獲取金鑰對",
   tencentEnableAsr: "開通 ASR",
   tencentSetupOpenFailed: "無法開啟騰訊雲主控台，請稍後再試一次。",
-  providerBaiduTranslateDescription: PROVIDER_COPY["zh-TW"].providerBaiduTranslateDescription,
-  providerXAIDescription: PROVIDER_COPY["zh-TW"].providerXAIDescription,
+  providerBaiduTranslateDescription: PROVIDER_COPY.providerBaiduTranslateDescription,
+  providerXAIDescription: PROVIDER_COPY.providerXAIDescription,
   credentials: "連線認證資訊",
   credentialLocalFileHelp: "API 金鑰儲存在本機。",
   credentialPresent: "認證資訊已儲存",
