@@ -1,5 +1,26 @@
 # 集成实测记录
 
+## 2026-11-12 — Native audio input contracts
+
+- Source `85f35a99`, based on `4ee40715`. The four PCM encoder callers already
+  supply downmixed mono samples, so the encoder now accepts one sample slice.
+  The resampler's optional processor replaces duplicated stored rate state, and
+  AEC construction no longer compares a Rust field with its own initializer.
+  Removed two unused multichannel-interface tests and one AEC getter assertion;
+  real native downmix, quantization, frame validation and DSP tests remain.
+- The same arm64 debug build compared the real production functions with 200,732
+  mono samples and 48 streaming cases over three passes, including split callbacks,
+  partial tails, signed zero, NaN/infinity and quantization boundaries. Every PCM
+  byte, emitted-buffer boundary and checked pending/resampler state matched.
+  Temporary probe code was detached before the final checks and native preview.
+- Final desktop checks passed 695 tests plus one existing ignored test, all eight
+  Apple adapter tests, formatting and all-target Clippy. The signed embedded
+  `local-dev --ui-only` app loaded settings and voice navigation, then quit normally.
+  No capture, provider requests or formal app replacement was used. Other platforms
+  rely on CI; this is not a device-capture or performance measurement. Private
+  hashes, reports and logs are under `desktop-contract-cleanup` in
+  `2026-11-12-optimization-cycle-2`.
+
 ## 2026-11-12 — Shared recovery invariants
 
 - Source `50627d20`, based on `a2bdb3f4`. Removed a repeated retained-budget
