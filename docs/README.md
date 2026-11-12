@@ -17,7 +17,7 @@
 
 ## 更新记录 / Release notes
 
-[v1.6.7](releases/v1.6.7.md) · [v1.6.6](releases/v1.6.6.md) · [全部已发布版本 / Published releases](https://github.com/yuxino/mimi/releases)
+[全部已发布版本 / Published releases](https://github.com/yuxino/mimi/releases)
 
 ## Development
 
@@ -26,6 +26,7 @@
 - [Common regressions and native-test rules](development/common-regressions.md)
 - [UI guidelines](development/ui-guidelines.md)
 - [Platform differences and verification](development/platform-parity.md)
+- [Runtime performance and resource ownership](development/runtime-performance.md)
 - [Current design decisions](plans/README.md)
 - [Integration learning loop](development/integration-learning-loop.md)
 - [Integration evidence and remaining limits](development/integration-runs.md)

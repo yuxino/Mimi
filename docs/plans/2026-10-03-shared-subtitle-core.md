@@ -9,7 +9,9 @@ but still allow them to drift.
 Extract the existing UI-independent Rust subtitle state machine and wire models
 into `shared/mimi-core`. Desktop imports it directly. Android calls the same
 compiled crate through JNI; Kotlin maps native callbacks and renders snapshots.
-OS capture, permissions, credential stores and network adapters remain native.
+OS capture, permissions, credentials and rendering remain native. Provider
+protocols and network clients now live in `shared/mimi-runtime`, reached by
+Android through the runtime JNI adapter.
 
 The shared core owns complete text bounds, current complete pairs, preview
 replacement, confirmation identities, history bounds, final queue admission,
@@ -17,11 +19,12 @@ total deadlines, retry decisions and finite finish windows. Preserve complete
 text within the byte limit rather than cutting at punctuation or retaining a
 suffix. Empty/oversized input preserves the last valid display. Only a complete
 pair replaces a complete pair. Older finals may enter opted-in history without
-replacing a newer display owner. History remains off by default.
+replacing a newer display owner. Saved-session history remains off by default. Android fresh installs display
+three recent confirmed captions in memory; prior installations keep their setting.
 
 DashScope conversation-item alignment and OpenAI append-only transcript alignment
-also move from desktop into this crate. Kotlin only decodes transport frames and
-forwards shared outputs. Known unlinked responses never guess arrival-order pairs.
+also live in this crate. Shared Rust clients decode transport frames and forward
+shared outputs. Known unlinked responses never guess arrival-order pairs.
 Both timing streams and identity maps have bounded, validated serialized state.
 Complete DashScope pairs preserve the source item ID through the reducer. A late
 older pair may enter opted-in history while the newer source/display/language
@@ -46,8 +49,9 @@ or bound early audio rather than silently discard it.
   Existing serde/JSON and already locked JNI dependencies are reused; no new
   service, credential requirement or runtime debug feature is added.
 
-JNI exchanges bounded JSON state without pointer handles or a global session
-registry. Errors use fixed labels without input, credentials or provider bodies.
+The stateless subtitle-core JNI entry exchanges bounded JSON state; the separate
+runtime JNI entry owns session handles. Errors use fixed labels without input,
+credentials or provider bodies.
 Opaque serialized state has a 2 MiB aggregate budget within the 8 MiB request
 limit, including room for JSON escaping on the next call. Every accepted state
 must be restorable; an invalid or over-budget operation fails without replacing

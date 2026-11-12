@@ -545,10 +545,9 @@
     },
     "speechTranslationModeSaveFailed": {
       "scope": [
-        "desktop",
-        "android"
+        "desktop"
       ],
-      "androidResource": "speech_translation_failed",
+      "androidResource": null,
       "translations": {
         "zh": "翻译模式保存失败，请重试。",
         "zh-TW": "翻譯模式儲存失敗，請重試。",

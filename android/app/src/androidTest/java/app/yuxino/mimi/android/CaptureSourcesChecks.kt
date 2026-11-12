@@ -163,7 +163,7 @@ internal class CaptureSourcesChecks(private val instrumentation: Instrumentation
         val invalid = AtomicBoolean()
         val stopped = AtomicBoolean()
         val finished = AtomicBoolean()
-        override fun start(apiKey: String, sourceLang: String, targetLang: String, customBaseUrl: String, customModel: String) =
+        override fun start() =
             error("provider_start_forbidden")
         override fun sendAudio(pcm16Mono: ByteArray) {
             if (stopped.get() || pcm16Mono.size % 2 != 0 || pcm16Mono.size > sampleRateHz * 2 / 5) invalid.set(true)

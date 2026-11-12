@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">Traduction simultanée</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">La traduction simultanée fournit directement le texte original et sa traduction. ASR + MT reconnaît la parole, puis la traduit avec le service de texte choisi. Les deux configurations sont conservées. Arrêtez les sous-titres pour changer.</string>
-    <string name="speech_translation_failed">Impossible d’enregistrer le mode de traduction. Réessayez.</string>
     <string name="translation_preset">Configuration rapide</string>
     <string name="translation_preset_custom">Personnalisé</string>
     <string name="translation_preset_help">Préremplit une adresse modifiable ; certains identifiants de modèle restent à saisir. Choisissez un modèle activé ou téléchargé localement. L’adresse doit correspondre à la région du compte, au produit et à la clé API. Traduction et reconnaissance vocale ont des identifiants distincts.</string>

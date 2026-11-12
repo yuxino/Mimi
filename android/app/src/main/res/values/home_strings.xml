@@ -1,13 +1,10 @@
 <resources>
     <string name="brand_description">Mimi character icon</string>
-    <string name="home_kicker">Live captions and translation</string>
     <string name="home_title">Live captions</string>
     <string name="home_description">Show captions for audio playing in other apps. Some apps restrict audio capture.</string>
     <string name="home_source">Spoken language</string>
     <string name="home_target">Translate to</string>
     <string name="home_service">Translation service</string>
-    <string name="home_service_unset">%1$s · needs setup</string>
-    <string name="home_service_ready">%1$s · configured</string>
     <string name="home_setup_action">Set up translation service</string>
     <string name="home_setup_status">First time here</string>
     <string name="home_setup_hint">Choose a service and add your own credentials.</string>

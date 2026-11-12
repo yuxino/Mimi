@@ -111,6 +111,7 @@ internal class CaptionPreviewStage(context: Context) : ViewGroup(context) {
         private set
     private var offsetX = 0f
     private var offsetY = 0f
+    private val visibleBounds = android.graphics.Rect()
 
     init { clipChildren = false; clipToPadding = false }
     fun replaceFrame(frame: View) { removeAllViews(); addView(frame) }
@@ -131,21 +132,23 @@ internal class CaptionPreviewStage(context: Context) : ViewGroup(context) {
         // An activity can occupy only part of the display. The floating service
         // uses the application display frame, so the preview must do the same.
         val wm = context.applicationContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val extent = if (Build.VERSION.SDK_INT >= 30) {
+        val availableWidth: Int
+        val availableHeight: Int
+        if (Build.VERSION.SDK_INT >= 30) {
             val metrics = wm.currentWindowMetrics
             val insets = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            OverlayPlacement.availableExtent(metrics.bounds.width(), insets.left, insets.right) to
-                OverlayPlacement.availableExtent(metrics.bounds.height(), insets.top, insets.bottom)
+            availableWidth = OverlayPlacement.availableExtent(metrics.bounds.width(), insets.left, insets.right)
+            availableHeight = OverlayPlacement.availableExtent(metrics.bounds.height(), insets.top, insets.bottom)
         } else {
-            val bounds = android.graphics.Rect().also(::getWindowVisibleDisplayFrame)
-            if (!bounds.isEmpty) bounds.width() to bounds.height()
-            else resources.displayMetrics.widthPixels to resources.displayMetrics.heightPixels
+            getWindowVisibleDisplayFrame(visibleBounds)
+            availableWidth = if (!visibleBounds.isEmpty) visibleBounds.width() else resources.displayMetrics.widthPixels
+            availableHeight = if (!visibleBounds.isEmpty) visibleBounds.height() else resources.displayMetrics.heightPixels
         }
-        val nativeWidth = OverlayPlacement.windowWidth(extent.first, widthPercent, dp(if (immersive) 160 else 176), dp(8))
+        val nativeWidth = OverlayPlacement.windowWidth(availableWidth, widthPercent, dp(if (immersive) 160 else 176), dp(8))
         val exactWidth = MeasureSpec.makeMeasureSpec(nativeWidth, MeasureSpec.EXACTLY)
         frame.measure(exactWidth, MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
         if (frame is CaptionPanelView) {
-            val nativeHeight = captionPanelHeight(extent.second, heightPercent, frame.chromeHeight(),
+            val nativeHeight = captionPanelHeight(availableHeight, heightPercent, frame.chromeHeight(),
                 frame.minimumReadingHeight())
             frame.measure(exactWidth, MeasureSpec.makeMeasureSpec(nativeHeight, MeasureSpec.EXACTLY))
         }

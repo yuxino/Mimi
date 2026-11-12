@@ -930,7 +930,7 @@
 ## 2026-10-19：后台优化——历史摘要、双声源投影与旧凭据分支
 
 - 基于 `c0e6284d7148ad537ce1517fc9c8b12d738685cf`，范围见
-  [设计记录](../plans/2026-10-19-history-overlay-and-legacy-cleanup.md)。沿用
+  [设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-19-history-overlay-and-legacy-cleanup.md)。沿用
   用户不打扰约束：只做源码、合成数据和后台检查，不启动应用或访问真实凭据、
   会话记录、音频、权限及已安装应用。
 - 双声源固定样本：每路 64 条历史，公共历史仅保留末尾两条，同时有两路
@@ -1033,7 +1033,7 @@
 
 - 基于 main `530b2be55b76da75dbd997c4ffde01f0e8b008c2`，受测 dirty
   工作树的 NameDraft 源 SHA-256 为 `7c04f551…bf3a2fad`；范围见
-  [设计记录](../plans/2026-10-18-pending-name-source.md)。原生先确认 A、再
+  [设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-pending-name-source.md)。原生先确认 A、再
   发布 B、迟到 A IPC 成功时，全局 heading 保留 B、旧输入却永久显示 A。
   三类名称共用的真实输入与实际 ServiceProfiles 正式负例先有 12 项失败。
 - 仅增加本次提交名与待确认 source 两个有界字段，分开更新确认基线和
@@ -1064,7 +1064,7 @@
 
 ## 2026-10-18：嵌入控制窗口的字幕更新边界
 
-- 基于 `1b3b111`，范围见[设计记录](../plans/2026-10-18-embedded-control-render-boundary.md)。
+- 基于 `1b3b111`，范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-embedded-control-render-boundary.md)。
   真实 OverlayWindow → ControlWindow → Panel／Capsule／Timeline 合成原生
   IPC 用例在 hidden／island／panel 各发送 50 次字幕与延迟快照；父模型均
   运行 50 次，旧控制模型每模式至少 50 次，新实现新增 0 次。三个正式
@@ -1100,7 +1100,7 @@
 ## 2026-10-18：嵌入 popup 测量的字幕 mutation 范围
 
 - 基于 main `4ae49cbd3c9983a9cff6d522994b6a911cbc180b` 的独立 dirty frontend
-  工作树，范围见[设计记录](../plans/2026-10-18-embedded-popup-mutation-scope.md)。
+  工作树，范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-embedded-popup-mutation-scope.md)。
   caption-only／latency-only × 无 layer／仅 menu／仅 toast／两者的八个
   真实 OverlayWindow 正式负例均先红；初次面板 focus frame 先执行，再打开
   菜单并断言 layer 确实存在，避免场景退化。旧策略每三个显示更新都新增
@@ -1142,7 +1142,7 @@
 ## 2026-10-18：可靠迟到原文保持服务观察顺序
 
 - 基于 `d5664012c7d95d962799df5f2e8b9cfd6adcd038` 的 dirty debug 工作树，
-  范围见[设计记录](../plans/2026-10-18-provider-source-order-admission.md)。
+  范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-provider-source-order-admission.md)。
   同一真实 aligner → 暂扣 mailbox → controller 四输入在修前把旧句当作
   新句，直接交付则保留当前句；原 main 与上一轮 provider 修复都有此问题。
   正式回归的四输入、旧译文先完成、新译文先完成三种断言均先红后绿。
@@ -1178,7 +1178,7 @@
 ## 2026-10-18：identified 原文 final 与翻译等待共同准入
 
 - 基于 `7501a4e577566a0f480bb4b4d835c3a46f96cde9` 的 dirty debug 工作树，
-  范围见[设计记录](../plans/2026-10-18-identified-translation-start-admission.md)。
+  范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-identified-translation-start-admission.md)。
   实际 emit → mailbox → controller 正式回归先红后绿：旧句首个原文 final
   在 t=5s 到达时，修前将当前截止从 t=6s 改成 t=11s，或重新打开已完成句的
   pending；字幕和历史未被替换。单独绕过附带 Started 的同输入对照不改变等待。
@@ -1210,7 +1210,7 @@
 
 ## 2026-10-18：字幕滚动与下拉菜单归属
 
-- 基于 `7bf13f1`，范围见[设计记录](../plans/2026-10-18-select-scroll-ownership.md)。
+- 基于 `7bf13f1`，范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-select-scroll-ownership.md)。
   Wayland embedded panel 与真实 Timeline 在同一 document；新 caption 触发
   timeline 的 scrollTo 时，原 Select 把无关 sibling scroll 当作关闭意图。
   正式负例和 HTML／SVG sibling、Window target 边界共 4 项修前失败。
@@ -1235,7 +1235,7 @@
 
 - 最初基于 `8d60c7613a076c971a17b9f2ee7578ade4cef712`，随后组合并变基到
   main `7bf13f1fd33d39416cb6d6ca9545185bf5fa05c5`，生产修改保持不变，
-  范围见[设计记录](../plans/2026-10-18-conditional-jni-poll.md)。可选
+  范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-conditional-jni-poll.md)。可选
   `sinceVersion` 相等时只返回版本与当前终态信息；旧 poll 及旧 native 回退
   保持 full。controller 与 revision 同锁发布、捕获后解锁再序列化；无响应缓存。
 - 五个正式回归先红，修后 JNI Rust 24 项通过，含计时器更新、终态迟到、
@@ -1260,7 +1260,7 @@
 
 ## 2026-10-18：历史页日期格式器复用
 
-- 基于 `90fa8cb`，范围见[设计记录](../plans/2026-10-18-history-date-formatting.md)。
+- 基于 `90fa8cb`，范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-history-date-formatting.md)。
   真实 SessionExport 合成组件含 20 个同旧日会话与实际 30 条正文分页；
   相同 archive 每秒返回新对象时，每轮 Intl formatter 构造从 70 降到 3，
   五轮 350 → 15，无新正文读取，历史按钮／article 节点身份保持。
@@ -1284,7 +1284,7 @@
 ## 2026-10-18：Android PCM 队列背压恢复
 
 - 基于 `85c14105038dba57512e3f2f74fb5d88b964b72f` 的 dirty debug 工作树，
-  包含前轮硬停 owner；范围见[设计记录](../plans/2026-10-18-android-pcm-backpressure-recovery.md)。
+  包含前轮硬停 owner；范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-android-pcm-backpressure-recovery.md)。
   实际 Java JNI＋本地 CONNECT／TLS／WebSocket，无真实 provider、凭据、
   capture 或外网连接。只将首次 typed Backpressure 转入原连接的现有 Rust
   恢复通道，不改共享 bounded 策略或增加 Kotlin 恢复算法。
@@ -1308,7 +1308,7 @@
 ## 2026-10-18：迟到确认与下一句草稿的队列边界
 
 - 基于 `90fa8cb` 复现，受测源码冻结为 `4a479e8`（基于 `a71680c`）；范围见
-  [设计记录](../plans/2026-10-18-provider-draft-final-barrier.md)。真实共享
+  [设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-provider-draft-final-barrier.md)。真实共享
   aligner → 有界 mailbox → session controller 的正式 Rust 红回归证明：
   A 原文 final、B draft、迟到 A 译文 final 在消费者积压时保留 A 历史，
   却把当前 B 丢掉。修复仅携带核心既有顺序的私有元数据，不新增可靠队列
@@ -1344,7 +1344,7 @@
 
 ## 2026-10-18：缩放 IPC 有界串行
 
-- 基于 `ba87a50`，范围见[设计记录](../plans/2026-10-18-bounded-resize-ipc.md)。
+- 基于 `ba87a50`，范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-bounded-resize-ipc.md)。
   真实组件的受控 ACK probe：120 次 move 原来产生 121 个在途请求；新 dispatcher
   峰值为 1，仅保留最新待发坐标。旧手势 final move／end ACK 后才允许新 start，
   未发出便释放的点击不积压；无 timer、超时放行、新依赖或 native 协议变更。
@@ -1364,7 +1364,7 @@
 
 ## 2026-10-18：跨页字体保存归属
 
-- 基于 `f949d610`（与合并后的 `ba87a502` 同树），范围见[设计记录](../plans/2026-10-18-subtitle-font-save-ownership.md)。
+- 基于 `f949d610`（与合并后的 `ba87a502` 同树），范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-subtitle-font-save-ownership.md)。
   实际字体组件、store、保存 coordinator 与 settings-changed 监听保持生产路径，
   仅原生保存／枚举边界使用合成数据，没有真实配置、凭据、provider 或采集。
 - A 保存挂起、旧页选择 B、离页返回选择 C：旧组件在首写成功和失败两项
@@ -1388,8 +1388,8 @@
 
 ## 2026-10-18：缩放收尾、滑块预览与应用刷新
 
-- 基于 `5e1c3eb` 的 UI 生命周期修复，范围见[缩放记录](../plans/2026-10-18-resize-drag-finalization.md)
-  和[设置预览记录](../plans/2026-10-18-settings-preview-and-picker-refresh.md)。
+- 基于 `5e1c3eb` 的 UI 生命周期修复，范围见[缩放记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-resize-drag-finalization.md)
+  和[设置预览记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-settings-preview-and-picker-refresh.md)。
   仅合成 UI／IPC 数据，无真实 provider、录音、凭据或用户配置。
 - 缩放原组件回归 16 项失败并有 6 个未捕获异常；统一 finish 后 40 项通过，
   quick frontend 214 项通过。native completion 旧逻辑使 3 项新用例失败，
@@ -1416,7 +1416,7 @@
 ## 2026-10-18：Android 硬停后的连接清理归属
 
 - 基于 `ffddc20` 的 dirty 修复工作树，原 JNI adapter 在 `a1fe131` 至该基线
-  间未改。范围见[设计记录](../plans/2026-10-18-android-stop-resource-ownership.md)。
+  间未改。范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-android-stop-resource-ownership.md)。
   本地 CONNECT／TLS／WebSocket 夹具经实际 Java JNI export 调用共享客户端；
   无真实 provider、凭据、音频、capture 或外网连接。
 - 旧 native library 在服务端收到 `session.finish` 后硬停，9,621ms 后仍能回复
@@ -1443,7 +1443,7 @@
 ## 2026-10-18：共享会话与桌面快照分配
 
 - 调查基于 `10d726e`，提交前更新到 `58901be`，受测 shared／桌面源码未变。
-  [设计记录](../plans/2026-10-18-runtime-state-copy.md)说明聚合历史、各音源
+  [设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-runtime-state-copy.md)说明聚合历史、各音源
   状态和锁边界。无新 IPC 字段、保留策略、provider 或音频采集行为。
 - 真实生产函数抽取的分配 A/B 保持完整输出相等：20 条、每字段 1,024 字节
   的共享单源 refresh 从 86 次／84,998 字节降为 45 次／42,758 字节；双源
@@ -1463,7 +1463,7 @@
 ## 2026-10-18：恢复任务取消与原生清理归属
 
 - 基于 `10d726e` 复现，提交前更新至 `8ec3d62`，受测 teardown helpers
-  保持不变。范围见[设计记录](../plans/2026-10-18-recovery-cleanup-ownership.md)。
+  保持不变。范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-recovery-cleanup-ownership.md)。
   真实 manager 方法的 Tokio 门闩夹具证实：旧恢复任务被 Start 取消时，
   可留下 generation 71 的 client／pump，导致新代安装失败；不依赖真实服务。
 - 同步登记与独立 owner 使 capture stop／disconnect 不随等待者取消。
@@ -1483,7 +1483,7 @@
 
 ## 2026-10-18：前端重复工作、可见性与快照归属
 
-- 基于 `10d726e`，范围见[设计记录](../plans/2026-10-18-frontend-work-and-snapshots.md)。
+- 基于 `10d726e`，范围见[设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-frontend-work-and-snapshots.md)。
   只使用合成组件数据，没有读取用户记录、凭据或启动采集／服务请求。
 - 当前转写同条数跨会话、隐藏后停止展示轮询、诊断重入及迟到结果的新增
   回归修前共 9 项失败，修后相关 72 项通过。可见性使用标准 document 事件，
@@ -1506,9 +1506,9 @@
 
 ## 2026-10-18：字幕历史渲染、启动查询与资源精简
 
-- 基于 `58901be` 的后续前端优化，分别见[历史渲染](../plans/2026-10-18-subtitle-history-render.md)、
-  [快捷键查询](../plans/2026-10-18-desktop-shortcut-support-cache.md)和
-  [资源元数据](../plans/2026-10-18-provider-asset-metadata.md)。无新依赖、
+- 基于 `58901be` 的后续前端优化，分别见[历史渲染](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-subtitle-history-render.md)、
+  [快捷键查询](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-desktop-shortcut-support-cache.md)和
+  [资源元数据](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-provider-asset-metadata.md)。无新依赖、
   IPC、采集或 provider 请求；root 接受前已做独立互审。
 - 20 条历史 × 20 次显示更新的实际组件合成 probe：Lane／CompactLane
   调用和测量回调 ref 维护 840 → 40，未变历史 Lane 800 → 0；挂载后重复
@@ -1533,7 +1533,7 @@
 ## 2026-10-18：字幕动画、窗口反转与设置保存回归
 
 - 基于 `8b9756a7c37414df7f23008631274a3a133f9e00` 的修复工作树，范围见
-  [设计记录](../plans/2026-10-18-overlay-motion-regressions.md)。未启动真实服务、
+  [设计记录](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-18-overlay-motion-regressions.md)。未启动真实服务、
   采集声音或读取用户配置。浏览器样本由仓库内 `overlay-motion.html` 生成。
 - Linux Chromium 前台通过 30 组断言：新句测量不再瞬移抵消 glide；一行到
   五行、三行预算的首行从 0 平滑移到 −48px，不再先下跳 48px；动画中点击
@@ -2162,7 +2162,7 @@
 ## 2026-10-09：共享业务维护防分叉（云端后续）
 
 - 用户明确要求以后 PC 业务改动自然到达 Android，不再依赖另一份手动同步。保留已上传的原版 29 文件交付及原哈希，后续独立版本继续基于同一 supplied snapshot；不把后续哈希误报成原 Library 文件版本。
-- 新增共享运行时架构检查：桌面 facade 只能转导出，生产 Android 只能通过 SharedRuntimeEngine，不能接回旧 Kotlin 引擎／文字客户端或新增平台 provider transport。旧文字客户端工厂原样移至 JVM test；两端 Cargo 必须引用仓库内共享源。Android preBuild／native／direct build、canonical 和 desktop CI scope 接入检查，Android CI 触发范围覆盖 desktop frontend/backend、shared、scripts/workflows。Gradle 增加 build.rs 和 Cargo config 输入，防止这些输入变化时复用旧 generated JNI。设计见 [维护约束](../plans/2026-10-09-runtime-parity-enforcement.md)。
+- 新增共享运行时架构检查：桌面 facade 只能转导出，生产 Android 只能通过 SharedRuntimeEngine，不能接回旧 Kotlin 引擎／文字客户端或新增平台 provider transport。旧文字客户端工厂原样移至 JVM test；两端 Cargo 必须引用仓库内共享源。Android preBuild／native／direct build、canonical 和 desktop CI scope 接入检查，Android CI 触发范围覆盖 desktop frontend/backend、shared、scripts/workflows。Gradle 增加 build.rs 和 Cargo config 输入，防止这些输入变化时复用旧 generated JNI。设计见 [维护约束](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-09-runtime-parity-enforcement.md)。
 - 本次实际通过：架构检查、22 项真实输入变异／构建入口拒绝回归、7 项 CI scope、9 项 native packaging，两个工作流 YAML 语法解析、三个 Python 编译检查和 shell 语法检查。直接 native build 的拒绝测试在无法调用 Rust 的隔离 PATH 下验证坏 facade 会在编译前失败；没有产品编译或启动。
 - 未重跑原版 11 组 Java／220 PC／前端全套；这些仍是原版证据。云端 SDK／Cargo 依赖限制未解除，Gradle/Kotlin/JNI 完整构建、APK、远程 CI 和手机验收尚未执行。架构检查覆盖已验证的分叉模式，不能证明所有未来语义或原生 UI 都自动相同。
 - 下一步：按已有原版是否应用选择对应补丁；本地运行架构检查及 canonical、Android 两版完整检查，集成后确认 PC 或 shared source 改动实际触发 Android CI。设备验收继续沿用沉浸恢复／字幕时序清单。未提交、推送、PR、合并、发版、服务调用、采音、录制、Mac 连接或恢复其他任务。

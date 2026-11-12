@@ -14,8 +14,8 @@ NOTICES = "assets/shared-core.txt"
 ROOT = Path(__file__).resolve().parent.parent
 LOCKFILE = ROOT / "shared/mimi-android-jni/Cargo.lock"
 NOTICE_SOURCE = ROOT / "android/native-licenses/shared-core.txt"
-# These historical Kotlin implementations belong only to the JVM test source
-# set. Match DEX class descriptors (including Kotlin file facades/inner types),
+# These Kotlin implementations were retired. Match DEX class descriptors
+# (including Kotlin file facades/inner types),
 # not short display labels. A stale/generated source must not repack them.
 LEGACY_RUNTIME_DESCRIPTOR = re.compile(
     rb"Lapp/yuxino/mimi/android/provider/(?:"

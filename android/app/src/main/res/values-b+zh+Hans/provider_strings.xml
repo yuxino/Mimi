@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">同声传译</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">同声传译直接输出原文和译文；ASR + MT 先识别成文字，再由所选文字翻译服务翻译。两种模式的配置分别保留。停止字幕后可切换。</string>
-    <string name="speech_translation_failed">翻译模式保存失败，请重试。</string>
     <string name="translation_preset">快速填写</string>
     <string name="translation_preset_custom">自定义</string>
     <string name="translation_preset_help">快速填入服务地址，部分模型 ID 需自行填写，字段仍可修改。请选择已开通或本机已下载的模型；地址须与账号的地域、产品及 API Key 对应。文字翻译凭据与语音识别分别配置。</string>

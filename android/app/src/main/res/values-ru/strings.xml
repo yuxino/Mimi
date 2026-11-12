@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">Настройки Mimi</string>
     <string name="start_capture">Включить субтитры</string>
     <string name="stop_capture">Остановить субтитры</string>
-    <string name="open_settings">Настройки</string>
     <string name="need_overlay_permission">Разрешите показ поверх других приложений в настройках системы.</string>
     <string name="need_audio_permission">Для захвата звука из других приложений Android требует разрешение на запись аудио.</string>
     <string name="capture_failed">Сеанс субтитров остановлен. Проверьте разрешения, настройки службы и сеть, затем повторите попытку.</string>

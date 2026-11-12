@@ -68,12 +68,6 @@
         <item name="endIconTint">@color/mimi_muted</item>
         <item name="helperTextTextColor">@color/mimi_muted</item>
     </style>
-    <style name="TextAppearance.Mimi.Body" parent="TextAppearance.Material3.BodyMedium">
-        <item name="android:textColor">@color/mimi_text</item>
-        <item name="android:textSize">14sp</item>
-        <item name="android:fontFamily">sans</item>
-        <item name="android:letterSpacing">0</item>
-    </style>
     <style name="TextAppearance.Mimi.Label" parent="TextAppearance.Material3.LabelMedium">
         <item name="android:textColor">@color/mimi_muted</item>
         <item name="android:textSize">12sp</item>

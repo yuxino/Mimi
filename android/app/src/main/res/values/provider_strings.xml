@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">Simultaneous translation</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">Simultaneous translation returns original text and translations directly. ASR + MT recognizes speech, then translates it with your chosen text service. Both configurations are retained. Stop subtitles to switch.</string>
-    <string name="speech_translation_failed">Could not save the translation mode. Try again.</string>
     <string name="translation_preset">Quick setup</string>
     <string name="translation_preset_custom">Custom</string>
     <string name="translation_preset_help">Prefills an editable service address; some model IDs must be entered. Choose an enabled or locally downloaded model. Match the address to your account region, product and API key. Text translation and speech recognition use separate credentials.</string>

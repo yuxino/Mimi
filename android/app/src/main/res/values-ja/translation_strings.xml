@@ -1,8 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="translation_title">テキスト翻訳</string>
-    <string name="translation_speech_title">音声認識 · Alibaba Cloud</string>
-    <string name="translation_speech_help_title">音声サービスのヘルプ</string>
     <string name="translation_builtin">Alibaba Cloud（内蔵翻訳）</string>
     <string name="translation_chatmock">ChatMock</string>
     <string name="translation_openai_compatible">OpenAI 互換 API</string>
@@ -18,10 +16,8 @@
     <string name="translation_check_failure">テスト失敗 · %1$d ms。URL、モデル、キー、サーバーの状態を確認してください。</string>
     <string name="translation_required">翻訳 URL とモデルを入力してください。</string>
     <string name="translation_invalid">URL またはモデルが無効です。HTTPS を使用してください。ローカルアドレスの HTTP は許可が必要です。URL に認証情報、クエリ、フラグメントは含められません。</string>
-    <string name="translation_help_title">テキスト翻訳のヘルプ</string>
     <string name="translation_help">OpenAI Chat Completions 互換のテキスト翻訳サービスに接続します。/v1 ベース URL または完全な /v1/chat/completions URL とモデル ID を入力します。model、messages、stream: false を受け付け、完全な choices[0].message.content を返す必要があります。認証が不要ならキーは空欄にします。\n\n従来の統合項目の設定はここに保持します。ChatMock は独立した項目となり、URL、モデル、キーを別々に保存します。</string>
     <string name="translation_help_chatmock" tools:ignore="TypographyDashes">ChatMock を起動し、/v1/models にあるモデル ID を入力してください。初期 URL の http://127.0.0.1:8000/v1 は、このスマートフォンまたはエミュレーター自身を指し、PC ではありません。PC 上の ChatMock には HTTPS URL で接続します。開発時は adb reverse tcp:8000 tcp:8000 で転送するか、Android エミュレーターで http://10.0.2.2:8000/v1 を指定できます。ローカル HTTP は明示的な許可が必要です。\n\nローカルとは ChatMock の接続先の場所だけを指します。翻訳モデルは ChatMock にログインしたアカウントでオンライン利用するもので、端末や PC 上のローカルモデルではありません。起動オプションは --reasoning-compat legacy --reasoning-summary none を推奨します。認証不要ならキーは空欄にしてください。ChatGPT のパスワードやログイントークンは入力せず、ChatMock 側でログインします。</string>
-    <string name="translation_session_failed">テキスト翻訳に失敗しました。選択したサービスの設定を確認し、再接続してください。</string>
     <string name="translation_service_name">%1$s + %2$s</string>
     <string name="translation_check_auth">認証に失敗しました · %1$d ms。API キーとサービスの利用権限を確認してください。</string>
     <string name="translation_check_not_found">エンドポイントまたはモデルが見つかりません · %1$d ms。URL とモデル名を確認してください。</string>
@@ -44,7 +40,6 @@
     <string name="translation_help_deepl">DeepL 公式の翻訳 API を、専用の DeepL API キーで使用します。末尾が :fx の Free キーでは api-free.deepl.com、それ以外は api.deepl.com を使用します。公式 URL は自動で選ばれるため、URL やモデルの入力は不要です。音声サービスのキーは流用しません。</string>
     <string name="translation_help_deeplx">自分で用意した DeepLX サービスに接続します。/translate で終わる翻訳 URL を入力してください。この末尾がない場合は自動で追加します。モデルは不要です。Bearer 認証が必要な場合のみトークンを入力します。\n\ntext、source_lang、target_lang を受け付け、code: 200 と data の翻訳テキストを返す必要があります。DeepLX と DeepL 公式 API は URL と認証方式が異なります。</string>
     <string name="translation_help_network">リモートサービスには HTTPS を使用します。127.0.0.1 と localhost は現在のスマートフォンまたはエミュレーター自身です。暗号化されないローカル HTTP は許可が必要で、localhost、127.0.0.1、[::1]、エミュレーターホストの 10.0.2.2 のみ対応します。開発時は adb reverse で PC のポートを転送できます。サービスや URL を変えても別サービスや旧接続先のキーは流用しません。</string>
-    <string name="translation_help_save">テストは固定の例文を送り、実際の所要時間を表示します。音声の送信や設定の保存は行いません。サービスを切り替えても編集中の入力は保持します。「保存して使用」で選択中のサービスだけを保存します。キーはこの端末の暗号化ストレージに保存します。</string>
     <string name="translation_service_custom">カスタム翻訳</string>
     <string name="translation_service_original">%1$s（原文のみ）</string>
 </resources>

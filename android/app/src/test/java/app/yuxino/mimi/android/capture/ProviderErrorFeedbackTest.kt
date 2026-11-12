@@ -1,7 +1,7 @@
 package app.yuxino.mimi.android.capture
 
 import app.yuxino.mimi.android.R
-import app.yuxino.mimi.android.provider.websocketFailureCode
+import app.yuxino.mimi.android.provider.CREDENTIAL_AUTHENTICATION_FAILED
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -16,17 +16,12 @@ class ProviderErrorFeedbackTest {
         )) assertEquals(message, providerErrorMessageResource(code))
     }
 
-    @Test fun handshakeAuthenticationFailuresGiveAnActionableCredentialMessage() {
-        for (status in listOf(401, 403)) {
-            assertEquals(R.string.service_authentication_failed, providerErrorMessageResource(websocketFailureCode(status)))
-        }
+    @Test fun nativeAuthenticationFailureGivesAnActionableCredentialMessage() {
+        assertEquals(R.string.service_authentication_failed, providerErrorMessageResource(CREDENTIAL_AUTHENTICATION_FAILED))
     }
 
     @Test fun networkFailuresAndUnrecognizedProviderLabelsStaySanitized() {
-        for (status in listOf(429, 500, null)) {
-            assertEquals(R.string.capture_failed, providerErrorMessageResource(websocketFailureCode(status)))
-        }
-        for (code in listOf("", "provider_error", "private-provider-message", "credential_authentication_failed: private-token")) {
+        for (code in listOf("", "transport_error", "provider_error", "private-provider-message", "credential_authentication_failed: private-token")) {
             assertEquals(R.string.capture_failed, providerErrorMessageResource(code))
         }
     }

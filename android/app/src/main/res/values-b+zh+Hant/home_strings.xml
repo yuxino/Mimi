@@ -1,14 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="brand_description">Mimi 官方角色圖標</string>
-    <string name="home_kicker">即時字幕與翻譯</string>
     <string name="home_title">即時字幕</string>
     <string name="home_description">為其他應用程式正在播放的聲音顯示字幕。部分應用程式可能不允許擷取。</string>
     <string name="home_source">原聲語言</string>
     <string name="home_target">翻譯為</string>
     <string name="home_service">翻譯服務</string>
-    <string name="home_service_unset">%1$s · 待設定</string>
-    <string name="home_service_ready">%1$s · 已設定</string>
     <string name="home_setup_action">設定翻譯服務</string>
     <string name="home_setup_status">首次使用</string>
     <string name="home_setup_hint">先選擇翻譯服務，填入你自己的服務商憑證。</string>

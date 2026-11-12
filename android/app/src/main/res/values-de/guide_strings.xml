@@ -2,7 +2,6 @@
 <resources>
     <string name="guide_open">Erste Schritte</string>
     <string name="guide_intro">Übersetzungsdienst auswählen</string>
-    <string name="guide_intro_hint">Beim Start der Erfassung wird Wiedergabe-Audio zur Spracherkennung an den gewählten Dienst gesendet.</string>
     <string name="guide_saved_hint">Zugangsdaten verschlüsselt auf diesem Telefon speichern. Speichern kontaktiert den Dienst nicht und prüft keine Authentifizierung.</string>
     <string name="guide_saved">Zugangsdaten gespeichert · Verbindung wird im Probelauf geprüft</string>
     <string name="guide_missing">Für diesen Dienst sind keine Zugangsdaten gespeichert</string>

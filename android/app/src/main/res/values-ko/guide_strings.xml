@@ -2,7 +2,6 @@
 <resources>
     <string name="guide_open">시작 안내</string>
     <string name="guide_intro">번역 서비스 선택</string>
-    <string name="guide_intro_hint">캡처를 시작하면 재생 소리가 음성 인식을 위해 선택한 서비스로 전송됩니다.</string>
     <string name="guide_saved_hint">서비스 인증 정보를 이 휴대전화에 암호화하여 저장합니다. 저장만으로는 서비스에 접속하거나 인증을 확인하지 않습니다.</string>
     <string name="guide_saved">인증 정보 저장됨 · 체험 중 연결 확인</string>
     <string name="guide_missing">이 서비스의 인증 정보가 저장되지 않았습니다</string>

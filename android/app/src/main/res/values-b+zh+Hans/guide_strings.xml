@@ -1,7 +1,6 @@
 <resources>
     <string name="guide_open">开始使用指南</string>
     <string name="guide_intro">选择翻译服务</string>
-    <string name="guide_intro_hint">开始采集后，播放声音会发送到所选服务进行识别。</string>
     <string name="guide_saved_hint">准备好服务凭据，保存到手机的加密存储。保存不会发起网络验证，也不代表鉴权成功。</string>
     <string name="guide_saved">凭据已保存 · 连接会在试用时验证</string>
     <string name="guide_missing">还没有保存这项服务的凭据</string>

@@ -1,6 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="settings_heading">Einstellungen</string>
     <string name="settings_interface_language">Oberflächensprache</string>
     <string name="settings_language_system">Systemsprache</string>
     <string name="settings_language_failed">Oberflächensprache konnte nicht geändert werden. Erneut versuchen.</string>
@@ -16,7 +15,6 @@
     <string name="settings_history_help">Standardmäßig aus. Verlauf nur für diese Sitzung; beim Abschalten oder Stoppen wird er gelöscht.</string>
     <string name="settings_reset">Untertitelposition zurücksetzen</string>
     <string name="settings_reset_done">Unten mittig wiederhergestellt</string>
-    <string name="settings_save">Diensteinstellungen speichern</string>
     <string name="settings_saved">Gespeichert</string>
     <string name="settings_font_value">%1$d sp</string>
     <string name="settings_percent_value">%1$d%%</string>
@@ -27,7 +25,6 @@
     <string name="settings_color_yellow">Gelb</string>
     <string name="settings_color_green">Grün</string>
     <string name="settings_color_pink">Rosa</string>
-    <string name="settings_advanced_collapse">Erweiterte Einstellungen einklappen</string>
     <string name="settings_display_mode">Anzeige</string>
     <string name="display_translation">Nur Übersetzung</string>
     <string name="display_original">Nur Original</string>

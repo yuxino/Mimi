@@ -1,14 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="brand_description">Mimi 캐릭터 아이콘</string>
-    <string name="home_kicker">실시간 자막 및 번역</string>
     <string name="home_title">실시간 자막</string>
     <string name="home_description">다른 앱에서 재생되는 소리를 자막으로 표시합니다. 일부 앱은 소리 캡처를 허용하지 않습니다.</string>
     <string name="home_source">음성 언어</string>
     <string name="home_target">번역 언어</string>
     <string name="home_service">번역 서비스</string>
-    <string name="home_service_unset">%1$s · 설정 필요</string>
-    <string name="home_service_ready">%1$s · 설정됨</string>
     <string name="home_setup_action">번역 서비스 설정</string>
     <string name="home_setup_status">처음 사용하시나요?</string>
     <string name="home_setup_hint">서비스를 선택하고 본인의 인증 정보를 추가하세요.</string>

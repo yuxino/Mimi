@@ -400,23 +400,17 @@ class MimiService : Service() {
                         SubtitleBus.onRuntimeSnapshot(state, originalOnly, source.id)
                         if (SubtitleBus.displayPairFinal) scheduleAutoHide() else cancelAutoHide()
                     }
-                    override fun onSessionReady() = Unit
-                    override fun onSourceDraft(text: String, language: String?) = Unit
-                    override fun onSourceFinal(text: String, language: String?) = Unit
-                    override fun onTranslationDraft(text: String) = Unit
-                    override fun onTranslationFinal(text: String) = Unit
-                    override fun onError(code: String, message: String) = dispatch {
+                    override fun onError(code: String) = dispatch {
                         Toast.makeText(InterfaceLanguage.context(this@MimiService), providerErrorMessageResource(code), Toast.LENGTH_LONG).show()
                         stopEverything()
                     }
                     override fun onClosed() = dispatch { if (!finishingSession) stopEverything() }
-                    override fun onLog(message: String) = Unit
                 }
                 app.yuxino.mimi.android.provider.SharedRuntimeEngine(checkNotNull(configuration), listener, source.id, historyHandle)
             }
             val lane = CaptureLane(source, sessionEngine)
             lanes[source] = lane
-            if (testEngines == null) sessionEngine.start("", sessionSourceLanguage, sessionTargetLanguage)
+            if (testEngines == null) sessionEngine.start()
             val channels = if (source == CaptureSource.SYSTEM) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
             val encoding = if (source == CaptureSource.SYSTEM) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
             val format = AudioFormat.Builder().setEncoding(encoding).setSampleRate(CAPTURE_RATE_HZ).setChannelMask(channels).build()

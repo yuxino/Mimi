@@ -1,10 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">Réglages de Mimi</string>
     <string name="start_capture">Démarrer les sous-titres</string>
     <string name="stop_capture">Arrêter les sous-titres</string>
-    <string name="open_settings">Réglages</string>
     <string name="need_overlay_permission">Autorisez l’affichage par-dessus les autres applications dans les réglages système.</string>
     <string name="need_audio_permission">Android exige l’autorisation d’enregistrement audio pour capturer le son des applications.</string>
     <string name="capture_failed">La session de sous-titres s’est arrêtée. Vérifiez les autorisations, le service et le réseau, puis réessayez.</string>

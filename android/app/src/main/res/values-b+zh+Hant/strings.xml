@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">Mimi 設定</string>
     <string name="start_capture">開始字幕</string>
     <string name="stop_capture">停止字幕</string>
-    <string name="open_settings">設定</string>
     <string name="need_overlay_permission">需要懸浮窗權限，請在系統設定中允許「顯示在其他應用上層」。</string>
     <string name="need_audio_permission">Android 需要錄音權限才能擷取其他應用程式播放的聲音。</string>
     <string name="capture_failed">字幕會話已停止，請檢查權限、服務設定或網路後重試。</string>

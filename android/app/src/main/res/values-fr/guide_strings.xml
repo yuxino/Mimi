@@ -2,7 +2,6 @@
 <resources>
     <string name="guide_open">Premiers pas</string>
     <string name="guide_intro">Choisir un service de traduction</string>
-    <string name="guide_intro_hint">Le démarrage de la capture envoie le son de lecture au service choisi pour la reconnaissance vocale.</string>
     <string name="guide_saved_hint">Enregistrez les identifiants du service dans le stockage chiffré du téléphone. L’enregistrement ne contacte pas le service et ne vérifie pas l’authentification.</string>
     <string name="guide_saved">Identifiants enregistrés · connexion vérifiée pendant l’essai</string>
     <string name="guide_missing">Les identifiants de ce service ne sont pas enregistrés</string>

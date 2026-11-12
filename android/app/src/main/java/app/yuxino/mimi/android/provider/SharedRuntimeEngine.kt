@@ -23,7 +23,7 @@ internal class SharedRuntimeEngine(
     private var finishCallback: (() -> Unit)? = null
     private var worker: Thread? = null
 
-    override fun start(apiKey: String, sourceLang: String, targetLang: String, customBaseUrl: String, customModel: String) {
+    override fun start() {
         synchronized(lock) {
             check(handle == 0L) { "native_runtime_already_started" }
             val network = NativeRuntimeNetwork.snapshot(configuration)
@@ -46,14 +46,14 @@ internal class SharedRuntimeEngine(
                             listener.onRuntimeSnapshot(snapshot, configuration.getString("targetLanguage") == "original")
                         }, onTerminal = { code ->
                             val callback = synchronized(lock) { finishCallback.also {finishCallback=null} }
-                            if (code != null) listener.onError(sanitizeErrorCode(code), "")
+                            if (code != null) listener.onError(sanitizeErrorCode(code))
                             else if (callback != null) callback() else listener.onClosed()
                         })
                         if (finished) return@thread
                         Thread.sleep(NativeRuntimeConfiguration.policy.getLong("snapshotPublishIntervalMs"))
                     }
                 } catch (_: InterruptedException) { }
-                catch (_: Exception) { if (active.get()) listener.onError("native_runtime_failed", "") }
+                catch (_: Exception) { if (active.get()) listener.onError("native_runtime_failed") }
             }
         }
     }

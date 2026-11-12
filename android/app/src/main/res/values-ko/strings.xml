@@ -1,10 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">Mimi 설정</string>
     <string name="start_capture">자막 시작</string>
     <string name="stop_capture">자막 중지</string>
-    <string name="open_settings">설정</string>
     <string name="need_overlay_permission">시스템 설정에서 다른 앱 위에 표시를 허용하세요.</string>
     <string name="need_audio_permission">다른 앱에서 재생되는 소리를 캡처하려면 Android의 오디오 녹음 권한이 필요합니다.</string>
     <string name="capture_failed">자막 세션이 중지되었습니다. 권한, 서비스 설정, 네트워크를 확인한 후 다시 시도하세요.</string>

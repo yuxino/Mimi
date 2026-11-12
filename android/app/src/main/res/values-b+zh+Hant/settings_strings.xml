@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="settings_heading">設定</string>
     <string name="settings_interface_language">介面語言</string>
     <string name="settings_language_system">跟隨系統</string>
     <string name="settings_language_failed">無法更改介面語言，請重試。</string>
@@ -16,7 +15,6 @@
     <string name="settings_history_help">預設關閉。開啟後僅在本次會話內保留；關閉或停止字幕後清除。</string>
     <string name="settings_reset">恢復字幕位置</string>
     <string name="settings_reset_done">已恢復到底部居中</string>
-    <string name="settings_save">儲存服務設定</string>
     <string name="settings_saved">已儲存</string>
     <string name="settings_font_value">%1$d sp</string>
     <string name="settings_percent_value">%1$d%%</string>
@@ -27,7 +25,6 @@
     <string name="settings_color_yellow">黃色</string>
     <string name="settings_color_green">綠色</string>
     <string name="settings_color_pink">粉色</string>
-    <string name="settings_advanced_collapse">收起進階設定</string>
     <string name="settings_display_mode">顯示內容</string>
     <string name="display_translation">只看譯文</string>
     <string name="display_original">只看原文</string>

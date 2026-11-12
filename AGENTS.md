@@ -103,16 +103,16 @@ Preserve these product constraints:
 - The user's durable requirement is that a desktop business fix must automatically
   reach Android through the same source, without a second manual implementation.
   Desktop portable modules stay re-export-only; Android production enters
-  `SharedRuntimeEngine` and never calls the historical Kotlin engines or text
-  clients. `createTranslationClient` is a JVM-test fixture only.
+  `SharedRuntimeEngine`. Retired Kotlin engines and text clients belong in Git
+  history; do not restore them as production fallbacks or test implementations.
 - Run `python3 -B scripts/check-shared-runtime.py` for this architecture boundary.
   It is required by canonical/shared checks, Android preBuild/native builds and
   desktop CI. Its rejection tests prove known fork attempts fail. Do not weaken
   its checks or narrow Android CI's desktop/shared source coverage to make a
   one-platform change pass.
 - Maintain shared provider behavior through `shared/translation-contracts.json`,
-  direct Rust and actual JNI tests. Historical Kotlin fixtures are offline
-  comparison evidence, not a second production implementation to keep copying.
+  direct Rust and actual JNI tests. Test the current shared implementation;
+  retain golden wire data instead of a second executable provider implementation.
   A provider/API fix updates the shared implementation and fixtures; verify both
   platform adapters before publishing. Native UI/capture changes need their own
   checks and do not automatically make unsupported features available.
