@@ -1,9 +1,27 @@
 import { applicationAudioCopy } from "./applicationAudio";
 import { expect, it, vi } from "vitest";
-import { capturePresentation, captureStatusForSource, type CaptureLifecycle, type CaptureStatus } from "./captureStatus";
+import { capturePresentation, captureStatusForSource, sameCaptureStatus, type CaptureLifecycle, type CaptureStatus } from "./captureStatus";
 
 const listening: CaptureLifecycle = { status: { kind: "listening" }, isActive: true, isPaused: false };
 const system: CaptureStatus = { kind: "windows_output", strategy: "follow_system", actualDeviceName: "Synthetic headphones", observation: { pcmDataRecent: false, soundRecent: false } };
+
+it("distinguishes optional-field presence and new observation metadata during deduplication", () => {
+  expect(sameCaptureStatus(system, structuredClone(system))).toBe(true);
+  expect(sameCaptureStatus({ ...system, systemOutputDeviceName: undefined }, { ...system, sources: undefined })).toBe(false);
+  const before = { ...system, observation: { pcmDataRecent: false, soundRecent: false, revision: 1 } };
+  const after = { ...before, observation: { ...before.observation, revision: 2 } };
+  expect(sameCaptureStatus(before, after)).toBe(false);
+  expect(sameCaptureStatus({ ...system, observation: null }, system)).toBe(false);
+});
+
+it("retains source identity and ordering when the remaining capture fields match", () => {
+  const sources = [{ ...system, audioSource: "system" as const }, { ...system, audioSource: "microphone" as const }];
+  const snapshot = { ...system, sources };
+  expect(sameCaptureStatus(snapshot, structuredClone(snapshot))).toBe(true);
+  expect(sameCaptureStatus(snapshot, { ...snapshot, sources: [...sources].reverse() })).toBe(false);
+  expect(sameCaptureStatus(snapshot, { ...snapshot, sources: sources.slice(0, 1) })).toBe(false);
+  expect(sameCaptureStatus(snapshot, system)).toBe(false);
+});
 
 it.each(["en", "zh", "ja"] as const)("keeps source labels short and device/troubleshooting details in help in %s", language => {
   const view = capturePresentation(system, listening, language);

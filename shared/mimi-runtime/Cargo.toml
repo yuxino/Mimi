@@ -27,6 +27,10 @@ base64 = "0.23"
 uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
 url = "2"
+# Already used by url; native endpoint validation also preserves Android's
+# pre-IP-normalization host allowlist without shipping a second HTTP client.
+idna = "1.1.0"
+percent-encoding = "2.3.2"
 time = "0.3"
 
 tempfile = "3"

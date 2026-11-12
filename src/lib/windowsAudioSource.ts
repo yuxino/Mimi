@@ -26,6 +26,22 @@ export interface AudioSourceSnapshot {
   receivingAudioData: boolean;
 }
 
+/** Device order and metadata changes must remain visible even during otherwise steady capture. */
+export function sameAudioSourceSnapshot(before: AudioSourceSnapshot | null, after: AudioSourceSnapshot | null): boolean {
+  if (before === after) return true;
+  if (!before || !after || Object.keys(before).length !== Object.keys(after).length) return false;
+  return (Object.keys(after) as (keyof AudioSourceSnapshot)[]).every(key => {
+    if (!Object.prototype.hasOwnProperty.call(before, key)) return false;
+    if (key !== "devices") return Object.is(before[key], after[key]);
+    return before.devices.length === after.devices.length && before.devices.every((device, index) => {
+      const next = after.devices[index];
+      return Object.keys(device).length === Object.keys(next).length
+        && (Object.keys(next) as (keyof typeof next)[]).every(field =>
+          Object.prototype.hasOwnProperty.call(device, field) && Object.is(device[field], next[field]));
+    });
+  });
+}
+
 const copy = {
   en: SUPPLEMENTAL_EN.windowsAudioSource_copy,
   zh: {

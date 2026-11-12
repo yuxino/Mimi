@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setStoredUiLanguage } from "../../lib/i18n";
@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount()); host.remove(); useStore.setState(initial, true);
-  setStoredUiLanguage("system"); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals();
+  setStoredUiLanguage("system"); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers();
 });
 async function mount(disabled = false) { await act(async () => root.render(<CaptureStatusRow disabled={disabled} />)); }
 function row(source: AudioSource) { return host.querySelector<HTMLElement>(`[data-audio-source="${source}"]`)!; }
@@ -47,6 +47,67 @@ function toggle(source: AudioSource) { return row(source).querySelector<HTMLButt
 function description(source: AudioSource) { return row(source).querySelector('.settings-help-control__description')?.textContent ?? ""; }
 function status(source: AudioSource) { return description(source).split("\n")[0]; }
 async function session(patch: Partial<SessionStateEvent>) { await act(async () => useStore.setState(state => ({ session: { ...state.session, ...patch } }))); }
+
+it("keeps stable polls out of React while changed observations and failed reads still recover", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockImplementation(async () => structuredClone(system));
+  let commits = 0;
+  await act(async () => root.render(<Profiler id="capture-status" onRender={() => { commits++; }}><CaptureStatusRow /></Profiler>));
+  const initialCommits = commits;
+  for (let poll = 0; poll < 5; poll++) await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(mocks.invoke).toHaveBeenCalledTimes(6);
+  expect(commits).toBe(initialCommits);
+  expect(status("system")).toBe("Receiving sound");
+  mocks.invoke.mockResolvedValueOnce({ ...system, observation: { pcmDataRecent: true, soundRecent: false } });
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(status("system")).toBe("No sound");
+  mocks.invoke.mockRejectedValueOnce(new Error("synthetic-private-read-error"));
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(status("system")).toBe("Waiting for audio");
+  expect(description("system")).not.toContain("Synthetic long headphones name");
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(status("system")).toBe("Receiving sound");
+  expect(description("system")).toContain("Synthetic long headphones name");
+  expect(host.textContent).not.toContain("synthetic-private-read-error");
+});
+
+it("publishes changed metadata for each source without depending on aggregate changes", async () => {
+  vi.useFakeTimers();
+  useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "both" } });
+  mocks.invoke.mockResolvedValue(structuredClone(dual));
+  await mount();
+  mocks.invoke.mockResolvedValue({ ...dual, sources: [
+    { ...microphone, audioSource: "microphone", actualDeviceName: "New synthetic microphone", observation: { pcmDataRecent: true, soundRecent: true } },
+    { ...system, audioSource: "system", systemOutputDeviceName: "New synthetic speakers" },
+  ] });
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(status("microphone")).toBe("Receiving sound");
+  expect(toggle("microphone").title).toBe("Capture device: New synthetic microphone");
+  expect(toggle("system").title).toBe("System output: New synthetic speakers");
+  mocks.invoke.mockResolvedValue({ ...system, kind: "both" });
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(status("system")).toBe("Waiting for audio");
+  expect(status("microphone")).toBe("Waiting for audio");
+});
+
+it("refreshes locale copy and invalidates equal observations across lifecycle stamps", async () => {
+  vi.useFakeTimers();
+  mocks.invoke.mockImplementation(async () => structuredClone(system));
+  await mount();
+  setStoredUiLanguage("ja");
+  await mount();
+  expect(toggle("system").textContent).toBe("システム音声");
+  expect(status("system")).toBe("音声を受信中");
+  await session({ isPaused: true });
+  expect(status("system")).toBe("一時停止中");
+  let finish!: (value: CaptureStatus) => void;
+  mocks.invoke.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await session({ isPaused: false });
+  expect(status("system")).toBe("音声待ち");
+  expect(description("system")).not.toContain("Synthetic long headphones name");
+  await act(async () => finish(structuredClone(system)));
+  expect(status("system")).toBe("音声を受信中");
+});
 
 it("groups independent source choices with one heading help and keeps details in source tooltips", async () => {
   await mount();

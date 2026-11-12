@@ -405,7 +405,6 @@ pub fn run() {
             commands::prepare_apple_translation_languages,
             fonts::installed_font_families,
             commands::windows_audio_status,
-            commands::audio_census,
             commands::support_diagnostics,
             #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_snapshot,

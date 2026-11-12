@@ -1,8 +1,5 @@
 package app.yuxino.mimi.android.provider
 
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-
 /** Stable IDs keep text translation settings independent from the speech provider. */
 enum class TextTranslationProvider(val storageId: String) {
     BUILTIN("builtin"),
@@ -37,34 +34,18 @@ fun normalizeTranslationEndpoint(config: TranslationConfiguration): String = whe
     TextTranslationProvider.BUILTIN, TextTranslationProvider.NONE -> ""
     // The shared runtime supplies xAI's fixed endpoint; native settings store no override.
     TextTranslationProvider.XAI -> ""
-    TextTranslationProvider.DEEPL -> deepLEndpoint(config.apiKey)
-    TextTranslationProvider.DEEPLX -> {
-        val url = validatedTranslationUrl(config)
-        val path = url.encodedPath.trimEnd('/')
-        url.newBuilder().encodedPath(if (path.endsWith("/translate")) path else "$path/translate").build().toString()
+    TextTranslationProvider.DEEPL -> {
+        val key = config.apiKey.trim()
+        require(key.length <= 4096) { "translation_key" }
+        NativeRuntimeConfiguration.textEndpoint(config.provider, key, false)
     }
-    TextTranslationProvider.CHAT_MOCK, TextTranslationProvider.OPENAI_COMPATIBLE -> {
-        val url = validatedTranslationUrl(config)
-        val path = url.encodedPath.trimEnd('/')
-        val completedPath = if (path.endsWith("/chat/completions")) path else "$path/chat/completions"
-        url.newBuilder().encodedPath(completedPath).build().toString()
+    TextTranslationProvider.DEEPLX, TextTranslationProvider.CHAT_MOCK, TextTranslationProvider.OPENAI_COMPATIBLE -> {
+        // Bound the JSON crossing JNI before allocating it. Shared Rust owns
+        // UTF-8 limits, URL parsing, path completion and Android transport policy.
+        require(config.endpoint.length in 1..2048) { "translation_endpoint" }
+        NativeRuntimeConfiguration.textEndpoint(config.provider, config.endpoint, config.allowLocalHttp)
     }
 }
-
-private fun validatedTranslationUrl(config: TranslationConfiguration): HttpUrl {
-    require(config.endpoint.toByteArray(Charsets.UTF_8).size in 1..2048 && config.endpoint.none { it.isISOControl() }) { "translation_endpoint" }
-    val endpoint = config.endpoint.trim()
-    require(endpoint.startsWith("https://") || endpoint.startsWith("http://")) { "translation_endpoint" }
-    require(!endpoint.contains('\\') && !endpoint.substringAfter("://").substringBefore('/').contains('@')) { "translation_endpoint" }
-    val url = endpoint.toHttpUrlOrNull() ?: throw IllegalArgumentException("translation_endpoint")
-    require(url.username.isEmpty() && url.password.isEmpty() && url.query == null && url.fragment == null) { "translation_endpoint" }
-    require(url.isHttps || (config.allowLocalHttp && isLocalTranslationHost(url.host))) { "translation_https_required" }
-    return url
-}
-
-// This explicit allowlist also matches Android's network_security_config.xml.
-private fun isLocalTranslationHost(host: String): Boolean =
-    host in setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")
 
 internal fun validateTranslationConfiguration(config: TranslationConfiguration): String {
     if (config.provider == TextTranslationProvider.BUILTIN || config.provider == TextTranslationProvider.NONE) return ""
@@ -78,11 +59,5 @@ internal fun validateTranslationConfiguration(config: TranslationConfiguration):
     val checkedKey = if (config.provider.usesOpenAIProtocol) config.apiKey else key
     require(key.codePointCount(0, key.length) <= 1024 && checkedKey.none { it.isISOControl() }) { "translation_key" }
     return endpoint
-}
-
-internal fun deepLEndpoint(apiKey: String): String {
-    val key = apiKey.trim()
-    require(key.isNotEmpty() && key.length <= 4096 && key.all { it.code in 33..126 }) { "translation_key" }
-    return if (key.endsWith(":fx")) "https://api-free.deepl.com/v2/translate" else "https://api.deepl.com/v2/translate"
 }
 

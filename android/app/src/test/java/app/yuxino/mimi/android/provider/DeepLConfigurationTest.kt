@@ -9,10 +9,11 @@ class DeepLConfigurationTest {
     }
 
     @Test fun officialDeepLKeysChooseOnlyTheFreeOrProEndpoint() {
-        assertEquals("https://api-free.deepl.com/v2/translate", deepLEndpoint(" synthetic:fx "))
-        assertEquals("https://api.deepl.com/v2/translate", deepLEndpoint("synthetic"))
+        fun endpoint(key: String) = normalizeTranslationEndpoint(TranslationConfiguration(apiKey = key, provider = TextTranslationProvider.DEEPL))
+        assertEquals("https://api-free.deepl.com/v2/translate", endpoint(" synthetic:fx "))
+        assertEquals("https://api.deepl.com/v2/translate", endpoint("synthetic"))
         for (key in listOf("", " ", "with space", "private\nkey", "秘密", "x".repeat(4097))) {
-            rejects("translation_key") { deepLEndpoint(key) }
+            rejects("translation_key") { endpoint(key) }
         }
         assertEquals("https://api-free.deepl.com/v2/translate", validateTranslationConfiguration(
             TranslationConfiguration("https://untrusted.test", "unused model", "synthetic:fx", provider = TextTranslationProvider.DEEPL)))

@@ -99,11 +99,11 @@ pub fn windows_applications() -> Result<ApplicationSnapshot, SystemAudioCaptureE
     .map_err(|_| SystemAudioCaptureError::ApplicationListFailed)?;
     // A voice/music app may keep playing after its window closes to the tray.
     // Include its existing audio session as well as visible application windows.
-    for session in super::census::census().sessions {
-        if session.pid == std::process::id() || applications.len() >= 512 {
+    for pid in super::census::session_process_ids() {
+        if pid == std::process::id() || applications.len() >= 512 {
             continue;
         }
-        if let Ok(process) = Process::open(session.pid) {
+        if let Ok(process) = Process::open(pid) {
             if let Ok((id, name)) = process.identity() {
                 if !applications.iter().any(|app| app.id == id) {
                     applications.push(AudioApplication {

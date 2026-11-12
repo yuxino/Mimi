@@ -25,7 +25,6 @@ commands.allow = [
   "app_quit",
   "windows_audio_status",
   "audio_applications",
-  "audio_census",
   "support_diagnostics",
   "development_debug_snapshot",
   "development_debug_start",

@@ -21,6 +21,9 @@ internal object NativeRuntimeConfiguration {
     fun textEndpointsEquivalent(provider: TextTranslationProvider, saved: String, draft: String): Boolean = exchange(
         JSONObject().put("operation", "text_endpoints_equivalent").put("route", provider.runtimeRoute())
             .put("savedEndpoint", saved).put("draftEndpoint", draft)).getBoolean("equivalent")
+    fun textEndpoint(provider: TextTranslationProvider, input: String, allowLocalHttp: Boolean): String = exchange(
+        JSONObject().put("operation", "normalize_text_endpoint").put("route", provider.runtimeRoute())
+            .put("input", input).put("allowLocalHttp", allowLocalHttp)).getString("endpoint")
     fun resolveCredentialsDraft(provider: ServiceProvider, mode: String, draft: JSONObject, saved: JSONObject?): JSONObject = exchange(
         JSONObject().put("operation", "resolve_credentials_draft").put("provider", provider.wireProvider)
             .put("speechTranslationMode", mode).put("draft", draft).put("saved", saved ?: JSONObject.NULL))

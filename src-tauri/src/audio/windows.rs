@@ -641,12 +641,7 @@ fn smart_default_device(
     .into_iter()
     .filter_map(default_endpoint_id)
     .collect();
-    let census = crate::audio::census::census();
-    let candidates: Vec<(String, f32)> = census
-        .endpoints
-        .iter()
-        .map(|endpoint| (endpoint.id.clone(), endpoint.level))
-        .collect();
+    let candidates = crate::audio::census::endpoint_levels();
     let chosen = {
         let mut state = follow.lock().unwrap();
         match state.decide_with_roles(&candidates, &roles) {
@@ -848,13 +843,7 @@ mod tests {
 
     #[test]
     fn raw_census_ids_resolve_the_exact_cpal_render_endpoint() {
-        let Ok(devices) = cpal::default_host().output_devices() else {
-            return;
-        };
-        for device in devices {
-            let Some(id) = endpoint_id(&device) else {
-                continue;
-            };
+        for (id, _) in crate::audio::census::endpoint_levels() {
             let resolved = resolve_backend_endpoint(&id).expect("raw WASAPI id must resolve");
             assert_eq!(endpoint_id(&resolved), Some(id));
         }

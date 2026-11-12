@@ -67,6 +67,10 @@ Report retained memory separately from allocated bytes and temporary peaks.
 Keep behavior regressions on production code and shared fixtures. Use synthetic
 loopback peers for protocol, retry, cancellation and deadline checks. An old
 implementation copied into a test does not establish current-product coverage.
+Cargo does not execute dependency crates' unit tests. The desktop Apple Speech
+adapter harness compiles the maintained shared source with the real Swift
+linkage, so its callback/backpressure/teardown regressions run on Apple silicon
+without starting recognition. Keep that harness in the normal desktop suite.
 Do not turn a synthetic work-count reduction into a CPU, RSS or latency claim.
 Record native and service evidence with its limits in the
 [integration ledger](integration-runs.md); follow the

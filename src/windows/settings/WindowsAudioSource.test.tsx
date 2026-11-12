@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, Profiler } from "react";
 import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -37,6 +37,58 @@ afterEach(async () => {
 });
 async function render() { await act(async () => root.render(<><WindowsAudioSource /><SettingsToastRegion /></>)); }
 function trigger() { return host.querySelector<HTMLButtonElement>('[role="combobox"]')!; }
+
+it.each([false, true])("keeps stable device polls out of React and clears a read error on identical success (hide=%s)", async hide => {
+  vi.useFakeTimers();
+  const snapshot = { devices: [{ id: "speaker-id", name: "Fixture speakers" }], currentDevice: "speaker-id", receivingSound: true, receivingAudioData: true };
+  vi.mocked(invoke).mockImplementation(async () => structuredClone(snapshot));
+  let commits = 0;
+  await act(async () => root.render(<Profiler id="windows-audio" onRender={() => { commits++; }}><WindowsAudioSource /></Profiler>));
+  const initialCommits = commits;
+  for (let poll = 0; poll < 5; poll++) await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(invoke).toHaveBeenCalledTimes(6);
+  expect(commits).toBe(initialCommits);
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Windows NT 10.0");
+  vi.mocked(invoke).mockRejectedValueOnce(new Error("synthetic-private-read-error"));
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(trigger().disabled).toBe(true);
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(audioSourceCopy().failed);
+  if (hide) {
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    hidden.mockReturnValue(false);
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  } else {
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+  }
+  expect(trigger().disabled).toBe(false);
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  expect(host.textContent).not.toContain("synthetic-private-read-error");
+});
+
+it("keeps reordered and renamed devices, active sound and locale changes current", async () => {
+  vi.useFakeTimers();
+  fixture.settings.windowsAudioSource = "speaker-id";
+  await render();
+  vi.mocked(invoke).mockResolvedValue({ devices: [
+    { id: "headphone-id", name: "Fixture headphones" }, { id: "speaker-id", name: "Renamed speakers" },
+  ], currentDevice: "headphone-id", receivingSound: true, receivingAudioData: true });
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(trigger().textContent).toBe("Renamed speakers");
+  await act(() => trigger().click());
+  expect([...document.querySelectorAll('[role="option"]')].map(node => node.textContent)).toEqual([audioSourceCopy().system, "Fixture headphones", "Renamed speakers"]);
+  await act(() => trigger().click());
+  fixture.session.isActive = true;
+  await render();
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(`Fixture headphones · ${audioSourceCopy().receiving}`);
+  setStoredUiLanguage("ja");
+  await render();
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(`Fixture headphones · ${audioSourceCopy().receiving}`);
+  vi.mocked(invoke).mockResolvedValue({ devices: [{ id: "headphone-id", name: "Fixture headphones" }], currentDevice: "headphone-id", receivingSound: false, receivingAudioData: true });
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(trigger().textContent).toBe(audioSourceCopy().unavailable);
+  expect(host.querySelector('[role="status"]')?.textContent).toBe(`Fixture headphones · ${audioSourceCopy().missing}`);
+});
 
 it("pauses output enumeration while the document is hidden and refreshes on return, including initial hide", async () => {
   vi.useFakeTimers();

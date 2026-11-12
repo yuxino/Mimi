@@ -2,13 +2,16 @@
 use crate::core::audio_input::AudioSource;
 use crate::core::models::SubtitlePair;
 use crate::core::session_archive::{
-    SavedTranscript, TranscriptExportOptions, TranscriptPage, AUDIO_BYTE_LIMIT,
+    SavedTranscript, TranscriptExportOptions, TranscriptPage, TranscriptPageEntry,
+    TranscriptWriter, AUDIO_BYTE_LIMIT, TRANSCRIPT_PAGE_SIZE,
 };
 use serde::{de, Deserialize, Serialize};
 use std::fs;
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+
+mod reader;
 
 const MAX_TRANSCRIPT_FILE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_TITLE_CHARACTERS: usize = 120;
@@ -41,20 +44,20 @@ struct HistoryTitle {
     title: String,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq, Eq)]
 struct HistoryMetadata {
     version: u32,
     id: String,
     started_at_ms: u64,
     ended_at_ms: u64,
+    // Journal timestamps can mask a changed header timestamp during a rescan.
+    header_ended_at_ms: u64,
     limited: bool,
-    #[serde(deserialize_with = "count_history_entries")]
     entries: usize,
 }
 
-// Validate the same persisted fields as SubtitlePair without retaining or
-// allocating its source/translation strings while reading a list summary.
+// Validate the same persisted fields as SubtitlePair without retaining owned
+// caption strings; serde may reuse scratch space for the largest input string.
 #[derive(Deserialize)]
 struct HistoryPairMetadata {
     #[serde(default, rename = "audioSource")]
@@ -85,28 +88,6 @@ impl<'de> Deserialize<'de> for HistoryText {
         }
         deserializer.deserialize_str(TextVisitor)
     }
-}
-
-fn count_history_entries<'de, D: de::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<usize, D::Error> {
-    struct EntriesVisitor;
-    impl<'de> de::Visitor<'de> for EntriesVisitor {
-        type Value = usize;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("an array of subtitle pairs")
-        }
-
-        fn visit_seq<A: de::SeqAccess<'de>>(self, mut entries: A) -> Result<Self::Value, A::Error> {
-            let mut count = 0;
-            while entries.next_element::<HistoryPairMetadata>()?.is_some() {
-                count += 1;
-            }
-            Ok(count)
-        }
-    }
-    deserializer.deserialize_seq(EntriesVisitor)
 }
 
 impl SessionHistory {
@@ -178,71 +159,32 @@ impl SessionHistory {
         Ok(file)
     }
 
+    #[cfg(test)]
     fn read(&self, id: &str) -> io::Result<SavedTranscript> {
         let _io = self.io.lock().unwrap();
-        let file = self.open_transcript(id)?;
-        let mut lines = io::BufReader::new(file).lines();
-        let first = lines
-            .next()
-            .transpose()?
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty history"))?;
-        let mut saved: SavedTranscript = serde_json::from_str(&first)?;
-        for line in lines {
-            let Ok(line) = line else { break };
-            if line.is_empty() {
-                continue;
-            }
-            let Ok(pair) = serde_json::from_str::<SubtitlePair>(&line) else {
-                continue;
-            };
-            if saved.entries.len() >= crate::core::session_archive::TRANSCRIPT_COUNT_LIMIT {
-                break;
-            }
-            saved.ended_at_ms = saved.ended_at_ms.max(pair.created_at_ms);
-            saved.entries.push(pair);
-        }
-        if saved.version != 1 || saved.id != id {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "invalid history file",
-            ));
-        }
-        Ok(saved)
+        let mut input = io::BufReader::new(self.open_transcript(id)?);
+        let mut entries = Vec::new();
+        let metadata = reader::scan(
+            &mut input,
+            id,
+            Some(&mut |_, pair| {
+                entries.push(pair);
+                Ok(())
+            }),
+        )?;
+        Ok(SavedTranscript {
+            version: metadata.version,
+            id: metadata.id,
+            started_at_ms: metadata.started_at_ms,
+            ended_at_ms: metadata.ended_at_ms,
+            limited: metadata.limited,
+            entries,
+        })
     }
 
     fn read_metadata(&self, id: &str) -> io::Result<HistoryMetadata> {
         let _io = self.io.lock().unwrap();
-        let mut reader = io::BufReader::new(self.open_transcript(id)?);
-        // Reuse one bounded line buffer. Finalized JSON stores the whole
-        // transcript on its first line, but its entries never become an owned
-        // transcript or a second copy of all subtitle text just to list it.
-        let mut line = String::new();
-        if reader.read_line(&mut line)? == 0 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "empty history"));
-        }
-        let mut metadata: HistoryMetadata = serde_json::from_str(&line)?;
-        loop {
-            line.clear();
-            match reader.read_line(&mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
-            }
-            let Ok(pair) = serde_json::from_str::<HistoryPairMetadata>(&line) else {
-                continue;
-            };
-            if metadata.entries >= crate::core::session_archive::TRANSCRIPT_COUNT_LIMIT {
-                break;
-            }
-            metadata.ended_at_ms = metadata.ended_at_ms.max(pair.created_at_ms);
-            metadata.entries += 1;
-        }
-        if metadata.version != 1 || metadata.id != id {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "invalid history file",
-            ));
-        }
-        Ok(metadata)
+        reader::scan(&mut io::BufReader::new(self.open_transcript(id)?), id, None)
     }
 
     fn read_title(&self, id: &str) -> io::Result<Option<String>> {
@@ -438,16 +380,16 @@ impl SessionHistory {
         if self.disabled {
             return Ok(false);
         }
-        let mut saved = self.read(id)?;
-        saved.ended_at_ms = ended_at_ms;
-        saved.limited = limited;
+        let io_guard = self.io.lock().unwrap();
+        let mut input = io::BufReader::new(self.open_transcript(id)?);
+        let saved = reader::scan(&mut input, id, None)?;
         let audio_sources = self.audio_sources(id)?;
-        if saved.entries.is_empty() && audio_sources.is_empty() {
+        if saved.entries == 0 && audio_sources.is_empty() {
+            drop(io_guard);
             self.discard(id)?;
             return Ok(false);
         }
-
-        let _io = self.io.lock().unwrap();
+        input.rewind()?;
         let mut created_audio = Vec::new();
         let result: io::Result<()> = (|| {
             for source in audio_sources {
@@ -482,13 +424,14 @@ impl SessionHistory {
                     .map_err(|error| error.error)?;
                 created_audio.push(audio_path);
             }
-            let mut temporary = tempfile::NamedTempFile::new_in(&self.directory)?;
-            write_final_transcript(&mut temporary, &saved)?;
-            temporary.as_file().sync_all()?;
-            temporary
-                .persist_noclobber(self.path(id, "json")?)
-                .map_err(|error| error.error)?;
-            Ok(())
+            persist_final_transcript(
+                &self.directory,
+                &self.path(id, "json")?,
+                &saved,
+                &mut input,
+                ended_at_ms,
+                limited,
+            )
         })();
         if result.is_err() {
             for path in created_audio {
@@ -553,15 +496,14 @@ impl SessionHistory {
         Ok(items)
     }
 
-    pub fn page(&self, id: &str, query: &str, page: usize) -> io::Result<TranscriptPage> {
-        Ok(self.read(id)?.page(query, page))
+    pub fn page(&self, id: &str, query: &str, requested_page: usize) -> io::Result<TranscriptPage> {
+        let _io = self.io.lock().unwrap();
+        let mut input = io::BufReader::new(self.open_transcript(id)?);
+        read_page(&mut input, id, query, requested_page)
     }
 
     pub fn export_transcript(&self, id: &str) -> io::Result<Vec<u8>> {
-        self.read(id)?
-            .export()
-            .map(String::into_bytes)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no transcript"))
+        self.export_transcript_with_options(id, TranscriptExportOptions::default())
     }
 
     pub fn export_transcript_with_options(
@@ -569,13 +511,20 @@ impl SessionHistory {
         id: &str,
         options: TranscriptExportOptions,
     ) -> io::Result<Vec<u8>> {
-        if options == TranscriptExportOptions::default() {
-            return self.export_transcript(id);
-        }
-        self.read(id)?
-            .export_with_options(options)
-            .map(String::into_bytes)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no transcript"))
+        let mut bytes = Vec::new();
+        self.export_transcript_to_writer(id, options, &mut bytes)?;
+        Ok(bytes)
+    }
+
+    fn export_transcript_to_writer(
+        &self,
+        id: &str,
+        options: TranscriptExportOptions,
+        writer: &mut impl Write,
+    ) -> io::Result<()> {
+        let _io = self.io.lock().unwrap();
+        let mut input = io::BufReader::new(self.open_transcript(id)?);
+        write_transcript(&mut input, id, options, writer)
     }
 
     /// Native adapters choose an app-private export directory and share only
@@ -586,25 +535,9 @@ impl SessionHistory {
         options: TranscriptExportOptions,
         directory: &Path,
     ) -> io::Result<PathBuf> {
-        let bytes = self.export_transcript_with_options(id, options)?;
-        fs::create_dir_all(directory)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
-        }
-        let extension = match options.format {
-            crate::core::session_archive::TranscriptExportFormat::Txt => "txt",
-            crate::core::session_archive::TranscriptExportFormat::Markdown => "md",
-        };
-        let mut temporary = tempfile::Builder::new()
-            .prefix("mimi-")
-            .suffix(&format!(".{extension}"))
-            .tempfile_in(directory)?;
-        temporary.write_all(&bytes)?;
-        temporary.as_file().sync_all()?;
-        let (_, path) = temporary.keep().map_err(|error| error.error)?;
-        Ok(path)
+        write_private_export(directory, options, |writer| {
+            self.export_transcript_to_writer(id, options, writer)
+        })
     }
 
     #[cfg(test)]
@@ -635,7 +568,7 @@ impl SessionHistory {
     }
 
     pub fn audio_from(&self, id: &str, source: AudioSource) -> io::Result<Vec<u8>> {
-        self.read(id)?;
+        self.read_metadata(id)?;
         if self.disabled {
             return Err(io::Error::new(io::ErrorKind::NotFound, "history disabled"));
         }
@@ -733,11 +666,204 @@ fn remove_if_present(path: &Path) -> io::Result<()> {
     }
 }
 
-fn write_final_transcript(writer: &mut impl Write, saved: &SavedTranscript) -> io::Result<()> {
-    // Batch the serializer's small tokens without another transcript-sized
-    // copy. Flush errors must reach the caller before it syncs or publishes.
+fn read_page(
+    input: &mut (impl BufRead + Seek),
+    id: &str,
+    query: &str,
+    requested_page: usize,
+) -> io::Result<TranscriptPage> {
+    let query = query.trim().to_lowercase();
+    let matches = |pair: &SubtitlePair| {
+        query.is_empty()
+            || pair.source.to_lowercase().contains(&query)
+            || pair.translation.to_lowercase().contains(&query)
+    };
+    // The usual newest page needs only one pass. A ring retains the last
+    // 30 matches while metadata and recovery validation continue to EOF.
+    if requested_page == 0 {
+        let mut entries = Vec::with_capacity(TRANSCRIPT_PAGE_SIZE);
+        let mut total = 0;
+        reader::scan(
+            input,
+            id,
+            Some(&mut |index, pair| {
+                if matches(&pair) {
+                    total += 1;
+                    let entry = TranscriptPageEntry {
+                        audio_source: pair.audio_source,
+                        index: index + 1,
+                        source: pair.source,
+                        translation: pair.translation,
+                        created_at_ms: pair.created_at_ms,
+                    };
+                    if entries.len() < TRANSCRIPT_PAGE_SIZE {
+                        entries.push(entry);
+                    } else {
+                        entries[(total - 1) % TRANSCRIPT_PAGE_SIZE] = entry;
+                    }
+                }
+                Ok(())
+            }),
+        )?;
+        if total >= TRANSCRIPT_PAGE_SIZE {
+            entries.rotate_left(total % TRANSCRIPT_PAGE_SIZE);
+        }
+        entries.reverse();
+        return Ok(TranscriptPage {
+            total,
+            page: 0,
+            entries,
+        });
+    }
+    let mut total = 0;
+    let metadata = if query.is_empty() {
+        let metadata = reader::scan(input, id, None)?;
+        total = metadata.entries;
+        metadata
+    } else {
+        reader::scan(
+            input,
+            id,
+            Some(&mut |_, pair| {
+                total += usize::from(matches(&pair));
+                Ok(())
+            }),
+        )?
+    };
+    let page = requested_page.min(total.saturating_sub(1) / TRANSCRIPT_PAGE_SIZE);
+    let end = total.saturating_sub(page * TRANSCRIPT_PAGE_SIZE);
+    let start = end.saturating_sub(TRANSCRIPT_PAGE_SIZE);
+    let mut entries = Vec::with_capacity(end - start);
+    let mut matched = 0;
+    input.rewind()?;
+    reader::scan_verified(
+        input,
+        &metadata,
+        Some(&mut |index, pair| {
+            if matches(&pair) {
+                if (start..end).contains(&matched) {
+                    entries.push(TranscriptPageEntry {
+                        audio_source: pair.audio_source,
+                        index: index + 1,
+                        source: pair.source,
+                        translation: pair.translation,
+                        created_at_ms: pair.created_at_ms,
+                    });
+                }
+                matched += 1;
+            }
+            Ok(())
+        }),
+    )?;
+    if matched != total {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "history changed during read",
+        ));
+    }
+    entries.reverse();
+    Ok(TranscriptPage {
+        total,
+        page,
+        entries,
+    })
+}
+
+fn write_transcript(
+    input: &mut (impl BufRead + Seek),
+    id: &str,
+    options: TranscriptExportOptions,
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    let metadata = reader::scan(input, id, None)?;
+    if metadata.entries == 0 {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "no transcript"));
+    }
+    input.rewind()?;
+    let mut formatter = TranscriptWriter::new(writer, metadata.started_at_ms, options);
+    reader::scan_verified(
+        input,
+        &metadata,
+        Some(&mut |_, pair| formatter.append(&pair)),
+    )?;
+    formatter.finish(metadata.limited)?;
+    Ok(())
+}
+
+fn write_private_export(
+    directory: &Path,
+    options: TranscriptExportOptions,
+    write: impl FnOnce(&mut io::BufWriter<&mut tempfile::NamedTempFile>) -> io::Result<()>,
+) -> io::Result<PathBuf> {
+    fs::create_dir_all(directory)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
+    }
+    let extension = match options.format {
+        crate::core::session_archive::TranscriptExportFormat::Txt => "txt",
+        crate::core::session_archive::TranscriptExportFormat::Markdown => "md",
+    };
+    let mut temporary = tempfile::Builder::new()
+        .prefix("mimi-")
+        .suffix(&format!(".{extension}"))
+        .tempfile_in(directory)?;
+    {
+        let mut writer = io::BufWriter::with_capacity(8 * 1024, &mut temporary);
+        write(&mut writer)?;
+        writer.flush()?;
+    }
+    temporary.as_file().sync_all()?;
+    let (_, path) = temporary.keep().map_err(|error| error.error)?;
+    Ok(path)
+}
+
+fn persist_final_transcript(
+    directory: &Path,
+    path: &Path,
+    original: &HistoryMetadata,
+    input: &mut impl BufRead,
+    ended_at_ms: u64,
+    limited: bool,
+) -> io::Result<()> {
+    let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+    write_final_transcript(&mut temporary, original, input, ended_at_ms, limited)?;
+    temporary.as_file().sync_all()?;
+    temporary
+        .persist_noclobber(path)
+        .map_err(|error| error.error)?;
+    Ok(())
+}
+
+fn write_final_transcript(
+    writer: &mut impl Write,
+    original: &HistoryMetadata,
+    input: &mut impl BufRead,
+    ended_at_ms: u64,
+    limited: bool,
+) -> io::Result<()> {
+    // Emit the same compact JSON schema while retaining only one parsed pair.
+    // Flush errors must reach the caller before it syncs or publishes.
     let mut writer = io::BufWriter::with_capacity(8 * 1024, writer);
-    serde_json::to_writer(&mut writer, saved).map_err(io::Error::other)?;
+    write!(writer, "{{\"version\":{},\"id\":", original.version)?;
+    serde_json::to_writer(&mut writer, &original.id).map_err(io::Error::other)?;
+    write!(
+        writer,
+        ",\"startedAtMs\":{},\"endedAtMs\":{},\"limited\":{},\"entries\":[",
+        original.started_at_ms, ended_at_ms, limited
+    )?;
+    reader::scan_verified(
+        input,
+        original,
+        Some(&mut |index, pair| {
+            if index != 0 {
+                writer.write_all(b",")?;
+            }
+            serde_json::to_writer(&mut writer, &pair).map_err(io::Error::other)
+        }),
+    )?;
+    writer.write_all(b"]}")?;
     writer.flush()
 }
 
@@ -1062,11 +1188,242 @@ mod tests {
         }
     }
 
+    struct ReadFailureAfterRewind {
+        input: io::Cursor<Vec<u8>>,
+        fail_at: usize,
+        rewound: bool,
+        failures: usize,
+    }
+
+    impl ReadFailureAfterRewind {
+        fn new(bytes: &[u8], fail_at: usize) -> Self {
+            Self {
+                input: io::Cursor::new(bytes.to_vec()),
+                fail_at,
+                rewound: false,
+                failures: 0,
+            }
+        }
+    }
+
+    impl Read for ReadFailureAfterRewind {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            if output.is_empty() {
+                return Ok(0);
+            }
+            let input = self.fill_buf()?;
+            let count = input.len().min(output.len());
+            output[..count].copy_from_slice(&input[..count]);
+            self.consume(count);
+            Ok(count)
+        }
+    }
+
+    impl BufRead for ReadFailureAfterRewind {
+        fn fill_buf(&mut self) -> io::Result<&[u8]> {
+            let available = if self.rewound {
+                let available = self.fail_at.saturating_sub(self.input.position() as usize);
+                if available == 0 {
+                    self.failures += 1;
+                    return Err(io::Error::other("synthetic second-pass read failure"));
+                }
+                available
+            } else {
+                usize::MAX
+            };
+            let input = self.input.fill_buf()?;
+            Ok(&input[..input.len().min(available)])
+        }
+
+        fn consume(&mut self, amount: usize) {
+            self.input.consume(amount);
+        }
+    }
+
+    impl Seek for ReadFailureAfterRewind {
+        fn seek(&mut self, position: io::SeekFrom) -> io::Result<u64> {
+            let offset = self.input.seek(position)?;
+            if matches!(position, io::SeekFrom::Start(0)) {
+                self.rewound = true;
+            }
+            Ok(offset)
+        }
+    }
+
+    #[test]
+    fn second_pass_read_failures_do_not_publish_or_return_shortened_history() {
+        let directory = tempfile::tempdir().unwrap();
+        let history = SessionHistory::new(directory.path().join("history"), false);
+        let mut saved = synthetic_final_transcript(3);
+        for pair in &mut saved.entries {
+            pair.created_at_ms += 300;
+        }
+        history.begin(&saved.id, saved.started_at_ms).unwrap();
+        let mut header = serde_json::to_value(&saved).unwrap();
+        header["entries"] = serde_json::json!([]);
+        let mut bytes = serde_json::to_vec(&header).unwrap();
+        bytes.push(b'\n');
+        let mut boundaries = Vec::new();
+        for pair in &saved.entries {
+            boundaries.push(bytes.len());
+            serde_json::to_writer(&mut bytes, pair).unwrap();
+            bytes.push(b'\n');
+        }
+        let journal = history.path(&saved.id, "jsonl").unwrap();
+        fs::write(&journal, &bytes).unwrap();
+        let final_path = history.path(&saved.id, "json").unwrap();
+        let exports = directory.path().join("exports");
+        for fail_at in boundaries {
+            let mut input = ReadFailureAfterRewind::new(&bytes, fail_at);
+            let original = reader::scan(&mut input, &saved.id, None).unwrap();
+            assert_eq!(original.entries, saved.entries.len());
+            input.rewind().unwrap();
+            let error = persist_final_transcript(
+                &history.directory,
+                &final_path,
+                &original,
+                &mut input,
+                900,
+                true,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(input.failures > 0);
+            assert!(!final_path.exists());
+            assert_eq!(fs::read(&journal).unwrap(), bytes);
+            assert_eq!(fs::read_dir(&history.directory).unwrap().count(), 1);
+
+            let mut input = ReadFailureAfterRewind::new(&bytes, fail_at);
+            let options = TranscriptExportOptions::default();
+            let error = write_private_export(&exports, options, |writer| {
+                write_transcript(&mut input, &saved.id, options, writer)
+            })
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(input.failures > 0);
+            assert_eq!(fs::read_dir(&exports).unwrap().count(), 0);
+
+            for query in ["", "synthetic"] {
+                let mut input = ReadFailureAfterRewind::new(&bytes, fail_at);
+                let error = read_page(&mut input, &saved.id, query, 1)
+                    .err()
+                    .expect("a changed second pass must reject the page");
+                assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+                assert!(input.failures > 0);
+            }
+        }
+        // A successful finalization still applies the new end/limit values;
+        // comparison uses the original header, not those output overrides.
+        assert!(history.finalize(&saved.id, 900, true).unwrap());
+        let finalized = history.read(&saved.id).unwrap();
+        assert_eq!((finalized.ended_at_ms, finalized.limited), (900, true));
+        assert_eq!(finalized.entries.len(), saved.entries.len());
+    }
+
+    #[test]
+    fn streamed_pages_and_exports_preserve_saved_and_recovered_content() {
+        use crate::core::session_archive::{TranscriptExportContent, TranscriptExportFormat};
+        let directory = tempfile::tempdir().unwrap();
+        let history = SessionHistory::new(directory.path().join("history"), false);
+        let mut saved = synthetic_final_transcript(137);
+        saved.limited = true;
+        for (index, pair) in saved.entries.iter_mut().enumerate() {
+            pair.source = format!(
+                "Synthetic {index} {}",
+                if index % 3 == 0 { "Needle" } else { "sample" }
+            );
+            pair.translation = format!("译文 **ÄPFEL**\n😀 {index}");
+            // Confirmation order is independent of timestamps.
+            pair.created_at_ms = 100 + (index % 7) as u64;
+        }
+        history.begin(&saved.id, saved.started_at_ms).unwrap();
+        for extension in ["jsonl", "json"] {
+            let path = history.path(&saved.id, extension).unwrap();
+            let mut file = io::BufWriter::new(fs::File::create(path).unwrap());
+            if extension == "json" {
+                serde_json::to_writer(&mut file, &saved).unwrap();
+            } else {
+                let mut header = serde_json::to_value(&saved).unwrap();
+                header["entries"].as_array_mut().unwrap().truncate(7);
+                serde_json::to_writer(&mut file, &header).unwrap();
+                for pair in &saved.entries[7..] {
+                    file.write_all(b"\n{broken JSON}\n\n").unwrap();
+                    serde_json::to_writer(&mut file, pair).unwrap();
+                }
+                file.write_all(b"\n{\"source\":\"unfinished").unwrap();
+            }
+            file.flush().unwrap();
+            for query in ["", "  NEEDLE  ", "äpfel", "missing"] {
+                for page in [0, 1, 2, usize::MAX] {
+                    assert_eq!(
+                        serde_json::to_value(history.page(&saved.id, query, page).unwrap())
+                            .unwrap(),
+                        serde_json::to_value(saved.page(query, page)).unwrap(),
+                        "{extension}: query={query}, page={page}"
+                    );
+                }
+            }
+            for format in [
+                TranscriptExportFormat::Txt,
+                TranscriptExportFormat::Markdown,
+            ] {
+                for content in [
+                    TranscriptExportContent::Bilingual,
+                    TranscriptExportContent::Source,
+                    TranscriptExportContent::Translation,
+                ] {
+                    for include_timestamps in [false, true] {
+                        let options = TranscriptExportOptions {
+                            format,
+                            content,
+                            include_timestamps,
+                        };
+                        let expected = saved.export_with_options(options).unwrap().into_bytes();
+                        assert_eq!(
+                            history
+                                .export_transcript_with_options(&saved.id, options)
+                                .unwrap(),
+                            expected
+                        );
+                        let exported = history
+                            .export_transcript_to_directory(
+                                &saved.id,
+                                options,
+                                &directory.path().join("exports"),
+                            )
+                            .unwrap();
+                        assert_eq!(fs::read(&exported).unwrap(), expected);
+                        fs::remove_file(exported).unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transcript_export_propagates_write_errors_and_does_not_publish_invalid_content() {
+        let (directory, history, id) = history_with_saved_pair();
+        let mut writer = TranscriptWriter {
+            fail_after: Some(1),
+            ..Default::default()
+        };
+        let error = history
+            .export_transcript_to_writer(&id, TranscriptExportOptions::default(), &mut writer)
+            .unwrap_err();
+        assert_eq!(error.to_string(), "synthetic write failure");
+        fs::write(history.path(&id, "json").unwrap(), b"{\"entries\":[]}").unwrap();
+        let exports = directory.path().join("exports");
+        assert!(history
+            .export_transcript_to_directory(&id, TranscriptExportOptions::default(), &exports)
+            .is_err());
+        assert_eq!(fs::read_dir(exports).unwrap().count(), 0);
+    }
+
     #[test]
     fn final_transcript_write_batches_small_tokens_and_preserves_bytes() {
         let saved = synthetic_final_transcript(512);
         let mut writer = TranscriptWriter::default();
-        write_final_transcript(&mut writer, &saved).unwrap();
+        write_fixture_final_transcript(&mut writer, &saved).unwrap();
         assert_eq!(writer.bytes, serde_json::to_vec(&saved).unwrap());
         assert!(
             writer.writes < saved.entries.len() / 4,
@@ -1085,15 +1442,31 @@ mod tests {
                 fail_after: Some(accepted),
                 ..Default::default()
             };
-            assert!(write_final_transcript(&mut writer, &saved).is_err());
+            assert!(write_fixture_final_transcript(&mut writer, &saved).is_err());
             assert_eq!(writer.bytes, expected[..accepted]);
         }
         let mut writer = TranscriptWriter {
             fail_flush: true,
             ..Default::default()
         };
-        assert!(write_final_transcript(&mut writer, &saved).is_err());
+        assert!(write_fixture_final_transcript(&mut writer, &saved).is_err());
         assert_eq!(writer.bytes, expected);
+    }
+
+    fn write_fixture_final_transcript(
+        writer: &mut impl Write,
+        saved: &SavedTranscript,
+    ) -> io::Result<()> {
+        let mut input = io::Cursor::new(serde_json::to_vec(saved)?);
+        let metadata = reader::scan(&mut input, &saved.id, None)?;
+        input.rewind()?;
+        write_final_transcript(
+            writer,
+            &metadata,
+            &mut input,
+            saved.ended_at_ms,
+            saved.limited,
+        )
     }
 
     fn assert_metadata_matches_transcript(history: &SessionHistory, id: &str) {
