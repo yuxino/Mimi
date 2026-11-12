@@ -32,12 +32,11 @@ Kotlin; do not add another Kotlin parser or client implementation.
 
 ## Intentional corrections to the obsolete validator
 
-The shared fixtures cover 50 editor-compatibility cases for URL normalization,
-local-host policy and malformed input, using the previous compiled Android
-validator as the baseline. This includes extra authority slashes with cleartext
-opt-in both on and off, plus an HTTPS comparison.
-An extended offline comparison also identified differences that belong to the
-old independent parser, not to the production request path:
+The shared fixtures cover Android URL normalization, local-host policy and
+malformed input, including extra authority slashes with cleartext opt-in both
+on and off, plus an HTTPS comparison. Earlier offline comparisons against the
+previous compiled Android validator identified differences from the production
+request path:
 
 - OkHttp accepted `https://999.999/v1`, although shared Rust has always rejected
   that invalid numeric host. Settings now report `translation_endpoint` before
@@ -59,11 +58,14 @@ redirect working requests or rewrite saved drafts. The `runtimeAligned`
 fixtures pin both the shared parser result and the actual JNI endpoint identity;
 the Kotlin adapter test also checks that credentials retain the original draft.
 
-IPv4-mapped IPv6 HTTP remains an existing editor/runtime gap: OkHttp and the new
-Android policy accept a mapped loopback host, but the raw saved draft still
-reaches the runtime, whose unchanged allowlist rejects that IPv6 spelling.
-That fixture proves editor compatibility, not a successful production request.
-Do not broaden the runtime allowlist as part of this dependency removal.
+Reject IPv4-mapped IPv6 HTTP during Android validation with
+`translation_https_required`, including mapped `127.0.0.1` and `10.0.2.2` with
+local HTTP enabled. The runtime already rejects these raw IPv6 spellings; remove
+the editor's unused conversion to IPv4 so the error appears before saving.
+HTTPS mapped addresses remain valid and retain the shared parser's IPv6 form.
+Saving still preserves the original draft, and the actual runtime destination
+does not change. Keep ordinary loopback, Android's emulator exception, the
+runtime allowlist and platform network permissions unchanged.
 
 Keep the old differential result as bounded comparison evidence. Do not add a
 second URL implementation merely to preserve a validation success for endpoints
@@ -71,13 +73,15 @@ the production runtime cannot use.
 
 ## Evidence required
 
-The Android endpoint fixtures are checked against the previous compiled OkHttp
-validator, direct shared Rust and the real JNI boundary. Cover opt-in on/off,
-emulator/loopback/remote addresses, encoded and Unicode hosts/paths, IPv6, raw
-userinfo, repaired URL spellings and error ordering. Compare the five documented
-runtime-alignment cases to the old validator separately rather than claiming
-exact historical string or error equivalence. Retain the existing shared endpoint,
-model, credential and actual-provider JNI suites.
+Run Android endpoint fixtures through direct shared Rust, JNI dispatch and the
+actual JNI adapter. Cover opt-in on/off, emulator/loopback/remote addresses,
+encoded and Unicode hosts/paths, IPv6, raw userinfo, repaired URL spellings and
+error ordering. Mapped HTTP must fail in both editor and runtime policies;
+mapped HTTPS must preserve endpoint identity and the original saved draft.
+Select the fixture's text protocol when checking runtime alignment. Keep the old
+validator comparison evidence separate from these intentional corrections.
+Retain the existing shared endpoint, model, credential and actual-provider JNI
+suites.
 
 Compare equivalent release APKs and DEX contents with identical build settings.
 Run both Android unit/lint variants, packaging guards, canonical checks and native
