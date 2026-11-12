@@ -1161,7 +1161,7 @@ fn capture_to_pcm16(
     let target_sample_rate = state.target_sample_rate_hz as f64;
     // Resample when the device rate differs from the selected provider.
     let pcm = if (sample_rate - target_sample_rate).abs() < 0.5 {
-        PCM16Encoder::encode(&[samples])
+        PCM16Encoder::encode(&samples)
     } else {
         let mut pending = state.pending_frames.lock().unwrap();
         pending.extend_from_slice(&samples);
@@ -1199,7 +1199,7 @@ fn capture_to_pcm16(
         if out.is_empty() {
             return Ok(None);
         }
-        PCM16Encoder::encode(&[out])
+        PCM16Encoder::encode(&out)
     };
 
     Ok(Some(pcm))
@@ -1208,8 +1208,8 @@ fn capture_to_pcm16(
 const RESAMPLE_CHUNK_FRAMES: usize = 1024;
 
 /// Decodes interleaved/planar linear PCM into mono f32 samples. Both the
-/// float and signed-integer branches handle multi-channel buffers by
-/// averaging channels, matching `PCM16Encoder::encode`.
+/// float and signed-integer branches average multi-channel buffers here,
+/// before resampling and PCM16 encoding.
 pub(super) fn decode_to_f32_mono(
     bytes: &[u8],
     asbd: &AudioStreamBasicDescription,
