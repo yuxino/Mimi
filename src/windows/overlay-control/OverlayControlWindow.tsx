@@ -145,7 +145,6 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       // Only this known fixed-size sibling is independent of the hit slots.
       // Unknown roots, ancestors and portals retain the original policy.
       if (subtitleRoot && surface && !subtitleRoot.contains(surface) && !surface.contains(subtitleRoot)
-        && records.length > 0
         && records.every(record => isLocalSubtitleMutation(record, subtitleRoot))) return;
       schedule();
     });
@@ -243,10 +242,9 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   );
 });
 
+// The body observer supplies only child-list, text, and style-attribute changes.
 function isLocalSubtitleMutation(record: MutationRecord, subtitleRoot: HTMLElement): boolean {
   if (!subtitleRoot.contains(record.target)) return false;
-  if (record.type !== "childList" && record.type !== "characterData" && record.type !== "attributes") return false;
-  if (record.type === "attributes" && record.attributeName !== "style") return false;
   // Stylesheets can affect siblings. Never discard explicit layer records.
   const external = "style, link, .mimi-select__menu, .settings-toast";
   const target = record.target instanceof Element ? record.target : record.target.parentElement;

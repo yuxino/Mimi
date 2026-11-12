@@ -105,7 +105,7 @@ it("does not install embedded dismissal or input-region reporting for a separate
   expect(host.querySelector(".overlay-control-embedded")).toBeNull();
 });
 
-it("reads the current subtitle ref and conservatively schedules unknown or unsafe-root mutation records", async () => {
+it("reads the current subtitle ref and schedules mutations for missing, changed or overlapping roots", async () => {
   const ActualMutationObserver = MutationObserver;
   let popup!: { callback: MutationCallback; observer: MutationObserver };
   vi.stubGlobal("MutationObserver", class extends ActualMutationObserver {
@@ -130,8 +130,7 @@ it("reads the current subtitle ref and conservatively schedules unknown or unsaf
     popup.callback(records, popup.observer);
     expect(frames.size).toBe(0);
   };
-  // Deliver edge records through the actual component observer callback;
-  // Document/unknown kinds are defensive cases, not body-observer emissions.
+  // Deliver valid body-observer records through the component callback while refs change.
   assertIgnored([record(subtitle.firstChild!)]);
   const flush = async () => {
     await act(async () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); });
@@ -150,11 +149,6 @@ it("reads the current subtitle ref and conservatively schedules unknown or unsaf
   await check([record(surface, "attributes", "style")]);
   subtitleRootRef.current = surface.firstElementChild as HTMLElement;
   await check([record(subtitleRootRef.current, "attributes", "style")]);
-  subtitleRootRef.current = replacement;
-  await check([record(document)]);
-  await check([record(replacement, "attributes", "class")]);
-  await check([record(replacement, "unknown")]);
-  await check([]);
   await act(async () => { subtitle.remove(); replacement.remove(); });
 });
 
