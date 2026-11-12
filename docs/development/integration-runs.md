@@ -1,5 +1,20 @@
 # 集成实测记录
 
+## 2026-11-12 — Android mapped IPv6 endpoint validation
+
+- Source `3aac5ebf`, based on `3467fbf0`. Android rejects IPv4-mapped IPv6
+  HTTP addresses before saving, matching the runtime's existing rejection.
+  HTTPS destinations and original saved drafts remain unchanged; ordinary
+  loopback, emulator exceptions and network permissions are unchanged.
+- Restoring the removed conversion makes the endpoint regression fail. The
+  fix passes all 60 shared address fixtures through direct Rust and actual
+  JNI, including mapped HTTPS identity and DeepLX route completion.
+- Canonical checks and Android Debug/Release each passed, with 231 Android
+  tests per variant and no skips; both lints, all assemblies and four-ABI
+  packaging checks passed. The tested tree is identical after rebase onto
+  the merged runtime cleanup. Tests use synthetic addresses and local peers;
+  no provider request, capture or new native UI acceptance is claimed.
+
 ## 2026-11-12 — Android saved-history lifecycle filtering
 
 - Source `285cb11d`, based on `5ff2a625`. Android now obtains active journal

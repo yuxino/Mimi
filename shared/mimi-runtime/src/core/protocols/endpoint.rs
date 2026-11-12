@@ -54,12 +54,6 @@ pub fn normalize_http_endpoint(
         HttpEndpointPolicy::Runtime => endpoint_host_is_local(url.host_str()),
         HttpEndpointPolicy::Android { allow_local_http } => {
             let host = android_input_host(input)?;
-            // OkHttp canonicalized IPv4-mapped IPv6 before applying its host
-            // allowlist. Preserve that form without broadening IPv6 loopback.
-            if matches!(url.host(), Some(url::Host::Ipv6(address)) if address.to_ipv4_mapped().is_some())
-            {
-                url.set_host(Some(&host)).map_err(|_| Invalid)?;
-            }
             allow_local_http
                 && matches!(
                     host.as_str(),
@@ -98,9 +92,7 @@ fn android_input_host(input: &str) -> Result<String, HttpEndpointError> {
     if let Some(rest) = authority.strip_prefix('[') {
         let host = rest.split_once(']').ok_or(Invalid)?.0;
         let address: std::net::Ipv6Addr = host.parse().map_err(|_| Invalid)?;
-        return Ok(address
-            .to_ipv4_mapped()
-            .map_or_else(|| format!("[{address}]"), |address| address.to_string()));
+        return Ok(format!("[{address}]"));
     }
     let host = authority.split(':').next().ok_or(Invalid)?;
     let decoded = percent_encoding::percent_decode_str(host)
@@ -148,9 +140,13 @@ mod tests {
                 assert_eq!(result, Err(expected), "{}", case["id"]);
             }
             if case["runtimeAligned"] == true {
-                let runtime = crate::core::protocols::openai_compatible::endpoint(input);
+                let runtime = if case["route"] == "deepLX" {
+                    crate::core::protocols::deeplx::endpoint(input).ok()
+                } else {
+                    crate::core::protocols::openai_compatible::endpoint(input).ok()
+                };
                 assert_eq!(
-                    runtime.as_ref().ok().map(url::Url::as_str),
+                    runtime.as_ref().map(url::Url::as_str),
                     case["expected"].as_str(),
                     "runtime: {}",
                     case["id"]
