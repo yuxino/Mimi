@@ -7,7 +7,7 @@
 
 use crate::core::models::TargetLanguage;
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 
 // Azure deploys the same dedicated gpt-realtime-translate model, with its
@@ -141,10 +141,11 @@ impl AzureOpenAIRealtimeRequestEncoder {
                 actual_bytes: pcm_data.len(),
             });
         }
-        Ok(json!({
-            "type": "session.input_audio_buffer.append",
-            "audio": base64::engine::general_purpose::STANDARD.encode(pcm_data)
-        }))
+        let audio = base64::engine::general_purpose::STANDARD.encode(pcm_data);
+        let mut message = Map::new();
+        message.insert("type".into(), "session.input_audio_buffer.append".into());
+        message.insert("audio".into(), Value::String(audio));
+        Ok(Value::Object(message))
     }
 
     pub fn close() -> Value {

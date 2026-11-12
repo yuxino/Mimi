@@ -3,7 +3,7 @@
 use super::gemini_live::GeminiLiveEndpoint;
 use crate::core::models::{subtitle_text_within_limit, SourceLanguage};
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 pub const MODEL: &str = "gemini-3.5-transcribe-live";
 pub const PCM_SAMPLE_RATE: u32 = 16_000;
@@ -34,7 +34,17 @@ pub fn setup(source: SourceLanguage) -> Result<Value, ProtocolError> {
 }
 
 pub fn audio(pcm: &[u8]) -> Value {
-    json!({"realtimeInput":{"audio":{"data":base64::engine::general_purpose::STANDARD.encode(pcm),"mimeType":"audio/pcm;rate=16000"}}})
+    let mut audio = Map::new();
+    audio.insert(
+        "data".into(),
+        Value::String(base64::engine::general_purpose::STANDARD.encode(pcm)),
+    );
+    audio.insert("mimeType".into(), "audio/pcm;rate=16000".into());
+    let mut input = Map::new();
+    input.insert("audio".into(), Value::Object(audio));
+    let mut message = Map::new();
+    message.insert("realtimeInput".into(), Value::Object(input));
+    Value::Object(message)
 }
 pub fn finish() -> Value {
     json!({"realtimeInput":{"audioStreamEnd":true}})

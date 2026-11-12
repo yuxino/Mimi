@@ -6,7 +6,7 @@
 
 use crate::core::models::{SourceLanguage, TargetLanguage};
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -128,10 +128,11 @@ impl XAIRealtimeRequestEncoder {
                 actual_bytes: pcm_data.len(),
             });
         }
-        Ok(json!({
-            "type": "input_audio_buffer.append",
-            "audio": base64::engine::general_purpose::STANDARD.encode(pcm_data)
-        }))
+        let audio = base64::engine::general_purpose::STANDARD.encode(pcm_data);
+        let mut message = Map::new();
+        message.insert("type".into(), "input_audio_buffer.append".into());
+        message.insert("audio".into(), Value::String(audio));
+        Ok(Value::Object(message))
     }
 }
 

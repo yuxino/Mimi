@@ -2,7 +2,7 @@
 
 use crate::core::models::TargetLanguage;
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -77,14 +77,20 @@ impl GeminiLiveRequestEncoder {
                 actual_bytes: pcm_data.len(),
             });
         }
-        Ok(json!({
-            "realtimeInput": {
-                "audio": {
-                    "data": base64::engine::general_purpose::STANDARD.encode(pcm_data),
-                    "mimeType": GeminiLiveEndpoint::AUDIO_MIME_TYPE
-                }
-            }
-        }))
+        let mut audio = Map::new();
+        audio.insert(
+            "data".into(),
+            Value::String(base64::engine::general_purpose::STANDARD.encode(pcm_data)),
+        );
+        audio.insert(
+            "mimeType".into(),
+            GeminiLiveEndpoint::AUDIO_MIME_TYPE.into(),
+        );
+        let mut input = Map::new();
+        input.insert("audio".into(), Value::Object(audio));
+        let mut message = Map::new();
+        message.insert("realtimeInput".into(), Value::Object(input));
+        Ok(Value::Object(message))
     }
 
     pub fn audio_stream_end() -> Value {
@@ -491,10 +497,15 @@ mod tests {
                 .unwrap(),
             frame
         );
-        assert!(matches!(
-            GeminiLiveRequestEncoder::audio(&frame[..frame.len() - 1]),
-            Err(GeminiLiveProtocolError::InvalidAudioFrame { .. })
-        ));
+        for actual_bytes in [0, frame.len() - 1, frame.len() + 1] {
+            assert_eq!(
+                GeminiLiveRequestEncoder::audio(&vec![0; actual_bytes]),
+                Err(GeminiLiveProtocolError::InvalidAudioFrame {
+                    expected_bytes: frame.len(),
+                    actual_bytes,
+                })
+            );
+        }
         assert_eq!(
             GeminiLiveRequestEncoder::audio_stream_end(),
             json!({"realtimeInput": {"audioStreamEnd": true}})

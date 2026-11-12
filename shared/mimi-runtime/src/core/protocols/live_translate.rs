@@ -4,7 +4,7 @@
 use crate::core::models::{SourceLanguage, TargetLanguage, UtteranceRole};
 use crate::core::provider::AlibabaRealtimeMode;
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use thiserror::Error;
 use uuid::Uuid;
@@ -197,11 +197,14 @@ impl LiveTranslateRequestEncoder {
         event_id: Option<&str>,
     ) -> Result<Value, LiveTranslateProtocolError> {
         let audio = base64::engine::general_purpose::STANDARD.encode(pcm_data);
-        Ok(json!({
-            "event_id": event_id.unwrap_or(&next_event_id()),
-            "type": "input_audio_buffer.append",
-            "audio": audio
-        }))
+        let mut message = Map::new();
+        message.insert(
+            "event_id".into(),
+            Value::String(event_id.unwrap_or(&next_event_id()).to_owned()),
+        );
+        message.insert("type".into(), "input_audio_buffer.append".into());
+        message.insert("audio".into(), Value::String(audio));
+        Ok(Value::Object(message))
     }
 
     pub fn finish(event_id: Option<&str>) -> Result<Value, LiveTranslateProtocolError> {
@@ -1409,8 +1412,14 @@ mod tests {
         let data =
             LiveTranslateRequestEncoder::audio_append(&[0x00, 0x7F, 0xFF], Some("event-audio"))
                 .unwrap();
-        assert_eq!(data["type"], "input_audio_buffer.append");
-        assert_eq!(data["audio"], "AH//");
+        assert_eq!(
+            data,
+            json!({
+                "event_id": "event-audio",
+                "type": "input_audio_buffer.append",
+                "audio": "AH//",
+            })
+        );
     }
 
     #[test]

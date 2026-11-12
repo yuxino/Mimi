@@ -2,7 +2,7 @@
 
 use crate::core::models::TargetLanguage;
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -93,10 +93,11 @@ impl OpenAIRealtimeRequestEncoder {
                 actual_bytes: pcm_data.len(),
             });
         }
-        Ok(json!({
-            "type": "session.input_audio_buffer.append",
-            "audio": base64::engine::general_purpose::STANDARD.encode(pcm_data)
-        }))
+        let audio = base64::engine::general_purpose::STANDARD.encode(pcm_data);
+        let mut message = Map::new();
+        message.insert("type".into(), "session.input_audio_buffer.append".into());
+        message.insert("audio".into(), Value::String(audio));
+        Ok(Value::Object(message))
     }
 
     pub fn close() -> Value {
@@ -370,10 +371,15 @@ mod tests {
                 .unwrap(),
             frame
         );
-        assert!(matches!(
-            OpenAIRealtimeRequestEncoder::audio_append(&frame[..9_599]),
-            Err(OpenAIRealtimeProtocolError::InvalidAudioFrame { .. })
-        ));
+        for actual_bytes in [0, frame.len() - 1, frame.len() + 1] {
+            assert_eq!(
+                OpenAIRealtimeRequestEncoder::audio_append(&vec![0; actual_bytes]),
+                Err(OpenAIRealtimeProtocolError::InvalidAudioFrame {
+                    expected_bytes: frame.len(),
+                    actual_bytes,
+                })
+            );
+        }
     }
 
     #[test]
