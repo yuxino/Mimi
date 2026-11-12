@@ -5,7 +5,7 @@ use mimi_runtime::{
         session_archive::{TranscriptExportFormat, TranscriptExportOptions},
         subtitle_reducer::now_epoch_ms,
     },
-    session_history::SessionHistory,
+    session_history::{HistoryItem, SessionHistory},
     session_journal::{JournalState, SessionJournal},
 };
 use serde_json::{json, Value};
@@ -127,6 +127,17 @@ fn active_ids(directory: &PathBuf) -> Result<Vec<String>, &'static str> {
         .collect())
 }
 
+fn list_saved_history(
+    directory: &PathBuf,
+    read_history: impl FnOnce() -> std::io::Result<Vec<HistoryItem>>,
+) -> Result<Vec<HistoryItem>, &'static str> {
+    let mut items = read_history().map_err(|_| ERROR)?;
+    // Start or finish can change ownership while the file read is in progress.
+    let active = active_ids(directory)?;
+    items.retain(|item| !active.contains(&item.id));
+    Ok(items)
+}
+
 pub fn exchange(value: &Value) -> Result<Value, &'static str> {
     match value["operation"].as_str().ok_or(ERROR)? {
         "history_begin" => {
@@ -191,12 +202,11 @@ pub fn exchange(value: &Value) -> Result<Value, &'static str> {
         "history_list" | "history_page" | "history_export" | "history_delete" => {
             let directory = directory(value, "directory")?;
             let history = SessionHistory::new(directory.clone(), false);
-            let active = active_ids(&directory)?;
             if value["operation"] == "history_list" {
-                let mut items = history.list().map_err(|_| ERROR)?;
-                items.retain(|item| !active.contains(&item.id));
+                let items = list_saved_history(&directory, || history.list())?;
                 return Ok(json!({"items":items}));
             }
+            let active = active_ids(&directory)?;
             let id = value["id"].as_str().ok_or(ERROR)?;
             if active.iter().any(|active| active == id) {
                 return Err("session_history_active");
@@ -258,8 +268,141 @@ mod tests {
     use super::*;
     use mimi_runtime::core::audio_input::AudioSource;
 
+    fn registry_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static TEST_LOCK: Mutex<()> = Mutex::new(());
+        // Mutation checks deliberately fail assertions; keep the next case
+        // runnable after its predecessor has cleaned up its own journal handles.
+        TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    struct HistoryFixture {
+        directory: PathBuf,
+        handles: Vec<u64>,
+    }
+
+    impl HistoryFixture {
+        fn new() -> Self {
+            static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+            Self {
+                directory: std::env::temp_dir().join(format!(
+                    "mimi-history-list-jni-{}-{}-{}",
+                    std::process::id(),
+                    now_epoch_ms(),
+                    NEXT_DIRECTORY.fetch_add(1, Ordering::SeqCst),
+                )),
+                handles: Vec::new(),
+            }
+        }
+
+        fn begin(&mut self) -> (u64, Lease, String) {
+            let result = exchange(&json!({
+                "operation":"history_begin",
+                "directory":self.directory,
+            }))
+            .unwrap();
+            let handle = result["historyHandle"].as_u64().unwrap();
+            self.handles.push(handle);
+            let owner = attach(handle).unwrap();
+            let id = journals().lock().unwrap()[&handle]
+                .journal
+                .lock()
+                .unwrap()
+                .id()
+                .unwrap()
+                .to_owned();
+            owner.append(&SubtitlePair::new(
+                "Synthetic source".into(),
+                "Synthetic target".into(),
+                now_epoch_ms(),
+            ));
+            assert_eq!(owner.state().count, 1);
+            (handle, owner, id)
+        }
+    }
+
+    impl Drop for HistoryFixture {
+        fn drop(&mut self) {
+            {
+                let mut registry = journals()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                for handle in &self.handles {
+                    registry.remove(handle);
+                }
+            }
+            if self.directory.is_dir() {
+                let _ = std::fs::remove_dir_all(&self.directory);
+            } else {
+                let _ = std::fs::remove_file(&self.directory);
+            }
+        }
+    }
+
+    fn finish_owned_journal(handle: u64, owner: Lease) {
+        let finish = exchange(&json!({"operation":"history_finish","historyHandle":handle}));
+        assert_eq!(finish.unwrap()["pending"], true);
+        assert!(!owner.release().save_error);
+        let state = exchange(&json!({"operation":"history_state","historyHandle":handle}));
+        assert_eq!(state.unwrap()["finalized"], true);
+    }
+
+    #[test]
+    fn history_listing_hides_a_journal_started_during_the_file_read() {
+        let _serial = registry_test_guard();
+        let mut fixture = HistoryFixture::new();
+        let (saved_handle, saved_owner, saved_id) = fixture.begin();
+        finish_owned_journal(saved_handle, saved_owner);
+        let directory = fixture.directory.clone();
+        let history = SessionHistory::new(directory.clone(), false);
+        let mut started = None;
+        let items = list_saved_history(&directory, || {
+            // This is the scheduling window after the old active-ID snapshot.
+            started = Some(fixture.begin());
+            history.list()
+        })
+        .unwrap();
+        let started_id = &started.as_ref().unwrap().2;
+        assert!(items.iter().all(|item| &item.id != started_id));
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, saved_id);
+    }
+
+    #[test]
+    fn history_listing_includes_a_journal_finished_during_the_file_read() {
+        let _serial = registry_test_guard();
+        let mut fixture = HistoryFixture::new();
+        let (saved_handle, saved_owner, saved_id) = fixture.begin();
+        finish_owned_journal(saved_handle, saved_owner);
+        let (finishing_handle, finishing_owner, finishing_id) = fixture.begin();
+        let directory = fixture.directory.clone();
+        let history = SessionHistory::new(directory.clone(), false);
+        let items = list_saved_history(&directory, || {
+            finish_owned_journal(finishing_handle, finishing_owner);
+            history.list()
+        })
+        .unwrap();
+        assert!(items.iter().any(|item| item.id == finishing_id));
+        assert!(items.iter().any(|item| item.id == saved_id));
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn history_listing_keeps_file_read_errors_sanitized() {
+        let _serial = registry_test_guard();
+        let fixture = HistoryFixture::new();
+        std::fs::write(&fixture.directory, b"not a history directory").unwrap();
+        let result = exchange(&json!({
+            "operation":"history_list",
+            "directory":fixture.directory,
+        }));
+        assert_eq!(result.unwrap_err(), ERROR);
+    }
+
     #[test]
     fn shared_journal_waits_for_both_owners_and_retains_deferred_failure_status() {
+        let _serial = registry_test_guard();
         let directory = std::env::temp_dir().join(format!(
             "mimi-journal-jni-{}-{}",
             std::process::id(),
