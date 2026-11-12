@@ -3,7 +3,7 @@
 use crate::core::models::{subtitle_text_within_limit, SourceLanguage};
 use crate::core::provider::ProviderKind;
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::VecDeque;
 use thiserror::Error;
 
@@ -91,7 +91,11 @@ pub fn session_update(model: &str, source: SourceLanguage, event_id: &str) -> Va
 }
 
 pub fn audio_append(pcm: &[u8]) -> Value {
-    json!({ "type": "input_audio_buffer.append", "audio": base64::engine::general_purpose::STANDARD.encode(pcm) })
+    let audio = base64::engine::general_purpose::STANDARD.encode(pcm);
+    let mut message = Map::new();
+    message.insert("type".into(), "input_audio_buffer.append".into());
+    message.insert("audio".into(), Value::String(audio));
+    Value::Object(message)
 }
 
 pub fn audio_commit() -> Value {
@@ -636,7 +640,10 @@ mod tests {
             .get("language")
             .is_none());
         assert!(update["session"]["audio"]["input"]["turn_detection"].is_null());
-        assert_eq!(audio_append(&[1, 2])["type"], "input_audio_buffer.append");
+        assert_eq!(
+            audio_append(&[1, 2]),
+            json!({"type": "input_audio_buffer.append", "audio": "AQI="})
+        );
         assert_eq!(audio_commit()["type"], "input_audio_buffer.commit");
         let mut ack = update;
         ack["type"] = json!("session.updated");
