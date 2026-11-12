@@ -1,5 +1,32 @@
 # 集成实测记录
 
+## 2026-11-12 — Reusable native resampler output
+
+- Source `2bda7df3`, based on `e4fa0b0d`. The desktop resampler now reuses its
+  mono output buffer. Existing downmixing, FFT/filter state, PCM conversion,
+  partial input and error-drain behavior are unchanged; the four existing
+  tests remain, with output-length and same-rate assertions strengthened.
+- A private production-path probe compared 48 synthetic cases across eight
+  rate pairs, 1/2/6 input channels and aligned/mixed callback sizes. Every PCM
+  byte, output boundary, pending sample and tested error state matched. Both
+  binaries used the same arm64 macOS release optimization and locked crates;
+  only the resampler source differed, apart from unrelated ledger changes.
+- Each processed resampling block avoids one allocation. Across 128 warmed
+  blocks, allocations decrease by 128; same-rate allocation counts stay equal.
+  Common 44.1/48 kHz to 16/24 kHz instances retain 1,376–2,560 extra heap bytes
+  plus a 24-byte struct increase. Measured heap peaks including retained state
+  stay equal or increase by 96 bytes across callback schedules. This reduces
+  allocation churn, not demonstrated app RSS or latency. Output ownership and
+  lifecycle cleanup pass.
+- Focused desktop audio checks passed 75 tests; all-target desktop Clippy
+  passed with warnings denied. Signed embedded `local-dev`
+  UI-only preview loaded settings, showed system input on/microphone off, and
+  exited normally. No real capture or provider session was run. Windows caller
+  compilation and other platform coverage belong to CI; Android and Linux
+  production capture do not use this desktop type. Private raw comparisons and
+  build hashes are in `resampler-output-scratch-preparation` under the
+  `2026-11-12-optimization-cycle-2` batch.
+
 ## 2026-11-12 — Locale data modules
 
 - Source `9c9303f3`, based on `05c97d45`. All nine locales now own their core
