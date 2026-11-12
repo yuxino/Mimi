@@ -1,5 +1,26 @@
 # 集成实测记录
 
+## 2026-11-12 — Platform-scoped provider copy
+
+- Source `ec564b41`, based on `3de873fe`. Desktop generation now respects
+  each shared entry's platform scope, removing 63 unused properties across
+  nine languages. Tencent and dynamic preset setup help remain. The scope
+  change alone leaves all 11 Android generated files byte-identical.
+- Separately corrected literal backslash-n characters in nine xAI descriptions
+  to real line breaks, without changing wording. Only the corresponding nine
+  Android string values change; Kotlin generated output remains identical.
+- Same production toolchain and targets: JavaScript/CSS decreased from
+  1,555,335 to 1,541,557 bytes, or 435,375 to 431,998 with identical per-file
+  gzip settings. This measures asset bytes, not startup time or native memory.
+- Fourteen generator checks passed; restoring the old scope projection fails
+  all nine locale subcases. Actual component DOM checks verify the xAI line
+  breaks in all nine languages. Signed macOS UI-only preview verified complete
+  Chinese/light and English/dark help without clipping; settings were restored
+  and the app/watch server stopped. No credentials, provider traffic or capture.
+- Complete canonical checks passed, including 2,879 frontend tests. Android
+  Debug/Release each passed 231 tests with no skips, both lints, all assemblies
+  and four-ABI packaging checks. Rebase preserved the tested source tree.
+
 ## 2026-11-12 — Android mapped IPv6 endpoint validation
 
 - Source `3aac5ebf`, based on `3467fbf0`. Android rejects IPv4-mapped IPv6
