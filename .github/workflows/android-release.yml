@@ -70,9 +70,11 @@ jobs:
           trap 'rm -f "$ANDROID_KEYSTORE_PATH"' EXIT
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
           bash android/sign-release.sh
-      - name: Stage verified APK for the unified release
+      - name: Stage verified APK and mapping for the unified release
         uses: actions/upload-artifact@v4
         with:
           name: mimi-release-android
-          path: android/release/*.apk
+          path: |
+            android/release/*.apk
+            android/release/*.mapping.txt.gz
           if-no-files-found: error

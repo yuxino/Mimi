@@ -104,7 +104,9 @@ android {
         }
         release {
             isDebuggable = false
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
 
@@ -154,6 +156,11 @@ for (variant in listOf("debug", "release")) {
         workingDir(repositoryRoot)
         commandLine(pythonExecutable.get(), "scripts/verify-shared-core.py", "--apk", apk.get().asFile.absolutePath)
         inputs.file(apk)
+        if (variant == "release") {
+            val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
+            args("--mapping", mapping.get().asFile.absolutePath)
+            inputs.file(mapping)
+        }
         inputs.file(repositoryRoot.resolve("scripts/verify-shared-core.py"))
         // Verification is intentionally run after every requested assembly.
         outputs.upToDateWhen { false }
@@ -175,6 +182,8 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Tink 1.8 omits these annotation dependencies; R8 needs their definitions.
+    compileOnly("com.google.code.findbugs:jsr305:3.0.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }
