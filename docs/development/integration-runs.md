@@ -1,5 +1,25 @@
 # 集成实测记录
 
+## 2026-11-12 — Shared recovery invariants
+
+- Source `50627d20`, based on `a2bdb3f4`. Removed a repeated retained-budget
+  scope filter, capped backoff arithmetic fallbacks, and a repeated isolated-source
+  whitespace check. The prepared scope now moves into its owner. Real scope
+  clearing, teardown tokens, wrapping jitter and the first whitespace guard stay.
+  No tests were removed; the existing isolation case now includes ASCII and
+  Unicode whitespace before the original resumes.
+- One-time comparison matched 524,336 recovery delays, including integer bounds.
+  Final shared checks passed: core 117, runtime 1,003 plus one existing ignored
+  test, JNI Rust 37; desktop lifecycle 109 and all-target Clippy also passed.
+  Android Debug/Release each passed 231 tests in 36 suites. After the final
+  scope move, both variants reran the actual-JNI recovery-budget and missing-original
+  isolation cases; shared and desktop checks above also used the final source.
+- The signed `local-dev --watch --ui-only` preview loaded settings and voice
+  navigation, then quit normally before the final scope-ownership simplification.
+  No capture, provider traffic or formal app replacement was used. Native recovery,
+  physical-device behavior and performance were not measured. Source hashes and
+  logs are under `shared-contract-cleanup` in `2026-11-12-optimization-cycle-2`.
+
 ## 2026-11-12 — Overlay mutation input contract
 
 - Source `79c3f9b5`, based on `80a67ec9`. The private body observer already
