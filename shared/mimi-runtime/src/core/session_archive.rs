@@ -2,7 +2,7 @@
 use crate::core::audio_input::AudioSource;
 use crate::core::models::SubtitlePair;
 use serde::{Deserialize, Serialize};
-use std::fmt::Write as _;
+use std::io::{self, Write};
 
 pub const TRANSCRIPT_BYTE_LIMIT: usize = 2 * 1024 * 1024;
 pub const TRANSCRIPT_COUNT_LIMIT: usize = 10_000;
@@ -182,91 +182,134 @@ fn format_transcript(
     limited: bool,
     options: TranscriptExportOptions,
 ) -> Option<String> {
-    if entries.is_empty() {
-        return None;
-    }
-    let markdown = options.format == TranscriptExportFormat::Markdown;
-    let mut text = if markdown {
-        "# Mimi transcript\n".to_owned()
-    } else {
-        "Mimi transcript\n".to_owned()
-    };
-    if options.include_timestamps {
-        let _ = writeln!(text, "Session started: {}", utc_timestamp(started_at_ms));
-        text.push_str("Timestamps mark final confirmation, not media playback positions.\n");
-    }
-    text.push('\n');
+    let mut bytes = Vec::new();
+    let mut writer = TranscriptWriter::new(&mut bytes, started_at_ms, options);
     for pair in entries {
-        if markdown {
-            text.push_str("## ");
-        } else {
-            text.push('[');
+        writer.append(pair).expect("writing into a Vec cannot fail");
+    }
+    writer
+        .finish(limited)
+        .expect("writing into a Vec cannot fail")
+        .then(|| String::from_utf8(bytes).expect("transcript formatting preserves UTF-8"))
+}
+
+/// Format one confirmed pair at a time, for both in-memory fixtures and private
+/// file exports. The destination owns buffering and publication.
+pub(crate) struct TranscriptWriter<W: Write> {
+    writer: W,
+    started_at_ms: u64,
+    options: TranscriptExportOptions,
+    wrote_pair: bool,
+}
+
+impl<W: Write> TranscriptWriter<W> {
+    pub(crate) fn new(writer: W, started_at_ms: u64, options: TranscriptExportOptions) -> Self {
+        Self {
+            writer,
+            started_at_ms,
+            options,
+            wrote_pair: false,
         }
-        if options.include_timestamps {
-            let elapsed = pair.created_at_ms.saturating_sub(started_at_ms);
-            let _ = write!(
-                text,
+    }
+
+    pub(crate) fn append(&mut self, pair: &SubtitlePair) -> io::Result<()> {
+        let markdown = self.options.format == TranscriptExportFormat::Markdown;
+        if !self.wrote_pair {
+            self.writer.write_all(if markdown {
+                b"# Mimi transcript\n"
+            } else {
+                b"Mimi transcript\n"
+            })?;
+            if self.options.include_timestamps {
+                writeln!(
+                    self.writer,
+                    "Session started: {}",
+                    utc_timestamp(self.started_at_ms)
+                )?;
+                self.writer.write_all(
+                    b"Timestamps mark final confirmation, not media playback positions.\n",
+                )?;
+            }
+            self.writer.write_all(b"\n")?;
+            self.wrote_pair = true;
+        }
+        self.writer
+            .write_all(if markdown { b"## " } else { b"[" })?;
+        if self.options.include_timestamps {
+            let elapsed = pair.created_at_ms.saturating_sub(self.started_at_ms);
+            write!(
+                self.writer,
                 "{} | +{:02}:{:02}:{:02}.{:03} | ",
                 utc_timestamp(pair.created_at_ms),
                 elapsed / 3_600_000,
                 elapsed / 60_000 % 60,
                 elapsed / 1_000 % 60,
-                elapsed % 1_000,
-            );
+                elapsed % 1_000
+            )?;
         }
-        text.push_str(match pair.audio_source {
-            AudioSource::System => "System audio",
-            AudioSource::Microphone => "Microphone",
-        });
-        text.push_str(if markdown { "\n\n" } else { "]\n" });
+        self.writer.write_all(match pair.audio_source {
+            AudioSource::System => b"System audio",
+            AudioSource::Microphone => b"Microphone",
+        })?;
+        self.writer
+            .write_all(if markdown { b"\n\n" } else { b"]\n" })?;
         for (label, value, included) in [
             (
                 "Source",
                 &pair.source,
-                options.content != TranscriptExportContent::Translation,
+                self.options.content != TranscriptExportContent::Translation,
             ),
             (
                 "Translation",
                 &pair.translation,
-                options.content != TranscriptExportContent::Source,
+                self.options.content != TranscriptExportContent::Source,
             ),
         ] {
             if !included {
                 continue;
             }
             if markdown {
-                let _ = writeln!(text, "**{label}**\n");
-                // Captions are plain text, even when they contain Markdown or
-                // HTML. Preserve line breaks without letting content introduce
-                // document headings, links or executable HTML.
-                for character in value.chars() {
-                    if character == '\n' {
-                        text.push_str("  \n");
-                    } else {
-                        if character.is_ascii_punctuation() {
-                            text.push('\\');
-                        }
-                        text.push(character);
-                    }
-                }
-                text.push('\n');
+                writeln!(self.writer, "**{label}**\n")?;
+                write_markdown(&mut self.writer, value)?;
+                self.writer.write_all(b"\n")?;
             } else {
-                text.push_str(value);
+                self.writer.write_all(value.as_bytes())?;
             }
-            text.push('\n');
+            self.writer.write_all(b"\n")?;
         }
         if !markdown {
-            text.push('\n');
+            self.writer.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn finish(mut self, limited: bool) -> io::Result<bool> {
+        if self.wrote_pair && limited {
+            self.writer
+                .write_all(if self.options.format == TranscriptExportFormat::Markdown {
+                    b"> Transcript limit reached; later entries were not retained.\n"
+                } else {
+                    b"[Transcript limit reached; later entries were not retained.]\n"
+                })?;
+        }
+        Ok(self.wrote_pair)
+    }
+}
+
+fn write_markdown(writer: &mut impl Write, value: &str) -> io::Result<()> {
+    let mut start = 0;
+    for (index, character) in value.char_indices() {
+        if character == '\n' || character.is_ascii_punctuation() {
+            writer.write_all(&value.as_bytes()[start..index])?;
+            if character == '\n' {
+                writer.write_all(b"  \n")?;
+            } else {
+                writer.write_all(&[b'\\', character as u8])?;
+            }
+            start = index + 1;
         }
     }
-    if limited {
-        text.push_str(if markdown {
-            "> Transcript limit reached; later entries were not retained.\n"
-        } else {
-            "[Transcript limit reached; later entries were not retained.]\n"
-        });
-    }
-    Some(text)
+    writer.write_all(&value.as_bytes()[start..])
 }
 
 fn utc_timestamp(ms: u64) -> String {
@@ -287,6 +330,8 @@ fn utc_timestamp(ms: u64) -> String {
     )
 }
 
+/// Synthetic audio for the credential-free native UI/export fixture. Real
+/// session audio is appended to private files through SessionHistory.
 #[derive(Default)]
 pub struct AudioRecording {
     enabled: bool,
@@ -549,7 +594,6 @@ Timestamps mark final confirmation, not media playback positions.\n\n\
         assert_eq!(archive.count(), TRANSCRIPT_COUNT_LIMIT);
         assert!(archive.limited);
     }
-
     #[test]
     fn wav_header_preserves_samples_at_each_provider_rate() {
         for rate in [16_000, 24_000] {

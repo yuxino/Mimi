@@ -831,6 +831,45 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
             json!({"snapshotPublishIntervalMs":mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL.as_millis() as u64,
                 "sessionFinishTimeoutMs":mimi_runtime::core::health::SESSION_FINISH_TIMEOUT.as_millis() as u64})
         }
+        "normalize_text_endpoint" => {
+            use mimi_runtime::core::protocols::{
+                deepl, deeplx,
+                endpoint::{HttpEndpointError, HttpEndpointPolicy},
+                openai_compatible,
+            };
+            let route: TextTranslation = serde_json::from_value(value["route"].clone())
+                .map_err(|_| "native_runtime_invalid_request")?;
+            let input = value["input"]
+                .as_str()
+                .ok_or("native_runtime_invalid_request")?;
+            let policy = HttpEndpointPolicy::Android {
+                allow_local_http: value["allowLocalHttp"]
+                    .as_bool()
+                    .ok_or("native_runtime_invalid_request")?,
+            };
+            let endpoint = match route {
+                TextTranslation::DeepL => deepl::endpoint(input)
+                    .map_err(|_| "translation_key")?
+                    .to_owned(),
+                TextTranslation::DeepLX
+                | TextTranslation::OpenAICompatible
+                | TextTranslation::ChatMock => {
+                    let parsed = if route == TextTranslation::DeepLX {
+                        deeplx::endpoint_with_policy(input, policy)
+                    } else {
+                        openai_compatible::endpoint_with_policy(input, policy)
+                    };
+                    parsed
+                        .map_err(|error| match error {
+                            HttpEndpointError::Invalid => "translation_endpoint",
+                            HttpEndpointError::HttpsRequired => "translation_https_required",
+                        })?
+                        .to_string()
+                }
+                _ => return Err("native_runtime_invalid_request"),
+            };
+            json!({"endpoint":endpoint})
+        }
         "text_endpoints_equivalent" => {
             let route: TextTranslation = serde_json::from_value(value["route"].clone())
                 .map_err(|_| "native_runtime_invalid_request")?;
@@ -1263,6 +1302,51 @@ pub fn pcm(handle: u64, data: Vec<u8>) -> Result<bool, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn android_text_endpoint_validation_uses_shared_contracts() {
+        let contract: Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../translation-contracts.json"
+        )))
+        .unwrap();
+        for case in contract["androidEndpoints"].as_array().unwrap() {
+            let result = exchange(
+                &json!({
+                    "operation":"normalize_text_endpoint", "route":case["route"],
+                    "input":case["input"], "allowLocalHttp":case["allowLocalHttp"]
+                })
+                .to_string(),
+            );
+            if case["expected"].is_null() {
+                assert_eq!(
+                    result.unwrap_err(),
+                    case["error"].as_str().unwrap(),
+                    "{}",
+                    case["id"]
+                );
+            } else {
+                let result: Value = serde_json::from_str(&result.unwrap()).unwrap();
+                assert_eq!(result["endpoint"], case["expected"], "{}", case["id"]);
+            }
+        }
+        for (key, expected) in [
+            ("synthetic:fx", "https://api-free.deepl.com/v2/translate"),
+            ("synthetic", "https://api.deepl.com/v2/translate"),
+        ] {
+            let result: Value = serde_json::from_str(&exchange(&json!({"operation":"normalize_text_endpoint", "route":"deepL", "input":key, "allowLocalHttp":false}).to_string()).unwrap()).unwrap();
+            assert_eq!(result["endpoint"], expected);
+        }
+        for request in [
+            json!({"operation":"normalize_text_endpoint", "route":"xAI", "input":"https://example.test", "allowLocalHttp":true}),
+            json!({"operation":"normalize_text_endpoint", "route":"openAICompatible", "input":"https://example.test"}),
+        ] {
+            assert_eq!(
+                exchange(&request.to_string()).unwrap_err(),
+                "native_runtime_invalid_request"
+            );
+        }
+    }
     use std::time::Duration;
     #[test]
     fn text_endpoint_identity_uses_shared_protocols_and_rejects_invalid_pairs() {

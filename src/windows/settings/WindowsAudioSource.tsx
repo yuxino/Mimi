@@ -7,6 +7,7 @@ import {
   ROLE_MULTIMEDIA,
   audioSourceCopy,
   isDeviceSource,
+  sameAudioSourceSnapshot,
   type AudioSourceSnapshot,
 } from "../../lib/windowsAudioSource";
 import { isTauri } from "../../lib/ipc";
@@ -23,6 +24,8 @@ export function WindowsAudioSource() {
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const inFlight = useRef(false);
+  const receivedSnapshot = useRef<AudioSourceSnapshot | null>(null);
+  const readFailed = useRef(false);
   const { runWithToast } = useSettingsToast();
   const selected = useStore((state) => state.settings.windowsAudioSource) ?? "";
   const active = useStore((state) => state.session.isActive);
@@ -38,14 +41,26 @@ export function WindowsAudioSource() {
       try {
         const value = await invoke<AudioSourceSnapshot | null>("windows_audio_status");
         if (disposed) return;
-        setSnapshot(value);
-        setFailed(false);
+        if (!sameAudioSourceSnapshot(receivedSnapshot.current, value)) {
+          receivedSnapshot.current = value;
+          setSnapshot(value);
+        }
+        if (readFailed.current) {
+          readFailed.current = false;
+          setFailed(false);
+        }
         if (value) timer = setTimeout(() => void refresh(), 1000);
       } catch {
         if (!disposed) {
-          setFailed(true);
+          if (!readFailed.current) {
+            readFailed.current = true;
+            setFailed(true);
+          }
           if (/Windows/i.test(navigator.userAgent)) {
-            setSnapshot((value) => value ?? { devices: [], currentDevice: null, receivingSound: false, receivingAudioData: false });
+            if (!receivedSnapshot.current) {
+              receivedSnapshot.current = { devices: [], currentDevice: null, receivingSound: false, receivingAudioData: false };
+              setSnapshot(receivedSnapshot.current);
+            }
             timer = setTimeout(() => void refresh(), 1000);
           }
         }

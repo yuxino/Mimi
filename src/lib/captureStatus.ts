@@ -16,6 +16,28 @@ export interface CaptureSourceStatus extends CaptureStatusFields { audioSource: 
 export interface CaptureStatus extends CaptureStatusFields { sources?: CaptureSourceStatus[] }
 export type CaptureLifecycle = Pick<SessionStateEvent, "status" | "isActive" | "isPaused">;
 
+/** Compare the complete native metadata, including optional-field presence and source order. */
+export function sameCaptureStatus(before: CaptureStatus | null, after: CaptureStatus): boolean {
+  if (before === after) return true;
+  if (!before || Object.keys(before).length !== Object.keys(after).length) return false;
+  return (Object.keys(after) as (keyof CaptureStatus)[]).every(key => {
+    if (!Object.prototype.hasOwnProperty.call(before, key)) return false;
+    if (key === "sources") {
+      const previous = before.sources, next = after.sources;
+      return previous === next || previous != null && next != null
+        && previous.length === next.length && previous.every((source, index) => sameCaptureStatus(source, next[index]));
+    }
+    if (key === "observation") {
+      const previous = before.observation, next = after.observation;
+      return previous === next || previous != null && next != null
+        && Object.keys(previous).length === Object.keys(next).length
+        && (Object.keys(next) as (keyof NonNullable<CaptureStatus["observation"]>)[]).every(field =>
+          Object.prototype.hasOwnProperty.call(previous, field) && Object.is(previous[field], next[field]));
+    }
+    return Object.is(before[key], after[key]);
+  });
+}
+
 const copy = {
   en: SUPPLEMENTAL_EN.captureStatus_copy,
   zh: {

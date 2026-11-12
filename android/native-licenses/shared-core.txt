@@ -1,7 +1,7 @@
 Mimi shared native runtime dependency notices
 
 Version inventory: shared/mimi-android-jni/Cargo.lock.
-Cargo-lock SHA256: 1141cbe6dbb91c97f2ec5b761d5de8604b712895ef85426becb8ee9bcd58c37e
+Cargo-lock SHA256: 16d1b363ecbaff51ec693bc84144e7c311d4bb7c13372d2741a4bcde568fd477
 Inventory package count: 142
 
 This inventory covers the Android dependency graph (all four supported ABIs),

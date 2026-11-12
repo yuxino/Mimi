@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { capturePresentation, captureStatusForSource, captureSwitchCopy, type CaptureStatus } from "../../lib/captureStatus";
+import { capturePresentation, captureStatusForSource, captureSwitchCopy, sameCaptureStatus, type CaptureStatus } from "../../lib/captureStatus";
 import { audioInputErrorMessage } from "../../lib/audioInput";
 import { applicationAudioError } from "../../lib/applicationAudio";
 import { audioSourceErrorMessage } from "../../lib/windowsAudioSource";
@@ -40,13 +40,22 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
   useEffect(() => {
     if (!isTauri) return;
     let disposed = false;
+    let previous: CaptureStatus | null = null;
     let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
         const value = await invoke<CaptureStatus>("capture_status");
         if (disposed) return;
-        setSnapshot({ stamp, value });
-      } catch { if (!disposed) setSnapshot(null); }
+        if (!sameCaptureStatus(previous, value)) {
+          previous = value;
+          setSnapshot({ stamp, value });
+        }
+      } catch {
+        if (!disposed) {
+          previous = null;
+          setSnapshot(null);
+        }
+      }
       if (!disposed) timer = setTimeout(() => void refresh(), 1000);
     };
     void refresh();

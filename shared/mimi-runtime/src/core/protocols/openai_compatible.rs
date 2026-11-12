@@ -62,27 +62,15 @@ impl OpenAICompatibleError {
 /// Preserve API version paths and reverse-proxy prefixes, including a complete
 /// Chat Completions path. Never infer a provider-specific version prefix.
 pub fn endpoint(value: &str) -> Result<url::Url, OpenAICompatibleError> {
-    if value.len() > 2048 || value.chars().any(char::is_control) {
-        return Err(OpenAICompatibleError::Endpoint);
-    }
-    let mut url = url::Url::parse(value.trim()).map_err(|_| OpenAICompatibleError::Endpoint)?;
-    let local = super::endpoint::endpoint_host_is_local(url.host_str());
-    if !(url.scheme() == "https" || url.scheme() == "http" && local)
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(OpenAICompatibleError::Endpoint);
-    }
-    let path = url.path().trim_end_matches('/').to_string();
-    if !path.ends_with("/chat/completions") {
-        url.set_path(&format!("{path}/chat/completions"));
-    } else {
-        url.set_path(&path);
-    }
-    Ok(url)
+    endpoint_with_policy(value, super::endpoint::HttpEndpointPolicy::Runtime)
+        .map_err(|_| OpenAICompatibleError::Endpoint)
+}
+
+pub fn endpoint_with_policy(
+    value: &str,
+    policy: super::endpoint::HttpEndpointPolicy,
+) -> Result<url::Url, super::endpoint::HttpEndpointError> {
+    super::endpoint::normalize_http_endpoint(value, "/chat/completions", policy)
 }
 
 pub fn validate_model(value: &str) -> Result<String, OpenAICompatibleError> {

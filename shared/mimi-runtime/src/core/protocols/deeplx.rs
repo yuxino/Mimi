@@ -47,27 +47,15 @@ impl DeepLXError {
 /// Preserve a reverse-proxy prefix or an explicit API path. Append /translate
 /// to base paths only; never join against the origin and discard a prefix.
 pub fn endpoint(value: &str) -> Result<url::Url, DeepLXError> {
-    if value.len() > 2048 || value.chars().any(char::is_control) {
-        return Err(DeepLXError::Endpoint);
-    }
-    let mut url = url::Url::parse(value.trim()).map_err(|_| DeepLXError::Endpoint)?;
-    let local = super::endpoint::endpoint_host_is_local(url.host_str());
-    if !(url.scheme() == "https" || url.scheme() == "http" && local)
-        || url.host_str().is_none()
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.query().is_some()
-        || url.fragment().is_some()
-    {
-        return Err(DeepLXError::Endpoint);
-    }
-    let path = url.path().trim_end_matches('/').to_string();
-    if !path.ends_with("/translate") {
-        url.set_path(&format!("{path}/translate"));
-    } else {
-        url.set_path(&path);
-    }
-    Ok(url)
+    endpoint_with_policy(value, super::endpoint::HttpEndpointPolicy::Runtime)
+        .map_err(|_| DeepLXError::Endpoint)
+}
+
+pub fn endpoint_with_policy(
+    value: &str,
+    policy: super::endpoint::HttpEndpointPolicy,
+) -> Result<url::Url, super::endpoint::HttpEndpointError> {
+    super::endpoint::normalize_http_endpoint(value, "/translate", policy)
 }
 
 pub fn source_code(source: SourceLanguage) -> Result<String, DeepLXError> {

@@ -90,6 +90,7 @@ mod streaming_resampler;
 mod microphone;
 
 pub mod applications;
+#[cfg(target_os = "windows")]
 pub mod census;
 #[cfg(target_os = "windows")]
 mod windows_application;

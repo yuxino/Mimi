@@ -55,4 +55,41 @@ class TranslationConfigurationTest {
         assertEquals("https://example.test/v1/chat/completions", validateTranslationConfiguration(config.copy(apiKey = "")))
     }
 
+    @Test fun androidEndpointPolicyUsesSharedFixturesAcrossActualJni() {
+        val fixtures = org.json.JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONArray("androidEndpoints")
+        repeat(fixtures.length()) { index ->
+            val case = fixtures.getJSONObject(index)
+            val provider = TextTranslationProvider.entries.single { it.runtimeRoute() == case.getString("route") }
+            val config = TranslationConfiguration(endpoint = case.getString("input"), provider = provider,
+                allowLocalHttp = case.getBoolean("allowLocalHttp"))
+            val result = runCatching { normalizeTranslationEndpoint(config) }
+            if (case.isNull("expected")) {
+                val error = result.exceptionOrNull()
+                assertTrue(case.getString("id"), error is IllegalArgumentException)
+                assertEquals(case.getString("id"), case.getString("error"), error?.message)
+            } else {
+                assertEquals(case.getString("id"), case.getString("expected"), result.getOrThrow())
+            }
+            if (case.optBoolean("runtimeAligned")) {
+                assertEquals(case.getString("id"), !case.isNull("expected"),
+                    NativeRuntimeConfiguration.textEndpointsEquivalent(provider, config.endpoint,
+                        if (case.isNull("expected")) config.endpoint else case.getString("expected")))
+                if (!case.isNull("expected")) {
+                    assertEquals(case.getString("id"), config.endpoint.trim(),
+                        config.copy(model = "gpt-5.4").runtimeCredentials()?.getString("endpoint"))
+                }
+            }
+        }
+    }
+
+    @Test fun endpointErrorsPrecedeModelAndKeyErrorsAndBoundTheJniInput() {
+        val invalid = configuration("http://example.test/v1", true).copy(model = "", apiKey = "bad\nkey")
+        rejects("translation_https_required") { validateTranslationConfiguration(invalid) }
+        rejects("translation_endpoint") { validateTranslationConfiguration(invalid.copy(endpoint = "https://example.test/v1?key=synthetic")) }
+        rejects("translation_model") { validateTranslationConfiguration(invalid.copy(endpoint = "https://example.test/v1")) }
+        rejects("translation_endpoint") { normalizeTranslationEndpoint(configuration("https://example.test/" + "x".repeat(2048))) }
+        rejects("translation_endpoint") { normalizeTranslationEndpoint(configuration("https://example.test/" + "界".repeat(700))) }
+    }
+
 }

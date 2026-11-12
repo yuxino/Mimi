@@ -1,8 +1,21 @@
 import { afterEach, expect, it } from "vitest";
 import { setStoredUiLanguage } from "./i18n";
-import { audioSourceCopy, audioSourceErrorMessage, FOLLOW_AUDIBLE, FOLLOW_SYSTEM, ROLE_COMMUNICATIONS, ROLE_MULTIMEDIA, isDeviceSource, isRoleSource } from "./windowsAudioSource";
+import { audioSourceCopy, audioSourceErrorMessage, FOLLOW_AUDIBLE, FOLLOW_SYSTEM, ROLE_COMMUNICATIONS, ROLE_MULTIMEDIA, isDeviceSource, isRoleSource, sameAudioSourceSnapshot } from "./windowsAudioSource";
 
 afterEach(() => setStoredUiLanguage("en"));
+
+it("compares native device metadata conservatively when fields are added or omitted", () => {
+  const snapshot = { devices: [{ id: "speaker", name: "Speaker", generation: 1 }], currentDevice: "speaker", receivingSound: false, receivingAudioData: false };
+  expect(sameAudioSourceSnapshot(null, null)).toBe(true);
+  expect(sameAudioSourceSnapshot(null, snapshot)).toBe(false);
+  expect(sameAudioSourceSnapshot(snapshot, null)).toBe(false);
+  expect(sameAudioSourceSnapshot(snapshot, structuredClone(snapshot))).toBe(true);
+  const changedDevice = { ...snapshot, devices: [{ ...snapshot.devices[0], generation: 2 }] };
+  expect(sameAudioSourceSnapshot(snapshot, changedDevice)).toBe(false);
+  const withObservationRevision = { ...snapshot, observationRevision: undefined };
+  const withDeviceRevision = { ...snapshot, deviceRevision: undefined };
+  expect(sameAudioSourceSnapshot(withObservationRevision, withDeviceRevision)).toBe(false);
+});
 
 it("localizes unavailable selections with a recovery action in every supported language", () => {
   for (const language of ["en", "zh", "ja"] as const) {
