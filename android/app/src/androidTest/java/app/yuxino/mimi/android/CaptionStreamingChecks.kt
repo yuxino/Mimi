@@ -3,13 +3,19 @@ package app.yuxino.mimi.android
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
+import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.Surface
 import android.view.View
 import android.view.ViewTreeObserver
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.inspector.WindowInspector
 import android.widget.TextView
 import app.yuxino.mimi.android.capture.MimiService
+import app.yuxino.mimi.android.capture.OverlayPlacement
 import app.yuxino.mimi.android.provider.SharedSubtitleCore
 import app.yuxino.mimi.android.provider.SubtitleBus
 import org.json.JSONObject
@@ -31,6 +37,35 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
             SystemClock.sleep(30)
         }
         error("Streaming layout timeout: $stage")
+    }
+    // Evaluate inside waitFor's main-thread sample: resize can change width before rotation.
+    private fun settledNormalFrame(expectedRotation: Int): View? {
+        val frame = root() ?: return null
+        val panel = checkNotNull(frame.findViewWithTag<CaptionPanelView>("expanded-subtitles"))
+        if (!frame.isAttachedToWindow || !frame.isShown || !panel.isShown ||
+            frame.display?.rotation != expectedRotation || frame.isLayoutRequested ||
+            panel.isLayoutRequested || panel.transcriptScroll.isLayoutRequested) return null
+        val (availableWidth, availableHeight) = if (Build.VERSION.SDK_INT >= 30) {
+            val metrics = frame.context.getSystemService(WindowManager::class.java).currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            OverlayPlacement.availableExtent(metrics.bounds.width(), insets.left, insets.right) to
+                OverlayPlacement.availableExtent(metrics.bounds.height(), insets.top, insets.bottom)
+        } else {
+            val visibleFrame = Rect().also(frame::getWindowVisibleDisplayFrame)
+            if (visibleFrame.isEmpty) return null
+            visibleFrame.width() to visibleFrame.height()
+        }
+        val density = frame.resources.displayMetrics.density
+        val expectedWidth = OverlayPlacement.windowWidth(availableWidth, SettingsStore.overlayWidthPercent(context),
+            (176 * density).toInt(), (8 * density).toInt())
+        val expectedHeight = captionPanelHeight(availableHeight, SettingsStore.overlayHeightPercent(context),
+            panel.chromeHeight(), panel.minimumReadingHeight())
+        val params = frame.layoutParams as WindowManager.LayoutParams
+        return frame.takeIf {
+            it.width == expectedWidth && it.measuredWidth == expectedWidth && params.width == expectedWidth &&
+                it.height == expectedHeight && it.measuredHeight == expectedHeight && params.height == expectedHeight
+        }
     }
     private fun rows(): List<TextView> = if (SettingsStore.immersiveSubtitles(context)) {
         val panel = root()!!.findViewWithTag<CompactCaptionView>("compact-subtitle")
@@ -60,7 +95,17 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
     fun run(arguments: Bundle?) {
         check(!MimiService.isRunning)
         check(!SettingsStore.isConfigured(context)) { "Streaming fixtures require blank private configuration" }
-        val adjustable = SettingsStore.overlayAdjustable(context)
+        val restore = listOf(
+            SettingsStore.fontSize(context).let { { SettingsStore.setFontSize(context, it) } },
+            SettingsStore.historyLines(context).let { { SettingsStore.setHistoryLines(context, it) } },
+            SettingsStore.overlayHeightPercent(context).let { { SettingsStore.setOverlayHeightPercent(context, it) } },
+            SettingsStore.displayMode(context).let { { SettingsStore.setDisplayMode(context, it) } },
+            SettingsStore.immersiveSubtitles(context).let { { SettingsStore.setImmersiveSubtitles(context, it) } },
+            SettingsStore.overlayAdjustable(context).let { { SettingsStore.setOverlayAdjustable(context, it) } },
+        )
+        val firstRun = context.getSharedPreferences("first_run", 0)
+        val hadSeen = firstRun.contains("seen")
+        val seen = firstRun.getBoolean("seen", false)
         var home: MainActivity? = null
         var failure: Throwable? = null
         var draws = 0
@@ -77,7 +122,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
         }
         try {
             ui {
-                check(context.getSharedPreferences("first_run", 0).edit().putBoolean("seen", true).commit())
+                check(firstRun.edit().putBoolean("seen", true).commit())
                 SettingsStore.setOverlayAdjustable(context, true)
                 SettingsStore.setFontSize(context, 16)
                 SettingsStore.setHistoryLines(context, 0)
@@ -242,7 +287,12 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                         }
                         context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
                         SystemClock.sleep(350)
-                        val before = root()!!.width to root()!!.height
+                        var before = 0 to 0
+                        waitFor {
+                            val frame = settledNormalFrame(Surface.ROTATION_0) ?: return@waitFor false
+                            before = frame.width to frame.height
+                            true
+                        }
                         val savedWidth = SettingsStore.overlayWidthPercent(context)
                         val resize = root()!!.findViewWithTag<View>("overlay-resize")
                         val touchTime = SystemClock.uptimeMillis()
@@ -254,7 +304,7 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                         resizeTouch(android.view.MotionEvent.ACTION_DOWN, 0f)
                         resizeTouch(android.view.MotionEvent.ACTION_MOVE, 55f)
                         check(test.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_90))
-                        waitFor { root()!!.width != before.first }
+                        waitFor { settledNormalFrame(Surface.ROTATION_90)?.let { it.width != before.first } == true }
                         SystemClock.sleep(350)
                         resizeTouch(android.view.MotionEvent.ACTION_MOVE, 90f)
                         resizeTouch(android.view.MotionEvent.ACTION_UP, 90f)
@@ -263,7 +313,9 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                             "Rotation overwrote saved dimensions at $stage"
                         }
                         check(test.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_FREEZE_0))
-                        waitFor { root()!!.width == before.first && root()!!.height == before.second }
+                        waitFor { settledNormalFrame(Surface.ROTATION_0)?.let {
+                            it.width == before.first && it.height == before.second
+                        } == true }
                         ui { assertVisibleLines() }
                         ui { checkNoFloatingAppearanceEditor(root()!!); checkOverlayChromeAlignment(root()!!); checkAdjustmentSwitchOnScreen() }
                         check(SettingsStore.overlayAdjustable(context)) { "Cancelled resize locked the normal frame at $stage" }
@@ -275,9 +327,12 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
                     val width = SettingsStore.overlayWidthPercent(context)
                     val height = SettingsStore.overlayHeightPercent(context)
                     for (rotation in listOf(android.app.UiAutomation.ROTATION_FREEZE_90, android.app.UiAutomation.ROTATION_FREEZE_0)) {
-                        val before = root()!!.width
+                        var before = 0
+                        ui { before = root()!!.width }
                         check(test.uiAutomation.setRotation(rotation))
-                        waitFor { root()!!.width != before }
+                        val expectedRotation = if (rotation == android.app.UiAutomation.ROTATION_FREEZE_90)
+                            Surface.ROTATION_90 else Surface.ROTATION_0
+                        waitFor { settledNormalFrame(expectedRotation)?.let { it.width != before } == true }
                         ui {
                             val toggle = checkAdjustmentSwitchOnScreen()
                             check(!toggle.isChecked && !SettingsStore.overlayAdjustable(context))
@@ -297,8 +352,17 @@ internal class CaptionStreamingChecks(private val test: Instrumentation) {
             test.uiAutomation.setRotation(android.app.UiAutomation.ROTATION_UNFREEZE)
             ui { observer?.takeIf { it.isAlive }?.removeOnDrawListener(drawListener) }
             context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_STOP))
-            SystemClock.sleep(150)
-            ui { SubtitleBus.clear(); home?.finish(); SettingsStore.setOverlayAdjustable(context, adjustable) }
+            try {
+                waitFor { root() == null }
+                ui {
+                    SubtitleBus.clear(); home?.finish()
+                    restore.forEach { it() }
+                    check(firstRun.edit().apply { if (hadSeen) putBoolean("seen", seen) else remove("seen") }.commit())
+                    check(SettingsStore.flushPendingWritesForTests(context))
+                }
+            } catch (error: Throwable) {
+                if (failure == null) failure = error else failure!!.addSuppressed(error)
+            }
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (failure == null) "Caption streaming passed: $cases cases, $updates updates, $draws native draws; 9 languages, 3 modes, normal/immersive; no capture/providers.\n"
