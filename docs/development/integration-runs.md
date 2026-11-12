@@ -1,5 +1,29 @@
 # 集成实测记录
 
+## 2026-11-12 — Locale data modules
+
+- Source `9c9303f3`, based on `05c97d45`. All nine locales now own their core
+  and generated provider copy; shared service metadata is separate. The 36
+  core objects, 135 copy functions, 387 provider values and 11 Android outputs
+  match the baseline. Language selection remains synchronous. Generator locale
+  source reads fall from 82 to 10 per invocation, including the catalog read;
+  this is a call count, not a measured build-time improvement.
+- Complete canonical checks passed: core 117, runtime 1,005 + 1 ignored,
+  actual JNI 37, desktop 697 + 1 ignored, Apple adapter 8, frontend 2,879.
+  Generator tests remain 14. The first full run found a Dock-label test still
+  reading the old source location; the corrected existing test and full rerun
+  passed. Android Debug/Release each passed 231 tests in 36 suites, both lint
+  checks and four-ABI assemblies. The APK remains byte-identical to `31681d2b`.
+- Signed embedded `local-dev` UI-only preview at `1acded07` checked Chinese,
+  English and Japanese settings, English keyboard-focus provider help and
+  confirmation cancellation, and light/dark appearance. The final code change
+  only updates the test source paths. Restored System language and the original
+  dark theme, then quit. No profile creation, capture or provider requests.
+- Production JS/CSS is 1,541,401 bytes (156 fewer); per-file gzip totals
+  430,670 bytes (1,328 fewer). No startup, memory or live-session gain is claimed.
+  Overlay/control native interactions and other desktop operating systems were
+  not exercised locally in this structural change.
+
 ## 2026-11-12 — Shared audio JSON ownership
 
 - Source `31681d2b`, based on `88a86cba`. Seven shared audio encoders now move
