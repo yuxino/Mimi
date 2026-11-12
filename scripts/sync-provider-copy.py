@@ -160,7 +160,7 @@ def generated_files() -> dict[Path, str]:
                 raise ValueError(f"Missing desktop mode binding: {key}")
         if entry["desktopSetting"]:
             for locale in locales:
-                owner = ROOT / ("src/lib/i18n.ts" if locale in {"zh", "en", "ja"} else f"src/lib/locales/{locale}.ts")
+                owner = ROOT / f"src/lib/locales/{locale}.ts"
                 binding = f'{entry["desktopSetting"]}: PROVIDER_COPY["{locale}"].{key}'
                 if binding not in owner.read_text(encoding="utf-8"):
                     raise ValueError(f"Missing desktop binding: {locale}/{key}")

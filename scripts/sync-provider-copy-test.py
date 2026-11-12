@@ -55,7 +55,7 @@ class SharedProviderCopyTest(unittest.TestCase):
         source = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))
         files = [MODULE.SOURCE, ROOT / "shared/translation-contracts.json", ROOT / "src/lib/i18n.ts",
                  ROOT / "src/windows/settings/AlibabaRealtimeSettings.tsx"]
-        files += [ROOT / f"src/lib/locales/{locale}.ts" for locale in source["locales"] if locale not in {"zh", "en", "ja"}]
+        files += [ROOT / f"src/lib/locales/{locale}.ts" for locale in source["locales"]]
         for original in files:
             target = root / original.relative_to(ROOT)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -102,7 +102,7 @@ class SharedProviderCopyTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Duplicate shared resource"):
                     MODULE.generated_files()
                 duplicate.unlink()
-                owner = MODULE.ROOT / "src/lib/i18n.ts"
+                owner = MODULE.ROOT / "src/lib/locales/zh.ts"
                 owner.write_text(owner.read_text(encoding="utf-8").replace('PROVIDER_COPY["zh"].providerAlibabaDescription', '"Old text"'), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "Missing desktop binding"):
                     MODULE.generated_files()
