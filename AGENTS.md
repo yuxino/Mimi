@@ -98,6 +98,14 @@ Preserve these product constraints:
   the source and existing owning guide should show where behavior starts, who
   owns its state and why exceptions exist, without needing conversation history.
   Add only the missing explanation at its owner, not another task summary.
+- Remove defensive branches and fallbacks when current types, validated callers
+  or lifecycle invariants prove them unreachable. Check every caller and platform
+  variant, and keep the enforcing invariant at its owner. An unobserved or rare
+  network, IPC, storage, OS, cancellation or concurrency failure is not impossible.
+- Remove tests that only sustain those unreachable paths or restate implementation
+  details. Identify equivalent behavioral coverage before deleting a duplicate;
+  preserve real boundary regressions. Never invent a failure mode or abstraction
+  just to justify an otherwise unnecessary branch and its tests.
 - Keep portable UI-independent logic in `shared/mimi-core` or `shared/mimi-runtime`; keep Tauri, window, keyring, and OS-audio integration in the app-layer modules. Never import `tauri` types in the shared crates, `core/` or `clients/`.
 - Preserve Rust concurrency safety. Isolate mutable network or lifecycle state behind `Arc<Mutex<…>>` or actors; never hold a `std::sync::MutexGuard` across an `.await`.
 - Treat streaming drafts as replaceable previews and final events as durable subtitle history. Do not let preview work block, reorder, or overwrite final translations.
@@ -108,6 +116,24 @@ Preserve these product constraints:
 - On macOS use `/Applications/mimi-dev.app` for all pre-push testing. Never overwrite `/Applications/mimi.app` with a locally signed package when its designated requirement differs from the installed GitHub Release. An intentional certificate migration must be explicit and is expected to require one final Screen Recording and Keychain authorization.
 - Normal credentials use the local file only, including missing or damaged values. Never fall back to native stores after migration. Keep a non-secret completion marker so a missing file cannot reopen OS authorization. Legacy import verifies each durable copy before deleting only its original Mimi-owned OS item; checkpoint deletion separately for interrupted cleanup.
 - For legacy Keychain import, never delete and recreate an item to refresh its ACL, widen an item or keychain to allow-all, or fabricate a Team ID for a self-signed build. Preserve the service/account until verified retirement; normal credential writes belong only in the local file. Password-free Keychain continuity across rebuilt binaries requires an Apple-issued signing identity with a stable Team ID; the current self-signed identities guarantee a stable designated requirement for TCC, not that stronger Keychain property.
+
+## Parallel optimization cycles
+
+- Use parallel agents for independent optimization and cleanup work. Scale to the
+  useful work and available worker/host capacity without a fixed project-level
+  session or token cap; avoid duplicate investigations merely to fill slots.
+- One coordinator owns the current revision, task assignments, evidence and final
+  integration. Give each worker a bounded area, explicit file ownership and a
+  concrete result to return. Share new findings and reject unsupported candidates;
+  a worker may correctly report that no change is justified.
+- Parallelize reading, reference searches and independent implementation. Assign
+  disjoint writes before editing; coordinate any shared file or contract change.
+  Workers do not switch the shared checkout's branch or commit another worker's
+  files. Reuse existing workspaces and caches; isolate only when actually needed.
+- Serialize builds that write the same output, native device/session use and
+  system-audio playback. The coordinator integrates each small supported change,
+  reviews the combined diff, runs the required checks on that exact source, and
+  completes PR/CI/merge and cleanup before treating the cycle as delivered.
 
 ## PC and Android parity
 
