@@ -3,7 +3,13 @@
 Release builds enable R8 and resource shrinking with Android's default
 `proguard-android-optimize.txt`. Debug remains unminified. The four supported
 ABIs, nine UI languages, minimum API 29 and pinned Kotlin, AGP, SDK, NDK and
-Gradle versions stay unchanged. No broad keep rule or extra dependency is added.
+Gradle versions stay unchanged. No broad keep rule is added. Tink 1.8 omits
+the JSR-305 annotation dependency from its published metadata, causing R8 to
+reject missing `Nullable` and `GuardedBy` definitions. The explicit
+`compileOnly("com.google.code.findbugs:jsr305:3.0.2")` supplies those definitions
+without packaging annotation classes or changing the credential implementation.
+See the [upstream dependency issue](https://github.com/tink-crypto/tink-java/issues/7)
+and Android's [compile-only dependency guidance](https://developer.android.com/build/dependencies#dependency_configurations).
 
 Release APK verification declares the generated mapping as a required Gradle
 input and passes it explicitly. The packaging guard retains direct DEX,
