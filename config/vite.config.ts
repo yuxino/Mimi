@@ -1,4 +1,5 @@
-import { defineConfig, normalizePath } from "vite";
+import { normalizePath } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // `process` is provided by Node when Vite loads this config; the ambient
@@ -45,6 +46,10 @@ export default defineConfig(({ command, mode }) => {
     build: {
       target: buildTarget,
     },
+    test: {
+      dir: "src",
+      clearMocks: false,
+    },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
     //
@@ -55,7 +60,8 @@ export default defineConfig(({ command, mode }) => {
       port: 1420,
       strictPort: true,
       host: host || false,
-      hmr: host
+      forwardConsole: false,
+      ws: host
         ? {
             protocol: "ws",
             host,

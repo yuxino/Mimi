@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, SOURCE_LANGUAGE_CODES, type ServiceProfile, type SourceLanguage } from "../../lib/types";
 import { CustomSpeechLanguageSettings } from "./CustomSpeechLanguageSettings";
 
 let host: HTMLDivElement, root: Root, profile: ServiceProfile;
-let save: ReturnType<typeof vi.fn>;
+let save: Mock<ComponentProps<typeof CustomSpeechLanguageSettings>["onSave"]>;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
   setStoredUiLanguage("en");
   profile = { id: "custom", name: "Any model", provider: "customDashScopeASR", credentialState: "missing" };
-  save = vi.fn().mockResolvedValue(undefined);
+  save = vi.fn<ComponentProps<typeof CustomSpeechLanguageSettings>["onSave"]>().mockResolvedValue(undefined);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setStoredUiLanguage("system"); vi.unstubAllGlobals(); });

@@ -7,7 +7,7 @@ it("omits language patches on unrelated profile updates", async () => {
   await profileUpdate("p", "Name", { textTranslationName: { route: "chatMock", name: "Local" } });
   expect(invoke).toHaveBeenCalledExactlyOnceWith("profile_update", { profileId: "p", name: "Name", textTranslationName: { route: "chatMock", name: "Local" } });
 });
-it.each([null, [], ["en", "fr"]] as const)("preserves the explicit language patch %j", async languages => {
+it.each([{ languages: null }, { languages: [] }, { languages: ["en", "fr"] }] as const)("preserves the explicit language patch $languages", async ({ languages }) => {
   await profileUpdate("p", undefined, { customSpeechSourceLanguages: languages === null ? null : [...languages] });
   expect(invoke).toHaveBeenCalledExactlyOnceWith("profile_update", { profileId: "p", name: undefined, customSpeechLanguagesPatch: { languages } });
 });

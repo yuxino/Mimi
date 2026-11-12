@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { getAppleTranslationStatus, getAppleTranslationSupport, prepareAppleSpeechLanguage } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
@@ -29,8 +29,8 @@ const ready: AppleSpeechSupport = { available: true, languages: [
 ] };
 let host: HTMLDivElement, root: Root;
 let props: ComponentProps<typeof AppleSpeechSettings>;
-let save: ReturnType<typeof vi.fn>;
-let switchSource: ReturnType<typeof vi.fn>;
+let save: Mock<typeof initial.saveSettings>;
+let switchSource: Mock<typeof initial.switchSourceLanguage>;
 
 function settings(): SettingsSnapshot {
   return { ...initial.settings, profiles: [profile], activeProfileId: profile.id, sourceLanguage: "en", targetLanguage: "original",
@@ -41,8 +41,8 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
   setStoredUiLanguage("en");
-  save = vi.fn().mockResolvedValue(undefined);
-  switchSource = vi.fn().mockResolvedValue(undefined);
+  save = vi.fn<typeof initial.saveSettings>().mockResolvedValue(undefined);
+  switchSource = vi.fn<typeof initial.switchSourceLanguage>().mockResolvedValue(undefined);
   useStore.setState({ ...initial, settings: settings(), saveSettings: save, switchSourceLanguage: switchSource }, true);
   vi.mocked(prepareAppleSpeechLanguage).mockReset().mockResolvedValue(ready);
   vi.mocked(getAppleTranslationStatus).mockReset().mockResolvedValue("supported");

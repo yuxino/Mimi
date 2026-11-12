@@ -3,7 +3,7 @@ import languageCatalogs from "../../../shared/provider-language-catalogs.json";
 import { SettingsToastRegion } from "./SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
@@ -11,8 +11,8 @@ import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
 
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;
-let save: ReturnType<typeof vi.fn>;
-let switchSource: ReturnType<typeof vi.fn>, switchTarget: ReturnType<typeof vi.fn>;
+let save: Mock<typeof initial.saveSettings>;
+let switchSource: Mock<typeof initial.switchSourceLanguage>, switchTarget: Mock<typeof initial.switchTargetLanguage>;
 let settings: SettingsSnapshot;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -20,8 +20,8 @@ beforeEach(() => {
   setStoredUiLanguage("en");
   settings = { ...initial.settings, sourceLanguage: "auto", targetLanguage: "en", languageCapabilities: undefined,
     profiles: [{ id: "test", name: "Test", provider: "alibabaCloud", credentialState: "present" }], activeProfileId: "test" };
-  save = vi.fn().mockResolvedValue(undefined);
-  switchSource = vi.fn().mockResolvedValue(undefined); switchTarget = vi.fn().mockResolvedValue(undefined);
+  save = vi.fn<typeof initial.saveSettings>().mockResolvedValue(undefined);
+  switchSource = vi.fn<typeof initial.switchSourceLanguage>().mockResolvedValue(undefined); switchTarget = vi.fn<typeof initial.switchTargetLanguage>().mockResolvedValue(undefined);
   useStore.setState({ ...initial, settings, saveSettings: save, switchSourceLanguage: switchSource, switchTargetLanguage: switchTarget }, true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
@@ -244,7 +244,7 @@ it("saves a newly supported official output language through the searchable pick
 
 it("explains when enabling text translation actually resets a custom source", async () => {
   settings = { ...settings, sourceLanguage: "ak", targetLanguage: "original", profiles: [{ ...settings.profiles[0], provider: "customDashScopeASR", textTranslation: "deepL" }] };
-  save.mockImplementation(async draft => { settings = { ...settings, sourceLanguage: "auto", targetLanguage: draft.targetLanguage }; });
+  save.mockImplementation(async draft => { settings = { ...settings, sourceLanguage: "auto", targetLanguage: draft.targetLanguage ?? settings.targetLanguage }; });
   await render();
   await choose(I18N.settings.translateTo, "en");
   await render();

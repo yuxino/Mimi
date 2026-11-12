@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import type { ResizeHandles as ResizeHandlesComponent } from "./ResizeHandles";
 
 const runtime = vi.hoisted(() => ({ isTauri: false }));
@@ -13,7 +13,7 @@ const captureDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype,
 const releaseDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "releasePointerCapture");
 let host: HTMLDivElement;
 let root: Root;
-let onResize: ReturnType<typeof vi.fn>;
+let onResize: Mock<ComponentProps<typeof ResizeHandlesComponent>["onResize"]>;
 let ResizeHandles: typeof ResizeHandlesComponent;
 
 beforeEach(async () => {
@@ -28,7 +28,7 @@ beforeEach(async () => {
   HTMLElement.prototype.setPointerCapture = vi.fn();
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   runtime.isTauri = false;
-  invoke.mockReset().mockResolvedValue(undefined); onResize = vi.fn();
+  invoke.mockReset().mockResolvedValue(undefined); onResize = vi.fn<ComponentProps<typeof ResizeHandlesComponent>["onResize"]>();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => {

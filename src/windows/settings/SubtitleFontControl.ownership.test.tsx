@@ -76,7 +76,7 @@ beforeEach(async () => {
   preview.mockReset();
   vi.mocked(installedFontFamilies).mockReset().mockResolvedValue(["A", "B", "C"]);
   vi.mocked(settingsSave).mockReset().mockImplementation(async draft => { writes.push(draft.subtitleFontFamily!); return persist(draft); });
-  vi.mocked(listenSettingsChanged).mockReset().mockImplementation(async handler => { emitSettings = handler; return vi.fn(); });
+  vi.mocked(listenSettingsChanged).mockReset().mockImplementation(async handler => { emitSettings = handler; return vi.fn<() => void>(); });
   vi.mocked(listenSessionState).mockReset().mockResolvedValue(vi.fn());
   vi.mocked(settingsGet).mockReset().mockResolvedValue(nativeSettings);
   vi.mocked(sessionGetState).mockReset().mockResolvedValue(initial.session);

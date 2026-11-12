@@ -1,5 +1,40 @@
 # 集成实测记录
 
+## 2026-11-12 — Bounded history and redundant runtime work
+
+- Source `62ab68c1ecad92c362a5c886fc8254caca24d11b`, merged in
+  [PR #342](https://github.com/yuxino/Mimi/pull/342). History paging, metadata
+  validation and file export stream entries instead of retaining full
+  transcripts. A later scan must agree before returning a page or publishing
+  an export/finalized journal. Injected read failures preserve source files.
+- Identical 9,000-pair synthetic input: first-page peak live heap fell from
+  6,961,108 to 16,406 bytes; file export from 7,477,354 to 17,006 bytes; audio
+  metadata validation from 6,961,116 to 8,364 bytes. All 42 final-source output
+  comparisons passed. Byte-returning export still retains its required output.
+  Streaming increases parsing work; earlier timing samples preceded the final
+  consistency check and do not establish final-source timing or native RSS.
+- Fifty identical capture-status responses produced zero React commits instead
+  of 50, with the same 51 native calls and visible text. Windows endpoint
+  following and application discovery no longer gather unrelated census fields;
+  Windows CI passed, without a physical-device timing claim.
+- Android endpoint validation now uses shared Rust and removes OkHttp/Okio.
+  Universal release APK bytes: 36,833,173 → 36,052,738; DEX bytes:
+  12,288,492 → 11,376,900. All four ABIs and languages remain. The existing
+  IPv4-mapped IPv6 local-HTTP editor/runtime mismatch is still unresolved.
+- Complete canonical checks passed: shared core 117, runtime 1,008, JNI 34,
+  desktop 697, native-linked Apple Speech adapter 8 and frontend 2,879 tests;
+  two pre-existing Rust tests remain ignored. Android Debug and Release each
+  passed 231 tests, both lints, all assemblies and native packaging checks.
+  [Desktop CI](https://github.com/yuxino/Mimi/actions/runs/43166655551) and
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/43166655430) passed.
+- API 35 arm64 emulator checks exercised actual JNI paging, source identity,
+  bilingual export, failure preservation, deletion and a local-loopback endpoint
+  check. Synthetic files and settings were restored. The signed macOS UI-only
+  watch preview covered source selection, overlay expansion/collapse, language
+  changes and stopping. Its binary preceded the final backend-only fixes;
+  those fixes passed canonical, Android native and CI checks. No real provider
+  traffic, capture, formal installation replacement or release publication.
+
 ## 2026-11-12 — Retired-code cleanup and native layout allocation
 
 - Source `bf4150075113040113fb8b83e51f6f78100070af`, based on `472f88ce`.

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
@@ -19,8 +19,8 @@ vi.mock("../../lib/ipc", async (original) => ({ ...await original<typeof import(
 const initial = useStore.getState();
 let host: HTMLDivElement;
 let root: Root;
-let saveProfileCredentials: ReturnType<typeof vi.fn>;
-let saveSettings: ReturnType<typeof vi.fn>;
+let saveProfileCredentials: Mock<typeof initial.saveProfileCredentials>;
+let saveSettings: Mock<typeof initial.saveSettings>;
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -29,8 +29,8 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   setStoredUiLanguage("en");
   window.history.replaceState(null, "", "#subtitle-settings");
-  saveProfileCredentials = vi.fn().mockResolvedValue(undefined);
-  saveSettings = vi.fn().mockResolvedValue(undefined);
+  saveProfileCredentials = vi.fn<typeof initial.saveProfileCredentials>().mockResolvedValue(initial.settings);
+  saveSettings = vi.fn<typeof initial.saveSettings>().mockResolvedValue(undefined);
   vi.mocked(profileRevealCredential).mockReset();
   vi.mocked(profileCredentialEditorState).mockReset().mockResolvedValue({ savedFields: ["apiKey"] });
   useStore.setState({ ...initial, saveProfileCredentials, saveSettings,

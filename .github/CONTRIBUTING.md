@@ -16,9 +16,9 @@ Thank you for improving mimi. Small, focused pull requests are the easiest to re
 
 ## 从源码运行 / Run from source
 
-需要 Rust 1.90+，以及 Node.js 20.19.x、22.13+ 或 24+。消回声库的源码构建还需要 C/C++ 编译器、CMake 和 libclang（仅构建时使用）。macOS 还需 Xcode Command Line Tools 和 `mimi Local Development` 签名身份，或显式设置 `MIMI_CODESIGN_IDENTITY`。
+需要 Rust 1.90+，以及 Node.js 22.x（22.13+）、24.x 或 26+。消回声库的源码构建还需要 C/C++ 编译器、CMake 和 libclang（仅构建时使用）。macOS 还需 Xcode Command Line Tools 和 `mimi Local Development` 签名身份，或显式设置 `MIMI_CODESIGN_IDENTITY`。
 
-Requires Rust 1.90+ and Node.js 20.19.x, 22.13+, or 24+. Building the echo canceller also requires a C/C++ compiler, CMake, and libclang (build time only). macOS also needs the Xcode Command Line Tools and a `mimi Local Development` signing identity or an explicit `MIMI_CODESIGN_IDENTITY`.
+Requires Rust 1.90+ and Node.js 22.x (22.13+), 24.x, or 26+. Building the echo canceller also requires a C/C++ compiler, CMake, and libclang (build time only). macOS also needs the Xcode Command Line Tools and a `mimi Local Development` signing identity or an explicit `MIMI_CODESIGN_IDENTITY`.
 
 ```bash
 git clone https://github.com/yuxino/mimi.git
@@ -61,6 +61,10 @@ For Linux dependencies, building, and isolated audio/keyring/UI checks, see the 
 界面改动前请阅读[界面一致性与操作反馈规范](../docs/development/ui-guidelines.md)。修复某个页面的重复问题时，需要排查其他页面的同类控件，并检查成功、失败、弹窗和异步结果迟到的情况。
 
 Before UI changes, read [UI consistency and feedback](../docs/development/ui-guidelines.md). When fixing a repeated pattern, audit its sibling controls on other pages and check success, failure, modal and late-result paths.
+
+前端依赖升级要用本机与 CI 的 npm 主版本验证 `npm ci`。已有安装目录下的成功安装不能证明锁文件完整；缺失可选依赖时，在没有 `node_modules` 的隔离目录重新生成锁文件，并核对已有版本及各平台依赖，不能跳过 CI 的干净安装。
+
+For frontend dependency upgrades, verify `npm ci` with both the local and CI npm major versions. An existing installation does not prove lockfile completeness. If optional records are missing, regenerate the lock in a directory without `node_modules`, then review existing versions and platform dependencies instead of bypassing CI's clean install.
 
 ```bash
 ./scripts/check.sh --quick frontend src/windows/settings/ConfigInput.tsx

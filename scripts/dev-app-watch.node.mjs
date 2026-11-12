@@ -12,6 +12,7 @@ test("signed watch preview serves the configured React entry and development fla
     assert.match(html, /\/src\/main\.tsx/);
     assert.equal(server.config.define.__MIMI_DEVELOPMENT_BUILD__, "true");
     assert.equal(server.config.envDir, false);
+    assert.equal(server.config.server.forwardConsole.enabled, false);
   } finally {
     await server.close();
   }
