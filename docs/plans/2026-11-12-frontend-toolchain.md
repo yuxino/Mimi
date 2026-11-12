@@ -17,6 +17,11 @@ graph also updates PostCSS within its existing declared range.
   explicitly to preserve the prior lifecycle, and discover tests under `src`.
   Type test doubles from the callbacks they replace instead of using an
   unconstrained mock union. Preserve behavioral assertions and fixtures.
+- Verify clean installs with npm 10 from CI as well as local npm 11. The initial
+  npm 11 lock passed locally but omitted two optional Wasm dependency records
+  required by npm 10. Regenerating the lock without an installation restores
+  those records and removes orphaned esbuild platform entries; existing package
+  versions remain unchanged.
 - Related-test selection may omit a dependency behind a complete module mock.
   Verify both complete-suite coverage and selection when the tested component
   itself changes; do not force the old over-inclusive dependency graph.
