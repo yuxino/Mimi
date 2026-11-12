@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">使用豆包同声传译 2.0，实时输出原文和译文。\n翻译服务不可单独更换。</string>
     <string name="guide_detail_tencent">实时识别语音并翻译，均由腾讯云完成。\n翻译服务不可单独更换。</string>
     <string name="guide_detail_baidu">实时识别语音并翻译，均由百度完成。\n翻译服务不可单独更换。</string>
-    <string name="guide_detail_xai">使用 xAI 流式识别，可另选文字翻译服务。\\n也可选择在说话停顿后分段翻译的 Grok Voice。</string>
+    <string name="guide_detail_xai">使用 xAI 流式识别，可另选文字翻译服务。\n也可选择在说话停顿后分段翻译的 Grok Voice。</string>
     <string name="guide_help_dashscope">在百炼开通模型服务并创建 API Key。同声传译还需北京业务空间 ID。</string>
     <string name="guide_help_openai">在 OpenAI API 平台创建项目与 API Key，确认可使用 Realtime 模型。ChatGPT 订阅不包含 API 用量。</string>
     <string name="guide_help_gemini">在 Google AI Studio 的项目里创建 Gemini API Key，确认项目可使用 Live API。</string>

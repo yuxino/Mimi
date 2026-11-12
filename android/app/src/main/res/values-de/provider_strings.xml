@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">Doubao Simultaneous Interpretation 2.0 liefert Originaltext und Übersetzung in Echtzeit.\nDer Übersetzungsdienst kann nicht separat gewechselt werden.</string>
     <string name="guide_detail_tencent">Tencent Cloud erkennt und übersetzt Sprache in Echtzeit.\nDer Übersetzungsdienst kann nicht separat gewechselt werden.</string>
     <string name="guide_detail_baidu">Baidu erkennt und übersetzt Sprache in Echtzeit.\nDer Übersetzungsdienst kann nicht separat gewechselt werden.</string>
-    <string name="guide_detail_xai">xAI-Spracherkennung mit einem separat wählbaren Textübersetzungsdienst.\\nAlternativ übersetzt Grok Voice nach Sprechpausen.</string>
+    <string name="guide_detail_xai">xAI-Spracherkennung mit einem separat wählbaren Textübersetzungsdienst.\nAlternativ übersetzt Grok Voice nach Sprechpausen.</string>
     <string name="guide_help_dashscope">Aktivieren Sie Model Studio und erstellen Sie einen API-Schlüssel. Simultanübersetzung benötigt zusätzlich eine Beijing-Workspace-ID.</string>
     <string name="guide_help_openai">Ein OpenAI-API-Projekt und einen Schlüssel mit Realtime-Zugriff erstellen. ChatGPT-Abos enthalten keine API-Nutzung.</string>
     <string name="guide_help_gemini">Einen Gemini-API-Schlüssel in Google AI Studio erstellen und die Live-API-Verfügbarkeit für das Projekt prüfen.</string>

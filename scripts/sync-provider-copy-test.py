@@ -6,6 +6,7 @@ import io
 import json
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,6 +21,35 @@ class SharedProviderCopyTest(unittest.TestCase):
     def test_checked_in_outputs_are_current(self):
         for path, expected in MODULE.generated_files().items():
             self.assertEqual(expected, path.read_text(encoding="utf-8"), str(path.relative_to(ROOT)))
+
+    def test_platform_scope_preserves_setup_help_for_its_consumers(self):
+        source = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))
+        outputs = MODULE.generated_files()
+        desktop = json.loads(outputs[MODULE.TS_OUTPUT].split("export const PROVIDER_COPY = ", 1)[1]
+                             .split(" as const;\n", 1)[0])
+        android_only = {
+            "providerAlibabaSetup": "guide_help_dashscope",
+            "providerOpenAISetup": "guide_help_openai",
+            "providerGoogleGeminiSetup": "guide_help_gemini",
+            "providerAzureOpenAISetup": "guide_help_azure",
+            "providerVolcanoEngineSetup": "guide_help_volcano",
+            "providerBaiduTranslateSetup": "guide_help_baidu",
+            "providerXAISetup": "guide_help_xai",
+        }
+        self.assertEqual(set(source["locales"]), set(desktop))
+        for locale, directory in source["locales"].items():
+            with self.subTest(locale=locale):
+                android = ET.fromstring(outputs[MODULE.RESOURCE_ROOT / directory / "provider_strings.xml"])
+                resources = {element.attrib["name"] for element in android}
+                for key, resource in android_only.items():
+                    self.assertNotIn(key, desktop[locale])
+                    self.assertIn(resource, resources)
+                self.assertEqual(source["entries"]["providerTencentCloudSetup"]["translations"][locale],
+                                 desktop[locale]["providerTencentCloudSetup"])
+                self.assertIn("guide_help_tencent", resources)
+                for preset in source["compatiblePresets"]:
+                    self.assertIn(preset["setupHelpKey"], desktop[locale])
+                    self.assertIn(source["entries"][preset["setupHelpKey"]]["androidResource"], resources)
 
     def fixture(self, root):
         source = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))
@@ -180,7 +210,7 @@ class SharedProviderCopyTest(unittest.TestCase):
             self.assertEqual([valid], MODULE.compatible_presets({**data, "compatiblePresets": [valid]}))
 
     def test_setup_help_requires_both_platforms_and_an_android_resource(self):
-        for mutation in ({"scope": ["desktop"]}, {"androidResource": None}):
+        for mutation in ({"scope": ["desktop"]}, {"scope": ["android"]}, {"androidResource": None}):
             data = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))
             preset = data["compatiblePresets"][0]
             data["entries"][preset["setupHelpKey"]].update(mutation)

@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">使用豆包同聲傳譯 2.0，即時輸出原文和譯文。\n翻譯服務不可單獨更換。</string>
     <string name="guide_detail_tencent">即時辨識語音並翻譯，均由騰訊雲完成。\n翻譯服務不可單獨更換。</string>
     <string name="guide_detail_baidu">即時辨識語音並翻譯，均由百度完成。\n翻譯服務不可單獨更換。</string>
-    <string name="guide_detail_xai">使用 xAI 串流辨識，可另選文字翻譯服務。\\n也可選擇在說話停頓後分段翻譯的 Grok Voice。</string>
+    <string name="guide_detail_xai">使用 xAI 串流辨識，可另選文字翻譯服務。\n也可選擇在說話停頓後分段翻譯的 Grok Voice。</string>
     <string name="guide_help_dashscope">在百煉開通模型服務並建立 API Key。同聲傳譯還需北京業務空間 ID。</string>
     <string name="guide_help_openai">在 OpenAI API 平台建立專案與 API Key，確認可使用 Realtime 模型。ChatGPT 訂閱不包含 API 用量。</string>
     <string name="guide_help_gemini">在 Google AI Studio 的專案里建立 Gemini API Key，確認專案可使用 Live API。</string>

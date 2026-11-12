@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">Doubao Simultaneous Interpretation 2.0 выводит исходный текст и перевод в реальном времени.\nСервис перевода нельзя заменить отдельно.</string>
     <string name="guide_detail_tencent">Tencent Cloud распознаёт и переводит речь в реальном времени.\nСервис перевода нельзя заменить отдельно.</string>
     <string name="guide_detail_baidu">Baidu распознаёт и переводит речь в реальном времени.\nСервис перевода нельзя заменить отдельно.</string>
-    <string name="guide_detail_xai">Используйте потоковое распознавание речи xAI с отдельным сервисом перевода текста на ваш выбор.\\nGrok Voice также может переводить после пауз в речи.</string>
+    <string name="guide_detail_xai">Используйте потоковое распознавание речи xAI с отдельным сервисом перевода текста на ваш выбор.\nGrok Voice также может переводить после пауз в речи.</string>
     <string name="guide_help_dashscope">Включите Model Studio и создайте API-ключ. Для синхронного перевода также требуется ID рабочей области в Пекине.</string>
     <string name="guide_help_openai">Создайте проект и API-ключ на платформе OpenAI API с доступом к Realtime. Подписка ChatGPT не включает использование API.</string>
     <string name="guide_help_gemini">Создайте API-ключ Gemini в Google AI Studio и убедитесь, что Live API доступен для вашего проекта.</string>

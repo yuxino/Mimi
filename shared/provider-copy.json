@@ -11,7 +11,7 @@
     "th": "values-th",
     "ru": "values-ru"
   },
-  "scope": "Shared built-in service capabilities and setup prerequisites. Desktop-only Apple/custom speech and platform capture, permissions, navigation, storage and feedback remain in their platform resources. Setup entries without desktopSetting are available to desktop but currently displayed by Android only.",
+  "scope": "Shared built-in service capabilities and setup prerequisites. Desktop-only Apple/custom speech and platform capture, permissions, navigation, storage and feedback remain in their platform resources. Each entry's scope controls its platform outputs; Android-only setup instructions are not emitted to the desktop catalog.",
   "entries": {
     "providerAlibabaDescription": {
       "scope": [
@@ -154,15 +154,15 @@
       "androidResource": "guide_detail_xai",
       "desktopSetting": "providerXAIDescription",
       "translations": {
-        "zh": "使用 xAI 流式识别，可另选文字翻译服务。\\n也可选择在说话停顿后分段翻译的 Grok Voice。",
-        "zh-TW": "使用 xAI 串流辨識，可另選文字翻譯服務。\\n也可選擇在說話停頓後分段翻譯的 Grok Voice。",
-        "en": "Use xAI streaming recognition with a separate text translator of your choice.\\nGrok Voice is also available for translation after speech pauses.",
-        "ja": "xAI のストリーミング音声認識に、別のテキスト翻訳サービスを選んで組み合わせられます。\\n発話の切れ目で翻訳する Grok Voice も選べます。",
-        "de": "xAI-Spracherkennung mit einem separat wählbaren Textübersetzungsdienst.\\nAlternativ übersetzt Grok Voice nach Sprechpausen.",
-        "ko": "xAI 스트리밍 음성 인식에 원하는 텍스트 번역 서비스를 별도로 선택할 수 있습니다.\\n말이 멈춘 뒤 번역하는 Grok Voice도 선택할 수 있습니다.",
-        "fr": "Reconnaissance vocale xAI en continu avec un service de traduction de texte au choix.\\nGrok Voice peut aussi traduire après les pauses de parole.",
-        "th": "ใช้การรู้จำเสียงสตรีมมิงของ xAI กับบริการแปลข้อความที่เลือกแยกกันได้\\nหรือเลือก Grok Voice ที่แปลหลังช่วงหยุดพูด",
-        "ru": "Используйте потоковое распознавание речи xAI с отдельным сервисом перевода текста на ваш выбор.\\nGrok Voice также может переводить после пауз в речи."
+        "zh": "使用 xAI 流式识别，可另选文字翻译服务。\n也可选择在说话停顿后分段翻译的 Grok Voice。",
+        "zh-TW": "使用 xAI 串流辨識，可另選文字翻譯服務。\n也可選擇在說話停頓後分段翻譯的 Grok Voice。",
+        "en": "Use xAI streaming recognition with a separate text translator of your choice.\nGrok Voice is also available for translation after speech pauses.",
+        "ja": "xAI のストリーミング音声認識に、別のテキスト翻訳サービスを選んで組み合わせられます。\n発話の切れ目で翻訳する Grok Voice も選べます。",
+        "de": "xAI-Spracherkennung mit einem separat wählbaren Textübersetzungsdienst.\nAlternativ übersetzt Grok Voice nach Sprechpausen.",
+        "ko": "xAI 스트리밍 음성 인식에 원하는 텍스트 번역 서비스를 별도로 선택할 수 있습니다.\n말이 멈춘 뒤 번역하는 Grok Voice도 선택할 수 있습니다.",
+        "fr": "Reconnaissance vocale xAI en continu avec un service de traduction de texte au choix.\nGrok Voice peut aussi traduire après les pauses de parole.",
+        "th": "ใช้การรู้จำเสียงสตรีมมิงของ xAI กับบริการแปลข้อความที่เลือกแยกกันได้\nหรือเลือก Grok Voice ที่แปลหลังช่วงหยุดพูด",
+        "ru": "Используйте потоковое распознавание речи xAI с отдельным сервисом перевода текста на ваш выбор.\nGrok Voice также может переводить после пауз в речи."
       }
     },
     "providerAlibabaSetup": {
