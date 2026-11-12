@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.os.Bundle
 import android.os.SystemClock
@@ -20,6 +21,7 @@ import android.widget.TextView
 import app.yuxino.mimi.android.capture.MimiService
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /** Synthetic Audio3/Qwen differential layout probe; no service, credentials, provider, or capture. */
 internal class CaptionScrollContinuityChecks(private val test: Instrumentation) {
@@ -50,6 +52,7 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
         var failure: Throwable? = null
         var stage = -1
         var draws = 0
+        var nativeDraws = 0
         var drawnStage = -1
         var drawFailure: String? = null
         val report = JSONArray()
@@ -79,6 +82,9 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             check(foregroundReady) { "native_probe_foreground_not_ready" }
             val scale = context.resources.displayMetrics.density
             fun dp(value: Int) = (value * scale).toInt()
+            // Fix the reading budget; caption chrome changes must not turn this
+            // cropping regression into a sample whose entire text already fits.
+            val readingViewportDp = 128
             fun geometry(): Geometry {
                 val current = checkNotNull(panel)
                 fun row(view: TextView): List<Int> {
@@ -96,10 +102,11 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
                 manager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 panel = CaptionPanelView(ContextThemeWrapper(context, R.style.Theme_Mimi))
                 panel!!.applyStyle(CaptionFrameStyle(16, Color.WHITE, 100, 80, CaptionDisplayMode.BILINGUAL, CaptionAlignment.LEFT))
-                manager!!.addView(panel, WindowManager.LayoutParams(dp(350), dp(300), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                manager!!.addView(panel, WindowManager.LayoutParams(dp(350), dp(readingViewportDp) + panel!!.chromeHeight(), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
                     PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = dp(100) })
                 listener = ViewTreeObserver.OnDrawListener {
+                    nativeDraws++
                     if (stage >= 0) {
                         draws++; drawnStage = stage
                         val visible = geometry()
@@ -191,12 +198,12 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             constrain()
             val resized = settle {
                 val params = panel!!.layoutParams as WindowManager.LayoutParams
-                params.height = dp(400); manager!!.updateViewLayout(panel, params)
+                params.height = dp(readingViewportDp + 100) + panel!!.chromeHeight(); manager!!.updateViewLayout(panel, params)
             }
             check(resized.sourceFirst == 0) { "height_resize_did_not_reset" }
             check(settle {
                 val params = panel!!.layoutParams as WindowManager.LayoutParams
-                params.height = dp(300); manager!!.updateViewLayout(panel, params)
+                params.height = dp(readingViewportDp) + panel!!.chromeHeight(); manager!!.updateViewLayout(panel, params)
             }.sourceLimit == freshLimit) { "height_restore_did_not_reset" }
             constrain()
             check(settle {
@@ -237,6 +244,71 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
                 touch(MotionEvent.ACTION_UP, dp(80).toFloat())
             }.sourceLimit == freshLimit) { "return_to_live_did_not_reset" }
             ui { check(panel!!.followingLive) }
+            // A screen-reader scroll calls the framework action without touch events.
+            // Use short current lanes and enough confirmed history for an actual scroll range.
+            val accessibilityHistory = (1..12).joinToString("\n\n") { "Synthetic confirmed history row $it." }
+            fun awaitAccessibilityViewport(label: String, predicate: () -> Boolean) {
+                var stable = 0
+                for (attempt in 0 until 150) {
+                    var ready = false
+                    ui { ready = !panel!!.isLayoutRequested && !panel!!.transcriptScroll.isLayoutRequested && predicate() }
+                    stable = if (ready) stable + 1 else 0
+                    if (stable == 3) return
+                    SystemClock.sleep(20)
+                }
+                error("accessibility_viewport_timeout_$label")
+            }
+            fun screenshot(name: String) {
+                val bitmap = checkNotNull(test.uiAutomation.takeScreenshot())
+                try {
+                    File(context.getExternalFilesDir("ui-scroll"), "$name.png").outputStream().use {
+                        check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+                    }
+                } finally { bitmap.recycle() }
+            }
+            var preparedDraw = 0
+            ui {
+                stage = -1
+                preparedDraw = nativeDraws
+                panel!!.showContent(CaptionFrameContent(sourceShort, translationShort, history = accessibilityHistory), CaptionDisplayMode.BILINGUAL)
+                panel!!.invalidate()
+            }
+            awaitAccessibilityViewport("history") {
+                val scroll = panel!!.transcriptScroll
+                nativeDraws > preparedDraw && scroll.canScrollVertically(-1) && !scroll.canScrollVertically(1)
+            }
+            var targetY = 0
+            ui {
+                val scroll = panel!!.transcriptScroll
+                check(panel!!.followingLive)
+                val action = android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+                check(scroll.createAccessibilityNodeInfo().actionList.any { it.id == action }) { "native_backward_action_unavailable" }
+                targetY = (scroll.scrollY - (scroll.height - scroll.paddingTop - scroll.paddingBottom)).coerceAtLeast(0)
+                check(scroll.performAccessibilityAction(action, null)) { "native_backward_action_rejected" }
+            }
+            awaitAccessibilityViewport("backward") { panel!!.transcriptScroll.scrollY == targetY }
+            screenshot("accessibility-history-before-update")
+            var readingY = 0
+            var wasFollowingDuringRead = false
+            var updatedDraw = 0
+            ui {
+                val scroll = panel!!.transcriptScroll
+                check(scroll.canScrollVertically(1)) { "native_backward_action_did_not_move" }
+                readingY = scroll.scrollY
+                wasFollowingDuringRead = panel!!.followingLive
+                updatedDraw = nativeDraws
+                panel!!.showContent(CaptionFrameContent("The next synthetic caption arrives.", "下一条合成字幕到达。",
+                    history = "$accessibilityHistory\n\nOne more synthetic history row."), CaptionDisplayMode.BILINGUAL)
+                panel!!.invalidate()
+            }
+            awaitAccessibilityViewport("updated") { nativeDraws > updatedDraw }
+            screenshot("accessibility-history-after-update")
+            ui {
+                val scroll = panel!!.transcriptScroll
+                check(!wasFollowingDuringRead && !panel!!.followingLive && scroll.scrollY == readingY) {
+                    "accessibility_history_interrupted: followingBefore=$wasFollowingDuringRead; followingAfter=${panel!!.followingLive}; beforeY=$readingY; afterY=${scroll.scrollY}; bottom=${!scroll.canScrollVertically(1)}"
+                }
+            }
         } catch (error: Throwable) { failure = error }
         finally {
             ui {
@@ -252,7 +324,7 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             if (ownsFixture) check(guide.edit().apply { if (hadGuideSeen) putBoolean("seen", guideSeen) else remove("seen") }.commit())
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
-            putString("stream", "Caption differential probe asr-mt-differential-v1: passed=${failure == null}; draws=$draws; " +
+            putString("stream", "Caption differential probe asr-mt-differential-v2: passed=${failure == null}; draws=$draws; " +
                 "originalBudgetChanges=$originalBudgetChanges; unchangedSourceMovements=$unchangedSourceMovements; " +
                 "unchangedTranslationMovements=$unchangedTranslationMovements; captureStarted=false; " +
                 "failure=${failure?.message ?: "none"}; geometry=$report\n")

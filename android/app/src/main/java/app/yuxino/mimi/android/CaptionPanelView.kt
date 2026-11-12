@@ -4,9 +4,11 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.MotionEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
@@ -76,6 +78,26 @@ internal class CaptionPanelView(
         }
         scroll.setOnScrollChangeListener { _, _, _, _, _ ->
             if (!followingLive && towardsLive && readingAnchor == null && atBottom()) followLive()
+        }
+        scroll.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                val handled = super.performAccessibilityAction(host, action, args)
+                if (!handled) return false
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD,
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id -> {
+                        towardsLive = false
+                        beginReading()
+                    }
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id -> {
+                        towardsLive = true
+                        // Closely spaced native actions can finish synchronously.
+                        if (!followingLive && readingAnchor == null && atBottom()) followLive()
+                    }
+                }
+                return true
+            }
         }
         scroll.viewTreeObserver.addOnPreDrawListener {
             val anchor = readingAnchor
