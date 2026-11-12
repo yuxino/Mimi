@@ -1,5 +1,25 @@
 # 集成实测记录
 
+## 2026-11-12 — Overlay mutation input contract
+
+- Source `79c3f9b5`, based on `80a67ec9`. The private body observer already
+  receives nonempty batches of child-list, text and style-attribute records.
+  Removed three unreachable input guards and four manually fabricated
+  Document/class/unknown/empty callback assertions. Current-ref, overlapping-root,
+  stylesheet/link, popup/toast, mixed-batch, resize and cleanup checks remain.
+- Focused frontend acceptance passed provider-copy verification, typecheck,
+  affected-file lint and 231 tests in 15 files, including the embedded observer
+  and streaming-performance cases. No new test framework or behavior was added.
+- Signed `local-dev --watch --ui-only` loaded the settings, synthetic listening
+  capsule and native control panel from this checkout. The app quit normally and
+  the preview server stopped. Picker selection and toast interaction were not
+  completed because automation selected the separate subtitle window after the
+  control panel lost focus; their native interaction remains unverified here.
+  No provider, capture or formal installation was used. No performance gain is
+  claimed. Private source hashes and logs are under
+  `parallel-defense-audit/overlay-mutation-acceptance` in
+  `2026-11-12-optimization-cycle-2`.
+
 ## 2026-11-12 — Android native reading inputs
 
 - Tested source: `9169310c`, based on `668fba0d`, with frozen native patch SHA-256
