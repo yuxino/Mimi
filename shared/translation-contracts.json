@@ -15880,6 +15880,17 @@
       ]
     }
   },
+  "volcanoAudioRequests": {
+    "frameBytes": 2560,
+    "sessionId": "12345678-1234-4abc-8def-123456789abc",
+    "sessionBytes": 36,
+    "metadataPrefixHex": "0a263224",
+    "audioSuffixHex": "10c801228314728014",
+    "startSuffixHex": "1064221122037761762a0372617738807d40104801320d0a037332741202656e1a027a68",
+    "finishSuffixHex": "1066",
+    "sessionStartedHex": "109601",
+    "sessionFinishedHex": "109801"
+  },
   "volcanoSubtitleEvents": [
     {
       "id": "sourceDraft-omitted",

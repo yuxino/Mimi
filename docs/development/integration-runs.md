@@ -1,5 +1,34 @@
 # 集成实测记录
 
+## 2026-11-13 — Volcano audio encoding allocations
+
+- Source `cef11607`, based on `e10b3ad5`. Audio requests now write the two
+  nested protobuf messages directly into the final owned buffer. Field order,
+  validation, batching, padded tails and setup/finish behavior remain unchanged.
+  Permanent wire coverage uses the actual UUID36/2,560-byte frame shape; wider
+  synthetic inputs remain private one-time comparison evidence.
+- A same-toolchain arm64 release probe extracted the actual encoder and client
+  helpers. All 167 complete-byte/error/pending-state comparisons matched. Across
+  four PCM patterns and three runs of 10,000 calls, each full frame used one
+  allocation instead of three and zero reallocations instead of two; cumulative
+  allocator-request bytes fell from 5,241 to 2,609. Every measured scope released
+  its allocations. Helper checks also matched batching and padded-tail bytes;
+  the isolated tail allocation fixture starts with capacity six. These are
+  function-level allocation requests, not application RSS, Android-device
+  performance or subtitle latency measurements.
+- Complete canonical checks passed: core 117, runtime 1,003 plus one existing
+  ignored test, JNI Rust 37, desktop 695 plus one existing ignored test, Apple
+  adapter eight and frontend 2,879. Android Debug/Release each passed 232 tests
+  in 36 suites. The new actual-JNI loopback checks binary setup, two complete
+  audio frames, a six-byte zero-padded tail, finish and transport close through
+  the real shared client. No provider request or capture was used.
+- The signed `local-dev --watch --ui-only` preview loaded settings and voice
+  navigation. The ordinary embedded dev app was then rebuilt, observed idle and
+  quit normally; the formal app was untouched. Independent source and allocation
+  reviews found no blocking issue. Private source/build hashes, raw counts and
+  logs are under `volcano-audio-encoding-acceptance` in
+  `2026-11-12-optimization-cycle-2`; platform coverage remains with CI.
+
 ## 2026-11-12 — Native audio input contracts
 
 - Source `85f35a99`, based on `4ee40715`. The four PCM encoder callers already

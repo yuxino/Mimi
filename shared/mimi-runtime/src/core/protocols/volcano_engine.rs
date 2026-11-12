@@ -163,14 +163,25 @@ impl VolcanoEngineRequestEncoder {
             });
         }
 
-        let mut message = Vec::with_capacity(pcm_data.len().saturating_add(64));
-        write_message_field(&mut message, 1, |request_meta| {
-            write_string_field(request_meta, 6, session_id);
-        });
+        // Each key in these two nested messages is one byte.
+        let request_meta_len = 1 + varint_len(session_id.len() as u64) + session_id.len();
+        let source_audio_len = 1 + varint_len(pcm_data.len() as u64) + pcm_data.len();
+        let message_len = 1
+            + varint_len(request_meta_len as u64)
+            + request_meta_len
+            + 1
+            + varint_len(EVENT_TASK_REQUEST as u64)
+            + 1
+            + varint_len(source_audio_len as u64)
+            + source_audio_len;
+        let mut message = Vec::with_capacity(message_len);
+        write_key(&mut message, 1, WIRE_LENGTH_DELIMITED);
+        write_varint(&mut message, request_meta_len as u64);
+        write_string_field(&mut message, 6, session_id);
         write_varint_field(&mut message, 2, EVENT_TASK_REQUEST as u64);
-        write_message_field(&mut message, 4, |source_audio| {
-            write_bytes_field(source_audio, 14, pcm_data);
-        });
+        write_key(&mut message, 4, WIRE_LENGTH_DELIMITED);
+        write_varint(&mut message, source_audio_len as u64);
+        write_bytes_field(&mut message, 14, pcm_data);
         Ok(message)
     }
 
@@ -416,6 +427,15 @@ fn require_wire_type(actual: u8, expected: u8) -> Result<(), VolcanoEngineProtoc
 
 fn write_key(output: &mut Vec<u8>, field: u32, wire_type: u8) {
     write_varint(output, (u64::from(field) << 3) | u64::from(wire_type));
+}
+
+fn varint_len(mut value: u64) -> usize {
+    let mut length = 1;
+    while value >= 0x80 {
+        value >>= 7;
+        length += 1;
+    }
+    length
 }
 
 fn write_varint(output: &mut Vec<u8>, mut value: u64) {
@@ -739,11 +759,64 @@ mod tests {
 
     #[test]
     fn task_request_carries_exactly_one_official_80_ms_audio_frame() {
-        let pcm = vec![0x4a; VolcanoEngineEndpoint::AUDIO_FRAME_BYTE_COUNT];
-        let encoded = VolcanoEngineRequestEncoder::audio("session-audio", &pcm).unwrap();
-        assert_eq!(field_varint(&encoded, 2), Some(EVENT_TASK_REQUEST as u64));
-        let source_audio = field_bytes(&encoded, 4).unwrap();
-        assert_eq!(field_bytes(source_audio, 14), Some(pcm.as_slice()));
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../../../../translation-contracts.json")).unwrap();
+        let wire = &contract["volcanoAudioRequests"];
+        let hex_bytes = |hex: &str| {
+            (0..hex.len())
+                .step_by(2)
+                .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let frame_bytes = VolcanoEngineEndpoint::AUDIO_FRAME_BYTE_COUNT;
+        assert_eq!(wire["frameBytes"].as_u64().unwrap() as usize, frame_bytes);
+        let session_id = wire["sessionId"].as_str().unwrap();
+        let mut metadata = hex_bytes(wire["metadataPrefixHex"].as_str().unwrap());
+        metadata.extend_from_slice(session_id.as_bytes());
+        let mut audio_prefix = metadata.clone();
+        audio_prefix.extend_from_slice(&hex_bytes(wire["audioSuffixHex"].as_str().unwrap()));
+        let mut seed = 0x6d2b_79f5_u32;
+        let noise = (0..frame_bytes)
+            .map(|_| {
+                seed ^= seed << 13;
+                seed ^= seed >> 17;
+                seed ^= seed << 5;
+                seed as u8
+            })
+            .collect::<Vec<_>>();
+        let patterns = [
+            vec![0; frame_bytes],
+            (0..frame_bytes)
+                .map(|index| [0x00, 0x80, 0xff, 0x7f][index % 4])
+                .collect(),
+            (0..frame_bytes).map(|index| index as u8).collect(),
+            noise,
+        ];
+        for pcm in &patterns {
+            let mut expected = audio_prefix.clone();
+            expected.extend_from_slice(pcm);
+            assert_eq!(
+                VolcanoEngineRequestEncoder::audio(session_id, pcm).unwrap(),
+                expected
+            );
+        }
+        let mut start = metadata.clone();
+        start.extend_from_slice(&hex_bytes(wire["startSuffixHex"].as_str().unwrap()));
+        assert_eq!(
+            VolcanoEngineRequestEncoder::start_session(
+                session_id,
+                SourceLanguage::English,
+                TargetLanguage::SimplifiedChinese,
+            )
+            .unwrap(),
+            start
+        );
+        let mut finish = metadata;
+        finish.extend_from_slice(&hex_bytes(wire["finishSuffixHex"].as_str().unwrap()));
+        assert_eq!(
+            VolcanoEngineRequestEncoder::finish_session(session_id).unwrap(),
+            finish
+        );
 
         assert_eq!(
             VolcanoEngineRequestEncoder::audio("session-audio", &[0; 10]).unwrap_err(),
