@@ -4,7 +4,7 @@
   "version": "1.6.17",
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || ^22.13.0 || >=24.0.0"
+    "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
     "dev": "vite --config config/vite.config.ts",
@@ -36,7 +36,7 @@
     "@tauri-apps/cli": "^2.12.3",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.1",
+    "@vitejs/plugin-react": "6.3.0",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -47,8 +47,8 @@
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.4",
-    "vitest": "^3.2.4"
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
   },
   "author": "yuxino <nbsawz@gmail.com>"
 }

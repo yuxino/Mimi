@@ -2,7 +2,7 @@
 import { act } from "react";
 import { SettingsToastRegion } from "./SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { audioInputErrorMessage } from "../../lib/audioInput";
@@ -14,7 +14,7 @@ import { AudioInputSettings } from "./AudioInputSettings";
 vi.mock("./WindowsAudioSource", () => ({ WindowsAudioSource: () => <span data-output-selector /> }));
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;
-let switchInput: ReturnType<typeof vi.fn>;
+let switchInput: Mock<typeof initial.switchAudioInput>;
 const save = vi.fn();
 const start = vi.fn();
 beforeEach(() => {

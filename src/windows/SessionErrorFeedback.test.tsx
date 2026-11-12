@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { audio3ErrorMessage, audio3ErrorSummary } from "../lib/audio3Errors";
 import type { OverlayControlMode } from "../lib/ipc";
 import { localizedSessionErrorSummary } from "../lib/sessionErrorPresentation";
@@ -47,7 +47,7 @@ const surfaces = ["overlay", "history", "immersive", "collapsed", "locked", "con
 type Surface = typeof surfaces[number];
 const isOverlaySurface = (surface: Surface) => ["overlay", "history", "immersive", "collapsed", "locked"].includes(surface);
 let host: HTMLDivElement, root: Root;
-let start: ReturnType<typeof vi.fn>, showSettings: ReturnType<typeof vi.fn>, setOverlayCollapsed: ReturnType<typeof vi.fn>;
+let start: Mock<typeof initial.start>, showSettings: Mock<typeof initial.showSettings>, setOverlayCollapsed: Mock<typeof initial.setOverlayCollapsed>;
 
 beforeEach(() => {
   native.enabled = false; native.mode = "island"; native.listeners.clear();
@@ -57,9 +57,9 @@ beforeEach(() => {
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   window.history.replaceState(null, "", "?mode=panel");
-  start = vi.fn().mockResolvedValue(undefined);
-  showSettings = vi.fn().mockResolvedValue(undefined);
-  setOverlayCollapsed = vi.fn().mockResolvedValue(undefined);
+  start = vi.fn<typeof initial.start>().mockResolvedValue(undefined);
+  showSettings = vi.fn<typeof initial.showSettings>().mockResolvedValue(undefined);
+  setOverlayCollapsed = vi.fn<typeof initial.setOverlayCollapsed>().mockResolvedValue(undefined);
   useStore.setState({ ...initial, start, showSettings, setOverlayCollapsed,
     settings: { ...initial.settings, pulseAnimation: false, subtitleAnimation: false, subtitleDisplayMode: "original",
       activeProfileId: "custom", targetLanguage: "original", sourceLanguage: "ja",

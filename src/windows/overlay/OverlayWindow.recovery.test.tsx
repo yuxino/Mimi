@@ -105,7 +105,7 @@ function expectPreferencesUnchanged(settings: SettingsSnapshot) {
   expect(ipc.settingsSave).not.toHaveBeenCalled();
 }
 
-it.each([75, 0])("keeps the saved %s%% background through a real retry, connecting and listening", async opacity => {
+it.each([75, 0])("keeps the saved $0% background through a real retry, connecting and listening", async opacity => {
   const start = deferred();
   ipc.sessionStart.mockReturnValueOnce(start.promise);
   useStore.setState(state => ({ settings: { ...state.settings, subtitleBackgroundOpacity: opacity } }));

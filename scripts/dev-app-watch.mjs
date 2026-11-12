@@ -19,7 +19,7 @@ export async function startFrontendServer() {
       host: "127.0.0.1",
       port: 1420,
       strictPort: true,
-      hmr: { protocol: "ws", host: "127.0.0.1", port: 1420 },
+      ws: { protocol: "ws", host: "127.0.0.1", port: 1420 },
       watch: {
         ignored: ["**/src-tauri/**", "**/android/**", "**/.cargo-home/**", "**/.npm-cache/**"],
       },

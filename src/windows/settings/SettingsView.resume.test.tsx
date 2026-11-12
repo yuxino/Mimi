@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { audio3ErrorMessage } from "../../lib/audio3Errors";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
@@ -16,9 +16,9 @@ vi.mock("../../lib/useDesktopShortcuts", () => ({ useDesktopShortcuts: () => ({ 
 const initial = useStore.getState();
 let host: HTMLDivElement;
 let root: Root;
-let togglePaused: ReturnType<typeof vi.fn>;
-let start: ReturnType<typeof vi.fn>;
-let stop: ReturnType<typeof vi.fn>;
+let togglePaused: Mock<typeof initial.togglePaused>;
+let start: Mock<typeof initial.start>;
+let stop: Mock<typeof initial.stop>;
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -27,9 +27,9 @@ beforeEach(() => {
   shortcuts.commands = null;
   setStoredUiLanguage("en");
   window.history.replaceState(null, "", "#subtitle-settings");
-  togglePaused = vi.fn().mockResolvedValue(undefined);
-  start = vi.fn().mockResolvedValue(undefined);
-  stop = vi.fn().mockResolvedValue(undefined);
+  togglePaused = vi.fn<typeof initial.togglePaused>().mockResolvedValue(undefined);
+  start = vi.fn<typeof initial.start>().mockResolvedValue(undefined);
+  stop = vi.fn<typeof initial.stop>().mockResolvedValue(undefined);
   useStore.setState({ ...initial, togglePaused, start, stop,
     settings: { ...initial.settings, profiles: initial.settings.profiles.map((profile) => ({ ...profile, credentialState: "present" })) },
     session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: true },

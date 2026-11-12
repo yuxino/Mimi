@@ -16,9 +16,9 @@ Thank you for improving mimi. Small, focused pull requests are the easiest to re
 
 ## 从源码运行 / Run from source
 
-需要 Rust 1.90+，以及 Node.js 20.19.x、22.13+ 或 24+。消回声库的源码构建还需要 C/C++ 编译器、CMake 和 libclang（仅构建时使用）。macOS 还需 Xcode Command Line Tools 和 `mimi Local Development` 签名身份，或显式设置 `MIMI_CODESIGN_IDENTITY`。
+需要 Rust 1.90+，以及 Node.js 22.x（22.13+）、24.x 或 26+。消回声库的源码构建还需要 C/C++ 编译器、CMake 和 libclang（仅构建时使用）。macOS 还需 Xcode Command Line Tools 和 `mimi Local Development` 签名身份，或显式设置 `MIMI_CODESIGN_IDENTITY`。
 
-Requires Rust 1.90+ and Node.js 20.19.x, 22.13+, or 24+. Building the echo canceller also requires a C/C++ compiler, CMake, and libclang (build time only). macOS also needs the Xcode Command Line Tools and a `mimi Local Development` signing identity or an explicit `MIMI_CODESIGN_IDENTITY`.
+Requires Rust 1.90+ and Node.js 22.x (22.13+), 24.x, or 26+. Building the echo canceller also requires a C/C++ compiler, CMake, and libclang (build time only). macOS also needs the Xcode Command Line Tools and a `mimi Local Development` signing identity or an explicit `MIMI_CODESIGN_IDENTITY`.
 
 ```bash
 git clone https://github.com/yuxino/mimi.git
