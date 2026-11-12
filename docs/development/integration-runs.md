@@ -1,5 +1,55 @@
 # 集成实测记录
 
+## 2026-11-12 — Android saved-history lifecycle filtering
+
+- Source `285cb11d`, based on `5ff2a625`. Android now obtains active journal
+  owners after reading the saved-history list. A session started during the
+  read stays hidden; one finalized during that interval becomes visible.
+  Page/export/delete admission and the existing failed-finalization policy
+  remain. This is completion-time filtering, not an atomic catalog snapshot.
+- Two deterministic regressions use real journal registration, leases and
+  filesystem reads. Restoring the old order makes both fail; the fix passes
+  all four history lifecycle/error tests. Shared strict checks, actual JNI
+  dual-source tail saving, paging, export and deletion passed.
+- Complete canonical checks passed, including 37 JNI Rust tests and 2,879
+  frontend tests. Android Debug and Release each passed 231 tests with no
+  skips; both lints, debug/test/release assembly, four-ABI alignment, licenses
+  and runtime-boundary checks passed. The release APK is 36,052,994 bytes;
+  SHA-256 `58683bc03105680aa77c2b171441ff7f62f310c5f8e8d58fd150fa105983b010`.
+- JNI validation used synthetic local loopback peers. No provider traffic,
+  credentials, real audio capture or installed-app replacement. No new native
+  UI acceptance is claimed for this adapter-only change.
+
+## 2026-11-12 — Frontend build and test toolchain
+
+- Source `2c316e196c12f6971788d3780d7f16657f72a1b4`, merged in
+  [PR #343](https://github.com/yuxino/Mimi/pull/343). Vite 7.3.6 → 8.3.8,
+  React plugin 5.2.0 → 6.3.0 and Vitest 3.2.7 → 5.1.0; browser targets,
+  application dependencies, test isolation and two-worker limit remain.
+- Same Mac, Node 24.13.0, identical production source and Safari 16 target:
+  one warm-up per version, then five alternating pairs per workload. Median
+  seconds: Vite 1.552 → 0.868; complete frontend build with warm incremental
+  typecheck 2.013 → 1.165; full tests 27.181 → 22.968. All 36 runs passed;
+  every test run retained 156 files / 2,879 tests with no skips or todos.
+  These measure developer work, not application memory or subtitle latency.
+- JavaScript/CSS bytes: 1,559,897 → 1,555,335 raw, 440,495 → 435,375 with
+  identical per-file gzip settings. The final 19 output files match the measured
+  candidate byte for byte. Final development dependencies occupy 19,953,809
+  more logical bytes than the baseline, excluding known tool caches.
+- Initial Linux CI exposed two missing optional Wasm lock records under npm 10.
+  The same failure reproduced locally; lock regeneration added them and removed
+  26 orphaned esbuild platform records without changing existing package
+  versions. Real clean installs with npm 10 and 11 and final canonical checks
+  passed. [Desktop CI](https://github.com/yuxino/Mimi/actions/runs/43172565071)
+  and [Android CI](https://github.com/yuxino/Mimi/actions/runs/43172565039) passed.
+- Signed macOS UI-only watch preview verified Chinese/English, light/dark,
+  caption preview, overlay controls and normal stopping. React and CSS hot
+  updates appeared while the native PID, binary and synthetic session stayed
+  intact; temporary source edits were restored. No credentials, provider traffic
+  or capture. Installed WebKit/watch assets were tested; minimum WebView versions
+  and a public release installation were not. The app and watch server stopped;
+  temporary comparison copies and npm reproduction environments were removed.
+
 ## 2026-11-12 — Bounded history and redundant runtime work
 
 - Source `62ab68c1ecad92c362a5c886fc8254caca24d11b`, merged in
