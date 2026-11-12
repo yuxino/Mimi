@@ -1,5 +1,49 @@
 # 集成实测记录
 
+## 2026-11-12 — Android build toolchain
+
+- Source `151c5f02`, based on `6b2722a3`. AGP 9.5.1, Gradle 9.6.0,
+  built-in Kotlin 2.2.10 and Build Tools 36.0.0 replace the old toolchain.
+  SDK/Java targets, minimum API 29, NDK, four ABIs, IDs and signing/storage
+  behavior remain unchanged. The user explicitly accepted the SDK license.
+- A rebuild of the same application source with both toolchains gives APK
+  26,014,461 -> 25,526,536 bytes (-1.88%) and DEX 1,709,276 -> 1,405,700 bytes.
+  All four native libraries, manifest badging and permission output match.
+  R8 changes from 8.7.18 to 9.5.29; each APK's marker matches its own mapping.
+  Candidate APK SHA-256:
+  `530ce4710ea1d897a19e839751cf43fb29716c2bde3427a2b6a3a78b36d29e5c`.
+- Complete canonical checks passed: core 117, runtime 1,005 + 1 ignored,
+  JNI Rust 37, desktop 697 + 1 ignored, Apple adapter 8 and frontend 2,879.
+  Android Debug/Release each passed 231 tests in 36 suites, including actual
+  JNI tests; both lints, assemblies and native artifact guards passed. The
+  two-variant test command reused Gradle's configuration cache on a second run;
+  this does not establish a comparative build-speed gain.
+- The migration initially exposed the removed resource include DSL and Kotlin's
+  changed JSON classpath order. A test-only JAR contains exactly the eight shared
+  JSON fixtures, and only the two JVM test Kotlin tasks prefer the existing JVM
+  JSON dependency. These test fixes add no production dependency and preserve
+  existing assertions. Final APK and mapping bytes still match the frozen
+  accepted artifacts.
+- Five alternating ordinary-process launches per variant retained all ten
+  samples with no host builds or instrumentation active. After five idle seconds
+  on the same English/light caption preview, total PSS medians were
+  45,991 -> 45,293 KiB (-698 KiB, -1.52%); ranges were 45,938–46,058 and
+  45,197–45,349 KiB. Cold-process launch medians were 213 -> 190 ms, with
+  overlapping ranges 173–250 and 176–206 ms. Filesystem/system caches stayed
+  warm. This is one emulator's idle-page result, not sustained capture memory
+  or a demonstrated general startup improvement.
+- Isolated signing accepted both valid APK/mapping pairs and rejected missing,
+  changed and stale mappings, an incorrect certificate, the actual debug package
+  and a derived D8-only fixture. Positive outputs survived every rejection.
+- A private API 35 arm64 release installation passed 153 checks across 15 runs
+  without retries: native entry, nine-language help, same-signer credential
+  upgrade/read/replace/delete, fresh master-key creation and light/dark empty
+  saved-history controls. Four synthetic requests stayed on localhost; no real
+  provider, audio capture or formal installation was used. Other ABIs have
+  artifact verification only; physical devices, API 29, capture and non-empty
+  saved history were not exercised. Private logs and hashes are under
+  `android-toolchain-9.5.1-comparison` in `2026-11-12-optimization-cycle-2`.
+
 ## 2026-11-12 — Reusable native resampler output
 
 - Source `2bda7df3`, based on `e4fa0b0d`. The desktop resampler now reuses its
@@ -36,7 +80,7 @@
   source reads fall from 82 to 10 per invocation, including the catalog read;
   this is a call count, not a measured build-time improvement.
 - Complete canonical checks passed: core 117, runtime 1,005 + 1 ignored,
-  actual JNI 37, desktop 697 + 1 ignored, Apple adapter 8, frontend 2,879.
+  JNI Rust 37, desktop 697 + 1 ignored, Apple adapter 8, frontend 2,879.
   Generator tests remain 14. The first full run found a Dock-label test still
   reading the old source location; the corrected existing test and full rerun
   passed. Android Debug/Release each passed 231 tests in 36 suites, both lint
