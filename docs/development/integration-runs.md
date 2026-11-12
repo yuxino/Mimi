@@ -1,5 +1,45 @@
 # 集成实测记录
 
+## 2026-11-12 — Android release shrinking
+
+- Accepted source `21092167`, based on `8698eeb4`; APK SHA-256
+  `47894447c8cd718a49ccdb266c8072a1299ba4540fc4872e3a917ef5bca149e6`.
+  R8 8.7.18 full mode and resource shrinking retain minSdk 29, nine languages
+  and all four ABIs. The four native libraries are byte-identical to the
+  unminified `ec564b41` baseline. Initial R8 compilation exposed missing Tink
+  annotations; a compile-only JSR-305 dependency fixes resolution and is absent
+  from the runtime classpath and APK.
+- Same application source: APK 36,033,826 -> 26,015,949 bytes (-27.80%);
+  DEX 11,376,900 -> 1,709,276 bytes. The matching mapping is required by the
+  Gradle and signing checks. Its 14,581,042 bytes compress deterministically to
+  1,265,354 bytes for the separate release attachment; round-trip bytes and
+  the local/unified checksum inventories were verified.
+- Complete canonical checks passed, including 2,879 frontend tests and 25
+  native-artifact guard tests. Android Debug/Release each passed 231 tests in
+  36 suites, with no skips/failures/errors; both lints, all assemblies and ABI,
+  alignment, license and mapping guards passed. Isolated signing accepted the
+  valid pair and rejected missing/tampered mapping, an unminified APK, the debug
+  package and an incorrect certificate without replacing valid outputs.
+- An isolated, non-debuggable API 35 arm64 installation passed JNI entry and
+  launch checks, all nine help languages, and light/dark saved-history empty,
+  refresh and return paths. Synthetic credentials survived same-signer upgrade,
+  cold reads, replacement, delete cancellation/confirmation and fresh-install
+  master-key creation. Real UI connection checks used only a localhost fixture;
+  HTTP required explicit opt-in. No provider traffic or audio capture was used.
+- Five alternating runs per variant used the same synthetic configuration,
+  English/light caption page and ordinary launcher intent. Each force-stopped
+  the old process, confirmed a new non-instrumented PID and sampled after five
+  idle seconds; no host builds ran. All ten samples were retained. Total PSS
+  median: 66,430 -> 53,221 KiB (-19.88%), ranges 66,196–66,508 and 53,209–53,268.
+  Cold-process launch medians were 147 -> 134 ms, with overlapping ranges
+  136–161 and 124–137 ms. Filesystem/system caches remained warm. These are one
+  emulator's idle-page measurements, not physical-device, capture, long-session
+  or GPU-memory results; they do not establish a general startup-speed gain.
+- Private evidence: `2026-11-12-android-r8` and the isolated
+  `r8-readonly-preparation/release-ab-measurement` records. No tag or formal
+  release was created; device capture and other OS/ABI runtime checks remain
+  outside this acceptance.
+
 ## 2026-11-12 — Platform-scoped provider copy
 
 - Source `ec564b41`, based on `3de873fe`. Desktop generation now respects
@@ -20,6 +60,11 @@
 - Complete canonical checks passed, including 2,879 frontend tests. Android
   Debug/Release each passed 231 tests with no skips, both lints, all assemblies
   and four-ABI packaging checks. Rebase preserved the tested source tree.
+- The isolated API 35 arm64 non-debuggable release also passed actual language
+  switching and xAI help checks in all nine languages: 21 assertions, complete
+  text and real line breaks. Two earlier driver navigation failures were
+  corrected before the complete pass. PR #347 merged as `8698eeb4` after both
+  desktop and Android CI passed; no provider traffic or capture was used.
 
 ## 2026-11-12 — Android mapped IPv6 endpoint validation
 
