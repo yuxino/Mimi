@@ -104,7 +104,9 @@ android {
         }
         release {
             isDebuggable = false
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
 
@@ -154,6 +156,11 @@ for (variant in listOf("debug", "release")) {
         workingDir(repositoryRoot)
         commandLine(pythonExecutable.get(), "scripts/verify-shared-core.py", "--apk", apk.get().asFile.absolutePath)
         inputs.file(apk)
+        if (variant == "release") {
+            val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
+            args("--mapping", mapping.get().asFile.absolutePath)
+            inputs.file(mapping)
+        }
         inputs.file(repositoryRoot.resolve("scripts/verify-shared-core.py"))
         // Verification is intentionally run after every requested assembly.
         outputs.upToDateWhen { false }

@@ -146,6 +146,14 @@ Kotlin 2.0, AGP 8.7. CI tests/lints both variants and produces a debug APK and a
 unsigned release APK. The unsigned artifact is for signing, not installation;
 device capture remains a separate manual check.
 
+Release builds use R8 with Android's default optimized rules and resource
+shrinking; debug builds remain unminified. All four ABIs and nine UI languages
+remain included. Release APK verification requires its matching
+`app/build/outputs/mapping/release/mapping.txt` and checks the original class and
+member owners for retired runtime code. When CI uploads acceptance packages,
+`mimi-android-unsigned-release` keeps the APK at its existing flat path;
+`mimi-android-release-mapping` contains the matching mapping from the same run.
+
 Keep the same debug signing keystore when updating an existing development
 installation. An alternate `ANDROID_USER_HOME` can select a different debug
 key. Before `adb install -r`, compare the installed APK's certificate with the
@@ -171,10 +179,19 @@ Build with `./gradlew testReleaseUnitTest lintRelease assembleRelease`, then run
 - `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`: its signing credentials.
 - `ANDROID_SIGNING_CERT_SHA256`: the expected public release certificate fingerprint.
 
+The script defaults to the release APK and mapping paths above. For downloaded
+artifacts, pass both absolute paths with `bash sign-release.sh <apk> <mapping>`.
+Use the APK and mapping from the same build.
+
 The script verifies the compiled package/version and rejects debug builds,
-aligns and signs the APK, then verifies its signature against the pinned
-non-debug certificate. It writes `release/mimi_<version>_android.apk` and
-`release/SHA256SUMS.txt`. It never creates a temporary replacement identity.
+then checks the mapping's R8 content hash, ID and compiler metadata against the
+APK. It copies that mapping for the whole signing operation, aligns and signs
+the APK, and rechecks the same copy plus the pinned non-debug certificate.
+It writes `release/mimi_<version>_android.apk`,
+`release/mimi_<version>_android.mapping.txt` and `release/SHA256SUMS.txt`, which
+covers both files. Keep the mapping with its APK for retracing optimized stack
+traces. The R8 ID is short; this pairing check is not complete cryptographic
+provenance. The script never creates a temporary replacement signing identity.
 
 For GitHub publishing, configure repository secrets `ANDROID_KEYSTORE_BASE64`
 (base64 of that same keystore), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`
@@ -182,9 +199,10 @@ and `ANDROID_KEY_PASSWORD`, plus repository variable
 `ANDROID_SIGNING_CERT_SHA256`. Push a shared `v<version>` tag after staging the
 signed macOS assets as documented in `docs/development/macos-release-signing.md`.
 The main release workflow calls `android-release` to test, lint, sign and verify
-an APK, then waits for Android and every desktop package before publishing one
-complete release. Android's `versionName` must match the desktop version; its
-APK is included in the shared `SHA256SUMS.txt`. Existing public assets are never
+an APK and its mapping, then waits for Android and every desktop package before
+staging one complete draft. Publication requires separate maintainer approval.
+Android's `versionName` must match the desktop version; its APK and named mapping
+are included in the shared `SHA256SUMS.txt`. Existing public assets are never
 overwritten. The reusable Android workflow cannot publish a separate release.
 
 Keep the signing key and its backup outside Git. Use the same key for future
