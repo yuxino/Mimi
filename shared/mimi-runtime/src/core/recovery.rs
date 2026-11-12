@@ -719,11 +719,8 @@ impl MTBudgetContinuity {
             self.retained = None;
         }
         self.token = self.token.wrapping_add(1).max(1);
-        self.client_scope = Some((generation, self.token, scope.clone()));
-        self.retained
-            .as_ref()
-            .filter(|(previous, _)| previous == &scope)
-            .map(|(_, budget)| *budget)
+        self.client_scope = Some((generation, self.token, scope));
+        self.retained.as_ref().map(|(_, budget)| *budget)
     }
 
     pub fn take_lease(&mut self, generation: u64) -> Option<(u64, MTBudgetScope)> {
@@ -795,8 +792,8 @@ pub fn recovery_delay(attempt: usize, generation: u64) -> Duration {
     if attempt == 0 {
         return Duration::ZERO;
     }
-    let exponent = u32::try_from(attempt.saturating_sub(1)).unwrap_or(u32::MAX);
-    let base_ms = 500_u64.saturating_mul(2_u64.saturating_pow(exponent.min(3)));
+    let exponent = (attempt - 1).min(3) as u32;
+    let base_ms = 500_u64 * 2_u64.pow(exponent);
     let mixed = generation
         .wrapping_add((attempt as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15))
         .wrapping_mul(0xBF58_476D_1CE4_E5B9);
