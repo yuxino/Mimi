@@ -169,13 +169,16 @@ class SharedRuntimeBoundaryTests(unittest.TestCase):
         self.rejected("both builds must use repository shared source")
 
     def test_android_ci_cannot_skip_pc_or_shared_changes(self):
-        for pattern in ("src-tauri/**", "src/**", "shared/**"):
-            with self.subTest(pattern=pattern):
-                path = self.root / ".github/workflows/android.yml"
-                original = path.read_text(encoding="utf-8")
-                path.write_text(original.replace(f"      - '{pattern}'\n", ""), encoding="utf-8")
-                self.rejected("Android CI must follow desktop/shared changes")
-                path.write_text(original, encoding="utf-8")
+        for event in ("pull_request", "push"):
+            for pattern in ("src-tauri/**", "src/**", "shared/**", "docs/demos/english-film/response.json"):
+                with self.subTest(event=event, pattern=pattern):
+                    path = self.root / ".github/workflows/android.yml"
+                    original = path.read_text(encoding="utf-8")
+                    header = f"  {event}:\n"
+                    before, section = original.split(header, 1)
+                    path.write_text(before + header + section.replace(f"      - '{pattern}'\n", "", 1), encoding="utf-8")
+                    self.rejected(f"Android CI must follow desktop/shared changes: {event}: {pattern}")
+                    path.write_text(original, encoding="utf-8")
 
     def test_build_and_ci_gates_cannot_be_removed(self):
         for filename, transform, message in (

@@ -7,6 +7,22 @@ from pathlib import Path
 
 ALL_OS = ["macos-latest", "windows-2025", "ubuntu-22.04"]
 PACKAGES = {"macos": "macos-latest", "windows": "windows-2025", "linux": "ubuntu-22.04"}
+NATIVE_DOCUMENT_INPUTS = {
+    "docs/development/debugger-evidence.md",
+    "docs/demos/english-film/response.json",
+}
+
+
+def is_editorial_document(path):
+    # Release/demo fixtures and debugger-evidence.md are consumed by tests/code.
+    # Unknown paths remain checked, even when they happen to end in .md.
+    return path in {
+        "AGENTS.md", "README.md", "README_EN.md",
+        ".github/CONTRIBUTING.md", ".github/SECURITY.md",
+        "docs/usage.md", "docs/usage.zh-CN.md", "docs/usage.ja.md",
+    } or (path.endswith(".md")
+          and path.startswith(("docs/development/", "docs/plans/", "docs/qa/", "docs/readme/"))
+          and path not in NATIVE_DOCUMENT_INPUTS)
 
 
 def plan(paths, full=False, package="none", release=False):
@@ -20,12 +36,15 @@ def plan(paths, full=False, package="none", release=False):
             affected.add("macos-latest")
         elif path == "src-tauri/src/audio/linux.rs" or path.startswith("scripts/linux-"):
             affected.add("ubuntu-22.04")
-        elif path.startswith(("src-tauri/", "scripts/", ".github/workflows/", "shared/",
-                              "android/app/src/main/java/app/yuxino/mimi/android/provider/")):
+        elif path in NATIVE_DOCUMENT_INPUTS or path.startswith((
+                "src-tauri/", "scripts/", ".github/workflows/", "shared/",
+                "android/app/src/main/java/app/yuxino/mimi/android/provider/")):
             affected.update(ALL_OS)
     bundles = ALL_OS[:] if package == "all" else [PACKAGES[package]] if package in PACKAGES else []
     affected.update(bundles)
     return {
+        "frontend": full or release or paths is None or bool(bundles)
+                    or any(not is_editorial_document(path) for path in paths or []),
         "native": bool(affected),
         "rust_os": [item for item in ALL_OS if item in affected] or ["ubuntu-22.04"],
         "windows_arm": "windows-2025" in affected,
