@@ -1,9 +1,7 @@
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">Mimi 設定</string>
     <string name="start_capture">字幕を開始</string>
     <string name="stop_capture">字幕を停止</string>
-    <string name="open_settings">設定</string>
     <string name="need_overlay_permission">システム設定で他のアプリの上に重ねて表示を許可してください。</string>
     <string name="need_audio_permission">ほかのアプリの再生音声を取得するには、Android の録音権限が必要です。</string>
     <string name="capture_failed">字幕セッションが停止しました。権限、サービス設定、ネットワークを確認して再試行してください。</string>

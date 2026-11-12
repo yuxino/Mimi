@@ -1,19 +1,11 @@
 <resources>
     <string name="services_heading">翻訳サービス</string>
-    <string name="services_hint">設定済みのサービスをタップして切り替えます。</string>
     <string name="services_key_note">自分の認証情報を使用します。利用料はサービス提供元が請求します。認証情報はこの端末の暗号化ストレージに保存されます。</string>
-    <string name="service_active">使用中</string>
-    <string name="service_configured">設定済み · タップして切り替え</string>
     <string name="service_missing">未設定</string>
     <string name="service_edit">設定</string>
-    <string name="service_configure">設定する</string>
     <string name="service_edit_named">%1$s を設定</string>
     <string name="service_stop_first">サービスや認証情報を変更する前に字幕を停止してください。</string>
     <string name="service_secret_saved">保存済み · 空欄で元の値を保持</string>
-    <string name="service_endpoint">接続先の変更（任意）</string>
-    <string name="service_model">モデルの変更（任意）</string>
-    <string name="service_glossary">用語対照（任意）</string>
-    <string name="service_save_use">保存して選択</string>
     <string name="service_required">入力してください</string>
     <string name="service_invalid">設定形式が正しくありません。接続先と認証情報を確認してください。</string>
     <string name="service_save_failed">保存できませんでした。再試行してください。</string>

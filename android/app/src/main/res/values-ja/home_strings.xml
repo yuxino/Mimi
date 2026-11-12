@@ -1,13 +1,10 @@
 <resources>
     <string name="brand_description">Mimi のキャラクター</string>
-    <string name="home_kicker">字幕と翻訳</string>
     <string name="home_title">リアルタイム字幕</string>
     <string name="home_description">ほかのアプリで再生中の音声を字幕で表示します。音声の取得を許可しないアプリもあります。</string>
     <string name="home_source">元の音声</string>
     <string name="home_target">翻訳先</string>
     <string name="home_service">翻訳サービス</string>
-    <string name="home_service_unset">%1$s · 未設定</string>
-    <string name="home_service_ready">%1$s · 設定済み</string>
     <string name="home_setup_action">翻訳サービスを設定</string>
     <string name="home_setup_status">はじめての使用</string>
     <string name="home_setup_hint">サービスを選んで自分の認証情報を入力してください。</string>

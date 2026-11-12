@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">Simultanübersetzung</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">Simultanübersetzung liefert Originaltext und Übersetzung direkt. ASR + MT erkennt Sprache und übersetzt sie mit dem gewählten Textdienst. Beide Konfigurationen bleiben erhalten. Zum Wechseln Untertitel stoppen.</string>
-    <string name="speech_translation_failed">Übersetzungsmodus konnte nicht gespeichert werden. Bitte erneut versuchen.</string>
     <string name="translation_preset">Schnelleinrichtung</string>
     <string name="translation_preset_custom">Benutzerdefiniert</string>
     <string name="translation_preset_help">Füllt eine bearbeitbare Dienstadresse aus; manche Modell-IDs müssen Sie eingeben. Wählen Sie ein freigeschaltetes oder lokal geladenes Modell. Adresse, Kontoregion, Produkt und API-Schlüssel müssen zusammenpassen. Textübersetzung und Spracherkennung haben getrennte Zugangsdaten.</string>

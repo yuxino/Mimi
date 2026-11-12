@@ -1,14 +1,11 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="brand_description">Icône du personnage Mimi</string>
-    <string name="home_kicker">Sous-titres et traduction en direct</string>
     <string name="home_title">Sous-titres en direct</string>
     <string name="home_description">Affiche des sous-titres pour le son lu par les autres applications. Certaines applications bloquent la capture audio.</string>
     <string name="home_source">Langue parlée</string>
     <string name="home_target">Traduire en</string>
     <string name="home_service">Service de traduction</string>
-    <string name="home_service_unset">%1$s · à configurer</string>
-    <string name="home_service_ready">%1$s · configuré</string>
     <string name="home_setup_action">Configurer le service de traduction</string>
     <string name="home_setup_status">Première utilisation</string>
     <string name="home_setup_hint">Choisissez un service et ajoutez vos identifiants.</string>

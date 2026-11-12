@@ -11,8 +11,8 @@ translation requests or interpret live provider protocol events.
 `shared/mimi-core` remains the pure subtitle/reduction contract. Both renderers
 consume its current complete pair and replaceable realtime projection. Android
 adapts platform trust roots, system proxy selection, playback/microphone capture, lifecycle
-and native UI. Historical Kotlin transport classes remain for offline protocol
-regressions; production capture and the text connection-check button use Rust.
+and native UI. Production capture and the text connection-check button use Rust;
+protocol regressions exercise that same implementation.
 `shared/translation-contracts.json` and `shared/realtime-display-contracts.json`
 provide common synthetic wire and display cases.
 
@@ -103,9 +103,10 @@ A desktop business fix belongs in the shared crates, so an Android build uses
 the same changed source without a second manual patch. Run
 `python3 -B scripts/check-shared-runtime.py` to check repository path dependencies,
 desktop re-export facades, the production Android engine entry and references to
-historical Kotlin clients. Historical Kotlin engines, protocol clients and the
-independent text-client factory live only in the JVM test source set. Production
-metadata and native probe result/cancel types remain in their native adapters.
+retired Kotlin clients. Historical engines, protocol clients and their exclusive
+tests remain in Git history. Golden JSON contracts, direct Rust tests, actual
+JNI tests and native adapter checks are the maintained coverage. Metadata and
+native probe result/cancel types remain in their native adapters.
 The guard has no historical-file exemptions and rejects a new Java/Kotlin provider
 transport or engine in production, including variant/flavor source directories.
 APK verification also rejects the historical runtime descriptors in every DEX
@@ -124,8 +125,8 @@ These checks prevent the covered structural forks; they do not prove every
 future semantic policy or native rendering change is identical. Capture,
 credentials, trust/proxy, lifecycle and UI remain platform adapters and need
 their own evidence. New desktop-only features must be reviewed against this
-document. The CI edits take effect after this source is integrated; cloud
-architecture tests are not a successful remote CI or Android build.
+document. Architecture checks alone do not establish successful platform builds
+or native device acceptance.
 
 ## Shared behavior
 
@@ -210,8 +211,7 @@ back over saved preferences.
 
 Both production paths use the same Audio3 decoder and classify the exact
 `UNSUPPORTED_LANGUAGE` failure as requiring configuration correction. Native
-error presentation differs; the historical Kotlin realtime decoder is not the
-Android production route.
+error presentation differs; Kotlin does not decode realtime provider frames.
 
 | Area | Desktop | Android |
 | --- | --- | --- |
@@ -251,8 +251,8 @@ other implementation already matches. Keep transport behavior shared while respe
 platform's native UI, permissions and resource limits.
 
 The shared runtime owns provider-specific request, result and HTTP body limits
-as well as the shared reducer UTF-8 limit. The old Kotlin transports are offline
-regression subjects and do not define production limits.
+as well as the shared reducer UTF-8 limit. Native adapters consume these results
+without keeping another provider implementation.
 
 ## Verification and change review
 

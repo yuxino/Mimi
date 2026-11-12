@@ -1,5 +1,4 @@
 <resources>
-    <string name="settings_heading">設定</string>
     <string name="settings_interface_language">表示言語</string>
     <string name="settings_language_system">システムに合わせる</string>
     <string name="settings_language_failed">表示言語を変更できませんでした。もう一度お試しください。</string>
@@ -15,7 +14,6 @@
     <string name="settings_history_help">初期状態ではオフです。履歴は今回のセッションだけで保持し、オフまたは停止で消去されます。</string>
     <string name="settings_reset">字幕の位置をリセット</string>
     <string name="settings_reset_done">下中央に戻しました</string>
-    <string name="settings_save">サービス設定を保存</string>
     <string name="settings_saved">保存しました</string>
     <string name="settings_font_value">%1$d sp</string>
     <string name="settings_percent_value">%1$d%%</string>
@@ -26,7 +24,6 @@
     <string name="settings_color_yellow">黄</string>
     <string name="settings_color_green">緑</string>
     <string name="settings_color_pink">ピンク</string>
-    <string name="settings_advanced_collapse">詳細設定を閉じる</string>
     <string name="settings_display_mode">表示内容</string>
     <string name="display_translation">訳文のみ</string>
     <string name="display_original">原文のみ</string>

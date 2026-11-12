@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">同時通訳</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">同時通訳は原文と訳文を直接出力します。ASR + MT は音声を認識し、選んだテキスト翻訳サービスで翻訳します。両方の設定を保持します。字幕を停止して切り替えてください。</string>
-    <string name="speech_translation_failed">翻訳モードを保存できませんでした。再試行してください。</string>
     <string name="translation_preset">簡単入力</string>
     <string name="translation_preset_custom">カスタム</string>
     <string name="translation_preset_help">サービスのアドレスを入力し、後から変更できます。一部のモデル ID は手入力が必要です。利用可能またはダウンロード済みのモデルを選び、アカウントの地域・製品・API Key に合うアドレスを使用してください。テキスト翻訳と音声認識の認証情報は別々に設定します。</string>

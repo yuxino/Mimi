@@ -25,15 +25,24 @@ class CaptionWorkspace @JvmOverloads constructor(context: Context, attrs: Attrib
         orientation = if (sideBySide) HORIZONTAL else VERTICAL
         preview.findViewById<SubtitlePreviewView>(R.id.subtitle_preview)?.limitHeight(
             if (sideBySide) height else (height - dp(128)).coerceAtLeast(0))
+        val previewParams = preview.layoutParams as LayoutParams
+        val controlsParams = controls.layoutParams as LayoutParams
+        // Measurement already owns layout; reuse parameters without requesting another pass.
         if (sideBySide) {
-            preview.layoutParams = LayoutParams((width * .4f).toInt().coerceAtMost(dp(400)), -1)
-            controls.layoutParams = LayoutParams(0, -1, 1f)
+            previewParams.width = (width * .4f).toInt().coerceAtMost(dp(400))
+            previewParams.height = LayoutParams.MATCH_PARENT
+            controlsParams.width = 0
+            controlsParams.height = LayoutParams.MATCH_PARENT
         } else {
             preview.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec((height - dp(128)).coerceAtLeast(0), MeasureSpec.AT_MOST))
-            preview.layoutParams = LayoutParams(-1, if (showsPreview) preview.measuredHeight else 0)
-            controls.layoutParams = LayoutParams(-1, 0, 1f)
+            previewParams.width = LayoutParams.MATCH_PARENT
+            previewParams.height = if (showsPreview) preview.measuredHeight else 0
+            controlsParams.width = LayoutParams.MATCH_PARENT
+            controlsParams.height = 0
         }
+        previewParams.weight = 0f
+        controlsParams.weight = 1f
         super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY))
     }
 

@@ -168,9 +168,6 @@ export function buildTextTranslationCredentials(profile: ServiceProfile, draft: 
   };
 }
 
-/** Compatibility name for existing callers; the payload remains the same IPC patch. */
-export const buildAlibabaTranslationCredentials = buildTextTranslationCredentials;
-
 export function buildCustomSpeechCredentials(profile: ServiceProfile, draft: Pick<CredentialDraft, "endpoint" | "model" | "apiKey">): ProviderCredentialsInput | null {
   if (!isCustomSpeechProvider(profile.provider)) return null;
   const endpoint = draft.endpoint.trim(), model = draft.model.trim(), apiKey = draft.apiKey.trim();

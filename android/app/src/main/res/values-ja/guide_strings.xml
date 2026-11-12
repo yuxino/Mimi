@@ -1,7 +1,6 @@
 <resources>
     <string name="guide_open">はじめての使い方</string>
     <string name="guide_intro">翻訳サービスを選択</string>
-    <string name="guide_intro_hint">取得を開始すると、再生音声が音声認識のために選択したサービスへ送信されます。</string>
     <string name="guide_saved_hint">サービスの認証情報を端末の暗号化ストレージに保存します。保存だけでは接続も認証確認も行いません。</string>
     <string name="guide_saved">認証情報を保存済み · 接続は試用時に確認</string>
     <string name="guide_missing">このサービスの認証情報は未保存です</string>

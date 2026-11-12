@@ -1,7 +1,6 @@
 <resources>
     <string name="guide_open">เริ่มใช้งาน</string>
     <string name="guide_intro">เลือกบริการแปล</string>
-    <string name="guide_intro_hint">เมื่อเริ่มจับเสียง ระบบจะส่งเสียงที่เล่นอยู่ไปยังบริการที่เลือกเพื่อรู้จำเสียงพูด</string>
     <string name="guide_saved_hint">บันทึกข้อมูลรับรองบริการในพื้นที่เข้ารหัสบนโทรศัพท์นี้ การบันทึกไม่ติดต่อบริการหรือยืนยันตัวตน</string>
     <string name="guide_saved">บันทึกข้อมูลรับรองแล้ว · จะตรวจสอบการเชื่อมต่อระหว่างทดลอง</string>
     <string name="guide_missing">ยังไม่ได้บันทึกข้อมูลรับรองสำหรับบริการนี้</string>

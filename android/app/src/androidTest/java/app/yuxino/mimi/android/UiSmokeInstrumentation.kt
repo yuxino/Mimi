@@ -72,6 +72,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("layout_workload") == "true") {
+            LayoutWorkloadChecks(this).run()
+            return
+        }
         if (captureArguments?.getString("service_draft_recreation") == "true") {
             ServiceDraftRecreationChecks(this).run(captureArguments)
             return

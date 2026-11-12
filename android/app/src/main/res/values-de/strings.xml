@@ -1,10 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">Mimi-Einstellungen</string>
     <string name="start_capture">Untertitel starten</string>
     <string name="stop_capture">Untertitel stoppen</string>
-    <string name="open_settings">Einstellungen</string>
     <string name="need_overlay_permission">In den Systemeinstellungen „Über anderen Apps einblenden“ erlauben.</string>
     <string name="need_audio_permission">Android benötigt die Aufnahmeberechtigung, um App-Audio zu erfassen.</string>
     <string name="capture_failed">Untertitelsitzung beendet. Berechtigungen, Diensteinstellungen und Netzwerk prüfen und erneut versuchen.</string>

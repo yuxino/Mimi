@@ -363,7 +363,7 @@ internal class PlaybackCaptureChecks(private val instrumentation: Instrumentatio
         val nonzero = AtomicLong()
         val zero = AtomicLong()
         val stopped = AtomicBoolean()
-        override fun start(apiKey: String, sourceLang: String, targetLang: String, customBaseUrl: String, customModel: String) {
+        override fun start() {
             error("probe_must_not_start_provider")
         }
         override fun sendAudio(pcm16Mono: ByteArray) {

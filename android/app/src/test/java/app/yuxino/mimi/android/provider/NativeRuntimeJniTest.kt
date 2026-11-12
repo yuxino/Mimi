@@ -339,6 +339,11 @@ class NativeRuntimeJniTest {
     }
 
     @Test fun xaiModeCapabilitiesAndNormalizationStayInTheSharedCatalogAcrossJni() {
+        val catalogs = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONObject("textLanguageCatalogs")
+        fun languages(provider: String, field: String): Set<String> = catalogs.getJSONObject(provider).getJSONArray(field).let { values ->
+            (0 until values.length()).map(values::getString).toSet()
+        }
         val voice = NativeRuntimeConfiguration.capabilities("xAIRealtime", "followService", "zh")
         assertEquals(24_000, voice.getInt("sampleRateHz"))
         val streaming = NativeRuntimeConfiguration.capabilities("xAIRealtime", "followService", "zh", xaiSpeechMode = "asrMt")
@@ -355,11 +360,11 @@ class NativeRuntimeJniTest {
         assertEquals(16_000, deepL.getInt("sampleRateHz"))
         val deepLSources = deepL.getJSONArray("sourceLanguages").let { values -> (0 until values.length()).map(values::getString).toSet() }
         val deepLTargets = deepL.getJSONArray("targetLanguages").let { values -> (0 until values.length()).map(values::getString).toSet() }
-        assertEquals(recognition.intersect(DEEPL_SOURCE_CODES.toSet() + "auto"), deepLSources)
-        assertEquals(DEEPL_TARGET_CODES.toSet() + "original", deepLTargets)
+        assertEquals(recognition.intersect(languages("deepL", "sourceLanguages") + "auto"), deepLSources)
+        assertEquals(languages("deepL", "targetLanguages") + "original", deepLTargets)
         val deepLX = NativeRuntimeConfiguration.capabilities("xAIRealtime", "deepLX", "zh", xaiSpeechMode = "asrMt")
         val deepLXSources = deepLX.getJSONArray("sourceLanguages").let { values -> (0 until values.length()).map(values::getString).toSet() }
-        assertEquals(recognition.intersect(DEEPLX_SOURCE_CODES.toSet() + "auto"), deepLXSources)
+        assertEquals(recognition.intersect(languages("deepLX", "sourceLanguages") + "auto"), deepLXSources)
         assertFalse("yue" in deepLXSources)
         val grok = NativeRuntimeConfiguration.capabilities("xAIRealtime", "xAI", "zh", xaiSpeechMode = "asrMt")
         assertTrue(grok.getJSONArray("targetLanguages").toString().contains("zh_tw"))

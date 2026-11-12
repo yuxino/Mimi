@@ -5,7 +5,10 @@ the [documentation index](../README.md) and current development guides for setup
 commands and review rules. The links below are a map of major decisions, not a
 second setup guide or a complete list of every protocol record.
 
-Completed task checklists and superseded designs belong in Git history. Promote
+Completed task checklists and superseded designs belong in Git history. The
+[performance and ownership guide](../development/runtime-performance.md) owns
+current performance rules; historical integration links point to their tested
+archive. Promote
 reusable rules into their owning guide instead of keeping duplicate audit notes.
 Dated comparisons and QA/release reports describe the revision and conditions
 actually tested; they are not ongoing authorization to capture audio, contact a

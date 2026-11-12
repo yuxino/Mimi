@@ -1,13 +1,10 @@
 <resources>
     <string name="brand_description">ไอคอนตัวละคร Mimi</string>
-    <string name="home_kicker">คำบรรยายสดและการแปล</string>
     <string name="home_title">คำบรรยายสด</string>
     <string name="home_description">แสดงคำบรรยายสำหรับเสียงที่เล่นในแอปอื่น บางแอปจำกัดการจับเสียง</string>
     <string name="home_source">ภาษาที่พูด</string>
     <string name="home_target">แปลเป็น</string>
     <string name="home_service">บริการแปล</string>
-    <string name="home_service_unset">%1$s · ต้องตั้งค่า</string>
-    <string name="home_service_ready">%1$s · ตั้งค่าแล้ว</string>
     <string name="home_setup_action">ตั้งค่าบริการแปล</string>
     <string name="home_setup_status">เริ่มใช้งานครั้งแรก</string>
     <string name="home_setup_hint">เลือกบริการและเพิ่มข้อมูลรับรองของคุณ</string>

@@ -20,9 +20,16 @@ class SessionControlsLayout @JvmOverloads constructor(context: Context, attrs: A
         val fits = stateWidth + action.measuredWidth + dp(16) <= available
         orientation = if (fits) HORIZONTAL else VERTICAL
         gravity = android.view.Gravity.CENTER_VERTICAL
-        state.layoutParams = if (fits) LayoutParams(0, -2, 1f).apply { marginEnd = dp(16) }
-            else LayoutParams(-1, -2).apply { bottomMargin = dp(8) }
-        action.layoutParams = LayoutParams(if (fits) -2 else -1, -2)
+        val stateParams = state.layoutParams as LayoutParams
+        stateParams.width = if (fits) 0 else LayoutParams.MATCH_PARENT
+        stateParams.height = LayoutParams.WRAP_CONTENT
+        stateParams.weight = if (fits) 1f else 0f
+        stateParams.marginEnd = if (fits) dp(16) else 0
+        stateParams.bottomMargin = if (fits) 0 else dp(8)
+        stateParams.resolveLayoutDirection(layoutDirection)
+        val actionParams = action.layoutParams as LayoutParams
+        actionParams.width = if (fits) LayoutParams.WRAP_CONTENT else LayoutParams.MATCH_PARENT
+        actionParams.height = LayoutParams.WRAP_CONTENT
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density + .5f).toInt()

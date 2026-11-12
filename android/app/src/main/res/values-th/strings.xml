@@ -1,9 +1,7 @@
 <resources>
     <string name="app_name">Mimi</string>
-    <string name="settings_title">การตั้งค่า Mimi</string>
     <string name="start_capture">เริ่มคำบรรยาย</string>
     <string name="stop_capture">หยุดคำบรรยาย</string>
-    <string name="open_settings">การตั้งค่า</string>
     <string name="need_overlay_permission">อนุญาตให้แสดงทับแอปอื่นในการตั้งค่าระบบ</string>
     <string name="need_audio_permission">Android ต้องการสิทธิ์บันทึกเสียงเพื่อจับเสียงที่แอปกำลังเล่น</string>
     <string name="capture_failed">เซสชันคำบรรยายหยุดแล้ว ตรวจสอบสิทธิ์ การตั้งค่าบริการ และเครือข่าย แล้วลองอีกครั้ง</string>

@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">Синхронный перевод</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">Синхронный перевод напрямую выводит исходный текст и перевод. ASR + MT сначала распознаёт речь, а затем переводит её через выбранный сервис перевода текста. Настройки обоих режимов сохраняются. Остановите субтитры, чтобы переключить режим.</string>
-    <string name="speech_translation_failed">Не удалось сохранить режим перевода. Повторите попытку.</string>
     <string name="translation_preset">Быстрая настройка</string>
     <string name="translation_preset_custom">Пользовательский</string>
     <string name="translation_preset_help">Подставляет адрес сервиса, который можно изменить; ID некоторых моделей нужно ввести вручную. Выберите модель, которая активирована или загружена локально. Адрес должен соответствовать региону аккаунта, продукту и API-ключу. Для перевода текста и распознавания речи используются отдельные учётные данные.</string>

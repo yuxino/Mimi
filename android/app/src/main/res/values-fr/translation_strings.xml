@@ -1,8 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="translation_title">Traduction de texte</string>
-    <string name="translation_speech_title">Reconnaissance vocale · Alibaba Cloud</string>
-    <string name="translation_speech_help_title">Aide du service vocal</string>
     <string name="translation_builtin">Alibaba Cloud (intégré)</string>
     <string name="translation_chatmock">ChatMock</string>
     <string name="translation_openai_compatible">API compatible avec OpenAI</string>
@@ -18,10 +16,8 @@
     <string name="translation_check_failure">Échec du test · %1$d ms. Vérifiez l’URL, le modèle, la clé et l’état du serveur.</string>
     <string name="translation_required">Saisissez l’URL de traduction et le modèle.</string>
     <string name="translation_invalid">URL ou modèle non valide. Utilisez HTTPS, ou autorisez explicitement HTTP pour une adresse de bouclage prise en charge. L’URL ne doit contenir ni identifiants, ni paramètres de requête, ni fragments.</string>
-    <string name="translation_help_title">Aide de la traduction de texte</string>
     <string name="translation_help">Connectez un service de texte compatible avec OpenAI Chat Completions. Saisissez son URL de base /v1 ou son URL complète /v1/chat/completions, ainsi que l’identifiant du modèle. Le service doit accepter model, messages et stream: false, puis renvoyer un choices[0].message.content complet. Laissez la clé API vide si aucune authentification n’est requise.\n\nLes configurations de l’ancienne entrée commune restent ici. ChatMock dispose désormais de sa propre entrée, avec une URL, un modèle et une clé distincts.</string>
     <string name="translation_help_chatmock" tools:ignore="TypographyDashes">Démarrez votre service ChatMock, puis saisissez un identifiant de modèle renvoyé par /v1/models. L’adresse par défaut http://127.0.0.1:8000/v1 désigne ce téléphone ou cet émulateur, et non votre ordinateur. Pour utiliser ChatMock sur un ordinateur, saisissez son adresse HTTPS. Pour le développement, utilisez adb reverse tcp:8000 tcp:8000, ou http://10.0.2.2:8000/v1 dans un émulateur Android. HTTP en local nécessite une autorisation explicite.\n\nLe terme local décrit uniquement le point d’accès ChatMock. Les modèles de traduction s’exécutent en ligne via le compte connecté à ChatMock, et non sur le téléphone ou l’ordinateur. Options de serveur recommandées : --reasoning-compat legacy --reasoning-summary none. Laissez la clé API vide sauf si une authentification est requise. Ne saisissez pas de mot de passe ni de jeton de connexion ChatGPT ; connectez-vous via ChatMock.</string>
-    <string name="translation_session_failed">Échec de la traduction de texte. Vérifiez la configuration du service sélectionné et reconnectez-vous.</string>
     <string name="translation_service_name">%1$s + %2$s</string>
     <string name="translation_check_auth">Authentification échouée · %1$d ms. Vérifiez la clé API et les droits du service.</string>
     <string name="translation_check_not_found">Point d’accès ou modèle introuvable · %1$d ms. Vérifiez l’URL et le nom du modèle.</string>
@@ -44,7 +40,6 @@
     <string name="translation_help_deepl">Utilisez l’API officielle de traduction DeepL avec une clé API DeepL distincte. Les clés gratuites se terminant par :fx utilisent api-free.deepl.com ; les autres utilisent api.deepl.com. Mimi sélectionne automatiquement l’URL officielle, aucun modèle ni URL n’est donc nécessaire. La clé vocale n’est jamais utilisée pour DeepL.</string>
     <string name="translation_help_deeplx">Connectez votre propre service DeepLX. Saisissez un point d’accès de traduction se terminant par /translate ; ce suffixe est ajouté s’il manque. Aucun modèle n’est nécessaire. Saisissez un jeton uniquement si le service exige une authentification Bearer.\n\nLe service doit accepter text, source_lang et target_lang, puis renvoyer code: 200 avec le texte traduit dans data. DeepLX et l’API officielle DeepL utilisent des points d’accès et des méthodes d’authentification différents.</string>
     <string name="translation_help_network">Utilisez HTTPS pour les services distants. 127.0.0.1 et localhost désignent le téléphone ou l’émulateur actuel. HTTP local non chiffré nécessite une autorisation et se limite à localhost, 127.0.0.1, [::1] et à l’hôte d’émulateur 10.0.2.2. Les développeurs peuvent transférer un port de l’ordinateur avec adb reverse. Changer de service ou d’URL ne reprend jamais la clé d’un autre service ni celle de l’ancienne destination.</string>
-    <string name="translation_help_save">Les tests envoient un exemple fixe et affichent la durée réelle. Ils n’envoient aucun audio et n’enregistrent aucune configuration. Changer de service conserve les brouillons dans cet éditeur ; Enregistrer et utiliser valide uniquement le service sélectionné. Les clés restent dans le stockage chiffré de cet appareil.</string>
     <string name="translation_service_custom">Traduction personnalisée</string>
     <string name="translation_service_original">%1$s (texte original uniquement)</string>
 </resources>

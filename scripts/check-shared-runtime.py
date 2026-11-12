@@ -90,7 +90,7 @@ def check(root=ROOT):
         require(re.sub(r"\s+", "", body) == re.sub(r"\s+", "", expected),
                 f"desktop facade must only re-export shared code: {relative.as_posix()}")
 
-    # Legacy Kotlin is retained for offline fixtures. Production must not call it.
+    # Retired Kotlin engines must never return as a production fallback.
     android = root / "android/app/src"
     sources = []
     for directory in android.iterdir() if android.is_dir() else []:

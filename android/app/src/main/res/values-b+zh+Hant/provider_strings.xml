@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">同聲傳譯</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">同聲傳譯直接輸出原文和譯文；ASR + MT 先辨識成文字，再由所選文字翻譯服務翻譯。兩種模式的設定分別保留。停止字幕後可切換。</string>
-    <string name="speech_translation_failed">翻譯模式儲存失敗，請重試。</string>
     <string name="translation_preset">快速填入</string>
     <string name="translation_preset_custom">自訂</string>
     <string name="translation_preset_help">快速填入服務位址，部分模型 ID 需自行填寫，欄位仍可修改。請選擇已開通或本機已下載的模型；位址須與帳號的地域、產品及 API Key 對應。文字翻譯憑據與語音辨識分別設定。</string>

@@ -26,7 +26,6 @@
     <string name="speech_translation_simultaneous">การแปลพร้อมเสียง</string>
     <string name="speech_translation_asr_mt">ASR + MT</string>
     <string name="speech_translation_help">การแปลพร้อมเสียงแสดงต้นฉบับและคำแปลโดยตรง ส่วน ASR + MT รู้จำเสียงก่อนแล้วแปลด้วยบริการข้อความที่เลือก ระบบเก็บการตั้งค่าทั้งสองโหมดไว้ หยุดคำบรรยายก่อนเปลี่ยนโหมด</string>
-    <string name="speech_translation_failed">บันทึกโหมดการแปลไม่สำเร็จ ลองอีกครั้ง</string>
     <string name="translation_preset">ตั้งค่าด่วน</string>
     <string name="translation_preset_custom">กำหนดเอง</string>
     <string name="translation_preset_help">กรอกที่อยู่บริการให้โดยยังแก้ไขได้ บางโมเดลต้องกรอก ID เอง เลือกโมเดลที่เปิดใช้หรือดาวน์โหลดไว้ในเครื่อง และใช้ที่อยู่ที่ตรงกับภูมิภาคบัญชี ผลิตภัณฑ์ และ API key ตั้งค่าข้อมูลรับรองการแปลข้อความแยกจากการรู้จำเสียง</string>
