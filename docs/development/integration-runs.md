@@ -2188,41 +2188,18 @@
 
 ## 2026-10-13：正常状态静默与当前配置置顶
 
-- 后续用户取消置顶：最终保持保存顺序，切换只更新当前状态。以
-  `e3e79384` 为源继续调整操作层级：当前状态替代同位置的灰色「使用」，
-  常用操作与复制／删除分组；有待恢复的语言预设仍保留有效的使用入口。
-  原生热预览确认使用中的火山引擎留在原位置、仅有一个当前标记、未配置
-  提示保留。233 项相关前端测试和 576 组几何检查通过；未操作真实切换。
-
-- 用户纠正：正常已保存状态不值得占用列表或问号；只提示需要处理的
-  未配置／异常状态。取代上一轮把正常凭证状态收进帮助的设计。
-- 测试源为 `8ff33101` 加本次修正：移除正常凭证帮助与重复状态朗读，
-  当前配置展示在首项，其他配置保持原始顺序，不写回排序；按已确认的
-  activeProfileId 更新，包括切换被拒绝及配置已保存但重连失败的路径。
-- 签名开发版热更新后确认真实当前配置置顶、正常问号消失、底部缺少凭证
-  提示仍可见。未切换真实服务或修改凭证。类型、lint 和 233 项相关前端
-  测试通过；未重跑跨层验收，没有新增 Windows/Linux 原生设备证据。
+- 用户取消配置置顶：最终保持保存顺序，切换只更新当前状态。以
+  `e3e79384` 为基线加当时修改的签名热预览确认当前项留在原位置、只有一个当前标记，
+  未配置提示保留。233 项相关测试和 576 组几何检查通过；未操作真实切换。
+- 正常已保存状态不占用列表或帮助控件，只显示需要处理的未配置／异常。
+  这取代了 `8ff33101` 的当前项置顶和此前正常凭证帮助设计；现行规则见
+  [界面指南](ui-guidelines.md)。
 
 ## 2026-10-13：配置列表密度与身份层级
 
-- 测试源为预发布设置分支 `2158c2ea` 加本次配置列表改动。四项显式操作
-  保持单排，空间不足时整组换行；最窄列表省去操作图标并保留完整文字。
-  取消会撑高普通行的两列操作块；识别图标与名称对齐，绘图尺寸与图标槽
-  同为 24px。默认名称不再重复识别服务，独立翻译和自定义识别名称保留。
-- 正常凭证说明收进名称旁帮助，当前配置标记移到名称旁；缺少／不可用
-  凭证保持可见。未改变选择、复制、删除、会话保护或凭证读写行为。
-- 当前签名 `dev-app.sh --watch` 原生热预览检查了真实 11 项列表、进入
-  编辑再返回、键盘聚焦的凭证说明浮层。没有重启开发版、启动采集或发起
-  连接检查。主观视觉接受仍等待用户反馈。
-- 定向前端检查：类型、lint、232 项相关测试通过；最初扩展到共享图标
-  的测试中，其余 396 项亦通过，旧列表断言已在定向复测中修正。
-  最后的空行问题已修复并通过 `git diff --check`，未重复完整跨层检查。
-- 离线布局夹具：520／828／952／1600px、八种语言、两种主题、三种平台
-  控件与 idle／paused／确认弹窗共 576 组通过。补充目视检查英文深色最小
-  窗口、日文默认窗口、中文大窗口的混合服务、长名称、语言组合和缺少凭证。
-  图标不侵入名称、四个操作保持同排已纳入既有几何回归。
-- Windows/Linux 仅为浏览器夹具，不构成原生设备验收；没有 Android 或
-  新的识别／翻译质量验收。本改动仍依赖未并入 main 的预发布设置重构。
+- 以 `2158c2ea` 为基线加当时修改的布局候选曾通过签名热预览和合成几何检查；
+  其中正常凭证帮助与当前状态层级已被上方 `e3e79384` 记录取代。现行要求归入
+  [界面指南](ui-guidelines.md)，不再沿用这份候选的设计和验收清单。
 
 ## 2026-10-13：宽屏设置与选择器图标
 
@@ -2408,11 +2385,10 @@
 
 ## 2026-10-09：共享业务维护防分叉（云端后续）
 
-- 用户明确要求以后 PC 业务改动自然到达 Android，不再依赖另一份手动同步。保留已上传的原版 29 文件交付及原哈希，后续独立版本继续基于同一 supplied snapshot；不把后续哈希误报成原 Library 文件版本。
-- 新增共享运行时架构检查：桌面 facade 只能转导出，生产 Android 只能通过 SharedRuntimeEngine，不能接回旧 Kotlin 引擎／文字客户端或新增平台 provider transport。旧文字客户端工厂原样移至 JVM test；两端 Cargo 必须引用仓库内共享源。Android preBuild／native／direct build、canonical 和 desktop CI scope 接入检查，Android CI 触发范围覆盖 desktop frontend/backend、shared、scripts/workflows。Gradle 增加 build.rs 和 Cargo config 输入，防止这些输入变化时复用旧 generated JNI。设计见 [维护约束](https://github.com/yuxino/Mimi/blob/472f88cef3c65ec7bfb8277cca15d2e8f6b77ed0/docs/plans/2026-10-09-runtime-parity-enforcement.md)。
-- 本次实际通过：架构检查、22 项真实输入变异／构建入口拒绝回归、7 项 CI scope、9 项 native packaging，两个工作流 YAML 语法解析、三个 Python 编译检查和 shell 语法检查。直接 native build 的拒绝测试在无法调用 Rust 的隔离 PATH 下验证坏 facade 会在编译前失败；没有产品编译或启动。
-- 未重跑原版 11 组 Java／220 PC／前端全套；这些仍是原版证据。云端 SDK／Cargo 依赖限制未解除，Gradle/Kotlin/JNI 完整构建、APK、远程 CI 和手机验收尚未执行。架构检查覆盖已验证的分叉模式，不能证明所有未来语义或原生 UI 都自动相同。
-- 下一步：按已有原版是否应用选择对应补丁；本地运行架构检查及 canonical、Android 两版完整检查，集成后确认 PC 或 shared source 改动实际触发 Android CI。设备验收继续沿用沉浸恢复／字幕时序清单。未提交、推送、PR、合并、发版、服务调用、采音、录制、Mac 连接或恢复其他任务。
+- 此次只验证了共享运行时架构检查及构建入口的源文件变异拒绝，未进行
+  产品或设备构建。旧交付包与待办不再作为当前工作指引；现行维护约束见
+  [平台一致性](platform-parity.md)。旧 Kotlin 对比实现的实际删除与验收见
+  [废弃代码清理记录](#2026-11-12--retired-code-cleanup-and-native-layout-allocation)。
 
 ## 2026-10-08：云端 Android 沉浸定位与恢复（增量）
 
@@ -2439,10 +2415,9 @@
 
 ## 2026-10-07：首次配置空列表引导
 
-- 源码 `b289469d`，基线为 #212 合并后的 `77580dcd`。空配置列表显示“添加第一个语音服务”及点击添加的简短提示，按钮靠右，窄窗口自然换行；移除零计数和空列表横线。七种界面语言同步，已有配置、加载中及初始化失败保持各自状态，确认添加前不创建配置。
-- 完整 `./scripts/check.sh` 通过：Rust 1,257 passed／2 ignored、共享核心 81 项及实际 JNI、前端 129 文件／2,010 项、fmt／严格 Clippy／lint／类型／生产构建／diff。回归覆盖首次添加后引导消失，以及加载／失败时不误报空列表。
-- 真实 React／模拟 IPC 的 420 组布局通过：简中／繁中／英／日／德／韩／法，520／952px，明暗主题，macOS／Windows／Linux，空列表／暂停／已有配置／服务选择／确认弹窗。人工查看中文默认宽度和德语最窄深色布局；Before／After 使用相同 980×640 Windows 布局与示例设备，浏览器截图不冒充 Windows 原生截图。
-- canonical 稳定签名 macOS UI-only 开发版实际确认提示、添加／取消、首次 Google Gemini 确认及返回列表；查看字幕、保存与导出、通用、诊断和新手指引。另用明确开启的合成会话检查空浮窗、暂停、折叠、展开及停止。无真实凭据、云端请求、采音或录制，签名 requirement 未变。退出后按确切进程核对并恢复单一普通开发实例，字幕未启动，原有偏好保持。原生 Windows／Linux、真实翻译和长字幕未在本次改动中复验。
+- `b289469d` 的中间空列表页已由
+  [首次配置直接选择服务](#2026-10-13--first-configuration-service-picker)
+  取代；确认前不创建配置、不自动访问凭据的约束继续有效。
 
 ## 2026-10-07：Windows 应用图标与首次配置选择
 
@@ -2535,10 +2510,9 @@
 
 ## 2026-10-07：v1.5.15 最终 main 发布准备
 
-- 在线 main 与本轮源码均为 `e2936ea1`，公开 Latest 仍为 v1.5.14；桌面版本、锁文件及 Android 已统一为 1.5.15／10515。补齐双语说明中的配置语言组合、浮窗关闭、语言切换、资源错误与设置重绘修复，按既有实测记录修正 Apple 完整字幕链路的验证边界，保留百度静音故障未解决项。
-- 本轮 `./scripts/check.sh` 全部通过：Rust 1,241 passed／2 ignored，前端 127 文件／1,950 项，共享核心 81 项及实际 JNI，fmt、严格 Clippy、lint、类型检查、生产构建及 diff。Android Debug／Release 各 22 suites／142 项通过，包含主机 JNI；两套 lint 通过。main CI run `37585717835` 已成功，覆盖 macOS／Windows／Linux Rust、Windows ARM64 编译与前端；安装包发布任务未触发。
-- 从该 clean 源码复用缓存执行规范启动器，canonical `local-dev` 正常开发包签名、安装及精确进程检查通过，designated requirement 保持一致。原生设置实际显示「尚未启动」；随后用户开始使用字幕，本轮保留该会话，没有启动额外采音、语言包下载或改动设置，也没有替换正式应用。用户运行中的输出不纳入本轮质量评分。
-- 本轮没有新增服务样本验收。此前日语 Apple Speech + Apple 翻译及法语仅原文短样本以各自条目的 revision 为准；冷下载、原生故障同进程恢复、新云端语言对、Windows／Linux 原生交互、Intel Mac 运行、Android 真机和已安装更新仍未验证。早期 1.5.15 本地包来自较旧提交，不能用作最终发布资产；下一项是在审阅并提交当前说明后，重新准备和核对双架构 macOS 签名文件。未创建公开版本或标签。
+- 这是 `e2936ea1` 的发布前检查，没有新增真实服务样本。最终组合回归
+  和公开资产分别以同日「v1.5.15 三项改动统一回归」及「v1.5.15 正式发布
+  回读」条目为准；当时的 Latest 状态和待准备资产清单已不适用。
 
 ## 2026-10-07：配置记住语言组合
 
@@ -3006,14 +2980,8 @@
 
 ### 可复用经验
 
-- macOS 沙箱内 `say -o` 可返回零却生成零音频帧；`afinfo` 暴露了空文件。
-  `afplay` 在沙箱内也曾返回 `AudioQueueStart failed (-66680)`。
-  使用经批准的本机执行重新生成后，核对非零帧与时长，再执行播放。
-  音源失败时先修正测试准备，不能归因于 Mimi 无字幕。
-- 设置页、字幕控制窗口和字幕正文窗口是不同原生窗口。确认当前窗口
-  标题；关闭设置页后检查实际字幕正文及其控件，不能拿设置预览替代它。
-- 稳定 dev 身份、真实服务可用和原生字幕可见分别验证，结果分别记录。
-  复用有效缓存完成构建，不把本次构建时间当成通用性能提升。
+音源有效性、原生窗口辨认和证据分层规则已归入
+[常见回归](common-regressions.md)及[集成学习流程](integration-learning-loop.md)。
 
 ### 未完成与下一步
 
@@ -6419,89 +6387,25 @@ playback remain unverified. Private evidence belongs to the existing
 
 ### 2026-11-10 — Android issue #338 initial same-panel candidate (superseded)
 
-- Visual layout was subsequently rejected; the compact redesign and final
-  acceptance below supersede this candidate, not its same-panel requirement.
-- Tested `8d7aa9f7353fb275587ca205d26663e6ff78f7b3` plus the dirty Android
-  patch; preserved unrelated pending edits. The annotated issue image defines
-  ON as move/resize and OFF as touch-through, not a normal/immersive transition.
-  Removed the crossed-out overlay chrome while retaining main-page controls.
-- Final development build: command-scoped `CARGO_INCREMENTAL=0`, JDK 17.0.21,
-  SDK/API 35; `assembleDebug assembleDebugAndroidTest lintDebug
-  testDebugUnitTest testReleaseUnitTest` passed. Debug and Release each passed
-  328 tests with zero failures/errors/skips. Lint reported 74 warnings, zero
-  errors. Shared-runtime/provider-copy guards and four-ABI APK checks passed;
-  the focused placement regression passed all 13 scenarios.
-- Final debug APK SHA-256:
-  `27ce2594b306dd32edcd4954803ed92c90c23abf1b1bddba6c03d619bb89a063`;
-  test APK:
-  `25cfad7bc593c343931a06e09048ca95dfdaee74842047e17a0221ea9592892a`.
-- On the API 35 arm64 emulator, final native `overlay_interaction` passed real
-  injected OFF/ON touches, unchanged panel instance/frame/content/paint and
-  compositor pixels, move/resize, lock-cancelled gestures, bounded history and
-  full-text reading, locked recreation, retained main appearance controls,
-  main provider icons and independent legacy immersive restoration.
-  `preview_parity` passed 22 native frame geometry/pixel cases.
-- Earlier candidate APKs of this same patch also passed waiting/listening,
-  all nine interface languages in light/dark, and 83 streaming cases with
-  1,296 updates across nine languages, three modes and normal/immersive frames.
-  Those adjacent fixtures were not rerun after the final removal of unused
-  floating-editor constructor parameters; final interaction/parity checks were.
-- Two failed assertions were fixture defects, repaired and rerun unchanged in
-  intent: bilingual source typography intentionally uses 90% size (minimum
-  12sp); scaled preview origins cannot be combined with unscaled child widths.
-  A separate keyguard interruption was resolved only for the disposable user.
-- Evidence is synthetic and retained outside Git; no attachments were published.
-  Touch dispatch used an underlying same-UID probe, not a cross-app physical
-  device. No capture, audio, provider requests, desktop acceptance or release
-  packaging was performed. Next unresolved acceptance: physical-device/OEM
-  cross-UID touch-through and separately authorized real caption sessions.
-- Restored Owner, removed the isolated fixture user and stopped the task-started
-  emulator. Existing Owner data was preserved; the Dev APK was updated in place
-  and its overlay permission allowed during setup. Removed the task-only JDK,
-  download and superseded diagnostics. Inspected canonical build variants and
-  locks; retained current builds and distinct ABI/profile caches rather than
-  treating different Cargo identities as obsolete duplicates. No commit/publish.
+- The layout at `8d7aa9f7353fb275587ca205d26663e6ff78f7b3` plus its
+  dirty Android patch was visually rejected. The same-panel requirement remains:
+  ON enables move/resize; OFF permits touch-through, without changing immersion.
+- Its checks used synthetic captions and a same-UID emulator probe. Accepted
+  implementation, APK and verification are recorded in the
+  [final inset revision](#2026-11-11--pr-340-inset-adjustment-revision);
+  the distinct cross-UID emulator follow-up remains below that record.
 
 ### 2026-11-11 — Android #338 compact reading/adjustment acceptance
 
-- Tested implementation `5009b7b79e540c33191c880f39a4b1b4f9901b61`, published in
-  [PR #340](https://github.com/yuxino/Mimi/pull/340). The follow-up ledger commit
-  changes documentation only. Unrelated pending work remains outside the PR.
-- Removed toolbar/footer rows; small edge handles retain 48dp touch targets.
-  The separate switch follows the top-right edge and falls below near the top.
-  Native ON/OFF keeps one instance/frame/content/style/position, not immersion.
-  The fresh default is 14% height / 48dp bottom offset; saved geometry survives.
-  Actual 16sp long-caption review rejected 12% because only a one-row tail was
-  readable. The default now retains one source row plus two translated rows;
-  explicit 10%/12% choices still protect complete fallback-font glyphs.
-- Command-scoped `CARGO_INCREMENTAL=0`, JDK 17.0.21, SDK/API 35:
-  `assembleDebug assembleDebugAndroidTest lintDebug lintRelease
-  testDebugUnitTest testReleaseUnitTest` passed. Debug/Release each passed 329
-  JVM tests, zero failures/errors/skips; lint had zero errors and 75/74 warnings.
-  Placement passed 13 host-JVM cases; architecture/provider-copy guards and
-  four-ABI JNI APK inspection passed.
-- Final app APK SHA-256:
-  `6a4bb6793cb199b065072159d1b351b4682406b966e967d607ec5845bf6b52ec`;
-  instrumentation APK:
-  `621ca1c8104202a90af4c3733dc462255ad8768f34f6a13b130c388eb930bebd`.
-- The API 35 arm64 emulator passed injected toggle/drag/resize, mid-drag switch
-  following, cancellation, history, recreation, main controls and independent
-  legacy immersion. Preview parity passed 250 native cases with identical
-  frame pixels/geometry, including minimum-height multilingual glyph bounds.
-  Streaming passed 92 cases / 1,296 updates / 2,021 native draws, nine languages,
-  three modes and normal/immersive. Waiting/restoration and nine interface
-  languages passed separately in both light and dark themes.
-- [Four native screenshot attachments](https://github.com/yuxino/Mimi/pull/340#issuecomment-6773406631)
-  show ON/OFF, long text and waiting on the same labeled synthetic backdrop;
-  all four uploaded images were verified loaded. No review images are in Git.
-  Touch-through uses a same-UID underlying probe, not physical OEM/cross-UID
-  proof. No audio/capture/provider session, desktop acceptance, release or merge.
-  Next unresolved checks: physical-device cross-UID behavior and separately
-  authorized real caption sessions.
-- Restored Owner and verified only user 0 remains after disposable-user removal;
-  stopped the task emulator and removed its task-only JDK/archive after Java
-  builds exited. Owner data, current APKs, evidence and distinct canonical build
-  variants remain; no new worktree/cache or unrelated dirty work was removed.
+- The outside-control candidate `5009b7b79e540c33191c880f39a4b1b4f9901b61`
+  in [PR #340](https://github.com/yuxino/Mimi/pull/340) was superseded by
+  `7cdb4cabcf4de31dd991e7f07dff55d176e93d05`, tested at
+  `bc67ae12b8828311a5743c726f2d80dab8600c9b`. Its 14% default and outside
+  target are historical, not the current layout.
+- Reading review rejected 12% because it left only a one-row tail. The
+  [final inset revision](#2026-11-11--pr-340-inset-adjustment-revision)
+  records the accepted complete-glyph and source-plus-two-translation-row result.
+  This earlier evidence used synthetic captions and a same-UID emulator probe.
 
 ## 2026-11-11 — PR #340 inset adjustment revision
 
