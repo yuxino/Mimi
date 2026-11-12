@@ -62,9 +62,9 @@ For Linux dependencies, building, and isolated audio/keyring/UI checks, see the 
 
 Before UI changes, read [UI consistency and feedback](../docs/development/ui-guidelines.md). When fixing a repeated pattern, audit its sibling controls on other pages and check success, failure, modal and late-result paths.
 
-前端依赖升级要用本机与 CI 的 npm 主版本验证 `npm ci`。已有安装目录下的成功安装不能证明锁文件完整；缺失可选依赖时，在没有 `node_modules` 的隔离目录重新生成锁文件，并核对已有版本及各平台依赖，不能跳过 CI 的干净安装。
+前端依赖升级要用本机与 CI 的 npm 主版本验证 `npm ci`。已有安装目录下的成功安装不能证明锁文件完整；缺失可选依赖时，用 CI 的 npm 主版本在仅含 manifest/lock、没有 `node_modules` 的临时目录重新生成锁文件，再验证两个 npm 主版本并核对已有版本及各平台依赖。空目录中的成功生成也不能替代干净安装验证；不要手工补锁记录或跳过 CI 安装。
 
-For frontend dependency upgrades, verify `npm ci` with both the local and CI npm major versions. An existing installation does not prove lockfile completeness. If optional records are missing, regenerate the lock in a directory without `node_modules`, then review existing versions and platform dependencies instead of bypassing CI's clean install.
+For frontend dependency upgrades, verify `npm ci` with both the local and CI npm major versions. An existing installation does not prove lockfile completeness. If optional records are missing, regenerate with CI's npm major in a temporary directory containing only the manifest and lockfile, without `node_modules`. Verify both npm majors and review existing versions and platform dependencies. Successful generation in an empty directory still does not replace clean-install validation; do not patch lock records by hand or bypass CI installation.
 
 ```bash
 ./scripts/check.sh --quick frontend src/windows/settings/ConfigInput.tsx
