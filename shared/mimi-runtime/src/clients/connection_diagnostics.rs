@@ -204,23 +204,6 @@ pub async fn check_speech_service(
 
 /// Native Android adapters supply their platform trust and proxy snapshots;
 /// the STT handshake and text request remain in this shared implementation.
-pub async fn check_xai_speech_with_network(
-    configuration: &LiveTranslationConfiguration,
-    include_translation: bool,
-    speech_network: ProviderNetwork,
-    text_network: ProviderNetwork,
-) -> ConnectionDiagnostic {
-    let started = Instant::now();
-    let result = probe_independent_speech(
-        configuration,
-        include_translation,
-        speech_network,
-        text_network,
-    )
-    .await;
-    timed_diagnostic(result, started)
-}
-
 pub async fn check_independent_speech_with_network(
     configuration: &LiveTranslationConfiguration,
     include_translation: bool,

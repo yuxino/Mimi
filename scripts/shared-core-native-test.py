@@ -81,22 +81,6 @@ class NativeBuildTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "stale for Cargo.lock"):
                     verify.verify_license_notices(notices)
 
-    def test_dependency_notices_match_the_reviewed_lockfile_inventory(self):
-        notices = verify.NOTICE_SOURCE.read_bytes()
-        verify.verify_license_notices(notices)
-        with self.assertRaisesRegex(ValueError, "reviewed inventory"):
-            verify.verify_license_notices(b"License notices")
-        with tempfile.TemporaryDirectory() as root:
-            old_lock = verify.LOCKFILE
-            try:
-                path = Path(root) / "Cargo.lock"
-                path.write_bytes(old_lock.read_bytes() + b"\n# dependency graph changed\n")
-                verify.LOCKFILE = path
-                with self.assertRaisesRegex(ValueError, "stale for Cargo.lock"):
-                    verify.verify_license_notices(notices)
-            finally:
-                verify.LOCKFILE = old_lock
-
     def test_reviewed_toolchain_and_four_abis_are_pinned(self):
         config, abis = build.native_config()
         self.assertEqual(config["minSdk"], "29")

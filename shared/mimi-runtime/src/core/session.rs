@@ -603,13 +603,6 @@ impl TranslationSessionController {
             )
     }
 
-    pub fn identified_source_is_current_from(&self, source: AudioSource, id: &str) -> bool {
-        self.audio_input.sources().contains(&source)
-            && self.sources[source_index(source)]
-                .subtitle_reducer
-                .identified_source_is_current(id)
-    }
-
     fn apply_to_sources(&mut self, action: impl Fn(&mut SourceSessionController)) {
         for source in self.audio_input.sources() {
             action(&mut self.sources[source_index(*source)]);

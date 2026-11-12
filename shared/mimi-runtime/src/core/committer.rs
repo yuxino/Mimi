@@ -101,30 +101,6 @@ mod tests {
     }
 
     #[test]
-    fn keeps_an_incomplete_draft_pending() {
-        let mut committer = ASRDraftCommitter::default();
-
-        assert_eq!(committer.update_draft("今日は"), "今日は");
-        assert!(committer.has_pending_text());
-        assert_eq!(
-            committer.preview_latest_draft(false).as_deref(),
-            Some("今日は")
-        );
-    }
-
-    #[test]
-    fn previews_complete_sentences_without_losing_the_tail() {
-        let mut committer = ASRDraftCommitter::default();
-        let draft = "こんにちは。今日は天気が";
-        let _ = committer.update_draft(draft);
-
-        assert_eq!(
-            committer.preview_latest_draft(false).as_deref(),
-            Some(draft)
-        );
-    }
-
-    #[test]
     fn previews_multiple_sentences_with_the_incomplete_tail() {
         let mut committer = ASRDraftCommitter::default();
         let _ = committer.update_draft("あ！え？うん。まだ");
@@ -155,8 +131,15 @@ mod tests {
     #[test]
     fn maximum_wait_requires_the_configured_length() {
         let mut committer = ASRDraftCommitter::new(8);
-        let _ = committer.update_draft("short");
-        assert_eq!(committer.preview_latest_draft(true), None);
+        for draft in ["short", "今日は"] {
+            assert_eq!(committer.update_draft(draft), draft);
+            assert!(committer.has_pending_text());
+            assert_eq!(
+                committer.preview_latest_draft(false).as_deref(),
+                Some(draft)
+            );
+            assert_eq!(committer.preview_latest_draft(true), None);
+        }
 
         let draft = "First sentence. trailing words";
         let _ = committer.update_draft(draft);
