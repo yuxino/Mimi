@@ -443,6 +443,14 @@ calling a run landscape acceptance; rotation settings alone are
 insufficient when the launcher requests a fixed orientation. Check the caption
 reading viewport as well as the panel's outer bounds at large fonts.
 
+Rotation fixtures must wait for the actual display rotation and completed native
+measurement at the saved width/height. An in-progress resize can change width
+before the display rotates. Capture the original dimensions in one main-thread
+sample after layout is ready, and require exact restoration on return. After
+stopping a fixture, restore every appearance preference and first-run flag it
+changed, including flag presence, and flush pending writes before instrumentation
+exits. Use semantic settings APIs rather than copying encrypted preference files.
+
 Android appearance previews reuse the actual normal/immersive caption Views.
 Measure at the real safe window width and height, then scale the complete frame
 uniformly into a stable pinned stage; never independently restyle or rewrap a

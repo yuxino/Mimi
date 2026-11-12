@@ -1,5 +1,38 @@
 # 集成实测记录
 
+## 2026-11-13 — Android overlay host cleanup
+
+- Source `b2b797f3`, based on `aaff4246`. Removed the uncalled preview setter,
+  unreachable alternate measurement and redundant touch forwarding. The host
+  subclass, complete child transform loop and floating-point centering expression
+  remain. The streaming fixture now waits for actual rotation and settled saved
+  geometry, requires exact original dimensions on return, and restores its
+  changed preferences and first-run flag through semantic settings APIs.
+- Controlled old/new API 35 arm64 emulator runs differed only in the host source
+  within each pair. Streaming and preview comparisons used the V4 observer;
+  overlay interaction was rerun on both sides with V5 to normalize one proven
+  fading-scrollbar paint while retaining raw paints and unchanged geometry.
+  Across those pairs, all 324 checkpoints and 504 non-clock bitmap pairs matched;
+  10 reading geometry and 22 input-state records also matched. The existing 140
+  cross-run clock-paint exclusions remained; same-run preview parity still
+  checked those frames. These are native View draws, not compositor equivalence.
+- Final source and APKs contained no temporary observers. Complete Android checks
+  passed 232 tests in each Debug/Release variant, including actual JNI, lint
+  with no errors/fatals (68/67 warnings), and four-ABI packaging/alignment checks.
+  The final native streaming run passed 92 cases and 1,296 updates; overlay
+  interactions, 260 preview cases and reading inputs also passed.
+  [Compositor screenshots and tested APK identity](https://github.com/yuxino/Mimi/pull/366#issuecomment-6831490116)
+  are attached to the PR, outside Git. Independent source/evidence review found
+  no blocking issue.
+- The earlier baseline restoration timeout lacked its original dimensions, so
+  its exact cause remains unknown. Later diagnostics separately proved that a
+  resize could satisfy the old landscape width predicate before rotation; this
+  does not explain the historical timeout. Failed evidence remains retained.
+  Private manifests, patches, raw comparisons and logs are under
+  `android-host-cleanup` in `2026-11-12-optimization-cycle-2`. All fixtures were
+  synthetic: no capture or provider requests. Physical-device/API 29 behavior,
+  full TalkBack interaction and performance gains remain unverified.
+
 ## 2026-11-13 — Volcano audio encoding allocations
 
 - Source `cef11607`, based on `e10b3ad5`. Audio requests now write the two
