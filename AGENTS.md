@@ -80,6 +80,24 @@ Preserve these product constraints:
 - Keep related action buttons compact, consistent, and right-aligned. Use existing icons. Configuration deletion uses a red destructive action and a standard confirmation dialog, never an expanding inline strip. Choosing a service type must not create a profile until the user confirms adding it. Display connection-check progress and results with the triggering action, including actual request duration; recognition and text translation have independent checks.
 - One-time operation feedback (copy, refresh, save, export, delete, quit, or up-to-date checks) belongs in the shared transient toast, never a full-width banner or a persistent paragraph that moves page content. Instant preference changes save quietly on success and report sanitized failures through that toast; do not swallow save rejections. Keep one toast per settings window, including inside an active modal, replace repeated notifications, and clear on navigation, native/DOM blur, close, hide and unmount. Keep unsaved-field validation/retry, connection-check results, ongoing storage failures and update actions visible beside their controls.
 - Read the relevant source and tests before changing behavior. For non-trivial behavior changes, add or update a design note in `docs/plans/`.
+- Use names that express domain intent and units, and keep the normal control
+  flow easy to follow. Make failure paths explicit; simplify the code being
+  changed without mixing in unrelated rewrites.
+- Check nearby comments against the implementation and its callers when changing
+  code. Correct or remove stale and misleading comments. Explain reasons,
+  invariants and non-obvious constraints rather than repeating operations; do not
+  present assumptions or unverified behavior as facts.
+- Group code by a coherent responsibility and lifecycle. Make mutable-state and
+  resource ownership, state transitions, side effects and error handling clear
+  at module boundaries so callers know which layer is responsible.
+- Extract a module or helper when it gives a responsibility a clear contract or
+  removes meaningful duplication. Keep straightforward local logic local; do
+  not split by arbitrary file length, add forwarding-only abstractions, or hide
+  unrelated responsibilities in generic `Manager` or `Utils` containers.
+- Review changed entry points from the next maintainer or agent's perspective:
+  the source and existing owning guide should show where behavior starts, who
+  owns its state and why exceptions exist, without needing conversation history.
+  Add only the missing explanation at its owner, not another task summary.
 - Keep portable UI-independent logic in `shared/mimi-core` or `shared/mimi-runtime`; keep Tauri, window, keyring, and OS-audio integration in the app-layer modules. Never import `tauri` types in the shared crates, `core/` or `clients/`.
 - Preserve Rust concurrency safety. Isolate mutable network or lifecycle state behind `Arc<Mutex<…>>` or actors; never hold a `std::sync::MutexGuard` across an `.await`.
 - Treat streaming drafts as replaceable previews and final events as durable subtitle history. Do not let preview work block, reorder, or overwrite final translations.
