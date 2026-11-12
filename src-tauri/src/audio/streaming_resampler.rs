@@ -1,5 +1,5 @@
 //! Stateful interleaved-audio downmixing and resampling shared by the
-//! Windows capture callback and platform-independent regression tests.
+//! native capture adapters and platform-independent regression tests.
 
 use crate::audio::SystemAudioCaptureError;
 use crate::core::pcm16::PCM16Encoder;
@@ -15,6 +15,7 @@ pub(crate) struct StreamingPcm16Resampler {
     pending_interleaved: Vec<f32>,
     pending_mono: Vec<f32>,
     resampler: Option<rubato::Fft<f32>>,
+    output_scratch: Vec<f32>,
 }
 
 impl StreamingPcm16Resampler {
@@ -40,6 +41,10 @@ impl StreamingPcm16Resampler {
                 .map_err(|_| SystemAudioCaptureError::AudioProcessingFailed)?,
             )
         };
+        let output_scratch = resampler
+            .as_ref()
+            .map(|resampler| Vec::with_capacity(resampler.output_frames_max()))
+            .unwrap_or_default();
         Ok(Self {
             channel_count,
             input_sample_rate_hz,
@@ -47,6 +52,7 @@ impl StreamingPcm16Resampler {
             pending_interleaved: Vec::new(),
             pending_mono: Vec::new(),
             resampler,
+            output_scratch,
         })
     }
 
@@ -83,22 +89,30 @@ impl StreamingPcm16Resampler {
         };
         let mut buffers = Vec::new();
         while self.pending_mono.len() >= RESAMPLE_CHUNK_FRAMES {
-            let output = match SequentialSlice::new(
-                &self.pending_mono[..RESAMPLE_CHUNK_FRAMES],
-                1,
-                RESAMPLE_CHUNK_FRAMES,
+            let output_frames = resampler.output_frames_next();
+            self.output_scratch.resize(output_frames, 0.0);
+            let output = match (
+                SequentialSlice::new(
+                    &self.pending_mono[..RESAMPLE_CHUNK_FRAMES],
+                    1,
+                    RESAMPLE_CHUNK_FRAMES,
+                ),
+                SequentialSlice::new_mut(&mut self.output_scratch, 1, output_frames),
             ) {
-                Ok(input) => resampler
-                    .process(&input, None)
-                    .map(|output| output.take_data())
+                (Ok(input), Ok(mut output)) => resampler
+                    .process_into_buffer(&input, &mut output, None)
                     .map_err(|_| SystemAudioCaptureError::AudioProcessingFailed),
-                Err(_) => Err(SystemAudioCaptureError::AudioProcessingFailed),
+                _ => Err(SystemAudioCaptureError::AudioProcessingFailed),
             };
             // Match the previous drain-before-process behavior on both success
             // and failure while avoiding an owned input copy.
             self.pending_mono.drain(..RESAMPLE_CHUNK_FRAMES);
-            let output = output?;
-            let pcm = PCM16Encoder::encode(&[output]);
+            let pcm = output.map(|(_, written)| {
+                self.output_scratch.truncate(written);
+                PCM16Encoder::encode(std::slice::from_ref(&self.output_scratch))
+            });
+            self.output_scratch.clear();
+            let pcm = pcm?;
             if !pcm.is_empty() {
                 buffers.push(pcm);
             }
@@ -141,24 +155,34 @@ mod tests {
     }
 
     #[test]
-    fn resampling_48k_to_24k_preserves_audible_signal() {
-        let mut resampler = StreamingPcm16Resampler::new(48_000, 24_000, 2).unwrap();
-        let output = resampler
-            .push_interleaved(&stereo_sine(0, RESAMPLE_CHUNK_FRAMES))
-            .unwrap();
-        let peak = output
-            .iter()
-            .flatten()
-            .copied()
-            .collect::<Vec<_>>()
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|sample| i32::from(i16::from_le_bytes(*sample)).abs())
-            .max()
-            .unwrap_or(0);
+    fn resampling_tracks_output_lengths_and_preserves_audible_signal() {
+        for (input_rate, target_rate, frame_counts) in [
+            (48_000, 24_000, [512, 512, 512, 512]),
+            (48_000, 16_000, [258, 344, 344, 344]),
+            (44_100, 24_000, [480, 480, 640, 480]),
+            (44_100, 16_000, [320, 320, 320, 480]),
+        ] {
+            let mut resampler = StreamingPcm16Resampler::new(input_rate, target_rate, 2).unwrap();
+            for (block, frames) in frame_counts.into_iter().enumerate() {
+                let output = resampler
+                    .push_interleaved(&stereo_sine(
+                        block * RESAMPLE_CHUNK_FRAMES,
+                        RESAMPLE_CHUNK_FRAMES,
+                    ))
+                    .unwrap();
+                assert_eq!(output.len(), 1);
+                assert_eq!(output[0].len(), frames * 2);
+                let peak = output[0]
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|sample| i32::from(i16::from_le_bytes(*sample)).abs())
+                    .max()
+                    .unwrap_or(0);
 
-        assert!(peak > 100, "resampled PCM unexpectedly silent: peak={peak}");
+                assert!(peak > 100, "resampled PCM unexpectedly silent: peak={peak}");
+            }
+        }
     }
 
     #[test]
@@ -178,6 +202,7 @@ mod tests {
 
         assert_eq!(output.len(), 1);
         assert!(resampler.pending_mono.is_empty());
+        assert_eq!(resampler.output_scratch.capacity(), 0);
         assert!(resampler.pending_mono.capacity() >= 256);
         let allocation = resampler.pending_mono.as_ptr();
         let capacity = resampler.pending_mono.capacity();
@@ -187,6 +212,7 @@ mod tests {
 
         assert_eq!(output.len(), 1);
         assert!(resampler.pending_mono.is_empty());
+        assert_eq!(resampler.output_scratch.capacity(), 0);
         assert_eq!(resampler.pending_mono.capacity(), capacity);
         assert_eq!(resampler.pending_mono.as_ptr(), allocation);
     }
