@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage, UI_LANGUAGES } from "../../lib/i18n";
@@ -29,11 +29,13 @@ const startedAtMs = new Date(2026, 9, 10, 12, 34, 56).getTime();
 let archive: { transcriptCount: number; audioBytes: number };
 let host: HTMLDivElement;
 let root: Root;
+let commits: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 9, 18, 12));
   vi.clearAllMocks();
+  commits = 0;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   setStoredUiLanguage("en");
   archive = { transcriptCount: 30, audioBytes: 0 };
@@ -54,7 +56,7 @@ afterEach(async () => {
 });
 
 async function mount() {
-  await act(async () => root.render(<SessionExport visible />));
+  await act(async () => root.render(<Profiler id="archive" onRender={() => { commits++; }}><SessionExport visible /></Profiler>));
   await tick(0);
 }
 async function tick(ms = 1_000) {
@@ -85,12 +87,14 @@ it("bounds formatter work in the library and reader without remounting visible c
   const historyButton = host.querySelector(".session-history__group button");
   expect(historyButton).not.toBeNull();
   const reads = ipc.sessionArchiveState.mock.calls.length;
+  const libraryCommits = commits;
   for (let index = 0; index < 5; index++) {
     observer.constructor.mockClear(); observer.instances.length = 0;
     await tick();
-    expect(observer.constructor).toHaveBeenCalledTimes(2);
-    expect(observer.instances.find(item => item.options?.year)?.format).toHaveBeenCalledOnce();
-    expect(observer.instances.find(item => item.options?.hour && !item.options.second)?.format).toHaveBeenCalledTimes(20);
+    expect(commits).toBe(libraryCommits);
+    expect(observer.constructor).toHaveBeenCalledOnce();
+    expect(observer.instances[0].options).toBeUndefined();
+    expect(observer.instances[0].format).not.toHaveBeenCalled();
     expect(host.querySelector(".session-history__group button")).toBe(historyButton);
     expect(host.querySelector("article")).toBeNull();
   }
@@ -99,11 +103,14 @@ it("bounds formatter work in the library and reader without remounting visible c
   await openCurrentReader();
   const article = host.querySelector("article");
   expect(article).not.toBeNull();
+  const readerCommits = commits;
   for (let index = 0; index < 5; index++) {
     observer.constructor.mockClear(); observer.instances.length = 0;
     await tick();
+    expect(commits).toBe(readerCommits);
     expect(observer.constructor).toHaveBeenCalledOnce();
-    expect(observer.instances.find(item => item.options?.second)?.format).toHaveBeenCalledTimes(30);
+    expect(observer.instances[0].options).toBeUndefined();
+    expect(observer.instances[0].format).not.toHaveBeenCalled();
     expect(host.querySelector("article")).toBe(article);
     expect(host.querySelector(".session-history__group")).toBeNull();
   }
@@ -173,6 +180,22 @@ it("uses fresh default-time-zone formatters on a later poll", async () => {
   timeZone = "UTC";
   await tick();
   expect(transcriptTime()).toBe(new OriginalFormatter("en", { ...transcriptOptions, timeZone }).format(startedAtMs));
+});
+
+it("refreshes historical times when switching zones with the same current offset", async () => {
+  vi.setSystemTime(new Date("2026-01-18T12:00:00Z"));
+  let timeZone = "UTC";
+  observeFormatters(() => timeZone);
+  const currentOffset = (zone: string) => new OriginalFormatter("en", { timeZone: zone, timeZoneName: "longOffset" })
+    .formatToParts(new Date()).find(part => part.type === "timeZoneName")?.value;
+  expect(currentOffset("UTC")).toBe(currentOffset("Europe/London"));
+  await mount();
+  const originalTime = host.querySelector(".session-history__group button span")?.textContent;
+  timeZone = "Europe/London";
+  await tick();
+  const updatedTime = host.querySelector(".session-history__group button span")?.textContent;
+  expect(updatedTime).toBe(new OriginalFormatter("en", { ...sessionOptions, timeZone }).format(startedAtMs));
+  expect(updatedTime).not.toBe(originalTime);
 });
 
 it("does not construct date formatters for an empty archive and history", async () => {

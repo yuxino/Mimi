@@ -25,7 +25,7 @@ import {
   SettingsSelect,
   SettingsSection,
 } from "./SettingsPrimitives";
-import { monitorSessionArchive } from "./sessionArchiveMonitor";
+import { monitorSessionArchive, sameSessionArchiveState } from "./sessionArchiveMonitor";
 import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { useSettingsToast } from "./useSettingsToast";
 import { SettingsActionMenu } from "./SettingsActionMenu";
@@ -33,6 +33,14 @@ import { SessionAudioPlayer } from "./SessionAudioPlayer";
 import { SettingsHelp } from "./SettingsHelp";
 import { sessionWorkspaceCopy } from "./sessionWorkspaceCopy";
 import "./session-workspace.css";
+
+function archivePresentationKey(hasDates: boolean): string {
+  // Polling also owns calendar refresh. Keep midnight, OS time-zone and locale
+  // changes visible even when archive sizes and limits have not changed.
+  return hasDates
+    ? `${effectiveUiLanguage()}:${new Date().toDateString()}:${new Intl.DateTimeFormat().resolvedOptions().timeZone}`
+    : effectiveUiLanguage();
+}
 
 export function SessionExport({ visible, onReaderChange }: { visible: boolean; onReaderChange?: (open: boolean) => void }) {
   const documentVisible = useDocumentVisibility();
@@ -45,6 +53,8 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const audioInput = useStore((state) => state.settings.audioInput);
   const saveSettings = useStore((state) => state.saveSettings);
   const [archive, setArchive] = useState<SessionArchiveState>();
+  const receivedArchive = useRef<SessionArchiveState>(undefined);
+  const archiveReadFailed = useRef(false);
   const [transcript, setTranscript] = useState<{ owner: symbol | string; page: TranscriptPage }>();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -83,6 +93,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const operation = useRef(false);
   const lifetime = useRef(0);
   const transcriptRequest = useRef(0);
+  const requestedQuery = useRef("");
   const historyRequest = useRef(0);
   const audioRequest = useRef(0);
   const audioInFlight = useRef(false);
@@ -100,6 +111,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   // Counts can match across a reset. Current reads belong to an exact local
   // lifecycle, while saved-history reads remain independent of live capture.
   const archiveContext = useMemo(() => Symbol(`${active}:${retainHistory}`), [active, retainHistory]);
+  const archivePresentation = useRef({ hasDates: false, key: "" });
   const latestArchiveContext = useRef(archiveContext);
   useLayoutEffect(() => { latestArchiveContext.current = archiveContext; }, [archiveContext]);
   const transcriptContext = selectedId ?? archiveContext;
@@ -118,6 +130,10 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const selectedAudioSource = audioSources.includes(recordingSource) ? recordingSource : audioSources[0];
   const availableCount = selectedId ? (selected?.count ?? 0) : (archive?.transcriptCount ?? 0);
   const displayedTranscript = availableCount && transcript?.owner === transcriptContext ? transcript.page : undefined;
+  useLayoutEffect(() => {
+    const hasDates = readerOpen ? Boolean(selected || displayedTranscript?.entries.length) : history.length > 0;
+    archivePresentation.current = { hasDates, key: archivePresentationKey(hasDates) };
+  });
   // A changed read is pending during render, before its effect starts. Late
   // completions can settle only that visit's identity, never a newer retry.
   const historyRead = useMemo(() => ({ pageVisible, active, historyRefresh }), [pageVisible, active, historyRefresh]);
@@ -216,10 +232,24 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     const current = monitorSessionArchive(
       sessionArchiveState,
       (state) => {
-        setArchive(state);
-        setReadError(false);
+        const key = archivePresentationKey(archivePresentation.current.hasDates);
+        const presentationChanged = key !== archivePresentation.current.key;
+        archivePresentation.current.key = key;
+        if (presentationChanged || !sameSessionArchiveState(receivedArchive.current, state)) {
+          receivedArchive.current = state;
+          setArchive(presentationChanged ? { ...state } : state);
+        }
+        if (archiveReadFailed.current) {
+          archiveReadFailed.current = false;
+          setReadError(false);
+        }
       },
-      () => setReadError(true),
+      () => {
+        if (!archiveReadFailed.current) {
+          archiveReadFailed.current = true;
+          setReadError(true);
+        }
+      },
     );
     monitor.current = current;
     return () => {
@@ -267,6 +297,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     }
     const request = ++transcriptRequest.current;
     const timer = setTimeout(() => {
+      requestedQuery.current = query;
       void (selectedId ? sessionHistoryPage(selectedId, query, page) : sessionTranscriptPage(query, page)).then(
         (result) => {
           if (request !== transcriptRequest.current) return;
@@ -278,7 +309,9 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
           if (request === transcriptRequest.current) setTranscriptError(true);
         },
       ).finally(() => { if (request === transcriptRequest.current) setSettledTranscriptRead(transcriptRead); });
-    }, query ? 180 : 0);
+    // Coalesce typing only. Pagination, retries and archive updates for the
+    // already requested query should not pay the search delay again.
+    }, query && query !== requestedQuery.current ? 180 : 0);
     return () => {
       transcriptRequest.current += 1;
       clearTimeout(timer);
@@ -584,7 +617,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
               </article>
             )) : (
               <p className="session-transcript__empty">
-                {!availableCount ? (canExportAudio ? I18N.settings.historyAudioOnly : I18N.settings.transcriptEmpty) : query ? I18N.settings.transcriptNoMatches : I18N.settings.transcriptLoading}
+                {!availableCount ? (canExportAudio ? I18N.settings.historyAudioOnly : I18N.settings.transcriptEmpty) : query && !transcriptLoading ? I18N.settings.transcriptNoMatches : I18N.settings.transcriptLoading}
               </p>
             )}
           </div>

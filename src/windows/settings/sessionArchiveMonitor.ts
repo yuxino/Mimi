@@ -1,5 +1,18 @@
 import type { SessionArchiveState } from "../../lib/types";
 
+/** Native status is JSON metadata; audio-source order is meaningful too. */
+export function sameSessionArchiveState(before: SessionArchiveState | undefined, after: SessionArchiveState): boolean {
+  if (before === after) return true;
+  if (!before || Object.keys(before).length !== Object.keys(after).length) return false;
+  return (Object.keys(after) as (keyof SessionArchiveState)[]).every(key => {
+    if (!Object.prototype.hasOwnProperty.call(before, key)) return false;
+    const previous = before[key], next = after[key];
+    return Array.isArray(previous) && Array.isArray(next)
+      ? previous.length === next.length && previous.every((value, index) => value === next[index])
+      : Object.is(previous, next);
+  });
+}
+
 /** Serial polling with explicit invalidation around native mutations. Content
  * never crosses IPC; only archive sizes and limit flags are observed. */
 export function monitorSessionArchive(

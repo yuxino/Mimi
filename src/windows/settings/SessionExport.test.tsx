@@ -123,6 +123,68 @@ beforeEach(async () => {
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
+it.each([0, 1])("debounces search edits but requests the next matching page immediately (session %s)", async index => {
+  await select(index);
+  const read = index === 0 ? ipc.sessionTranscriptPage : ipc.sessionHistoryPage;
+  read.mockClear();
+  await type(input(I18N.settings.transcriptSearch), "Syn");
+  await flush(100);
+  await type(input(I18N.settings.transcriptSearch), "Synthetic");
+  await flush(179);
+  expect(read).not.toHaveBeenCalled();
+  await flush(1);
+  expect(read).toHaveBeenCalledOnce();
+  await click(button(I18N.settings.transcriptNext));
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenLastCalledWith(...(index === 0 ? ["Synthetic", 1] : ["A", "Synthetic", 1]));
+  expect(host.textContent).toContain(I18N.settings.transcriptPage(2, 3));
+  await click(button(I18N.settings.transcriptPrevious));
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(read).toHaveBeenLastCalledWith(...(index === 0 ? ["Synthetic", 0] : ["A", "Synthetic", 0]));
+});
+
+it("shows loading until a search returns an empty result", async () => {
+  const pending = deferred();
+  ipc.sessionTranscriptPage.mockReturnValueOnce(pending.promise);
+  await type(input(I18N.settings.transcriptSearch), "Missing");
+  expect(host.textContent).toContain(I18N.settings.transcriptLoading);
+  expect(host.textContent).not.toContain(I18N.settings.transcriptNoMatches);
+  await flush(180);
+  expect(host.textContent).toContain(I18N.settings.transcriptLoading);
+  await act(async () => pending.resolve({ total: 0, page: 0, entries: [] }));
+  expect(host.textContent).toContain(I18N.settings.transcriptNoMatches);
+});
+
+it("retries an unchanged search immediately and rejects its late reply after clearing the query", async () => {
+  ipc.sessionTranscriptPage.mockRejectedValueOnce(new Error("synthetic failure"));
+  await search("Synthetic");
+  expect(host.textContent).toContain(I18N.settings.transcriptReadFailed);
+  const pending = deferred();
+  ipc.sessionTranscriptPage.mockReturnValueOnce(pending.promise);
+  const reads = ipc.sessionTranscriptPage.mock.calls.length;
+  await click(button(I18N.settings.retryUpdate));
+  expect(ipc.sessionTranscriptPage).toHaveBeenCalledTimes(reads + 1);
+  expect(button(I18N.settings.retryUpdate).disabled).toBe(true);
+  await type(input(I18N.settings.transcriptSearch), "");
+  await flush();
+  expect(ipc.sessionTranscriptPage).toHaveBeenLastCalledWith("", 0);
+  expect(host.textContent).toContain("Synthetic current");
+  await act(async () => pending.resolve(page("stale")));
+  expect(host.textContent).not.toContain("Synthetic stale");
+  expect(host.textContent).not.toContain(I18N.settings.transcriptReadFailed);
+});
+
+it("recovers an archive read failure even when the next status is identical", async () => {
+  ipc.sessionArchiveState.mockRejectedValueOnce(new Error("synthetic metadata failure"));
+  await flush(1000);
+  expect(host.textContent).toContain(I18N.settings.sessionArchiveReadFailed);
+  expect(button(copy().export).disabled).toBe(true);
+  await flush(1000);
+  expect(host.textContent).not.toContain(I18N.settings.sessionArchiveReadFailed);
+  expect(button(copy().export).disabled).toBe(false);
+  expect(host.textContent).toContain("Synthetic current");
+});
+
 it("opens the library without reading content and restores its scroll and selected entry after reading", async () => {
   await act(() => root.render(null));
   ipc.sessionTranscriptPage.mockClear(); ipc.sessionHistoryPage.mockClear();

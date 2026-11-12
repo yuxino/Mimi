@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionArchiveState } from "../../lib/types";
-import { monitorSessionArchive } from "./sessionArchiveMonitor";
+import { monitorSessionArchive, sameSessionArchiveState } from "./sessionArchiveMonitor";
 
 const empty: SessionArchiveState = {
   transcriptCount: 0,
@@ -18,6 +18,23 @@ function deferred() {
 }
 
 afterEach(() => vi.useRealTimers());
+
+it("recognizes equal archive metadata but retains every status and source change", () => {
+  expect(sameSessionArchiveState(undefined, empty)).toBe(false);
+  expect(sameSessionArchiveState(empty, { ...empty })).toBe(true);
+  const dual = { ...empty, audioSources: ["system", "microphone"] as const };
+  const before = { ...dual, audioSources: [...dual.audioSources] };
+  expect(sameSessionArchiveState(before, { ...before, audioSources: [...before.audioSources] })).toBe(true);
+  const changes: Partial<SessionArchiveState>[] = [
+    { transcriptCount: 1 }, { transcriptLimited: true }, { audioBytes: 8 },
+    { audioLimited: true }, { sampleRate: 48_000 }, { historySaveError: true },
+    { audioSources: ["microphone", "system"] }, { audioSources: ["system"] },
+    { audioSources: [] }, { audioSources: undefined },
+  ];
+  for (const change of changes) expect(sameSessionArchiveState(before, { ...before, ...change })).toBe(false);
+  expect(sameSessionArchiveState(before, empty)).toBe(false);
+  expect(sameSessionArchiveState(empty, { ...empty, futureFlag: true } as SessionArchiveState)).toBe(false);
+});
 
 describe("session archive polling", () => {
   it("serializes refreshes and discards a snapshot superseded by a mutation", async () => {
