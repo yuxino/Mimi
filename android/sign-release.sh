@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 : "${ANDROID_KEY_PASSWORD:?Set the key password}"
 : "${ANDROID_SIGNING_CERT_SHA256:?Set the pinned release certificate SHA-256}"
 
-sdk_tools="$ANDROID_HOME/build-tools/35.0.0"
+sdk_tools="$ANDROID_HOME/build-tools/36.0.0"
 input="${1:-app/build/outputs/apk/release/app-release-unsigned.apk}"
 mapping="${2:-app/build/outputs/mapping/release/mapping.txt}"
 version="$(sed -n 's/^versionName=//p' version.properties)"

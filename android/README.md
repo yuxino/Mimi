@@ -130,25 +130,26 @@ Setup, permission and audio-recovery instructions remain visible.
 ```sh
 export ANDROID_HOME=/path/to/android-sdk
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018"
+"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;36.0.0" "ndk;27.2.12479018"
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Requires Rust 1.88+, Python 3, JDK 17, Android SDK platform 35, build-tools
-35.0.0 and NDK 27.2.12479018. Gradle builds the actual shared Rust core for JVM
+36.0.0 and NDK 27.2.12479018. Gradle builds the actual shared Rust core for JVM
 tests and all four packaged Android ABIs; a missing native dependency fails
 the build. APK verification checks 16 KB ELF/ZIP alignment and license notices.
 See [shared JNI build](../shared/mimi-android-jni/README.md) for the state boundary,
 toolchain pins and cache paths. The wrapper pins
-Gradle 8.10.2 and verifies its distribution checksum. minSdk 29, targetSdk 35,
-Kotlin 2.0, AGP 8.7. CI tests/lints both variants and produces a debug APK and an
-unsigned release APK. The unsigned artifact is for signing, not installation;
-device capture remains a separate manual check.
+Gradle 9.6.0 and verifies its distribution checksum. The app uses minSdk 29,
+targetSdk 35, AGP 9.5.1 and its built-in Kotlin 2.2.10, with Java/Kotlin target 17.
+CI tests/lints both variants and produces a debug APK and an unsigned release
+APK. The unsigned artifact is for signing, not installation; device capture
+remains a separate manual check.
 
-Release builds use R8 with Android's default optimized rules and resource
-shrinking; debug builds remain unminified. All four ABIs and nine UI languages
-remain included. Release APK verification requires its matching
+Release builds use R8 with Android's default optimized rules and integrated
+code/resource shrinking; debug builds remain unminified. All four ABIs and nine
+UI languages remain included. Release APK verification requires its matching
 `app/build/outputs/mapping/release/mapping.txt` and checks the original class and
 member owners for retired runtime code. When CI uploads acceptance packages,
 `mimi-android-unsigned-release` keeps the APK at its existing flat path;

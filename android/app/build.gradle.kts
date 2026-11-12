@@ -1,8 +1,9 @@
 import java.util.Properties
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 val appVersion = Properties().apply {
@@ -82,10 +83,17 @@ val buildSharedCoreHost = tasks.register<Exec>("buildSharedCoreHost") {
     outputs.dir(sharedCoreHostOutput)
 }
 
+val sharedTestFixtures = tasks.register<Jar>("sharedTestFixtures") {
+    // Keep shared Rust sources and build caches off the JVM test classpath.
+    from(rootProject.file("../shared")) { include("*.json") }
+    archiveFileName.set("shared-test-fixtures.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("generated/test-fixtures"))
+}
+
 android {
     namespace = "app.yuxino.mimi.android"
     compileSdk = 35
-    buildToolsVersion = "35.0.0"
+    buildToolsVersion = "36.0.0"
     ndkVersion = sharedCoreNdkVersion
 
     defaultConfig {
@@ -96,6 +104,10 @@ android {
         versionName = releaseVersionName
         testInstrumentationRunner = "app.yuxino.mimi.android.UiSmokeInstrumentation"
         ndk { abiFilters += sharedCoreAbis }
+    }
+
+    buildFeatures {
+        resValues = true
     }
 
     buildTypes {
@@ -116,19 +128,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    sourceSets.getByName("test").resources.apply {
-        srcDir(rootProject.file("../shared"))
-        // Shared Rust sources and build caches are not JVM test resources.
-        include("*.json")
-    }
-
-    sourceSets.getByName("main").assets.srcDir(rootProject.file("native-licenses"))
+    sourceSets.getByName("main").assets.directories += rootProject.file("native-licenses").absolutePath
 
     packaging { jniLibs.useLegacyPackaging = false }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 }
 
 val pinnedNdk = androidComponents.sdkComponents.sdkDirectory.map { it.dir("ndk/$sharedCoreNdkVersion") }
@@ -147,8 +149,25 @@ for (variant in listOf("debug", "release")) {
         inputs.property("ndkVersion", sharedCoreNdkVersion)
         outputs.dir(output)
     }
-    android.sourceSets.getByName(variant).jniLibs.srcDir(output)
+    android.sourceSets.getByName(variant).jniLibs.directories += output.get().asFile.absolutePath
     tasks.matching { it.name == "merge${suffix}JniLibFolders" }.configureEach { dependsOn(nativeBuild) }
+
+    tasks.withType<KotlinCompile>().matching {
+        it.name == "compile${suffix}UnitTestKotlin"
+    }.configureEach {
+        // Local JVM tests use org.json's implementation, including similar/keySet.
+        // Kotlin 2.1.20+ otherwise puts Android's more limited JSON stubs first.
+        val originalLibraries = project.files(libraries.from.toList())
+        val jvmJson = configurations.named("${variant}UnitTestCompileClasspath").map { classpath ->
+            classpath.incoming.artifactView {
+                componentFilter { component ->
+                    component is ModuleComponentIdentifier &&
+                        component.group == "org.json" && component.module == "json"
+                }
+            }.files
+        }
+        libraries.setFrom(jvmJson, originalLibraries)
+    }
 
     val apkName = if (variant == "release") "app-release-unsigned.apk" else "app-debug.apk"
     val apk = layout.buildDirectory.file("outputs/apk/$variant/$apkName")
@@ -187,4 +206,5 @@ dependencies {
     compileOnly("com.google.code.findbugs:jsr305:3.0.2")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testRuntimeOnly(files(sharedTestFixtures.flatMap { it.archiveFile }))
 }

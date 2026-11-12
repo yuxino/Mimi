@@ -58,7 +58,7 @@ jobs:
       - name: Install Android SDK packages
         run: |
           ndk_version="$(sed -n 's/^ndkVersion=//p' android/shared-core.properties)"
-          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;$ndk_version"
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;36.0.0" "ndk;$ndk_version"
       - name: Unit tests, lint and Android build variants
         working-directory: android
         run: ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest lintDebug lintRelease assembleDebugAndroidTest verifySharedCoreDebugApk verifySharedCoreReleaseApk

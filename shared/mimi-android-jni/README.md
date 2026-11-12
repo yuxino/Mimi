@@ -26,8 +26,8 @@ native entry points or libraries fail the build. Build outputs and Rust caches
 remain ignored under `android/app/build` and `shared/target`.
 
 NDK r27 needs explicit `max-page-size=16384` linker flags; the build script
-also sets `common-page-size=16384`. AGP 8.7 uses uncompressed native libraries
-with 16 KB APK alignment. See the official
+also sets `common-page-size=16384`. Android packaging keeps native libraries
+uncompressed with 16 KB APK alignment. See the official
 [16 KB page-size guidance](https://developer.android.com/guide/practices/page-sizes)
 and [NDK toolchain integration](https://developer.android.com/ndk/guides/other_build_systems).
 Artifact alignment does not establish execution on a 16 KB device; capture and
