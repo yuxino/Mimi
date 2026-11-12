@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">豆包同時通訳 2.0 で原文と訳文をリアルタイムに出力します。\n翻訳サービスだけを変更することはできません。</string>
     <string name="guide_detail_tencent">Tencent Cloud が音声認識と翻訳をリアルタイムに行います。\n翻訳サービスだけを変更することはできません。</string>
     <string name="guide_detail_baidu">Baidu が音声認識と翻訳をリアルタイムに行います。\n翻訳サービスだけを変更することはできません。</string>
-    <string name="guide_detail_xai">xAI のストリーミング音声認識に、別のテキスト翻訳サービスを選んで組み合わせられます。\\n発話の切れ目で翻訳する Grok Voice も選べます。</string>
+    <string name="guide_detail_xai">xAI のストリーミング音声認識に、別のテキスト翻訳サービスを選んで組み合わせられます。\n発話の切れ目で翻訳する Grok Voice も選べます。</string>
     <string name="guide_help_dashscope">Model Studio を有効にして API キーを作成してください。同時通訳には北京ワークスペース ID も必要です。</string>
     <string name="guide_help_openai">OpenAI API のプロジェクトと Realtime にアクセスできる API Key を作成してください。ChatGPT の契約には API 利用料は含まれません。</string>
     <string name="guide_help_gemini">Google AI Studio で Gemini API Key を作成し、プロジェクトが Live API を使用できるか確認してください。</string>

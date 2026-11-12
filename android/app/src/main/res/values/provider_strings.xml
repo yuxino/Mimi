@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">Uses Doubao Simultaneous Interpretation 2.0 to return original text and translations in real time.\nThe translation service cannot be changed separately.</string>
     <string name="guide_detail_tencent">Tencent Cloud recognizes and translates speech in real time.\nThe translation service cannot be changed separately.</string>
     <string name="guide_detail_baidu">Baidu recognizes and translates speech in real time.\nThe translation service cannot be changed separately.</string>
-    <string name="guide_detail_xai">Use xAI streaming recognition with a separate text translator of your choice.\\nGrok Voice is also available for translation after speech pauses.</string>
+    <string name="guide_detail_xai">Use xAI streaming recognition with a separate text translator of your choice.\nGrok Voice is also available for translation after speech pauses.</string>
     <string name="guide_help_dashscope">Enable Model Studio and create an API key. Simultaneous translation also requires a Beijing workspace ID.</string>
     <string name="guide_help_openai">Create an OpenAI API project and key with Realtime access. ChatGPT subscriptions do not include API usage.</string>
     <string name="guide_help_gemini">Create a Gemini API key in Google AI Studio and check Live API availability for your project.</string>

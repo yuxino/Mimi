@@ -8,7 +8,7 @@
     <string name="guide_detail_volcano">ใช้ Doubao Simultaneous Interpretation 2.0 แสดงต้นฉบับและคำแปลแบบเรียลไทม์\nไม่สามารถเปลี่ยนเฉพาะบริการแปลได้</string>
     <string name="guide_detail_tencent">Tencent Cloud รู้จำเสียงและแปลแบบเรียลไทม์\nไม่สามารถเปลี่ยนเฉพาะบริการแปลได้</string>
     <string name="guide_detail_baidu">Baidu รู้จำเสียงและแปลแบบเรียลไทม์\nไม่สามารถเปลี่ยนเฉพาะบริการแปลได้</string>
-    <string name="guide_detail_xai">ใช้การรู้จำเสียงสตรีมมิงของ xAI กับบริการแปลข้อความที่เลือกแยกกันได้\\nหรือเลือก Grok Voice ที่แปลหลังช่วงหยุดพูด</string>
+    <string name="guide_detail_xai">ใช้การรู้จำเสียงสตรีมมิงของ xAI กับบริการแปลข้อความที่เลือกแยกกันได้\nหรือเลือก Grok Voice ที่แปลหลังช่วงหยุดพูด</string>
     <string name="guide_help_dashscope">เปิดใช้ Model Studio และสร้าง API Key การแปลพร้อมเสียงต้องใช้ ID เวิร์กสเปซปักกิ่งด้วย</string>
     <string name="guide_help_openai">สร้างโปรเจ็กต์และ API key ของ OpenAI ที่เข้าถึง Realtime ได้ การสมัคร ChatGPT ไม่รวมการใช้ API</string>
     <string name="guide_help_gemini">สร้าง Gemini API key ใน Google AI Studio และตรวจสอบว่าโปรเจ็กต์ใช้ Live API ได้</string>
