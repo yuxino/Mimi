@@ -53,6 +53,7 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
         var drawnStage = -1
         var drawFailure: String? = null
         val report = JSONArray()
+        val accessibilityReport = JSONArray()
         var originalBudgetChanges = 0
         var unchangedSourceMovements = 0
         var unchangedTranslationMovements = 0
@@ -79,6 +80,9 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             check(foregroundReady) { "native_probe_foreground_not_ready" }
             val scale = context.resources.displayMetrics.density
             fun dp(value: Int) = (value * scale).toInt()
+            // Fix the reading budget; caption chrome changes must not turn this
+            // cropping regression into a sample whose entire text already fits.
+            val readingViewportDp = 128
             fun geometry(): Geometry {
                 val current = checkNotNull(panel)
                 fun row(view: TextView): List<Int> {
@@ -96,7 +100,7 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
                 manager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 panel = CaptionPanelView(ContextThemeWrapper(context, R.style.Theme_Mimi))
                 panel!!.applyStyle(CaptionFrameStyle(16, Color.WHITE, 100, 80, CaptionDisplayMode.BILINGUAL, CaptionAlignment.LEFT))
-                manager!!.addView(panel, WindowManager.LayoutParams(dp(350), dp(300), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                manager!!.addView(panel, WindowManager.LayoutParams(dp(350), dp(readingViewportDp) + panel!!.chromeHeight(), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
                     PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; y = dp(100) })
                 listener = ViewTreeObserver.OnDrawListener {
@@ -191,12 +195,12 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             constrain()
             val resized = settle {
                 val params = panel!!.layoutParams as WindowManager.LayoutParams
-                params.height = dp(400); manager!!.updateViewLayout(panel, params)
+                params.height = dp(readingViewportDp + 100) + panel!!.chromeHeight(); manager!!.updateViewLayout(panel, params)
             }
             check(resized.sourceFirst == 0) { "height_resize_did_not_reset" }
             check(settle {
                 val params = panel!!.layoutParams as WindowManager.LayoutParams
-                params.height = dp(300); manager!!.updateViewLayout(panel, params)
+                params.height = dp(readingViewportDp) + panel!!.chromeHeight(); manager!!.updateViewLayout(panel, params)
             }.sourceLimit == freshLimit) { "height_restore_did_not_reset" }
             constrain()
             check(settle {
@@ -237,6 +241,11 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
                 touch(MotionEvent.ACTION_UP, dp(80).toFloat())
             }.sourceLimit == freshLimit) { "return_to_live_did_not_reset" }
             ui { check(panel!!.followingLive) }
+            ui { stage = -1 }
+            CaptionReadingInputChecks(test, checkNotNull(panel),
+                home!!.findViewById(R.id.subtitle_preview), accessibilityReport).run(
+                sourceShort, sourceLongest, translationShort, translationLong,
+            )
         } catch (error: Throwable) { failure = error }
         finally {
             ui {
@@ -252,10 +261,10 @@ internal class CaptionScrollContinuityChecks(private val test: Instrumentation) 
             if (ownsFixture) check(guide.edit().apply { if (hadGuideSeen) putBoolean("seen", guideSeen) else remove("seen") }.commit())
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
-            putString("stream", "Caption differential probe asr-mt-differential-v1: passed=${failure == null}; draws=$draws; " +
+            putString("stream", "Caption differential probe asr-mt-differential-v2: passed=${failure == null}; draws=$draws; " +
                 "originalBudgetChanges=$originalBudgetChanges; unchangedSourceMovements=$unchangedSourceMovements; " +
                 "unchangedTranslationMovements=$unchangedTranslationMovements; captureStarted=false; " +
-                "failure=${failure?.message ?: "none"}; geometry=$report\n")
+                "failure=${failure?.message ?: "none"}; geometry=$report; accessibility=$accessibilityReport\n")
         })
     }
 }

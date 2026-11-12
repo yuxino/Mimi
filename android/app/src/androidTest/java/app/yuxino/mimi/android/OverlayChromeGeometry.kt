@@ -100,7 +100,12 @@ internal fun checkAdjustmentSwitchOnScreen(): com.google.android.material.materi
         toggle.draw(android.graphics.Canvas(proxyImage))
         val pixels = IntArray(toggle.width * toggle.height)
         proxyImage.getPixels(pixels, 0, toggle.width, 0, 0, toggle.width, toggle.height)
-        check(pixels.all { android.graphics.Color.alpha(it) == 0 }) { "Input proxy paints a second switch/compositor layer" }
+        val painted = pixels.count { android.graphics.Color.alpha(it) != 0 }
+        check(painted == 0) {
+            "Input proxy paints a second switch/compositor layer: pixels=$painted; focused=${toggle.isFocused}; " +
+                "windowFocus=${toggle.hasWindowFocus()}; defaultFocus=${toggle.defaultFocusHighlightEnabled}; " +
+                "background=${toggle.background?.javaClass?.simpleName}; foreground=${toggle.foreground?.javaClass?.simpleName}"
+        }
     } finally { proxyImage.recycle() }
     if (android.os.Build.VERSION.SDK_INT >= 30) {
         val metrics = toggle.context.getSystemService(android.view.WindowManager::class.java).currentWindowMetrics

@@ -255,6 +255,7 @@ adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mim
 adb shell am instrument -w -e overlay_interaction true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_listening true -e locale zh-Hans app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e caption_scroll_probe true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
 
 The interface-language check requires a blank, idle emulator. It exercises the
@@ -284,14 +285,21 @@ remains reachable. Compare bounds, paint, typography and content across toggles;
 verify that the legacy immersive preference is unchanged. The normal native
 caption frame has no route, settings entry, provider badges or Immersive footer.
 Appearance previews retain that simple frame and current status/content; preview
-actions and gestures remain decorative. Limited space scales the complete frame
-rather than restoring removed chrome.
+adjustment controls and touch gestures remain decorative. Limited space scales
+the complete frame rather than restoring removed chrome.
 The `interaction-*.png` screenshots show the actual panel and edits.
 On a blank, idle API 35 device, `-e preview_parity true` compares both preview
 entries with the native frame across all nine languages plus System, waiting,
 no-sound/connection feedback, long captions, history and appearance endpoints.
-Use `-e locale ja` (or another supported tag) for one language. Normalized pixels,
-wrapping and frame geometry must match; quick editing preserves frame pixels.
+Use `-e locale ja` (or another supported tag) for one language. Pixels in matched
+touch mode, wrapping and frame geometry must match; the focused adjustment input
+proxy must remain paint-free. Quick editing preserves frame pixels.
+On the same blank, idle API 35 device, `-e caption_scroll_probe true` checks
+differential caption growth, accessibility actions, slow dragging, an injected
+overlay wheel and focused preview keys. It preserves the original crop/reset
+checks and restores temporary input state. Require `passed=true` in its report;
+an adb exit code of zero alone is not a pass. Direct native actions do not
+establish a complete TalkBack journey or physical-device acceptance.
 `overlay_preview` also captures long-caption reading and restored normal mode. These
 are synthetic native fixtures, not a real provider or audio latency measurement.
 Pass
