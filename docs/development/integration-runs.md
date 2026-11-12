@@ -1,5 +1,41 @@
 # 集成实测记录
 
+## 2026-11-12 — Shared audio JSON ownership
+
+- Source `31681d2b`, based on `88a86cba`. Seven shared audio encoders now move
+  their Base64 strings into JSON objects. Frame validation, message fields,
+  event IDs and client send/recovery behavior remain unchanged. Existing
+  protocol tests now check both invalid size boundaries and complete audio
+  messages; no test framework or dependency was added.
+- A private probe called the production encoders and ordinary serializer with
+  synthetic PCM. Desktop and JNI serde features/panic settings were measured
+  separately on the same arm64 Mac, using the product release optimization
+  settings. Each comparison passed 213 exact JSON/error-byte cases and 64
+  generated-ID checks per binary. Only a verified formatting change followed
+  measurement; the formatted source received complete acceptance.
+- Each nonempty message avoids one allocation and its Base64 copy: 12,800
+  requested bytes for a 9,600-byte OpenAI/Azure/xAI frame; 4,268 bytes for a
+  3,200-byte Gemini frame; 856 bytes for the 640-byte Custom Speech and
+  LiveTranslate cases. Empty-input allocations and measured peak live bytes
+  are unchanged. These are allocation-request metrics, not app RSS/PSS savings.
+- Five alternating timing pairs per configuration retained every sample.
+  The desktop OpenAI medians were 5,534.85 -> 5,543.37 ns per encode/serialize/
+  drop, with overlapping ranges; Gemini Live was 2,180.08 -> 2,123.13 ns.
+  Small warmed microbenchmark changes do not establish capture, network or
+  subtitle latency improvements, or Android-device performance.
+- Quick shared and complete canonical checks passed: 1,005 runtime tests,
+  37 JNI Rust tests, 697 desktop tests and 2,879 frontend tests, with the two
+  existing opt-in Rust tests still ignored. Android Debug/Release each passed
+  231 tests in 36 suites with no failures/errors/skips, including actual JNI
+  loopback regressions; both lints, all assemblies and four-ABI guards passed.
+  APK bytes decreased from 26,015,949 to 26,014,461; native libraries total
+  7,864 fewer bytes. APK SHA-256:
+  `47029120ca9086c550573708d7cbd64c73fc8ebd57366b55980213de36de5592`.
+- The signed macOS UI-only app launched, navigated settings and exited normally.
+  No real credentials, provider traffic, audio capture or formal app replacement
+  was used. Private evidence: `audio-base64-ownership-preparation` under the
+  `2026-11-12-optimization-cycle-2` batch, plus independent source review.
+
 ## 2026-11-12 — Android release shrinking
 
 - Accepted source `21092167`, based on `8698eeb4`; APK SHA-256
@@ -39,6 +75,11 @@
   `r8-readonly-preparation/release-ab-measurement` records. No tag or formal
   release was created; device capture and other OS/ABI runtime checks remain
   outside this acceptance.
+- PR #348 merged as `88a86cba` after
+  [desktop CI](https://github.com/yuxino/Mimi/actions/runs/43188262875) and
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/43188262861) passed.
+  The exact-build light/dark screenshots are attached to the
+  [PR verification comment](https://github.com/yuxino/Mimi/pull/348#issuecomment-6819513299).
 
 ## 2026-11-12 — Platform-scoped provider copy
 
