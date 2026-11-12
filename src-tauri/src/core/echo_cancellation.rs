@@ -78,10 +78,6 @@ impl EchoCanceller {
         Ok(canceller)
     }
 
-    pub fn frame_samples(&self) -> usize {
-        self.frame_samples
-    }
-
     /// Removes the supplied render reference from a microphone frame.
     ///
     /// Exact lengths are checked before entering C. Neither input is modified;
@@ -230,7 +226,7 @@ mod tests {
 
     fn process(canceller: &mut EchoCanceller, render: &[f32], capture: &[f32]) -> Vec<f32> {
         assert_eq!(render.len(), capture.len());
-        let frame = canceller.frame_samples();
+        let frame = canceller.frame_samples;
         assert_eq!(capture.len() % frame, 0);
         let mut output = Vec::with_capacity(capture.len());
         for (render, capture) in render.chunks_exact(frame).zip(capture.chunks_exact(frame)) {
@@ -296,7 +292,6 @@ mod tests {
         for rate in [16_000, 24_000] {
             let mut canceller = EchoCanceller::new(rate).unwrap();
             let frame = rate as usize / 100;
-            assert_eq!(canceller.frame_samples(), frame);
             let valid = vec![0; frame];
             for wrong in [0, 1, frame - 1, frame + 1, frame * 2] {
                 assert_eq!(

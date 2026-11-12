@@ -10,8 +10,6 @@ const RESAMPLE_CHUNK_FRAMES: usize = 1024;
 
 pub(crate) struct StreamingPcm16Resampler {
     channel_count: usize,
-    input_sample_rate_hz: u32,
-    target_sample_rate_hz: u32,
     pending_interleaved: Vec<f32>,
     pending_mono: Vec<f32>,
     resampler: Option<rubato::Fft<f32>>,
@@ -47,8 +45,6 @@ impl StreamingPcm16Resampler {
             .unwrap_or_default();
         Ok(Self {
             channel_count,
-            input_sample_rate_hz,
-            target_sample_rate_hz,
             pending_interleaved: Vec::new(),
             pending_mono: Vec::new(),
             resampler,
@@ -75,17 +71,13 @@ impl StreamingPcm16Resampler {
             self.pending_interleaved.drain(..complete_sample_count);
         }
 
-        if self.input_sample_rate_hz == self.target_sample_rate_hz {
+        let Some(resampler) = self.resampler.as_mut() else {
             if self.pending_mono.is_empty() {
                 return Ok(Vec::new());
             }
-            let pcm = PCM16Encoder::encode(std::slice::from_ref(&self.pending_mono));
+            let pcm = PCM16Encoder::encode(&self.pending_mono);
             self.pending_mono.clear();
             return Ok(vec![pcm]);
-        }
-
-        let Some(resampler) = self.resampler.as_mut() else {
-            return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
         };
         let mut buffers = Vec::new();
         while self.pending_mono.len() >= RESAMPLE_CHUNK_FRAMES {
@@ -109,7 +101,7 @@ impl StreamingPcm16Resampler {
             self.pending_mono.drain(..RESAMPLE_CHUNK_FRAMES);
             let pcm = output.map(|(_, written)| {
                 self.output_scratch.truncate(written);
-                PCM16Encoder::encode(std::slice::from_ref(&self.output_scratch))
+                PCM16Encoder::encode(&self.output_scratch)
             });
             self.output_scratch.clear();
             let pcm = pcm?;

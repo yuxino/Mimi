@@ -118,13 +118,8 @@ impl EchoPipeline {
             failure,
             Arc::new(move || {
                 EchoCanceller::new(sample_rate)
+                    .map(|processor| Box::new(processor) as Box<dyn EchoProcessor>)
                     .map_err(|_| ())
-                    .and_then(|processor| {
-                        if processor.frame_samples() != sample_rate as usize / 100 {
-                            return Err(());
-                        }
-                        Ok(Box::new(processor) as Box<dyn EchoProcessor>)
-                    })
             }),
         )
     }
