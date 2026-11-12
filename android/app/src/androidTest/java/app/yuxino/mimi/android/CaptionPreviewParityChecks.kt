@@ -22,6 +22,7 @@ import java.io.File
 internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
     private val context get() = test.targetContext
     private var cases = 0
+    private var checkedKeyboardProxy = false
     private var location = "setup"
     private fun ui(action: () -> Unit) {
         var failure: Throwable? = null
@@ -68,6 +69,22 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             a != null && a.isShown && preview.frame.width == a.width && preview.frame.height == a.height &&
                 rows(preview.frame).zip(rows(a)).all { (x, y) -> x.text.toString() == y.text.toString() && x.visibility == y.visibility }
         }
+        if (!checkedKeyboardProxy && actual() is CaptionPanelView) {
+            test.setInTouchMode(false)
+            ui {
+                val toggle = WindowInspector.getGlobalWindowViews().single { it.tag == "overlay-adjust" }
+                val focused = toggle.requestFocusFromTouch()
+                check(focused && toggle.isFocused) {
+                    "Keyboard proxy fixture did not acquire native focus: accepted=$focused; touchMode=${toggle.isInTouchMode}"
+                }
+                checkAdjustmentSwitchOnScreen()
+            }
+            checkedKeyboardProxy = true
+        }
+        // Compare the same input state. A native focused scroll area and an
+        // unfocused preview legitimately paint different focus feedback.
+        test.setInTouchMode(true)
+        await { actual()?.isInTouchMode == true && preview.frame.isInTouchMode }
         SystemClock.sleep(120); test.waitForIdleSync()
         ui {
             val actual = actual()!!
@@ -109,7 +126,17 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
                 a.getPixels(pixelsA, 0, a.width, 0, 0, a.width, a.height)
                 b.getPixels(pixelsB, 0, b.width, 0, 0, b.width, b.height)
                 val differences = pixelsA.indices.count { pixelsA[it] != pixelsB[it] }
-                check(differences == 0) { "Frame pixels differ at $name: $differences/${pixelsA.size}" }
+                if (differences != 0) {
+                    for ((label, image) in listOf("actual" to a, "preview" to b)) {
+                        File(context.getExternalFilesDir("ui-preview"), "failed-$label-frame.png").outputStream().use {
+                            check(image.compress(Bitmap.CompressFormat.PNG, 100, it))
+                        }
+                    }
+                }
+                check(differences == 0) {
+                    "Frame pixels differ at $name: $differences/${pixelsA.size}; " +
+                        "actualFocus=${actual.findFocus()?.tag}; previewFocus=${preview.frame.findFocus()?.tag}; touchMode=${actual.isInTouchMode}"
+                }
                 if (screenshot) File(context.getExternalFilesDir("ui-preview"), "parity-$name-frame.png").outputStream().use { check(b.compress(Bitmap.CompressFormat.PNG, 100, it)) }
             } finally {
                 a.recycle(); b.recycle()
@@ -207,6 +234,7 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
         val seenPrefs = context.getSharedPreferences("first_run", 0)
         val hadSeen = seenPrefs.contains("seen"); val seen = seenPrefs.getBoolean("seen", false)
         var home: MainActivity? = null
+        var restoreTouchMode: Boolean? = null
         var failure: Throwable? = null
         try {
             if (arguments?.getString("fresh_defaults") == "true") {
@@ -220,6 +248,7 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             for (tag in tags) {
                 ui { manager.applicationLocales = LocaleList.forLanguageTags(tag) }
                 home = test.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+                if (restoreTouchMode == null) ui { restoreTouchMode = home.window.decorView.isInTouchMode }
                 context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_UI_PREVIEW).putExtra("preview_over_own_ui", true))
                 await { root() != null }; ui { running(true) }
                 val prefix = tag.ifEmpty { "system" }
@@ -407,13 +436,15 @@ internal class CaptionPreviewParityChecks(private val test: Instrumentation) {
             }
         } catch (error: Throwable) { failure = error }
         finally {
-            context.stopService(Intent(context, MimiService::class.java))
-            ui { running(false); captureState(capture); home?.finish(); manager.applicationLocales = locales; restore.forEach { it() }
-                check(seenPrefs.edit().apply { if (hadSeen) putBoolean("seen", seen) else remove("seen") }.commit()) }
-            check(SettingsStore.flushPendingWritesForTests(context))
+            try {
+                context.stopService(Intent(context, MimiService::class.java))
+                ui { running(false); captureState(capture); home?.finish(); manager.applicationLocales = locales; restore.forEach { it() }
+                    check(seenPrefs.edit().apply { if (hadSeen) putBoolean("seen", seen) else remove("seen") }.commit()) }
+                check(SettingsStore.flushPendingWritesForTests(context))
+            } finally { restoreTouchMode?.let(test::setInTouchMode) }
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
-            putString("stream", if (failure == null) "Caption preview parity passed: $cases native cases; identical frame pixels/geometry; no capture or provider session.\n"
+            putString("stream", if (failure == null) "Caption preview parity passed: $cases native cases; identical frame pixels/geometry in matched touch mode; focused input proxy stays paint-free; no capture or provider session.\n"
                 else "Caption preview parity failed at $location: ${failure!!.javaClass.simpleName}: ${failure!!.message}\n" +
                     failure!!.stackTrace.filter { it.className.startsWith("app.yuxino.mimi.android") }
                         .joinToString("\n") { "${it.fileName}:${it.lineNumber}" } + "\n")

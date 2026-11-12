@@ -34,7 +34,12 @@ internal class CaptionPanelView(
     private var followCurrentOnLayout = false
     internal var followingLive = true
         private set
-    private var readingAnchor: Int? = null
+    private data class ReadingAnchor(val row: View, val contentOffsetPx: Int) {
+        fun scrollY() = row.top + contentOffsetPx - row.scrollY
+    }
+    private var readingAnchor: ReadingAnchor? = null
+    private var discardScrollAnimation = false
+    private var reconcilingScrollAnimation = false
     private var touchY = 0f
     private var towardsLive = false
     private var displayMode = CaptionDisplayMode.BILINGUAL
@@ -57,19 +62,70 @@ internal class CaptionPanelView(
             visibility = View.GONE
         }
 
-        val scroll = ScrollView(context).apply {
+        val scroll = object : ScrollView(context) {
+            override fun computeScroll() {
+                val beforeY = scrollY
+                // Let the framework finish its animation, but a return to live
+                // or a later wheel movement has already retired its endpoint.
+                reconcilingScrollAnimation = discardScrollAnimation
+                try { super.computeScroll() } finally { reconcilingScrollAnimation = false }
+                if (discardScrollAnimation && scrollY != beforeY) {
+                    scrollTo(0, if (followingLive && readingAnchor == null) maxScroll() else beforeY)
+                }
+            }
+
+            override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+                val beforeY = scrollY
+                val handled = super.onGenericMotionEvent(event)
+                // Native wheels scroll synchronously. Consumed edge effects
+                // without movement must not change the reader's intent.
+                if (handled && scrollY != beforeY) {
+                    discardScrollAnimation = true
+                    acceptNativeScroll(scrollY > beforeY, beforeY)
+                }
+                return handled
+            }
+
+            override fun arrowScroll(direction: Int) = keyboardScroll(direction) { super.arrowScroll(direction) }
+            override fun pageScroll(direction: Int) = keyboardScroll(direction) { super.pageScroll(direction) }
+            override fun fullScroll(direction: Int) = keyboardScroll(direction) { super.fullScroll(direction) }
+
+            private fun keyboardScroll(direction: Int, perform: () -> Boolean): Boolean {
+                val beforeY = scrollY
+                val hadRange = canScrollVertically(-1) || canScrollVertically(1)
+                val handled = perform()
+                // Observe native scrolling, not key dispatch: older Android
+                // versions return false for Space even when pageScroll succeeds.
+                if (handled && hadRange && (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN)) {
+                    discardScrollAnimation = false
+                    acceptNativeScroll(direction == View.FOCUS_DOWN, beforeY)
+                }
+                return handled
+            }
+        }.apply {
             tag = "subtitle-transcript-scroll"
             isFillViewport = true
         }
         transcriptScroll = scroll
         scroll.setOnTouchListener { _, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { touchY = event.y; towardsLive = false }
+                MotionEvent.ACTION_DOWN -> {
+                    // Native DOWN aborts the old scroller before this gesture moves.
+                    discardScrollAnimation = false
+                    touchY = event.y; towardsLive = false
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val delta = event.y - touchY
-                    if (delta > dp(2)) beginReading()
-                    if (delta < -dp(2)) towardsLive = true
-                    touchY = event.y
+                    // Accumulate slow movement instead of discarding every
+                    // sub-threshold step while native touch slop accumulates it.
+                    if (delta > dp(2)) {
+                        towardsLive = false
+                        beginReading()
+                        touchY = event.y
+                    } else if (delta < -dp(2)) {
+                        towardsLive = true
+                        touchY = event.y
+                    }
                 }
                 MotionEvent.ACTION_UP -> if (towardsLive && atBottom()) followLive()
                 MotionEvent.ACTION_CANCEL -> towardsLive = false
@@ -77,25 +133,22 @@ internal class CaptionPanelView(
             false
         }
         scroll.setOnScrollChangeListener { _, _, _, _, _ ->
-            if (!followingLive && towardsLive && readingAnchor == null && atBottom()) followLive()
+            if (!reconcilingScrollAnimation && !followingLive && towardsLive && readingAnchor == null && atBottom()) followLive()
         }
         scroll.accessibilityDelegate = object : View.AccessibilityDelegate() {
             override fun performAccessibilityAction(host: View, action: Int, args: Bundle?): Boolean {
+                val beforeY = scroll.scrollY
                 val handled = super.performAccessibilityAction(host, action, args)
                 if (!handled) return false
-                when (action) {
+                val towardsBottom = when (action) {
                     AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD,
-                    AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id -> {
-                        towardsLive = false
-                        beginReading()
-                    }
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id -> false
                     AccessibilityNodeInfo.ACTION_SCROLL_FORWARD,
-                    AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id -> {
-                        towardsLive = true
-                        // Closely spaced native actions can finish synchronously.
-                        if (!followingLive && readingAnchor == null && atBottom()) followLive()
-                    }
+                    AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id -> true
+                    else -> return true
                 }
+                discardScrollAnimation = false
+                acceptNativeScroll(towardsBottom, beforeY)
                 return true
             }
         }
@@ -103,7 +156,7 @@ internal class CaptionPanelView(
             val anchor = readingAnchor
             if (anchor != null) {
                 readingAnchor = null
-                scroll.scrollTo(0, anchor)
+                scroll.scrollTo(0, anchor.scrollY())
             } else if (isShown && followCurrentOnLayout) {
                 followCurrentOnLayout = false
                 scroll.scrollTo(0, maxScroll())
@@ -220,17 +273,42 @@ internal class CaptionPanelView(
     private fun maxScroll() = ((transcriptScroll.getChildAt(0)?.height ?: 0) - transcriptScroll.height).coerceAtLeast(0)
     private fun atBottom() = transcriptScroll.scrollY >= maxScroll() - dp(8)
 
+    private fun acceptNativeScroll(towardsBottom: Boolean, beforeY: Int) {
+        // A later input can move before the full-lane layout runs. Preserve its
+        // new visible row instead of restoring the first input's old position.
+        if (readingAnchor != null && transcriptScroll.scrollY != beforeY) {
+            readingAnchor = captureReadingAnchor()
+        }
+        towardsLive = towardsBottom
+        if (!towardsBottom) {
+            beginReading()
+        } else if (!followingLive && readingAnchor == null && atBottom()) {
+            // Wheels and closely spaced accessibility actions can finish now.
+            followLive()
+        }
+    }
+
+    private fun captureReadingAnchor(): ReadingAnchor {
+        val transcript = transcriptScroll.getChildAt(0) as LinearLayout
+        val y = transcriptScroll.scrollY
+        val row = (0 until transcript.childCount).asSequence().map(transcript::getChildAt)
+            .firstOrNull { it.visibility == View.VISIBLE && it.bottom > y } ?: transcript
+        // A cropped TextView has its own offset. Keeping a row-local content
+        // coordinate also survives preceding rows expanding above a translation.
+        return ReadingAnchor(row, y - row.top + row.scrollY)
+    }
+
     private fun beginReading() {
         if (!followingLive) return
         sourceViewport.reset()
-        val first = if (source.visibility == View.VISIBLE) source else translation
-        readingAnchor = transcriptScroll.scrollY + first.scrollY
+        readingAnchor = captureReadingAnchor()
         followingLive = false; followCurrentOnLayout = false; towardsLive = false
         requestLayout()
     }
 
     private fun followLive() {
         sourceViewport.reset()
+        discardScrollAnimation = true
         followingLive = true; followCurrentOnLayout = true; readingAnchor = null
         requestLayout()
     }

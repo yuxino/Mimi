@@ -1,5 +1,35 @@
 # 集成实测记录
 
+## 2026-11-12 — Android native reading inputs
+
+- Tested source: `668fba0d` plus frozen native patch SHA-256
+  `5926fe85b82c0fec927c447350d9034e8785caed4c740ee7dca59af1932ccd9f`.
+  Final debug APK SHA-256:
+  `27254b993c8bd25c85186bbd8424deee9e6cfc89a870a8705e1341542aaae227`.
+  Accepted native input now owns history/live intent and pending row-relative
+  anchors; retired animations cannot overwrite a later input or caption layout.
+- The blank API 35 arm64 fixture passed all original differential crop/reset
+  assertions and 22 input groups: both accessibility action pairs, rejected and
+  no-range actions, long lanes, rapid actions, cumulative slow dragging, an
+  injected overlay wheel, hidden-source mode changes and focused preview keys.
+  Same-test APK comparisons reproduced and repaired slow dragging, an old
+  animation overwriting the wheel, and a fresh keyboard animation being ignored.
+  The hidden-source case passed without a special production fallback.
+- All nine languages plus System passed 260 preview cases with identical frame
+  pixels/geometry in matched touch mode. The separately focused adjustment input
+  proxy stays paint-free; its default focus background had painted 7,056 pixels
+  despite the window lacking focus. The fixture explicitly acquires native
+  focus and restores the prior input mode, including cleanup failures.
+- Complete Android acceptance used command-scoped `CARGO_INCREMENTAL=0`:
+  Debug/Release each passed 231 tests in 36 suites, including actual JNI; both
+  lints and four-ABI APK guards passed. Final instrumentation setup changes then
+  passed debug assembly/lint and the native suites above. Shared and desktop
+  production source is unchanged; no unrelated local desktop suite was repeated.
+- These are synthetic native fixtures, with no capture or provider session.
+  Full TalkBack navigation, physical devices, API 29 and other-ABI native UI
+  remain unverified. Private logs, source/APK hashes and images are under
+  `android-accessibility-preparation` in `2026-11-12-optimization-cycle-2`.
+
 ## 2026-11-12 — Android build toolchain
 
 - Source `151c5f02`, based on `6b2722a3`. AGP 9.5.1, Gradle 9.6.0,

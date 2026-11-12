@@ -17,6 +17,9 @@ internal class CaptionAdjustmentSwitch(context: Context, private val paintsContr
         setPadding(dp(8), 0, dp(8), 0)
         switchMinWidth = dp(32)
         background = null
+        // The input-only window must also suppress the framework's focus paint,
+        // which is drawn outside onDraw after keyboard input leaves touch mode.
+        if (!paintsControl) defaultFocusHighlightEnabled = false
         thumbIconDrawable = null
         trackDecorationDrawable = null
         thumbDrawable = InsetDrawable(GradientDrawable().apply {
