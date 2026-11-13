@@ -2,7 +2,9 @@
 
 ## 2026-11-13：正式 Key 回归与 Android 更新入口
 
-- 基线 `300fd7c231545791875f9beab33a3fb5bc0a5e93`。按用户授权，只读正式
+- 下列本地与原生验收对应源码 `3abfbf1333a8cf13653ad70f8a2c8e393fa97965`，
+  基线 `300fd7c2`。
+  按用户授权，只读正式
   安装包的私有本地凭据，用匿名进程管道交给固定生产客户端；未复制到开发
   配置，未写入环境变量、命令行或日志。正式偏好、配置、凭据及迁移标记的
   SHA-256 和权限与测试前一致，正式安装包未替换。
@@ -44,7 +46,10 @@
   明暗主题 18/18，并复核全部九语言的实际截图。覆盖忙碌、重复点击、导航
   取消、陈旧回复、失败／重试、新版本／当前版本、浏览器 intent、失焦和关闭
   取消；synthetic release 固定为 99.0.0，没有真实下载、安装、采音或供应商
-  请求。设备尺寸、语言及首次运行标记恢复，实体机和实际 APK 升级未验。
+  请求。成功退出的夹具恢复其入口语言及首次运行标记，设备尺寸已恢复；
+  实体机和实际 APK 升级未验。
+  [原生截图与已安装 APK 身份](https://github.com/yuxino/Mimi/pull/367#issuecomment-6842790405)
+  附在 PR，未提交图片到仓库。
 - 最终 `CARGO_INCREMENTAL=0 ./scripts/check.sh` 通过：core 117、runtime
   1,004（一个既有 ignored）、JNI Rust 40、桌面 695（一个既有 ignored）、
   Apple 适配器八项、前端 2,879；fmt、Clippy、lint、构建和边界检查通过。
@@ -52,6 +57,10 @@
   lint 无 error/fatal（70／69 个 warning），四 ABI ELF／APK 对齐和打包通过。
   签名 `local-dev --ui-only` 开发包实际显示 v1.7.0 设置页；未访问凭据、
   供应商网络或采音。Windows／Linux 原生覆盖仍交由 CI。
+- 首轮 Windows／Linux CI 被 Rust 1.100 Clippy 的 `needless_bool` 拒绝，
+  位置是既有 `windows::is_dev_build` 的平台分支。非 macOS 分支改为直接返回
+  `tauri::is_dev()`，macOS 保留相同的开发模式短路和 bundle ID 检查；没有
+  关闭 lint 或扩大开发版判定。该兼容清理不改变前述 Android 或供应商源码。
 
 私有收据、失败与成功日志、驱动和截图保存在开发版
 `development-benchmarks/2026-11-13-provider-fix`。不保存服务文字或 Key。

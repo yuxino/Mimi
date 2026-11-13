@@ -29,14 +29,14 @@
 /// bundled dev wrapper (bundle id `app.yuxino.mimi.dev`, which is a release
 /// build so macOS renders its Dock icon with the standard mask).
 pub fn is_dev_build() -> bool {
-    if tauri::is_dev() {
-        return true;
-    }
     #[cfg(target_os = "macos")]
     {
         use objc2::msg_send;
         use objc2::runtime::{AnyClass, AnyObject};
         use std::ffi::{c_char, CStr};
+        if tauri::is_dev() {
+            return true;
+        }
         unsafe {
             let Some(bundle_class) = AnyClass::get(c"NSBundle") else {
                 return false;
@@ -58,7 +58,7 @@ pub fn is_dev_build() -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        false
+        tauri::is_dev()
     }
 }
 
