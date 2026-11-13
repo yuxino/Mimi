@@ -20,7 +20,16 @@ finish behavior and generation/readiness checks stay unchanged.
 
 Keep the simulated timer-overshoot checks and normal loopback pacing test.
 Also fill a local WebSocket's write buffer with a synthetic fixture message,
-pause its reader for 500 ms, and send three PCM frames through production
-`send_audio`. Once reading resumes, the third frame must not immediately follow
-the second. This exercises socket backpressure without provider traffic or a
-production test hook; it does not establish a Tencent service rejection.
+pause its reader, and identify the blocked PCM frame through production
+`send_audio`. Windows x64 and ARM64 traces showed that the kernel accepted the
+first frame before the second write blocked; assuming the first write stalled
+made the test reject the permitted immediate frame after the actual stall.
+
+Probe at most four frames, polling each send before a 500-ms timer. That exceeds
+the ordinary 200-ms pacing wait; verify that the frame was already due when the
+probe expires. Tell the reader the expected frame count before resuming it,
+then send two more frames and retain the 180-ms minimum assertion between
+their completed writes. Record frame start/completion times, deadlines and
+primer decoding time to distinguish future fixture failures from clock defects.
+This exercises socket backpressure without provider traffic or a production
+test hook; it does not establish a Tencent service rejection.
