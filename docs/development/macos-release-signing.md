@@ -74,6 +74,18 @@ A new draft's HTML URL may use an `untagged-*` suffix even when its requested
 or the release database ID (`gh api "repos/yuxino/Mimi/releases/$release_id"`);
 do not create a second draft or change the release tag based on that URL alone.
 
+After restaging an unpublished draft against another source commit, recheck the
+actual REST `tag_name` field by database ID and resolve the version with
+`gh release view`. In the v1.7.0 restage, `target_commitish` and all uploaded
+assets were correct, but `tag_name` had changed to the temporary `untagged-*`
+name; the CI lookup by version failed before downloading any asset. The observed
+requests did not establish which restaging operation changed that field.
+If this exact mismatch occurs, first verify the Git tag still points to the
+reviewed source, then restore `tag_name` on the same draft database ID while
+keeping `draft: true`, the source target, notes and asset digests unchanged.
+Read back both lookup paths before retrying the affected jobs. This repair does
+not authorize moving a published tag or replacing a published release.
+
 The tag-only macOS job needs `contents: write` because GitHub hides unpublished
 drafts from read-only tokens. Ordinary CI remains read-only; the final staging
 job still requires a draft and never publishes it.
