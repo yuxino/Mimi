@@ -548,8 +548,8 @@ impl TencentCloudClient {
     ) -> Result<(), TencentCloudClientError> {
         TencentCloudRequestEncoder::validate_audio_frame(&frame)
             .map_err(|_| TencentCloudClientError::TransportFailure)?;
-        // Capture normally supplies one frame at a time. Never burst a queued
-        // backlog after a slow write: Tencent requires approximately 1:1 audio.
+        // Capture normally supplies one frame at a time. Preserve its audio
+        // clock without accumulating overdue deadlines after a slow write.
         let mut next_frame = self.inner.next_audio_frame_at.lock().await;
         let scheduled_at = match *next_frame {
             Some(deadline) => {
@@ -567,11 +567,6 @@ impl TencentCloudClient {
         let Some(sink) = sink.as_mut() else {
             return Err(TencentCloudClientError::NotConnected);
         };
-        *next_frame = Some(next_audio_frame_deadline(
-            scheduled_at,
-            tokio::time::Instant::now(),
-        ));
-        drop(next_frame);
         let evidence =
             crate::development_audio::begin_pcm(&frame, TencentCloudEndpoint::SAMPLE_RATE_HZ);
         tokio::time::timeout(
@@ -580,7 +575,12 @@ impl TencentCloudClient {
         )
         .await
         .map_err(|_| TencentCloudClientError::TransportFailure)?
-        .map_err(|_| TencentCloudClientError::TransportFailure)
+        .map_err(|_| TencentCloudClientError::TransportFailure)?;
+        *next_frame = Some(next_audio_frame_deadline(
+            scheduled_at,
+            tokio::time::Instant::now(),
+        ));
+        Ok(())
     }
 
     async fn send_text(
@@ -863,13 +863,14 @@ fn emit_if_current(context: &ReceiveContext, event: LiveTranslateServerEvent) {
 ///
 /// Anchoring to `now` would add every timer overshoot (1-14 ms per frame on
 /// Windows) to the cadence, so the sender falls behind realtime, the bounded
-/// capture queue overflows and the session reconnects. A frame that is already
-/// late is sent at once, but no catch-up credit accumulates after a stall.
+/// capture queue overflows and the session reconnects. A late completion makes
+/// only the next frame immediately due; later frames resume the 200-ms clock.
 fn next_audio_frame_deadline(
     scheduled_at: tokio::time::Instant,
-    now: tokio::time::Instant,
+    completed_at: tokio::time::Instant,
 ) -> tokio::time::Instant {
-    (scheduled_at + Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into())).max(now)
+    (scheduled_at + Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into()))
+        .max(completed_at)
 }
 
 #[cfg(test)]
@@ -1084,6 +1085,93 @@ mod tests {
             .windows(2)
             .all(|pair| pair[1].duration_since(pair[0]) >= Duration::from_millis(180)));
         client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn a_blocked_socket_write_does_not_leave_an_extra_catch_up_frame() {
+        let (resume_reads, reads_resumed) = tokio::sync::oneshot::channel();
+        let (observed, observation) = tokio::sync::oneshot::channel();
+        const PRIMER_BYTES: usize = 16 * 1024 * 1024;
+        let (client, _events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    socket
+                        .send(Message::Text(r#"{"code":0}"#.into()))
+                        .await
+                        .unwrap();
+                    reads_resumed.await.unwrap();
+                    let mut frames = 0;
+                    while let Some(Ok(message)) = socket.next().await {
+                        if let Message::Binary(frame) = message {
+                            if frame.len() == PRIMER_BYTES {
+                                continue;
+                            }
+                            assert_eq!(frame.len(), TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT);
+                            frames += 1;
+                            if frames == 3 {
+                                observed.send(()).unwrap();
+                                return;
+                            }
+                        }
+                    }
+                    panic!("missing paced frames after blocked write");
+                })
+                .await
+                .unwrap();
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        // Fill the actual local WebSocket's write buffer while its peer is not
+        // reading. This fixture-only message makes the first production send
+        // await socket progress without adding a production delay/test hook.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            client
+                .inner
+                .sink
+                .lock()
+                .await
+                .as_mut()
+                .unwrap()
+                .feed(Message::Binary(vec![0; PRIMER_BYTES].into()))
+                .await
+                .unwrap();
+        })
+        .await
+        .unwrap();
+        let audio = vec![0; TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT];
+        let send = async {
+            let mut completed = Vec::new();
+            for _ in 0..3 {
+                client.send_audio(&audio).await?;
+                completed.push(tokio::time::Instant::now());
+            }
+            Ok::<_, TencentCloudClientError>(completed)
+        };
+        tokio::pin!(send);
+        tokio::select! {
+            result = &mut send => panic!("socket did not stall: {result:?}"),
+            _ = tokio::time::sleep(Duration::from_millis(500)) => {},
+        }
+        resume_reads.send(()).unwrap();
+        let completed = tokio::time::timeout(Duration::from_secs(2), send)
+            .await
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), observation)
+            .await
+            .unwrap()
+            .unwrap();
+        client.disconnect().await;
+        // The stalled completion can be followed by one immediately due frame;
+        // the next frame must return to the 200-ms clock instead of bursting too.
+        // Observe completed writes so parsing the large fixture message cannot
+        // turn delayed server reads into a false burst report.
+        let final_gap = completed[2].duration_since(completed[1]);
+        assert!(
+            final_gap >= Duration::from_millis(180),
+            "third frame followed the second after {final_gap:?}"
+        );
     }
 
     #[tokio::test]
