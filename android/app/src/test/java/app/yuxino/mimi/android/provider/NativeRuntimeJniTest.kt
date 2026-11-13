@@ -2117,8 +2117,8 @@ class NativeRuntimeJniTest {
             try {
                 while (true) {
                     val (opcode, payload) = readFrame(input)
-                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null) && opcode == 8) {
-                        if (liveTranslate || builtinRecovery != null) observeTransportClosed(connection)
+                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null || geminiTranscribe != null) && opcode == 8) {
+                        if (liveTranslate || builtinRecovery != null || geminiTranscribe != null) observeTransportClosed(connection)
                         return ""
                     }
                     if (builtinRecovery != null && opcode == 2) {
