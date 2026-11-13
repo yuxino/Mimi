@@ -498,11 +498,17 @@ impl GeminiTranscribeClient {
                     continue;
                 }
                 Ok(Message::Frame(_)) => continue,
-                Ok(Message::Binary(_)) => {
-                    self.fail(GeminiTranscribeClientError::InvalidProtocol, generation);
-                    let _ = setup.send(Setup::Rejected);
-                    return;
-                }
+                Ok(Message::Binary(data)) => match std::str::from_utf8(&data)
+                    .map_err(|_| gemini_transcribe::ProtocolError)
+                    .and_then(gemini_transcribe::decode)
+                {
+                    Ok(event) => event,
+                    Err(_) => {
+                        self.fail(GeminiTranscribeClientError::InvalidProtocol, generation);
+                        let _ = setup.send(Setup::Rejected);
+                        return;
+                    }
+                },
                 _ => {
                     if !self.inner.done.load(Ordering::SeqCst) {
                         self.fail(GeminiTranscribeClientError::Unreachable, generation);
@@ -710,6 +716,164 @@ mod tests {
         })
         .await
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn binary_json_setup_and_transcripts_work_with_text_or_binary_frames() {
+        let contract: Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        let contract = &contract["geminiTranscribeTransport"];
+        for (binary_setup, binary_content) in [(true, true), (true, false), (false, true)] {
+            let (client, mut receiver, listener) = fixture().await;
+            let wire = contract.clone();
+            let server = tokio::spawn(async move {
+                let mut socket = accept_async(listener.accept().await.unwrap().0)
+                    .await
+                    .unwrap();
+                let frame = |value: &Value, binary| {
+                    let text = value.to_string();
+                    if binary {
+                        Message::Binary(text.into_bytes().into())
+                    } else {
+                        Message::Text(text.into())
+                    }
+                };
+                let _ = message(&mut socket).await;
+                socket
+                    .send(frame(&wire["setup"], binary_setup))
+                    .await
+                    .unwrap();
+                let audio = message(&mut socket).await;
+                assert_eq!(
+                    audio["realtimeInput"]["audio"]["mimeType"],
+                    "audio/pcm;rate=16000"
+                );
+                socket
+                    .send(frame(&wire["draft"], binary_content))
+                    .await
+                    .unwrap();
+                assert_eq!(message(&mut socket).await, gemini_transcribe::finish());
+                socket
+                    .send(frame(&wire["final"], binary_content))
+                    .await
+                    .unwrap();
+                while socket.next().await.is_some() {}
+            });
+            client.connect("binary-json").await.unwrap();
+            client.send_audio(&[0; 3200]).await.unwrap();
+            let draft = next_content(&mut receiver).await;
+            assert!(
+                matches!(draft.event, LiveTranslateServerEvent::SourceUtteranceDraft { ref text, .. }
+                if text == contract["expectedDraft"].as_str().unwrap())
+            );
+            client.finish(Duration::from_secs(2)).await;
+            let tail = next_content(&mut receiver).await;
+            assert!(
+                matches!(tail.event, LiveTranslateServerEvent::SourceUtteranceFinal { ref text, .. }
+                if text == contract["expectedFinal"].as_str().unwrap())
+            );
+            assert!(matches!(
+                receiver.recv().await,
+                Some(LiveTranslateServerEvent::SessionFinished)
+            ));
+            server.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_binary_payloads_fail_before_and_after_setup() {
+        let payloads = [
+            vec![0xff, 0xfe],
+            b"{invalid json".to_vec(),
+            b"{}".to_vec(),
+            br#"{"serverContent":{"inputTranscription":{}}}"#.to_vec(),
+        ];
+        for ready in [false, true] {
+            for payload in &payloads {
+                let (client, mut receiver, listener) = fixture().await;
+                let payload = payload.clone();
+                let server = tokio::spawn(async move {
+                    let mut socket = accept_async(listener.accept().await.unwrap().0)
+                        .await
+                        .unwrap();
+                    if ready {
+                        setup(&mut socket).await;
+                        let _ = message(&mut socket).await;
+                    } else {
+                        let _ = message(&mut socket).await;
+                    }
+                    socket.send(Message::Binary(payload.into())).await.unwrap();
+                    while socket.next().await.is_some() {}
+                });
+                if ready {
+                    client.connect("invalid-binary").await.unwrap();
+                    client.send_audio(&[0; 3200]).await.unwrap();
+                    tokio::time::timeout(Duration::from_secs(2), async {
+                        loop {
+                            match receiver.recv().await.unwrap() {
+                                LiveTranslateServerEvent::SessionCreated => {}
+                                LiveTranslateServerEvent::Error { code, .. } => {
+                                    assert_eq!(
+                                        code,
+                                        GeminiTranscribeClientError::InvalidProtocol.to_string()
+                                    );
+                                    break;
+                                }
+                                event => panic!(
+                                    "Unexpected event after invalid binary payload: {event:?}"
+                                ),
+                            }
+                        }
+                    })
+                    .await
+                    .unwrap();
+                } else {
+                    assert!(matches!(
+                        client.connect("invalid-binary").await,
+                        Err(GeminiTranscribeClientError::InvalidProtocol)
+                    ));
+                }
+                client.disconnect().await;
+                server.await.unwrap();
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn binary_server_errors_preserve_authentication_and_rejection_classification() {
+        for (code, expected) in [
+            (401, GeminiTranscribeClientError::AuthenticationFailed),
+            (403, GeminiTranscribeClientError::AuthenticationFailed),
+            (429, GeminiTranscribeClientError::SessionRejected),
+        ] {
+            let (client, _receiver, listener) = fixture().await;
+            let server = tokio::spawn(async move {
+                let mut socket = accept_async(listener.accept().await.unwrap().0)
+                    .await
+                    .unwrap();
+                let _ = message(&mut socket).await;
+                socket
+                    .send(Message::Binary(
+                        json!({"error":{"code":code}})
+                            .to_string()
+                            .into_bytes()
+                            .into(),
+                    ))
+                    .await
+                    .unwrap();
+                while socket.next().await.is_some() {}
+            });
+            assert_eq!(
+                client
+                    .connect("binary-error")
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                expected.to_string()
+            );
+            client.disconnect().await;
+            server.await.unwrap();
+        }
     }
 
     #[tokio::test]
