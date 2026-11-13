@@ -4,6 +4,34 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-13 — 发布前候选实测与补充核对
+
+- 源码基线 `e50ff30746c96971c6a9fa03a5e62c7361c10e44`，产品代码未修改。
+  本轮补查实际生效路线，并用现有开发凭据完成有界服务回归和候选比较；
+  方法、数量和失败见[集成实测记录](integration-runs.md#2026-11-13供应商回归与模型候选比较)。
+  没有改写已保存模型或新配置默认值。
+- **完整巡检仍未完成**：未覆盖所有兼容预设、账户、语言、价格与弃用公告，
+  也没有原生捕获／显示验收。以下结论只适用于记录中的样本。
+  待办复查日期仍为 **2026-11-20**。
+
+| 路线 | 当前证据与决策 | 下一步 |
+| --- | --- | --- |
+| 阿里 ASR 3.0 → 3.1 | **保留当前，候选待扩测**。[官方目录](https://help.aliyun.com/en/model-studio/newly-released-models)已列 `qwen-audio-3.1-asr-flash-streaming`。既有探针在共享域名完成一例日语 3.1，另一例英语在发送 PCM 前网络失败；可比的无上下文 3.0 日语参考编辑距离为 0，3.1 为 2，不能据版本或单例延迟宣称提升 | 保留失败，补充同配置、多语言和真人语义检查；核对[3.1 参数](https://help.aliyun.com/en/model-studio/qwen-audio-asr-streaming-client-events)及[workspace 连接建议](https://help.aliyun.com/en/model-studio/qwen-audio-asr-streaming-websocket-api)，不把网络失败误判为模型不可用 |
+| Qwen 文字预设 `qwen-flash` → `qwen3.8-flash` | **保留当前**。[旧别名仍等同 2025-07-28 快照](https://help.aliyun.com/zh/model-studio/qwen-flash)，[3.8 确为可用候选](https://help.aliyun.com/en/model-studio/qwen3-8-flash)。相同六组英／日文本、同提示和关闭思考：旧版 6/6 成功，3.8 为 5/6；成功请求完成中位数 759.5/1164 ms，3.8 另有 8009 ms 的未分类请求失败。局部语义改善不足以抵消本轮不稳定性 | 复核失败类别、长尾与更多真实字幕样本；本轮是独立 HTTP 探针，采用前仍需生产客户端和原生链路验证 |
+| Qwen-MT Lite／Flash／Plus | **保留 Lite 默认**。生产客户端 36/36 完成；Flash 有局部口语自然度收益，也出现技术术语错义，Plus 未显示稳定优势。三档已经可选，不属于缺失模型支持 | 扩充经人工审核的真实对白和技术上下文，保持模型各自既有协议提示，不由小样本改全局默认 |
+| DeepL `model_type` | **保留当前，质量目标候选待复测**。[官方说明](https://developers.deepl.com/docs/translate/understanding-model-types)确认省略参数默认 `latency_optimized`。显式两种目标的 12 次请求全部成功，响应报告各自目标；六组中五组译文相同，尚无稳定质量收益 | 目标并非固定模型 ID；补充有差异的语言／样本，再决定是否增加用户选项，不能称现有服务一直使用旧模型 |
+| OpenAI 文字候选 | **待实测**。当前预设仍为 `gpt-6-luna`；[Terra 6.1](https://developers.openai.com/api/docs/models/gpt-6.1-terra)支持关闭推理，但当前 `translation_thinking.rs` allowlist 未包含它。[Sol 6.1](https://developers.openai.com/api/docs/models/gpt-6.1-sol)不能套用同一关闭参数 | 明确推理条件和费用后再比较；本轮未测这些文字模型，不能将语音连接拒绝归因于文字候选 |
+| 已更新的专用语音路线 | **已核对文档，部分已回归**。阿里实际一体式路线已用 [3.8 LiveTranslate](https://help.aliyun.com/en/model-studio/livetranslate-realtime-websocket-access)，不是遗留 3.5 常量；OpenAI 的[专用识别](https://developers.openai.com/api/docs/guides/realtime-transcription)与[专用翻译](https://developers.openai.com/api/docs/guides/realtime-translation)仍是现有模型路线 | 阿里短回归通过；OpenAI 当前会话在连接阶段被拒绝，根因仍未知。通用对话模型不能直接代入专用协议 |
+
+腾讯轻量／标准版质量对照、Azure 实际部署版本、Gemini 文字候选及其余兼容
+预设仍是待办。Gemini 文字预设本身不填写模型，不能据此声称存在过期默认；
+[最新模型和生命周期](https://aistudio.google.com/docs/deprecations)与专用 Live
+翻译协议分开核对。百度当前专用接口与[官方文档](https://ai.baidu.com/ai-doc/MT/Sl9p2h5k9)
+一致，未发现可仅换模型名的直接升级；本轮静音后断开仍需定位。
+
+这些结果支持继续有选择地评测，**不支持整体模型升级或大版本质量验收通过**。
+保留默认不意味着所有候选更差；实际费用、真实字幕质量和跨平台原生行为仍需补证。
+
 ## 2026-11-13 — 首轮官方文档核对
 
 - 源码基线：`e10b3ad50c82d50c576aeee2f3ca97265e2f9e0f`。

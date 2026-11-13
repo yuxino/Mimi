@@ -1,5 +1,62 @@
 # 集成实测记录
 
+## 2026-11-13：供应商回归与模型候选比较
+
+- 基线 `e50ff30746c96971c6a9fa03a5e62c7361c10e44`，跟最新 main 一致，
+  产品源码无修改。复用 canonical Cargo 缓存编译 test/debug +
+  `development-debugger`，命令级 `CARGO_INCREMENTAL=0`；构建成功后核对
+  runner SHA-256 `ed7613843f0c387eac0c76b426a817b07a1712378ceab3e36a8510c1bf413492`，
+  每次手动执行前再次比对。原工作区的功能分支和未提交改动未参与构建。
+- 现有开发版本地凭据用于八条 API 路线，最多两个进程。固定公开 FLEURS
+  英语样本 `fleurs-english-1527`：23.44 秒语音 → 90 秒零 PCM → 同段语音，
+  尾帧补零后正常收尾。16 kHz PCM SHA-256
+  `ac2a670639c88b69a7015c0e34a5bd83c2cf7b629fd5b101e649ccfdad51665e`；
+  OpenAI 使用已验证 24 kHz 派生输入
+  `f08f435779884ae290a379dbc169d6227b0f3bd3fc3ad17252d4705f98161908`。
+  阿里 ASR＋Qwen、阿里 ASR＋DeepL、Gemini、火山、腾讯、阿里 LiveTranslate
+  六条均在静音前后持续产生原文与译文事件，并正常完成客户端收尾；耗时约
+  138–142 秒。OpenAI 在连接约 961 ms 被拒绝，零 PCM 发送，具体原因未知；
+  百度首段成功，进入静音约 29.7 秒后出现 transport error，未进入恢复阶段。
+- 这里的事件数不是句数或准确率，终稿可能包含适配器 quiet/settle、drain
+  或停止 fallback；客户端 SessionFinished 不统一等于供应商确认。
+  阶段按出队时刻分组，不能由静音阶段的尾部回复判断幻觉。直接 PCM 没有
+  经过原生采集、SessionManager 恢复、Android JNI 或可见字幕窗口。
+- Qwen-MT 通过生产 `QwenMTClient` 比较六组固定英／日合成文本→简中，
+  三模型、两轮，共 36/36 成功。Lite／Flash／Plus 首次文本中位数分别为
+  223／166.5／532.5 ms，完整结果为 341.5／344／532.5 ms；Plus 整段返回。
+  逐条及独立复核发现：Flash 部分口语更自然，但技术样本有术语错义；Plus
+  有会话层级偏移和一次意图偏移，未显示稳定收益。保留 Lite 默认。
+- 同六组文本另外比较通用 `qwen-flash`／`qwen3.8-flash`：固定生产提示词、
+  `stream:false`、`enable_thinking:false`，轮换次序，独立 HTTP 客户端，
+  最多 12 次且不重试。旧版 6/6 成功，完成范围 658–2603 ms；3.8 为 5/6，
+  成功范围 939–6588 ms，另一例 8009 ms 后得到未分类请求失败，不能仅由
+  时长认定供应商超时。局部意图表达改善不足以支持默认替换。
+- DeepL 对同六组输入显式比较 `latency_optimized`／`quality_optimized`，
+  独立 HTTP 客户端 12/12 成功，响应报告的 `model_type_used` 与选择一致。
+  五组译文相同，一组只有轻微语气／连接差异；完成中位数 1841／1880 ms。
+  每组仅一次，尚无稳定质量或速度差异，不增加或改写产品选项。
+- ASR 复用英语及日语 `fleurs-ja_jp-long-row1-id1608`（22.86 秒，PCM SHA-256
+  `a3190715b35144a28b8da08c5c7294cb72ec6a1eb908980b89e2f860539937cb`），
+  各比较 3.0 生产上下文、3.0 无上下文、3.1 无上下文三组。首次准备因
+  manifest 外路径被输入保护拒绝，未调用服务；将相同字节暂存到受限目录后
+  六例完成五例，3.1 英语在发送 PCM 前网络失败。英语参考编辑距离为
+  5/28、6/28、不可评；日语为 4/81、0/81、2/81。只有后两组可隔离模型差异，
+  reference 未独立听审，不能当作总体准确率。日语 3.1 的最终事件比无上下文
+  3.0 晚 11 ms；较小的服务句末延迟来自结束时间戳后移，不是实际更快。
+  探针汇总 `task_rejected` 表示任一用例失败，不是额外的供应商模型拒绝。
+- 本地桌面测试 713 passed／9 ignored、前端 2879 passed 及 lint 通过；
+  同一 revision 的[桌面 CI](https://github.com/yuxino/Mimi/actions/runs/43276446804)
+  和 [Android CI](https://github.com/yuxino/Mimi/actions/runs/43276446823)已通过。
+  本轮没有重跑本地完整 canonical 检查、实际 JNI 或原生安装验收，也未打包、
+  改版本、发布或更新模型。Android 当前源码及 manifest 没有应用内检查／
+  下载／安装版本更新功能；发布工作流上传 APK 不等于应用内更新。
+- 临时开发配置选择已恢复，偏好、配置、凭据和迁移完成标记的字节及权限
+  均匹配模型比较前收据。没有系统采音、麦克风、录音、正式配置复制或原生凭据
+  访问。精简报告、合成文字输出、样本引用及哈希保存在开发版私有
+  `development-benchmarks/2026-11-13-release-regression`；临时样本副本清理。
+  尚缺更多真人语义样本、实际费用、失败根因、原生及长期验收；模型维护
+  决策和后续顺序见[巡检记录](provider-model-reviews.md)。
+
 ## 2026-11-13 — Android overlay host cleanup
 
 - Source `b2b797f3`, based on `aaff4246`. Removed the uncalled preview setter,
