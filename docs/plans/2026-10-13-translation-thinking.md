@@ -37,6 +37,22 @@ latency comparison uses the same short inputs/model/connection, alternates
 baseline and non-thinking requests, and reports timings without content or keys.
 Native caption latency and translation quality remain separate from HTTP timing.
 
+## 2026-11-13 model maintenance
+
+GPT-6.1 Terra was missing from the reviewed optional-thinking families. Its
+[official model specification](https://developers.openai.com/api/docs/models/gpt-6.1-terra)
+supports `none` and defaults to `medium`. Add it to the shared request policy
+for OpenAI and its existing [OpenRouter route](https://openrouter.ai/openai/gpt-6.1-terra),
+with the same host and model-variant boundaries. GPT-6.1 Sol remains excluded:
+its [documented efforts](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
+do not include `none`.
+
+Shared request fixtures cover the new route and reject an unknown variant and
+gateway. Direct Rust and actual JNI request tests consume those same fixtures.
+This applies the existing non-thinking policy to a user-selected Terra model; it does not
+change the saved model, the default preset, or establish a translation-quality
+improvement over Luna.
+
 Protocol references (reviewed 2026-10-13):
 
 - [DeepSeek](https://api-docs.deepseek.com/guides/thinking_mode/)

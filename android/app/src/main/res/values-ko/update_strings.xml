@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">버전 %1$s</string>
+    <string name="app_update_check">업데이트 확인</string>
+    <string name="app_update_checking">확인 중…</string>
+    <string name="app_update_download">APK 다운로드</string>
+    <string name="app_update_current">최신 버전입니다.</string>
+    <string name="app_update_available">버전 %1$s을(를) 사용할 수 있습니다</string>
+    <string name="app_update_failed">업데이트를 확인하지 못했습니다. 다시 시도하세요.</string>
+    <string name="app_update_open_failed">다운로드를 열지 못했습니다. 브라우저를 설치하거나 사용 설정한 후 다시 시도하세요.</string>
+</resources>

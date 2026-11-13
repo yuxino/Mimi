@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">Version %1$s</string>
+    <string name="app_update_check">Check for updates</string>
+    <string name="app_update_checking">Checking…</string>
+    <string name="app_update_download">Download APK</string>
+    <string name="app_update_current">You are up to date.</string>
+    <string name="app_update_available">Version %1$s is available</string>
+    <string name="app_update_failed">Could not check for updates. Try again.</string>
+    <string name="app_update_open_failed">Could not open the download. Install or enable a browser, then try again.</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">バージョン %1$s</string>
+    <string name="app_update_check">更新を確認</string>
+    <string name="app_update_checking">確認中…</string>
+    <string name="app_update_download">APK をダウンロード</string>
+    <string name="app_update_current">最新バージョンです。</string>
+    <string name="app_update_available">バージョン %1$s が利用可能です</string>
+    <string name="app_update_failed">更新を確認できませんでした。もう一度お試しください。</string>
+    <string name="app_update_open_failed">ダウンロードを開けませんでした。ブラウザをインストールまたは有効にして、もう一度お試しください。</string>
+</resources>

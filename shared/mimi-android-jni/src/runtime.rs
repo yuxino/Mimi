@@ -54,7 +54,7 @@ use tokio::{
 const MAX_SESSIONS: usize = 2;
 const MAX_REQUEST: usize = 8 * 1024 * 1024;
 const MAX_PCM: usize = 192_000;
-fn executor() -> &'static Runtime {
+pub(crate) fn executor() -> &'static Runtime {
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -797,6 +797,9 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
         .as_str()
         .ok_or("native_runtime_invalid_request")?
     {
+        "app_update_endpoint" | "app_update_start" | "app_update_poll" | "app_update_cancel" => {
+            crate::app_update::exchange(&value)?
+        }
         "merge_snapshots" => crate::snapshot_merge::merge(&value)?,
         "resolve_credentials_draft" => {
             let provider: ProviderKind = serde_json::from_value(value["provider"].clone())

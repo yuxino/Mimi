@@ -14,6 +14,14 @@ import javax.net.ssl.X509TrustManager
 
 /** Read platform routing and trust once. No connections, credentials or fallback trust stores. */
 internal object NativeRuntimeNetwork {
+    fun updateSnapshot(): JSONObject {
+        val endpoint = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "app_update_endpoint"))
+            .getString("endpoint")
+        val proxy = nativeProxySnapshot(JSONObject().put("mode", "system").put("url", JSONObject.NULL),
+            endpoint, ProxySelector.getDefault()) { false }
+        return JSONObject().put("proxy", proxy).put("trustRoots", trustRoots())
+    }
+
     fun textSnapshot(configuration: JSONObject): JSONObject {
         val endpoints = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "text_probe_endpoint").put("configuration", configuration))
         val proxy = nativeProxySnapshot(JSONObject().put("mode", "system").put("url", JSONObject.NULL),
