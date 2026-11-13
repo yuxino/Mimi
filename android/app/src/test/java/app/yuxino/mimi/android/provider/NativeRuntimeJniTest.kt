@@ -1651,7 +1651,9 @@ class NativeRuntimeJniTest {
                             check(length in 1..65_536)
                             val body = JSONObject(ByteArray(length).also(input::readFully).toString(Charsets.UTF_8))
                             check(body.getBoolean("stream") == qwenResponse!!.getBoolean("stream"))
-                            val response = qwenResponse.getString("body").toByteArray(Charsets.UTF_8)
+                            val response = if (qwenResponse.has("bodyHex"))
+                                qwenResponse.getString("bodyHex").chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                            else qwenResponse.getString("body").toByteArray(Charsets.UTF_8)
                             secure.getOutputStream().write(("HTTP/1.1 200 OK\r\nContent-Length: ${response.size}\r\nConnection: close\r\n\r\n").toByteArray(Charsets.US_ASCII))
                             secure.getOutputStream().write(response)
                         }

@@ -12,6 +12,7 @@
   保留现有模型与参数；这是协议兼容修复，不是新模型的线上质量结论。
 - 横向检查既有 JSON Binary 通路，移除 Audio3、LiveTranslate、OpenAI/Azure
   Realtime 和 Gemini Live 的宽松 UTF-8 替换；非法输入沿用协议失败路径。
+  Qwen-MT 非流式 HTTP 响应也移除宽松替换，保留原有受限重试语义。
   腾讯/百度/xAI 的二进制音频及火山 protobuf 不适用此 JSON 修复。
 - 验证契约与剩余分类边界见[设计记录](../plans/2026-11-14-provider-binary-json.md)。
   本次未新增真实账号/音频测试，不替代下方未完成的全量模型复核。

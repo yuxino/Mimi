@@ -15,6 +15,8 @@ with U+FFFD, allowing corrupted transcripts to become subtitle content.
 - Gemini Live (including replacement and rotation), Audio3/DashScope, Aliyun
   LiveTranslate, OpenAI Realtime and Azure Realtime retain their existing Binary
   JSON support but no longer repair corrupt bytes into subtitle text.
+- Qwen-MT non-streaming HTTP responses also use strict UTF-8; malformed response
+  classification and its existing bounded retry policy remain unchanged.
 - Independent Gemini, xAI STT and custom ASR setup errors preserve the exact
   internal protocol/rejection labels across the translation adapter. They stop
   as provider failures; authentication and retryable transport categories stay

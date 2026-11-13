@@ -1096,7 +1096,7 @@ mod tests {
         let (events, mut receiver) = provider_event_channel();
         let client = LiveTranslateClient::build(
             "synthetic-key",
-            SourceLanguage::English,
+            SourceLanguage::Automatic,
             TargetLanguage::Japanese,
             BTreeMap::new(),
             events,

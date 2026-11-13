@@ -116,8 +116,9 @@ impl QwenMTClient {
             return Err(rejected_error(status.as_u16(), &bytes.unwrap_or_default()));
         }
         let bytes = bytes?;
-        QwenMTResponseDecoder::decode(&String::from_utf8_lossy(&bytes)).map_err(|error| match error
-        {
+        let text =
+            std::str::from_utf8(&bytes).map_err(|_| QwenMTClientError::InvalidHTTPResponse)?;
+        QwenMTResponseDecoder::decode(text).map_err(|error| match error {
             QwenMTProtocolError::InvalidJSON => QwenMTClientError::InvalidHTTPResponse,
             QwenMTProtocolError::MissingTranslation => QwenMTClientError::RequestFailed {
                 status_code: status.as_u16(),
@@ -590,6 +591,12 @@ mod tests {
     }
 
     async fn fixture_client(response: String) -> (QwenMTClient, tokio::task::JoinHandle<String>) {
+        fixture_client_bytes(response.into_bytes()).await
+    }
+
+    async fn fixture_client_bytes(
+        response: Vec<u8>,
+    ) -> (QwenMTClient, tokio::task::JoinHandle<String>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
@@ -616,7 +623,7 @@ mod tests {
                 }
             }
             // Oversized responses may intentionally close before reading the body.
-            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.write_all(&response).await;
             String::from_utf8(request).unwrap()
         });
         let mut client = QwenMTClient::new(
@@ -741,12 +748,21 @@ mod tests {
             .iter()
             .chain(contracts["qwenStreamingResponses"].as_array().unwrap())
         {
-            let body = case["body"].as_str().unwrap();
-            let (mut client, server) = fixture_client(format!(
-                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            let body = if let Some(hex) = case["bodyHex"].as_str() {
+                (0..hex.len())
+                    .step_by(2)
+                    .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+                    .collect::<Vec<_>>()
+            } else {
+                case["body"].as_str().unwrap().as_bytes().to_vec()
+            };
+            let mut response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 body.len(),
-            ))
-            .await;
+            )
+            .into_bytes();
+            response.extend_from_slice(&body);
+            let (mut client, server) = fixture_client_bytes(response).await;
             if let Some(model) = case.get("model") {
                 client.model = serde_json::from_value(model.clone()).unwrap();
             }
@@ -763,10 +779,15 @@ mod tests {
             } else {
                 let error = result.expect_err(case["id"].as_str().unwrap());
                 assert!(!error.to_string().contains("Synthetic partial"));
-                assert_eq!(
-                    error.retry_class(),
-                    mimi_core::translation_policy::RetryClass::Permanent
-                );
+                let expected_retry = match case["errorCode"].as_str() {
+                    Some("invalid_http_response") => {
+                        assert_eq!(error, QwenMTClientError::InvalidHTTPResponse);
+                        mimi_core::translation_policy::RetryClass::Temporary
+                    }
+                    None => mimi_core::translation_policy::RetryClass::Permanent,
+                    Some(code) => panic!("unexpected fixture error code: {code}"),
+                };
+                assert_eq!(error.retry_class(), expected_retry, "{}", case["id"]);
             }
         }
     }

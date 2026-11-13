@@ -519,6 +519,8 @@
     }
   ],
   "qwenCompletionResponses": [
+    {"id":"json-unicode","stream":false,"body":"{\"choices\":[{\"message\":{\"content\":\"Synthetic 世界.\"},\"finish_reason\":\"stop\"}]}","expected":"Synthetic 世界."},
+    {"id":"json-invalid-utf8","stream":false,"bodyHex":"7b2263686f69636573223a5b7b226d657373616765223a7b22636f6e74656e74223a2253796e74686574696320ff207472616e736c6174696f6e227d2c2266696e6973685f726561736f6e223a2273746f70227d5d7d","expected":null,"errorCode":"invalid_http_response"},
     {
       "id": "sse-done",
       "stream": true,
