@@ -5,7 +5,7 @@ use crate::core::diagnostics::{milliseconds, TranslationLatency, TranslationLate
 use crate::core::models::{SourceLanguage, TargetLanguage, UtteranceRole};
 use crate::core::protocols::live_translate::{
     AlibabaRealtimeEventDecoder, LiveTranslateEndpoint, LiveTranslateEventIdentity,
-    LiveTranslateRequestEncoder, LiveTranslateServerEvent,
+    LiveTranslateProtocolError, LiveTranslateRequestEncoder, LiveTranslateServerEvent,
 };
 use crate::core::provider::AlibabaRealtimeMode;
 use crate::pipeline_log;
@@ -643,8 +643,8 @@ async fn receive_loop(
     }
     while let Some(message) = stream.next().await {
         let wire = match message {
-            Ok(Message::Text(text)) => text.to_string(),
-            Ok(Message::Binary(data)) => String::from_utf8_lossy(&data).into_owned(),
+            Ok(Message::Text(text)) => Ok(text.to_string()),
+            Ok(Message::Binary(data)) => std::str::from_utf8(&data).map(str::to_owned),
             Ok(Message::Pong(_)) => {
                 inner.pong_notify.notify_waiters();
                 continue;
@@ -677,7 +677,10 @@ async fn receive_loop(
 
         let revision = events.content_revision();
         let _content = inner.content_lock.lock().await;
-        let decoded = inner.decoder.lock().await.decode(&wire);
+        let decoded = match wire {
+            Ok(wire) => inner.decoder.lock().await.decode(&wire),
+            Err(_) => Err(LiveTranslateProtocolError::InvalidJSON),
+        };
         let decoded = match decoded {
             Ok(decoded) => decoded,
             Err(_) => {
@@ -1050,6 +1053,97 @@ mod tests {
     use super::*;
     use crate::clients::provider_events::provider_event_channel;
     use std::collections::HashSet;
+
+    #[tokio::test]
+    async fn binary_json_preserves_unicode_and_rejects_invalid_utf8_transcripts() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        let case = &fixtures["binaryJsonTransports"]["liveTranslate"];
+        let setup = case["setup"].to_string();
+        let transcript = case["transcript"].to_string();
+        let hex = case["invalidTranscriptHex"].as_str().unwrap();
+        let invalid: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+            .collect();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = LiveTranslateEndpoint {
+            url: format!("ws://{}", listener.local_addr().unwrap())
+                .parse()
+                .unwrap(),
+        };
+        let (corrupt, corrupted) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let _ = socket.next().await;
+            socket
+                .send(Message::Binary(setup.into_bytes().into()))
+                .await
+                .unwrap();
+            socket
+                .send(Message::Binary(transcript.into_bytes().into()))
+                .await
+                .unwrap();
+            corrupted.await.unwrap();
+            socket.send(Message::Binary(invalid.into())).await.unwrap();
+            while let Some(Ok(message)) = socket.next().await {
+                if matches!(message, Message::Close(_)) {
+                    break;
+                }
+            }
+        });
+        let (events, mut receiver) = provider_event_channel();
+        let client = LiveTranslateClient::build(
+            "synthetic-key",
+            SourceLanguage::English,
+            TargetLanguage::Japanese,
+            BTreeMap::new(),
+            events,
+            AlibabaRealtimeMode::LiveTranslate,
+            endpoint,
+        )
+        .unwrap();
+        client.connect().await.unwrap();
+        let source = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match receiver.recv().await.unwrap() {
+                    LiveTranslateServerEvent::SessionUpdated
+                    | LiveTranslateServerEvent::SubtitleSourceBoundary { .. } => {}
+                    event => break event,
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(source, LiveTranslateServerEvent::UtteranceText {
+            role: UtteranceRole::Source, text, ..
+        } if text == case["expectedSource"].as_str().unwrap()));
+
+        corrupt.send(()).unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            error,
+            LiveTranslateServerEvent::Error {
+                code: "live_translate_protocol_error".into(),
+                message: GENERIC_PROTOCOL_ERROR.into(),
+            }
+        );
+        let task = client.inner.receive_task.lock().await.take().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receiver.try_recv().is_err());
+        client.disconnect().await;
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+    }
 
     #[tokio::test]
     async fn setup_rejection_contract_preserves_safe_recovery_classification_over_a_real_socket() {

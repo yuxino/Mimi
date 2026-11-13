@@ -743,6 +743,10 @@ mod tests {
                     .send(frame(&wire["setup"], binary_setup))
                     .await
                     .unwrap();
+                socket
+                    .send(frame(&wire["voiceActivityStart"], binary_content))
+                    .await
+                    .unwrap();
                 let audio = message(&mut socket).await;
                 assert_eq!(
                     audio["realtimeInput"]["audio"]["mimeType"],
@@ -753,6 +757,10 @@ mod tests {
                     .await
                     .unwrap();
                 assert_eq!(message(&mut socket).await, gemini_transcribe::finish());
+                socket
+                    .send(frame(&wire["voiceActivityEnd"], binary_content))
+                    .await
+                    .unwrap();
                 socket
                     .send(frame(&wire["final"], binary_content))
                     .await

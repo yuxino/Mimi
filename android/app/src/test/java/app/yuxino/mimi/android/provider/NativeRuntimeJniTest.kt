@@ -897,6 +897,62 @@ class NativeRuntimeJniTest {
         }
     }
 
+    @Test fun geminiAsrSetupProtocolAndProviderRejectionsDoNotRetryAcrossActualJni() {
+        val wire = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONObject("geminiTranscribeTransport")
+        val failures = wire.getJSONArray("setupFailures")
+        repeat(failures.length()) { index ->
+            val failure = failures.getJSONObject(index)
+            RealtimeLoopback(ServiceProvider.GEMINI, geminiTranscribe = wire, geminiSetupFailure = failure).use { fixture ->
+                val config = configuration(ServiceProvider.GEMINI).put("speechTranslationMode", "asrMt")
+                    .put("sourceLanguage", "en").put("targetLanguage", "original")
+                val handle = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "create")
+                    .put("configuration", config).put("network", fixture.network)).getLong("handle")
+                try {
+                    NativeRuntimeConfiguration.command("start", handle)
+                    awaitRuntimeState(handle, fixture, expectedError = failure.getString("expectedError")) {
+                        it.getBoolean("finished") && it.optString("errorCode") == failure.getString("expectedError")
+                    }
+                    stopAndAwaitTransportClosed(handle, fixture)
+                    assertEquals(1, fixture.connectionCount.get())
+                } finally { NativeRuntimeConfiguration.command("stop", handle) }
+            }
+        }
+    }
+
+    @Test fun binaryJsonTransportsPreserveUnicodeAndRejectCorruptedCaptionsAcrossActualJni() {
+        val cases = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONObject("binaryJsonTransports")
+        for ((route, provider) in listOf("audio3" to ServiceProvider.DASHSCOPE,
+            "liveTranslate" to ServiceProvider.DASHSCOPE, "openaiRealtime" to ServiceProvider.OPENAI,
+            "azureOpenaiRealtime" to ServiceProvider.AZURE, "geminiLive" to ServiceProvider.GEMINI)) {
+            val wire = cases.getJSONObject(route).put("route", route)
+            RealtimeLoopback(provider, binaryJson = wire).use { fixture ->
+                val config = configuration(provider).put("sourceLanguage", if (route == "audio3") "en" else "auto")
+                    .put("targetLanguage", if (route == "audio3") "original" else "ja")
+                if (route == "liveTranslate") config.put("alibabaRealtimeMode", "liveTranslate")
+                    .put("alibabaWorkspaceId", "synthetic-workspace")
+                val handle = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "create")
+                    .put("configuration", config).put("network", fixture.network)).getLong("handle")
+                try {
+                    NativeRuntimeConfiguration.command("start", handle)
+                    awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
+                    fixture.nextMid.countDown()
+                    awaitRuntimeState(handle, fixture) {
+                        it.getJSONObject("snapshot").getJSONObject("source").optString("text") == wire.getString("expectedSource")
+                    }
+                    fixture.nextFinal.countDown()
+                    val stopped = awaitRuntimeState(handle, fixture, expectedError = "provider_error") {
+                        it.getBoolean("finished") && it.optString("errorCode") == "provider_error"
+                    }
+                    assertFalse("$route exposed corrupted caption text", stopped.getJSONObject("snapshot").toString().contains("\uFFFD"))
+                    stopAndAwaitTransportClosed(handle, fixture)
+                    assertEquals("$route unexpectedly retried a protocol failure", 1, fixture.connectionCount.get())
+                } finally { NativeRuntimeConfiguration.command("stop", handle) }
+            }
+        }
+    }
+
     @Test fun audio3SetupRejectionAndUnsolicitedFinishRecoveryCrossActualJni() {
         verifyBuiltinRealtimeRecovery(ServiceProvider.DASHSCOPE)
     }
@@ -1458,11 +1514,20 @@ class NativeRuntimeJniTest {
         private val translationStartReplay: Boolean = false, private val finishTailCount: Int = 1,
         private val xaiRecovery: JSONObject? = null, private val liveRecovery: JSONObject? = null,
         private val builtinRecovery: JSONObject? = null,
-        private val geminiTranscribe: JSONObject? = null) : AutoCloseable {
+        private val geminiTranscribe: JSONObject? = null,
+        private val binaryJson: JSONObject? = null,
+        private val geminiSetupFailure: JSONObject? = null) : AutoCloseable {
         private val volcano = provider == ServiceProvider.VOLCANO
         private val tencent = provider == ServiceProvider.TENCENT
-        private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate && builtinRecovery == null
-        private val host = if (geminiTranscribe != null) "generativelanguage.googleapis.com"
+        private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate && builtinRecovery == null && binaryJson == null
+        private val host = if (binaryJson != null) when (binaryJson.getString("route")) {
+            "audio3" -> "dashscope.aliyuncs.com"
+            "liveTranslate" -> "synthetic-workspace.cn-beijing.maas.aliyuncs.com"
+            "openaiRealtime" -> "api.openai.com"
+            "azureOpenaiRealtime" -> "synthetic.openai.azure.com"
+            "geminiLive" -> "generativelanguage.googleapis.com"
+            else -> error("Unsupported binary JSON fixture")
+        } else if (geminiTranscribe != null) "generativelanguage.googleapis.com"
             else if (volcano) "openspeech.bytedance.com" else if (builtinRecovery != null) when (provider) {
             ServiceProvider.OPENAI -> "api.openai.com"
             ServiceProvider.XAI -> "api.x.ai"
@@ -1605,11 +1670,41 @@ class NativeRuntimeJniTest {
                             check(setup.getString("model") == "models/gemini-3.5-transcribe-live")
                             fun binary(field: String) = frame(output, 2,
                                 geminiTranscribe.getJSONObject(field).toString().toByteArray(Charsets.UTF_8))
+                            if (geminiSetupFailure != null) {
+                                frame(output, 2, geminiSetupFailure.getString("hex").chunked(2).map { it.toInt(16).toByte() }.toByteArray())
+                                check(readText(input, output).isEmpty())
+                                return@thread
+                            }
                             binary("setup")
+                            binary("voiceActivityStart")
                             check(nextMid.await(5, TimeUnit.SECONDS))
                             binary("draft")
                             check(nextFinal.await(5, TimeUnit.SECONDS))
+                            binary("voiceActivityEnd")
                             binary("final")
+                            check(readText(input, output).isEmpty())
+                        }
+                        return@thread
+                    }
+                    if (binaryJson != null) {
+                        acceptWebSocket(tls).use { secure ->
+                            val input = DataInputStream(secure.inputStream)
+                            val output = secure.outputStream
+                            val setup = JSONObject(readText(input, output))
+                            when (binaryJson.getString("route")) {
+                                "audio3" -> check(setup.getJSONObject("header").getString("action") == "run-task")
+                                "geminiLive" -> check(setup.getJSONObject("setup").getJSONObject("generationConfig")
+                                    .getJSONObject("translationConfig").getString("targetLanguageCode") == "ja")
+                                else -> check(setup.getString("type") == "session.update")
+                            }
+                            val taskId = if (binaryJson.getString("route") == "audio3") setup.getJSONObject("header").getString("task_id") else "binary-json-fixture"
+                            fun correlated(bytes: ByteArray): ByteArray = bytes.toString(Charsets.ISO_8859_1)
+                                .replace("binary-json-fixture", taskId).toByteArray(Charsets.ISO_8859_1)
+                            frame(output, 2, correlated(binaryJson.getJSONObject("setup").toString().toByteArray(Charsets.UTF_8)))
+                            check(nextMid.await(5, TimeUnit.SECONDS))
+                            frame(output, 2, correlated(binaryJson.getJSONObject("transcript").toString().toByteArray(Charsets.UTF_8)))
+                            check(nextFinal.await(5, TimeUnit.SECONDS))
+                            frame(output, 2, correlated(binaryJson.getString("invalidTranscriptHex").chunked(2).map { it.toInt(16).toByte() }.toByteArray()))
                             check(readText(input, output).isEmpty())
                         }
                         return@thread
@@ -1693,7 +1788,14 @@ class NativeRuntimeJniTest {
             socket = secure
             val input = DataInputStream(secure.inputStream)
             val request = headers(input)
-            check(request.startsWith(if (geminiTranscribe != null)
+            check(request.startsWith(if (binaryJson != null) when (binaryJson.getString("route")) {
+                "audio3" -> "GET /api-ws/v1/inference HTTP/1.1\r\n"
+                "liveTranslate" -> "GET /api-ws/v1/realtime?model=qwen3.8-livetranslate-flash-realtime HTTP/1.1\r\n"
+                "openaiRealtime" -> "GET /v1/realtime/translations?model=gpt-realtime-translate HTTP/1.1\r\n"
+                "azureOpenaiRealtime" -> "GET /openai/v1/realtime/translations?model=synthetic-deployment HTTP/1.1\r\n"
+                "geminiLive" -> "GET /ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=synthetic-apiKey HTTP/1.1\r\n"
+                else -> error("Unsupported binary JSON fixture")
+            } else if (geminiTranscribe != null)
                 "GET /ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent HTTP/1.1\r\n"
                 else if (volcano) "GET /api/v4/ast/v2/translate HTTP/1.1\r\n"
                 else if (builtinRecovery != null) when (provider) {
@@ -2117,8 +2219,8 @@ class NativeRuntimeJniTest {
             try {
                 while (true) {
                     val (opcode, payload) = readFrame(input)
-                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null || geminiTranscribe != null) && opcode == 8) {
-                        if (liveTranslate || builtinRecovery != null || geminiTranscribe != null) observeTransportClosed(connection)
+                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null || geminiTranscribe != null || binaryJson != null) && opcode == 8) {
+                        if (liveTranslate || builtinRecovery != null || geminiTranscribe != null || binaryJson != null) observeTransportClosed(connection)
                         return ""
                     }
                     if (builtinRecovery != null && opcode == 2) {
@@ -2138,7 +2240,7 @@ class NativeRuntimeJniTest {
                     }
                 }
             } catch (error: java.io.EOFException) {
-                if (!liveTranslate && xaiRecovery == null && builtinRecovery == null && geminiTranscribe == null) throw error
+                if (!liveTranslate && xaiRecovery == null && builtinRecovery == null && geminiTranscribe == null && binaryJson == null) throw error
                 observeTransportClosed(connection)
                 return ""
             }

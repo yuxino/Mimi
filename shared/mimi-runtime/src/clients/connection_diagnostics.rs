@@ -1,14 +1,17 @@
 //! Explicit, bounded service checks. No capture, user text or response logging.
 
 use crate::clients::audio3_client::{Audio3ASRClient, Audio3ASRClientError};
+use crate::clients::custom_speech_client::CustomSpeechClientError;
 use crate::clients::deepl_client::DeepLClient;
 use crate::clients::deeplx_client::DeepLXClient;
+use crate::clients::gemini_transcribe_client::GeminiTranscribeClientError;
 use crate::clients::openai_compatible_client::OpenAICompatibleClient;
 use crate::clients::provider_events::provider_event_channel;
 use crate::clients::provider_network::ProviderNetwork;
 use crate::clients::qwen_mt_client::QwenMTClient;
 use crate::clients::recognition_client::{RecognitionClient, RecognitionClientError};
 use crate::clients::translation_client::{ConnectError, TranslationClient};
+use crate::clients::xai_stt_client::XaiSttClientError;
 use crate::core::configuration::{
     LiveTranslationConfiguration, TextTranslationProbeConfiguration,
     TextTranslationProbeCredentials,
@@ -58,6 +61,7 @@ pub enum ConnectionCheckReason {
     QuotaExhausted,
     ConcurrencyLimited,
     ServiceRejected,
+    ProtocolInvalid,
     Timeout,
     Unreachable,
     TextTranslationNotConfigured,
@@ -806,6 +810,14 @@ fn apple_test_phrase(source: SourceLanguage) -> Option<&'static str> {
 }
 
 fn recognition_reason(error: &RecognitionClientError) -> ConnectionCheckReason {
+    if matches!(
+        error,
+        RecognitionClientError::Gemini(GeminiTranscribeClientError::InvalidProtocol)
+            | RecognitionClientError::Xai(XaiSttClientError::InvalidProtocol)
+            | RecognitionClientError::Custom(CustomSpeechClientError::InvalidProtocol)
+    ) {
+        return ConnectionCheckReason::ProtocolInvalid;
+    }
     if let RecognitionClientError::Apple(label) = error {
         return match label.as_str() {
             "apple_speech_assets_missing" => ConnectionCheckReason::AppleSpeechAssetsMissing,
@@ -1053,6 +1065,70 @@ pub(crate) async fn rejected_websocket_endpoint(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recognition_protocol_failures_are_distinct_from_service_rejections() {
+        for (error, expected) in [
+            (
+                RecognitionClientError::Gemini(GeminiTranscribeClientError::InvalidProtocol),
+                ConnectionCheckReason::ProtocolInvalid,
+            ),
+            (
+                RecognitionClientError::Gemini(GeminiTranscribeClientError::SessionRejected),
+                ConnectionCheckReason::ServiceRejected,
+            ),
+            (
+                RecognitionClientError::Gemini(GeminiTranscribeClientError::AuthenticationFailed),
+                ConnectionCheckReason::AuthenticationRejected,
+            ),
+            (
+                RecognitionClientError::Gemini(GeminiTranscribeClientError::Unreachable),
+                ConnectionCheckReason::Unreachable,
+            ),
+            (
+                RecognitionClientError::Xai(XaiSttClientError::InvalidProtocol),
+                ConnectionCheckReason::ProtocolInvalid,
+            ),
+            (
+                RecognitionClientError::Xai(XaiSttClientError::SessionRejected),
+                ConnectionCheckReason::ServiceRejected,
+            ),
+            (
+                RecognitionClientError::Xai(XaiSttClientError::AuthenticationFailed),
+                ConnectionCheckReason::AuthenticationRejected,
+            ),
+            (
+                RecognitionClientError::Xai(XaiSttClientError::Unreachable),
+                ConnectionCheckReason::Unreachable,
+            ),
+            (
+                RecognitionClientError::Custom(CustomSpeechClientError::InvalidProtocol),
+                ConnectionCheckReason::ProtocolInvalid,
+            ),
+            (
+                RecognitionClientError::Custom(CustomSpeechClientError::SessionRejected),
+                ConnectionCheckReason::ServiceRejected,
+            ),
+            (
+                RecognitionClientError::Custom(CustomSpeechClientError::AuthenticationFailed),
+                ConnectionCheckReason::AuthenticationRejected,
+            ),
+            (
+                RecognitionClientError::Custom(CustomSpeechClientError::Unreachable),
+                ConnectionCheckReason::Unreachable,
+            ),
+        ] {
+            assert_eq!(recognition_reason(&error), expected);
+        }
+        assert_eq!(
+            serde_json::to_value(ConnectionDiagnostic::unavailable(
+                "present",
+                ConnectionCheckReason::ProtocolInvalid
+            ))
+            .unwrap()["reason"],
+            "protocolInvalid"
+        );
+    }
+
     #[test]
     fn local_text_checks_use_a_synthetic_phrase_in_the_selected_source() {
         assert_eq!(

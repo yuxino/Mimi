@@ -3,7 +3,7 @@
 use crate::clients::provider_events::ProviderEventSender;
 use crate::core::models::TargetLanguage;
 use crate::core::protocols::gemini_live::{
-    GeminiLiveEndpoint, GeminiLiveRequestEncoder, GeminiLiveServerEvent,
+    GeminiLiveEndpoint, GeminiLiveProtocolError, GeminiLiveRequestEncoder, GeminiLiveServerEvent,
 };
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use futures_util::{SinkExt, StreamExt};
@@ -810,6 +810,11 @@ struct ReceiveContext {
     generation: u64,
 }
 
+fn decode_binary_event(data: &[u8]) -> Result<Vec<GeminiLiveServerEvent>, GeminiLiveProtocolError> {
+    let text = std::str::from_utf8(data).map_err(|_| GeminiLiveProtocolError::InvalidJSON)?;
+    GeminiLiveServerEvent::decode(text)
+}
+
 async fn receive_loop(mut context: ReceiveContext) {
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     loop {
@@ -830,9 +835,7 @@ async fn receive_loop(mut context: ReceiveContext) {
         }
         let events = match message {
             Ok(Message::Text(text)) => GeminiLiveServerEvent::decode(&text),
-            Ok(Message::Binary(data)) => {
-                GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data))
-            }
+            Ok(Message::Binary(data)) => decode_binary_event(&data),
             Ok(Message::Pong(_)) => {
                 context.inner.pong_notify.notify_waiters();
                 continue;
@@ -941,7 +944,7 @@ async fn prepare_replacement(
         let events = match message.map_err(|_| GeminiLiveClientError::TransportFailure)? {
             Message::Text(text) => GeminiLiveServerEvent::decode(&text)
                 .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
-            Message::Binary(data) => GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data))
+            Message::Binary(data) => decode_binary_event(&data)
                 .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
             Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
             Message::Close(_) => return Err(GeminiLiveClientError::TransportFailure),
@@ -1122,8 +1125,9 @@ async fn process_rotation_message(
     let events = match message {
         Message::Text(text) => GeminiLiveServerEvent::decode(&text)
             .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
-        Message::Binary(data) => GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&data))
-            .map_err(|_| GeminiLiveClientError::SessionSetupRejected)?,
+        Message::Binary(data) => {
+            decode_binary_event(&data).map_err(|_| GeminiLiveClientError::SessionSetupRejected)?
+        }
         Message::Pong(_) => {
             context.inner.pong_notify.notify_waiters();
             return Ok(());
@@ -1537,6 +1541,158 @@ mod tests {
     use futures_util::{SinkExt, StreamExt};
     use serde_json::{json, Value};
     use tokio::net::TcpListener;
+
+    fn binary_json_fixture() -> Value {
+        let fixtures: Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        fixtures["binaryJsonTransports"]["geminiLive"].clone()
+    }
+
+    fn invalid_binary_transcript(fixture: &Value) -> Vec<u8> {
+        fixture["invalidTranscriptHex"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn binary_json_preserves_unicode_and_rejects_invalid_utf8_without_replacement() {
+        let fixture = binary_json_fixture();
+        let valid = fixture["transcript"].to_string();
+        assert_eq!(
+            decode_binary_event(valid.as_bytes()).unwrap(),
+            GeminiLiveServerEvent::decode(&valid).unwrap()
+        );
+        let invalid = invalid_binary_transcript(&fixture);
+        // The previous lossy conversion silently accepted this corrupt string.
+        assert!(GeminiLiveServerEvent::decode(&String::from_utf8_lossy(&invalid)).is_ok());
+        assert_eq!(
+            decode_binary_event(&invalid),
+            Err(GeminiLiveProtocolError::InvalidJSON)
+        );
+        assert_eq!(
+            decode_binary_event(b"not-json"),
+            Err(GeminiLiveProtocolError::InvalidJSON)
+        );
+    }
+
+    #[tokio::test]
+    async fn binary_json_setup_and_unicode_transcript_reach_final_pair() {
+        let fixture = binary_json_fixture();
+        let setup = fixture["setup"].to_string().into_bytes();
+        let transcript = fixture["transcript"].to_string().into_bytes();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                assert_setup(socket.next().await.unwrap().unwrap());
+                socket.send(Message::Binary(setup.into())).await.unwrap();
+                socket
+                    .send(Message::Binary(transcript.into()))
+                    .await
+                    .unwrap();
+                while socket.next().await.is_some() {}
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        let (source, translation) = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                match events.recv().await.unwrap() {
+                    LiveTranslateServerEvent::SubtitleFinalPair {
+                        source,
+                        translation,
+                        ..
+                    } => break (source, translation),
+                    LiveTranslateServerEvent::Error { .. } => panic!("valid binary JSON failed"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(source, fixture["expectedSource"].as_str().unwrap());
+        assert_eq!(
+            translation,
+            fixture["expectedTranslation"].as_str().unwrap()
+        );
+        client.disconnect().await;
+    }
+
+    #[tokio::test]
+    async fn invalid_binary_utf8_cannot_complete_initial_or_replacement_setup() {
+        for replacement in [false, true] {
+            let (client, _events) = test_client(|mut socket| {
+                Box::pin(async move {
+                    assert_setup(socket.next().await.unwrap().unwrap());
+                    socket
+                        .send(Message::Binary(
+                            b"{\"setupComplete\":{\"unused\":\"\xff\"}}".to_vec().into(),
+                        ))
+                        .await
+                        .unwrap();
+                    while socket.next().await.is_some() {}
+                })
+            })
+            .await;
+            let error = if replacement {
+                match tokio::time::timeout(Duration::from_secs(2), prepare_replacement(&client))
+                    .await
+                    .unwrap()
+                {
+                    Ok(_) => panic!("invalid UTF-8 must not install a replacement"),
+                    Err(error) => error,
+                }
+            } else {
+                client
+                    .connect_with_timeout(Duration::from_secs(2))
+                    .await
+                    .unwrap_err()
+            };
+            assert_eq!(error, GeminiLiveClientError::SessionSetupRejected);
+            client.disconnect().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_binary_transcript_emits_error_without_corrupting_subtitles() {
+        let fixture = binary_json_fixture();
+        let setup = fixture["setup"].to_string().into_bytes();
+        let invalid = invalid_binary_transcript(&fixture);
+        let (send_invalid, ready) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                assert_setup(socket.next().await.unwrap().unwrap());
+                socket.send(Message::Binary(setup.into())).await.unwrap();
+                ready.await.unwrap();
+                socket.send(Message::Binary(invalid.into())).await.unwrap();
+                while socket.next().await.is_some() {}
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        send_invalid.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                match events.recv().await.unwrap() {
+                    LiveTranslateServerEvent::Error { code, .. } => {
+                        assert_eq!(code, "gemini_live_provider_error");
+                        break;
+                    }
+                    LiveTranslateServerEvent::SourceDraft { .. }
+                    | LiveTranslateServerEvent::TranslationDraft(_)
+                    | LiveTranslateServerEvent::SubtitleFinalPair { .. } => {
+                        panic!("invalid UTF-8 must not reach subtitle state")
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        client.disconnect().await;
+    }
 
     #[test]
     fn shared_gemini_transcript_contracts() {
