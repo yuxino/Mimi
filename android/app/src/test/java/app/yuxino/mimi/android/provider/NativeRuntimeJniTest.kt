@@ -872,6 +872,31 @@ class NativeRuntimeJniTest {
         verifyBuiltinRealtimeRecovery(ServiceProvider.GEMINI)
     }
 
+    @Test fun geminiTranscribeBinarySetupAndFinalCrossActualJni() {
+        val wire = JSONObject(requireNotNull(javaClass.getResourceAsStream("/translation-contracts.json"))
+            .bufferedReader().use { it.readText() }).getJSONObject("geminiTranscribeTransport")
+        RealtimeLoopback(ServiceProvider.GEMINI, geminiTranscribe = wire).use { fixture ->
+            val config = configuration(ServiceProvider.GEMINI).put("speechTranslationMode", "asrMt")
+                .put("sourceLanguage", "en").put("targetLanguage", "original")
+            val handle = NativeRuntimeConfiguration.exchange(JSONObject().put("operation", "create")
+                .put("configuration", config).put("network", fixture.network)).getLong("handle")
+            try {
+                NativeRuntimeConfiguration.command("start", handle)
+                awaitRuntimeState(handle, fixture) { it.getString("connectionStatus") == "listening" }
+                fixture.nextMid.countDown()
+                awaitRuntimeState(handle, fixture) {
+                    it.getJSONObject("snapshot").getJSONObject("source").optString("text") == wire.getString("expectedDraft")
+                }
+                fixture.nextFinal.countDown()
+                awaitRuntimeState(handle, fixture) {
+                    it.getJSONObject("snapshot").getJSONObject("source").optString("text") == wire.getString("expectedFinal")
+                }
+                stopAndAwaitTransportClosed(handle, fixture)
+                assertEquals(1, fixture.connectionCount.get())
+            } finally { NativeRuntimeConfiguration.command("stop", handle) }
+        }
+    }
+
     @Test fun audio3SetupRejectionAndUnsolicitedFinishRecoveryCrossActualJni() {
         verifyBuiltinRealtimeRecovery(ServiceProvider.DASHSCOPE)
     }
@@ -1432,11 +1457,13 @@ class NativeRuntimeJniTest {
         private val lateFinalReplay: Boolean = false, private val sourceOrderReplay: Boolean = false,
         private val translationStartReplay: Boolean = false, private val finishTailCount: Int = 1,
         private val xaiRecovery: JSONObject? = null, private val liveRecovery: JSONObject? = null,
-        private val builtinRecovery: JSONObject? = null) : AutoCloseable {
+        private val builtinRecovery: JSONObject? = null,
+        private val geminiTranscribe: JSONObject? = null) : AutoCloseable {
         private val volcano = provider == ServiceProvider.VOLCANO
         private val tencent = provider == ServiceProvider.TENCENT
         private val qwen = provider == ServiceProvider.DASHSCOPE && !liveTranslate && builtinRecovery == null
-        private val host = if (volcano) "openspeech.bytedance.com" else if (builtinRecovery != null) when (provider) {
+        private val host = if (geminiTranscribe != null) "generativelanguage.googleapis.com"
+            else if (volcano) "openspeech.bytedance.com" else if (builtinRecovery != null) when (provider) {
             ServiceProvider.OPENAI -> "api.openai.com"
             ServiceProvider.XAI -> "api.x.ai"
             ServiceProvider.GEMINI -> "generativelanguage.googleapis.com"
@@ -1570,6 +1597,23 @@ class NativeRuntimeJniTest {
             worker = thread(name = "mimi-realtime-loopback", isDaemon = true) {
                 try {
                     server.soTimeout = 5_000
+                    if (geminiTranscribe != null) {
+                        acceptWebSocket(tls).use { secure ->
+                            val input = DataInputStream(secure.inputStream)
+                            val output = secure.outputStream
+                            val setup = JSONObject(readText(input, output)).getJSONObject("setup")
+                            check(setup.getString("model") == "models/gemini-3.5-transcribe-live")
+                            fun binary(field: String) = frame(output, 2,
+                                geminiTranscribe.getJSONObject(field).toString().toByteArray(Charsets.UTF_8))
+                            binary("setup")
+                            check(nextMid.await(5, TimeUnit.SECONDS))
+                            binary("draft")
+                            check(nextFinal.await(5, TimeUnit.SECONDS))
+                            binary("final")
+                            check(readText(input, output).isEmpty())
+                        }
+                        return@thread
+                    }
                     if (builtinRecovery != null) {
                         builtinRecoverySession(tls)
                         return@thread
@@ -1649,7 +1693,9 @@ class NativeRuntimeJniTest {
             socket = secure
             val input = DataInputStream(secure.inputStream)
             val request = headers(input)
-            check(request.startsWith(if (volcano) "GET /api/v4/ast/v2/translate HTTP/1.1\r\n"
+            check(request.startsWith(if (geminiTranscribe != null)
+                "GET /ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent HTTP/1.1\r\n"
+                else if (volcano) "GET /api/v4/ast/v2/translate HTTP/1.1\r\n"
                 else if (builtinRecovery != null) when (provider) {
                 ServiceProvider.OPENAI -> "GET /v1/realtime/translations?model=gpt-realtime-translate HTTP/1.1\r\n"
                 ServiceProvider.XAI -> "GET /v1/realtime?model=grok-voice-latest HTTP/1.1\r\n"
@@ -2071,8 +2117,8 @@ class NativeRuntimeJniTest {
             try {
                 while (true) {
                     val (opcode, payload) = readFrame(input)
-                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null) && opcode == 8) {
-                        if (liveTranslate || builtinRecovery != null) observeTransportClosed(connection)
+                    if ((qwen || liveTranslate || xaiRecovery != null || builtinRecovery != null || geminiTranscribe != null) && opcode == 8) {
+                        if (liveTranslate || builtinRecovery != null || geminiTranscribe != null) observeTransportClosed(connection)
                         return ""
                     }
                     if (builtinRecovery != null && opcode == 2) {
@@ -2092,7 +2138,7 @@ class NativeRuntimeJniTest {
                     }
                 }
             } catch (error: java.io.EOFException) {
-                if (!liveTranslate && xaiRecovery == null && builtinRecovery == null) throw error
+                if (!liveTranslate && xaiRecovery == null && builtinRecovery == null && geminiTranscribe == null) throw error
                 observeTransportClosed(connection)
                 return ""
             }
