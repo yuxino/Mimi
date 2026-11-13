@@ -551,9 +551,13 @@ impl TencentCloudClient {
         // Capture normally supplies one frame at a time. Never burst a queued
         // backlog after a slow write: Tencent requires approximately 1:1 audio.
         let mut next_frame = self.inner.next_audio_frame_at.lock().await;
-        if let Some(deadline) = *next_frame {
-            tokio::time::sleep_until(deadline).await;
-        }
+        let scheduled_at = match *next_frame {
+            Some(deadline) => {
+                tokio::time::sleep_until(deadline).await;
+                deadline
+            }
+            None => tokio::time::Instant::now(),
+        };
         let mut sink = self.inner.sink.lock().await;
         if self.inner.generation.load(Ordering::SeqCst) != generation
             || !self.inner.ready.load(Ordering::SeqCst)
@@ -563,10 +567,10 @@ impl TencentCloudClient {
         let Some(sink) = sink.as_mut() else {
             return Err(TencentCloudClientError::NotConnected);
         };
-        *next_frame = Some(
-            tokio::time::Instant::now()
-                + Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into()),
-        );
+        *next_frame = Some(next_audio_frame_deadline(
+            scheduled_at,
+            tokio::time::Instant::now(),
+        ));
         drop(next_frame);
         let evidence =
             crate::development_audio::begin_pcm(&frame, TencentCloudEndpoint::SAMPLE_RATE_HZ);
@@ -855,6 +859,19 @@ fn emit_if_current(context: &ReceiveContext, event: LiveTranslateServerEvent) {
     }
 }
 
+/// Keeps a fixed 200-ms audio clock anchored to the previous deadline.
+///
+/// Anchoring to `now` would add every timer overshoot (1-14 ms per frame on
+/// Windows) to the cadence, so the sender falls behind realtime, the bounded
+/// capture queue overflows and the session reconnects. A frame that is already
+/// late is sent at once, but no catch-up credit accumulates after a stall.
+fn next_audio_frame_deadline(
+    scheduled_at: tokio::time::Instant,
+    now: tokio::time::Instant,
+) -> tokio::time::Instant {
+    (scheduled_at + Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into())).max(now)
+}
+
 #[cfg(test)]
 mod tests {
     #[tokio::test]
@@ -1002,6 +1019,31 @@ mod tests {
         );
         assert!(!client.inner.ready.load(Ordering::SeqCst));
         assert!(client.inner.sink.lock().await.is_none());
+    }
+
+    #[test]
+    fn audio_frame_deadlines_do_not_accumulate_timer_overshoot() {
+        let frame = Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into());
+        let start = tokio::time::Instant::now();
+        let mut scheduled = start;
+        // Windows timers wake 1-14 ms late; 120 frames is 24 s of audio, about
+        // when the relative cadence used to overflow the 20-frame queue.
+        for index in 0..120u32 {
+            let overshoot = Duration::from_millis(u64::from(1 + index % 14));
+            let woke_at = scheduled + overshoot;
+            scheduled = next_audio_frame_deadline(scheduled, woke_at);
+            assert_eq!(scheduled, start + frame * (index + 1));
+        }
+    }
+
+    #[test]
+    fn a_late_audio_frame_is_sent_at_once_without_catch_up_credit() {
+        let frame = Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into());
+        let scheduled = tokio::time::Instant::now();
+        let after_stall = scheduled + Duration::from_secs(2);
+        let next = next_audio_frame_deadline(scheduled, after_stall);
+        assert_eq!(next, after_stall);
+        assert_eq!(next_audio_frame_deadline(next, next), next + frame);
     }
 
     #[tokio::test]
