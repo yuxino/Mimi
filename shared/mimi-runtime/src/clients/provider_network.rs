@@ -120,6 +120,9 @@ impl ProviderNetwork {
         &self,
         endpoint: &url::Url,
     ) -> Result<reqwest::ClientBuilder, ProviderNetworkError> {
+        // This can be the process's first HTTP request, before any speech or
+        // text client has initialized TLS (for example Android update checks).
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let mut builder = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none());
@@ -386,6 +389,38 @@ mod tests {
             url: None,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn http_builder_works_before_any_provider_session() {
+        const FLAG: &str = "MIMI_TEST_FRESH_NETWORK_HTTP_BUILDER";
+        if std::env::var(FLAG).as_deref() == Ok("1") {
+            assert!(rustls::crypto::CryptoProvider::get_default().is_none());
+            let endpoint = url::Url::parse("https://fixture.invalid/").unwrap();
+            assert!(direct()
+                .http_client_builder(&endpoint)
+                .unwrap()
+                .build()
+                .is_ok());
+            return;
+        }
+        // Other tests initialize the process-global provider, which would hide
+        // the first-request panic seen in a fresh Android updater session.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "clients::provider_network::tests::http_builder_works_before_any_provider_session",
+                "--nocapture",
+            ])
+            .env(FLAG, "1")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "fresh HTTP builder failed: {} {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     async fn assert_ordered_frames(socket: &mut WebSocketStream<TcpStream>) {

@@ -4,6 +4,25 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-13 — 正式凭据复测与 Terra 参数修复
+
+- 在 `300fd7c2` 基线上补齐 `gpt-6.1-terra` 的既有关闭思考策略：官方
+  OpenAI 使用 `reasoning_effort: none`，OpenRouter 使用既有 reasoning
+  开关；未知模型后缀及网关不附加参数。没有替换默认或已保存模型。
+  [Terra 官方参数](https://developers.openai.com/api/docs/models/gpt-6.1-terra)
+  支持该值；[Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
+  不支持，仍不列入。共享 wire fixture 同时覆盖直接 Rust 与实际 JNI。
+- 用户授权只读使用正式安装包的本地凭据。实际 JNI 生产文字连接检查中，
+  Terra 请求成功（3,058 ms）；这证明本次账户和参数兼容，不是语义质量比较。
+- 正式 Key 的 OpenAI、百度、阿里 ASR＋Qwen、阿里 ASR＋DeepL 完整 JNI
+  会话均通过固定公开样本的「语音 → 90 秒静音 → 语音 → 收尾」。百度观测
+  到三次恢复；其他三条未观测到恢复。Gemini、火山、腾讯、阿里 LiveTranslate
+  另由直接生产客户端通过相同短回归。开发 Key 的 OpenAI 启动拒绝未在正式
+  Key 下重现，不能认定原因；直接客户端的 OpenAI、Qwen、DeepL 传输失败
+  仍保留。完整方法和局限见[集成实测记录](integration-runs.md)。
+- 本轮修复已证实的协议遗漏，不据一次成功上调质量结论。上一轮 Qwen、
+  ASR、DeepL 的候选决策及未覆盖路线仍有效，完整巡检尚未完成。
+
 ## 2026-11-13 — 发布前候选实测与补充核对
 
 - 源码基线 `e50ff30746c96971c6a9fa03a5e62c7361c10e44`，产品代码未修改。

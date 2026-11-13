@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">Версия %1$s</string>
+    <string name="app_update_check">Проверить обновления</string>
+    <string name="app_update_checking">Проверка…</string>
+    <string name="app_update_download">Скачать APK</string>
+    <string name="app_update_current">У вас актуальная версия.</string>
+    <string name="app_update_available">Доступна версия %1$s</string>
+    <string name="app_update_failed">Не удалось проверить обновления. Попробуйте ещё раз.</string>
+    <string name="app_update_open_failed">Не удалось открыть ссылку для скачивания. Установите или включите браузер и повторите попытку.</string>
+</resources>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">Version %1$s</string>
+    <string name="app_update_check">Nach Updates suchen</string>
+    <string name="app_update_checking">Suche läuft…</string>
+    <string name="app_update_download">APK herunterladen</string>
+    <string name="app_update_current">Die Version ist aktuell.</string>
+    <string name="app_update_available">Version %1$s ist verfügbar</string>
+    <string name="app_update_failed">Die Updatesuche ist fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="app_update_open_failed">Der Download konnte nicht geöffnet werden. Bitte einen Browser installieren oder aktivieren und erneut versuchen.</string>
+</resources>

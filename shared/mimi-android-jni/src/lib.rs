@@ -56,6 +56,7 @@ pub extern "system" fn Java_app_yuxino_mimi_android_provider_SharedSubtitleCore_
     }
 }
 
+mod app_update;
 mod history;
 mod runtime;
 mod snapshot_merge;

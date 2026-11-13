@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">เวอร์ชัน %1$s</string>
+    <string name="app_update_check">ตรวจสอบการอัปเดต</string>
+    <string name="app_update_checking">กำลังตรวจสอบ…</string>
+    <string name="app_update_download">ดาวน์โหลด APK</string>
+    <string name="app_update_current">คุณใช้เวอร์ชันล่าสุดแล้ว</string>
+    <string name="app_update_available">มีเวอร์ชัน %1$s พร้อมให้อัปเดต</string>
+    <string name="app_update_failed">ตรวจสอบการอัปเดตไม่สำเร็จ โปรดลองอีกครั้ง</string>
+    <string name="app_update_open_failed">เปิดหน้าดาวน์โหลดไม่ได้ โปรดติดตั้งหรือเปิดใช้เบราว์เซอร์แล้วลองอีกครั้ง</string>
+</resources>

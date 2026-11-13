@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_version">目前版本 %1$s</string>
+    <string name="app_update_check">檢查更新</string>
+    <string name="app_update_checking">正在檢查…</string>
+    <string name="app_update_download">下載 APK</string>
+    <string name="app_update_current">已是最新版本</string>
+    <string name="app_update_available">新版本 %1$s 可用</string>
+    <string name="app_update_failed">檢查更新失敗，請重試。</string>
+    <string name="app_update_open_failed">無法開啟下載連結，請安裝或啟用瀏覽器後重試。</string>
+</resources>

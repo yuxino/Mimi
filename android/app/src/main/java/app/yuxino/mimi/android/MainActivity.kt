@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var stopObservingAppearance: (() -> Unit)? = null
     private lateinit var sessionStorage: SessionStorageControls
     private lateinit var appearance: AppearanceControls
+    private lateinit var appUpdates: AppUpdateControls
     private val sectionScroll = SparseIntArray()
     private var currentSection = R.id.tab_caption
     private var lastSessionState: Pair<Boolean, Boolean>? = null
@@ -134,6 +135,11 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus && ::appUpdates.isInitialized) appUpdates.clearNotice()
+    }
+
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("starting", starting)
         outState.putString("pending_capture_input", pendingCaptureInput?.id)
@@ -169,6 +175,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindSections(savedInstanceState: Bundle?) {
         InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
+        appUpdates = AppUpdateControls(this)
+        findViewById<LinearLayout>(R.id.general_panel).apply {
+            addView(appUpdates, indexOfChild(findViewById(R.id.interface_language)) + 1,
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28) })
+        }
         appearance = AppearanceControls(this) { enabled ->
             if (enabled) immersiveHelp.requestEnable(onConfirmed = {
                 runCatching { SettingsStore.setImmersiveSubtitles(this, true) }
@@ -197,6 +208,7 @@ class MainActivity : AppCompatActivity() {
             sections.forEach { (tab, panel) -> findViewById<View>(panel).visibility = if (tab == selected) View.VISIBLE else View.GONE }
             findViewById<CaptionWorkspace>(R.id.caption_workspace).showsPreview = selected == R.id.tab_caption
             currentSection = selected
+            appUpdates.setPageVisible(selected == R.id.tab_general)
             back.isEnabled = selected != R.id.tab_caption
             scroll.post { if (currentSection == selected) scroll.scrollTo(0, sectionScroll[selected]) }
         }

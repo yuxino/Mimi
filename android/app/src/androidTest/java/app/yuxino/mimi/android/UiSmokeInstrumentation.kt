@@ -72,6 +72,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("app_update") == "true") {
+            AppUpdateChecks(this).run(captureArguments)
+            return
+        }
         if (captureArguments?.getString("layout_workload") == "true") {
             LayoutWorkloadChecks(this).run()
             return
