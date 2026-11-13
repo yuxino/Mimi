@@ -2232,6 +2232,10 @@ class NativeRuntimeJniTest {
                         onBinary(payload)
                         continue
                     }
+                    if (binaryJson?.getString("route") == "audio3" && opcode == 2) {
+                        check(payload.contentEquals(ByteArray(3_200))) { "Unexpected Audio3 heartbeat" }
+                        continue
+                    }
                     if ((qwen || liveTranslate) && opcode == 2) continue
                     if (opcode == 9) {
                         frame(output, 10, payload)
