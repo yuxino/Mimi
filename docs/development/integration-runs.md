@@ -1,5 +1,36 @@
 # 集成实测记录
 
+## 2026-11-14：v1.7.1 JSON 传输与识别错误回归
+
+- Issue #369 的 Binary JSON 修复已通过 #370 合并到 `7347cc59`，保留
+  报告者共同作者署名；Android、Linux、macOS、Windows x64/ARM64 检查
+  通过。原 MSRV 重试排队期间，包含同一修复的后续提交 `18d9e2b` 已通过
+  Rust 1.90 检查。报告者提供的 Windows 手动实测与本轮 CI 证据分开记录。
+- 后续实现为 `0cf206b6e79f0fcc78156c432215db06c84148e9`，包括 Gemini
+  voiceActivity 元数据、六条既有 JSON 路线的 UTF-8 校验，以及三类独立
+  识别握手错误的不可重试分类。共享合成数据由直接 Rust 与实际 JNI 回放。
+- 本地锁定依赖后，2,888 项前端测试、lint、TypeScript、生产构建通过；
+  shared runtime 的 fmt、Clippy（禁止 warnings）、纯协议/分类回归通过，
+  runtime/JNI Rust 测试二进制编译通过。canonical check 在本地回环端口
+  被拒绝（EPERM）处停止，因此不把本地编译写成传输/JNI 执行通过。
+- CI 中修正了两处测试夹具问题：LiveTranslate 使用其支持的自动源语言，
+  Audio3 的合法静音心跳在等 Close 时被正确识别；未放宽字幕/错误断言。
+  Qwen 的非法 HTTP 响应继续使用既有受限临时重试，JNI 断言验证恢复状态
+  和未确认损坏字幕，不将它误当永久 completion 拒绝。
+- 最终验证提交为 `930b1f247121203556c2686298bc5f4584f9f391`；相对上述
+  实现只修正 Qwen JNI 恢复状态断言，生产代码未变。
+  [桌面 CI](https://github.com/yuxino/Mimi/actions/runs/43477239886) 的
+  macOS、Linux、Windows x64/ARM64、前端与 Rust 1.90 检查全部通过。
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/43477239837)
+  通过 Debug/Release 单测、实际 JNI 回放、两种 lint 和四 ABI 构建检查；
+  共享 runtime 1,022 项、core 112 项及 JNI Rust 40 项通过，既有 ignored
+  用例未变。最终记录提交仅更新本文，不重复构建相同的生产代码。
+- 未做真实供应商账号/音频实测，未做新版本原生 UI、实体 Windows/Android
+  或签名安装验收；loopback/JNI 回归不代表线上翻译质量或服务可用性。
+- 发布尚未执行：受限会话未发现可用的 macOS signing identity，未更换
+  固定证书、未创建标签、未发布不完整资产。版本与双语说明已备好；正式
+  macOS 资产、标签构建、18 项资产校验及公开 Contributors 验收仍待完成。
+
 ## 2026-11-13：v1.7.0 最终草稿与发布验收
 
 - 最终打包源码为 `b316fb182156c72124a02032b2021f9391439169`；相对

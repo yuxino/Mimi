@@ -4,6 +4,19 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-14 — 二进制 JSON 与识别握手边界
+
+- 核对 [Gemini WebSocket schema](https://aistudio.google.com/api-reference/live) 与
+  [专用识别文档](https://aistudio.google.com/docs/live-api/live-transcribe)：
+  `voiceActivity` 是服务端独立元数据，不应被识别客户端当成损坏转录。
+  保留现有模型与参数；这是协议兼容修复，不是新模型的线上质量结论。
+- 横向检查既有 JSON Binary 通路，移除 Audio3、LiveTranslate、OpenAI/Azure
+  Realtime 和 Gemini Live 的宽松 UTF-8 替换；非法输入沿用协议失败路径。
+  Qwen-MT 非流式 HTTP 响应也移除宽松替换，保留原有受限重试语义。
+  腾讯/百度/xAI 的二进制音频及火山 protobuf 不适用此 JSON 修复。
+- 验证契约与剩余分类边界见[设计记录](../plans/2026-11-14-provider-binary-json.md)。
+  本次未新增真实账号/音频测试，不替代下方未完成的全量模型复核。
+
 ## 2026-11-13 — 正式凭据复测与 Terra 参数修复
 
 - 在 `300fd7c2` 基线上补齐 `gpt-6.1-terra` 的既有关闭思考策略：官方

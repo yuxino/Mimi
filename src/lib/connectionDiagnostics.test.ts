@@ -3,6 +3,14 @@ import { afterEach, expect, it } from "vitest";
 import { I18N, UI_LANGUAGES, setStoredUiLanguage } from "./i18n";
 import { sessionErrorSettingsTarget, sessionActionErrorMessage, languageActionErrorMessage, connectionDiagnosticMessage, credentialErrorMessage, credentialUnavailableHelp, profileErrorMessage, diagnosticCopy, diagnosticPlatform } from "./connectionDiagnostics";
 
+it.each(UI_LANGUAGES)("distinguishes incompatible recognition responses from service rejection in %s", language => {
+  setStoredUiLanguage(language);
+  const protocol = connectionDiagnosticMessage({ credential: "present", service: "unavailable", reason: "protocolInvalid" });
+  const rejected = connectionDiagnosticMessage({ credential: "present", service: "unavailable", reason: "serviceRejected" });
+  expect(protocol).toBe(`${diagnosticCopy().unavailable}: ${I18N.settings.customSpeechProtocolInvalid}`);
+  expect(protocol).not.toBe(rejected);
+});
+
 it.each(UI_LANGUAGES)("gives Tencent activation, quota and concurrency recovery without provider text in %s", language => {
   setStoredUiLanguage(language);
   const reasons = {

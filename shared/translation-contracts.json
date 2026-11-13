@@ -2,10 +2,117 @@
   "schemaVersion": 1,
   "geminiTranscribeTransport": {
     "setup": {"setupComplete": {}},
+    "voiceActivityStart": {"voiceActivity": {"type": "ACTIVITY_START", "audioOffset": "0s"}},
+    "voiceActivityEnd": {"voiceActivity": {"type": "ACTIVITY_END", "audioOffset": "1s"}},
     "draft": {"serverContent": {"interimInputTranscription": {"text": "Synthetic café preview"}}},
     "final": {"serverContent": {"inputTranscription": {"text": "Synthetic café final."}, "turnComplete": true}},
     "expectedDraft": "Synthetic café preview",
-    "expectedFinal": "Synthetic café final."
+    "expectedFinal": "Synthetic café final.",
+    "setupFailures": [
+      {"hex": "fffe", "expectedError": "provider_error"},
+      {"hex": "7b226572726f72223a7b22636f6465223a3432397d7d", "expectedError": "provider_error"}
+    ]
+  },
+  "binaryJsonTransports": {
+    "audio3": {
+      "setup": {
+        "header": {
+          "event": "task-started",
+          "task_id": "binary-json-fixture"
+        }
+      },
+      "transcript": {
+        "header": {
+          "event": "result-generated",
+          "task_id": "binary-json-fixture"
+        },
+        "payload": {
+          "output": {
+            "sentence": {
+              "sentence_id": 7,
+              "sentence_end": true,
+              "text": "Synthetic 世界."
+            }
+          }
+        }
+      },
+      "expectedSource": "Synthetic 世界.",
+      "invalidTranscriptHex": "7b22686561646572223a7b226576656e74223a22726573756c742d67656e657261746564222c227461736b5f6964223a2262696e6172792d6a736f6e2d66697874757265227d2c227061796c6f6164223a7b226f7574707574223a7b2273656e74656e6365223a7b2273656e74656e63655f6964223a372c2273656e74656e63655f656e64223a747275652c2274657874223a22ff796e74686574696320e4b896e7958c2e227d7d7d7d"
+    },
+    "liveTranslate": {
+      "setup": {
+        "type": "session.updated"
+      },
+      "transcript": {
+        "type": "conversation.item.input_audio_transcription.text",
+        "item_id": "binary-source",
+        "text": "Synthetic 世界.",
+        "stash": ""
+      },
+      "expectedSource": "Synthetic 世界.",
+      "invalidTranscriptHex": "7b2274797065223a22636f6e766572736174696f6e2e6974656d2e696e7075745f617564696f5f7472616e736372697074696f6e2e74657874222c226974656d5f6964223a2262696e6172792d736f75726365222c2274657874223a22ff796e74686574696320e4b896e7958c2e222c227374617368223a22227d"
+    },
+    "openaiRealtime": {
+      "setup": {
+        "type": "session.updated",
+        "session": {
+          "audio": {
+            "input": {
+              "transcription": {
+                "model": "gpt-realtime-whisper"
+              }
+            },
+            "output": {
+              "language": "ja"
+            }
+          }
+        }
+      },
+      "transcript": {
+        "type": "session.input_transcript.delta",
+        "delta": "Synthetic 世界."
+      },
+      "expectedSource": "Synthetic 世界.",
+      "invalidTranscriptHex": "7b2274797065223a2273657373696f6e2e696e7075745f7472616e7363726970742e64656c7461222c2264656c7461223a22ff796e74686574696320e4b896e7958c2e227d"
+    },
+    "azureOpenaiRealtime": {
+      "setup": {
+        "type": "session.updated",
+        "session": {
+          "audio": {
+            "output": {
+              "language": "ja"
+            }
+          }
+        }
+      },
+      "transcript": {
+        "type": "session.input_transcript.delta",
+        "delta": "Synthetic 世界."
+      },
+      "expectedSource": "Synthetic 世界.",
+      "invalidTranscriptHex": "7b2274797065223a2273657373696f6e2e696e7075745f7472616e7363726970742e64656c7461222c2264656c7461223a22ff796e74686574696320e4b896e7958c2e227d"
+    },
+    "geminiLive": {
+      "setup": {
+        "setupComplete": {}
+      },
+      "transcript": {
+        "serverContent": {
+          "inputTranscription": {
+            "text": "Synthetic café source",
+            "languageCode": "en"
+          },
+          "outputTranscription": {
+            "text": "合成訳文。"
+          },
+          "turnComplete": true
+        }
+      },
+      "expectedSource": "Synthetic café source",
+      "expectedTranslation": "合成訳文。",
+      "invalidTranscriptHex": "7b22736572766572436f6e74656e74223a7b22696e7075745472616e736372697074696f6e223a7b2274657874223a22ff796e74686574696320636166c3a920736f75726365222c226c616e6775616765436f6465223a22656e227d2c226f75747075745472616e736372697074696f6e223a7b2274657874223a22e59088e68890e8a8b3e69687e38082227d2c227475726e436f6d706c657465223a747275657d7d"
+    }
   },
   "androidEndpoints": [
     {"id": "android-prefix", "route": "openAICompatible", "input": " https://example.test/proxy/v1/ ", "allowLocalHttp": false, "expected": "https://example.test/proxy/v1/chat/completions"},
@@ -412,6 +519,8 @@
     }
   ],
   "qwenCompletionResponses": [
+    {"id":"json-unicode","stream":false,"body":"{\"choices\":[{\"message\":{\"content\":\"Synthetic 世界.\"},\"finish_reason\":\"stop\"}]}","expected":"Synthetic 世界."},
+    {"id":"json-invalid-utf8","stream":false,"bodyHex":"7b2263686f69636573223a5b7b226d657373616765223a7b22636f6e74656e74223a2253796e74686574696320ff207472616e736c6174696f6e227d2c2266696e6973685f726561736f6e223a2273746f70227d5d7d","expected":null,"errorCode":"invalid_http_response"},
     {
       "id": "sse-done",
       "stream": true,

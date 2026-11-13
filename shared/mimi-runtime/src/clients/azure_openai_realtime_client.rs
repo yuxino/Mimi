@@ -4,8 +4,8 @@ use crate::clients::provider_events::ProviderEventSender;
 use crate::core::models::TargetLanguage;
 use crate::core::openai_transcript_committer::OpenAITranscriptPairCommitter;
 use crate::core::protocols::azure_openai_realtime::{
-    AzureOpenAIRealtimeEndpoint, AzureOpenAIRealtimeRequestEncoder, AzureOpenAIRealtimeServerEvent,
-    AzureTranslationStream,
+    AzureOpenAIRealtimeEndpoint, AzureOpenAIRealtimeProtocolError,
+    AzureOpenAIRealtimeRequestEncoder, AzureOpenAIRealtimeServerEvent, AzureTranslationStream,
 };
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use futures_util::{SinkExt, StreamExt};
@@ -573,9 +573,9 @@ async fn receive_loop(mut context: ReceiveContext) {
         }
         let event = match message {
             Ok(Message::Text(text)) => AzureOpenAIRealtimeServerEvent::decode(&text),
-            Ok(Message::Binary(data)) => {
-                AzureOpenAIRealtimeServerEvent::decode(&String::from_utf8_lossy(&data))
-            }
+            Ok(Message::Binary(data)) => std::str::from_utf8(&data)
+                .map_err(|_| AzureOpenAIRealtimeProtocolError::InvalidJSON)
+                .and_then(AzureOpenAIRealtimeServerEvent::decode),
             Ok(Message::Pong(_)) => {
                 context.inner.pong_notify.notify_waiters();
                 continue;
@@ -1038,6 +1038,74 @@ mod tests {
         )
         .unwrap();
         (client, receiver)
+    }
+
+    #[tokio::test]
+    async fn binary_json_preserves_unicode_and_rejects_invalid_utf8_transcripts() {
+        let fixtures: Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        let case = &fixtures["binaryJsonTransports"]["azureOpenaiRealtime"];
+        let setup = case["setup"].to_string();
+        let transcript = case["transcript"].to_string();
+        let hex = case["invalidTranscriptHex"].as_str().unwrap();
+        let invalid: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+            .collect();
+        let (corrupt, corrupted) = tokio::sync::oneshot::channel();
+        let (client, mut events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                let _ = socket.next().await;
+                socket
+                    .send(Message::Binary(setup.into_bytes().into()))
+                    .await
+                    .unwrap();
+                socket
+                    .send(Message::Binary(transcript.into_bytes().into()))
+                    .await
+                    .unwrap();
+                corrupted.await.unwrap();
+                socket.send(Message::Binary(invalid.into())).await.unwrap();
+                while let Some(Ok(message)) = socket.next().await {
+                    if matches!(message, Message::Close(_)) {
+                        break;
+                    }
+                }
+            })
+        })
+        .await;
+        client
+            .connect_with_timeout(Duration::from_secs(2))
+            .await
+            .unwrap();
+        let source = tokio::time::timeout(Duration::from_secs(2), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(source, LiveTranslateServerEvent::SourceDraft { text, .. }
+            if text == case["expectedSource"].as_str().unwrap())
+        );
+
+        corrupt.send(()).unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(2), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            error,
+            LiveTranslateServerEvent::Error {
+                code: "azure_openai_protocol_error".into(),
+                message: GENERIC_PROTOCOL_ERROR.into(),
+            }
+        );
+        let task = client.inner.receive_task.lock().await.take().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(events.try_recv().is_err());
+        client.disconnect().await;
     }
 
     #[tokio::test]

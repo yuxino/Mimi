@@ -701,6 +701,21 @@ impl ConnectError {
             }
         }
         if let Self::MT(error) = self {
+            // The independent recognizer bridge uses status 0 for permanent
+            // protocol/setup failures; do not retry them as network failures.
+            if matches!(
+                error,
+                QwenMTClientError::RequestFailed { status_code: 0, message }
+                    if matches!(message.as_str(),
+                        "gemini_transcribe_protocol_invalid"
+                            | "gemini_transcribe_session_rejected"
+                            | "xai_stt_protocol_invalid"
+                            | "xai_stt_session_rejected"
+                            | "custom_speech_protocol_invalid"
+                            | "custom_speech_session_rejected")
+            ) {
+                return "provider_error";
+            }
             if error.is_authentication_failure() {
                 return "credential_authentication_failed";
             }
@@ -817,6 +832,60 @@ mod tests {
     use super::*;
     use crate::clients::provider_events::provider_event_channel;
     use crate::core::models::{SourceLanguage, TargetLanguage};
+
+    #[test]
+    fn independent_recognition_setup_rejections_do_not_become_transport_retries() {
+        use crate::core::recovery::provider_error_is_retryable;
+        for label in [
+            "gemini_transcribe_protocol_invalid",
+            "gemini_transcribe_session_rejected",
+            "xai_stt_protocol_invalid",
+            "xai_stt_session_rejected",
+            "custom_speech_protocol_invalid",
+            "custom_speech_session_rejected",
+        ] {
+            let error = ConnectError::MT(QwenMTClientError::RequestFailed {
+                status_code: 0,
+                message: label.into(),
+            });
+            assert_eq!(error.safe_code(), "provider_error", "{label}");
+            assert!(!provider_error_is_retryable(error.safe_code()), "{label}");
+            let untrusted = ConnectError::MT(QwenMTClientError::RequestFailed {
+                status_code: 0,
+                message: format!("{label}: synthetic-private-detail"),
+            });
+            assert_eq!(untrusted.safe_code(), "transport_error");
+        }
+    }
+
+    #[test]
+    fn independent_recognition_authentication_and_transport_categories_stay_stable() {
+        use crate::core::recovery::provider_error_is_retryable;
+        for provider in ["gemini_transcribe", "xai_stt", "custom_speech"] {
+            for (status_code, suffix, code, retryable) in [
+                (
+                    401,
+                    "authentication_failed",
+                    "credential_authentication_failed",
+                    false,
+                ),
+                (503, "unreachable", "transport_error", true),
+                (408, "setup_timeout", "transport_error", true),
+            ] {
+                let message = format!("{provider}_{suffix}");
+                let error = ConnectError::MT(QwenMTClientError::RequestFailed {
+                    status_code,
+                    message: message.clone(),
+                });
+                assert_eq!(error.safe_code(), code, "{message}");
+                assert_eq!(
+                    provider_error_is_retryable(error.safe_code()),
+                    retryable,
+                    "{message}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn built_in_setup_rejections_do_not_become_transport_retries() {

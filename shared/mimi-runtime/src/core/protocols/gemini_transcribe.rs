@@ -117,7 +117,11 @@ pub fn decode(text: &str) -> Result<ServerEvent, ProtocolError> {
                 .unwrap_or(false),
         });
     }
-    if value.get("usageMetadata").is_some() || value.get("sessionResumptionUpdate").is_some() {
+    // Voice activity can arrive without a transcript and does not finalize one.
+    if value.get("usageMetadata").is_some()
+        || value.get("sessionResumptionUpdate").is_some()
+        || value.get("voiceActivity").is_some()
+    {
         return Ok(ServerEvent::Ignored);
     }
     Err(ProtocolError)
@@ -199,6 +203,35 @@ mod tests {
             json!(["en-US"])
         );
         assert!(setup["setup"].get("systemInstruction").is_none());
+    }
+    #[test]
+    fn voice_activity_does_not_interrupt_or_replace_transcription() {
+        for activity in ["ACTIVITY_START", "ACTIVITY_END"] {
+            assert_eq!(
+                decode(
+                    &json!({"voiceActivity":{"type":activity,"audioOffset":"1.2s"}}).to_string()
+                ),
+                Ok(ServerEvent::Ignored)
+            );
+        }
+
+        let final_event = decode(
+            &json!({
+                "voiceActivity":{"type":"ACTIVITY_END","audioOffset":"1.2s"},
+                "serverContent":{"inputTranscription":{"text":"final"},"turnComplete":true}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            final_event,
+            ServerEvent::Transcript {
+                interim: None,
+                final_text: Some("final".into()),
+                turn_complete: true,
+            }
+        );
+        assert!(decode(r#"{"unrecognizedEvent":{}}"#).is_err());
     }
     #[test]
     fn malformed_and_unbounded_transcripts_fail_closed() {

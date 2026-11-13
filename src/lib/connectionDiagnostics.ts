@@ -111,6 +111,7 @@ export function diagnosticCopy(platform: DiagnosticPlatform = diagnosticPlatform
     ...labels,
     storage: labels.storage,
     reasons: { ...labels.reasons, credentialsAccessDenied: recovery,
+      protocolInvalid: I18N.settings.customSpeechProtocolInvalid,
       appleSpeechAssetsMissing: I18N.settings.appleSpeechAssetsMissing,
       appleSpeechPreparing: I18N.settings.appleSpeechPreparationInProgress,
       appleSpeechStatusFailed: I18N.settings.appleSpeechLoadFailed,

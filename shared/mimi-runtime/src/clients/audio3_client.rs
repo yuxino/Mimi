@@ -6,7 +6,9 @@ use crate::core::pending_pcm::PendingPcmGate;
 use crate::core::protocols::audio3::{
     Audio3ASREndpoint, Audio3ASRRequestEncoder, Audio3ASRServerEvent, Audio3ASRServerEventDecoder,
 };
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
+use crate::core::protocols::live_translate::{
+    LiveTranslateProtocolError, LiveTranslateServerEvent,
+};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -421,8 +423,8 @@ impl Audio3ASRClient {
                     return;
                 };
                 let text = match message {
-                    Ok(Message::Text(text)) => text.to_string(),
-                    Ok(Message::Binary(data)) => String::from_utf8_lossy(&data).to_string(),
+                    Ok(Message::Text(text)) => Ok(text.to_string()),
+                    Ok(Message::Binary(data)) => std::str::from_utf8(&data).map(str::to_owned),
                     Ok(Message::Pong(_)) => {
                         inner.pong_notify.notify_waiters();
                         continue;
@@ -444,12 +446,14 @@ impl Audio3ASRClient {
                     }
                 };
                 {
-                    let decoded = match expected_task_id.as_deref() {
-                        Some(task_id) => {
-                            Audio3ASRServerEventDecoder::decode_for_task(&text, task_id)
-                        }
-                        None => Audio3ASRServerEventDecoder::decode(&text),
-                    };
+                    let decoded = text
+                        .map_err(|_| LiveTranslateProtocolError::InvalidJSON)
+                        .and_then(|text| match expected_task_id.as_deref() {
+                            Some(task_id) => {
+                                Audio3ASRServerEventDecoder::decode_for_task(&text, task_id)
+                            }
+                            None => Audio3ASRServerEventDecoder::decode(&text),
+                        });
                     let event = match decoded {
                         Ok(event) => event,
                         Err(_) => {
@@ -1034,6 +1038,103 @@ mod streaming_tests {
     use crate::clients::provider_events::provider_event_channel;
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
+
+    #[tokio::test]
+    async fn binary_json_preserves_unicode_and_rejects_invalid_utf8_transcripts() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../translation-contracts.json")).unwrap();
+        let case = &fixtures["binaryJsonTransports"]["audio3"];
+        let setup = case["setup"].to_string();
+        let transcript = case["transcript"].to_string();
+        let hex = case["invalidTranscriptHex"].as_str().unwrap();
+        let invalid: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+            .collect();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = Audio3ASRClient::new_custom(
+            &format!("ws://{}/asr", listener.local_addr().unwrap()),
+            "synthetic-model",
+            "synthetic-key",
+            SourceLanguage::English,
+        )
+        .unwrap();
+        client
+            .set_network(
+                super::super::provider_network::ProviderNetwork::resolve(
+                    &crate::core::network_proxy::ProxyConfig {
+                        mode: crate::core::network_proxy::ProxyMode::Direct,
+                        url: None,
+                    },
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let (events, mut receiver) = provider_event_channel();
+        client.set_event_sender(events).await;
+        let (corrupt, corrupted) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let _ = socket.next().await;
+            socket
+                .send(Message::Binary(setup.into_bytes().into()))
+                .await
+                .unwrap();
+            socket
+                .send(Message::Binary(transcript.into_bytes().into()))
+                .await
+                .unwrap();
+            corrupted.await.unwrap();
+            socket.send(Message::Binary(invalid.into())).await.unwrap();
+            while let Some(Ok(message)) = socket.next().await {
+                if matches!(message, Message::Close(_)) {
+                    break;
+                }
+            }
+        });
+        client
+            .connect_for_probe("binary-json-fixture")
+            .await
+            .unwrap();
+        let source = tokio::time::timeout(Duration::from_secs(2), async {
+            assert_eq!(
+                receiver.recv().await,
+                Some(LiveTranslateServerEvent::SessionCreated)
+            );
+            receiver.recv().await.unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(
+            matches!(source, LiveTranslateServerEvent::SourceUtteranceFinal { text, .. }
+            if text == case["expectedSource"].as_str().unwrap())
+        );
+
+        corrupt.send(()).unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(2), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            error,
+            LiveTranslateServerEvent::Error {
+                code: "audio3_protocol_error".into(),
+                message: GENERIC_PROTOCOL_ERROR.into(),
+            }
+        );
+        let task = client.inner.receive_task.lock().await.take().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(receiver.try_recv().is_err());
+        client.disconnect().await;
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+    }
 
     async fn connected_finish_fixture() -> (
         Audio3ASRClient,
