@@ -548,12 +548,16 @@ impl TencentCloudClient {
     ) -> Result<(), TencentCloudClientError> {
         TencentCloudRequestEncoder::validate_audio_frame(&frame)
             .map_err(|_| TencentCloudClientError::TransportFailure)?;
-        // Capture normally supplies one frame at a time. Never burst a queued
-        // backlog after a slow write: Tencent requires approximately 1:1 audio.
+        // Capture normally supplies one frame at a time. Preserve its audio
+        // clock without accumulating overdue deadlines after a slow write.
         let mut next_frame = self.inner.next_audio_frame_at.lock().await;
-        if let Some(deadline) = *next_frame {
-            tokio::time::sleep_until(deadline).await;
-        }
+        let scheduled_at = match *next_frame {
+            Some(deadline) => {
+                tokio::time::sleep_until(deadline).await;
+                deadline
+            }
+            None => tokio::time::Instant::now(),
+        };
         let mut sink = self.inner.sink.lock().await;
         if self.inner.generation.load(Ordering::SeqCst) != generation
             || !self.inner.ready.load(Ordering::SeqCst)
@@ -563,11 +567,6 @@ impl TencentCloudClient {
         let Some(sink) = sink.as_mut() else {
             return Err(TencentCloudClientError::NotConnected);
         };
-        *next_frame = Some(
-            tokio::time::Instant::now()
-                + Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into()),
-        );
-        drop(next_frame);
         let evidence =
             crate::development_audio::begin_pcm(&frame, TencentCloudEndpoint::SAMPLE_RATE_HZ);
         tokio::time::timeout(
@@ -576,7 +575,12 @@ impl TencentCloudClient {
         )
         .await
         .map_err(|_| TencentCloudClientError::TransportFailure)?
-        .map_err(|_| TencentCloudClientError::TransportFailure)
+        .map_err(|_| TencentCloudClientError::TransportFailure)?;
+        *next_frame = Some(next_audio_frame_deadline(
+            scheduled_at,
+            tokio::time::Instant::now(),
+        ));
+        Ok(())
     }
 
     async fn send_text(
@@ -855,6 +859,20 @@ fn emit_if_current(context: &ReceiveContext, event: LiveTranslateServerEvent) {
     }
 }
 
+/// Keeps a fixed 200-ms audio clock anchored to the previous deadline.
+///
+/// Anchoring to `now` would add every timer overshoot (1-14 ms per frame on
+/// Windows) to the cadence, so the sender falls behind realtime, the bounded
+/// capture queue overflows and the session reconnects. A late completion makes
+/// only the next frame immediately due; later frames resume the 200-ms clock.
+fn next_audio_frame_deadline(
+    scheduled_at: tokio::time::Instant,
+    completed_at: tokio::time::Instant,
+) -> tokio::time::Instant {
+    (scheduled_at + Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into()))
+        .max(completed_at)
+}
+
 #[cfg(test)]
 mod tests {
     #[tokio::test]
@@ -1004,6 +1022,31 @@ mod tests {
         assert!(client.inner.sink.lock().await.is_none());
     }
 
+    #[test]
+    fn audio_frame_deadlines_do_not_accumulate_timer_overshoot() {
+        let frame = Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into());
+        let start = tokio::time::Instant::now();
+        let mut scheduled = start;
+        // Windows timers wake 1-14 ms late; 120 frames is 24 s of audio, about
+        // when the relative cadence used to overflow the 20-frame queue.
+        for index in 0..120u32 {
+            let overshoot = Duration::from_millis(u64::from(1 + index % 14));
+            let woke_at = scheduled + overshoot;
+            scheduled = next_audio_frame_deadline(scheduled, woke_at);
+            assert_eq!(scheduled, start + frame * (index + 1));
+        }
+    }
+
+    #[test]
+    fn a_late_audio_frame_is_sent_at_once_without_catch_up_credit() {
+        let frame = Duration::from_millis(TencentCloudEndpoint::FRAME_DURATION_MS.into());
+        let scheduled = tokio::time::Instant::now();
+        let after_stall = scheduled + Duration::from_secs(2);
+        let next = next_audio_frame_deadline(scheduled, after_stall);
+        assert_eq!(next, after_stall);
+        assert_eq!(next_audio_frame_deadline(next, next), next + frame);
+    }
+
     #[tokio::test]
     async fn queued_pcm_frames_are_paced_at_the_documented_realtime_rate() {
         let (observed, observation) = tokio::sync::oneshot::channel();
@@ -1042,6 +1085,139 @@ mod tests {
             .windows(2)
             .all(|pair| pair[1].duration_since(pair[0]) >= Duration::from_millis(180)));
         client.disconnect().await;
+    }
+
+    // Keep synthetic primer decoding off the thread timing production sends.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_blocked_socket_write_does_not_leave_an_extra_catch_up_frame() {
+        let test_started = tokio::time::Instant::now();
+        let (resume_reads, reads_resumed) = tokio::sync::oneshot::channel();
+        let (expected_frames, frame_count) = tokio::sync::oneshot::channel();
+        let (observed, observation) = tokio::sync::oneshot::channel();
+        const PRIMER_BYTES: usize = 16 * 1024 * 1024;
+        let (client, _events) = test_client(move |mut socket| {
+            Box::pin(async move {
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    socket
+                        .send(Message::Text(r#"{"code":0}"#.into()))
+                        .await
+                        .unwrap();
+                    reads_resumed.await.unwrap();
+                    let expected_frames = frame_count.await.unwrap();
+                    let mut frames = 0;
+                    let mut primer_decoded_at = None;
+                    while let Some(Ok(message)) = socket.next().await {
+                        if let Message::Binary(frame) = message {
+                            if frame.len() == PRIMER_BYTES {
+                                primer_decoded_at = Some(test_started.elapsed());
+                                continue;
+                            }
+                            assert_eq!(frame.len(), TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT);
+                            frames += 1;
+                            if frames == expected_frames {
+                                observed.send(primer_decoded_at.unwrap()).unwrap();
+                                return;
+                            }
+                        }
+                    }
+                    panic!("missing paced frames after blocked write");
+                })
+                .await
+                .unwrap();
+            })
+        })
+        .await;
+        client.connect().await.unwrap();
+        // Fill the actual local WebSocket's write buffer while its peer is not
+        // reading. Some kernels still accept an initial PCM frame, so identify
+        // the send that actually blocks instead of assuming it is the first.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            client
+                .inner
+                .sink
+                .lock()
+                .await
+                .as_mut()
+                .unwrap()
+                .feed(Message::Binary(vec![0; PRIMER_BYTES].into()))
+                .await
+                .unwrap();
+        })
+        .await
+        .unwrap();
+        let audio = vec![0; TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT];
+        let mut completed = Vec::new();
+        let mut stalled_frame = None;
+        let mut resume_reads = Some(resume_reads);
+        let mut expected_frames = Some(expected_frames);
+        for frame_index in 1..=6 {
+            assert!(
+                stalled_frame.is_some() || frame_index <= 4,
+                "fixture did not block a socket write"
+            );
+            let previous_deadline = *client.inner.next_audio_frame_at.lock().await;
+            let started_at = tokio::time::Instant::now();
+            let send = client.send_audio(&audio);
+            tokio::pin!(send);
+            if stalled_frame.is_none() {
+                tokio::select! {
+                    // Poll the write before the timer so an already-complete
+                    // send cannot be mistaken for socket backpressure.
+                    biased;
+                    result = &mut send => result.unwrap(),
+                    _ = tokio::time::sleep(Duration::from_millis(500)) => {
+                        let scheduled_at = previous_deadline.unwrap_or(started_at);
+                        assert!(
+                            scheduled_at.elapsed() >= Duration::from_millis(200),
+                            "fixture only waited for normal audio pacing"
+                        );
+                        stalled_frame = Some(frame_index);
+                        expected_frames.take().unwrap().send(frame_index + 2).unwrap();
+                        eprintln!(
+                            "stalled_frame={frame_index} reader_resumed={:?}",
+                            test_started.elapsed()
+                        );
+                        resume_reads.take().unwrap().send(()).unwrap();
+                        tokio::time::timeout(Duration::from_secs(2), &mut send)
+                            .await
+                            .unwrap()
+                            .unwrap();
+                    },
+                }
+            } else {
+                tokio::time::timeout(Duration::from_secs(2), &mut send)
+                    .await
+                    .unwrap()
+                    .unwrap();
+            }
+            let completed_at = tokio::time::Instant::now();
+            let next_deadline = *client.inner.next_audio_frame_at.lock().await;
+            eprintln!(
+                "frame={frame_index} started={:?} completed={:?} previous_deadline={:?} next_deadline={:?}",
+                started_at.duration_since(test_started),
+                completed_at.duration_since(test_started),
+                previous_deadline.map(|at| at.duration_since(test_started)),
+                next_deadline.map(|at| at.duration_since(test_started)),
+            );
+            completed.push(completed_at);
+            if stalled_frame.is_some_and(|index| frame_index == index + 2) {
+                break;
+            }
+        }
+        let primer_decoded_at = tokio::time::timeout(Duration::from_secs(2), observation)
+            .await
+            .unwrap()
+            .unwrap();
+        eprintln!("primer_decoded={primer_decoded_at:?}");
+        client.disconnect().await;
+        // The stalled completion can be followed by one immediately due frame;
+        // the next frame must return to the 200-ms clock instead of bursting too.
+        let final_gap =
+            completed[completed.len() - 1].duration_since(completed[completed.len() - 2]);
+        assert!(
+            final_gap >= Duration::from_millis(180),
+            "frames after stalled frame {stalled_frame:?} were only {final_gap:?} apart"
+        );
     }
 
     #[tokio::test]
