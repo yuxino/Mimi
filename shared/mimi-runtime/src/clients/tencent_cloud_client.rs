@@ -1089,6 +1089,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_blocked_socket_write_does_not_leave_an_extra_catch_up_frame() {
+        let test_started = tokio::time::Instant::now();
         let (resume_reads, reads_resumed) = tokio::sync::oneshot::channel();
         let (observed, observation) = tokio::sync::oneshot::channel();
         const PRIMER_BYTES: usize = 16 * 1024 * 1024;
@@ -1101,15 +1102,17 @@ mod tests {
                         .unwrap();
                     reads_resumed.await.unwrap();
                     let mut frames = 0;
+                    let mut primer_decoded_at = None;
                     while let Some(Ok(message)) = socket.next().await {
                         if let Message::Binary(frame) = message {
                             if frame.len() == PRIMER_BYTES {
+                                primer_decoded_at = Some(test_started.elapsed());
                                 continue;
                             }
                             assert_eq!(frame.len(), TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT);
                             frames += 1;
                             if frames == 3 {
-                                observed.send(()).unwrap();
+                                observed.send(primer_decoded_at.unwrap()).unwrap();
                                 return;
                             }
                         }
@@ -1143,8 +1146,19 @@ mod tests {
         let send = async {
             let mut completed = Vec::new();
             for _ in 0..3 {
+                let previous_deadline = *client.inner.next_audio_frame_at.lock().await;
+                let started_at = test_started.elapsed();
                 client.send_audio(&audio).await?;
-                completed.push(tokio::time::Instant::now());
+                let completed_at = tokio::time::Instant::now();
+                let next_deadline = *client.inner.next_audio_frame_at.lock().await;
+                eprintln!(
+                    "frame={} started={started_at:?} completed={:?} previous_deadline={:?} next_deadline={:?}",
+                    completed.len() + 1,
+                    completed_at.duration_since(test_started),
+                    previous_deadline.map(|at| at.duration_since(test_started)),
+                    next_deadline.map(|at| at.duration_since(test_started)),
+                );
+                completed.push(completed_at);
             }
             Ok::<_, TencentCloudClientError>(completed)
         };
@@ -1153,15 +1167,17 @@ mod tests {
             result = &mut send => panic!("socket did not stall: {result:?}"),
             _ = tokio::time::sleep(Duration::from_millis(500)) => {},
         }
+        eprintln!("reader_resumed={:?}", test_started.elapsed());
         resume_reads.send(()).unwrap();
         let completed = tokio::time::timeout(Duration::from_secs(2), send)
             .await
             .unwrap()
             .unwrap();
-        tokio::time::timeout(Duration::from_secs(2), observation)
+        let primer_decoded_at = tokio::time::timeout(Duration::from_secs(2), observation)
             .await
             .unwrap()
             .unwrap();
+        eprintln!("primer_decoded={primer_decoded_at:?}");
         client.disconnect().await;
         // The stalled completion can be followed by one immediately due frame;
         // the next frame must return to the 200-ms clock instead of bursting too.
