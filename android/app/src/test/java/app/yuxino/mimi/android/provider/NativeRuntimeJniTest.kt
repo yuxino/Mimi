@@ -398,7 +398,15 @@ class NativeRuntimeJniTest {
                 }
                 try {
                     NativeRuntimeConfiguration.command("start", handle)
-                    if (case.isNull("expected")) {
+                    if (case.optString("errorCode") == "invalid_http_response") {
+                        val deferred = awaitState { !it.isNull("translationRecovery") }
+                        assertTrue(id, deferred.isNull("errorCode"))
+                        assertEquals(id, "temporarilyUnavailable", deferred.getJSONObject("translationRecovery").getString("reason"))
+                        assertTrue(id, deferred.getJSONObject("translationRecovery").getBoolean("retryScheduled"))
+                        assertEquals(id, 0, deferred.getJSONObject("snapshot").getJSONArray("history").length())
+                        assertFalse(id, deferred.getJSONObject("snapshot").getBoolean("displayPairFinal"))
+                        assertFalse(id, deferred.getJSONObject("snapshot").toString().contains("\uFFFD"))
+                    } else if (case.isNull("expected")) {
                         val failed = awaitState { !it.isNull("errorCode") }
                         assertEquals(id, "provider_error", failed.getString("errorCode"))
                         assertEquals(id, 0, failed.getJSONObject("snapshot").getJSONArray("history").length())
