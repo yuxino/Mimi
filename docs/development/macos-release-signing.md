@@ -96,8 +96,9 @@ do not create an `android-v*` release.
 
 Wait for explicit maintainer approval after testing the draft assets. Before
 publication, verify the tag still matches the signed source, all tag CI jobs
-passed, the draft contains exactly the expected 17 assets, remote asset digests
-match `SHA256SUMS.txt`, and `latest.json` passes the manifest verifier. Recheck
+passed, the draft contains exactly the expected 18 assets (including the Android
+mapping archive), remote asset digests match `SHA256SUMS.txt`, and `latest.json`
+passes the manifest verifier. Recheck
 that this version is newer than the current Latest. Then, and only then, publish:
 
 ```bash
@@ -110,7 +111,7 @@ exact updater endpoint in `tauri.conf.json`, including any repository-name
 redirect, using an anonymous request. Resolve the canonical repository with
 `gh repo view --json nameWithOwner` rather than an older note when verifying
 release/asset URLs. GitHub's native asset count can include source archives and
-release attestation beyond the 17 uploaded assets; use the API asset list for
+release attestation beyond the 18 uploaded assets; use the API asset list for
 the strict package contract. Confirm the
 native Contributors credit on the public release. A draft build does not
 establish a working public update. Before approval, use authenticated draft

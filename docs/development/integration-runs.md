@@ -61,6 +61,9 @@
   位置是既有 `windows::is_dev_build` 的平台分支。非 macOS 分支改为直接返回
   `tauri::is_dev()`，macOS 保留相同的开发模式短路和 bundle ID 检查；没有
   关闭 lint 或扩大开发版判定。该兼容清理不改变前述 Android 或供应商源码。
+  `4bb233c6` 的 83 项相关桌面测试通过；[跨平台 CI](https://github.com/yuxino/Mimi/actions/runs/43358766896)
+  与 [Android CI](https://github.com/yuxino/Mimi/actions/runs/43358766844)全部通过，
+  含 Windows x64／ARM64、Linux 原生检查和 Intel macOS 编译。
 
 私有收据、失败与成功日志、驱动和截图保存在开发版
 `development-benchmarks/2026-11-13-provider-fix`。不保存服务文字或 Key。
