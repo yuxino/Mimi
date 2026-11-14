@@ -1947,10 +1947,10 @@ impl SessionManager {
             recording.begin(false);
         }
         self.controller.lock().unwrap().begin_session();
-        self.publish_state();
-        // UI fixtures must never read credentials, open a socket, or touch
-        // native audio capture. This branch intentionally runs before resolving
-        // settings because that resolution reads the OS credential store.
+        // Do not put WebView delivery on the provider setup path.
+        self.schedule_lifecycle_state();
+        // UI fixtures must never resolve saved credentials, open a socket,
+        // or touch native audio capture.
         if self.is_ui_test() {
             if self.is_generation_current(request_generation) {
                 return self.establish_ui_test_session();
@@ -2021,8 +2021,17 @@ impl SessionManager {
 
             pipeline_log!("session connecting");
             self.ensure_generation_current(generation)?;
-            self.controller.lock().unwrap().begin_connecting();
-            self.publish_state();
+            // Manual Start already published Connecting before reading
+            // credentials. Resume publishes here after changing ownership.
+            let already_connecting = {
+                let mut controller = self.controller.lock().unwrap();
+                let was_connecting = controller.state.status == SessionStatus::Connecting;
+                controller.begin_connecting();
+                was_connecting
+            };
+            if !already_connecting {
+                self.schedule_lifecycle_state();
+            }
 
             let result = Arc::clone(self)
                 .connect_and_listen(configuration.clone(), generation)
@@ -2075,7 +2084,8 @@ impl SessionManager {
             let fresh = self.settings.configuration().ok();
             let stale = fresh.as_ref().is_none_or(|fresh| fresh != &configuration);
             if !stale || attempts >= 2 {
-                return Ok(());
+                self.publish_lifecycle_state().await;
+                return self.ensure_generation_current(generation);
             }
             if let Some(fresh) = fresh {
                 self.set_active_settings(generation, Some(fresh));
@@ -2133,10 +2143,8 @@ impl SessionManager {
             )
             .await?;
             self.commit_listening(generation)?;
-            self.publish_state();
             self.start_health_checks(generation).await;
-            self.ensure_generation_current(generation)?;
-            Ok(())
+            self.ensure_generation_current(generation)
         })
     }
 
@@ -2489,7 +2497,7 @@ impl SessionManager {
             } else {
                 self.controller.lock().unwrap().did_pause();
             }
-            self.publish_state();
+            self.publish_lifecycle_state().await;
             return Ok(());
         }
         if request.resume {
@@ -2530,10 +2538,8 @@ impl SessionManager {
         self.cancel_translation_timeout();
         self.is_recovering.store(false, Ordering::SeqCst);
         self.controller.lock().unwrap().did_pause();
-        self.publish_state();
-        if paused_generation != NO_GENERATION {
-            self.cleanup_generation(paused_generation).await;
-        }
+        let cleanup = self.cleanup_generation(paused_generation);
+        tokio::join!(self.publish_lifecycle_state(), cleanup);
         pipeline_log!("session paused");
     }
 
@@ -5013,15 +5019,7 @@ impl SessionManager {
         event
     }
 
-    /// Broadcasts the current session state to the frontend, coalescing
-    /// high-frequency calls: subtitle chunks stream in at tens of events per
-    /// second and every snapshot carries the full subtitle history, so
-    /// emitting per chunk is the main UI-lag cost during live listening. The
-    /// first call schedules a single trailing broadcast ~60ms later that
-    /// always carries the latest snapshot; intermediate calls only set the
-    /// dirty flag. Status-only changes therefore reach the UI within 60ms
-    /// and bursty chunks are folded into one emit.
-    pub fn publish_state(self: &Arc<Self>) {
+    fn observe_diagnostic_status(&self) {
         let status = {
             let controller = self.controller.lock().unwrap();
             match controller.state.status {
@@ -5037,6 +5035,26 @@ impl SessionManager {
             .lock()
             .unwrap()
             .observe_status(status, milliseconds(self.diagnostic_epoch, Instant::now()));
+    }
+
+    fn schedule_lifecycle_state(self: &Arc<Self>) {
+        self.observe_diagnostic_status();
+        let manager = Arc::clone(self);
+        tauri::async_runtime::spawn(async move { manager.publish_state_now().await });
+    }
+
+    /// Lifecycle actions should reach every window without waiting for a
+    /// subtitle batch. Snapshot ordering still uses the same content lock.
+    async fn publish_lifecycle_state(self: &Arc<Self>) {
+        self.observe_diagnostic_status();
+        self.publish_state_now().await;
+    }
+
+    /// Coalesces streaming subtitle updates into trailing broadcasts. Every
+    /// broadcast includes the current bounded history, so publishing each
+    /// provider chunk would make all windows repeat the same work.
+    pub fn publish_state(self: &Arc<Self>) {
+        self.observe_diagnostic_status();
         self.publish_dirty.store(true, Ordering::SeqCst);
         let Ok(guard) = Arc::clone(&self.publish_lock).try_lock_owned() else {
             return;

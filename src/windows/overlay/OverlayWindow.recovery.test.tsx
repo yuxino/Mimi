@@ -183,6 +183,28 @@ it.each(["success", "failure"] as const)("preserves the non-immersive background
   expectPreferencesUnchanged(settings);
 });
 
+it.each([false, true])("shows the confirmed pause before cleanup returns (collapsed=%s)", async collapsed => {
+  const pause = deferred();
+  ipc.sessionTogglePaused.mockReturnValueOnce(pause.promise);
+  await publishSession({ status: { kind: "listening" }, isActive: true, isOverlayCollapsed: collapsed });
+  await act(async () => root.render(<OverlayWindow />));
+
+  await act(async () => { button(I18N.overlay.pause).click(); });
+  expect(button(I18N.overlay.pause).getAttribute("aria-busy")).toBe("true");
+  expect(host.querySelector(`button[aria-label="${I18N.overlay.connecting}"]`)).toBeNull();
+
+  await publishSession({ isPaused: true });
+  const resume = button(I18N.overlay.resume);
+  expect(resume.getAttribute("aria-busy")).toBeNull();
+  expect(resume.querySelector("svg")).not.toBeNull();
+  expect(resume.disabled).toBe(true);
+  await act(async () => { resume.click(); });
+  expect(ipc.sessionTogglePaused).toHaveBeenCalledOnce();
+
+  await act(async () => pause.resolve());
+  expect(button(I18N.overlay.resume).disabled).toBe(false);
+});
+
 it("respects saved immersive mode as soon as retry leaves the temporary error presentation", async () => {
   const start = deferred();
   ipc.sessionStart.mockReturnValueOnce(start.promise);

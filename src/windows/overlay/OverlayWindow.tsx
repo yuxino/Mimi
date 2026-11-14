@@ -73,6 +73,7 @@ export function OverlayWindow() {
   const saveSettings = useStore((state) => state.saveSettings);
   const showSettings = useStore((state) => state.showSettings);
   const sessionAction = useSessionAction();
+  const [pauseRequested, setPauseRequested] = useState(false);
   const controlAction = useSessionAction();
   const actionFailureMessage = sessionAction.failureMessage ?? controlAction.failureMessage ?? I18N.overlay.controlActionFailed;
   const { run: runGuardedControl, clearFailure: clearControlFailure } = controlAction;
@@ -192,25 +193,34 @@ export function OverlayWindow() {
   [dual, displayHistory, settings.subtitleDisplayMode, primarySubtitles.history, primaryTail, primaryAudioSource, microphoneSubtitles.history, microphoneTail]);
   const hasContent = hasSubtitleContent(session.subtitles);
   const phaseLabel = session.status.kind === "stopping" ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
-  const pauseLabel = session.isPaused
-    ? I18N.overlay.resume
-    : I18N.overlay.pause;
-  const sessionActionBusy = sessionAction.pending || session.status.kind === "connecting" || session.status.kind === "stopping";
-  const sessionActionLabel = sessionActionBusy
-    ? session.status.kind === "stopping" ? I18N.overlay.stopping : I18N.overlay.connecting
-    : errorRequiresConfiguration ? errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : I18N.settings.openSpeechSettings
-    : hasSessionError ? I18N.overlay.retry : pauseLabel;
+  // The native pause snapshot can arrive while the IPC still waits for
+  // capture and transport cleanup. Show Resume then, keeping it disabled
+  // until the original action releases its guard.
+  const pendingSessionLabel = pauseRequested
+    ? session.isPaused ? null : I18N.overlay.pause
+    : sessionAction.pending ? I18N.overlay.connecting : null;
+  const sessionActionProgress = session.status.kind === "stopping" ? I18N.overlay.stopping
+    : session.status.kind === "connecting" ? I18N.overlay.connecting
+    : pendingSessionLabel;
+  const sessionActionDisabled = sessionAction.pending || sessionActionProgress !== null || controlAction.pending;
+  const sessionActionLabel = sessionActionProgress
+    ?? (errorRequiresConfiguration ? errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : I18N.settings.openSpeechSettings
+      : hasSessionError ? I18N.overlay.retry
+      : session.isPaused ? I18N.overlay.resume : I18N.overlay.pause);
   const runSessionAction = () => {
     if (errorRequiresConfiguration) {
       runControlAction("settings", () => showSettings(errorSettingsTarget ?? "service"));
     } else {
       const resuming = !hasSessionError && session.isPaused;
       void sessionAction.run(async () => {
+        if (!hasSessionError && !resuming) setPauseRequested(true);
         try {
           await (hasSessionError ? start() : togglePaused());
         } catch (error) {
           const current = useStore.getState().session;
           if (!resuming || (current.isActive && current.isPaused)) throw error;
+        } finally {
+          setPauseRequested(false);
         }
       });
     }
@@ -290,12 +300,12 @@ export function OverlayWindow() {
     const showTiming = session.isActive && !blendsWithBackground;
     const actionFailed = sessionAction.failed || controlAction.failed;
     const visibleService = blendsWithBackground ? null : service;
-    if (!showTiming && !sessionAction.pending && !actionFailed && !returnToLive && !visibleService) return null;
+    if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive && !visibleService) return null;
     return <div className={`overlay-status-row${separateMetadataRow ? " overlay-status-row--narrow" : ""}`}
       style={{ top: contentTopBandHeight - 14, columnGap: separateMetadataRow || blendsWithBackground ? 8 : topChromeLayout.dragHandleWidth + 16 }}>
       <div className="overlay-status-row__leading">
-        {sessionAction.pending || actionFailed ? <div role={sessionAction.pending ? "status" : "alert"} className="overlay-action-feedback">
-          {sessionAction.pending ? I18N.overlay.connecting : actionFailureMessage}
+        {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
+          {pendingSessionLabel ?? actionFailureMessage}
         </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
       </div>
       <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
@@ -445,8 +455,8 @@ export function OverlayWindow() {
                 icon={errorRequiresConfiguration ? "gear" : hasSessionError || session.isPaused ? "play" : "pause"}
                 label={sessionActionLabel}
                 onClick={runSessionAction}
-                busy={sessionActionBusy || (errorRequiresConfiguration && controlAction.pending)}
-                disabled={sessionActionBusy || controlAction.pending}
+                busy={sessionActionProgress !== null || (errorRequiresConfiguration && controlAction.pending)}
+                disabled={sessionActionDisabled}
               />}
               {topChromeLayout.showActions && <>
               <ControlButton
@@ -517,7 +527,7 @@ export function OverlayWindow() {
             configureLabel={errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : undefined}
             onConfigure={() => runControlAction("settings", () => showSettings(errorSettingsTarget ?? "service"))}
             onRetry={errorRequiresConfiguration ? undefined : runSessionAction}
-            disabled={sessionActionBusy || controlAction.pending}
+            disabled={sessionActionDisabled}
           />}
           {blocks.length === 0 ? hasSessionError ? null : (
             <div
@@ -622,8 +632,8 @@ export function OverlayWindow() {
             icon={session.status.kind === "error" || session.isPaused ? "play" : "pause"}
             label={sessionActionLabel}
             onClick={runSessionAction}
-            busy={sessionActionBusy}
-            disabled={sessionActionBusy || controlAction.pending}
+            busy={sessionActionProgress !== null}
+            disabled={sessionActionDisabled}
           />
           <ControlButton
             icon="chevron-down"
