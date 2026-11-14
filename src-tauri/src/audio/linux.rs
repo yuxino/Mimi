@@ -288,6 +288,8 @@ impl PulseCapture {
         input: AudioSource,
         token: Option<String>,
     ) -> Result<Self, SystemAudioCaptureError> {
+        #[cfg(test)]
+        let probe_started = Instant::now();
         let deadline = Instant::now() + START_TIMEOUT;
         let mut mainloop =
             Mainloop::new().ok_or(SystemAudioCaptureError::AudioServerUnavailable)?;
@@ -308,6 +310,8 @@ impl PulseCapture {
             }
         })?;
 
+        #[cfg(test)]
+        let probe_context_ready = probe_started.elapsed();
         let target = token
             .map(|token| {
                 super::linux_streams::resolve(&token).map(|(index, sink)| (token, index, sink))
@@ -361,6 +365,8 @@ impl PulseCapture {
                 resolve_microphone(&mut mainloop, &context, control, deadline)?
             }
         };
+        #[cfg(test)]
+        let probe_source_ready = probe_started.elapsed();
         let spec = Spec {
             format: Format::S16le,
             channels: 1,
@@ -421,6 +427,21 @@ impl PulseCapture {
             || stream.get_sample_spec() != Some(&spec)
         {
             return Err(SystemAudioCaptureError::UnsupportedAudioFormat);
+        }
+        #[cfg(test)]
+        if std::env::var_os("MIMI_LINUX_CAPTURE_TIMING").as_deref()
+            == Some(std::ffi::OsStr::new("1"))
+            && input == AudioSource::System
+            && target.is_none()
+        {
+            let ready = probe_started.elapsed();
+            eprintln!(
+                "PulseAudio startup phases rate={} context_us={} source_us={} stream_us={}",
+                format.sample_rate_hz,
+                probe_context_ready.as_micros(),
+                (probe_source_ready - probe_context_ready).as_micros(),
+                (ready - probe_source_ready).as_micros(),
+            );
         }
 
         Ok(Self {
