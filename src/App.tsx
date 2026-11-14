@@ -1,7 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "./lib/i18n";
-import { appIsUiTest, appUiTestFrontendReady, isTauri } from "./lib/ipc";
+import { appUiTestFrontendReady, isTauri } from "./lib/ipc";
 import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness";
 import { selectSessionStatusKind, useStore } from "./lib/store";
 import { useDesktopShortcuts } from "./lib/useDesktopShortcuts";
@@ -77,6 +78,8 @@ function SettingsStartupPoint() {
     performance.mark("mimi-startup-switch-observer");
     let active = true;
     let frame = 0;
+    let timer = 0;
+    let timing: "frame" | "immediate";
     const report = () => {
       const control = document.querySelector<HTMLButtonElement>(
         '.settings-session-card [aria-describedby="settings-session-status"][role="switch"][aria-checked="false"]:enabled',
@@ -88,7 +91,7 @@ function SettingsStartupPoint() {
         if (control.contains(document.elementFromPoint(x, y))) {
           const phases = [
             "entry", "settings-imported", "settings-snapshot", "session-snapshot", "settings-commit",
-            "ready-commit", "switch-observer", "probe-enabled", "switch-first-frame",
+            "ready-commit", "switch-observer", "probe-enabled", "switch-first-check",
           ]
             .map(name => performance.getEntriesByName(`mimi-startup-${name}`, "mark")[0]?.startTime ?? 0);
           phases.push(performance.now());
@@ -99,21 +102,28 @@ function SettingsStartupPoint() {
           return;
         }
       }
-      if (attempts++ < 60) frame = window.requestAnimationFrame(report);
+      if (attempts++ < 60) scheduleCheck(report);
+    };
+    const scheduleCheck = (check: () => void) => {
+      if (timing === "frame") frame = window.requestAnimationFrame(check);
+      else timer = window.setTimeout(check, 16);
+    };
+    const check = () => {
+      performance.mark("mimi-startup-switch-first-check");
+      report();
     };
     let attempts = 0;
-    void appIsUiTest().then((test) => {
-      if (test && active) {
-        performance.mark("mimi-startup-probe-enabled");
-        frame = window.requestAnimationFrame(() => {
-          performance.mark("mimi-startup-switch-first-frame");
-          report();
-        });
-      }
+    void invoke<"frame" | "immediate" | null>("app_ui_test_startup_probe").then((probe) => {
+      if (!probe || !active) return;
+      timing = probe;
+      performance.mark("mimi-startup-probe-enabled");
+      if (probe === "immediate") check();
+      else scheduleCheck(check);
     }).catch(() => {});
     return () => {
       active = false;
       window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
     };
   }, [ready, status]);
   return null;

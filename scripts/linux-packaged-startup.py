@@ -62,11 +62,8 @@ def sample(executable, root, number, variant):
             "MIMI_UI_TEST_FRONTEND_READY_DIR": str(ready),
             "MIMI_UI_TEST_SESSION_STATE_FILE": str(session),
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
+            "MIMI_UI_TEST_STARTUP_PROBE": variant,
         }
-        if variant == "preload":
-            environment["MIMI_UI_TEST_PRELOAD_SETTINGS"] = "1"
-        else:
-            environment.pop("MIMI_UI_TEST_PRELOAD_SETTINGS", None)
         command = [str(executable)]
         if executable.suffix == ".AppImage":
             command.append("--appimage-extract-and-run")
@@ -120,6 +117,6 @@ def sample(executable, root, number, variant):
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     for number in range(1, 9):
-        variants = ("baseline", "preload")
+        variants = ("frame", "immediate")
         for variant in variants if number % 2 else reversed(variants):
             sample(executable, root, number, variant)

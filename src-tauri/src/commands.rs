@@ -1890,11 +1890,19 @@ pub fn app_is_ui_test() -> bool {
 }
 
 #[tauri::command]
-pub fn app_ui_test_preload_settings(window: tauri::WebviewWindow) -> bool {
-    app_is_ui_test()
+pub fn app_ui_test_startup_probe(window: tauri::WebviewWindow) -> Option<&'static str> {
+    if app_is_ui_test()
         && window.label() == "settings"
         && std::env::var_os("MIMI_UI_TEST_STARTUP_PHASE_FILE").is_some()
-        && std::env::var_os("MIMI_UI_TEST_PRELOAD_SETTINGS").is_some()
+    {
+        match std::env::var("MIMI_UI_TEST_STARTUP_PROBE").as_deref() {
+            Ok("frame") => Some("frame"),
+            Ok("immediate") => Some("immediate"),
+            _ => None,
+        }
+    } else {
+        None
+    }
 }
 
 /// A native smoke test must observe a mounted frontend, not just a window title.
@@ -1914,10 +1922,10 @@ pub fn app_ui_test_frontend_ready(
                 let directory = std::path::PathBuf::from(directory);
                 std::fs::create_dir_all(&directory)
                     .and_then(|()| {
-                        if let Some([entry, imported, settings, session, first_commit, ready_commit, observer, enabled, frame, hit]) = frontend_phases {
+                        if let Some([entry, imported, settings, session, first_commit, ready_commit, observer, enabled, first_check, hit]) = frontend_phases {
                             std::fs::write(
                                 directory.join("settings-phases"),
-                                format!("frontend_entry_ms={entry:.3}\nfrontend_imported_ms={imported:.3}\nfrontend_settings_snapshot_ms={settings:.3}\nfrontend_session_snapshot_ms={session:.3}\nfrontend_first_commit_ms={first_commit:.3}\nfrontend_ready_commit_ms={ready_commit:.3}\nfrontend_switch_observer_ms={observer:.3}\nfrontend_probe_enabled_ms={enabled:.3}\nfrontend_switch_first_frame_ms={frame:.3}\nfrontend_switch_hit_ms={hit:.3}\n"),
+                                format!("frontend_entry_ms={entry:.3}\nfrontend_imported_ms={imported:.3}\nfrontend_settings_snapshot_ms={settings:.3}\nfrontend_session_snapshot_ms={session:.3}\nfrontend_first_commit_ms={first_commit:.3}\nfrontend_ready_commit_ms={ready_commit:.3}\nfrontend_switch_observer_ms={observer:.3}\nfrontend_probe_enabled_ms={enabled:.3}\nfrontend_switch_first_check_ms={first_check:.3}\nfrontend_switch_hit_ms={hit:.3}\n"),
                             )?;
                         }
                         std::fs::write(directory.join("settings-switch"), format!("{x} {y}\n"))

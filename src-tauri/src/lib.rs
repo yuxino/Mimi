@@ -458,7 +458,7 @@ pub fn run() {
             commands::capture_status,
             commands::audio_applications,
             commands::app_is_ui_test,
-            commands::app_ui_test_preload_settings,
+            commands::app_ui_test_startup_probe,
             commands::app_ui_test_frontend_ready,
             commands::app_is_portable,
             commands::app_is_linux_package,

@@ -39,7 +39,7 @@ commands.allow = [
   "app_open_support_issue",
   "capture_status",
   "app_is_ui_test",
-  "app_ui_test_preload_settings",
+  "app_ui_test_startup_probe",
   "app_is_portable",
   "app_is_linux_package",
   "session_archive_state",
