@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][long]$OverlayWindow,
     [Parameter(Mandatory = $true)][long]$SettingsWindow,
     [Parameter(Mandatory = $true)][string]$SessionStateFile,
-    [Parameter(Mandatory = $true)][string]$SettingsActivationFile
+    [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
+    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility')][string]$Interaction
 )
 
 $ErrorActionPreference = 'Stop'
@@ -103,7 +104,7 @@ function Assert-SettingsHidden {
     }
 }
 
-function Wait-OverlayControl([string]$Name, [string]$State) {
+function Use-OverlayControl([string]$Name, [string]$State, [string]$Action) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
     $byRole = [System.Windows.Automation.PropertyCondition]::new(
@@ -121,12 +122,20 @@ function Wait-OverlayControl([string]$Name, [string]$State) {
                 $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
                 $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
                 if ($null -ne $button -and $button.Current.IsEnabled -and -not $button.Current.IsOffscreen) {
+                    if ($Interaction -eq 'accessibility') {
+                        $pattern = $null
+                        if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+                            throw "The '$Name' control does not support accessibility activation."
+                        }
+                        $pattern.Invoke()
+                        return
+                    }
                     $bounds = $button.Current.BoundingRectangle
                     if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
-                        $point = [MimiPointerSmoke+Point]::new()
-                        $point.X = [int]($bounds.X + $bounds.Width / 2)
-                        $point.Y = [int]($bounds.Y + $bounds.Height / 2)
-                        return $point
+                        $x = [int]($bounds.X + $bounds.Width / 2)
+                        $y = [int]($bounds.Y + $bounds.Height / 2)
+                        [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action)
+                        return
                     }
                 }
             }
@@ -143,11 +152,15 @@ $overlay = [IntPtr]$OverlayWindow
 $settings = [IntPtr]$SettingsWindow
 # UI Automation rectangles use physical screen coordinates. Match their DPI
 # context for cursor movement and hit testing on scaled Windows desktops.
-$previousDpi = [MimiPointerSmoke]::SetThreadDpiAwarenessContext([IntPtr](-4))
-if ($previousDpi -eq [IntPtr]::Zero) { throw 'Could not enable per-monitor DPI awareness for pointer testing.' }
-$originalPointer = [MimiPointerSmoke+Point]::new()
-$restorePointer = [MimiPointerSmoke]::GetCursorPos([ref]$originalPointer)
+$previousDpi = [IntPtr]::Zero
+$restorePointer = $false
 try {
+    if ($Interaction -eq 'pointer') {
+        $previousDpi = [MimiPointerSmoke]::SetThreadDpiAwarenessContext([IntPtr](-4))
+        if ($previousDpi -eq [IntPtr]::Zero) { throw 'Could not enable per-monitor DPI awareness for pointer testing.' }
+        $originalPointer = [MimiPointerSmoke+Point]::new()
+        $restorePointer = [MimiPointerSmoke]::GetCursorPos([ref]$originalPointer)
+    }
     if (-not [MimiPointerSmoke]::PostMessage($settings, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
         throw 'Could not close Settings before testing the overlay pointer.'
     }
@@ -158,27 +171,24 @@ try {
     Assert-SettingsHidden
 
     for ($round = 1; $round -le 3; $round++) {
-        $pause = Wait-OverlayControl 'Pause translating' 'listening'
-        [MimiPointerSmoke]::ClickOverlay($overlay, $pause.X, $pause.Y, "Pause $round")
-        $resume = Wait-OverlayControl 'Resume translating' 'paused'
-        [MimiPointerSmoke]::ClickOverlay($overlay, $resume.X, $resume.Y, "Resume $round")
+        Use-OverlayControl 'Pause translating' 'listening' "Pause $round"
+        Use-OverlayControl 'Resume translating' 'paused' "Resume $round"
     }
 
-    $gear = Wait-OverlayControl 'Open Mimi Settings' 'listening'
-    [MimiPointerSmoke]::ClickOverlay($overlay, $gear.X, $gear.Y, 'Settings gear')
+    Use-OverlayControl 'Open Mimi Settings' 'listening' 'Settings gear'
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ([MimiPointerSmoke]::IsWindowVisible($settings) -and
             (Test-Path -LiteralPath $SettingsActivationFile -PathType Leaf) -and
             [IO.File]::ReadAllText($SettingsActivationFile).Trim() -eq 'focus-requested') {
-            Write-Output 'Native overlay pointer passed: three Pause/Resume cycles kept Settings hidden, then the gear opened it.'
+            Write-Output "Native overlay $Interaction passed: three Pause/Resume cycles kept Settings hidden, then the gear opened it."
             return
         }
         Start-Sleep -Milliseconds 100
     }
-    throw 'Clicking the overlay gear did not restore the original Settings window.'
+    throw "Activating the overlay gear via $Interaction did not restore the original Settings window."
 }
 finally {
     if ($restorePointer) { [MimiPointerSmoke]::SetCursorPos($originalPointer.X, $originalPointer.Y) | Out-Null }
-    [MimiPointerSmoke]::SetThreadDpiAwarenessContext($previousDpi) | Out-Null
+    if ($previousDpi -ne [IntPtr]::Zero) { [MimiPointerSmoke]::SetThreadDpiAwarenessContext($previousDpi) | Out-Null }
 }

@@ -228,10 +228,12 @@ jobs:
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         run: npm run tauri -- build --no-bundle -- --locked
 
-      - name: Smoke launch ARM64 UI-test app
+      - name: Smoke launch ARM64 UI-test app and invoke overlay controls
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         shell: pwsh
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -CheckOverlayPointer
+        # The hosted ARM64 desktop can be covered by a foreground system window.
+        # Keep native mouse hit testing on x64; exercise the native control actions here.
+        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -OverlayInteraction accessibility
 
   msrv:
     needs: scope
@@ -380,10 +382,10 @@ jobs:
         if: runner.os == 'Linux'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
-      - name: Smoke launch x64 UI-test app
+      - name: Smoke launch x64 UI-test app and click overlay controls
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -CheckOverlayPointer
+        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer
 
       - name: Package and verify portable Windows build
         if: ${{ matrix.os == 'windows-2025' }}

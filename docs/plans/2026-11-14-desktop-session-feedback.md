@@ -69,12 +69,14 @@ no confirmed subtitle. Keep the existing settle and maximum-wait timers for
 revisions. A temporary removal still clears the text without reopening the
 first-draft path for the same stream key.
 
-## Check the Windows pointer path
+## Check the Windows overlay controls
 
 In the manual Windows package check, close Settings before interacting with
 the standard overlay. Find its enabled controls in the native accessibility
-tree, check that their screen points hit the overlay, and send a Windows mouse
-click. Pause and Resume must alternate while Settings stays hidden; the gear
-must then open the original Settings window. Use the existing synthetic
-session and temporary English preferences. This verifies the native pointer
-path without opening a provider connection or starting audio capture.
+tree. On the x64 runner, require a native hit at the button center before
+sending a Windows mouse click. The hosted ARM64 runner can have another
+foreground window covering the desktop; invoke the native accessibility
+action there and record it separately from mouse coverage. In both modes,
+Pause and Resume must alternate while Settings stays hidden, and the gear
+must open the original Settings window. Use the existing synthetic session
+and temporary English preferences without a provider connection or capture.

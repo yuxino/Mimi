@@ -6,7 +6,8 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string]$ExpectedArchitecture,
 
-    [switch]$CheckOverlayPointer,
+    [ValidateSet('none', 'pointer', 'accessibility')]
+    [string]$OverlayInteraction = 'none',
 
     [ValidateRange(1, 30)]
     [int]$StartupSeconds = 5,
@@ -491,7 +492,7 @@ try {
     $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE = $trayVisibleFile
     $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $settingsActivationFile
     $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $frontendReadyDir
-    if ($CheckOverlayPointer) {
+    if ($OverlayInteraction -ne 'none') {
         $preferencesDir = Join-Path ([IO.Path]::GetTempPath()) "mimi-ui-test-$([Guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $preferencesDir | Out-Null
         Set-Content -LiteralPath (Join-Path $preferencesDir 'preferences.json') -Value '{"ui_language":"en"}' -Encoding ascii
@@ -792,30 +793,31 @@ try {
         throw 'Restoring tray-hidden Settings did not preserve the active subtitle session.'
     }
 
-    if ($CheckOverlayPointer) {
+    if ($OverlayInteraction -ne 'none') {
         $overlayWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$process.Id, 'Mimi Subtitles')
         if ($overlayWindow -eq [IntPtr]::Zero -or -not [MimiWindowSmoke]::IsWindowVisible($overlayWindow)) {
-            throw 'The primary did not expose its visible subtitle overlay for the pointer check.'
+            throw 'The primary did not expose its visible subtitle overlay for the interaction check.'
         }
         Remove-Item -LiteralPath $settingsActivationFile -Force
         # Windows PowerShell ships with the desktop UI Automation assemblies.
         # A stalled accessibility provider must not block package verification.
-        $pointerProbe = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
-        $pointerProbe.UseShellExecute = $false
-        foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-pointer-smoke.ps1",
+        $interactionProbe = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
+        $interactionProbe.UseShellExecute = $false
+        foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
             '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
-            '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile)) {
-            $pointerProbe.ArgumentList.Add([string]$argument)
+            '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
+            '-Interaction', $OverlayInteraction)) {
+            $interactionProbe.ArgumentList.Add([string]$argument)
         }
-        $probeProcess = [Diagnostics.Process]::Start($pointerProbe)
+        $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
         try {
             if (-not $probeProcess.WaitForExit(95000)) {
                 $probeProcess.Kill()
                 $probeProcess.WaitForExit(5000) | Out-Null
-                throw 'The Windows overlay pointer check did not finish.'
+                throw "The Windows overlay $OverlayInteraction check did not finish."
             }
             if ($probeProcess.ExitCode -ne 0) {
-                throw "The Windows overlay pointer check exited with code $($probeProcess.ExitCode)."
+                throw "The Windows overlay $OverlayInteraction check exited with code $($probeProcess.ExitCode)."
             }
         }
         finally {
