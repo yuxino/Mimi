@@ -2547,6 +2547,23 @@ impl SessionManager {
             return Ok(());
         };
         if self.is_ui_test() {
+            // Native smoke can arm a configuration failure for the current
+            // synthetic generation without opening a provider or capture.
+            if !request.resume
+                && std::env::var_os("MIMI_UI_TEST_PREFERENCES_DIR").is_some_and(|directory| {
+                    std::path::Path::new(&directory)
+                        .join("fail-next-pause")
+                        .is_file()
+                })
+                && self.invalidate_generation(self.active_generation.load(Ordering::SeqCst))
+            {
+                self.controller
+                    .lock()
+                    .unwrap()
+                    .did_fail("credential_authentication_failed");
+                self.publish_lifecycle_state().await;
+                return Ok(());
+            }
             self.is_paused.store(!request.resume, Ordering::SeqCst);
             if request.resume {
                 self.controller.lock().unwrap().did_connect();

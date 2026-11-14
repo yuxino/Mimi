@@ -806,12 +806,14 @@ try {
         foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
             '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
             '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
-            '-Interaction', $OverlayInteraction)) {
+            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir)) {
             $interactionProbe.ArgumentList.Add([string]$argument)
         }
         $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
+        # Pointer coverage includes a second, separate configuration-error scenario.
+        $probeTimeoutMs = if ($OverlayInteraction -eq 'pointer') { 125000 } else { 95000 }
         try {
-            if (-not $probeProcess.WaitForExit(95000)) {
+            if (-not $probeProcess.WaitForExit($probeTimeoutMs)) {
                 $probeProcess.Kill()
                 $probeProcess.WaitForExit(5000) | Out-Null
                 throw "The Windows overlay $OverlayInteraction check did not finish."

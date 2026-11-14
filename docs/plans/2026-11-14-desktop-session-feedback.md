@@ -86,3 +86,10 @@ action there and record it separately from mouse coverage. In both modes,
 Pause and Resume must alternate while Settings stays hidden, and the gear
 must open the original Settings window. Use the existing synthetic session
 and temporary English preferences without a provider connection or capture.
+
+On x64, also record the Pause button's screen point, then use a one-shot
+fixture to deliver a configuration error on that click. Once the error's
+configure control is rendered, click the original point again. Settings must
+stay hidden. Explicitly click the separate configure control to prove the
+original Settings window remains reachable. Keep the ordinary Pause/Resume
+and gear checks independent of this error fixture.
