@@ -268,6 +268,7 @@ export const useStore = create<StoreState>()((set, get) => ({
         {
           applySettings: (settings) => {
             if (generation !== initializationGeneration) return;
+            if (get().initializationStatus !== "ready") performance.mark("mimi-startup-settings-snapshot");
             settingsResponseGate.advance();
             set({ settings: settingsSaveCoordinator.receiveSnapshot(settings), hasSettingsSnapshot: true });
             // Language switches initiated from any window reach every other
@@ -276,6 +277,7 @@ export const useStore = create<StoreState>()((set, get) => ({
           },
           applySession: (session) => {
             if (generation !== initializationGeneration) return;
+            if (get().initializationStatus !== "ready") performance.mark("mimi-startup-session-snapshot");
             set((state) => ({ session: shareUnchangedSubtitleHistory(state.session, session) }));
             if (__MIMI_DEVELOPMENT_BUILD__) observeSessionStoreApplied(get().session);
           },

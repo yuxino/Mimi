@@ -7,6 +7,8 @@ import { isTauri } from "./lib/ipc";
 import "./index.css";
 import "./linux.css";
 
+performance.mark("mimi-startup-entry");
+
 // Cosmetic platform styling must be ready before the first window paints.
 // This is not used to select native capabilities or permission behavior.
 const userAgent = navigator.userAgent;

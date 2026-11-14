@@ -90,6 +90,10 @@ def sample(executable, root, number):
                 phase_values = dict(line.split("=", 1) for line in phases.read_text().splitlines())
                 if not {"setup_entry_ms", "state_ready_ms", "overlay_created_ms", "overlay_controls_created_ms", "tray_and_shortcuts_ready_ms"} <= phase_values.keys():
                     raise RuntimeError("Missing native startup phases")
+                frontend_values = dict(line.split("=", 1) for line in (ready / "settings-phases").read_text().splitlines())
+                if not all(float(value) > 0 for value in frontend_values.values()) or len(frontend_values) != 5:
+                    raise RuntimeError(f"Missing Settings frontend phases: {frontend_values}")
+                phase_values.update(frontend_values)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:

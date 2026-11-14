@@ -17,9 +17,10 @@ const OverlayControlWindow = lazy(() =>
   })),
 );
 const SettingsView = lazy(() =>
-  import("./windows/settings/SettingsView").then((module) => ({
-    default: module.SettingsView,
-  })),
+  import("./windows/settings/SettingsView").then((module) => {
+    performance.mark("mimi-startup-settings-imported");
+    return { default: module.SettingsView };
+  }),
 );
 type WindowLabel = "overlay" | "overlay-control" | "settings";
 
@@ -78,7 +79,13 @@ function SettingsStartupPoint() {
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2;
         if (control.contains(document.elementFromPoint(x, y))) {
-          void appUiTestFrontendReady([Math.round(x * devicePixelRatio), Math.round(y * devicePixelRatio)]).catch(() => {});
+          const phases = ["entry", "settings-imported", "settings-snapshot", "session-snapshot"]
+            .map(name => performance.getEntriesByName(`mimi-startup-${name}`, "mark")[0]?.startTime ?? 0);
+          phases.push(performance.now());
+          void appUiTestFrontendReady(
+            [Math.round(x * devicePixelRatio), Math.round(y * devicePixelRatio)],
+            phases,
+          ).catch(() => {});
           return;
         }
       }

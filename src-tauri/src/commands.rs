@@ -1895,6 +1895,7 @@ pub fn app_is_ui_test() -> bool {
 pub fn app_ui_test_frontend_ready(
     window: tauri::WebviewWindow,
     switch_point: Option<[u32; 2]>,
+    frontend_phases: Option<[f64; 5]>,
 ) -> Result<(), String> {
     if let Some([x, y]) = switch_point {
         if app_is_ui_test()
@@ -1905,6 +1906,12 @@ pub fn app_ui_test_frontend_ready(
                 let directory = std::path::PathBuf::from(directory);
                 std::fs::create_dir_all(&directory)
                     .and_then(|()| {
+                        if let Some([entry, imported, settings, session, hit]) = frontend_phases {
+                            std::fs::write(
+                                directory.join("settings-phases"),
+                                format!("frontend_entry_ms={entry:.3}\nfrontend_imported_ms={imported:.3}\nfrontend_settings_snapshot_ms={settings:.3}\nfrontend_session_snapshot_ms={session:.3}\nfrontend_switch_hit_ms={hit:.3}\n"),
+                            )?;
+                        }
                         std::fs::write(directory.join("settings-switch"), format!("{x} {y}\n"))
                     })
                     .map_err(|_| "Could not write the UI-test switch position.".to_string())?;
