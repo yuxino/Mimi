@@ -1,5 +1,25 @@
 # 集成实测记录
 
+## 2026-11-14：v1.7.1 发布验收
+
+- 发布源码和标签均为 `58fcfa43bcef21839e8c039b1c130ea4845af178`。
+  在签名 Mac 运行完整 `CARGO_INCREMENTAL=0 ./scripts/check.sh` 通过，
+  包括本地回环传输测试和 2,888 项前端测试。两种 macOS 架构通过固定签名、
+  签名内源码标记及 DMG 内容校验，并与本机正式版的签名要求一致。
+- [标签发布 CI](https://github.com/yuxino/Mimi/actions/runs/43541404558)
+  和 [Android CI](https://github.com/yuxino/Mimi/actions/runs/43541404442)
+  首轮通过。Windows x64 正式程序、便携包、Windows ARM64 和 Linux
+  包的启动检查通过。
+- Android 15 ARM64 模拟器临时用户用签名 APK 从 1.7.0 覆盖升级到
+  1.7.1（10701），保留简体中文并成功冷启动；实装 APK 哈希与发布包一致，
+  签名证书与 1.7.0 一致。临时用户已清理，只读 AVD 基盘未变。
+- [v1.7.1](https://github.com/yuxino/Mimi/releases/tag/v1.7.1)
+  已公开并设为 Latest。18 项资产的大小和 SHA-256 均以匿名下载核对，
+  校验单及五份更新签名通过，三个更新入口返回同一清单，双语发布说明和
+  Contributors 头像已核对。已在 [#369](https://github.com/yuxino/Mimi/issues/369#issuecomment-6869775830)
+  回复下载和复测步骤。macOS 正式包验证到签名和包内容，真实 Gemini
+  字幕回放及 macOS 安装后启动留待实机复测。
+
 ## 2026-11-14：v1.7.1 JSON 传输与识别错误回归
 
 - Issue #369 的 Binary JSON 修复已通过 #370 合并到 `7347cc59`，保留
@@ -27,9 +47,8 @@
   用例未变。最终记录提交仅更新本文，不重复构建相同的生产代码。
 - 未做真实供应商账号/音频实测，未做新版本原生 UI、实体 Windows/Android
   或签名安装验收；loopback/JNI 回归不代表线上翻译质量或服务可用性。
-- 发布尚未执行：受限会话未发现可用的 macOS signing identity，未更换
-  固定证书、未创建标签、未发布不完整资产。版本与双语说明已备好；正式
-  macOS 资产、标签构建、18 项资产校验及公开 Contributors 验收仍待完成。
+- 本次回归验证所在的受限会话未发现可用的 macOS 签名身份，止于版本与
+  双语说明准备。后续正式发布结果见上方 v1.7.1 发布验收。
 
 ## 2026-11-13：v1.7.0 最终草稿与发布验收
 
