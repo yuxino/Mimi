@@ -47,6 +47,12 @@ Its own native loop, activation timeout, target selection and COM release
 order stay in the process adapter. The shared worker notifies Pause or Stop
 after that adapter releases its resources, without polling for completion.
 
+Use the same completion signal for Linux. The PulseAudio worker still owns
+stream and context destruction, keeps its slot until both are gone, and
+observes cancellation in its existing nonblocking mainloop. Stop wakes all
+callers after the worker releases its resources. Measure the native stop
+interval with the existing isolated PulseAudio restart fixture.
+
 ## Publish the first snapshot after idle
 
 When no batch publisher is active, its first poll reads and publishes the

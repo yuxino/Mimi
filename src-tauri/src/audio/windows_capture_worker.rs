@@ -2,11 +2,11 @@
 //! until native resources have actually dropped, even if start/stop is cancelled.
 //! Included on other desktop platforms only for lifecycle tests.
 
-use super::SystemAudioCaptureError;
+use super::{capture_completion::CaptureCompletion, SystemAudioCaptureError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{oneshot, Notify};
+use tokio::sync::oneshot;
 
 /// Bound the caller's wait, not native ownership. A timed-out stop leaves the
 /// worker reserved, so the next start cannot overlap its unfinished destruction.
@@ -24,8 +24,7 @@ pub(crate) async fn wait_for_previous_capture_release(
 pub(crate) struct Worker<T> {
     pub(crate) data: T,
     cancelled: AtomicBool,
-    finished: AtomicBool,
-    completion: Notify,
+    completion: CaptureCompletion,
 }
 
 impl<T> Worker<T> {
@@ -34,7 +33,7 @@ impl<T> Worker<T> {
     }
 
     pub(crate) fn finished(&self) -> bool {
-        self.finished.load(Ordering::SeqCst)
+        self.completion.is_finished()
     }
 
     pub(crate) fn cancel(&self) {
@@ -42,17 +41,11 @@ impl<T> Worker<T> {
     }
 
     fn finish(&self) {
-        self.finished.store(true, Ordering::SeqCst);
-        self.completion.notify_waiters();
+        self.completion.finish();
     }
 
     async fn wait_finished(&self) {
-        // Create the notification before reading the flag, so a finish
-        // between the check and the first poll wakes every registered waiter.
-        let completion = self.completion.notified();
-        if !self.finished() {
-            completion.await;
-        }
+        self.completion.wait().await;
     }
 }
 
@@ -113,8 +106,7 @@ impl<T: Default + Send + Sync + 'static> WorkerSlot<T> {
         let worker = Arc::new(Worker {
             data: T::default(),
             cancelled: AtomicBool::new(false),
-            finished: AtomicBool::new(false),
-            completion: Notify::new(),
+            completion: CaptureCompletion::default(),
         });
         *slot = Some(Arc::clone(&worker));
         Ok(worker)
