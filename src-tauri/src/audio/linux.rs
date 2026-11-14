@@ -3,10 +3,10 @@
 //! default recording source is opened only for explicit microphone capture.
 //! The server converts the selected source to the requested mono PCM16LE rate.
 //!
-//! All libpulse objects stay on one worker thread. A nonblocking mainloop
-//! keeps startup, pause/stop and cancelled start futures bounded even when
-//! the server is silent or disappears. SessionManager implements pause and
-//! resume by stopping this worker and starting a fresh monitor stream.
+//! All libpulse objects stay on one worker thread. Startup waits for native
+//! events with a short timeout so it can still observe cancellation when the
+//! server is silent. SessionManager implements pause and resume by stopping
+//! this worker and starting a fresh monitor stream.
 
 use super::capture_completion::CaptureCompletion;
 use crate::audio::send_pipeline::{AudioIngress, AudioIngressError};
@@ -23,11 +23,12 @@ use pulse::def::BufferAttr;
 use pulse::mainloop::standard::{IterateResult, Mainloop};
 use pulse::sample::{Format, Spec};
 use pulse::stream::{FlagSet as StreamFlags, PeekResult, State as StreamState, Stream};
+use pulse::time::MicroSeconds;
 use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
@@ -35,6 +36,12 @@ const POLL_INTERVAL: Duration = Duration::from_millis(5);
 pub(super) const START_TIMEOUT: Duration = Duration::from_secs(5);
 const FRAGMENT_MS: usize = 20;
 const MAX_BUFFER_MS: usize = 250;
+
+// libpulse 13 accepted milliseconds in pa_mainloop_prepare. Keep the
+// nonblocking path on older or unrecognized client libraries.
+static SUPPORTS_TIMED_POLL: LazyLock<bool> = LazyLock::new(|| {
+    pulse::version::get_library_version_numbers().is_ok_and(|(major, _, _)| major >= 14)
+});
 
 #[derive(Clone, Default)]
 pub struct LinuxSystemAudioCapture {
@@ -538,6 +545,7 @@ pub(super) fn wait_for<T>(
     deadline: Instant,
     mut check: impl FnMut() -> Result<Option<T>, SystemAudioCaptureError>,
 ) -> Result<T, SystemAudioCaptureError> {
+    let timed_poll = *SUPPORTS_TIMED_POLL;
     loop {
         if control.cancelled.load(Ordering::SeqCst) {
             return Err(SystemAudioCaptureError::StartCancelled);
@@ -548,10 +556,19 @@ pub(super) fn wait_for<T>(
         if let Some(value) = check()? {
             return Ok(value);
         }
-        if !matches!(mainloop.iterate(false), IterateResult::Success(_)) {
-            return Err(SystemAudioCaptureError::AudioServerUnavailable);
+        if timed_poll {
+            let wait = POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now()));
+            mainloop
+                .prepare(Some(MicroSeconds(wait.as_micros() as u64)))
+                .and_then(|()| mainloop.poll())
+                .and_then(|_| mainloop.dispatch())
+                .map_err(|_| SystemAudioCaptureError::AudioServerUnavailable)?;
+        } else {
+            if !matches!(mainloop.iterate(false), IterateResult::Success(_)) {
+                return Err(SystemAudioCaptureError::AudioServerUnavailable);
+            }
+            std::thread::sleep(POLL_INTERVAL);
         }
-        std::thread::sleep(POLL_INTERVAL);
     }
 }
 
@@ -855,6 +872,39 @@ mod tests {
     use std::io::Write;
     use std::process::{Child, Command, Stdio};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn startup_poll_times_out_when_idle_and_observes_cancellation_before_readiness() {
+        let control = WorkerControl::default();
+        let mut mainloop = Mainloop::new().unwrap();
+        assert!(matches!(
+            wait_for::<()>(
+                &mut mainloop,
+                &control,
+                Instant::now() + POLL_INTERVAL,
+                || Ok(None)
+            ),
+            Err(SystemAudioCaptureError::StartTimedOut)
+        ));
+        let mut checked = false;
+        assert!(matches!(
+            wait_for(
+                &mut mainloop,
+                &control,
+                Instant::now() + START_TIMEOUT,
+                || {
+                    if checked {
+                        return Ok(Some(()));
+                    }
+                    checked = true;
+                    control.cancelled.store(true, Ordering::SeqCst);
+                    Ok(None)
+                }
+            ),
+            Err(SystemAudioCaptureError::StartCancelled)
+        ));
+        assert!(checked);
+    }
 
     #[tokio::test]
     #[ignore = "requires the isolated PulseAudio or PipeWire-Pulse harness"]

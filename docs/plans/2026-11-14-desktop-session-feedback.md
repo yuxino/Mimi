@@ -53,6 +53,16 @@ observes cancellation in its existing nonblocking mainloop. Stop wakes all
 callers after the worker releases its resources. Measure the native stop
 interval with the existing isolated PulseAudio restart fixture.
 
+## Process Linux startup events as they arrive
+
+Wait for the PulseAudio context, device query and stream events with a bounded
+native poll. Cap each wait at the remaining startup deadline or the existing
+5 ms cancellation interval, whichever is shorter. Keep the previous polling
+path on libpulse versions older than 14 and on unrecognized versions because
+[libpulse 13 used milliseconds for the native timeout](https://wiki.freedesktop.org/www/Software/PulseAudio/Notes/14.0/).
+The same wait serves application stream discovery. Keep the PCM loop, worker
+ownership and source validation in their existing paths.
+
 ## Publish the first snapshot after idle
 
 When no batch publisher is active, its first poll reads and publishes the
