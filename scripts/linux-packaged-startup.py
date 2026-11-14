@@ -89,13 +89,15 @@ def sample(executable, root, number, phase):
 
                 if phase == "ready":
                     waiting_for(process, "visible overlay with committed frontend", overlay_ready)
-                if any((work / marker).exists() for marker in ("draft-issued", "draft-committed", "draft-frame")):
+                if any((work / marker).exists() for marker in ("draft-issued", "draft-published", "draft-committed", "draft-frame")):
                     raise RuntimeError("A caption appeared before the fixture request")
 
                 requested = time.monotonic()
                 (work / "draft-request").touch()
                 waiting_for(process, "injected caption", (work / "draft-issued").is_file)
                 issued_ms = (time.monotonic() - requested) * 1000
+                waiting_for(process, "caption in the native snapshot", (work / "draft-published").is_file)
+                published_ms = (time.monotonic() - requested) * 1000
                 waiting_for(process, "committed caption", (work / "draft-committed").is_file)
                 committed_ms = (time.monotonic() - requested) * 1000
                 waiting_for(process, "caption with a subsequent paint opportunity", (work / "draft-frame").is_file)
@@ -109,7 +111,7 @@ def sample(executable, root, number, phase):
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
                 print(f"MimiLinuxFirstCaption package={package} sample={number} phase={phase} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
-                      f"committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
+                      f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
                       f"request_after_start_ms={(requested - activated) * 1000:.3f}", flush=True)
             except Exception:
                 print(log.read_text(errors="replace"), file=sys.stderr)

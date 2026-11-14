@@ -5199,6 +5199,16 @@ impl SessionManager {
         if let Err(error) = std::fs::write(path, state) {
             tracing::warn!(error = %error, "could not write UI-test session state marker");
         }
+        if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
+            if let Some(pair) = &event.subtitles.preview_pair {
+                if !pair.translation.is_empty() {
+                    let _ = std::fs::write(
+                        std::path::Path::new(&directory).join("draft-published"),
+                        "ready",
+                    );
+                }
+            }
+        }
     }
 
     /// Broadcasts the current settings snapshot to every window (used after
@@ -5290,6 +5300,7 @@ impl SessionManager {
         // The package probe controls when the first caption enters the normal
         // provider-event path. It runs only inside this credential-free fixture.
         if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
+            self.controller.lock().unwrap().set_atomic_preview(true);
             *self
                 .lane(AudioSource::System)
                 .subtitle_content_revision
@@ -5302,7 +5313,14 @@ impl SessionManager {
                 let deadline = Instant::now() + Duration::from_secs(30);
                 while Instant::now() < deadline && session.is_generation_current(generation) {
                     if std::fs::remove_file(&request).is_ok() {
-                        let draft = LiveTranslateServerEvent::TranslationDraft("测试字幕".into());
+                        // The synthetic settings store selects Alibaba's
+                        // paired-preview route. Send the same event shape.
+                        let draft = LiveTranslateServerEvent::SubtitlePreviewPair {
+                            source_utterance_id: None,
+                            source: "Test source caption".into(),
+                            language: Some("en".into()),
+                            translation: "测试字幕".into(),
+                        };
                         if std::fs::write(directory.join("draft-issued"), "ready").is_ok() {
                             session
                                 .handle_event(
