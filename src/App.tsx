@@ -70,9 +70,9 @@ function FirstCaptionSmoke() {
     let active = true;
     let frame = 0;
     let observer: MutationObserver | undefined;
-    void appIsUiTest().then(isTest => {
+    void appUiTestFrontendReady(undefined, undefined, "draft-observer").then(isTest => {
       if (!active || !isTest) return;
-      observer = new MutationObserver(() => {
+      const report = () => {
         const row = document.querySelector<HTMLElement>('[data-utterance-id]');
         if (!row?.textContent?.includes("测试字幕") || !row.getBoundingClientRect().height) return;
         observer?.disconnect();
@@ -82,10 +82,11 @@ function FirstCaptionSmoke() {
             void appUiTestFrontendReady(undefined, undefined, "draft-frame").catch(() => {});
           });
         });
-      });
+      };
+      observer = new MutationObserver(report);
       observer.observe(document.body, { childList: true, characterData: true, subtree: true });
-      void appUiTestFrontendReady(undefined, undefined, "draft-observer").catch(() => {});
-    }).catch(() => {});
+      report();
+    }).catch(() => console.warn("First-caption smoke observer setup failed"));
     return () => {
       active = false;
       observer?.disconnect();

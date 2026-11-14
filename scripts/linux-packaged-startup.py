@@ -115,6 +115,9 @@ def sample(executable, root, number, phase):
                 print(log.read_text(errors="replace"), file=sys.stderr)
                 if phases.is_file():
                     print(phases.read_text(), file=sys.stderr)
+                print(f"Session state at failure: {state(session)}", file=sys.stderr)
+                for marker in sorted(work.glob("draft-*")):
+                    print(f"Caption probe marker: {marker.name}", file=sys.stderr)
                 raise
             finally:
                 if process.poll() is None:

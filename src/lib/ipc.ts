@@ -147,8 +147,8 @@ export function appIsUiTest(): Promise<boolean> {
 }
 
 export function appUiTestFrontendReady(switchPoint?: [number, number], frontendPhases?: number[],
-  draftStage?: "draft-observer" | "draft-committed" | "draft-frame"): Promise<void> {
-  return invoke("app_ui_test_frontend_ready", { switchPoint, frontendPhases, draftStage });
+  draftStage?: "draft-observer" | "draft-committed" | "draft-frame"): Promise<boolean> {
+  return invoke<boolean>("app_ui_test_frontend_ready", { switchPoint, frontendPhases, draftStage });
 }
 
 export function appIsPortable(): Promise<boolean> {

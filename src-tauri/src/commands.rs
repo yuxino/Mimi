@@ -1897,7 +1897,7 @@ pub fn app_ui_test_frontend_ready(
     switch_point: Option<[u32; 2]>,
     frontend_phases: Option<[f64; 10]>,
     draft_stage: Option<String>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     if let Some(stage) = draft_stage {
         if app_is_ui_test()
             && window.label() == "overlay"
@@ -1909,9 +1909,10 @@ pub fn app_ui_test_frontend_ready(
             if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
                 std::fs::write(std::path::Path::new(&directory).join(stage), "ready")
                     .map_err(|_| "Could not write the UI-test caption marker.".to_string())?;
+                return Ok(true);
             }
         }
-        return Ok(());
+        return Ok(false);
     }
     if let Some([x, y]) = switch_point {
         if app_is_ui_test()
@@ -1933,13 +1934,14 @@ pub fn app_ui_test_frontend_ready(
                     .map_err(|_| "Could not write the UI-test switch position.".to_string())?;
             }
         }
-        return Ok(());
+        return Ok(false);
     }
     write_ui_test_frontend_ready(
         app_is_ui_test(),
         window.label(),
         std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR").as_deref(),
     )
+    .map(|()| false)
     .map_err(|_| "Could not write the UI-test readiness marker.".to_string())
 }
 
