@@ -10,6 +10,7 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
@@ -28,6 +29,9 @@ public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
     public struct Point { public int X, Y; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect { internal int Left, Top, Right, Bottom; }
+
     [DllImport("user32.dll")]
     public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")]
@@ -42,13 +46,41 @@ public static class MimiPointerSmoke {
     private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, StringBuilder className, int capacity);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowExStyle(IntPtr window, int index);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
 
-    public static void ClickOverlay(IntPtr overlay, int x, int y) {
+    private static string DescribeWindow(IntPtr window) {
+        if (window == IntPtr.Zero) return "none";
+        var name = new StringBuilder(128);
+        uint process;
+        Rect rect;
+        GetClassName(window, name, name.Capacity);
+        GetWindowThreadProcessId(window, out process);
+        var bounds = GetWindowRect(window, out rect)
+            ? String.Format("{0},{1}..{2},{3}", rect.Left, rect.Top, rect.Right, rect.Bottom)
+            : "unavailable";
+        return String.Format("0x{0:X} class={1} pid={2} bounds={3} dpi={4} ex=0x{5:X}",
+            window.ToInt64(), name, process, bounds, GetDpiForWindow(window), GetWindowExStyle(window, -20));
+    }
+
+    public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
         var point = new Point { X = x, Y = y };
-        if (GetAncestor(WindowFromPoint(point), 2) != overlay)
-            throw new InvalidOperationException("The control point did not hit the subtitle overlay.");
+        var hit = WindowFromPoint(point);
+        var root = GetAncestor(hit, 2);
+        if (root != overlay)
+            throw new InvalidOperationException(String.Format(
+                "{0} point ({1},{2}) did not hit the overlay. Expected {3}; hit {4}; hit root {5}.",
+                action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
         if (!SetCursorPos(x, y))
             throw new InvalidOperationException("Could not move the pointer on the test desktop.");
         var clicks = new Input[] {
@@ -127,13 +159,13 @@ try {
 
     for ($round = 1; $round -le 3; $round++) {
         $pause = Wait-OverlayControl 'Pause translating' 'listening'
-        [MimiPointerSmoke]::ClickOverlay($overlay, $pause.X, $pause.Y)
+        [MimiPointerSmoke]::ClickOverlay($overlay, $pause.X, $pause.Y, "Pause $round")
         $resume = Wait-OverlayControl 'Resume translating' 'paused'
-        [MimiPointerSmoke]::ClickOverlay($overlay, $resume.X, $resume.Y)
+        [MimiPointerSmoke]::ClickOverlay($overlay, $resume.X, $resume.Y, "Resume $round")
     }
 
     $gear = Wait-OverlayControl 'Open Mimi Settings' 'listening'
-    [MimiPointerSmoke]::ClickOverlay($overlay, $gear.X, $gear.Y)
+    [MimiPointerSmoke]::ClickOverlay($overlay, $gear.X, $gear.Y, 'Settings gear')
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ([MimiPointerSmoke]::IsWindowVisible($settings) -and
