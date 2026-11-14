@@ -559,15 +559,28 @@ pub(super) fn wait_for<T>(
     deadline: Instant,
     mut check: impl FnMut() -> Result<Option<T>, SystemAudioCaptureError>,
 ) -> Result<T, SystemAudioCaptureError> {
+    #[cfg(test)]
+    let bounded_poll = std::env::var_os("MIMI_LINUX_CAPTURE_PROBE_BOUNDED_POLL").is_some();
     loop {
         if control.cancelled.load(Ordering::SeqCst) {
             return Err(SystemAudioCaptureError::StartCancelled);
         }
-        if Instant::now() >= deadline {
+        let now = Instant::now();
+        if now >= deadline {
             return Err(SystemAudioCaptureError::StartTimedOut);
         }
         if let Some(value) = check()? {
             return Ok(value);
+        }
+        #[cfg(test)]
+        if bounded_poll {
+            let wait = POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now()));
+            mainloop
+                .prepare(Some(pulse::time::MicroSeconds(wait.as_micros() as u64)))
+                .and_then(|()| mainloop.poll())
+                .and_then(|_| mainloop.dispatch())
+                .map_err(|_| SystemAudioCaptureError::AudioServerUnavailable)?;
+            continue;
         }
         if !matches!(mainloop.iterate(false), IterateResult::Success(_)) {
             return Err(SystemAudioCaptureError::AudioServerUnavailable);
@@ -876,6 +889,32 @@ mod tests {
     use std::io::Write;
     use std::process::{Child, Command, Stdio};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn bounded_start_poll_checks_libpulse_version_timeout_and_cancellation() {
+        if std::env::var_os("MIMI_LINUX_CAPTURE_PROBE_BOUNDED_POLL").is_none() {
+            return;
+        }
+        let version = pulse::version::get_library_version_numbers().unwrap();
+        assert!(version.0 >= 14, "unexpected libpulse version: {version:?}");
+        let control = WorkerControl::default();
+        let mut mainloop = Mainloop::new().unwrap();
+        assert!(matches!(
+            wait_for::<()>(
+                &mut mainloop,
+                &control,
+                Instant::now() + POLL_INTERVAL,
+                || { Ok(None) }
+            ),
+            Err(SystemAudioCaptureError::StartTimedOut)
+        ));
+        control.cancelled.store(true, Ordering::SeqCst);
+        assert!(matches!(
+            wait_for(&mut mainloop, &control, Instant::now(), || Ok(Some(()))),
+            Err(SystemAudioCaptureError::StartCancelled)
+        ));
+        eprintln!("PulseAudio bounded startup poll verified on libpulse {version:?}");
+    }
 
     #[tokio::test]
     #[ignore = "requires the isolated PulseAudio or PipeWire-Pulse harness"]

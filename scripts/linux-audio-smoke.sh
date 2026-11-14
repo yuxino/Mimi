@@ -61,12 +61,27 @@ fi
 timeout 2s pactl set-default-sink mimi-output
 timeout 2s pactl set-default-source mimi-microphone.monitor
 if [[ "${MIMI_LINUX_CAPTURE_TIMING:-0}" == 1 ]]; then
+  MIMI_LINUX_CAPTURE_PROBE_BOUNDED_POLL=1 timeout 30s cargo test --locked \
+    --manifest-path src-tauri/Cargo.toml \
+    --lib audio::linux::tests::bounded_start_poll_checks_libpulse_version_timeout_and_cancellation \
+    -- --exact --nocapture
   for trial in {1..8}; do
-    echo "PulseAudio probe trial=$trial"
-    timeout 30s cargo test --locked --manifest-path src-tauri/Cargo.toml \
-      --lib audio::linux::tests::native_monitor_capture_is_pcm16_and_restarts \
-      -- --exact --ignored --nocapture
+    variants=(baseline bounded)
+    if (( trial % 2 == 0 )); then
+      variants=(bounded baseline)
+    fi
+    for variant in "${variants[@]}"; do
+      unset MIMI_LINUX_CAPTURE_PROBE_BOUNDED_POLL
+      if [[ "$variant" == bounded ]]; then
+        export MIMI_LINUX_CAPTURE_PROBE_BOUNDED_POLL=1
+      fi
+      echo "PulseAudio probe trial=$trial variant=$variant"
+      timeout 30s cargo test --locked --manifest-path src-tauri/Cargo.toml \
+        --lib audio::linux::tests::native_monitor_capture_is_pcm16_and_restarts \
+        -- --exact --ignored --nocapture
+    done
   done
+  export MIMI_LINUX_CAPTURE_PROBE_BOUNDED_POLL=1
 fi
 timeout 180s cargo test --locked --manifest-path src-tauri/Cargo.toml \
   --lib "$test_prefix" -- --ignored --nocapture --test-threads=1 \
