@@ -114,6 +114,8 @@ pub(crate) mod macos_smoke;
 #[cfg(target_os = "macos")]
 pub mod macos_output;
 
+#[cfg(any(target_os = "linux", target_os = "windows", test))]
+mod capture_completion;
 #[cfg(target_os = "windows")]
 pub mod windows;
 #[cfg(any(target_os = "windows", test))]

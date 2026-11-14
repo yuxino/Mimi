@@ -8,6 +8,7 @@
 //! the server is silent or disappears. SessionManager implements pause and
 //! resume by stopping this worker and starting a fresh monitor stream.
 
+use super::capture_completion::CaptureCompletion;
 use crate::audio::send_pipeline::{AudioIngress, AudioIngressError};
 use crate::audio::{
     AudioCaptureFormat, CaptureFailureSender, SystemAudioCaptureError, SystemAudioCaptureFailure,
@@ -56,7 +57,7 @@ impl Drop for CaptureState {
 #[derive(Default)]
 pub(super) struct WorkerControl {
     cancelled: AtomicBool,
-    finished: AtomicBool,
+    completion: CaptureCompletion,
 }
 
 /// Dropping an awaited start (for example SessionManager's timeout) must
@@ -75,7 +76,7 @@ struct FinishWorkerOnDrop(Arc<WorkerControl>);
 
 impl Drop for FinishWorkerOnDrop {
     fn drop(&mut self) {
-        self.0.finished.store(true, Ordering::SeqCst);
+        self.0.completion.finish();
     }
 }
 
@@ -174,7 +175,7 @@ impl LinuxSystemAudioCapture {
             })
             .is_err()
         {
-            control.finished.store(true, Ordering::SeqCst);
+            control.completion.finish();
             return Err(input_error(
                 input,
                 SystemAudioCaptureError::NativeStartFailed,
@@ -194,7 +195,7 @@ impl LinuxSystemAudioCapture {
     fn reserve_worker(&self) -> Result<Arc<WorkerControl>, SystemAudioCaptureError> {
         let mut slot = self.state.worker.lock().unwrap();
         if let Some(worker) = slot.as_ref() {
-            if !worker.finished.load(Ordering::SeqCst) {
+            if !worker.completion.is_finished() {
                 return Err(if worker.cancelled.load(Ordering::SeqCst) {
                     SystemAudioCaptureError::PreviousCaptureStopping
                 } else {
@@ -218,9 +219,7 @@ impl LinuxSystemAudioCapture {
         if let Some(worker) = worker {
             // The slot stays reserved if this stop future is itself dropped.
             // A new start cannot overlap a worker still releasing its source.
-            while !worker.finished.load(Ordering::SeqCst) {
-                tokio::time::sleep(POLL_INTERVAL).await;
-            }
+            worker.completion.wait().await;
         }
     }
 }
@@ -1188,6 +1187,28 @@ mod tests {
         // Dropping the final handle also stops an active native worker.
         drop(capture);
         assert!(second.cancelled.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn concurrent_stops_wake_only_after_native_teardown() {
+        let capture = LinuxSystemAudioCapture::new();
+        let worker = capture.reserve_worker().unwrap();
+        let teardown = FinishWorkerOnDrop(Arc::clone(&worker));
+        let mut first = Box::pin(capture.stop());
+        let mut second = Box::pin(capture.stop());
+        assert!(futures_util::poll!(&mut first).is_pending());
+        assert!(futures_util::poll!(&mut second).is_pending());
+        assert!(matches!(
+            capture.reserve_worker(),
+            Err(SystemAudioCaptureError::PreviousCaptureStopping)
+        ));
+
+        drop(teardown);
+        // The next poll must see the completion immediately. Polling with a
+        // timer here would delay Resume even after native resources are gone.
+        assert!(futures_util::poll!(&mut first).is_ready());
+        assert!(futures_util::poll!(&mut second).is_ready());
+        assert!(!Arc::ptr_eq(&worker, &capture.reserve_worker().unwrap()));
     }
 
     fn recording_pipeline() -> (AudioSendPipeline, mpsc::Receiver<Vec<u8>>) {
