@@ -204,26 +204,21 @@ export function OverlayWindow() {
     : pendingSessionLabel;
   const sessionActionDisabled = sessionAction.pending || sessionActionProgress !== null || controlAction.pending;
   const sessionActionLabel = sessionActionProgress
-    ?? (errorRequiresConfiguration ? errorSettingsTarget === "appleSpeechResources" ? I18N.settings.appleSpeechOpenResources : I18N.settings.openSpeechSettings
-      : hasSessionError ? I18N.overlay.retry
+    ?? (hasSessionError ? I18N.overlay.retry
       : session.isPaused ? I18N.overlay.resume : I18N.overlay.pause);
   const runSessionAction = () => {
-    if (errorRequiresConfiguration) {
-      runControlAction("settings", () => showSettings(errorSettingsTarget ?? "service"));
-    } else {
-      const resuming = !hasSessionError && session.isPaused;
-      void sessionAction.run(async () => {
-        if (!hasSessionError && !resuming) setPauseRequested(true);
-        try {
-          await (hasSessionError ? start() : togglePaused());
-        } catch (error) {
-          const current = useStore.getState().session;
-          if (!resuming || (current.isActive && current.isPaused)) throw error;
-        } finally {
-          setPauseRequested(false);
-        }
-      });
-    }
+    const resuming = !hasSessionError && session.isPaused;
+    void sessionAction.run(async () => {
+      if (!hasSessionError && !resuming) setPauseRequested(true);
+      try {
+        await (hasSessionError ? start() : togglePaused());
+      } catch (error) {
+        const current = useStore.getState().session;
+        if (!resuming || (current.isActive && current.isPaused)) throw error;
+      } finally {
+        setPauseRequested(false);
+      }
+    });
   };
 
   const toggleCollapsed = () => {
@@ -451,11 +446,12 @@ export function OverlayWindow() {
                 transition: "opacity 120ms ease",
               }}
             >
-              {topChromeLayout.showSessionAction && <ControlButton
-                icon={errorRequiresConfiguration ? "gear" : hasSessionError || session.isPaused ? "play" : "pause"}
+              {topChromeLayout.showSessionAction && !errorRequiresConfiguration && <ControlButton
+                key={hasSessionError ? "retry" : "pause-resume"}
+                icon={hasSessionError || session.isPaused ? "play" : "pause"}
                 label={sessionActionLabel}
                 onClick={runSessionAction}
-                busy={sessionActionProgress !== null || (errorRequiresConfiguration && controlAction.pending)}
+                busy={sessionActionProgress !== null}
                 disabled={sessionActionDisabled}
               />}
               {topChromeLayout.showActions && <>

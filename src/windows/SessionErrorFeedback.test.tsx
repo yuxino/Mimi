@@ -204,7 +204,7 @@ it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("ke
   expect(drag.disabled).toBe(false);
   expect(drag.getAttribute("aria-label")).toBe(I18N.overlay.moveSubtitle);
   const topActions = [...host.querySelectorAll<HTMLButtonElement>(".overlay-control-button")];
-  expect(topActions).toHaveLength(7);
+  expect(topActions.map(button => button.getAttribute("aria-label"))).not.toContain(I18N.settings.openSpeechSettings);
   const settingsAction = topActions.find(button => button.getAttribute("aria-label") === I18N.overlay.openSettings)!;
   expect(settingsAction.disabled).toBe(false);
   for (const id of ["collapse-subtitles", "toggle-immersive-mode", "toggle-overlay-lock"]) {

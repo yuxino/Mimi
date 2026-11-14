@@ -167,6 +167,27 @@ it("keeps a failed pause action visible and retryable in the collapsed surface",
   expect(host.querySelector('[role="alert"]')).toBeNull();
 });
 
+it("does not turn a repeated pause click into settings navigation after a configuration error", async () => {
+  const showSettings = vi.fn().mockResolvedValue(undefined);
+  const togglePaused = vi.fn().mockResolvedValue(undefined);
+  useStore.setState({ showSettings, togglePaused });
+  await act(async () => root.render(<OverlayWindow />));
+  const pause = button(I18N.overlay.pause);
+  await act(async () => pause.click());
+
+  await act(async () => useStore.setState(state => ({ session: { ...state.session,
+    isActive: false, status: { kind: "error", message: "credential_authentication_failed" },
+  } })));
+  await act(async () => pause.click());
+  expect(showSettings).not.toHaveBeenCalled();
+  expect(togglePaused).toHaveBeenCalledOnce();
+  expect(pause.isConnected).toBe(false);
+
+  const configure = host.querySelector<HTMLButtonElement>(".session-error-feedback button")!;
+  await act(async () => configure.click());
+  expect(showSettings).toHaveBeenCalledExactlyOnceWith("service");
+});
+
 it.each(["listening", "paused", "connecting", "error", "collapsed"])("can close the %s surface through the existing stop action", async mode => {
   const stop = vi.fn().mockResolvedValue(undefined);
   useStore.setState(state => ({ stop, session: { ...state.session,

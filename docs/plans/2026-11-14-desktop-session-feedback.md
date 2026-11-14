@@ -38,3 +38,11 @@ following 60 ms interval share a trailing snapshot. One mutex protects the
 transition back to idle so a concurrent request either joins the current
 publisher or starts the next one. Snapshots still read current state and
 publish under the same gate as Clear and event application.
+
+## Keep settings navigation on its own control
+
+A provider configuration error can arrive between two clicks on the pause
+button. Retire that button when the session changes to an error.
+The existing error message offers the named configuration action, or the
+open control panel offers it when it owns the recovery actions. Transient
+errors can still offer a separate Retry button.
