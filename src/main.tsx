@@ -1,6 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import type { ComponentType } from "react";
+import { preloadSettingsView } from "./settingsStartupProbe";
 import { effectiveUiLanguage } from "./lib/i18n";
 import "./index.css";
 import "./linux.css";
@@ -14,8 +16,14 @@ if (/\bLinux\b/i.test(userAgent) && !/\b(Android|CrOS)\b/i.test(userAgent)) {
 const uiLanguage = effectiveUiLanguage();
 document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : uiLanguage;
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+function mount(settingsView?: ComponentType) {
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <React.StrictMode>
+      <App settingsView={settingsView} />
+    </React.StrictMode>
+  );
+}
+
+const preloadedSettings = preloadSettingsView();
+if (preloadedSettings) void preloadedSettings.then(mount, () => mount());
+else mount();

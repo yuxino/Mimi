@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)][string]$ExecutablePath,
-    [ValidateRange(1, 15)][int]$Samples = 5
+    [ValidateRange(1, 32)][int]$Samples = 5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,6 +59,10 @@ try {
     $startInfo.EnvironmentVariables.Remove('MIMI_UI_TEST_STARTUP_GATE_READY_FILE')
 
     for ($sample = 1; $sample -le $Samples; $sample++) {
+        # Alternate the order in adjacent pairs to balance cache warming.
+        $preload = $sample % 4 -in @(2, 3)
+        $variant = if ($preload) { 'preload' } else { 'lazy' }
+        $startInfo.EnvironmentVariables['MIMI_UI_TEST_PRELOAD_SETTINGS_VIEW'] = if ($preload) { '1' } else { '0' }
         $readyDirectory = Join-Path $root "ready-$sample"
         $stateFile = Join-Path $root "state-$sample"
         $phaseFile = Join-Path $root "phases-$sample"
@@ -109,8 +113,8 @@ try {
                     ($null -ne (Find-MimiWindow $process.Id 'Mimi Subtitles'))
             } | Out-Null
             $overlayMs = $clock.Elapsed.TotalMilliseconds
-            Write-Output ('MimiStartup sample={0} window_ms={1:F1} settings_ms={2:F1} listening_ms={3:F1} overlay_ms={4:F1}' -f
-                $sample, $windowMs, $settingsMs, $listeningMs, $overlayMs)
+            Write-Output ('MimiStartup sample={0} variant={1} window_ms={2:F1} settings_ms={3:F1} listening_ms={4:F1} overlay_ms={5:F1}' -f
+                $sample, $variant, $windowMs, $settingsMs, $listeningMs, $overlayMs)
             if ($env:MIMI_STARTUP_EXPECT_PHASES -eq '1') {
                 $phases = @(Get-Content -LiteralPath $phaseFile)
                 if ($phases.Count -ne 5) { throw 'Expected all five native startup phase markers.' }
@@ -123,7 +127,7 @@ try {
                     Get-Content -LiteralPath "$phaseFile.$_"
                 }
                 $frontend = Get-Content -LiteralPath "$phaseFile.frontend"
-                Write-Output "MimiSettingsStartup sample=$sample $($nativePage -join ' ') $frontend"
+                Write-Output "MimiSettingsStartup sample=$sample variant=$variant $($nativePage -join ' ') $frontend"
             }
         }
         finally {

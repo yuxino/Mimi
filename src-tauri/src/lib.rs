@@ -120,6 +120,14 @@ pub fn run() {
     };
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
+    #[cfg(target_os = "windows")]
+    let builder = if startup_trace.is_some()
+        && std::env::var("MIMI_UI_TEST_PRELOAD_SETTINGS_VIEW").as_deref() == Ok("1")
+    {
+        builder.append_invoke_initialization_script("window.__MIMI_PRELOAD_SETTINGS_VIEW__ = true;")
+    } else {
+        builder
+    };
 
     let settings_startup_trace = startup_trace.clone();
     builder
