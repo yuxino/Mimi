@@ -11,7 +11,6 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 
 public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
@@ -32,17 +31,6 @@ public static class MimiPointerSmoke {
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { internal int Left, Top, Right, Bottom; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Message {
-        internal IntPtr Window;
-        internal uint Id;
-        internal UIntPtr WParam;
-        internal IntPtr LParam;
-        internal uint Time;
-        internal Point Point;
-        internal uint Private;
-    }
 
     [DllImport("user32.dll")]
     public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
@@ -68,69 +56,8 @@ public static class MimiPointerSmoke {
     private static extern int GetWindowExStyle(IntPtr window, int index);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr CreateWindowEx(int exStyle, string className, string title, int style,
-        int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr data);
-    [DllImport("user32.dll")]
-    private static extern bool DestroyWindow(IntPtr window);
-    [DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr window, int command);
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr window);
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")]
-    private static extern int GetMessage(out Message message, IntPtr window, uint min, uint max);
-    [DllImport("user32.dll")]
-    private static extern IntPtr DispatchMessage(ref Message message);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
-
-    // A regular, non-topmost desktop window keeps the runner's full-screen
-    // shell from becoming the foreground after we hide the app's Settings.
-    public sealed class DesktopBackdrop : IDisposable {
-        private readonly ManualResetEvent ready = new ManualResetEvent(false);
-        private readonly Thread worker;
-        private IntPtr window;
-
-        public DesktopBackdrop(IntPtr overlay) {
-            Rect bounds;
-            if (!GetWindowRect(overlay, out bounds))
-                throw new InvalidOperationException("Could not locate the overlay for the desktop fixture.");
-            worker = new Thread(delegate() {
-                SetThreadDpiAwarenessContext(new IntPtr(-4));
-                window = CreateWindowEx(0, "STATIC", "Mimi CI pointer backdrop", 0x00CF0000,
-                    bounds.Left, bounds.Top, bounds.Right - bounds.Left, bounds.Bottom - bounds.Top,
-                    IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-                if (window != IntPtr.Zero) ShowWindow(window, 5); // SW_SHOW
-                ready.Set();
-                if (window == IntPtr.Zero) return;
-                Message message;
-                while (GetMessage(out message, IntPtr.Zero, 0, 0) > 0 && message.Id != 0x0010)
-                    DispatchMessage(ref message);
-                DestroyWindow(window);
-            });
-            worker.IsBackground = true;
-            worker.Start();
-            if (!ready.WaitOne(5000) || window == IntPtr.Zero)
-                throw new InvalidOperationException("Could not start the desktop backdrop.");
-        }
-
-        public void Activate() {
-            for (var attempt = 0; attempt < 20; attempt++) {
-                SetForegroundWindow(window);
-                if (GetForegroundWindow() == window) return;
-                Thread.Sleep(50);
-            }
-            throw new InvalidOperationException("Could not activate the desktop backdrop. Foreground: "
-                + DescribeWindow(GetForegroundWindow()));
-        }
-
-        public void Dispose() {
-            PostMessage(window, 0x0010, IntPtr.Zero, IntPtr.Zero); // WM_CLOSE
-            if (worker.Join(2000)) ready.Dispose();
-        }
-    }
 
     private static string DescribeWindow(IntPtr window) {
         if (window == IntPtr.Zero) return "none";
@@ -220,10 +147,7 @@ $previousDpi = [MimiPointerSmoke]::SetThreadDpiAwarenessContext([IntPtr](-4))
 if ($previousDpi -eq [IntPtr]::Zero) { throw 'Could not enable per-monitor DPI awareness for pointer testing.' }
 $originalPointer = [MimiPointerSmoke+Point]::new()
 $restorePointer = [MimiPointerSmoke]::GetCursorPos([ref]$originalPointer)
-$backdrop = $null
 try {
-    $backdrop = [MimiPointerSmoke+DesktopBackdrop]::new($overlay)
-    $backdrop.Activate()
     if (-not [MimiPointerSmoke]::PostMessage($settings, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
         throw 'Could not close Settings before testing the overlay pointer.'
     }
@@ -232,7 +156,6 @@ try {
         Start-Sleep -Milliseconds 50
     }
     Assert-SettingsHidden
-    $backdrop.Activate()
 
     for ($round = 1; $round -le 3; $round++) {
         $pause = Wait-OverlayControl 'Pause translating' 'listening'
@@ -256,7 +179,6 @@ try {
     throw 'Clicking the overlay gear did not restore the original Settings window.'
 }
 finally {
-    if ($null -ne $backdrop) { $backdrop.Dispose() }
     if ($restorePointer) { [MimiPointerSmoke]::SetCursorPos($originalPointer.X, $originalPointer.Y) | Out-Null }
     [MimiPointerSmoke]::SetThreadDpiAwarenessContext($previousDpi) | Out-Null
 }
