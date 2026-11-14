@@ -65,19 +65,37 @@ pub(super) async fn prepare_recovery_cleanup<Reserve, Prepare, Prepared>(
     cleanup.await;
 }
 
+pub(super) async fn abort_recovery_task(task: Option<JoinHandle<()>>) {
+    if let Some(task) = task {
+        task.abort();
+        // Destruction of the recovery future drops any reserved, unpolled
+        // cleanup ticket before we snapshot owners.
+        let _ = task.await;
+    }
+}
+
 pub(super) async fn cancel_recovery_task(
     task: Option<JoinHandle<()>>,
     cleanup_owners: &CleanupOwners,
 ) {
-    if let Some(task) = task {
-        task.abort();
-        // Destruction of the recovery future drops any reserved, unpolled
-        // cleanup ticket before we snapshot owners below.
-        let _ = task.await;
-    }
+    abort_recovery_task(task).await;
     // A terminal-event caller may itself own a teardown guard. Wait concrete
     // owners rather than the global counter, which would wait for that caller.
     cleanup_owners.wait_registered().await;
+}
+
+/// The caller has retired the active generation, stopped the recovery task,
+/// and still holds the lifecycle lock. Publish Paused while the existing
+/// resource owners drain, keeping their order ahead of new cleanup.
+pub(super) async fn finish_pause(
+    cleanup_owners: &CleanupOwners,
+    publish_paused: impl Future<Output = ()>,
+    cleanup_paused_generation: impl FnOnce() -> CleanupTicket,
+) {
+    tokio::join!(publish_paused, async {
+        cleanup_owners.wait_registered().await;
+        cleanup_paused_generation().await;
+    });
 }
 
 #[cfg(test)]
@@ -111,6 +129,47 @@ mod tests {
             .await
             .expect("the lifecycle operation did not finish")
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn pause_feedback_does_not_wait_for_older_recovery_cleanup() {
+        let owners = CleanupOwners::default();
+        let lifecycle = Arc::new(TokioMutex::new(()));
+        let guard = Arc::clone(&lifecycle).lock_owned().await;
+        let (old_release, wait_for_old) = tokio::sync::oneshot::channel();
+        let (paused_release, wait_for_paused) = tokio::sync::oneshot::channel();
+        let (published, mut feedback) = tokio::sync::oneshot::channel();
+        let (cleanup_started, mut wait_for_cleanup) = tokio::sync::oneshot::channel();
+        let old = owners.register(1, (), || async { wait_for_old.await.unwrap() }, None);
+        let pause = tokio::spawn(async move {
+            let _guard = guard;
+            finish_pause(&owners, async { published.send(()).unwrap() }, || {
+                cleanup_started.send(()).unwrap();
+                owners.register(2, (), || async { wait_for_paused.await.unwrap() }, None)
+            })
+            .await;
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), &mut feedback)
+            .await
+            .expect("pause feedback waited for recovery cleanup")
+            .unwrap();
+        assert!(lifecycle.try_lock().is_err());
+        assert!(matches!(
+            wait_for_cleanup.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+
+        old_release.send(()).unwrap();
+        old.await;
+        tokio::time::timeout(Duration::from_secs(1), wait_for_cleanup)
+            .await
+            .expect("paused generation cleanup did not follow recovery cleanup")
+            .unwrap();
+        assert!(lifecycle.try_lock().is_err());
+        paused_release.send(()).unwrap();
+        finished(pause).await;
+        assert!(lifecycle.try_lock().is_ok());
     }
 
     #[tokio::test]

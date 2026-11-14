@@ -58,8 +58,8 @@ mod recovery_cleanup;
 use cleanup_owner::{CleanupOwners, CleanupTicket};
 use recording_state::{AudioRecordingStatus, RecordingEvidence};
 use recovery_cleanup::{
-    activate_start_if_current, cancel_recovery_task, prepare_recovery_cleanup,
-    retire_recovery_for_start,
+    abort_recovery_task, activate_start_if_current, cancel_recovery_task, finish_pause,
+    prepare_recovery_cleanup, retire_recovery_for_start,
 };
 
 /// UI-only buffers contain synthetic fixtures. An explicit export fixture keeps
@@ -2590,12 +2590,14 @@ impl SessionManager {
         pipeline_log!("session pause requested");
         self.is_paused.store(true, Ordering::SeqCst);
         self.stop_health_checks().await;
-        self.cancel_recovery().await;
+        let recovery = self.take_recovery_for_cancellation();
+        abort_recovery_task(recovery).await;
         self.cancel_translation_timeout();
-        self.is_recovering.store(false, Ordering::SeqCst);
         self.controller.lock().unwrap().did_pause();
-        let cleanup = self.cleanup_generation(paused_generation);
-        tokio::join!(self.publish_lifecycle_state(), cleanup);
+        finish_pause(&self.cleanup_owners, self.publish_lifecycle_state(), || {
+            self.cleanup_generation(paused_generation)
+        })
+        .await;
         pipeline_log!("session paused");
     }
 
@@ -4429,13 +4431,15 @@ impl SessionManager {
         self.publish_state();
     }
 
+    fn take_recovery_for_cancellation(&self) -> Option<JoinHandle<()>> {
+        let mut slot = self.recovery_task.lock().unwrap();
+        self.recovery_task_id.store(NO_GENERATION, Ordering::SeqCst);
+        clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
+        slot.take()
+    }
+
     async fn cancel_recovery(&self) {
-        let task = {
-            let mut slot = self.recovery_task.lock().unwrap();
-            self.recovery_task_id.store(NO_GENERATION, Ordering::SeqCst);
-            clear_recovery_atoms(&self.is_recovering, &self.recovery_retry_generation);
-            slot.take()
-        };
+        let task = self.take_recovery_for_cancellation();
         cancel_recovery_task(task, &self.cleanup_owners).await;
     }
 
