@@ -77,9 +77,7 @@ function SettingsStartupPoint() {
     if (!isTauri || !ready || status !== "idle") return;
     performance.mark("mimi-startup-switch-observer");
     let active = true;
-    let frame = 0;
     let timer = 0;
-    let timing: "frame" | "immediate";
     const report = () => {
       const control = document.querySelector<HTMLButtonElement>(
         '.settings-session-card [aria-describedby="settings-session-status"][role="switch"][aria-checked="false"]:enabled',
@@ -102,27 +100,17 @@ function SettingsStartupPoint() {
           return;
         }
       }
-      if (attempts++ < 60) scheduleCheck(report);
-    };
-    const scheduleCheck = (check: () => void) => {
-      if (timing === "frame") frame = window.requestAnimationFrame(check);
-      else timer = window.setTimeout(check, 16);
-    };
-    const check = () => {
-      performance.mark("mimi-startup-switch-first-check");
-      report();
+      if (attempts++ < 60) timer = window.setTimeout(report, 16);
     };
     let attempts = 0;
-    void invoke<"frame" | "immediate" | null>("app_ui_test_startup_probe").then((probe) => {
+    void invoke<string | null>("app_ui_test_startup_probe").then((probe) => {
       if (!probe || !active) return;
-      timing = probe;
       performance.mark("mimi-startup-probe-enabled");
-      if (probe === "immediate") check();
-      else scheduleCheck(check);
+      performance.mark("mimi-startup-switch-first-check");
+      report();
     }).catch(() => {});
     return () => {
       active = false;
-      window.cancelAnimationFrame(frame);
       window.clearTimeout(timer);
     };
   }, [ready, status]);

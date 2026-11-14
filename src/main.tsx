@@ -1,6 +1,7 @@
 import { StrictMode, type ComponentType } from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import { effectiveUiLanguage } from "./lib/i18n";
 import { isTauri } from "./lib/ipc";
@@ -38,8 +39,14 @@ function preloadSettings() {
   );
 }
 
-if (__MIMI_WINDOWS_BUILD__ && isTauri && getCurrentWindow().label === "settings") {
-  preloadSettings();
+if (isTauri && getCurrentWindow().label === "settings") {
+  if (__MIMI_WINDOWS_BUILD__) preloadSettings();
+  else if (document.documentElement.dataset.platform === "linux") {
+    void invoke<"baseline" | "preload" | null>("app_ui_test_startup_probe").then(
+      variant => variant === "preload" ? preloadSettings() : mount(),
+      () => mount(),
+    );
+  } else mount();
 } else {
   mount();
 }

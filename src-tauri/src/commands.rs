@@ -1896,8 +1896,8 @@ pub fn app_ui_test_startup_probe(window: tauri::WebviewWindow) -> Option<&'stati
         && std::env::var_os("MIMI_UI_TEST_STARTUP_PHASE_FILE").is_some()
     {
         match std::env::var("MIMI_UI_TEST_STARTUP_PROBE").as_deref() {
-            Ok("frame") => Some("frame"),
-            Ok("immediate") => Some("immediate"),
+            Ok("baseline") => Some("baseline"),
+            Ok("preload") => Some("preload"),
             _ => None,
         }
     } else {

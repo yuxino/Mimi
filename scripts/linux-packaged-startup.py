@@ -87,6 +87,7 @@ def sample(executable, root, number, variant):
                     (ready / "overlay").is_file() and window("^mimi Subtitles$") is not None
                 ))
                 overlay_ms = (time.monotonic() - activated) * 1000
+                total_overlay_ms = (time.monotonic() - started) * 1000
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
                 phase_values = dict(line.split("=", 1) for line in phases.read_text().splitlines())
                 if not {"setup_entry_ms", "state_ready_ms", "overlay_created_ms", "overlay_controls_created_ms", "tray_and_shortcuts_ready_ms"} <= phase_values.keys():
@@ -102,6 +103,7 @@ def sample(executable, root, number, variant):
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
                 print(f"MimiLinuxStartup package={package} sample={number} variant={variant} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} overlay_ms={overlay_ms:.3f} "
+                      f"total_overlay_ms={total_overlay_ms:.3f} "
                       + " ".join(f"{name}={value}" for name, value in phase_values.items()), flush=True)
             except Exception:
                 print(log.read_text(errors="replace"), file=sys.stderr)
@@ -117,6 +119,6 @@ def sample(executable, root, number, variant):
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     for number in range(1, 9):
-        variants = ("frame", "immediate")
+        variants = ("baseline", "preload")
         for variant in variants if number % 2 else reversed(variants):
             sample(executable, root, number, variant)
