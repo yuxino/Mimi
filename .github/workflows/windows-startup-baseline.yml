@@ -1,0 +1,32 @@
+name: Windows startup baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  measure:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mimi-windows-2025
+          run-id: 43594238144
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: startup-package
+      - name: Measure the same portable build for eight process launches
+        shell: pwsh
+        run: |
+          $zip = @(Get-ChildItem -Path startup-package -Recurse -Filter '*_x64-portable.zip')
+          if ($zip.Count -ne 1) { throw 'Expected one x64 portable archive.' }
+          Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath startup-extracted
+          $exe = @(Get-ChildItem -Path startup-extracted -Recurse -Filter mimi.exe)
+          if ($exe.Count -ne 1) { throw 'Expected one portable Mimi executable.' }
+          Write-Output "Artifact SHA-256: $((Get-FileHash -LiteralPath $exe[0].FullName).Hash)"
+          & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $exe[0].FullName -Samples 8
+          if ($LASTEXITCODE -ne 0) { throw "Startup measurement exited with $LASTEXITCODE." }
