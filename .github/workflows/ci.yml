@@ -63,6 +63,11 @@ jobs:
           $candidate = Expand-MimiPortable candidate
           & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $candidate -BaselinePath $baseline
           if ($LASTEXITCODE -ne 0) { throw "Startup measurement exited with $LASTEXITCODE." }
+          foreach ($variant in @('baseline', 'candidate', 'candidate', 'baseline')) {
+            $env:MIMI_PAUSE_TIMING_VARIANT = $variant
+            $exe = if ($variant -eq 'baseline') { $baseline } else { $candidate }
+            ./scripts/windows-ci-smoke.ps1 -ExecutablePath $exe -ExpectedArchitecture x64 -OverlayInteraction pointer
+          }
 
   scope:
     runs-on: ubuntu-latest

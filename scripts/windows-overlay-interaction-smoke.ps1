@@ -136,6 +136,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
                     if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
                         $x = [int]($bounds.X + $bounds.Width / 2)
                         $y = [int]($bounds.Y + $bounds.Height / 2)
+                        $script:actionClock = [Diagnostics.Stopwatch]::StartNew()
                         [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action)
                         if ($ReturnPoint) { return @{ X = $x; Y = $y } }
                         return
@@ -149,6 +150,46 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
         Start-Sleep -Milliseconds 100
     }
     throw "Overlay did not expose an enabled '$Name' in state '$State' (last state: '$observedState')."
+}
+
+function Measure-OverlayAction([string]$Name, [string]$State, [string]$Action, [int]$Round) {
+    $byName = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
+    $byRole = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+    $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
+    $backendMs = $null
+    $visibleMs = $null
+    $enabledMs = $null
+    while ($script:actionClock.Elapsed.TotalSeconds -lt 10) {
+        Assert-SettingsHidden
+        if ($null -eq $backendMs -and (Test-Path -LiteralPath $SessionStateFile -PathType Leaf)) {
+            try {
+                if ([IO.File]::ReadAllText($SessionStateFile).Trim() -eq $State) {
+                    $backendMs = $script:actionClock.Elapsed.TotalMilliseconds
+                }
+            }
+            catch [IO.IOException] { }
+        }
+        try {
+            $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
+            $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            if ($button -and -not $button.Current.IsOffscreen) {
+                if ($null -eq $visibleMs) { $visibleMs = $script:actionClock.Elapsed.TotalMilliseconds }
+                if ($null -eq $enabledMs -and $button.Current.IsEnabled) {
+                    $enabledMs = $script:actionClock.Elapsed.TotalMilliseconds
+                }
+            }
+        }
+        catch [System.Windows.Automation.ElementNotAvailableException] { }
+        if ($null -ne $backendMs -and $null -ne $enabledMs) {
+            Write-Output ('MimiPauseTiming variant={0} round={1} action={2} backend_ms={3:F1} visible_ms={4:F1} enabled_ms={5:F1}' -f
+                $env:MIMI_PAUSE_TIMING_VARIANT, $Round, $Action, $backendMs, $visibleMs, $enabledMs)
+            return
+        }
+        Start-Sleep -Milliseconds 15
+    }
+    throw "The $Action timing sample did not reach backend and enabled controls."
 }
 
 function Close-SettingsForOverlayCheck {
@@ -192,7 +233,13 @@ try {
 
     for ($round = 1; $round -le 3; $round++) {
         Use-OverlayControl 'Pause translating' 'listening' "Pause $round"
+        if ($Interaction -eq 'pointer' -and $env:MIMI_PAUSE_TIMING_VARIANT) {
+            Measure-OverlayAction 'Resume translating' 'paused' 'pause' $round
+        }
         Use-OverlayControl 'Resume translating' 'paused' "Resume $round"
+        if ($Interaction -eq 'pointer' -and $env:MIMI_PAUSE_TIMING_VARIANT) {
+            Measure-OverlayAction 'Pause translating' 'listening' 'resume' $round
+        }
     }
 
     Use-OverlayControl 'Open Mimi Settings' 'listening' 'Settings gear'
