@@ -152,6 +152,12 @@ jobs:
         if: runner.os == 'Linux'
         run: dbus-run-session -- ./scripts/linux-audio-smoke.sh
 
+      - name: Test Linux system capture with isolated PipeWire-Pulse
+        if: runner.os == 'Linux' && github.ref_name == 'test/pipewire-capture-startup'
+        run: |
+          sudo apt-get install --no-install-recommends -y pipewire pipewire-pulse wireplumber
+          dbus-run-session -- bash scripts/linux-pipewire-probe.sh
+
       - name: Test legacy Linux credential compatibility with isolated Secret Service
         if: runner.os == 'Linux'
         run: ./scripts/linux-keyring-smoke.sh
