@@ -546,6 +546,8 @@ pub(super) fn wait_for<T>(
     mut check: impl FnMut() -> Result<Option<T>, SystemAudioCaptureError>,
 ) -> Result<T, SystemAudioCaptureError> {
     let timed_poll = *SUPPORTS_TIMED_POLL;
+    #[cfg(test)]
+    let timed_poll = timed_poll && std::env::var_os("MIMI_PIPEWIRE_PROBE_FIXED_SLEEP").is_none();
     loop {
         if control.cancelled.load(Ordering::SeqCst) {
             return Err(SystemAudioCaptureError::StartCancelled);
@@ -2343,6 +2345,7 @@ mod tests {
                 "a fresh capture generation must not inherit old PCM or sound activity"
             );
             let (failure_tx, mut failures) = CaptureFailureSender::channel();
+            let capture_requested = Instant::now();
             tokio::time::timeout(
                 Duration::from_secs(7),
                 capture.start(
@@ -2354,6 +2357,12 @@ mod tests {
             .await
             .expect("monitor capture startup is bounded")
             .expect("default output monitor should open");
+            if std::env::var_os("MIMI_PIPEWIRE_PROBE_TIMING").is_some() {
+                eprintln!(
+                    "PipeWire probe rate={rate} ready_us={}",
+                    capture_requested.elapsed().as_micros()
+                );
+            }
             expect_native_silence(&pipeline, &mut rx, rate, "before-playback").await;
             let playback = tone_997.play_on("@DEFAULT_SINK@");
             expect_monitor_frequency(&mut rx, &mut failures, rate, 997.0, "monitor-playback").await;

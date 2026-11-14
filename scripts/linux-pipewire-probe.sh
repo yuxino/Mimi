@@ -67,5 +67,19 @@ test_name=audio::linux::tests::native_monitor_capture_is_pcm16_and_restarts
 tests="$(timeout 120s cargo test --locked --manifest-path src-tauri/Cargo.toml \
   --lib "$test_name" -- --exact --ignored --list)"
 grep -Fxq "$test_name: test" <<< "$tests"
-timeout 30s cargo test --locked --manifest-path src-tauri/Cargo.toml \
-  --lib "$test_name" -- --exact --ignored --nocapture
+export MIMI_PIPEWIRE_PROBE_TIMING=1
+for trial in {1..8}; do
+  variants=(baseline product)
+  if (( trial % 2 == 0 )); then
+    variants=(product baseline)
+  fi
+  for variant in "${variants[@]}"; do
+    unset MIMI_PIPEWIRE_PROBE_FIXED_SLEEP
+    if [[ "$variant" == baseline ]]; then
+      export MIMI_PIPEWIRE_PROBE_FIXED_SLEEP=1
+    fi
+    echo "PipeWire probe trial=$trial variant=$variant"
+    timeout 30s cargo test --locked --manifest-path src-tauri/Cargo.toml \
+      --lib "$test_name" -- --exact --ignored --nocapture
+  done
+done
