@@ -44,8 +44,8 @@ def state(path):
         return "idle"
 
 
-def sample(executable, root, number):
-    work = root / f"sample-{number}"
+def sample(executable, root, number, variant):
+    work = root / f"sample-{number}-{variant}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
@@ -63,6 +63,10 @@ def sample(executable, root, number):
             "MIMI_UI_TEST_SESSION_STATE_FILE": str(session),
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
         }
+        if variant == "baseline":
+            environment["MIMI_X11_STARTUP_PROBE_FIXED_SLEEP"] = "1"
+        else:
+            environment.pop("MIMI_X11_STARTUP_PROBE_FIXED_SLEEP", None)
         command = [str(executable)]
         if executable.suffix == ".AppImage":
             command.append("--appimage-extract-and-run")
@@ -95,7 +99,7 @@ def sample(executable, root, number):
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                print(f"MimiLinuxStartup package={package} sample={number} window_ms={window_ms:.3f} "
+                print(f"MimiLinuxStartup package={package} sample={number} variant={variant} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} overlay_ms={overlay_ms:.3f} "
                       + " ".join(f"{name}={value}" for name, value in phase_values.items()), flush=True)
             except Exception:
@@ -112,4 +116,6 @@ def sample(executable, root, number):
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     for number in range(1, 9):
-        sample(executable, root, number)
+        variants = ("baseline", "candidate") if os.environ.get("MIMI_LINUX_STARTUP_COMPARE") == "1" else ("baseline",)
+        for variant in variants if number % 2 else reversed(variants):
+            sample(executable, root, number, variant)

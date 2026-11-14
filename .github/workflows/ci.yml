@@ -383,11 +383,11 @@ jobs:
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
       - name: Measure Linux package startup
-        if: runner.os == 'Linux' && github.ref_name == 'test/linux-packaged-startup'
+        if: runner.os == 'Linux' && (github.ref_name == 'test/linux-packaged-startup' || github.ref_name == 'test/linux-x11-shortcut-startup')
         run: |
           version=$(node -p 'require("./package.json").version')
           for package in /usr/bin/mimi "src-tauri/target/release/bundle/appimage/mimi_${version}_amd64.AppImage"; do
-            MIMI_LINUX_STARTUP_PROBE=1 ./scripts/linux-ci-smoke.sh "$package"
+            MIMI_LINUX_STARTUP_PROBE=1 MIMI_LINUX_STARTUP_COMPARE=1 ./scripts/linux-ci-smoke.sh "$package"
           done
 
       - name: Smoke launch x64 UI-test app and click overlay controls

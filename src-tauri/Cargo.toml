@@ -124,3 +124,4 @@ incremental = true
 # with only that packet-source fix until an upstream release contains it.
 [patch.crates-io]
 cpal = { path = "vendor/cpal" }
+global-hotkey = { path = "vendor/global-hotkey" }
