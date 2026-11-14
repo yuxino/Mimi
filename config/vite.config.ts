@@ -15,7 +15,7 @@ const host = process.env.TAURI_DEV_HOST;
 const tauriPlatform = process.env.TAURI_ENV_PLATFORM;
 const buildPlatform = tauriPlatform ?? process.platform;
 const windowsBuild = buildPlatform === "windows" || buildPlatform === "win32";
-const preloadSettings = windowsBuild || (buildPlatform === "linux" && process.env.MIMI_TEST_LINUX_SETTINGS_PRELOAD === "1");
+const preloadSettings = windowsBuild || buildPlatform === "linux";
 
 // Match the JavaScript output to the native runtime baselines. macOS 13 ships
 // Safari 16; current Tauri Windows builds require WebView2/Chromium 105.
