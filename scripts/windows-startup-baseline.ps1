@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$ExecutablePath,
     [Parameter(Mandatory = $true)][string]$BaselinePath,
-    [ValidateRange(4, 32)][int]$Samples = 16
+    [ValidateRange(4, 32)][int]$Samples = 16,
+    [ValidateSet(0, 500, 1500)][int]$DwellMs = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -97,6 +98,7 @@ try {
                 if ($initial -and $initial -ne 'idle') { throw "Mimi started before the switch action ($initial)." }
             }
 
+            if ($DwellMs -gt 0) { Start-Sleep -Milliseconds $DwellMs }
             $clock.Restart()
             if ($startControl -is [System.Windows.Automation.TogglePattern]) { $startControl.Toggle() }
             else { $startControl.Invoke() }
@@ -112,8 +114,8 @@ try {
                     ($null -ne (Find-MimiWindow $process.Id 'Mimi Subtitles'))
             } | Out-Null
             $overlayMs = $clock.Elapsed.TotalMilliseconds
-            Write-Output ('MimiStartup sample={0} variant={1} window_ms={2:F1} settings_ms={3:F1} listening_ms={4:F1} overlay_ms={5:F1} total_ms={6:F1}' -f
-                $sample, $variant, $windowMs, $settingsMs, $listeningMs, $overlayMs, ($settingsMs + $overlayMs))
+            Write-Output ('MimiStartupDwell dwell_ms={0} sample={1} variant={2} window_ms={3:F1} settings_ms={4:F1} listening_ms={5:F1} overlay_ms={6:F1}' -f
+                $DwellMs, $sample, $variant, $windowMs, $settingsMs, $listeningMs, $overlayMs)
         }
         finally {
             try {
