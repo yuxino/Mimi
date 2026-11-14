@@ -63,6 +63,16 @@ path on libpulse versions older than 14 and on unrecognized versions because
 The same wait serves application stream discovery. Keep the PCM loop, worker
 ownership and source validation in their existing paths.
 
+## Wake the X11 worker for shortcut registration
+
+The locked `global-hotkey` 0.8.0 worker sleeps 50 ms after each message.
+Mimi registers three shortcuts individually so one occupied key does not
+prevent the other two from registering. Use a timed channel receive so
+registration and shutdown messages wake the worker, with the same 50 ms
+idle bound for X11 event checks. Keep all registration handlers and errors
+and remove the local dependency patch when an upstream release carries
+equivalent behavior. Verify native Linux package startup and shortcut actions.
+
 ## Publish the first snapshot after idle
 
 When no batch publisher is active, its first poll reads and publishes the

@@ -15,7 +15,7 @@ if [[ "${MIMI_LINUX_SMOKE_SESSION:-}" != 1 ]]; then
   exec dbus-run-session -- xvfb-run -a env MIMI_LINUX_SMOKE_SESSION=1 "$0" "$executable"
 fi
 
-smoke_dir="$(mktemp -d -t mimi-linux-smoke.XXXXXX)"
+smoke_dir="$(mktemp -d -t mimi-ui-test-linux-smoke.XXXXXX)"
 app_pid=""
 wm_pid=""
 cleanup() {
@@ -41,6 +41,7 @@ unset WAYLAND_DISPLAY
 export LIBGL_ALWAYS_SOFTWARE=1
 export MIMI_UI_TEST=1
 export MIMI_UI_TEST_STANDARD_OVERLAY=1
+export MIMI_UI_TEST_PREFERENCES_DIR="$smoke_dir"
 export MIMI_AUTO_START=0
 export MIMI_UI_TEST_SESSION_STATE_FILE="$smoke_dir/session-state"
 export MIMI_UI_TEST_FRONTEND_READY_DIR="$smoke_dir/frontend-ready"
@@ -163,6 +164,29 @@ done
 }
 assert_control_attached
 echo "Linux overlay lifecycle passed: move-stop stays hidden; restart reattaches."
+
+xdotool key --clearmodifiers ctrl+shift+m
+for _ in {1..40}; do
+  if ! window_is_visible "$control_window"; then break; fi
+  sleep 0.1
+done
+if window_is_visible "$control_window"; then
+  echo "Linux immersive key did not hide the overlay control." >&2; exit 1
+fi
+sleep 0.6
+xdotool key --clearmodifiers ctrl+shift+m
+assert_control_attached
+xdotool key --clearmodifiers ctrl+shift+b
+for _ in {1..40}; do
+  if grep -sEq '"subtitle_display_mode"[[:space:]]*:[[:space:]]*"bilingual"' "$smoke_dir/preferences.json"; then
+    break
+  fi
+  sleep 0.1
+done
+grep -Eq '"subtitle_display_mode"[[:space:]]*:[[:space:]]*"bilingual"' "$smoke_dir/preferences.json" || {
+  echo "Linux display key did not switch to bilingual subtitles." >&2; exit 1;
+}
+echo "Linux global shortcuts passed: session toggle, immersive toggle and subtitle display."
 
 # Desktop commands use the same session bus as the primary. An old build
 # starts another app here instead of stopping the existing session.
