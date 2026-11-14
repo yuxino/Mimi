@@ -19,3 +19,13 @@ Verify the expanded and collapsed overlays with a delayed pause reply.
 Exercise start, pause, resume, stop, and error paths with the signed dev app
 and the existing synthetic fixtures. Provider handshake, first caption, and
 OS capture timings are separate measurements.
+
+## Overlap pause cleanup
+
+Once the retired generation's echo processor and PCM send queues are shut
+down, start the native capture stops and provider disconnects together. Each
+client still saves its own translation budget before disconnecting. The
+existing cleanup owner waits for every branch and preserves the provider
+pump when it owns recovery. Resume and replacement starts still wait for
+the same cleanup boundary. Explicit Stop keeps its ordered audio drain and
+provider finish so accepted final subtitles can reach history.

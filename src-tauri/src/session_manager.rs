@@ -1074,6 +1074,24 @@ where
     Ok(())
 }
 
+/// Retired capture and transport are independent once PCM ingress is sealed.
+async fn release_retired_sources<Capture, CaptureDone, Disconnect, DisconnectDone>(
+    stop_capture: Capture,
+    disconnect: Disconnect,
+) where
+    Capture: Fn(AudioSource) -> CaptureDone,
+    CaptureDone: Future<Output = ()>,
+    Disconnect: Fn(AudioSource) -> DisconnectDone,
+    DisconnectDone: Future<Output = ()>,
+{
+    tokio::join!(
+        stop_capture(AudioSource::System),
+        stop_capture(AudioSource::Microphone),
+        disconnect(AudioSource::System),
+        disconnect(AudioSource::Microphone),
+    );
+}
+
 /// A source owns every transport, capture, revision and timer it can mutate.
 /// Lifecycle generations are shared so either lane failing tears down both.
 #[derive(Clone)]
@@ -4890,16 +4908,18 @@ impl SessionManager {
                 pipeline.stop();
             }
         }
-        tokio::join!(
-            self.stop_capture_for_generation(AudioSource::System, generation),
-            self.stop_capture_for_generation(AudioSource::Microphone, generation),
-        );
-        for source in [AudioSource::System, AudioSource::Microphone] {
-            if let Some(client) = self.take_client_for_generation(source, generation) {
-                self.remember_mt_request_budget(source, generation, &client)
-                    .await;
-                let _ = tokio::time::timeout(DISCONNECT_TIMEOUT, client.disconnect()).await;
-            }
+        release_retired_sources(
+            |source| self.stop_capture_for_generation(source, generation),
+            |source| self.disconnect_retired_client(source, generation),
+        )
+        .await;
+    }
+
+    async fn disconnect_retired_client(&self, source: AudioSource, generation: u64) {
+        if let Some(client) = self.take_client_for_generation(source, generation) {
+            self.remember_mt_request_budget(source, generation, &client)
+                .await;
+            let _ = tokio::time::timeout(DISCONNECT_TIMEOUT, client.disconnect()).await;
         }
     }
 
@@ -6145,6 +6165,65 @@ mod lifecycle_tests {
         );
         removed.stop();
         next.stop();
+    }
+
+    #[tokio::test]
+    async fn retired_capture_and_connections_release_together_before_resume() {
+        let lifecycle = Arc::new(TokioMutex::new(()));
+        let guard = Arc::clone(&lifecycle).lock_owned().await;
+        let started = Arc::new(tokio::sync::Semaphore::new(0));
+        let release = Arc::new(tokio::sync::Semaphore::new(0));
+        let finished = Arc::new(tokio::sync::Semaphore::new(0));
+        let (last_tx, last_rx) = tokio::sync::oneshot::channel();
+        let last = Arc::new(Mutex::new(Some(last_rx)));
+        let cleanup = tokio::spawn({
+            let started = Arc::clone(&started);
+            let release = Arc::clone(&release);
+            let finished = Arc::clone(&finished);
+            async move {
+                let _guard = guard;
+                let release_resource = |is_last: bool| {
+                    let started = Arc::clone(&started);
+                    let release = Arc::clone(&release);
+                    let last = Arc::clone(&last);
+                    let finished = Arc::clone(&finished);
+                    async move {
+                        started.add_permits(1);
+                        if is_last {
+                            let finish = last.lock().unwrap().take().unwrap();
+                            finish.await.unwrap();
+                        } else {
+                            release.acquire().await.unwrap().forget();
+                            finished.add_permits(1);
+                        }
+                    }
+                };
+                release_retired_sources(
+                    |_| release_resource(false),
+                    |source| release_resource(source == AudioSource::Microphone),
+                )
+                .await;
+            }
+        });
+
+        let all_started = tokio::time::timeout(Duration::from_secs(1), started.acquire_many(4))
+            .await
+            .expect("a retired resource must not wait for another resource to finish")
+            .unwrap();
+        all_started.forget();
+        release.add_permits(3);
+        tokio::time::timeout(Duration::from_secs(1), finished.acquire_many(3))
+            .await
+            .unwrap()
+            .unwrap()
+            .forget();
+        assert!(Arc::clone(&lifecycle).try_lock_owned().is_err());
+        last_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), cleanup)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(lifecycle.try_lock_owned().is_ok());
     }
 
     #[tokio::test]
