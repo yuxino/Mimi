@@ -26,6 +26,44 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_type != 'tag' }}
 
 jobs:
+  compare-settings-startup:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'test/windows-settings-package-comparison' }}
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mimi-windows-2025
+          run-id: 43594238144
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: baseline-package
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mimi-windows-2025
+          run-id: 43600307429
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: candidate-package
+      - name: Measure adjacent portable app launches
+        shell: pwsh
+        run: |
+          function Expand-MimiPortable([string]$Variant) {
+            $archive = @(Get-ChildItem -Path "$Variant-package" -Recurse -Filter '*_x64-portable.zip')
+            if ($archive.Count -ne 1) { throw "Expected one $Variant x64 portable archive." }
+            $output = Join-Path $env:RUNNER_TEMP "mimi-$Variant"
+            Expand-Archive -LiteralPath $archive[0].FullName -DestinationPath $output
+            $exe = Join-Path $output 'mimi.exe'
+            Write-Host "$Variant SHA-256: $((Get-FileHash -LiteralPath $exe).Hash)"
+            return $exe
+          }
+          $baseline = Expand-MimiPortable baseline
+          $candidate = Expand-MimiPortable candidate
+          & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $candidate -BaselinePath $baseline
+          if ($LASTEXITCODE -ne 0) { throw "Startup measurement exited with $LASTEXITCODE." }
+
   scope:
     runs-on: ubuntu-latest
     outputs:
