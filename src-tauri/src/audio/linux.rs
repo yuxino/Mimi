@@ -2272,6 +2272,7 @@ mod tests {
                 "a fresh capture generation must not inherit old PCM or sound activity"
             );
             let (failure_tx, mut failures) = CaptureFailureSender::channel();
+            let capture_requested = Instant::now();
             tokio::time::timeout(
                 Duration::from_secs(7),
                 capture.start(
@@ -2283,9 +2284,16 @@ mod tests {
             .await
             .expect("monitor capture startup is bounded")
             .expect("default output monitor should open");
+            let capture_ready = capture_requested.elapsed();
             expect_native_silence(&pipeline, &mut rx, rate, "before-playback").await;
+            let playback_requested = Instant::now();
             let playback = tone_997.play_on("@DEFAULT_SINK@");
             expect_monitor_frequency(&mut rx, &mut failures, rate, 997.0, "monitor-playback").await;
+            eprintln!(
+                "PulseAudio probe rate={rate} ready_ms={} tone_observed_ms={}",
+                capture_ready.as_millis(),
+                playback_requested.elapsed().as_millis()
+            );
             assert_eq!(pipeline.input_activity(), (true, true));
             eprintln!("linux native rate={rate} stage=playback pcm=true sound=true");
             drop(playback);

@@ -150,6 +150,8 @@ jobs:
 
       - name: Test Linux system and microphone capture with real PulseAudio
         if: runner.os == 'Linux'
+        env:
+          MIMI_LINUX_CAPTURE_TIMING: ${{ github.ref_name == 'test/linux-native-capture-timing' && '1' || '0' }}
         run: dbus-run-session -- ./scripts/linux-audio-smoke.sh
 
       - name: Test legacy Linux credential compatibility with isolated Secret Service

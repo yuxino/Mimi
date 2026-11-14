@@ -60,6 +60,14 @@ if [[ "$ready" != 1 ]]; then
 fi
 timeout 2s pactl set-default-sink mimi-output
 timeout 2s pactl set-default-source mimi-microphone.monitor
+if [[ "${MIMI_LINUX_CAPTURE_TIMING:-0}" == 1 ]]; then
+  for trial in {1..8}; do
+    echo "PulseAudio probe trial=$trial"
+    timeout 30s cargo test --locked --manifest-path src-tauri/Cargo.toml \
+      --lib audio::linux::tests::native_monitor_capture_is_pcm16_and_restarts \
+      -- --exact --ignored --nocapture
+  done
+fi
 timeout 180s cargo test --locked --manifest-path src-tauri/Cargo.toml \
   --lib "$test_prefix" -- --ignored --nocapture --test-threads=1 \
   --skip native_server_disconnect_fails_and_recovers
