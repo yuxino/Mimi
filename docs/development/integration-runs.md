@@ -1,5 +1,26 @@
 # 集成实测记录
 
+## 2026-11-15：v1.7.2 发布验收
+
+- 标签源码为 `54b1c200043cf5f426e7c01fc8eca2f1c4478281`。签名 Mac
+  的完整检查通过，含 2,893 项前端测试。[桌面 CI](https://github.com/yuxino/Mimi/actions/runs/43615417457)
+  和 [Android CI](https://github.com/yuxino/Mimi/actions/runs/43615417356) 均通过。
+- [标签流水线](https://github.com/yuxino/Mimi/actions/runs/43615882091)
+  验证 Windows x64 正式程序及便携包、Linux 安装包、两种 macOS 架构及签名 APK。
+  ARM64 首次因状态标记文件的共享冲突中断，第二次执行辅助功能暂停后未观察到
+  暂停状态，原因待定位。[第三次](https://github.com/yuxino/Mimi/actions/runs/43615882091/job/132521809986)
+  原断言通过，三轮暂停、继续均保持设置隐藏，齿轮恢复了同一设置窗口。
+  标记文件读写冲突的[测试脚本修正](https://github.com/yuxino/Mimi/actions/runs/43617842816)
+  已在主分支通过 Windows ARM64 和 x64 原生用例。
+- Android 15 ARM64 只读模拟器中，从 1.7.1 覆盖升级至签名 APK 1.7.2（10702）
+  并成功冷启动，实装 APK 哈希与发布包一致，签名证书与 1.7.1 一致。重复安装
+  曾清除应用语言，同版本重装的对照也可复现，复测前重新设置简体中文后升级保留。
+  macOS 正式包验收到签名、源码标记与 DMG 内容。Windows ARM64 实体鼠标、
+  macOS 正式包安装后启动，以及真实服务首条字幕耗时留待实测。
+- [v1.7.2](https://github.com/yuxino/Mimi/releases/tag/v1.7.2) 已公开并设为 Latest。
+  匿名下载的 18 项资产大小与 SHA-256 均匹配，五份桌面更新签名通过，
+  标签、Latest 和应用所用的更新入口均返回同一份双语清单。
+
 ## 2026-11-14：Linux 安装包启动基线
 
 - [`d47a1135` 的 Linux 包测试](https://github.com/yuxino/Mimi/actions/runs/43611431772/job/132497209053)
