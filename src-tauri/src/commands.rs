@@ -1897,6 +1897,7 @@ pub fn app_ui_test_frontend_ready(
     switch_point: Option<[u32; 2]>,
     frontend_phases: Option<[f64; 10]>,
     draft_stage: Option<String>,
+    draft_bounds: Option<[i32; 4]>,
 ) -> Result<bool, String> {
     if let Some(stage) = draft_stage {
         if app_is_ui_test()
@@ -1907,7 +1908,14 @@ pub fn app_ui_test_frontend_ready(
             )
         {
             if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
-                std::fs::write(std::path::Path::new(&directory).join(stage), "ready")
+                let marker = match (stage.as_str(), draft_bounds) {
+                    ("draft-committed", Some([left, top, right, bottom])) => {
+                        format!("{left} {top} {right} {bottom}\n")
+                    }
+                    ("draft-committed", None) => return Ok(false),
+                    _ => "ready".into(),
+                };
+                std::fs::write(std::path::Path::new(&directory).join(stage), marker)
                     .map_err(|_| "Could not write the UI-test caption marker.".to_string())?;
                 return Ok(true);
             }

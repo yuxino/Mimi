@@ -1,11 +1,95 @@
 """Measure the first synthetic draft before and after overlay readiness."""
 
+from contextlib import contextmanager
+import ctypes as c
 import os
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+
+
+class XImage(c.Structure):
+    # The XImage fields through bits_per_pixel, as declared in Xlib.h.
+    _fields_ = [(name, c.c_int) for name in ("width", "height", "xoffset", "format")] + [
+        ("data", c.c_void_p),
+    ] + [(name, c.c_int) for name in (
+        "byte_order", "bitmap_unit", "bitmap_bit_order", "bitmap_pad", "depth", "bytes_per_line", "bits_per_pixel",
+    )]
+
+
+@contextmanager
+def x11_capture():
+    x11 = c.CDLL("libX11.so.6")
+    x11.XOpenDisplay.argtypes = (c.c_char_p,)
+    x11.XOpenDisplay.restype = c.c_void_p
+    x11.XCloseDisplay.argtypes = (c.c_void_p,)
+    x11.XGetImage.argtypes = (c.c_void_p, c.c_ulong, c.c_int, c.c_int, c.c_uint, c.c_uint, c.c_ulong, c.c_int)
+    x11.XGetImage.restype = c.POINTER(XImage)
+    x11.XDestroyImage.argtypes = (c.POINTER(XImage),)
+    display = x11.XOpenDisplay(None)
+    if not display:
+        raise RuntimeError("Could not open the isolated X11 display")
+    try:
+        def bright_pixels(window_id, bounds):
+            x, y, right, bottom = bounds
+            width, height = right - x, bottom - y
+            image = x11.XGetImage(display, int(window_id), x, y, width, height, 0xFFFFFFFF, 2)  # ZPixmap
+            if not image:
+                raise RuntimeError("Could not read the caption rectangle from X11")
+            try:
+                frame = image.contents
+                if frame.byte_order != 0 or frame.bits_per_pixel != 32 or frame.bytes_per_line != width * 4:
+                    raise RuntimeError("Caption probe requires the CI Xvfb 32-bit pixel layout")
+                data = c.string_at(frame.data, frame.bytes_per_line * height)
+                return {i for i, (pixel,) in enumerate(struct.iter_unpack("<I", data))
+                        if (pixel & 0xE0E0E0) == 0xE0E0E0}
+            finally:
+                x11.XDestroyImage(image)
+
+        yield bright_pixels
+    finally:
+        x11.XCloseDisplay(display)
+
+
+def caption_bounds(path):
+    try:
+        values = path.read_text().split()
+    except FileNotFoundError:
+        return None
+    return tuple(map(int, values)) if len(values) == 4 else None
+
+
+def caption_pixels(process, window_id, bounds, frame_marker, requested, bright_pixels):
+    x, y, right, bottom = bounds
+    if not (0 <= x < right <= 4096 and 0 <= y < bottom <= 4096 and (right-x) * (bottom-y) <= 16000):
+        raise RuntimeError(f"Invalid native caption rectangle: {bounds}")
+    observations = []
+    frame_ms = None
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError("Mimi exited while reading the caption pixels")
+        readback = bright_pixels(window_id, bounds)
+        now = time.monotonic()
+        observations.append(((now - requested) * 1000, readback))
+        if frame_ms is None and frame_marker.is_file():
+            frame_ms = (now - requested) * 1000
+        if frame_ms is not None and (now - requested) * 1000 >= frame_ms + 250:
+            break
+        time.sleep(0.01)
+    if frame_ms is None:
+        raise RuntimeError("Caption never reached the subsequent paint callback")
+    # Match against the settled white glyph pixels in this exact sample. The
+    # fixture disables text animation and has a dark background in this crop.
+    reference = observations[-1][1] & observations[-2][1]
+    if not 20 <= len(reference) <= (right-x) * (bottom-y) // 2:
+        raise RuntimeError(f"Settled caption did not contain a bounded white glyph pattern ({len(reference)} pixels)")
+    pixel_ms = next(ms for ms, pixels in observations if len(reference & pixels) >= 0.9 * len(reference))
+    return pixel_ms, frame_ms, len(reference), observations[0][0]
+
 
 def window(pattern):
     result = subprocess.run(
@@ -44,13 +128,13 @@ def state(path):
         return "idle"
 
 
-def sample(executable, root, number, phase):
+def sample(executable, root, number, phase, bright_pixels):
     work = root / f"sample-{number}-{phase}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
     with tempfile.TemporaryDirectory(prefix="mimi-ui-test-linux-startup-") as preferences:
-        Path(preferences, "preferences.json").write_text('{"ui_language":"en"}\n')
+        Path(preferences, "preferences.json").write_text('{"ui_language":"en","subtitle_animation":false}\n')
         ready = work / "frontend-ready"
         session = work / "session-state"
         phases = work / "phases"
@@ -98,10 +182,12 @@ def sample(executable, root, number, phase):
                 issued_ms = (time.monotonic() - requested) * 1000
                 waiting_for(process, "caption in the native snapshot", (work / "draft-published").is_file)
                 published_ms = (time.monotonic() - requested) * 1000
-                waiting_for(process, "committed caption", (work / "draft-committed").is_file)
+                bounds = waiting_for(process, "committed caption", lambda: caption_bounds(work / "draft-committed"))
                 committed_ms = (time.monotonic() - requested) * 1000
-                waiting_for(process, "caption with a subsequent paint opportunity", (work / "draft-frame").is_file)
-                frame_ms = (time.monotonic() - requested) * 1000
+                overlay_id = waiting_for(process, "visible caption window", lambda: window("^mimi Subtitles$"))
+                pixel_ms, frame_ms, glyph_pixels, first_read_ms = caption_pixels(
+                    process, overlay_id, bounds, work / "draft-frame", requested, bright_pixels,
+                )
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
 
@@ -112,6 +198,7 @@ def sample(executable, root, number, phase):
                 print(f"MimiLinuxFirstCaption package={package} sample={number} phase={phase} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
                       f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
+                      f"pixel_ms={pixel_ms:.3f} first_read_ms={first_read_ms:.3f} glyph_pixels={glyph_pixels} "
                       f"request_after_start_ms={(requested - activated) * 1000:.3f}", flush=True)
             except Exception:
                 print(log.read_text(errors="replace"), file=sys.stderr)
@@ -129,7 +216,8 @@ def sample(executable, root, number, phase):
 
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
-    for number in range(1, 7):
-        phases = ("early", "ready")
-        for phase in phases if number % 2 else reversed(phases):
-            sample(executable, root, number, phase)
+    with x11_capture() as bright_pixels:
+        for number in range(1, 7):
+            phases = ("early", "ready")
+            for phase in phases if number % 2 else reversed(phases):
+                sample(executable, root, number, phase, bright_pixels)

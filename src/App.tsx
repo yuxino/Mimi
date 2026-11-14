@@ -74,9 +74,21 @@ function FirstCaptionSmoke() {
       if (!active || !isTest) return;
       const report = () => {
         const row = document.querySelector<HTMLElement>('[data-utterance-id]');
-        if (!row?.textContent?.includes("测试字幕") || !row.getBoundingClientRect().height) return;
+        if (!row?.getBoundingClientRect().height) return;
+        const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+        let glyphs = walker.nextNode();
+        while (glyphs && glyphs.textContent?.trim() !== "测试字幕") glyphs = walker.nextNode();
+        if (!glyphs) return;
+        const text = document.createRange();
+        text.selectNodeContents(glyphs);
+        const bounds = text.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
         observer?.disconnect();
-        void appUiTestFrontendReady(undefined, undefined, "draft-committed").catch(() => {});
+        const left = Math.floor(bounds.left * devicePixelRatio);
+        const top = Math.floor(bounds.top * devicePixelRatio);
+        const right = Math.ceil(bounds.right * devicePixelRatio);
+        const bottom = Math.ceil(bounds.bottom * devicePixelRatio);
+        void appUiTestFrontendReady(undefined, undefined, "draft-committed", [left, top, right, bottom]).catch(() => {});
         frame = window.requestAnimationFrame(() => {
           frame = window.requestAnimationFrame(() => {
             void appUiTestFrontendReady(undefined, undefined, "draft-frame").catch(() => {});
