@@ -1,13 +1,11 @@
 //! WASAPI process loopback. No playback rerouting, muting, or mix fallback.
 use super::applications::Process;
 use super::send_pipeline::{AudioIngress, AudioIngressError};
+use super::windows_capture_worker::{Worker, WorkerSlot};
 use super::{
     AudioCaptureFormat, CaptureFailureSender, SystemAudioCaptureError, SystemAudioCaptureFailure,
 };
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    mpsc, Arc, Mutex,
-};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 use windows::core::{implement, Interface, Ref, HRESULT};
 use windows::Win32::Media::Audio::*;
@@ -37,39 +35,9 @@ pub fn supported() -> bool {
     unsafe { RtlGetVersion(&mut version) == 0 && version.dwBuildNumber >= 20348 }
 }
 
-#[derive(Default)]
-struct Worker {
-    cancelled: AtomicBool,
-    finished: AtomicBool,
-}
-#[derive(Default)]
-struct State {
-    worker: Mutex<Option<Arc<Worker>>>,
-}
-impl Drop for State {
-    fn drop(&mut self) {
-        if let Some(worker) = self.worker.get_mut().unwrap() {
-            worker.cancelled.store(true, Ordering::SeqCst);
-        }
-    }
-}
 #[derive(Clone, Default)]
 pub struct WindowsApplicationCapture {
-    state: Arc<State>,
-}
-struct Cancel(Option<Arc<Worker>>);
-impl Drop for Cancel {
-    fn drop(&mut self) {
-        if let Some(worker) = &self.0 {
-            worker.cancelled.store(true, Ordering::SeqCst);
-        }
-    }
-}
-struct Finished(Arc<Worker>);
-impl Drop for Finished {
-    fn drop(&mut self) {
-        self.0.finished.store(true, Ordering::SeqCst);
-    }
+    workers: Arc<WorkerSlot<()>>,
 }
 struct Com;
 impl Drop for Com {
@@ -95,81 +63,54 @@ impl WindowsApplicationCapture {
         if !supported() {
             return Err(SystemAudioCaptureError::ApplicationUnsupported);
         }
-        let worker = {
-            let mut slot = self.state.worker.lock().unwrap();
-            if slot
-                .as_ref()
-                .is_some_and(|worker| !worker.finished.load(Ordering::SeqCst))
-            {
-                return Err(SystemAudioCaptureError::PreviousCaptureStopping);
+        let start = self.workers.start(move |control, tx| {
+            let native = match open(&id, &control, format) {
+                Ok(value) => value,
+                Err(error) => {
+                    let _ = tx.send(Err(error));
+                    return;
+                }
+            };
+            if control.cancelled() {
+                let _ = tx.send(Err(SystemAudioCaptureError::StartCancelled));
+                return;
             }
-            let worker = Arc::new(Worker::default());
-            *slot = Some(Arc::clone(&worker));
-            worker
-        };
-        let mut cancel = Cancel(Some(Arc::clone(&worker)));
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        let control = Arc::clone(&worker);
-        if std::thread::Builder::new()
-            .name("mimi-application-audio".into())
-            .spawn(move || {
-                let _finished = Finished(Arc::clone(&control));
-                let result = open(&id, &control, format);
-                let native = match result {
-                    Ok(value) => value,
-                    Err(error) => {
-                        let _ = tx.send(Err(error));
-                        return;
-                    }
-                };
-                if control.cancelled.load(Ordering::SeqCst) {
-                    let _ = tx.send(Err(SystemAudioCaptureError::StartCancelled));
-                    return;
+            if unsafe { native.client.0.Start() }.is_err() {
+                let _ = tx.send(Err(SystemAudioCaptureError::NativeStartFailed));
+                return;
+            }
+            if tx.send(Ok(())).is_err() {
+                return;
+            }
+            while !control.cancelled() && !failure.has_reported() {
+                if !native.process.running() {
+                    failure.report(SystemAudioCaptureFailure::ApplicationUnavailable);
+                    break;
                 }
-                if unsafe { native.client.0.Start() }.is_err() {
-                    let _ = tx.send(Err(SystemAudioCaptureError::NativeStartFailed));
-                    return;
+                if read_packets(&native.capture, &control, &ingress, &failure).is_err() {
+                    failure.report(SystemAudioCaptureFailure::NativeStopped);
+                    break;
                 }
-                if tx.send(Ok(())).is_err() {
-                    return;
-                }
-                while !control.cancelled.load(Ordering::SeqCst) && !failure.has_reported() {
-                    if !native.process.running() {
-                        failure.report(SystemAudioCaptureFailure::ApplicationUnavailable);
-                        break;
-                    }
-                    if read_packets(&native.capture, &control, &ingress, &failure).is_err() {
-                        failure.report(SystemAudioCaptureFailure::NativeStopped);
-                        break;
-                    }
-                    std::thread::sleep(POLL);
-                }
-                // COM objects must be released before the worker's apartment.
-                drop(native);
-            })
-            .is_err()
-        {
-            worker.finished.store(true, Ordering::SeqCst);
-            return Err(SystemAudioCaptureError::NativeStartFailed);
-        }
-        tokio::time::timeout(START_TIMEOUT, rx)
+                std::thread::sleep(POLL);
+            }
+            // COM objects must be released before the worker's apartment.
+            drop(native);
+        });
+        match tokio::time::timeout(START_TIMEOUT, start)
             .await
             .map_err(|_| SystemAudioCaptureError::StartTimedOut)?
-            .map_err(|_| SystemAudioCaptureError::NativeStartFailed)??;
-        if worker.cancelled.load(Ordering::SeqCst) {
-            return Err(SystemAudioCaptureError::StartCancelled);
-        }
-        cancel.0 = None;
-        Ok(())
-    }
-    pub async fn stop(&self) {
-        let worker = self.state.worker.lock().unwrap().clone();
-        if let Some(worker) = worker {
-            worker.cancelled.store(true, Ordering::SeqCst);
-            while !worker.finished.load(Ordering::SeqCst) {
-                tokio::time::sleep(POLL).await;
+        {
+            // Preserve the process adapter's existing busy result for both
+            // a running worker and one already winding down.
+            Err(SystemAudioCaptureError::AlreadyRunning) => {
+                Err(SystemAudioCaptureError::PreviousCaptureStopping)
             }
+            result => result,
         }
+    }
+
+    pub async fn stop(&self) {
+        self.workers.stop().await;
     }
 }
 
@@ -261,7 +202,7 @@ struct OpenCapture {
 }
 fn open(
     id: &str,
-    worker: &Worker,
+    worker: &Worker<()>,
     format: AudioCaptureFormat,
 ) -> Result<OpenCapture, SystemAudioCaptureError> {
     AudioCaptureFormat::pcm16_mono(format.sample_rate_hz)?;
@@ -300,7 +241,7 @@ fn open(
     .map_err(|_| SystemAudioCaptureError::NativeStartFailed)?;
     let deadline = Instant::now() + START_TIMEOUT;
     let client = loop {
-        if worker.cancelled.load(Ordering::SeqCst) {
+        if worker.cancelled() {
             return Err(SystemAudioCaptureError::StartCancelled);
         }
         if Instant::now() >= deadline {
@@ -352,14 +293,14 @@ fn open(
 
 fn read_packets(
     capture: &IAudioCaptureClient,
-    worker: &Worker,
+    worker: &Worker<()>,
     ingress: &AudioIngress,
     failure: &CaptureFailureSender,
 ) -> windows::core::Result<()> {
     // Limit work per poll as well as allocation; cancellation cannot wait for
     // an unbounded native packet drain when a driver floods the queue.
     for _ in 0..128 {
-        if worker.cancelled.load(Ordering::SeqCst)
+        if worker.cancelled()
             || failure.has_reported()
             || unsafe { capture.GetNextPacketSize()? } == 0
         {
@@ -378,7 +319,7 @@ fn read_packets(
             capture.ReleaseBuffer(frames)?;
         }
         if let Some(pcm) = pcm {
-            if pcm.is_empty() || worker.cancelled.load(Ordering::SeqCst) {
+            if pcm.is_empty() || worker.cancelled() {
                 continue;
             }
             match ingress.try_send(pcm) {
