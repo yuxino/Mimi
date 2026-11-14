@@ -27,9 +27,11 @@ made the test reject the permitted immediate frame after the actual stall.
 
 Probe at most four frames, polling each send before a 500-ms timer. That exceeds
 the ordinary 200-ms pacing wait; verify that the frame was already due when the
-probe expires. Tell the reader the expected frame count before resuming it,
-then send two more frames and retain the 180-ms minimum assertion between
-their completed writes. Record frame start/completion times, deadlines and
-primer decoding time to distinguish future fixture failures from clock defects.
+probe expires. Tell the reader which frame stalled before resuming it. After
+the local write completes, wait for the peer to consume both the primer and
+the stalled frame. Bound that handoff to less than 180 ms and verify that
+the next frame is immediately due. Send two more frames and keep the 180-ms
+minimum between their completed writes. Record frame timings, deadlines and
+the peer's drain time to distinguish fixture work from clock behavior.
 This exercises socket backpressure without provider traffic or a production
 test hook; it does not establish a Tencent service rejection.

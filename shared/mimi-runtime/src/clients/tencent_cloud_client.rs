@@ -1092,7 +1092,8 @@ mod tests {
     async fn a_blocked_socket_write_does_not_leave_an_extra_catch_up_frame() {
         let test_started = tokio::time::Instant::now();
         let (resume_reads, reads_resumed) = tokio::sync::oneshot::channel();
-        let (expected_frames, frame_count) = tokio::sync::oneshot::channel();
+        let (stalled_frame_index, stalled_frame_to_read) = tokio::sync::oneshot::channel();
+        let (drained, write_drained) = tokio::sync::oneshot::channel();
         let (observed, observation) = tokio::sync::oneshot::channel();
         const PRIMER_BYTES: usize = 16 * 1024 * 1024;
         let (client, _events) = test_client(move |mut socket| {
@@ -1103,7 +1104,8 @@ mod tests {
                         .await
                         .unwrap();
                     reads_resumed.await.unwrap();
-                    let expected_frames = frame_count.await.unwrap();
+                    let stalled_frame = stalled_frame_to_read.await.unwrap();
+                    let mut drained = Some(drained);
                     let mut frames = 0;
                     let mut primer_decoded_at = None;
                     while let Some(Ok(message)) = socket.next().await {
@@ -1114,8 +1116,15 @@ mod tests {
                             }
                             assert_eq!(frame.len(), TencentCloudEndpoint::AUDIO_FRAME_BYTE_COUNT);
                             frames += 1;
-                            if frames == expected_frames {
-                                observed.send(primer_decoded_at.unwrap()).unwrap();
+                            if frames == stalled_frame {
+                                drained
+                                    .take()
+                                    .unwrap()
+                                    .send(primer_decoded_at.unwrap())
+                                    .unwrap();
+                            }
+                            if frames == stalled_frame + 2 {
+                                observed.send(()).unwrap();
                                 return;
                             }
                         }
@@ -1149,7 +1158,8 @@ mod tests {
         let mut completed = Vec::new();
         let mut stalled_frame = None;
         let mut resume_reads = Some(resume_reads);
-        let mut expected_frames = Some(expected_frames);
+        let mut stalled_frame_index = Some(stalled_frame_index);
+        let mut write_drained = Some(write_drained);
         for frame_index in 1..=6 {
             assert!(
                 stalled_frame.is_some() || frame_index <= 4,
@@ -1172,7 +1182,7 @@ mod tests {
                             "fixture only waited for normal audio pacing"
                         );
                         stalled_frame = Some(frame_index);
-                        expected_frames.take().unwrap().send(frame_index + 2).unwrap();
+                        stalled_frame_index.take().unwrap().send(frame_index).unwrap();
                         eprintln!(
                             "stalled_frame={frame_index} reader_resumed={:?}",
                             test_started.elapsed()
@@ -1182,6 +1192,25 @@ mod tests {
                             .await
                             .unwrap()
                             .unwrap();
+                        let stalled_write_completed = tokio::time::Instant::now();
+                        // Send completion only means the local socket accepted
+                        // the bytes. Wait for the peer to consume the primer
+                        // and the stalled frame before timing the next pair.
+                        let primer_decoded_at = tokio::time::timeout(
+                            Duration::from_secs(2),
+                            write_drained.take().unwrap(),
+                        )
+                        .await
+                        .unwrap()
+                        .unwrap();
+                        assert!(
+                            stalled_write_completed.elapsed() < Duration::from_millis(180),
+                            "waiting for the fixture to drain must not hide an extra catch-up frame"
+                        );
+                        eprintln!(
+                            "primer_decoded={primer_decoded_at:?} stalled_frame_drained={:?}",
+                            test_started.elapsed()
+                        );
                     },
                 }
             } else {
@@ -1192,6 +1221,12 @@ mod tests {
             }
             let completed_at = tokio::time::Instant::now();
             let next_deadline = *client.inner.next_audio_frame_at.lock().await;
+            if stalled_frame == Some(frame_index) {
+                assert!(
+                    next_deadline.is_some_and(|deadline| deadline <= completed_at),
+                    "the stalled write must make one frame immediately due"
+                );
+            }
             eprintln!(
                 "frame={frame_index} started={:?} completed={:?} previous_deadline={:?} next_deadline={:?}",
                 started_at.duration_since(test_started),
@@ -1204,11 +1239,10 @@ mod tests {
                 break;
             }
         }
-        let primer_decoded_at = tokio::time::timeout(Duration::from_secs(2), observation)
+        tokio::time::timeout(Duration::from_secs(2), observation)
             .await
             .unwrap()
             .unwrap();
-        eprintln!("primer_decoded={primer_decoded_at:?}");
         client.disconnect().await;
         // The stalled completion can be followed by one immediately due frame;
         // the next frame must return to the 200-ms clock instead of bursting too.
