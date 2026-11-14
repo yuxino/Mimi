@@ -58,10 +58,6 @@ for _ in {1..40}; do
 done
 [[ "$wm_ready" == 1 ]] || { echo "Openbox did not become ready." >&2; exit 1; }
 if [[ "${MIMI_LINUX_STARTUP_PROBE:-0}" == 1 ]]; then
-  unset NO_AT_BRIDGE AT_SPI_BUS_ADDRESS
-  export GSETTINGS_BACKEND=memory
-  gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
-    --method org.freedesktop.DBus.Properties.Set org.a11y.Status ScreenReaderEnabled '<true>'
   timeout 300s /usr/bin/python3 -B scripts/linux-packaged-startup.py "$executable" "$smoke_dir"
   exit
 fi

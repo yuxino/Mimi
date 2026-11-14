@@ -1892,7 +1892,26 @@ pub fn app_is_ui_test() -> bool {
 /// A native smoke test must observe a mounted frontend, not just a window title.
 /// Neither the destination nor marker contents can be supplied by the frontend.
 #[tauri::command]
-pub fn app_ui_test_frontend_ready(window: tauri::WebviewWindow) -> Result<(), String> {
+pub fn app_ui_test_frontend_ready(
+    window: tauri::WebviewWindow,
+    switch_point: Option<[u32; 2]>,
+) -> Result<(), String> {
+    if let Some([x, y]) = switch_point {
+        if app_is_ui_test()
+            && window.label() == "settings"
+            && std::env::var_os("MIMI_UI_TEST_STARTUP_PHASE_FILE").is_some()
+        {
+            if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR") {
+                let directory = std::path::PathBuf::from(directory);
+                std::fs::create_dir_all(&directory)
+                    .and_then(|()| {
+                        std::fs::write(directory.join("settings-switch"), format!("{x} {y}\n"))
+                    })
+                    .map_err(|_| "Could not write the UI-test switch position.".to_string())?;
+            }
+        }
+        return Ok(());
+    }
     write_ui_test_frontend_ready(
         app_is_ui_test(),
         window.label(),

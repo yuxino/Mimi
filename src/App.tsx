@@ -1,7 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "./lib/i18n";
-import { appUiTestFrontendReady, isTauri } from "./lib/ipc";
+import { appIsUiTest, appUiTestFrontendReady, isTauri } from "./lib/ipc";
 import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness";
 import { selectSessionStatusKind, useStore } from "./lib/store";
 import { useDesktopShortcuts } from "./lib/useDesktopShortcuts";
@@ -57,8 +57,43 @@ export default function App({ settingsView: PreloadedSettingsView }: { settingsV
     <Suspense fallback={null}>
       {windowContent}
       <FrontendReadySignal label={label} />
+      {label === "settings" && <SettingsStartupPoint />}
     </Suspense>
   );
+}
+
+function SettingsStartupPoint() {
+  const ready = useStore((state) => state.initializationStatus === "ready");
+  const status = useStore(selectSessionStatusKind);
+  useEffect(() => {
+    if (!isTauri || !ready || status !== "idle") return;
+    let active = true;
+    let frame = 0;
+    const report = () => {
+      const control = document.querySelector<HTMLButtonElement>(
+        '.settings-session-card [aria-describedby="settings-session-status"][role="switch"][aria-checked="false"]:enabled',
+      );
+      const rect = control?.getBoundingClientRect();
+      if (control && rect && rect.width > 0 && rect.height > 0) {
+        const x = rect.left + rect.width / 2;
+        const y = rect.top + rect.height / 2;
+        if (control.contains(document.elementFromPoint(x, y))) {
+          void appUiTestFrontendReady([Math.round(x * devicePixelRatio), Math.round(y * devicePixelRatio)]).catch(() => {});
+          return;
+        }
+      }
+      if (attempts++ < 60) frame = window.requestAnimationFrame(report);
+    };
+    let attempts = 0;
+    void appIsUiTest().then((test) => {
+      if (test && active) frame = window.requestAnimationFrame(report);
+    }).catch(() => {});
+    return () => {
+      active = false;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [ready, status]);
+  return null;
 }
 
 /** Mount inside Suspense so a failed lazy import cannot pass native smoke. */

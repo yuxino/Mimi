@@ -385,7 +385,6 @@ jobs:
       - name: Measure Linux package startup
         if: runner.os == 'Linux' && github.ref_name == 'test/linux-packaged-startup'
         run: |
-          sudo apt-get install --no-install-recommends -y at-spi2-core python3-pyatspi
           version=$(node -p 'require("./package.json").version')
           for package in /usr/bin/mimi "src-tauri/target/release/bundle/appimage/mimi_${version}_amd64.AppImage"; do
             MIMI_LINUX_STARTUP_PROBE=1 ./scripts/linux-ci-smoke.sh "$package"

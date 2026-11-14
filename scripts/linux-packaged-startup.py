@@ -7,10 +7,6 @@ import sys
 import tempfile
 import time
 
-from gi.repository import GLib
-import pyatspi
-
-
 def window(pattern):
     result = subprocess.run(
         ["xdotool", "search", "--onlyvisible", "--name", pattern],
@@ -31,36 +27,14 @@ def waiting_for(process, label, find):
     raise RuntimeError(f"Mimi did not reach {label} within 30 seconds")
 
 
-def subtitle_action():
-    desktop = pyatspi.Registry.getDesktop(0)
-    settings = pyatspi.findDescendant(
-        desktop, lambda node: node.name == "mimi UI test settings", breadth_first=True,
-    )
-    if settings is None:
-        return None
-
-    def matches(node):
-        if node.name != "Live Subtitles":
-            return False
-        states = node.getState()
-        return all(states.contains(state) for state in (
-            pyatspi.STATE_SENSITIVE, pyatspi.STATE_SHOWING, pyatspi.STATE_FOCUSABLE,
-        ))
-
-    control = pyatspi.findDescendant(settings, matches, breadth_first=True)
-    if control is None:
-        return None
+def subtitles_point(path):
     try:
-        action = control.queryAction()
-        if control.getState().contains(pyatspi.STATE_CHECKED):
-            raise RuntimeError("Subtitle switch was on before explicit start")
-        for index in range(action.nActions):
-            if action.getName(index) in ("click", "press", "activate"):
-                return action, index
-    except (GLib.Error, NotImplementedError):
-        # The accessibility node can be replaced during the initial render.
+        values = path.read_text().split()
+    except FileNotFoundError:
         return None
-    return None
+    if len(values) != 2:
+        return None
+    return tuple(str(int(value)) for value in values)
 
 
 def state(path):
@@ -99,14 +73,13 @@ def sample(executable, root, number):
             try:
                 settings = waiting_for(process, "visible Settings window", lambda: window("^mimi UI test settings$"))
                 window_ms = (time.monotonic() - started) * 1000
-                action, index = waiting_for(process, "enabled Live Subtitles switch", subtitle_action)
+                x, y = waiting_for(process, "enabled Live Subtitles switch", lambda: subtitles_point(ready / "settings-switch"))
                 settings_ms = (time.monotonic() - started) * 1000
                 if state(session) != "idle" or window("^mimi Subtitles$"):
                     raise RuntimeError("A session or overlay appeared before explicit start")
 
                 activated = time.monotonic()
-                if not action.doAction(index):
-                    raise RuntimeError("The native Live Subtitles action did not execute")
+                subprocess.run(["xdotool", "mousemove", "--window", settings, x, y, "click", "1"], check=True, timeout=2)
                 waiting_for(process, "listening state", lambda: state(session) == "listening")
                 listening_ms = (time.monotonic() - activated) * 1000
                 waiting_for(process, "visible overlay with committed frontend", lambda: (
@@ -127,6 +100,8 @@ def sample(executable, root, number):
                       + " ".join(f"{name}={value}" for name, value in phase_values.items()), flush=True)
             except Exception:
                 print(log.read_text(errors="replace"), file=sys.stderr)
+                if phases.is_file():
+                    print(phases.read_text(), file=sys.stderr)
                 raise
             finally:
                 if process.poll() is None:
