@@ -66,8 +66,15 @@ export default function App({ settingsView: PreloadedSettingsView }: { settingsV
 function SettingsStartupPoint() {
   const ready = useStore((state) => state.initializationStatus === "ready");
   const status = useStore(selectSessionStatusKind);
+  useLayoutEffect(() => {
+    performance.mark("mimi-startup-settings-commit");
+  }, []);
+  useLayoutEffect(() => {
+    if (ready && status === "idle") performance.mark("mimi-startup-ready-commit");
+  }, [ready, status]);
   useEffect(() => {
     if (!isTauri || !ready || status !== "idle") return;
+    performance.mark("mimi-startup-switch-observer");
     let active = true;
     let frame = 0;
     const report = () => {
@@ -79,7 +86,10 @@ function SettingsStartupPoint() {
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2;
         if (control.contains(document.elementFromPoint(x, y))) {
-          const phases = ["entry", "settings-imported", "settings-snapshot", "session-snapshot"]
+          const phases = [
+            "entry", "settings-imported", "settings-snapshot", "session-snapshot", "settings-commit",
+            "ready-commit", "switch-observer", "probe-enabled", "switch-first-frame",
+          ]
             .map(name => performance.getEntriesByName(`mimi-startup-${name}`, "mark")[0]?.startTime ?? 0);
           phases.push(performance.now());
           void appUiTestFrontendReady(
@@ -93,7 +103,13 @@ function SettingsStartupPoint() {
     };
     let attempts = 0;
     void appIsUiTest().then((test) => {
-      if (test && active) frame = window.requestAnimationFrame(report);
+      if (test && active) {
+        performance.mark("mimi-startup-probe-enabled");
+        frame = window.requestAnimationFrame(() => {
+          performance.mark("mimi-startup-switch-first-frame");
+          report();
+        });
+      }
     }).catch(() => {});
     return () => {
       active = false;
