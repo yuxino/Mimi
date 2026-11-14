@@ -64,6 +64,11 @@ Count commits, formatting, allocations and IPC calls to expose repeated work;
 use native measurements for process memory, frame timing and session latency.
 Report retained memory separately from allocated bytes and temporary peaks.
 
+For startup, time when a control accepts native input and when its result
+becomes visible. Confirm the click through the resulting native state. A paint
+callback used by the probe can delay the click, especially on a virtual display,
+so measure that callback separately from input readiness.
+
 Keep behavior regressions on production code and shared fixtures. Use synthetic
 loopback peers for protocol, retry, cancellation and deadline checks. An old
 implementation copied into a test does not establish current-product coverage.
