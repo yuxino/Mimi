@@ -24,9 +24,9 @@ function mount(settingsView?: ComponentType) {
   );
 }
 
-if (__MIMI_WINDOWS_BUILD__ && isTauri && getCurrentWindow().label === "settings") {
+if (__MIMI_PRELOAD_SETTINGS__ && isTauri && getCurrentWindow().label === "settings") {
   // Load the existing Settings chunk before the first render to avoid the
-  // initial Suspense fallback and its delayed retry on Windows WebView2.
+  // initial Suspense fallback and its delayed retry in the native WebView.
   void import("./windows/settings/SettingsView").then(
     ({ SettingsView }) => mount(SettingsView),
     () => mount(),

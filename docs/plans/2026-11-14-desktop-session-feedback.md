@@ -118,9 +118,9 @@ Pause and Resume must alternate while Settings stays hidden, and the gear
 must open the original Settings window. Use the existing synthetic session
 and temporary English preferences without a provider connection or capture.
 
-## Load the Windows Settings view before its first render
+## Load the Windows and Linux Settings view before its first render
 
-On Windows, load the existing Settings chunk before mounting its native
+On Windows and Linux, load the existing Settings chunk before mounting its native
 window's React tree. The first render can then use the resolved component
 without entering the initial Suspense fallback. Keep the existing lazy path
 if the import fails, and keep Settings data loading and readiness checks in
@@ -130,7 +130,10 @@ retain their own lazy entry points.
 Compare process launch to the enabled subtitle switch, switch to visible
 overlay readiness, and the total to visible overlay on the same runner.
 Verify startup handoff, window restore, and overlay controls on both Windows
-architectures through the normal package smoke.
+architectures through the normal package smoke. On Linux, compare the same
+release build with the preload disabled and enabled, interleaving both package
+formats on the same runner. Use real native clicks to verify readiness and
+keep the click-to-listening and visible overlay boundaries separate.
 
 On x64, also record the Pause button's screen point, then use a one-shot
 fixture to deliver a configuration error on that click. Once the error's
