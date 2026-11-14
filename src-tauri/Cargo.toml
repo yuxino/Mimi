@@ -124,3 +124,5 @@ incremental = true
 # with only that packet-source fix until an upstream release contains it.
 [patch.crates-io]
 cpal = { path = "vendor/cpal" }
+# Preserve X11's idle input polling while waking immediately for registration.
+global-hotkey = { path = "vendor/global-hotkey" }
