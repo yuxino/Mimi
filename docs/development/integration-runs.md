@@ -1,5 +1,16 @@
 # 集成实测记录
 
+## 2026-11-14：Linux 采音结束通知
+
+- 用隔离的 PulseAudio 空输出设备和同一段 997 Hz 合成音，分别在 16 kHz、
+  24 kHz 下各跑八次。两次 CI 独立运行，停止采音中位数均从 6 ms 降到
+  5 ms，采音就绪仍约 133 ms。停止计时从请求释放到原生资源退出，未覆盖
+  浮窗反馈、实际硬件和服务清理。参见[基线](https://github.com/yuxino/Mimi/actions/runs/43602673853)
+  和 [候选 `432c570c`](https://github.com/yuxino/Mimi/actions/runs/43603686249/job/132473692769)。
+- Linux 并发停止回归确认，两个等待者在资源释放前都保持等待，释放后立即
+  可返回，且此时才允许重新开始采音。Windows 的线程生命周期检查也通过。
+  [产品改动 `450fd6bd` 的桌面 CI](https://github.com/yuxino/Mimi/actions/runs/43603666516)。
+
 ## 2026-11-14：Windows x64 便携包启动基线
 
 - 从 [`dca986cd` 的打包 CI](https://github.com/yuxino/Mimi/actions/runs/43594238144)
