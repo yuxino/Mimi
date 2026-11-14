@@ -1889,22 +1889,6 @@ pub fn app_is_ui_test() -> bool {
     std::env::var("MIMI_UI_TEST").as_deref() == Ok("1")
 }
 
-#[tauri::command]
-pub fn app_ui_test_startup_probe(window: tauri::WebviewWindow) -> Option<&'static str> {
-    if app_is_ui_test()
-        && window.label() == "settings"
-        && std::env::var_os("MIMI_UI_TEST_STARTUP_PHASE_FILE").is_some()
-    {
-        match std::env::var("MIMI_UI_TEST_STARTUP_PROBE").as_deref() {
-            Ok("baseline") => Some("baseline"),
-            Ok("preload") => Some("preload"),
-            _ => None,
-        }
-    } else {
-        None
-    }
-}
-
 /// A native smoke test must observe a mounted frontend, not just a window title.
 /// Neither the destination nor marker contents can be supplied by the frontend.
 #[tauri::command]

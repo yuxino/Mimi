@@ -62,7 +62,6 @@ def sample(executable, root, number, variant):
             "MIMI_UI_TEST_FRONTEND_READY_DIR": str(ready),
             "MIMI_UI_TEST_SESSION_STATE_FILE": str(session),
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
-            "MIMI_UI_TEST_STARTUP_PROBE": variant,
         }
         command = [str(executable)]
         if executable.suffix == ".AppImage":
@@ -117,8 +116,8 @@ def sample(executable, root, number, variant):
 
 
 if __name__ == "__main__":
-    executable, root = map(Path, sys.argv[1:])
+    baseline, preload, root = map(Path, sys.argv[1:])
     for number in range(1, 9):
-        variants = ("baseline", "preload")
-        for variant in variants if number % 2 else reversed(variants):
+        variants = (("baseline", baseline), ("preload", preload))
+        for variant, executable in variants if number % 2 else reversed(variants):
             sample(executable, root, number, variant)

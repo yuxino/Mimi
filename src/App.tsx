@@ -1,8 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "./lib/i18n";
-import { appUiTestFrontendReady, isTauri } from "./lib/ipc";
+import { appIsUiTest, appUiTestFrontendReady, isTauri } from "./lib/ipc";
 import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness";
 import { selectSessionStatusKind, useStore } from "./lib/store";
 import { useDesktopShortcuts } from "./lib/useDesktopShortcuts";
@@ -103,7 +102,7 @@ function SettingsStartupPoint() {
       if (attempts++ < 60) timer = window.setTimeout(report, 16);
     };
     let attempts = 0;
-    void invoke<string | null>("app_ui_test_startup_probe").then((probe) => {
+    void appIsUiTest().then((probe) => {
       if (!probe || !active) return;
       performance.mark("mimi-startup-probe-enabled");
       performance.mark("mimi-startup-switch-first-check");

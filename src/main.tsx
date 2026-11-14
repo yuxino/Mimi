@@ -1,7 +1,6 @@
 import { StrictMode, type ComponentType } from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
 import App from "./App";
 import { effectiveUiLanguage } from "./lib/i18n";
 import { isTauri } from "./lib/ipc";
@@ -27,9 +26,9 @@ function mount(settingsView?: ComponentType) {
   );
 }
 
-function preloadSettings() {
+if (__MIMI_PRELOAD_SETTINGS__ && isTauri && getCurrentWindow().label === "settings") {
   // Load the existing Settings chunk before the first render to avoid the
-  // initial Suspense fallback and its delayed retry on Windows WebView2.
+  // initial Suspense fallback and its delayed retry in the native WebView.
   void import("./windows/settings/SettingsView").then(
     ({ SettingsView }) => {
       performance.mark("mimi-startup-settings-imported");
@@ -37,16 +36,6 @@ function preloadSettings() {
     },
     () => mount(),
   );
-}
-
-if (isTauri && getCurrentWindow().label === "settings") {
-  if (__MIMI_WINDOWS_BUILD__) preloadSettings();
-  else if (document.documentElement.dataset.platform === "linux") {
-    void invoke<"baseline" | "preload" | null>("app_ui_test_startup_probe").then(
-      variant => variant === "preload" ? preloadSettings() : mount(),
-      () => mount(),
-    );
-  } else mount();
 } else {
   mount();
 }
