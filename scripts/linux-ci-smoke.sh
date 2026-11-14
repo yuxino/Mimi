@@ -59,9 +59,7 @@ for _ in {1..40}; do
 done
 [[ "$wm_ready" == 1 ]] || { echo "Openbox did not become ready." >&2; exit 1; }
 if [[ "${MIMI_LINUX_STARTUP_PROBE:-0}" == 1 ]]; then
-  baseline="$(realpath "${MIMI_LINUX_STARTUP_BASELINE:?Missing baseline package executable}")"
-  [[ -x "$baseline" && "$baseline" != "$executable" ]] || exit 1
-  timeout 300s /usr/bin/python3 -B scripts/linux-packaged-startup.py "$baseline" "$executable" "$smoke_dir"
+  timeout 300s /usr/bin/python3 -B scripts/linux-packaged-startup.py "$executable" "$smoke_dir"
   exit
 fi
 if [[ "$executable" == *.AppImage ]]; then

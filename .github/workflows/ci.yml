@@ -376,42 +376,18 @@ jobs:
 
       - name: Build Linux packages
         if: runner.os == 'Linux'
-        run: |
-          if [[ "$GITHUB_REF_NAME" != 'test/linux-packaged-startup' ]]; then
-            ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
-            exit
-          fi
-          version=$(node -p 'require("./package.json").version')
-          comparison="$RUNNER_TEMP/mimi-linux-startup"
-          bundle=src-tauri/target/release/bundle
-          for variant in baseline preload; do
-            output="$comparison/$variant"
-            mkdir -p "$output"
-            flag=0
-            [[ "$variant" != preload ]] || flag=1
-            MIMI_TEST_LINUX_SETTINGS_PRELOAD="$flag" ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
-            dpkg-deb --extract "$bundle/deb/mimi_${version}_amd64.deb" "$output"
-            cp -p "$bundle/appimage/mimi_${version}_amd64.AppImage" "$output/"
-          done
+        run: ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
 
       - name: Install and smoke-test Linux packages
         if: runner.os == 'Linux'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
-      - name: Measure Linux package startup
+      - name: Measure Linux first caption rendering
         if: runner.os == 'Linux' && github.ref_name == 'test/linux-packaged-startup'
         run: |
           version=$(node -p 'require("./package.json").version')
-          comparison="$RUNNER_TEMP/mimi-linux-startup"
-          for package in usr/bin/mimi "mimi_${version}_amd64.AppImage"; do
-            baseline="$comparison/baseline/$package"
-            candidate="$comparison/preload/$package"
-            if cmp -s "$baseline" "$candidate"; then
-              echo "Startup comparison built identical files for $package." >&2
-              exit 1
-            fi
-            sha256sum "$baseline" "$candidate"
-            MIMI_LINUX_STARTUP_PROBE=1 MIMI_LINUX_STARTUP_BASELINE="$baseline" ./scripts/linux-ci-smoke.sh "$candidate"
+          for package in /usr/bin/mimi "src-tauri/target/release/bundle/appimage/mimi_${version}_amd64.AppImage"; do
+            MIMI_LINUX_STARTUP_PROBE=1 ./scripts/linux-ci-smoke.sh "$package"
           done
 
       - name: Smoke launch x64 UI-test app and click overlay controls

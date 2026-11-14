@@ -1,4 +1,4 @@
-"""Measure an isolated Linux package launch through its real Settings control."""
+"""Measure the first synthetic draft before and after overlay readiness."""
 
 import os
 from pathlib import Path
@@ -44,8 +44,8 @@ def state(path):
         return "idle"
 
 
-def sample(executable, root, number, variant):
-    work = root / f"sample-{number}-{variant}"
+def sample(executable, root, number, phase):
+    work = root / f"sample-{number}-{phase}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
@@ -62,6 +62,7 @@ def sample(executable, root, number, variant):
             "MIMI_UI_TEST_FRONTEND_READY_DIR": str(ready),
             "MIMI_UI_TEST_SESSION_STATE_FILE": str(session),
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
+            "MIMI_UI_TEST_FIRST_CAPTION_DIR": str(work),
         }
         command = [str(executable)]
         if executable.suffix == ".AppImage":
@@ -82,28 +83,34 @@ def sample(executable, root, number, variant):
                 subprocess.run(["xdotool", "mousemove", "--window", settings, x, y, "click", "1"], check=True, timeout=2)
                 waiting_for(process, "listening state", lambda: state(session) == "listening")
                 listening_ms = (time.monotonic() - activated) * 1000
-                waiting_for(process, "visible overlay with committed frontend", lambda: (
-                    (ready / "overlay").is_file() and window("^mimi Subtitles$") is not None
-                ))
-                overlay_ms = (time.monotonic() - activated) * 1000
-                total_overlay_ms = (time.monotonic() - started) * 1000
+                waiting_for(process, "caption observer", (work / "draft-observer").is_file)
+                def overlay_ready():
+                    return (ready / "overlay").is_file() and window("^mimi Subtitles$") is not None
+
+                if phase == "ready":
+                    waiting_for(process, "visible overlay with committed frontend", overlay_ready)
+                if any((work / marker).exists() for marker in ("draft-issued", "draft-committed", "draft-frame")):
+                    raise RuntimeError("A caption appeared before the fixture request")
+
+                requested = time.monotonic()
+                (work / "draft-request").touch()
+                waiting_for(process, "injected caption", (work / "draft-issued").is_file)
+                issued_ms = (time.monotonic() - requested) * 1000
+                waiting_for(process, "committed caption", (work / "draft-committed").is_file)
+                committed_ms = (time.monotonic() - requested) * 1000
+                waiting_for(process, "caption with a subsequent paint opportunity", (work / "draft-frame").is_file)
+                frame_ms = (time.monotonic() - requested) * 1000
+                waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
-                phase_values = dict(line.split("=", 1) for line in phases.read_text().splitlines())
-                if not {"setup_entry_ms", "state_ready_ms", "overlay_created_ms", "overlay_controls_created_ms", "tray_and_shortcuts_ready_ms"} <= phase_values.keys():
-                    raise RuntimeError("Missing native startup phases")
-                frontend_values = dict(line.split("=", 1) for line in (ready / "settings-phases").read_text().splitlines())
-                if not all(float(value) > 0 for value in frontend_values.values()) or len(frontend_values) != 10:
-                    raise RuntimeError(f"Missing Settings frontend phases: {frontend_values}")
-                phase_values.update(frontend_values)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                print(f"MimiLinuxStartup package={package} sample={number} variant={variant} window_ms={window_ms:.3f} "
-                      f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} overlay_ms={overlay_ms:.3f} "
-                      f"total_overlay_ms={total_overlay_ms:.3f} "
-                      + " ".join(f"{name}={value}" for name, value in phase_values.items()), flush=True)
+                print(f"MimiLinuxFirstCaption package={package} sample={number} phase={phase} window_ms={window_ms:.3f} "
+                      f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
+                      f"committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
+                      f"request_after_start_ms={(requested - activated) * 1000:.3f}", flush=True)
             except Exception:
                 print(log.read_text(errors="replace"), file=sys.stderr)
                 if phases.is_file():
@@ -116,8 +123,8 @@ def sample(executable, root, number, variant):
 
 
 if __name__ == "__main__":
-    baseline, preload, root = map(Path, sys.argv[1:])
-    for number in range(1, 9):
-        variants = (("baseline", baseline), ("preload", preload))
-        for variant, executable in variants if number % 2 else reversed(variants):
-            sample(executable, root, number, variant)
+    executable, root = map(Path, sys.argv[1:])
+    for number in range(1, 7):
+        phases = ("early", "ready")
+        for phase in phases if number % 2 else reversed(phases):
+            sample(executable, root, number, phase)

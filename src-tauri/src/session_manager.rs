@@ -5287,6 +5287,37 @@ impl SessionManager {
                 preferences.audio_input,
             );
         }
+        // The package probe controls when the first caption enters the normal
+        // provider-event path. It runs only inside this credential-free fixture.
+        if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
+            *self
+                .lane(AudioSource::System)
+                .subtitle_content_revision
+                .lock()
+                .unwrap() = (generation, 0);
+            let directory = std::path::PathBuf::from(directory);
+            let session = Arc::clone(self);
+            tokio::spawn(async move {
+                let request = directory.join("draft-request");
+                let deadline = Instant::now() + Duration::from_secs(30);
+                while Instant::now() < deadline && session.is_generation_current(generation) {
+                    if std::fs::remove_file(&request).is_ok() {
+                        let draft = LiveTranslateServerEvent::TranslationDraft("测试字幕".into());
+                        if std::fs::write(directory.join("draft-issued"), "ready").is_ok() {
+                            session
+                                .handle_event(
+                                    AudioSource::System,
+                                    generation,
+                                    ProviderEvent::unsequenced(draft, 0),
+                                )
+                                .await;
+                        }
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            });
+        }
         if preferences.record_session_audio && !dual_live_fixture {
             let retain_for_export = std::env::var("MIMI_UI_TEST_EXPORT").as_deref() == Ok("1");
             for &source in preferences.audio_input.sources() {

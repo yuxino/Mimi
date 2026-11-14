@@ -1896,7 +1896,23 @@ pub fn app_ui_test_frontend_ready(
     window: tauri::WebviewWindow,
     switch_point: Option<[u32; 2]>,
     frontend_phases: Option<[f64; 10]>,
+    draft_stage: Option<String>,
 ) -> Result<(), String> {
+    if let Some(stage) = draft_stage {
+        if app_is_ui_test()
+            && window.label() == "overlay"
+            && matches!(
+                stage.as_str(),
+                "draft-observer" | "draft-committed" | "draft-frame"
+            )
+        {
+            if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
+                std::fs::write(std::path::Path::new(&directory).join(stage), "ready")
+                    .map_err(|_| "Could not write the UI-test caption marker.".to_string())?;
+            }
+        }
+        return Ok(());
+    }
     if let Some([x, y]) = switch_point {
         if app_is_ui_test()
             && window.label() == "settings"

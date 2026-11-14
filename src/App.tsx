@@ -59,8 +59,40 @@ export default function App({ settingsView: PreloadedSettingsView }: { settingsV
       {windowContent}
       <FrontendReadySignal label={label} />
       {label === "settings" && <SettingsStartupPoint />}
+      {label === "overlay" && <FirstCaptionSmoke />}
     </Suspense>
   );
+}
+
+function FirstCaptionSmoke() {
+  useEffect(() => {
+    if (!isTauri) return;
+    let active = true;
+    let frame = 0;
+    let observer: MutationObserver | undefined;
+    void appIsUiTest().then(isTest => {
+      if (!active || !isTest) return;
+      observer = new MutationObserver(() => {
+        const row = document.querySelector<HTMLElement>('[data-utterance-id]');
+        if (!row?.textContent?.includes("测试字幕") || !row.getBoundingClientRect().height) return;
+        observer?.disconnect();
+        void appUiTestFrontendReady(undefined, undefined, "draft-committed").catch(() => {});
+        frame = window.requestAnimationFrame(() => {
+          frame = window.requestAnimationFrame(() => {
+            void appUiTestFrontendReady(undefined, undefined, "draft-frame").catch(() => {});
+          });
+        });
+      });
+      observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+      void appUiTestFrontendReady(undefined, undefined, "draft-observer").catch(() => {});
+    }).catch(() => {});
+    return () => {
+      active = false;
+      observer?.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+  return null;
 }
 
 function SettingsStartupPoint() {
