@@ -105,6 +105,25 @@ function Assert-SettingsHidden {
     }
 }
 
+function Read-SmokeMarker([string]$Path) {
+    try {
+        # The application may still have the marker open for writing. Read
+        # access must share writes so the two handles can coexist on Windows.
+        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        try {
+            $reader = [IO.StreamReader]::new($stream)
+            try { return $reader.ReadToEnd().Trim() }
+            finally { $reader.Dispose() }
+        }
+        finally { $stream.Dispose() }
+    }
+    catch [IO.FileNotFoundException] { return '' }
+    catch [IO.IOException] {
+        if ($_.Exception.HResult -eq -2147024864) { return '' } # ERROR_SHARING_VIOLATION
+        throw
+    }
+}
+
 function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
@@ -115,9 +134,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
     $observedState = ''
     while ([DateTime]::UtcNow -lt $deadline) {
         Assert-SettingsHidden
-        if (Test-Path -LiteralPath $SessionStateFile -PathType Leaf) {
-            $observedState = [IO.File]::ReadAllText($SessionStateFile).Trim()
-        }
+        $observedState = Read-SmokeMarker $SessionStateFile
         if ($observedState -eq $State) {
             try {
                 $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
@@ -166,8 +183,7 @@ function Wait-SettingsOpened([string]$Action) {
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ([MimiPointerSmoke]::IsWindowVisible($settings) -and
-            (Test-Path -LiteralPath $SettingsActivationFile -PathType Leaf) -and
-            [IO.File]::ReadAllText($SettingsActivationFile).Trim() -eq 'focus-requested') {
+            (Read-SmokeMarker $SettingsActivationFile) -eq 'focus-requested') {
             return
         }
         Start-Sleep -Milliseconds 100
