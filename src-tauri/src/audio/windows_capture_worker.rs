@@ -6,9 +6,7 @@ use super::SystemAudioCaptureError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::oneshot;
-
-const POLL_INTERVAL: Duration = Duration::from_millis(5);
+use tokio::sync::{oneshot, Notify};
 
 /// Bound the caller's wait, not native ownership. A timed-out stop leaves the
 /// worker reserved, so the next start cannot overlap its unfinished destruction.
@@ -27,6 +25,7 @@ pub(crate) struct Worker<T> {
     pub(crate) data: T,
     cancelled: AtomicBool,
     finished: AtomicBool,
+    completion: Notify,
 }
 
 impl<T> Worker<T> {
@@ -40,6 +39,20 @@ impl<T> Worker<T> {
 
     pub(crate) fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    fn finish(&self) {
+        self.finished.store(true, Ordering::SeqCst);
+        self.completion.notify_waiters();
+    }
+
+    async fn wait_finished(&self) {
+        // Create the notification before reading the flag, so a finish
+        // between the check and the first poll wakes every registered waiter.
+        let completion = self.completion.notified();
+        if !self.finished() {
+            completion.await;
+        }
     }
 }
 
@@ -77,7 +90,7 @@ struct FinishWorkerOnDrop<T>(Arc<Worker<T>>);
 
 impl<T> Drop for FinishWorkerOnDrop<T> {
     fn drop(&mut self) {
-        self.0.finished.store(true, Ordering::SeqCst);
+        self.0.finish();
     }
 }
 
@@ -101,6 +114,7 @@ impl<T: Default + Send + Sync + 'static> WorkerSlot<T> {
             data: T::default(),
             cancelled: AtomicBool::new(false),
             finished: AtomicBool::new(false),
+            completion: Notify::new(),
         });
         *slot = Some(Arc::clone(&worker));
         Ok(worker)
@@ -130,7 +144,7 @@ impl<T: Default + Send + Sync + 'static> WorkerSlot<T> {
             })
             .is_err()
         {
-            worker.finished.store(true, Ordering::SeqCst);
+            worker.finish();
             return Err(SystemAudioCaptureError::NativeStartFailed);
         }
         ready_rx
@@ -148,9 +162,7 @@ impl<T: Default + Send + Sync + 'static> WorkerSlot<T> {
     pub(crate) async fn stop(&self) {
         if let Some(worker) = self.current() {
             worker.cancel();
-            while !worker.finished() {
-                tokio::time::sleep(POLL_INTERVAL).await;
-            }
+            worker.wait_finished().await;
         }
     }
 }
@@ -205,7 +217,7 @@ mod tests {
 
     fn run_until_cancelled<T>(worker: Arc<Worker<T>>) {
         while !worker.cancelled() {
-            std::thread::sleep(POLL_INTERVAL);
+            std::thread::sleep(Duration::from_millis(5));
         }
     }
 
@@ -213,6 +225,48 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(2), slot.stop())
             .await
             .expect("released native resources must finish");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn completion_wakes_all_stops_only_after_native_drop() {
+        let slot = WorkerSlot::<()>::default();
+        let release = Arc::new(Gate::default());
+        let _release_on_failure = ReleaseOnDrop(Arc::clone(&release));
+        let native_release = Arc::clone(&release);
+        let (entered_tx, entered_rx) = oneshot::channel();
+        slot.start(move |worker, ready| {
+            let _native = BlockingDrop {
+                entered: Some(entered_tx),
+                release: native_release,
+            };
+            let _ = ready.send(Ok(()));
+            run_until_cancelled(worker);
+        })
+        .await
+        .unwrap();
+
+        let mut first = Box::pin(slot.stop());
+        let mut second = Box::pin(slot.stop());
+        std::future::poll_fn(|cx| {
+            use std::future::Future;
+            assert!(first.as_mut().poll(cx).is_pending());
+            assert!(second.as_mut().poll(cx).is_pending());
+            std::task::Poll::Ready(())
+        })
+        .await;
+        tokio::time::timeout(Duration::from_secs(2), entered_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!slot.current().unwrap().finished());
+        release.release();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(first, second)
+        })
+        .await
+        .expect("both stops must observe native resource release");
+        assert!(slot.current().unwrap().finished());
+        await_stopped(&slot).await;
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -431,12 +485,9 @@ mod tests {
         assert!(last.cancelled());
         assert!(!last.finished());
         release.release();
-        tokio::time::timeout(Duration::from_secs(2), async {
-            while !last.finished() {
-                tokio::time::sleep(POLL_INTERVAL).await;
-            }
-        })
-        .await
-        .unwrap();
+        tokio::time::timeout(Duration::from_secs(2), last.wait_finished())
+            .await
+            .unwrap();
+        assert!(last.finished());
     }
 }

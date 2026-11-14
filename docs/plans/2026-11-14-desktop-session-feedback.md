@@ -36,6 +36,12 @@ ordered snapshot can reach the overlay while the old owner finishes. Keep
 the recovery wait before active-generation cleanup, and retain the same
 lifecycle guard and disabled Resume control until both are complete.
 
+On Windows, the capture worker signals completion only after its native
+stream has dropped. Have Pause and Stop await that signal directly, with
+the existing timeout at the caller and the same worker-slot ownership. A
+completion that races the wait must wake all callers, and cancelling a
+caller must leave the worker reserved until its native resources drop.
+
 ## Publish the first snapshot after idle
 
 When no batch publisher is active, its first poll reads and publishes the
