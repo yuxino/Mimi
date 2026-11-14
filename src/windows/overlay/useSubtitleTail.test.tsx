@@ -44,6 +44,33 @@ async function render(subtitles = initial, options: { streamingProvider?: boolea
 }
 function text(lane: "source" | "translation") { return host.querySelector(`[data-lane="${lane}"]`)!.textContent; }
 
+it.each([false, true])("shows the first unstamped draft in each lane immediately with streaming=%s", async streamingProvider => {
+  const empty: SubtitleSnapshot = {
+    source: { text: "", isFinal: false },
+    translation: { text: "", isFinal: false },
+    history: [],
+  };
+  await render(empty, { streamingProvider });
+  const firstSource = { ...empty, source: { text: "First draft", isFinal: false } };
+  await render(firstSource, { streamingProvider });
+  expect(text("source")).toBe("First draft");
+  expect(text("translation")).toBe("");
+
+  const firstPair = {
+    ...firstSource,
+    source: { ...firstSource.source, text: "Revised draft" },
+    translation: { text: "首段译文", isFinal: false },
+  };
+  await render(firstPair, { streamingProvider });
+  expect(text("source")).toBe("First draft");
+  expect(text("translation")).toBe("首段译文");
+
+  await render({ ...firstPair, translation: { text: "修订译文", isFinal: false } }, { streamingProvider });
+  expect(text("translation")).toBe("首段译文");
+  await act(async () => { await vi.advanceTimersByTimeAsync(streamingProvider ? 100 : 400); });
+  expect(text("translation")).toBe("修订译文");
+});
+
 it("reuses formatting across fresh snapshots and unrelated status/appearance renders", async () => {
   await render();
   expect(formatGeminiTranscriptForDisplay).toHaveBeenCalledTimes(2);

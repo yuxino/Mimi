@@ -54,3 +54,11 @@ At startup, compare the serialized preferences with the existing regular
 file before writing. An exact match already has the required contents.
 Missing, unreadable, or differing files go through the atomic writer.
 Explicit preference saves continue to use the normal write path.
+
+## Show the initial draft in an empty subtitle view
+
+An unstamped draft can arrive with the same stream key as the empty view.
+Allow the first text in each lane to render immediately when the lane has
+no confirmed subtitle. Keep the existing settle and maximum-wait timers for
+revisions. A temporary removal still clears the text without reopening the
+first-draft path for the same stream key.

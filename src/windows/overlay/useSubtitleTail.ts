@@ -25,14 +25,15 @@ export function useSubtitleTail(subtitles: SubtitleSnapshot, settings: SettingsS
   const streamIdentity = `${sourceIdentity}:${streamingProvider}`;
   const displaySource = useDisplayText(source?.text ?? "", streamingProvider);
   const displayTranslation = useDisplayText(translation?.text ?? "", streamingProvider);
+  const showFirstFromEmpty = subtitles.history.length === 0 && !subtitles.displayPairFinal;
   const sourceText = useStableText(displaySource, source === undefined || source.isFinal || source.isStable ? 0 : 180, 750,
-    `${streamIdentity}:${subtitleStreamKey(settings.subtitleDisplayMode, "source", source?.utteranceId, latestCommittedAt)}`);
+    `${streamIdentity}:${subtitleStreamKey(settings.subtitleDisplayMode, "source", source?.utteranceId, latestCommittedAt)}`, showFirstFromEmpty);
   // Continuous output transcription is already translated. Keep a short
   // coalescing window with a non-resetting maximum, independent of source
   // activity and the backend's durable confirmation heuristic.
   const translationText = useStableText(displayTranslation, translation === undefined || translation.isFinal || translation.isStable ? 0 : streamingProvider ? 100 : 400,
     streamingProvider ? 250 : 1_500,
-    `${streamIdentity}:${subtitleStreamKey(settings.subtitleDisplayMode, "translation", translation?.utteranceId, latestCommittedAt)}`);
+    `${streamIdentity}:${subtitleStreamKey(settings.subtitleDisplayMode, "translation", translation?.utteranceId, latestCommittedAt)}`, showFirstFromEmpty);
   const isStreaming = running && ((source !== undefined && !source.isFinal && !source.isStable) ||
     (translation !== undefined && !translation.isFinal && !translation.isStable));
   return useMemo(() => ({ source: sourceText || null, translation: translationText || null,

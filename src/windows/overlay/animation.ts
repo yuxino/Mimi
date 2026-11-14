@@ -52,7 +52,7 @@ export function useResolvedMotion(explicit: boolean | null): boolean {
 }
 
 /**
- * Stabilizes a streaming text value: the returned value only advances after
+ * Stabilizes revisions to streaming text. Revisions advance after
  * `settleMs` pass without a change, and even under a continuous stream it
  * advances at least every `maxWaitMs`. This turns per-character draft
  * churn into calm, chunked updates (the preview settles between speech
@@ -63,17 +63,18 @@ export function useStableText(
   settleMs = 400,
   maxWaitMs = 1500,
   streamKey = "",
+  showFirstFromEmpty = false,
 ): string {
-  const [stable, setStable] = useState({ text, streamKey });
+  const [stable, setStable] = useState({ text, streamKey, hasShownText: text !== "" });
   const latestRef = useRef({ text, streamKey });
   const maxTimerRef = useRef<{ id: number; streamKey: string } | null>(null);
 
-  // Seed an identity once, rather than returning every raw draft until its
-  // first timer settles. Immediate removals/finals also replace the cache:
-  // the next draft must not resurrect the text from before that boundary.
-  const immediate = text === "" || settleMs === 0;
-  if (streamKey !== stable.streamKey || (immediate && text !== stable.text)) {
-    setStable({ text, streamKey });
+  // The first visible text may arrive after the stream has rendered empty.
+  // Remember that it was shown even when the provider later clears the lane.
+  const newStream = streamKey !== stable.streamKey;
+  const immediate = newStream || (showFirstFromEmpty && !stable.hasShownText) || text === "" || settleMs === 0;
+  if (newStream || (immediate && text !== stable.text)) {
+    setStable({ text, streamKey, hasShownText: text !== "" || (!newStream && stable.hasShownText) });
   }
 
   // Keep the latest text available to the (non-resetting) force-sync timer.
@@ -104,7 +105,7 @@ export function useStableText(
         window.clearTimeout(maxTimerRef.current.id);
         maxTimerRef.current = null;
       }
-      setStable(latestRef.current);
+      setStable({ ...latestRef.current, hasShownText: true });
     }, settleMs);
 
     // Force-sync timer: started once when the value first goes stale and
@@ -115,7 +116,9 @@ export function useStableText(
       timer.id = window.setTimeout(() => {
         if (maxTimerRef.current !== timer) return;
         maxTimerRef.current = null;
-        if (latestRef.current.streamKey === streamKey) setStable(latestRef.current);
+        if (latestRef.current.streamKey === streamKey) {
+          setStable({ ...latestRef.current, hasShownText: true });
+        }
       }, maxWaitMs);
       maxTimerRef.current = timer;
     }
@@ -136,7 +139,5 @@ export function useStableText(
   // Removal, confirmation, and display-mode changes take effect during the
   // render itself. A previous source preview must not survive in the timer's
   // cached value when the next preview is a translation.
-  return immediate || streamKey !== stable.streamKey
-    ? text
-    : stable.text;
+  return immediate ? text : stable.text;
 }
