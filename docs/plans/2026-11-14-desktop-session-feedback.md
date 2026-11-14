@@ -30,6 +30,12 @@ pump when it owns recovery. Resume and replacement starts still wait for
 the same cleanup boundary. Explicit Stop keeps its ordered audio drain and
 provider finish so accepted final subtitles can reach history.
 
+If a recovery owner is already cleaning up when Pause is accepted, retire
+the active generation and detach recovery before publishing Paused. The
+ordered snapshot can reach the overlay while the old owner finishes. Keep
+the recovery wait before active-generation cleanup, and retain the same
+lifecycle guard and disabled Resume control until both are complete.
+
 ## Publish the first snapshot after idle
 
 When no batch publisher is active, its first poll reads and publishes the
