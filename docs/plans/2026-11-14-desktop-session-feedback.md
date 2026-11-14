@@ -29,3 +29,12 @@ existing cleanup owner waits for every branch and preserves the provider
 pump when it owns recovery. Resume and replacement starts still wait for
 the same cleanup boundary. Explicit Stop keeps its ordered audio drain and
 provider finish so accepted final subtitles can reach history.
+
+## Publish the first snapshot after idle
+
+When no batch publisher is active, its first poll reads and publishes the
+current snapshot. Requests that arrive while it publishes or during the
+following 60 ms interval share a trailing snapshot. One mutex protects the
+transition back to idle so a concurrent request either joins the current
+publisher or starts the next one. Snapshots still read current state and
+publish under the same gate as Clear and event application.

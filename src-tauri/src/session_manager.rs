@@ -1092,6 +1092,50 @@ async fn release_retired_sources<Capture, CaptureDone, Disconnect, DisconnectDon
     );
 }
 
+#[derive(Default)]
+struct StateBroadcasts(Mutex<StateBroadcastStatus>);
+
+#[derive(Default)]
+enum StateBroadcastStatus {
+    #[default]
+    Idle,
+    Publishing,
+    Pending,
+}
+
+impl StateBroadcasts {
+    /// An idle caller owns the publisher until its cooldown sees no changes.
+    fn request(&self) -> bool {
+        let mut state = self.0.lock().unwrap();
+        if matches!(*state, StateBroadcastStatus::Idle) {
+            *state = StateBroadcastStatus::Publishing;
+            return true;
+        }
+        *state = StateBroadcastStatus::Pending;
+        false
+    }
+
+    async fn drain<Publish, Published>(&self, publish: Publish)
+    where
+        Publish: Fn() -> Published,
+        Published: Future<Output = ()>,
+    {
+        // Requests queued before this task was polled are part of its first
+        // snapshot. Changes while it publishes stay pending for the next one.
+        *self.0.lock().unwrap() = StateBroadcastStatus::Publishing;
+        loop {
+            publish().await;
+            tokio::time::sleep(mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL).await;
+            let mut state = self.0.lock().unwrap();
+            if !matches!(*state, StateBroadcastStatus::Pending) {
+                *state = StateBroadcastStatus::Idle;
+                return;
+            }
+            *state = StateBroadcastStatus::Publishing;
+        }
+    }
+}
+
 /// A source owns every transport, capture, revision and timer it can mutate.
 /// Lifecycle generations are shared so either lane failing tears down both.
 #[derive(Clone)]
@@ -1165,12 +1209,7 @@ pub struct SessionManager {
     is_paused: Arc<AtomicBool>,
     is_recovering: Arc<AtomicBool>,
     is_overlay_collapsed: Arc<AtomicBool>,
-    /// Set whenever a session-state broadcast is requested; the single
-    /// scheduled publisher clears it after each publish and keeps looping
-    /// until no newer request has arrived.
-    publish_dirty: Arc<AtomicBool>,
-    /// Serializes publisher scheduling: exactly one task owns this lock.
-    publish_lock: Arc<TokioMutex<()>>,
+    state_broadcasts: Arc<StateBroadcasts>,
     health_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     health_task_id: Arc<AtomicU64>,
     recovery_task: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -1250,8 +1289,7 @@ impl SessionManager {
             is_paused: Arc::new(AtomicBool::new(false)),
             is_recovering: Arc::new(AtomicBool::new(false)),
             is_overlay_collapsed: Arc::new(AtomicBool::new(false)),
-            publish_dirty: Arc::new(AtomicBool::new(false)),
-            publish_lock: Arc::new(TokioMutex::new(())),
+            state_broadcasts: Arc::default(),
             health_task: Arc::new(Mutex::new(None)),
             health_task_id: Arc::new(AtomicU64::new(NO_GENERATION)),
             recovery_task: Arc::new(Mutex::new(None)),
@@ -5070,36 +5108,18 @@ impl SessionManager {
         self.publish_state_now().await;
     }
 
-    /// Coalesces streaming subtitle updates into trailing broadcasts. Every
-    /// broadcast includes the current bounded history, so publishing each
-    /// provider chunk would make all windows repeat the same work.
+    /// Publish the first state after an idle interval immediately, then batch
+    /// streaming updates so all windows can share one bounded snapshot.
     pub fn publish_state(self: &Arc<Self>) {
         self.observe_diagnostic_status();
-        self.publish_dirty.store(true, Ordering::SeqCst);
-        let Ok(guard) = Arc::clone(&self.publish_lock).try_lock_owned() else {
+        if !self.state_broadcasts.request() {
             return;
-        };
+        }
         let this = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
-            let guard = guard;
-            // The first caller's dirty bit is represented by this task itself;
-            // clear it before waiting so the first publish below is not
-            // followed by a duplicate one.
-            this.publish_dirty.store(false, Ordering::SeqCst);
-            loop {
-                tokio::time::sleep(mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL).await;
-                this.publish_state_now().await;
-                if !this.publish_dirty.swap(false, Ordering::SeqCst) {
-                    // Release the scheduling lock first, then check for a
-                    // caller that set the dirty bit while the lock was still
-                    // held (that caller could not schedule its own task).
-                    drop(guard);
-                    if this.publish_dirty.load(Ordering::SeqCst) {
-                        this.publish_state_now().await;
-                    }
-                    return;
-                }
-            }
+            this.state_broadcasts
+                .drain(|| this.publish_state_now())
+                .await;
         });
     }
 
@@ -7725,6 +7745,36 @@ mod lifecycle_tests {
             assert!(!toggle.load(Ordering::SeqCst));
             assert!(!start.load(Ordering::SeqCst));
         }
+    }
+
+    #[tokio::test]
+    async fn idle_state_broadcast_publishes_immediately_and_batches_pending_updates() {
+        let broadcasts = StateBroadcasts::default();
+        let published = std::cell::RefCell::new(Vec::new());
+        let latest = std::cell::Cell::new(1);
+        assert!(broadcasts.request());
+        latest.set(2);
+        assert!(!broadcasts.request());
+
+        let publisher = broadcasts.drain(|| {
+            published.borrow_mut().push(latest.get());
+            std::future::ready(())
+        });
+        tokio::pin!(publisher);
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(publisher.as_mut().poll(&mut context).is_pending());
+        assert_eq!(*published.borrow(), [2]);
+
+        latest.set(3);
+        assert!(!broadcasts.request());
+        latest.set(4);
+        assert!(!broadcasts.request());
+
+        tokio::time::timeout(Duration::from_secs(2), publisher)
+            .await
+            .unwrap();
+        assert_eq!(*published.borrow(), [2, 4]);
+        assert!(broadcasts.request());
     }
 
     #[tokio::test]
