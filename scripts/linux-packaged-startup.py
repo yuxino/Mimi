@@ -1,7 +1,8 @@
-"""Measure the first synthetic draft before and after overlay readiness."""
+"""Compare the first synthetic caption with the status animation on or off."""
 
 from contextlib import contextmanager
 import ctypes as c
+import json
 import os
 from pathlib import Path
 import struct
@@ -54,12 +55,12 @@ def x11_capture():
         x11.XCloseDisplay(display)
 
 
-def caption_bounds(path):
+def caption_commit(path):
     try:
         values = path.read_text().split()
     except FileNotFoundError:
         return None
-    return tuple(map(int, values)) if len(values) == 4 else None
+    return tuple(map(int, values)) if len(values) == 5 else None
 
 
 def caption_pixels(process, window_id, bounds, frame_marker, requested, bright_pixels):
@@ -128,13 +129,16 @@ def state(path):
         return "idle"
 
 
-def sample(executable, root, number, phase, bright_pixels):
-    work = root / f"sample-{number}-{phase}"
+def sample(executable, root, number, pulse_on, bright_pixels):
+    variant = "pulse-on" if pulse_on else "pulse-off"
+    work = root / f"sample-{number}-{variant}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
     with tempfile.TemporaryDirectory(prefix="mimi-ui-test-linux-startup-") as preferences:
-        Path(preferences, "preferences.json").write_text('{"ui_language":"en","subtitle_animation":false}\n')
+        Path(preferences, "preferences.json").write_text(json.dumps({
+            "ui_language": "en", "subtitle_animation": False, "pulse_animation": pulse_on,
+        }))
         ready = work / "frontend-ready"
         session = work / "session-state"
         phases = work / "phases"
@@ -171,19 +175,20 @@ def sample(executable, root, number, phase, bright_pixels):
                 def overlay_ready():
                     return (ready / "overlay").is_file() and window("^mimi Subtitles$") is not None
 
-                if phase == "ready":
-                    waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 if any((work / marker).exists() for marker in ("draft-issued", "draft-published", "draft-committed", "draft-frame")):
                     raise RuntimeError("A caption appeared before the fixture request")
 
+                overlay_marker_pending = not (ready / "overlay").is_file()
                 requested = time.monotonic()
                 (work / "draft-request").touch()
                 waiting_for(process, "injected caption", (work / "draft-issued").is_file)
                 issued_ms = (time.monotonic() - requested) * 1000
                 waiting_for(process, "caption in the native snapshot", (work / "draft-published").is_file)
                 published_ms = (time.monotonic() - requested) * 1000
-                bounds = waiting_for(process, "committed caption", lambda: caption_bounds(work / "draft-committed"))
+                *bounds, observed_pulse = waiting_for(process, "committed caption", lambda: caption_commit(work / "draft-committed"))
                 committed_ms = (time.monotonic() - requested) * 1000
+                if observed_pulse != int(pulse_on):
+                    raise RuntimeError(f"Caption window did not apply {variant} before the first draft")
                 overlay_id = waiting_for(process, "visible caption window", lambda: window("^mimi Subtitles$"))
                 pixel_ms, frame_ms, glyph_pixels, first_read_ms = caption_pixels(
                     process, overlay_id, bounds, work / "draft-frame", requested, bright_pixels,
@@ -195,10 +200,11 @@ def sample(executable, root, number, phase, bright_pixels):
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                print(f"MimiLinuxFirstCaption package={package} sample={number} phase={phase} window_ms={window_ms:.3f} "
+                print(f"MimiLinuxFirstCaption package={package} sample={number} variant={variant} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
                       f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
                       f"pixel_ms={pixel_ms:.3f} first_read_ms={first_read_ms:.3f} glyph_pixels={glyph_pixels} "
+                      f"overlay_marker_pending={int(overlay_marker_pending)} "
                       f"request_after_start_ms={(requested - activated) * 1000:.3f}", flush=True)
             except Exception:
                 print(log.read_text(errors="replace"), file=sys.stderr)
@@ -217,7 +223,6 @@ def sample(executable, root, number, phase, bright_pixels):
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     with x11_capture() as bright_pixels:
-        for number in range(1, 7):
-            phases = ("early", "ready")
-            for phase in phases if number % 2 else reversed(phases):
-                sample(executable, root, number, phase, bright_pixels)
+        for number in range(1, 9):
+            for pulse_on in ((True, False) if number % 2 else (False, True)):
+                sample(executable, root, number, pulse_on, bright_pixels)

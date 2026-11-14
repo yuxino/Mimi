@@ -88,7 +88,8 @@ function FirstCaptionSmoke() {
         const top = Math.floor(bounds.top * devicePixelRatio);
         const right = Math.ceil(bounds.right * devicePixelRatio);
         const bottom = Math.ceil(bounds.bottom * devicePixelRatio);
-        void appUiTestFrontendReady(undefined, undefined, "draft-committed", [left, top, right, bottom]).catch(() => {});
+        const pulse = document.body.classList.contains("pulse-off") ? 0 : 1;
+        void appUiTestFrontendReady(undefined, undefined, "draft-committed", [left, top, right, bottom, pulse]).catch(() => {});
         frame = window.requestAnimationFrame(() => {
           frame = window.requestAnimationFrame(() => {
             void appUiTestFrontendReady(undefined, undefined, "draft-frame").catch(() => {});

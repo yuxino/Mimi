@@ -1897,7 +1897,7 @@ pub fn app_ui_test_frontend_ready(
     switch_point: Option<[u32; 2]>,
     frontend_phases: Option<[f64; 10]>,
     draft_stage: Option<String>,
-    draft_bounds: Option<[i32; 4]>,
+    draft_bounds: Option<[i32; 5]>,
 ) -> Result<bool, String> {
     if let Some(stage) = draft_stage {
         if app_is_ui_test()
@@ -1909,8 +1909,8 @@ pub fn app_ui_test_frontend_ready(
         {
             if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
                 let marker = match (stage.as_str(), draft_bounds) {
-                    ("draft-committed", Some([left, top, right, bottom])) => {
-                        format!("{left} {top} {right} {bottom}\n")
+                    ("draft-committed", Some([left, top, right, bottom, pulse])) => {
+                        format!("{left} {top} {right} {bottom} {pulse}\n")
                     }
                     ("draft-committed", None) => return Ok(false),
                     _ => "ready".into(),
