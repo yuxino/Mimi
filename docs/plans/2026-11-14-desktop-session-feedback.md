@@ -42,6 +42,11 @@ the existing timeout at the caller and the same worker-slot ownership. A
 completion that races the wait must wake all callers, and cancelling a
 caller must leave the worker reserved until its native resources drop.
 
+Use the same worker ownership for capture from a selected Windows process.
+Its own native loop, activation timeout, target selection and COM release
+order stay in the process adapter. The shared worker notifies Pause or Stop
+after that adapter releases its resources, without polling for completion.
+
 ## Publish the first snapshot after idle
 
 When no batch publisher is active, its first poll reads and publishes the
