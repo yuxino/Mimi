@@ -1,7 +1,7 @@
 name: Windows startup baseline
 
 on:
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   actions: read

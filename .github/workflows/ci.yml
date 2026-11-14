@@ -26,6 +26,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_type != 'tag' }}
 
 jobs:
+  startup-baseline:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'test/windows-startup-baseline' }}
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/windows-startup-baseline.yml
+
   scope:
     runs-on: ubuntu-latest
     outputs:
