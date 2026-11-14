@@ -26,13 +26,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_type != 'tag' }}
 
 jobs:
-  startup-baseline:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'test/windows-startup-baseline' }}
-    permissions:
-      actions: read
-      contents: read
-    uses: ./.github/workflows/windows-startup-baseline.yml
-
   scope:
     runs-on: ubuntu-latest
     outputs:
@@ -410,6 +403,17 @@ jobs:
           $extracted = Join-Path $env:RUNNER_TEMP 'mimi-portable-smoke'
           Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
           ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
+
+      - name: Measure Windows startup phases
+        if: ${{ matrix.os == 'windows-2025' && github.ref_name == 'test/windows-startup-baseline' }}
+        shell: pwsh
+        env:
+          MIMI_STARTUP_EXPECT_PHASES: '1'
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'mimi-portable-smoke/mimi.exe'
+          Write-Output "Artifact SHA-256: $((Get-FileHash -LiteralPath $exe).Hash)"
+          & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $exe -Samples 8
+          if ($LASTEXITCODE -ne 0) { throw "Startup measurement exited with $LASTEXITCODE." }
 
       - name: Upload bundles
         if: runner.os != 'macOS'

@@ -61,8 +61,10 @@ try {
     for ($sample = 1; $sample -le $Samples; $sample++) {
         $readyDirectory = Join-Path $root "ready-$sample"
         $stateFile = Join-Path $root "state-$sample"
+        $phaseFile = Join-Path $root "phases-$sample"
         $startInfo.EnvironmentVariables['MIMI_UI_TEST_FRONTEND_READY_DIR'] = $readyDirectory
         $startInfo.EnvironmentVariables['MIMI_UI_TEST_SESSION_STATE_FILE'] = $stateFile
+        $startInfo.EnvironmentVariables['MIMI_UI_TEST_STARTUP_PHASE_FILE'] = $phaseFile
         $clock = [Diagnostics.Stopwatch]::StartNew()
         $process = [Diagnostics.Process]::Start($startInfo)
         try {
@@ -109,6 +111,11 @@ try {
             $overlayMs = $clock.Elapsed.TotalMilliseconds
             Write-Output ('MimiStartup sample={0} window_ms={1:F1} settings_ms={2:F1} listening_ms={3:F1} overlay_ms={4:F1}' -f
                 $sample, $windowMs, $settingsMs, $listeningMs, $overlayMs)
+            if ($env:MIMI_STARTUP_EXPECT_PHASES -eq '1') {
+                $phases = @(Get-Content -LiteralPath $phaseFile)
+                if ($phases.Count -ne 5) { throw 'Expected all five native startup phase markers.' }
+                Write-Output "MimiNativeStartup sample=$sample $($phases -join ' ')"
+            }
         }
         finally {
             try {
