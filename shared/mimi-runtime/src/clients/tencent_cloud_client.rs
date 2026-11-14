@@ -1087,8 +1087,24 @@ mod tests {
         client.disconnect().await;
     }
 
-    // Keep synthetic primer decoding off the thread timing production sends.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    /// Bound real socket work even while the Tokio pacing clock is frozen.
+    async fn while_draining_fixture<F: std::future::Future>(drain: F) -> F::Output {
+        let (finished, wait) = std::sync::mpsc::channel::<()>();
+        let watchdog = tokio::task::spawn_blocking(move || {
+            let _ = wait.recv_timeout(Duration::from_secs(2));
+        });
+        // An active blocking task also prevents Tokio from auto-advancing a
+        // frozen clock while the sockets are waiting for the OS.
+        tokio::select! {
+            result = drain => {
+                drop(finished);
+                result
+            }
+            _ = watchdog => panic!("timed out draining the blocked WebSocket fixture"),
+        }
+    }
+
+    #[tokio::test]
     async fn a_blocked_socket_write_does_not_leave_an_extra_catch_up_frame() {
         let test_started = tokio::time::Instant::now();
         let (resume_reads, reads_resumed) = tokio::sync::oneshot::channel();
@@ -1187,26 +1203,23 @@ mod tests {
                             "stalled_frame={frame_index} reader_resumed={:?}",
                             test_started.elapsed()
                         );
-                        resume_reads.take().unwrap().send(()).unwrap();
-                        tokio::time::timeout(Duration::from_secs(2), &mut send)
-                            .await
-                            .unwrap()
-                            .unwrap();
-                        let stalled_write_completed = tokio::time::Instant::now();
                         // Send completion only means the local socket accepted
-                        // the bytes. Wait for the peer to consume the primer
-                        // and the stalled frame before timing the next pair.
-                        let primer_decoded_at = tokio::time::timeout(
-                            Duration::from_secs(2),
-                            write_drained.take().unwrap(),
-                        )
-                        .await
-                        .unwrap()
-                        .unwrap();
+                        // the bytes. Freeze the clock while the peer consumes
+                        // the synthetic backlog so the acknowledgment cannot
+                        // spend part of the next real pacing interval.
+                        tokio::time::pause();
+                        resume_reads.take().unwrap().send(()).unwrap();
+                        let (stalled_write_completed, primer_decoded_at) = while_draining_fixture(async {
+                            (&mut send).await.unwrap();
+                            let completed = std::time::Instant::now();
+                            let decoded = write_drained.take().unwrap().await.unwrap();
+                            (completed, decoded)
+                        }).await;
                         assert!(
                             stalled_write_completed.elapsed() < Duration::from_millis(180),
-                            "waiting for the fixture to drain must not hide an extra catch-up frame"
+                            "the local fixture took too long to acknowledge the drain"
                         );
+                        tokio::time::resume();
                         eprintln!(
                             "primer_decoded={primer_decoded_at:?} stalled_frame_drained={:?}",
                             test_started.elapsed()

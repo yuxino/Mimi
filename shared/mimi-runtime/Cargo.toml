@@ -35,5 +35,8 @@ time = "0.3"
 
 tempfile = "3"
 
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+
 [profile.dev]
 debug = "line-tables-only"
