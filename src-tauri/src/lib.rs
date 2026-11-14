@@ -63,6 +63,10 @@ use tauri::{Listener, Manager, WindowEvent};
 
 /// Runs the mimi Tauri application.
 pub fn run() {
+    let startup_trace = (std::env::var("MIMI_UI_TEST").as_deref() == Ok("1"))
+        .then(|| std::env::var_os("MIMI_UI_TEST_STARTUP_PHASE_FILE"))
+        .flatten()
+        .map(|path| (path, std::time::Instant::now()));
     // Xlib threading must be initialized before GTK opens its display.
     #[cfg(target_os = "linux")]
     linux_startup::initialize_x11_threads().expect("Linux window-system initialization failed");
@@ -117,8 +121,31 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_nspanel::init());
 
+    let settings_startup_trace = startup_trace.clone();
     builder
+        .on_page_load(move |webview, payload| {
+            if webview.label() != "settings" {
+                return;
+            }
+            if let Some((path, start)) = &settings_startup_trace {
+                let phase = match payload.event() {
+                    tauri::webview::PageLoadEvent::Started => "page_started",
+                    tauri::webview::PageLoadEvent::Finished => "page_finished",
+                };
+                let _ = std::fs::write(
+                    std::path::Path::new(path).with_extension(phase),
+                    format!("{phase}_ms={:.3}\n", start.elapsed().as_secs_f64() * 1000.0),
+                );
+            }
+        })
         .setup(move |app| {
+            let mut startup_phases = Vec::new();
+            let mut mark_phase = |phase| {
+                if let Some((_, start)) = &startup_trace {
+                    startup_phases.push((phase, start.elapsed()));
+                }
+            };
+            mark_phase("setup_entry");
             tracing::info!("mimi starting");
 
             // Dev-build marker: the settings window is created from the
@@ -201,7 +228,9 @@ pub fn run() {
             app.manage(windows::OverlayControlState::default());
             app.manage(windows::OverlayControlHost::detect());
             app.manage(windows::OverlayPresentationState::default());
+            mark_phase("state_ready");
             windows::OverlayWindowManager::ensure_overlay(&app_handle, &overlay);
+            mark_phase("overlay_created");
             #[cfg(target_os = "macos")]
             windows::install_active_space_observer(&app_handle, &overlay, &settings);
             let preferences = settings.preferences();
@@ -210,6 +239,7 @@ pub fn run() {
                 preferences.overlay_locked || preferences.subtitle_blends_with_background,
             );
             windows::OverlayControlWindowManager::ensure(&app_handle);
+            mark_phase("overlay_controls_created");
             #[cfg(target_os = "windows")]
             app.manage(windows::install_windows_workspace_follower(&app_handle));
 
@@ -219,6 +249,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             mac_native_quit::install(&app_handle)?;
             setup_global_shortcuts(&app_handle, Arc::clone(&session))?;
+            mark_phase("tray_and_shortcuts_ready");
             #[cfg(target_os = "linux")]
             {
                 let args = std::env::args().collect::<Vec<_>>();
@@ -236,6 +267,15 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     let _ = session_for_probe.start().await;
                 });
+            }
+
+            if let Some((path, _)) = &startup_trace {
+                let mut report = String::new();
+                use std::fmt::Write as _;
+                for (phase, elapsed) in startup_phases {
+                    writeln!(report, "{phase}_ms={:.3}", elapsed.as_secs_f64() * 1000.0)?;
+                }
+                std::fs::write(path, report)?;
             }
 
             // Release queued cold launches only after setup returns to the

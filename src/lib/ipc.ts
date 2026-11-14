@@ -146,8 +146,8 @@ export function appIsUiTest(): Promise<boolean> {
   return invoke<boolean>("app_is_ui_test");
 }
 
-export function appUiTestFrontendReady(): Promise<void> {
-  return invoke("app_ui_test_frontend_ready");
+export function appUiTestFrontendReady(startupTimings?: number[]): Promise<void> {
+  return invoke("app_ui_test_frontend_ready", { startupTimings });
 }
 
 export function appIsPortable(): Promise<boolean> {

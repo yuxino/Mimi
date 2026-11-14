@@ -6,6 +6,7 @@ import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness
 import { selectSessionStatusKind, useStore } from "./lib/store";
 import { useDesktopShortcuts } from "./lib/useDesktopShortcuts";
 
+const settingsStartup = [performance.now(), 0, 0, 0, 0, 0];
 const OverlayWindow = lazy(() =>
   import("./windows/overlay/OverlayWindow").then((module) => ({
     default: module.OverlayWindow,
@@ -16,11 +17,13 @@ const OverlayControlWindow = lazy(() =>
     default: module.OverlayControlWindow,
   })),
 );
-const SettingsView = lazy(() =>
-  import("./windows/settings/SettingsView").then((module) => ({
-    default: module.SettingsView,
-  })),
-);
+const SettingsView = lazy(() => {
+  settingsStartup[2] = performance.now();
+  return import("./windows/settings/SettingsView").then((module) => {
+    settingsStartup[3] = performance.now();
+    return { default: module.SettingsView };
+  });
+});
 type WindowLabel = "overlay" | "overlay-control" | "settings";
 
 /**
@@ -41,8 +44,13 @@ export default function App() {
   }, [uiLanguage]);
 
   useEffect(() => {
-    void init();
-  }, [init]);
+    if (label === "settings" && settingsStartup[1] === 0) {
+      settingsStartup[1] = performance.now();
+      void init().then(() => { settingsStartup[4] = performance.now(); });
+    } else {
+      void init();
+    }
+  }, [init, label]);
 
   useEffect(() => {
     document.body.classList.toggle("settings-body", label === "settings");
@@ -65,7 +73,14 @@ export default function App() {
 function FrontendReadySignal({ label }: { label: WindowLabel }) {
   const { commands: desktopShortcuts } = useDesktopShortcuts();
   const status = useStore(selectSessionStatusKind);
+  const settingsInitialized = useStore((state) => state.initialized);
   const reported = useRef(false);
+
+  useLayoutEffect(() => {
+    if (label === "settings" && settingsInitialized && settingsStartup[5] === 0) {
+      settingsStartup[5] = performance.now();
+    }
+  }, [label, settingsInitialized]);
 
   useEffect(() => {
     if (
@@ -90,7 +105,7 @@ function FrontendReadySignal({ label }: { label: WindowLabel }) {
         const diagnostics = label === "settings"
           ? verifyUiTestConnectionReadiness(useStore.getState().settings.activeProfileId)
           : Promise.resolve();
-        void diagnostics.then(() => appUiTestFrontendReady())
+        void diagnostics.then(() => appUiTestFrontendReady(label === "settings" ? settingsStartup : undefined))
           .then(() => {
             reported.current = true;
           })

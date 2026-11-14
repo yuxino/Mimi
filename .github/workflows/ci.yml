@@ -404,6 +404,17 @@ jobs:
           Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
           ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
 
+      - name: Measure Windows startup phases
+        if: ${{ matrix.os == 'windows-2025' && github.ref_name == 'test/windows-settings-startup-phases' }}
+        shell: pwsh
+        env:
+          MIMI_STARTUP_EXPECT_PHASES: '1'
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'mimi-portable-smoke/mimi.exe'
+          Write-Output "Artifact SHA-256: $((Get-FileHash -LiteralPath $exe).Hash)"
+          & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $exe -Samples 8
+          if ($LASTEXITCODE -ne 0) { throw "Startup measurement exited with $LASTEXITCODE." }
+
       - name: Upload bundles
         if: runner.os != 'macOS'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
