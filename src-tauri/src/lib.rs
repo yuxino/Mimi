@@ -61,6 +61,33 @@ use tauri::menu::{
 use tauri::tray::TrayIconBuilder;
 use tauri::{Listener, Manager, WindowEvent};
 
+fn create_subtitle_windows(
+    app: &tauri::AppHandle,
+    #[cfg(target_os = "windows")] settings_webview: Option<&tauri::webview::PlatformWebview>,
+) -> (std::time::Instant, std::time::Instant) {
+    let state = app.state::<AppState>();
+    windows::OverlayWindowManager::ensure_overlay(
+        app,
+        &state.overlay,
+        #[cfg(target_os = "windows")]
+        settings_webview,
+    );
+    let overlay_created = std::time::Instant::now();
+    #[cfg(target_os = "macos")]
+    windows::install_active_space_observer(app, &state.overlay, &state.settings);
+    let preferences = state.settings.preferences();
+    windows::OverlayWindowManager::update_locked(
+        app,
+        preferences.overlay_locked || preferences.subtitle_blends_with_background,
+    );
+    windows::OverlayControlWindowManager::ensure(
+        app,
+        #[cfg(target_os = "windows")]
+        settings_webview,
+    );
+    (overlay_created, std::time::Instant::now())
+}
+
 /// Runs the mimi Tauri application.
 pub fn run() {
     let startup_trace = (std::env::var("MIMI_UI_TEST").as_deref() == Ok("1"))
@@ -213,17 +240,26 @@ pub fn run() {
             app.manage(windows::OverlayControlHost::detect());
             app.manage(windows::OverlayPresentationState::default());
             mark_phase("state_ready");
-            windows::OverlayWindowManager::ensure_overlay(&app_handle, &overlay);
-            mark_phase("overlay_created");
-            #[cfg(target_os = "macos")]
-            windows::install_active_space_observer(&app_handle, &overlay, &settings);
-            let preferences = settings.preferences();
-            windows::OverlayWindowManager::update_locked(
-                &app_handle,
-                preferences.overlay_locked || preferences.subtitle_blends_with_background,
-            );
-            windows::OverlayControlWindowManager::ensure(&app_handle);
-            mark_phase("overlay_controls_created");
+            #[cfg(target_os = "windows")]
+            let (overlay_created, controls_created) = if startup_trace.is_some()
+                && std::env::var("MIMI_UI_TEST_REUSE_WEBVIEW_ENVIRONMENT").as_deref() == Ok("1")
+            {
+                let settings_window = app
+                    .get_webview_window("settings")
+                    .ok_or("missing Settings WebView for startup experiment")?;
+                let app = app_handle.clone();
+                let (send, receive) = std::sync::mpsc::channel();
+                // Setup runs on the native main thread, so Wry dispatches
+                // this callback inline. Keep the environment on that thread.
+                settings_window.with_webview(move |webview| {
+                    let _ = send.send(create_subtitle_windows(&app, Some(&webview)));
+                })?;
+                receive.try_recv()?
+            } else {
+                create_subtitle_windows(&app_handle, None)
+            };
+            #[cfg(not(target_os = "windows"))]
+            let (overlay_created, controls_created) = create_subtitle_windows(&app_handle);
             #[cfg(target_os = "windows")]
             app.manage(windows::install_windows_workspace_follower(&app_handle));
 
@@ -233,7 +269,14 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             mac_native_quit::install(&app_handle)?;
             setup_global_shortcuts(&app_handle, Arc::clone(&session))?;
-            mark_phase("tray_and_shortcuts_ready");
+            if let Some((_, start)) = &startup_trace {
+                startup_phases.push(("overlay_created", overlay_created.duration_since(*start)));
+                startup_phases.push((
+                    "overlay_controls_created",
+                    controls_created.duration_since(*start),
+                ));
+                startup_phases.push(("tray_and_shortcuts_ready", start.elapsed()));
+            }
             #[cfg(target_os = "linux")]
             {
                 let args = std::env::args().collect::<Vec<_>>();

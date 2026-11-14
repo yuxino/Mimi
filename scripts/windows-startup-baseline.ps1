@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$ExecutablePath,
-    [ValidateRange(1, 15)][int]$Samples = 5
+    [ValidateRange(1, 32)][int]$Samples = 5,
+    [switch]$CompareEnvironment
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,8 +58,13 @@ try {
     $startInfo.EnvironmentVariables.Remove('MIMI_AUTO_START')
     $startInfo.EnvironmentVariables.Remove('MIMI_UI_TEST_STARTUP_GATE_DELAY_MS')
     $startInfo.EnvironmentVariables.Remove('MIMI_UI_TEST_STARTUP_GATE_READY_FILE')
+    $startInfo.EnvironmentVariables.Remove('MIMI_UI_TEST_REUSE_WEBVIEW_ENVIRONMENT')
 
     for ($sample = 1; $sample -le $Samples; $sample++) {
+        # Counterbalance which variant goes first in successive adjacent pairs.
+        $reuse = $CompareEnvironment -and ($sample % 4 -in @(2, 3))
+        $variant = if ($reuse) { 'shared' } else { 'separate' }
+        $startInfo.EnvironmentVariables['MIMI_UI_TEST_REUSE_WEBVIEW_ENVIRONMENT'] = if ($reuse) { '1' } else { '0' }
         $readyDirectory = Join-Path $root "ready-$sample"
         $stateFile = Join-Path $root "state-$sample"
         $phaseFile = Join-Path $root "phases-$sample"
@@ -109,12 +115,12 @@ try {
                     ($null -ne (Find-MimiWindow $process.Id 'Mimi Subtitles'))
             } | Out-Null
             $overlayMs = $clock.Elapsed.TotalMilliseconds
-            Write-Output ('MimiStartup sample={0} window_ms={1:F1} settings_ms={2:F1} listening_ms={3:F1} overlay_ms={4:F1}' -f
-                $sample, $windowMs, $settingsMs, $listeningMs, $overlayMs)
+            Write-Output ('MimiStartup sample={0} variant={1} window_ms={2:F1} settings_ms={3:F1} listening_ms={4:F1} overlay_ms={5:F1}' -f
+                $sample, $variant, $windowMs, $settingsMs, $listeningMs, $overlayMs)
             if ($env:MIMI_STARTUP_EXPECT_PHASES -eq '1') {
                 $phases = @(Get-Content -LiteralPath $phaseFile)
                 if ($phases.Count -ne 5) { throw 'Expected all five native startup phase markers.' }
-                Write-Output "MimiNativeStartup sample=$sample $($phases -join ' ')"
+                Write-Output "MimiNativeStartup sample=$sample variant=$variant $($phases -join ' ')"
             }
         }
         finally {

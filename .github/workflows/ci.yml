@@ -412,7 +412,7 @@ jobs:
         run: |
           $exe = Join-Path $env:RUNNER_TEMP 'mimi-portable-smoke/mimi.exe'
           Write-Output "Artifact SHA-256: $((Get-FileHash -LiteralPath $exe).Hash)"
-          & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $exe -Samples 8
+          & powershell.exe -NoProfile -NonInteractive -Mta -File ./scripts/windows-startup-baseline.ps1 -ExecutablePath $exe -Samples 16 -CompareEnvironment
           if ($LASTEXITCODE -ne 0) { throw "Startup measurement exited with $LASTEXITCODE." }
 
       - name: Upload bundles

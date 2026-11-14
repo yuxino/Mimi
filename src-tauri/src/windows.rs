@@ -665,7 +665,11 @@ impl OverlayWindowManager {
         }
     }
 
-    pub fn ensure_overlay(app: &AppHandle, state: &Arc<std::sync::Mutex<OverlayState>>) {
+    pub fn ensure_overlay(
+        app: &AppHandle,
+        state: &Arc<std::sync::Mutex<OverlayState>>,
+        #[cfg(target_os = "windows")] settings_webview: Option<&tauri::webview::PlatformWebview>,
+    ) {
         if app.get_webview_window("overlay").is_some() {
             return;
         }
@@ -700,6 +704,11 @@ impl OverlayWindowManager {
             .visible_on_all_workspaces(true);
         #[cfg(target_os = "windows")]
         let builder = builder.focusable(false).focused(false);
+        #[cfg(target_os = "windows")]
+        let builder = match settings_webview {
+            Some(webview) => builder.with_environment(webview.environment()),
+            None => builder,
+        };
         // A nonactivating panel's first deliberate click must also reach its
         // WebView control, rather than merely focusing the native window.
         #[cfg(target_os = "macos")]
@@ -2609,7 +2618,10 @@ impl OverlayControlWindowManager {
     const ANCHOR_OFFSET_Y: f64 = 16.0;
     const WORK_AREA_MARGIN: f64 = 8.0;
 
-    pub fn ensure(app: &AppHandle) {
+    pub fn ensure(
+        app: &AppHandle,
+        #[cfg(target_os = "windows")] settings_webview: Option<&tauri::webview::PlatformWebview>,
+    ) {
         if Self::is_embedded(app) {
             return;
         }
@@ -2636,6 +2648,11 @@ impl OverlayControlWindowManager {
         let builder = builder.visible_on_all_workspaces(true);
         #[cfg(target_os = "windows")]
         let builder = builder.focusable(false);
+        #[cfg(target_os = "windows")]
+        let builder = match settings_webview {
+            Some(webview) => builder.with_environment(webview.environment()),
+            None => builder,
+        };
         #[cfg(target_os = "macos")]
         let builder = builder.accept_first_mouse(true);
         let builder = match builder.parent(&overlay) {
