@@ -14,11 +14,12 @@ declare const __dirname: string;
 const host = process.env.TAURI_DEV_HOST;
 const tauriPlatform = process.env.TAURI_ENV_PLATFORM;
 const buildPlatform = tauriPlatform ?? process.platform;
+const windowsBuild = buildPlatform === "windows" || buildPlatform === "win32";
 
 // Match the JavaScript output to the native runtime baselines. macOS 13 ships
 // Safari 16; current Tauri Windows builds require WebView2/Chromium 105.
 const buildTarget =
-  buildPlatform === "windows" || buildPlatform === "win32"
+  windowsBuild
     ? "chrome105"
     : buildPlatform === "darwin"
       ? "safari16"
@@ -35,7 +36,10 @@ export default defineConfig(({ command, mode }) => {
     envDir: false,
     css: { postcss: normalizePath(__dirname) },
     optimizeDeps: { entries: ["index.html"] },
-    define: { __MIMI_DEVELOPMENT_BUILD__: JSON.stringify(developmentBuild) },
+    define: {
+      __MIMI_DEVELOPMENT_BUILD__: JSON.stringify(developmentBuild),
+      __MIMI_WINDOWS_BUILD__: JSON.stringify(windowsBuild),
+    },
     resolve: {
       alias: developmentBuild ? [] : [
         { find: /^(?:.*\/)?DevelopmentDebugger(?:\.tsx)?$/, replacement: productionAdapter },

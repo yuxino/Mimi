@@ -1,7 +1,9 @@
-import React from "react";
+import { StrictMode, type ComponentType } from "react";
 import ReactDOM from "react-dom/client";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import { effectiveUiLanguage } from "./lib/i18n";
+import { isTauri } from "./lib/ipc";
 import "./index.css";
 import "./linux.css";
 
@@ -14,8 +16,21 @@ if (/\bLinux\b/i.test(userAgent) && !/\b(Android|CrOS)\b/i.test(userAgent)) {
 const uiLanguage = effectiveUiLanguage();
 document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : uiLanguage;
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+function mount(settingsView?: ComponentType) {
+  ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    <StrictMode>
+      <App settingsView={settingsView} />
+    </StrictMode>
+  );
+}
+
+if (__MIMI_WINDOWS_BUILD__ && isTauri && getCurrentWindow().label === "settings") {
+  // Load the existing Settings chunk before the first render to avoid the
+  // initial Suspense fallback and its delayed retry on Windows WebView2.
+  void import("./windows/settings/SettingsView").then(
+    ({ SettingsView }) => mount(SettingsView),
+    () => mount(),
+  );
+} else {
+  mount();
+}

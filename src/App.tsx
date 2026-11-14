@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "./lib/i18n";
 import { appUiTestFrontendReady, isTauri } from "./lib/ipc";
 import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness";
@@ -31,7 +31,7 @@ type WindowLabel = "overlay" | "overlay-control" | "settings";
  * Tauri a `?window=` query parameter selects the preview (defaults to
  * "settings").
  */
-export default function App() {
+export default function App({ settingsView: PreloadedSettingsView }: { settingsView?: ComponentType }) {
   const uiLanguage = useSyncExternalStore(subscribeUiLanguage, effectiveUiLanguage);
   const [label] = useState<WindowLabel>(resolveInitialLabel);
   const init = useStore((state) => state.init);
@@ -51,7 +51,7 @@ export default function App() {
   let windowContent;
   if (label === "overlay") windowContent = <OverlayWindow />;
   else if (label === "overlay-control") windowContent = <OverlayControlWindow />;
-  else windowContent = <SettingsView />;
+  else windowContent = PreloadedSettingsView ? <PreloadedSettingsView /> : <SettingsView />;
 
   return (
     <Suspense fallback={null}>
