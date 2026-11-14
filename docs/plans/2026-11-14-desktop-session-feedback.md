@@ -46,3 +46,11 @@ button. Retire that button when the session changes to an error.
 The existing error message offers the named configuration action, or the
 open control panel offers it when it owns the recovery actions. Transient
 errors can still offer a separate Retry button.
+
+## Avoid rewriting identical preferences on Start
+
+Normalize and validate preferences under the existing transaction lock.
+At startup, compare the serialized preferences with the existing regular
+file before writing. An exact match already has the required contents.
+Missing, unreadable, or differing files go through the atomic writer.
+Explicit preference saves continue to use the normal write path.

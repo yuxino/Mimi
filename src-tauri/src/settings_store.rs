@@ -30,7 +30,7 @@ use std::collections::{HashMap, HashSet};
 #[cfg(unix)]
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -778,6 +778,12 @@ impl ProfileCatalog {
 
 type SecretCacheKey = (String, String);
 
+#[derive(Clone, Copy)]
+enum PreferenceWrite {
+    Always,
+    IfDifferent,
+}
+
 pub struct SettingsStore {
     prefs_path: PathBuf,
     prefs: Mutex<Preferences>,
@@ -1160,13 +1166,14 @@ impl SettingsStore {
     /// transaction. A failed write leaves the published in-memory snapshot
     /// unchanged, so callers never report settings that will vanish on restart.
     pub fn save_preferences(&self, update: impl FnOnce(&mut Preferences)) -> Result<(), String> {
-        self.save_preferences_validated(update, |_, _| Ok(()))
+        self.save_preferences_validated(update, |_, _| Ok(()), PreferenceWrite::Always)
     }
 
     fn save_preferences_validated(
         &self,
         update: impl FnOnce(&mut Preferences),
         validate: impl FnOnce(&Preferences, &mut Preferences) -> Result<(), String>,
+        write: PreferenceWrite,
     ) -> Result<(), String> {
         let mut current = self.prefs.lock().unwrap();
         let mut next = current.clone();
@@ -1181,7 +1188,7 @@ impl SettingsStore {
             .network_proxy
             .validate()
             .map_err(|error| error.to_string())?;
-        self.persist_preferences_value(&next)?;
+        self.write_preferences_value(&next, write)?;
         *current = next;
         Ok(())
     }
@@ -1207,7 +1214,7 @@ impl SettingsStore {
             }
             normalize_preferences_value(next, profile);
             Ok(())
-        })
+        }, PreferenceWrite::Always)
     }
 
     pub fn profile_catalog(&self) -> Result<(String, Vec<ServiceProfile>), String> {
@@ -3674,10 +3681,22 @@ impl SettingsStore {
     /// Applies listening-time constraints without changing profile metadata.
     pub fn prepare_for_listening(&self) -> Result<(), String> {
         let profile = self.active_profile()?;
-        self.save_preferences(|prefs| normalize_preferences_value(prefs, &profile))
+        self.save_preferences_validated(
+            |prefs| normalize_preferences_value(prefs, &profile),
+            |_, _| Ok(()),
+            PreferenceWrite::IfDifferent,
+        )
     }
 
     fn persist_preferences_value(&self, prefs: &Preferences) -> Result<(), String> {
+        self.write_preferences_value(prefs, PreferenceWrite::Always)
+    }
+
+    fn write_preferences_value(
+        &self,
+        prefs: &Preferences,
+        write: PreferenceWrite,
+    ) -> Result<(), String> {
         #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
         if self.secret.is_read_only() {
             return Err(PREFERENCES_UNAVAILABLE.to_string());
@@ -3689,6 +3708,11 @@ impl SettingsStore {
         }
         let bytes =
             serde_json::to_vec_pretty(prefs).map_err(|_| PREFERENCES_UNAVAILABLE.to_string())?;
+        if matches!(write, PreferenceWrite::IfDifferent)
+            && file_matches_bytes(&self.prefs_path, &bytes)
+        {
+            return Ok(());
+        }
         atomic_write(&self.prefs_path, &bytes).map_err(|_| PREFERENCES_UNAVAILABLE.to_string())
     }
 
@@ -3986,6 +4010,23 @@ fn normalize_preferences_value(prefs: &mut Preferences, profile: &ServiceProfile
 
 fn cache_key(service: &str, account: &str) -> SecretCacheKey {
     (service.to_string(), account.to_string())
+}
+
+fn file_matches_bytes(path: &Path, expected: &[u8]) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() || metadata.len() != expected.len() as u64 {
+        return false;
+    }
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut contents = Vec::with_capacity(expected.len() + 1);
+    file.take(expected.len() as u64 + 1)
+        .read_to_end(&mut contents)
+        .is_ok()
+        && contents == expected
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -12272,6 +12313,54 @@ mod tests {
             .ends_with(".tmp")));
 
         let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn startup_preserves_the_existing_identical_preferences_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let store =
+            SettingsStore::at_path(directory.path().into(), Box::<FakeSecretStore>::default());
+        store.prepare_for_listening().unwrap();
+        OpenOptions::new()
+            .write(true)
+            .open(&store.prefs_path)
+            .unwrap()
+            .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000))
+            .unwrap();
+        let before = std::fs::metadata(&store.prefs_path)
+            .unwrap()
+            .modified()
+            .unwrap();
+
+        store.prepare_for_listening().unwrap();
+
+        let after = std::fs::metadata(&store.prefs_path)
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(before, after, "startup rewrote identical preferences");
+    }
+
+    #[test]
+    fn startup_recovers_missing_or_damaged_preferences_and_surfaces_failed_writes() {
+        let directory = tempfile::tempdir().unwrap();
+        let store =
+            SettingsStore::at_path(directory.path().into(), Box::<FakeSecretStore>::default());
+        for contents in [None, Some(b"{ broken".as_slice())] {
+            if let Some(bytes) = contents {
+                std::fs::write(&store.prefs_path, bytes).unwrap();
+            }
+            store.prepare_for_listening().unwrap();
+            let persisted: Preferences =
+                serde_json::from_slice(&std::fs::read(&store.prefs_path).unwrap()).unwrap();
+            assert_eq!(persisted, store.preferences());
+        }
+        std::fs::remove_file(&store.prefs_path).unwrap();
+        std::fs::create_dir(&store.prefs_path).unwrap();
+        assert_eq!(
+            store.prepare_for_listening().unwrap_err(),
+            PREFERENCES_UNAVAILABLE
+        );
     }
 
     #[test]
