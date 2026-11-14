@@ -5170,6 +5170,7 @@ impl SessionManager {
         let state = match &event.status {
             StatusPayload::Idle => "idle",
             StatusPayload::Connecting => "connecting",
+            StatusPayload::Listening if event.is_paused => "paused",
             StatusPayload::Listening => "listening",
             StatusPayload::Stopping => "stopping",
             StatusPayload::Error { .. } => "error",

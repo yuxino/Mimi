@@ -231,7 +231,7 @@ jobs:
       - name: Smoke launch ARM64 UI-test app
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         shell: pwsh
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64
+        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -CheckOverlayPointer
 
   msrv:
     needs: scope
@@ -383,7 +383,7 @@ jobs:
       - name: Smoke launch x64 UI-test app
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64
+        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -CheckOverlayPointer
 
       - name: Package and verify portable Windows build
         if: ${{ matrix.os == 'windows-2025' }}

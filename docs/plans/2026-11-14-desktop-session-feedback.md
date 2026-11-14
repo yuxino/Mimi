@@ -62,3 +62,13 @@ Allow the first text in each lane to render immediately when the lane has
 no confirmed subtitle. Keep the existing settle and maximum-wait timers for
 revisions. A temporary removal still clears the text without reopening the
 first-draft path for the same stream key.
+
+## Check the Windows pointer path
+
+In the manual Windows package check, close Settings before interacting with
+the standard overlay. Find its enabled controls in the native accessibility
+tree, check that their screen points hit the overlay, and send a Windows mouse
+click. Pause and Resume must alternate while Settings stays hidden; the gear
+must then open the original Settings window. Use the existing synthetic
+session and temporary English preferences. This verifies the native pointer
+path without opening a provider connection or starting audio capture.

@@ -6,6 +6,8 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string]$ExpectedArchitecture,
 
+    [switch]$CheckOverlayPointer,
+
     [ValidateRange(1, 30)]
     [int]$StartupSeconds = 5,
 
@@ -467,11 +469,13 @@ $previousSessionStateFile = $env:MIMI_UI_TEST_SESSION_STATE_FILE
 $previousTrayVisibleFile = $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE
 $previousSettingsActivationFile = $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE
 $previousFrontendReadyDir = $env:MIMI_UI_TEST_FRONTEND_READY_DIR
+$previousPreferencesDir = $env:MIMI_UI_TEST_PREFERENCES_DIR
 $startupGateReadyFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-startup-$([Guid]::NewGuid().ToString('N')).ready"
 $sessionStateFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-session-$([Guid]::NewGuid().ToString('N')).state"
 $trayVisibleFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-tray-$([Guid]::NewGuid().ToString('N')).ready"
 $settingsActivationFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-settings-activation-$([Guid]::NewGuid().ToString('N')).state"
 $frontendReadyDir = Join-Path ([IO.Path]::GetTempPath()) "mimi-frontend-$([Guid]::NewGuid().ToString('N'))"
+$preferencesDir = $null
 $process = $null
 $spoofedProcess = $null
 $spoofedPluginMutex = [IntPtr]::Zero
@@ -487,6 +491,12 @@ try {
     $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE = $trayVisibleFile
     $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $settingsActivationFile
     $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $frontendReadyDir
+    if ($CheckOverlayPointer) {
+        $preferencesDir = Join-Path ([IO.Path]::GetTempPath()) "mimi-ui-test-$([Guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $preferencesDir | Out-Null
+        Set-Content -LiteralPath (Join-Path $preferencesDir 'preferences.json') -Value '{"ui_language":"en"}' -Encoding ascii
+        $env:MIMI_UI_TEST_PREFERENCES_DIR = $preferencesDir
+    }
 
     if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
         throw 'A matching mimi process was already running before the smoke test.'
@@ -782,6 +792,37 @@ try {
         throw 'Restoring tray-hidden Settings did not preserve the active subtitle session.'
     }
 
+    if ($CheckOverlayPointer) {
+        $overlayWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$process.Id, 'Mimi Subtitles')
+        if ($overlayWindow -eq [IntPtr]::Zero -or -not [MimiWindowSmoke]::IsWindowVisible($overlayWindow)) {
+            throw 'The primary did not expose its visible subtitle overlay for the pointer check.'
+        }
+        Remove-Item -LiteralPath $settingsActivationFile -Force
+        # Windows PowerShell ships with the desktop UI Automation assemblies.
+        # A stalled accessibility provider must not block package verification.
+        $pointerProbe = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
+        $pointerProbe.UseShellExecute = $false
+        foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-pointer-smoke.ps1",
+            '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
+            '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile)) {
+            $pointerProbe.ArgumentList.Add([string]$argument)
+        }
+        $probeProcess = [Diagnostics.Process]::Start($pointerProbe)
+        try {
+            if (-not $probeProcess.WaitForExit(95000)) {
+                $probeProcess.Kill()
+                $probeProcess.WaitForExit(5000) | Out-Null
+                throw 'The Windows overlay pointer check did not finish.'
+            }
+            if ($probeProcess.ExitCode -ne 0) {
+                throw "The Windows overlay pointer check exited with code $($probeProcess.ExitCode)."
+            }
+        }
+        finally {
+            $probeProcess.Dispose()
+        }
+    }
+
     $matchingProcesses = @(Get-MatchingMimiProcesses $resolvedExecutable)
     if ($matchingProcesses.Count -ne 1 -or $matchingProcesses[0].Id -ne $process.Id) {
         throw "Expected the original mimi process $($process.Id) to be the only matching instance."
@@ -888,6 +929,9 @@ finally {
         Remove-Item -LiteralPath $trayVisibleFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $settingsActivationFile -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $frontendReadyDir -Recurse -Force -ErrorAction SilentlyContinue
+        if ($null -ne $preferencesDir) {
+            Remove-Item -LiteralPath $preferencesDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
         $env:MIMI_UI_TEST = $previousUiTest
         $env:MIMI_UI_TEST_STANDARD_OVERLAY = $previousStandardOverlay
         $env:MIMI_AUTO_START = $previousAutoStart
@@ -897,5 +941,6 @@ finally {
         $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE = $previousTrayVisibleFile
         $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $previousSettingsActivationFile
         $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $previousFrontendReadyDir
+        $env:MIMI_UI_TEST_PREFERENCES_DIR = $previousPreferencesDir
     }
 }
