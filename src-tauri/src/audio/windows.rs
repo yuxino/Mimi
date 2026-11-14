@@ -1248,6 +1248,7 @@ mod tests {
             .play()
             .expect("the in-memory native test tone must start");
         capture.set_source(output_device.id().unwrap().to_string());
+        let capture_requested = Instant::now();
         capture
             .start(
                 ingress,
@@ -1256,6 +1257,7 @@ mod tests {
             )
             .await
             .expect("default output must open as a loopback input stream");
+        let capture_ready = capture_requested.elapsed();
         assert_capture_failure_channel_empty(&mut failure_rx);
 
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1279,9 +1281,17 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
         assert_capture_failure_channel_empty(&mut failure_rx);
+        let tone_observed = capture_requested.elapsed();
 
         drop(tone_stream);
+        let stop_requested = Instant::now();
         capture.stop().await;
+        eprintln!(
+            "WASAPI probe ready_ms={} tone_observed_ms={} stop_ms={}",
+            capture_ready.as_millis(),
+            tone_observed.as_millis(),
+            stop_requested.elapsed().as_millis()
+        );
         pipeline.stop();
     }
 }

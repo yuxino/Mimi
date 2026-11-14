@@ -125,6 +125,17 @@ jobs:
       - name: Test
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
+      - name: Probe Windows runner's native audio endpoint
+        if: ${{ matrix.os == 'windows-2025' && github.ref_name == 'test/windows-wasapi-runner-probe' }}
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          $runningAudio = @(Get-Service -Name AudioSrv,AudioEndpointBuilder -ErrorAction SilentlyContinue | Where-Object Status -eq Running).Count
+          $readyEndpoints = @(Get-PnpDevice -Class AudioEndpoint -PresentOnly -ErrorAction SilentlyContinue | Where-Object Status -eq OK).Count
+          Write-Output "Audio services running: $runningAudio. Present, ready endpoints: $readyEndpoints."
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib audio::windows::tests::native_default_output_opens_as_a_wasapi_loopback_stream -- --ignored --exact --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Native WASAPI probe exited with $LASTEXITCODE." }
+
       - name: Test Linux application icons with isolated Xvfb
         if: runner.os == 'Linux'
         shell: bash
