@@ -142,20 +142,36 @@ def control_point(path, expected):
 SETTINGS_TITLE = "^mimi UI test settings$"
 
 
-def exercise_pause_resume(process, work, settings, overlay, session, package, number):
+def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number):
     activation = work / "settings-activation"
     session_controls = work / "session-control"
-    subprocess.run(["xdotool", "windowminimize", settings], check=True, timeout=2)
-    waiting_for(process, "minimized Settings window", lambda: window(SETTINGS_TITLE) is None)
-    if activation.exists():
-        raise RuntimeError("Settings activation appeared before any overlay action")
+
+    def minimize_settings():
+        subprocess.run(["xdotool", "windowminimize", settings], check=True, timeout=2)
+        waiting_for(process, "minimized Settings window", lambda: window(SETTINGS_TITLE) is None)
+
+    def assert_settings_hidden():
+        if activation.exists() or window(SETTINGS_TITLE) is not None:
+            raise RuntimeError("An overlay action opened Settings without an explicit request")
+
+    def wait_settings_opened():
+        waiting_for(process, "the original Settings window", lambda: window(SETTINGS_TITLE) == settings)
+        waiting_for(process, "explicit Settings activation", lambda: state(activation) == "focus-requested")
+
+    def move_to_control(point):
+        subprocess.run(["xdotool", "mousemove", "--window", overlay, *point], check=True, timeout=2)
+
+    def press_primary():
+        subprocess.run(["xdotool", "mousedown", "1", "mouseup", "1"], check=True, timeout=2)
 
     def click(point):
-        subprocess.run(["xdotool", "mousemove", "--window", overlay, *point], check=True, timeout=2)
+        move_to_control(point)
         started = time.monotonic()
-        subprocess.run(["xdotool", "mousedown", "1", "mouseup", "1"], check=True, timeout=2)
+        press_primary()
         return started
 
+    minimize_settings()
+    assert_settings_hidden()
     for cycle in range(1, 4):
         for action, target, next_action in (("pause", "paused", "resume"), ("resume", "listening", "pause")):
             point = waiting_for(process, f"enabled {action} button", lambda: control_point(session_controls, f"{action}-control"))
@@ -174,15 +190,41 @@ def exercise_pause_resume(process, work, settings, overlay, session, package, nu
             state_ms = (time.monotonic() - started) * 1000
             waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
             button_ms = (time.monotonic() - started) * 1000
-            if activation.exists() or window(SETTINGS_TITLE) is not None:
-                raise RuntimeError(f"The {action} button opened Settings")
+            assert_settings_hidden()
             print(f"MimiLinuxPauseResume package={package} sample={number} cycle={cycle} action={action} "
                   f"state_ms={state_ms:.3f} button_ms={button_ms:.3f}", flush=True)
 
     gear = waiting_for(process, "enabled Settings button", lambda: control_point(work / "settings-control", "settings-control"))
     click(gear)
-    waiting_for(process, "the original Settings window", lambda: window(SETTINGS_TITLE) == settings)
-    waiting_for(process, "explicit Settings activation", lambda: state(activation) == "focus-requested")
+    wait_settings_opened()
+
+    minimize_settings()
+    activation.unlink()
+    assert_settings_hidden()
+    pause = waiting_for(process, "enabled Pause button", lambda: control_point(session_controls, "pause-control"))
+    move_to_control(pause)
+    cursor = subprocess.check_output(["xdotool", "getmouselocation", "--shell"], text=True, timeout=2)
+    screen_coordinates = dict(line.split("=", 1) for line in cursor.splitlines())
+    previous_x, previous_y = screen_coordinates["X"], screen_coordinates["Y"]
+    failure = Path(preferences, "fail-next-pause")
+    failure.touch()
+    try:
+        press_primary()
+        waiting_for(process, "configuration error after Pause", lambda: state(session) == "error")
+        configure = waiting_for(process, "explicit configuration button", lambda: control_point(work / "configure-control", "configure-control"))
+    finally:
+        failure.unlink()
+
+    subprocess.run(["xdotool", "mousemove", previous_x, previous_y], check=True, timeout=2)
+    press_primary()
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        assert_settings_hidden()
+        time.sleep(0.025)
+    assert_settings_hidden()
+    click(configure)
+    wait_settings_opened()
+    print(f"MimiLinuxPauseConfigError package={package} sample={number} settings_reopened_explicitly=1", flush=True)
 
 
 def sample(executable, root, number, bright_pixels):
@@ -252,7 +294,7 @@ def sample(executable, root, number, bright_pixels):
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                exercise_pause_resume(process, work, settings, overlay_id, session, package, number)
+                exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:

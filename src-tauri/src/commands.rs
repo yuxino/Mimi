@@ -1910,6 +1910,7 @@ pub fn app_ui_test_frontend_ready(
                     | "pause-control"
                     | "resume-control"
                     | "settings-control"
+                    | "configure-control"
                     | "pointerdown"
                     | "pointerup"
                     | "click"
@@ -1922,6 +1923,7 @@ pub fn app_ui_test_frontend_ready(
                             1 => "pause",
                             2 => "resume",
                             3 => "settings",
+                            4 => "configure",
                             _ => "other",
                         };
                         tracing::debug!(target: "mimi_smoke_overlay", sequence, action, stage, "overlay input reached WebView");
@@ -1934,8 +1936,8 @@ pub fn app_ui_test_frontend_ready(
                     ("pause-control" | "resume-control", _, Some([x, y])) => {
                         ("session-control", format!("{stage} {x} {y}\n"))
                     }
-                    ("settings-control", _, Some([x, y])) => {
-                        ("settings-control", format!("{stage} {x} {y}\n"))
+                    ("settings-control" | "configure-control", _, Some([x, y])) => {
+                        (stage.as_str(), format!("{stage} {x} {y}\n"))
                     }
                     ("draft-observer" | "draft-frame", _, _) => (stage.as_str(), "ready".into()),
                     _ => return Ok(false),

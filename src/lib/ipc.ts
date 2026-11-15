@@ -148,7 +148,7 @@ export function appIsUiTest(): Promise<boolean> {
 
 export function appUiTestFrontendReady(switchPoint?: [number, number], frontendPhases?: number[],
   draftStage?: "draft-observer" | "draft-committed" | "draft-frame" | "pause-control" | "resume-control" | "settings-control"
-    | "pointerdown" | "pointerup" | "click",
+    | "configure-control" | "pointerdown" | "pointerup" | "click",
   draftBounds?: [number, number, number, number, number]): Promise<boolean> {
   return invoke<boolean>("app_ui_test_frontend_ready", { switchPoint, frontendPhases, draftStage, draftBounds });
 }

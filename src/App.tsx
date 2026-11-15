@@ -79,7 +79,8 @@ function FirstCaptionSmoke() {
           const label = event.target instanceof Element
             ? event.target.closest("button")?.getAttribute("aria-label")
             : undefined;
-          const target = label === "Pause translating" ? 1 : label === "Resume translating" ? 2 : label === "Open Mimi Settings" ? 3 : 0;
+          const target = label === "Pause translating" ? 1 : label === "Resume translating" ? 2
+            : label === "Open Mimi Settings" ? 3 : label === "Open speech settings" ? 4 : 0;
           void appUiTestFrontendReady([++inputSequence, target], undefined, type).catch(() => {});
         }, { capture: true, signal: inputListeners.signal });
       }
@@ -89,6 +90,7 @@ function FirstCaptionSmoke() {
           ["Pause translating", "pause-control", "session"],
           ["Resume translating", "resume-control", "session"],
           ["Open Mimi Settings", "settings-control", "settings"],
+          ["Open speech settings", "configure-control", "configure"],
         ] as const) {
           const control = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]:enabled`);
           const bounds = control?.getBoundingClientRect();
