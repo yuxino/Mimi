@@ -144,13 +144,21 @@ def control_point(path, expected):
 SETTINGS_TITLE = "^mimi UI test settings$"
 
 
-def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number, hold_ms):
+def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number, preactivate):
     activation = work / "settings-activation"
     session_controls = work / "session-control"
 
-    def minimize_settings():
+    def minimize_settings(stage):
         subprocess.run(["xdotool", "windowminimize", settings], check=True, timeout=2)
         waiting_for(process, "minimized Settings window", lambda: window(SETTINGS_TITLE) is None)
+        if preactivate:
+            subprocess.run(["xdotool", "windowactivate", "--sync", overlay], check=True, timeout=2)
+        active = subprocess.run(["xdotool", "getactivewindow"], capture_output=True, text=True, timeout=2)
+        overlay_active = active.returncode == 0 and active.stdout.strip() == overlay
+        print(f"MimiLinuxPauseFocus package={package} sample={number} preactivate={preactivate} "
+              f"stage={stage} overlay_active={int(overlay_active)}", flush=True)
+        if preactivate and not overlay_active:
+            raise RuntimeError("Could not establish the explicitly activated overlay condition")
 
     def assert_settings_hidden():
         if activation.exists() or window(SETTINGS_TITLE) is not None:
@@ -164,8 +172,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
         subprocess.run(["xdotool", "mousemove", "--window", overlay, *point], check=True, timeout=2)
 
     def press_primary():
-        hold = ["sleep", f"{hold_ms / 1000:.3f}"] if hold_ms else []
-        subprocess.run(["xdotool", "mousedown", "1", *hold, "mouseup", "1"], check=True, timeout=2)
+        subprocess.run(["xdotool", "mousedown", "1", "mouseup", "1"], check=True, timeout=2)
 
     def click(point):
         move_to_control(point)
@@ -173,7 +180,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
         press_primary()
         return started
 
-    minimize_settings()
+    minimize_settings("normal")
     assert_settings_hidden()
     for cycle in range(1, 4):
         for action, target, next_action in (("pause", "paused", "resume"), ("resume", "listening", "pause")):
@@ -182,7 +189,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
             try:
                 waiting_for(process, f"session state {target}", lambda: state(session) == target)
             except RuntimeError:
-                print(f"Expected {action} input package={package} sample={number} hold_ms={hold_ms} cycle={cycle} "
+                print(f"Expected {action} input package={package} sample={number} preactivate={preactivate} cycle={cycle} "
                       f"overlay={overlay} point={point[0]},{point[1]}", file=sys.stderr)
                 for command in (
                     ["xdotool", "getmouselocation", "--shell"],
@@ -200,14 +207,14 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
             waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
             button_ms = (time.monotonic() - started) * 1000
             assert_settings_hidden()
-            print(f"MimiLinuxPauseResume package={package} sample={number} hold_ms={hold_ms} cycle={cycle} action={action} "
+            print(f"MimiLinuxPauseResume package={package} sample={number} preactivate={preactivate} cycle={cycle} action={action} "
                   f"state_ms={state_ms:.3f} button_ms={button_ms:.3f}", flush=True)
 
     gear = waiting_for(process, "enabled Settings button", lambda: control_point(work / "settings-control", "settings-control"))
     click(gear)
     wait_settings_opened()
 
-    minimize_settings()
+    minimize_settings("config-error")
     activation.unlink()
     assert_settings_hidden()
     pause = waiting_for(process, "enabled Pause button", lambda: control_point(session_controls, "pause-control"))
@@ -233,12 +240,12 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
     assert_settings_hidden()
     click(configure)
     wait_settings_opened()
-    print(f"MimiLinuxPauseConfigError package={package} sample={number} hold_ms={hold_ms} "
+    print(f"MimiLinuxPauseConfigError package={package} sample={number} preactivate={preactivate} "
           "settings_reopened_explicitly=1", flush=True)
 
 
-def sample(executable, root, number, hold_ms, bright_pixels):
-    work = root / f"sample-{number}-hold-{hold_ms}"
+def sample(executable, root, number, preactivate, bright_pixels):
+    work = root / f"sample-{number}-preactivate-{preactivate}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
@@ -304,12 +311,12 @@ def sample(executable, root, number, hold_ms, bright_pixels):
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number, hold_ms)
+                exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number, preactivate)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
-                print(f"MimiLinuxFirstCaption package={package} sample={number} hold_ms={hold_ms} window_ms={window_ms:.3f} "
+                print(f"MimiLinuxFirstCaption package={package} sample={number} preactivate={preactivate} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
                       f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
                       f"pixel_ms={pixel_ms:.3f} first_read_ms={first_read_ms:.3f} glyph_pixels={glyph_pixels} "
@@ -340,13 +347,13 @@ if __name__ == "__main__":
         for number in range(1, 7):
             # Balance the launch order. Both arms keep the same assertion and
             # timeout; continue collecting the other samples after a miss.
-            for hold_ms in ((0, 50) if number % 2 else (50, 0)):
+            for preactivate in ((0, 1) if number % 2 else (1, 0)):
                 try:
-                    sample(executable, root, number, hold_ms, bright_pixels)
+                    sample(executable, root, number, preactivate, bright_pixels)
                 except (RuntimeError, subprocess.SubprocessError):
                     failures += 1
-                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} hold_ms={hold_ms} outcome=FAIL", flush=True)
+                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} preactivate={preactivate} outcome=FAIL", flush=True)
                     traceback.print_exc()
                 else:
-                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} hold_ms={hold_ms} outcome=PASS", flush=True)
+                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} preactivate={preactivate} outcome=PASS", flush=True)
     sys.exit(1 if failures else 0)
