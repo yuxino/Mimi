@@ -3034,6 +3034,7 @@ pub fn overlay_move_start(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    tracing::debug!(target: "mimi_smoke_overlay", "overlay drag command entered");
     if !OverlayWindowManager::move_start(&app, &state.overlay) {
         return Ok(());
     }

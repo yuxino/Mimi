@@ -155,10 +155,11 @@ def trace_x11_grabs(root):
             with subprocess.Popen([probe, "--exercise"], stdin=subprocess.PIPE) as client:
                 def observed_client():
                     lines = [line for line in path.read_text().splitlines() if f" pid={client.pid} " in line]
-                    return all(any(f" request={request} " in line for line in lines)
-                               for request in ("GrabKeyboard", "UngrabKeyboard"))
+                    return (all(any(f" request={request} " in line for line in lines)
+                                for request in ("GrabKeyboard", "UngrabKeyboard"))
+                            and any(line.startswith("MimiLinuxX11MoveResize ") and " direction=11 " in line for line in lines))
 
-                waiting_for(client, "the control client's grab and release with its PID", observed_client)
+                waiting_for(client, "the control client's grab, release and move/resize message with its PID", observed_client)
                 client.communicate(b"\n", timeout=2)
                 if client.returncode != 0:
                     raise RuntimeError("X11 grab observer control client did not exit cleanly")

@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <poll.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,7 @@
 struct observer {
     Display *control;
     int input_opcode;
+    Atom moveresize_atom;
 };
 
 static const char *request_name(const struct observer *observer,
@@ -50,12 +52,23 @@ static pid_t client_pid(Display *control, XID client) {
     return pid;
 }
 
+static bool read_moveresize(const struct observer *observer,
+                            const XRecordInterceptData *item, xSendEventReq *message) {
+    if (item->data[0] != X_SendEvent || item->client_swapped ||
+        item->data_len < sizeof(*message) / 4) return false;
+    memcpy(message, item->data, sizeof(*message));
+    return message->event.u.u.type == ClientMessage && message->event.u.u.detail == 32 &&
+           message->event.u.clientMessage.u.l.type == observer->moveresize_atom;
+}
+
 static void report_request(XPointer closure, XRecordInterceptData *item) {
     struct observer *observer = (struct observer *)closure;
     if (item->category == XRecordFromClient && item->data_len > 0) {
         const char *name = request_name(observer, item->data);
+        xSendEventReq message;
+        bool moveresize = read_moveresize(observer, item, &message);
         struct timespec now;
-        if (name && clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
+        if ((name || moveresize) && clock_gettime(CLOCK_MONOTONIC, &now) == 0) {
             uint64_t timestamp = (uint64_t)now.tv_sec * 1000000000 + (uint64_t)now.tv_nsec;
             pid_t pid = client_pid(observer->control, item->id_base);
             char command[32] = "unknown";
@@ -66,18 +79,33 @@ static void report_request(XPointer closure, XRecordInterceptData *item) {
                 if (fgets(command, sizeof(command), file)) command[strcspn(command, "\r\n")] = '\0';
                 fclose(file);
             }
-            printf("MimiLinuxX11Grab mono_ns=%" PRIu64 " request=%s client=0x%lx pid=%ld process=%s\n",
-                   timestamp, name, item->id_base, (long)pid, command);
+            if (moveresize) {
+                printf("MimiLinuxX11MoveResize mono_ns=%" PRIu64 " window=0x%lx direction=%ld pid=%ld process=%s\n",
+                       timestamp, (unsigned long)message.event.u.clientMessage.window,
+                       (long)message.event.u.clientMessage.u.l.longs2, (long)pid, command);
+            } else {
+                printf("MimiLinuxX11Grab mono_ns=%" PRIu64 " request=%s client=0x%lx pid=%ld process=%s\n",
+                       timestamp, name, item->id_base, (long)pid, command);
+            }
         }
     }
     XRecordFreeData(item);
 }
 
 static int exercise_grab(Display *display) {
-    int result = XGrabKeyboard(display, DefaultRootWindow(display), False,
+    Window root = DefaultRootWindow(display);
+    int result = XGrabKeyboard(display, root, False,
                                GrabModeAsync, GrabModeAsync, CurrentTime);
     if (result != GrabSuccess) return 1;
     XUngrabKeyboard(display, CurrentTime);
+    // There is no managed window to move. Verify decoding with a cancel message.
+    XEvent event = {0};
+    event.xclient.type = ClientMessage;
+    event.xclient.window = root;
+    event.xclient.message_type = XInternAtom(display, "_NET_WM_MOVERESIZE", False);
+    event.xclient.format = 32;
+    event.xclient.data.l[2] = 11;
+    if (!XSendEvent(display, root, False, SubstructureNotifyMask, &event)) return 1;
     XSync(display, False);
     // Remain connected until the observer has resolved this client's PID.
     return getchar() == '\n' ? 0 : 1;
@@ -85,7 +113,7 @@ static int exercise_grab(Display *display) {
 
 int main(int argc, char **argv) {
     // This executable is called only inside the isolated Xvfb package test.
-    // Request ranges exclude key presses, releases and arbitrary X11 data.
+    // Report only grab requests and move/resize metadata from synthetic windows.
     const char *isolated = getenv("MIMI_LINUX_SMOKE_SESSION");
     if (!isolated || strcmp(isolated, "1") != 0) return 1;
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -105,6 +133,8 @@ int main(int argc, char **argv) {
     XRecordRange core = {0};
     core.core_requests.first = X_GrabKeyboard;
     core.core_requests.last = X_UngrabKeyboard;
+    XRecordRange send = {0};
+    send.core_requests.first = send.core_requests.last = X_SendEvent;
     XRecordRange xi1 = {0};
     xi1.ext_requests.ext_major.first = xi1.ext_requests.ext_major.last = opcode;
     xi1.ext_requests.ext_minor.first = X_GrabDevice;
@@ -112,11 +142,11 @@ int main(int argc, char **argv) {
     XRecordRange xi2 = xi1;
     xi2.ext_requests.ext_minor.first = X_XIGrabDevice;
     xi2.ext_requests.ext_minor.last = X_XIUngrabDevice;
-    XRecordRange *ranges[] = { &core, &xi1, &xi2 };
+    XRecordRange *ranges[] = { &core, &send, &xi1, &xi2 };
     XRecordClientSpec clients = XRecordAllClients;
-    XRecordContext context = XRecordCreateContext(control, 0, &clients, 1, ranges, 3);
+    XRecordContext context = XRecordCreateContext(control, 0, &clients, 1, ranges, 4);
     XSync(control, False);
-    struct observer observer = { control, opcode };
+    struct observer observer = { control, opcode, XInternAtom(control, "_NET_WM_MOVERESIZE", False) };
     if (!context || !XRecordEnableContextAsync(data, context, report_request, (XPointer)&observer)) {
         fputs("Could not enable X11 grab request observation\n", stderr);
         return 1;
