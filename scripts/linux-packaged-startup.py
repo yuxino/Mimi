@@ -160,7 +160,17 @@ def exercise_pause_resume(process, work, settings, overlay, session, package, nu
         for action, target, next_action in (("pause", "paused", "resume"), ("resume", "listening", "pause")):
             point = waiting_for(process, f"enabled {action} button", lambda: control_point(session_controls, f"{action}-control"))
             started = click(point)
-            waiting_for(process, f"session state {target}", lambda: state(session) == target)
+            try:
+                waiting_for(process, f"session state {target}", lambda: state(session) == target)
+            except RuntimeError:
+                print(f"Expected {action} input package={package} sample={number} cycle={cycle} "
+                      f"overlay={overlay} point={point[0]},{point[1]}", file=sys.stderr)
+                for command in (["xdotool", "getmouselocation", "--shell"], ["wmctrl", "-lG"], ["xwininfo", "-id", overlay]):
+                    try:
+                        subprocess.run(command, stdout=sys.stderr, stderr=sys.stderr, timeout=2, check=False)
+                    except subprocess.TimeoutExpired:
+                        print(f"Could not collect {command[0]} diagnostic", file=sys.stderr)
+                raise
             state_ms = (time.monotonic() - started) * 1000
             waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
             button_ms = (time.monotonic() - started) * 1000

@@ -45,7 +45,7 @@ export MIMI_UI_TEST_PREFERENCES_DIR="$smoke_dir"
 export MIMI_AUTO_START=0
 export MIMI_UI_TEST_SESSION_STATE_FILE="$smoke_dir/session-state"
 export MIMI_UI_TEST_FRONTEND_READY_DIR="$smoke_dir/frontend-ready"
-export RUST_LOG=info,mimi_smoke_shortcut=debug
+export RUST_LOG=info,mimi_smoke_shortcut=debug,mimi_smoke_overlay=debug
 
 openbox >"$smoke_dir/openbox.log" 2>&1 &
 wm_pid=$!

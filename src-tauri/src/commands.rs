@@ -1910,10 +1910,23 @@ pub fn app_ui_test_frontend_ready(
                     | "pause-control"
                     | "resume-control"
                     | "settings-control"
+                    | "pointerdown"
+                    | "pointerup"
+                    | "click"
             )
         {
             if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
                 let (name, marker) = match (stage.as_str(), draft_bounds, switch_point) {
+                    ("pointerdown" | "pointerup" | "click", _, Some([sequence, target])) => {
+                        let action = match target {
+                            1 => "pause",
+                            2 => "resume",
+                            3 => "settings",
+                            _ => "other",
+                        };
+                        tracing::debug!(target: "mimi_smoke_overlay", sequence, action, stage, "overlay input reached WebView");
+                        return Ok(true);
+                    }
                     ("draft-committed", Some([left, top, right, bottom, pulse]), _) => (
                         stage.as_str(),
                         format!("{left} {top} {right} {bottom} {pulse}\n"),
@@ -2852,6 +2865,7 @@ pub async fn session_stop(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn session_toggle_paused(state: State<'_, AppState>) -> Result<(), String> {
+    tracing::debug!(target: "mimi_smoke_overlay", "pause or resume command entered");
     state.session.toggle_paused().await
 }
 

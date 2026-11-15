@@ -70,8 +70,19 @@ function FirstCaptionSmoke() {
     let active = true;
     let frame = 0;
     let observer: MutationObserver | undefined;
+    const inputListeners = new AbortController();
     void appUiTestFrontendReady(undefined, undefined, "draft-observer").then(isTest => {
       if (!active || !isTest) return;
+      let inputSequence = 0;
+      for (const type of ["pointerdown", "pointerup", "click"] as const) {
+        document.addEventListener(type, event => {
+          const label = event.target instanceof Element
+            ? event.target.closest("button")?.getAttribute("aria-label")
+            : undefined;
+          const target = label === "Pause translating" ? 1 : label === "Resume translating" ? 2 : label === "Open Mimi Settings" ? 3 : 0;
+          void appUiTestFrontendReady([++inputSequence, target], undefined, type).catch(() => {});
+        }, { capture: true, signal: inputListeners.signal });
+      }
       const reportedControls = new Map<string, string>();
       const reportControls = () => {
         for (const [label, action, group] of [
@@ -126,6 +137,7 @@ function FirstCaptionSmoke() {
     }).catch(() => console.warn("First-caption smoke observer setup failed"));
     return () => {
       active = false;
+      inputListeners.abort();
       observer?.disconnect();
       window.cancelAnimationFrame(frame);
     };
