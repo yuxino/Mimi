@@ -673,6 +673,11 @@ impl OverlayWindowManager {
             let state = state.lock().unwrap();
             (state.user_frame, state.minimum_height)
         };
+        #[cfg(target_os = "linux")]
+        let native_resize = !(crate::commands::app_is_ui_test()
+            && std::env::var("MIMI_LINUX_TEST_APP_RESIZE_ONLY").as_deref() == Ok("1"));
+        #[cfg(not(target_os = "linux"))]
+        let native_resize = true;
         let builder =
             WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("index.html".into()))
                 .title(dev_title("Mimi Subtitles"))
@@ -687,7 +692,7 @@ impl OverlayWindowManager {
                 .always_on_top(true)
                 .skip_taskbar(true)
                 .shadow(false)
-                .resizable(true)
+                .resizable(native_resize)
                 .visible(false);
         let builder = if OverlayControlWindowManager::is_embedded(app) {
             builder.initialization_script("window.__MIMI_EMBEDDED_OVERLAY_CONTROL__ = true;")

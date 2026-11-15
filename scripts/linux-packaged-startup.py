@@ -171,27 +171,45 @@ def trace_x11_grabs(root):
 
 
 @contextmanager
-def trace_x11_focus(work, overlay, package, number, observe_focus):
+def trace_x11_focus(work, overlay, package, number, app_resize_only):
     path = work / "x11-focus.log"
     with path.open("a") as trace:
-        observer = None
-        if observe_focus:
-            observer = subprocess.Popen(
-                ["stdbuf", "-oL", "xev", "-id", overlay, "-event", "focus"],
-                stdout=trace, stderr=subprocess.STDOUT,
-            )
+        observer = subprocess.Popen(
+            ["stdbuf", "-oL", "xev", "-id", overlay, "-event", "focus"],
+            stdout=trace, stderr=subprocess.STDOUT,
+        )
         try:
             yield trace
         finally:
-            if observer is not None:
-                observer.terminate()
-                observer.wait(timeout=2)
+            observer.terminate()
+            observer.wait(timeout=2)
             trace.flush()
-            print(f"MimiLinuxX11Focus package={package} sample={number} observe_focus={observe_focus}\n"
+            print(f"MimiLinuxX11Focus package={package} sample={number} app_resize_only={app_resize_only}\n"
                   f"{path.read_text(errors='replace')}", flush=True)
 
 
-def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number, observe_focus, focus_trace):
+def exercise_app_resize(process, overlay, package, number, app_resize_only):
+    def size():
+        raw = subprocess.check_output(["xdotool", "getwindowgeometry", "--shell", overlay], text=True, timeout=2)
+        values = dict(line.split("=", 1) for line in raw.splitlines())
+        return int(values["WIDTH"]), int(values["HEIGHT"])
+
+    for dx, dy in ((32, 24), (-32, -24)):
+        width, height = size()
+        expected = width + dx, height + dy
+        # Start inside Mimi's 14px corner grip and hold long enough for it to
+        # begin its pointer gesture before requesting the new native bounds.
+        subprocess.run([
+            "xdotool", "mousemove", "--window", overlay, str(width - 10), str(height - 10),
+            "mousedown", "1", "sleep", "0.10", "mousemove_relative", "--", str(dx), str(dy),
+            "sleep", "0.10", "mouseup", "1",
+        ], check=True, timeout=3)
+        waiting_for(process, f"native size {expected[0]}x{expected[1]} after the app resize gesture",
+                    lambda: size() == expected)
+    print(f"MimiLinuxAppResize package={package} sample={number} app_resize_only={app_resize_only} restored=1", flush=True)
+
+
+def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number, app_resize_only, focus_trace):
     activation = work / "settings-activation"
     session_controls = work / "session-control"
 
@@ -200,7 +218,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
         waiting_for(process, "minimized Settings window", lambda: window(SETTINGS_TITLE) is None)
         active = subprocess.run(["xdotool", "getactivewindow"], capture_output=True, text=True, timeout=2)
         overlay_active = active.returncode == 0 and active.stdout.strip() == overlay
-        print(f"MimiLinuxPauseFocus package={package} sample={number} observe_focus={observe_focus} "
+        print(f"MimiLinuxPauseFocus package={package} sample={number} app_resize_only={app_resize_only} "
               f"stage={stage} overlay_active={int(overlay_active)}", flush=True)
 
     def assert_settings_hidden():
@@ -237,7 +255,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
             except RuntimeError:
                 if first_pause:
                     print(f"First Pause never changed session state mono_ns={time.monotonic_ns()}", file=focus_trace, flush=True)
-                print(f"Expected {action} input package={package} sample={number} observe_focus={observe_focus} cycle={cycle} "
+                print(f"Expected {action} input package={package} sample={number} app_resize_only={app_resize_only} cycle={cycle} "
                       f"overlay={overlay} point={point[0]},{point[1]}", file=sys.stderr)
                 for command in (
                     ["xdotool", "getmouselocation", "--shell"],
@@ -257,9 +275,11 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
             waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
             button_ms = (time.monotonic() - started) * 1000
             assert_settings_hidden()
-            print(f"MimiLinuxPauseResume package={package} sample={number} observe_focus={observe_focus} cycle={cycle} action={action} "
+            print(f"MimiLinuxPauseResume package={package} sample={number} app_resize_only={app_resize_only} cycle={cycle} action={action} "
                   f"state_ms={state_ms:.3f} button_ms={button_ms:.3f}", flush=True)
 
+    exercise_app_resize(process, overlay, package, number, app_resize_only)
+    assert_settings_hidden()
     gear = waiting_for(process, "enabled Settings button", lambda: control_point(work / "settings-control", "settings-control"))
     click(gear)
     wait_settings_opened()
@@ -290,12 +310,12 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
     assert_settings_hidden()
     click(configure)
     wait_settings_opened()
-    print(f"MimiLinuxPauseConfigError package={package} sample={number} observe_focus={observe_focus} "
+    print(f"MimiLinuxPauseConfigError package={package} sample={number} app_resize_only={app_resize_only} "
           "settings_reopened_explicitly=1", flush=True)
 
 
-def sample(executable, root, number, observe_focus, bright_pixels):
-    work = root / f"sample-{number}-observe-focus-{observe_focus}"
+def sample(executable, root, number, app_resize_only, bright_pixels):
+    work = root / f"sample-{number}-app-resize-only-{app_resize_only}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
@@ -316,6 +336,7 @@ def sample(executable, root, number, observe_focus, bright_pixels):
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
             "MIMI_UI_TEST_FIRST_CAPTION_DIR": str(work),
             "MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE": str(work / "settings-activation"),
+            "MIMI_LINUX_TEST_APP_RESIZE_ONLY": str(app_resize_only),
         }
         command = [str(executable)]
         if executable.suffix == ".AppImage":
@@ -361,19 +382,19 @@ def sample(executable, root, number, observe_focus, bright_pixels):
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                with trace_x11_focus(work, overlay_id, package, number, observe_focus) as focus_trace:
-                    exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number, observe_focus, focus_trace)
+                with trace_x11_focus(work, overlay_id, package, number, app_resize_only) as focus_trace:
+                    exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number, app_resize_only, focus_trace)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
-                print(f"MimiLinuxFirstPauseTrace package={package} sample={number} observe_focus={observe_focus}", flush=True)
+                print(f"MimiLinuxFirstPauseTrace package={package} sample={number} app_resize_only={app_resize_only}", flush=True)
                 for line in log.read_text(errors="replace").splitlines():
                     if "mimi_smoke_overlay" in line:
                         print(line, flush=True)
                         if "pause or resume command entered" in line:
                             break
-                print(f"MimiLinuxFirstCaption package={package} sample={number} observe_focus={observe_focus} window_ms={window_ms:.3f} "
+                print(f"MimiLinuxFirstCaption package={package} sample={number} app_resize_only={app_resize_only} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
                       f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
                       f"pixel_ms={pixel_ms:.3f} first_read_ms={first_read_ms:.3f} glyph_pixels={glyph_pixels} "
@@ -404,13 +425,13 @@ if __name__ == "__main__":
         for number in range(1, 7):
             # Balance the launch order. Both arms keep the same assertion and
             # timeout; continue collecting the other samples after a miss.
-            for observe_focus in ((0, 1) if number % 2 else (1, 0)):
+            for app_resize_only in ((0, 1) if number % 2 else (1, 0)):
                 try:
-                    sample(executable, root, number, observe_focus, bright_pixels)
+                    sample(executable, root, number, app_resize_only, bright_pixels)
                 except (RuntimeError, subprocess.SubprocessError):
                     failures += 1
-                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} observe_focus={observe_focus} outcome=FAIL", flush=True)
+                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} app_resize_only={app_resize_only} outcome=FAIL", flush=True)
                     traceback.print_exc()
                 else:
-                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} observe_focus={observe_focus} outcome=PASS", flush=True)
+                    print(f"MimiLinuxPauseSample package={executable.name} sample={number} app_resize_only={app_resize_only} outcome=PASS", flush=True)
     sys.exit(1 if failures else 0)
