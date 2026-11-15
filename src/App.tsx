@@ -73,12 +73,12 @@ function FirstCaptionSmoke() {
     const inputListeners = new AbortController();
     void appUiTestFrontendReady(undefined, undefined, "draft-observer").then(isTest => {
       if (!active || !isTest) return;
+      const buttonLabel = (button: HTMLButtonElement | null) =>
+        button?.getAttribute("aria-label") ?? button?.textContent?.trim();
       let inputSequence = 0;
       for (const type of ["pointerdown", "pointerup", "click"] as const) {
         document.addEventListener(type, event => {
-          const label = event.target instanceof Element
-            ? event.target.closest("button")?.getAttribute("aria-label")
-            : undefined;
+          const label = buttonLabel(event.target instanceof Element ? event.target.closest("button") : null);
           const target = label === "Pause translating" ? 1 : label === "Resume translating" ? 2
             : label === "Open Mimi Settings" ? 3 : label === "Open speech settings" ? 4 : 0;
           void appUiTestFrontendReady([++inputSequence, target], undefined, type).catch(() => {});
@@ -86,13 +86,14 @@ function FirstCaptionSmoke() {
       }
       const reportedControls = new Map<string, string>();
       const reportControls = () => {
+        const buttons = [...document.querySelectorAll<HTMLButtonElement>("button:enabled")];
         for (const [label, action, group] of [
           ["Pause translating", "pause-control", "session"],
           ["Resume translating", "resume-control", "session"],
           ["Open Mimi Settings", "settings-control", "settings"],
           ["Open speech settings", "configure-control", "configure"],
         ] as const) {
-          const control = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]:enabled`);
+          const control = buttons.find(button => buttonLabel(button) === label);
           const bounds = control?.getBoundingClientRect();
           if (!control || !bounds?.width || !bounds.height) continue;
           const x = bounds.left + bounds.width / 2;
