@@ -673,6 +673,16 @@ impl OverlayWindowManager {
             let state = state.lock().unwrap();
             (state.user_frame, state.minimum_height)
         };
+        #[cfg(target_os = "linux")]
+        let native_resize = {
+            use gtk::prelude::*;
+            // GTK's X11 resize grips can take the press meant for an overlay
+            // button. Mimi's own handles still resize the window through Tao.
+            !gtk::gdk::Display::default()
+                .is_some_and(|display| display.type_().name() == "GdkX11Display")
+        };
+        #[cfg(not(target_os = "linux"))]
+        let native_resize = true;
         let builder =
             WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("index.html".into()))
                 .title(dev_title("Mimi Subtitles"))
@@ -687,7 +697,7 @@ impl OverlayWindowManager {
                 .always_on_top(true)
                 .skip_taskbar(true)
                 .shadow(false)
-                .resizable(true)
+                .resizable(native_resize)
                 .visible(false);
         let builder = if OverlayControlWindowManager::is_embedded(app) {
             builder.initialization_script("window.__MIMI_EMBEDDED_OVERLAY_CONTROL__ = true;")

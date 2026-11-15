@@ -141,3 +141,15 @@ configure control is rendered, click the original point again. Settings must
 stay hidden. Explicitly click the separate configure control to prove the
 original Settings window remains reachable. Keep the ordinary Pause/Resume
 and gear checks independent of this error fixture.
+
+## Let the X11 subtitle overlay own pointer resizing
+
+With GTK's resize grips enabled, the first Pause click can start a
+bottom-right resize and never reach the overlay button. Disable
+window-manager resizing on the subtitle canvas when the GDK backend is X11.
+Mimi's edge and corner handles still set the native bounds through Tao.
+Keep the window's geometry constraints and the existing drag and collapse paths.
+
+For each package, check that Openbox no longer advertises native resize on
+the subtitle canvas. Use the app's corner grip to grow and restore the
+window, and confirm the separate controls follow it.

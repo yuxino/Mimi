@@ -139,6 +139,35 @@ wmctrl -ir "$overlay_window" -e 0,120,140,-1,-1
 assert_control_attached 120 140
 echo "Linux overlay geometry passed: initial attachment, exact island bounds, native move following."
 
+# GTK must leave resizing to the overlay's own grips on X11. Check the
+# window manager's advertised actions and exercise the actual corner grip.
+actions="$(xprop -id "$overlay_window" _NET_WM_ALLOWED_ACTIONS)"
+[[ "$actions" == '_NET_WM_ALLOWED_ACTIONS(ATOM) = '* && "$actions" != *'_NET_WM_ACTION_RESIZE'* ]] || {
+  echo "Unexpected native resize actions: $actions" >&2; exit 1;
+}
+resize_overlay_corner() {
+  local dx="$1" dy="$2" width height next_width next_height
+  read -r _ _ width height < <(window_geometry "$overlay_window")
+  next_width=$((width + dx))
+  next_height=$((height + dy))
+  # The 14px app grip is inside the client area. Keep the pointer pressed
+  # through one movement so the application can apply its native bounds.
+  xdotool mousemove --window "$overlay_window" "$((width - 10))" "$((height - 10))" \
+    mousedown 1 sleep 0.10 mousemove_relative -- "$dx" "$dy" sleep 0.10 mouseup 1
+  for _ in {1..20}; do
+    read -r _ _ width height < <(window_geometry "$overlay_window")
+    if [[ "$width" == "$next_width" && "$height" == "$next_height" ]]; then return; fi
+    sleep 0.25
+  done
+  echo "Overlay corner resize expected ${next_width}x${next_height}, got ${width}x${height}." >&2
+  cat "$smoke_dir/app.log" >&2
+  exit 1
+}
+resize_overlay_corner 32 24
+resize_overlay_corner -32 -24
+assert_control_attached 120 140
+echo "Linux overlay resize passed: the app corner enlarged and restored the native window."
+
 wait_for_session_state() {
   local expected="$1" interval="$2"
   for _ in {1..40}; do
