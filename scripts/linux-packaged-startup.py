@@ -144,7 +144,25 @@ def control_point(path, expected):
 SETTINGS_TITLE = "^mimi UI test settings$"
 
 
-def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number, preactivate):
+@contextmanager
+def trace_x11_focus(work, overlay, package, number, preactivate):
+    path = work / "x11-focus.log"
+    with path.open("a") as trace:
+        observer = subprocess.Popen(
+            ["stdbuf", "-oL", "xev", "-id", overlay, "-event", "focus"],
+            stdout=trace, stderr=subprocess.STDOUT,
+        )
+        try:
+            yield trace
+        finally:
+            observer.terminate()
+            observer.wait(timeout=2)
+            trace.flush()
+            print(f"MimiLinuxX11Focus package={package} sample={number} preactivate={preactivate}\n"
+                  f"{path.read_text(errors='replace')}", flush=True)
+
+
+def exercise_pause_resume(process, work, preferences, settings, overlay, session, package, number, preactivate, focus_trace):
     activation = work / "settings-activation"
     session_controls = work / "session-control"
 
@@ -174,8 +192,10 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
     def press_primary():
         subprocess.run(["xdotool", "mousedown", "1", "mouseup", "1"], check=True, timeout=2)
 
-    def click(point):
+    def click(point, first_pause=False):
         move_to_control(point)
+        if first_pause:
+            print("First Pause press follows", file=focus_trace, flush=True)
         started = time.monotonic()
         press_primary()
         return started
@@ -185,10 +205,13 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
     for cycle in range(1, 4):
         for action, target, next_action in (("pause", "paused", "resume"), ("resume", "listening", "pause")):
             point = waiting_for(process, f"enabled {action} button", lambda: control_point(session_controls, f"{action}-control"))
-            started = click(point)
+            first_pause = cycle == 1 and action == "pause"
+            started = click(point, first_pause)
             try:
                 waiting_for(process, f"session state {target}", lambda: state(session) == target)
             except RuntimeError:
+                if first_pause:
+                    print("First Pause never changed session state", file=focus_trace, flush=True)
                 print(f"Expected {action} input package={package} sample={number} preactivate={preactivate} cycle={cycle} "
                       f"overlay={overlay} point={point[0]},{point[1]}", file=sys.stderr)
                 for command in (
@@ -203,6 +226,8 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
                     except subprocess.TimeoutExpired:
                         print(f"Could not collect {command[0]} diagnostic", file=sys.stderr)
                 raise
+            if first_pause:
+                print("First Pause changed session state", file=focus_trace, flush=True)
             state_ms = (time.monotonic() - started) * 1000
             waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
             button_ms = (time.monotonic() - started) * 1000
@@ -311,11 +336,18 @@ def sample(executable, root, number, preactivate, bright_pixels):
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
                 package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number, preactivate)
+                with trace_x11_focus(work, overlay_id, package, number, preactivate) as focus_trace:
+                    exercise_pause_resume(process, work, preferences, settings, overlay_id, session, package, number, preactivate, focus_trace)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
+                print(f"MimiLinuxFirstPauseTrace package={package} sample={number} preactivate={preactivate}", flush=True)
+                for line in log.read_text(errors="replace").splitlines():
+                    if "mimi_smoke_overlay" in line:
+                        print(line, flush=True)
+                        if "pause or resume command entered" in line:
+                            break
                 print(f"MimiLinuxFirstCaption package={package} sample={number} preactivate={preactivate} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
                       f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
