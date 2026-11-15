@@ -145,6 +145,20 @@ SETTINGS_TITLE = "^mimi UI test settings$"
 
 
 @contextmanager
+def trace_x11_grabs(root):
+    path = root / "x11-grabs.log"
+    with path.open("w") as output:
+        observer = subprocess.Popen([os.environ["MIMI_LINUX_GRAB_PROBE"]], stdout=output, stderr=subprocess.STDOUT)
+        try:
+            waiting_for(observer, "X11 grab observer", lambda: "MimiLinuxX11GrabReady" in path.read_text())
+            yield
+        finally:
+            observer.terminate()
+            observer.wait(timeout=2)
+            print(path.read_text(errors="replace"), flush=True)
+
+
+@contextmanager
 def trace_x11_focus(work, overlay, package, number, observe_focus):
     path = work / "x11-focus.log"
     with path.open("a") as trace:
@@ -194,7 +208,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
     def click(point, first_pause=False):
         move_to_control(point)
         if first_pause:
-            print("First Pause press follows", file=focus_trace, flush=True)
+            print(f"First Pause press follows mono_ns={time.monotonic_ns()}", file=focus_trace, flush=True)
         started = time.monotonic()
         press_primary()
         return started
@@ -210,7 +224,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
                 waiting_for(process, f"session state {target}", lambda: state(session) == target)
             except RuntimeError:
                 if first_pause:
-                    print("First Pause never changed session state", file=focus_trace, flush=True)
+                    print(f"First Pause never changed session state mono_ns={time.monotonic_ns()}", file=focus_trace, flush=True)
                 print(f"Expected {action} input package={package} sample={number} observe_focus={observe_focus} cycle={cycle} "
                       f"overlay={overlay} point={point[0]},{point[1]}", file=sys.stderr)
                 for command in (
@@ -226,7 +240,7 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
                         print(f"Could not collect {command[0]} diagnostic", file=sys.stderr)
                 raise
             if first_pause:
-                print("First Pause changed session state", file=focus_trace, flush=True)
+                print(f"First Pause changed session state mono_ns={time.monotonic_ns()}", file=focus_trace, flush=True)
             state_ms = (time.monotonic() - started) * 1000
             waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
             button_ms = (time.monotonic() - started) * 1000
@@ -374,7 +388,7 @@ def sample(executable, root, number, observe_focus, bright_pixels):
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     failures = 0
-    with x11_capture() as bright_pixels:
+    with trace_x11_grabs(root), x11_capture() as bright_pixels:
         for number in range(1, 7):
             # Balance the launch order. Both arms keep the same assertion and
             # timeout; continue collecting the other samples after a miss.

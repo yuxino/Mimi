@@ -385,6 +385,10 @@ jobs:
       - name: Measure Linux first caption and overlay controls
         if: runner.os == 'Linux' && github.ref_name == 'test/linux-packaged-startup'
         run: |
+          sudo apt-get install --no-install-recommends -y libxtst-dev libxres-dev
+          export MIMI_LINUX_GRAB_PROBE="$RUNNER_TEMP/mimi-x11-grab-probe"
+          cc -std=c11 -Wall -Wextra -Werror scripts/linux-x11-grab-probe.c \
+            -o "$MIMI_LINUX_GRAB_PROBE" -lXtst -lXRes -lX11
           version=$(node -p 'require("./package.json").version')
           failed=0
           for package in /usr/bin/mimi "src-tauri/target/release/bundle/appimage/mimi_${version}_amd64.AppImage"; do
