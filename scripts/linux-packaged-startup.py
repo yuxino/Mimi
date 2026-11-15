@@ -1,4 +1,4 @@
-"""Compare the first synthetic caption with GTK's ordinary and queued draws."""
+"""Measure native Linux overlay pause and resume with a synthetic session."""
 
 from contextlib import contextmanager
 import ctypes as c
@@ -129,9 +129,54 @@ def state(path):
         return "idle"
 
 
-def sample(executable, root, number, queue_draw, bright_pixels):
-    variant = "queue-draw" if queue_draw else "baseline"
-    work = root / f"sample-{number}-{variant}"
+def control_point(path, expected):
+    try:
+        values = path.read_text().split()
+    except FileNotFoundError:
+        return None
+    if len(values) != 3 or values[0] != expected:
+        return None
+    return tuple(str(int(value)) for value in values[1:])
+
+
+SETTINGS_TITLE = "^mimi UI test settings$"
+
+
+def exercise_pause_resume(process, work, settings, overlay, session, package, number):
+    activation = work / "settings-activation"
+    session_controls = work / "session-control"
+    subprocess.run(["xdotool", "windowminimize", settings], check=True, timeout=2)
+    waiting_for(process, "minimized Settings window", lambda: window(SETTINGS_TITLE) is None)
+    if activation.exists():
+        raise RuntimeError("Settings activation appeared before any overlay action")
+
+    def click(point):
+        subprocess.run(["xdotool", "mousemove", "--window", overlay, *point], check=True, timeout=2)
+        started = time.monotonic()
+        subprocess.run(["xdotool", "mousedown", "1", "mouseup", "1"], check=True, timeout=2)
+        return started
+
+    for cycle in range(1, 4):
+        for action, target, next_action in (("pause", "paused", "resume"), ("resume", "listening", "pause")):
+            point = waiting_for(process, f"enabled {action} button", lambda: control_point(session_controls, f"{action}-control"))
+            started = click(point)
+            waiting_for(process, f"session state {target}", lambda: state(session) == target)
+            state_ms = (time.monotonic() - started) * 1000
+            waiting_for(process, f"enabled {next_action} button", lambda: control_point(session_controls, f"{next_action}-control"))
+            button_ms = (time.monotonic() - started) * 1000
+            if activation.exists() or window(SETTINGS_TITLE) is not None:
+                raise RuntimeError(f"The {action} button opened Settings")
+            print(f"MimiLinuxPauseResume package={package} sample={number} cycle={cycle} action={action} "
+                  f"state_ms={state_ms:.3f} button_ms={button_ms:.3f}", flush=True)
+
+    gear = waiting_for(process, "enabled Settings button", lambda: control_point(work / "settings-control", "settings-control"))
+    click(gear)
+    waiting_for(process, "the original Settings window", lambda: window(SETTINGS_TITLE) == settings)
+    waiting_for(process, "explicit Settings activation", lambda: state(activation) == "focus-requested")
+
+
+def sample(executable, root, number, bright_pixels):
+    work = root / f"sample-{number}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
@@ -151,7 +196,7 @@ def sample(executable, root, number, queue_draw, bright_pixels):
             "MIMI_UI_TEST_SESSION_STATE_FILE": str(session),
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
             "MIMI_UI_TEST_FIRST_CAPTION_DIR": str(work),
-            "MIMI_UI_TEST_OVERLAY_MAP_REDRAW": "1" if queue_draw else "0",
+            "MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE": str(work / "settings-activation"),
         }
         command = [str(executable)]
         if executable.suffix == ".AppImage":
@@ -161,7 +206,7 @@ def sample(executable, root, number, queue_draw, bright_pixels):
             started = time.monotonic()
             process = subprocess.Popen(command, env=environment, stdout=output, stderr=output)
             try:
-                settings = waiting_for(process, "visible Settings window", lambda: window("^mimi UI test settings$"))
+                settings = waiting_for(process, "visible Settings window", lambda: window(SETTINGS_TITLE))
                 window_ms = (time.monotonic() - started) * 1000
                 x, y = waiting_for(process, "enabled Live Subtitles switch", lambda: subtitles_point(ready / "settings-switch"))
                 settings_ms = (time.monotonic() - started) * 1000
@@ -195,15 +240,14 @@ def sample(executable, root, number, queue_draw, bright_pixels):
                     process, overlay_id, bounds, work / "draft-frame", requested, bright_pixels,
                 )
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
-                if (work / "overlay-mapped").read_text() != variant:
-                    raise RuntimeError(f"Caption window did not run the {variant} map callback")
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
+                package = "appimage" if executable.suffix == ".AppImage" else "deb"
+                exercise_pause_resume(process, work, settings, overlay_id, session, package, number)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
                 if process.wait(timeout=10) != 0:
                     raise RuntimeError(f"Mimi did not quit cleanly: {process.returncode}")
-                package = "appimage" if executable.suffix == ".AppImage" else "deb"
-                print(f"MimiLinuxFirstCaption package={package} sample={number} variant={variant} window_ms={window_ms:.3f} "
+                print(f"MimiLinuxFirstCaption package={package} sample={number} window_ms={window_ms:.3f} "
                       f"settings_ms={settings_ms:.3f} listening_ms={listening_ms:.3f} issued_ms={issued_ms:.3f} "
                       f"published_ms={published_ms:.3f} committed_ms={committed_ms:.3f} frame_ms={frame_ms:.3f} "
                       f"pixel_ms={pixel_ms:.3f} first_read_ms={first_read_ms:.3f} glyph_pixels={glyph_pixels} "
@@ -214,8 +258,9 @@ def sample(executable, root, number, queue_draw, bright_pixels):
                 if phases.is_file():
                     print(phases.read_text(), file=sys.stderr)
                 print(f"Session state at failure: {state(session)}", file=sys.stderr)
-                for marker in sorted(work.glob("draft-*")):
-                    print(f"Caption probe marker: {marker.name}", file=sys.stderr)
+                for name in ("draft-issued", "draft-committed", "draft-frame", "session-control", "settings-control", "settings-activation"):
+                    if (work / name).is_file():
+                        print(f"Overlay probe marker {name}: {(work / name).read_text().strip()}", file=sys.stderr)
                 raise
             finally:
                 if process.poll() is None:
@@ -226,6 +271,5 @@ def sample(executable, root, number, queue_draw, bright_pixels):
 if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     with x11_capture() as bright_pixels:
-        for number in range(1, 9):
-            for queue_draw in ((False, True) if number % 2 else (True, False)):
-                sample(executable, root, number, queue_draw, bright_pixels)
+        for number in range(1, 7):
+            sample(executable, root, number, bright_pixels)

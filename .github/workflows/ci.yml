@@ -382,7 +382,7 @@ jobs:
         if: runner.os == 'Linux'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
-      - name: Measure Linux first caption rendering
+      - name: Measure Linux first caption and overlay controls
         if: runner.os == 'Linux' && github.ref_name == 'test/linux-packaged-startup'
         run: |
           version=$(node -p 'require("./package.json").version')

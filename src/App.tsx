@@ -72,7 +72,30 @@ function FirstCaptionSmoke() {
     let observer: MutationObserver | undefined;
     void appUiTestFrontendReady(undefined, undefined, "draft-observer").then(isTest => {
       if (!active || !isTest) return;
+      const reportedControls = new Map<string, string>();
+      const reportControls = () => {
+        for (const [label, action, group] of [
+          ["Pause translating", "pause-control", "session"],
+          ["Resume translating", "resume-control", "session"],
+          ["Open Mimi Settings", "settings-control", "settings"],
+        ] as const) {
+          const control = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]:enabled`);
+          const bounds = control?.getBoundingClientRect();
+          if (!control || !bounds?.width || !bounds.height) continue;
+          const x = bounds.left + bounds.width / 2;
+          const y = bounds.top + bounds.height / 2;
+          if (!control.contains(document.elementFromPoint(x, y))) continue;
+          const point: [number, number] = [Math.round(x * devicePixelRatio), Math.round(y * devicePixelRatio)];
+          const marker = `${action}:${point.join(",")}`;
+          if (reportedControls.get(group) === marker) continue;
+          reportedControls.set(group, marker);
+          void appUiTestFrontendReady(point, undefined, action).catch(() => {});
+        }
+      };
+      let captionReported = false;
       const report = () => {
+        reportControls();
+        if (captionReported) return;
         const row = document.querySelector<HTMLElement>('[data-utterance-id]');
         if (!row?.getBoundingClientRect().height) return;
         const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
@@ -83,7 +106,7 @@ function FirstCaptionSmoke() {
         text.selectNodeContents(glyphs);
         const bounds = text.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
-        observer?.disconnect();
+        captionReported = true;
         const left = Math.floor(bounds.left * devicePixelRatio);
         const top = Math.floor(bounds.top * devicePixelRatio);
         const right = Math.ceil(bounds.right * devicePixelRatio);
@@ -97,7 +120,8 @@ function FirstCaptionSmoke() {
         });
       };
       observer = new MutationObserver(report);
-      observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+      observer.observe(document.body, { childList: true, characterData: true, attributes: true,
+        attributeFilter: ["disabled", "aria-label"], subtree: true });
       report();
     }).catch(() => console.warn("First-caption smoke observer setup failed"));
     return () => {

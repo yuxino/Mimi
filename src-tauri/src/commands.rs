@@ -1904,19 +1904,31 @@ pub fn app_ui_test_frontend_ready(
             && window.label() == "overlay"
             && matches!(
                 stage.as_str(),
-                "draft-observer" | "draft-committed" | "draft-frame"
+                "draft-observer"
+                    | "draft-committed"
+                    | "draft-frame"
+                    | "pause-control"
+                    | "resume-control"
+                    | "settings-control"
             )
         {
             if let Some(directory) = std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR") {
-                let marker = match (stage.as_str(), draft_bounds) {
-                    ("draft-committed", Some([left, top, right, bottom, pulse])) => {
-                        format!("{left} {top} {right} {bottom} {pulse}\n")
+                let (name, marker) = match (stage.as_str(), draft_bounds, switch_point) {
+                    ("draft-committed", Some([left, top, right, bottom, pulse]), _) => (
+                        stage.as_str(),
+                        format!("{left} {top} {right} {bottom} {pulse}\n"),
+                    ),
+                    ("pause-control" | "resume-control", _, Some([x, y])) => {
+                        ("session-control", format!("{stage} {x} {y}\n"))
                     }
-                    ("draft-committed", None) => return Ok(false),
-                    _ => "ready".into(),
+                    ("settings-control", _, Some([x, y])) => {
+                        ("settings-control", format!("{stage} {x} {y}\n"))
+                    }
+                    ("draft-observer" | "draft-frame", _, _) => (stage.as_str(), "ready".into()),
+                    _ => return Ok(false),
                 };
-                std::fs::write(std::path::Path::new(&directory).join(stage), marker)
-                    .map_err(|_| "Could not write the UI-test caption marker.".to_string())?;
+                std::fs::write(std::path::Path::new(&directory).join(name), marker)
+                    .map_err(|_| "Could not write the UI-test overlay marker.".to_string())?;
                 return Ok(true);
             }
         }
