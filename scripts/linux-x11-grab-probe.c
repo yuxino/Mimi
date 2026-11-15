@@ -13,6 +13,7 @@
 #include <inttypes.h>
 #include <poll.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -72,14 +73,29 @@ static void report_request(XPointer closure, XRecordInterceptData *item) {
     XRecordFreeData(item);
 }
 
-int main(void) {
+static int exercise_grab(Display *display) {
+    int result = XGrabKeyboard(display, DefaultRootWindow(display), False,
+                               GrabModeAsync, GrabModeAsync, CurrentTime);
+    if (result != GrabSuccess) return 1;
+    XUngrabKeyboard(display, CurrentTime);
+    XSync(display, False);
+    // Remain connected until the observer has resolved this client's PID.
+    return getchar() == '\n' ? 0 : 1;
+}
+
+int main(int argc, char **argv) {
     // This executable is called only inside the isolated Xvfb package test.
     // Request ranges exclude key presses, releases and arbitrary X11 data.
+    const char *isolated = getenv("MIMI_LINUX_SMOKE_SESSION");
+    if (!isolated || strcmp(isolated, "1") != 0) return 1;
     setvbuf(stdout, NULL, _IOLBF, 0);
     Display *control = XOpenDisplay(NULL);
+    if (!control) return 1;
+    if (argc == 2 && strcmp(argv[1], "--exercise") == 0) return exercise_grab(control);
+    if (argc != 1) return 1;
     Display *data = XOpenDisplay(NULL);
     int major, minor, opcode, ignored;
-    if (!control || !data || !XRecordQueryVersion(control, &major, &minor) ||
+    if (!data || !XRecordQueryVersion(control, &major, &minor) ||
         !XResQueryVersion(control, &major, &minor) || (major == 1 && minor < 2) ||
         !XQueryExtension(control, "XInputExtension", &opcode, &ignored, &ignored)) {
         fputs("Could not initialize X11 RECORD, XRes or XInput\n", stderr);
@@ -90,12 +106,12 @@ int main(void) {
     core.core_requests.first = X_GrabKeyboard;
     core.core_requests.last = X_UngrabKeyboard;
     XRecordRange xi1 = {0};
-    xi1.ext_requests.major.first = xi1.ext_requests.major.last = opcode;
-    xi1.ext_requests.minor.first = X_GrabDevice;
-    xi1.ext_requests.minor.last = X_UngrabDevice;
+    xi1.ext_requests.ext_major.first = xi1.ext_requests.ext_major.last = opcode;
+    xi1.ext_requests.ext_minor.first = X_GrabDevice;
+    xi1.ext_requests.ext_minor.last = X_UngrabDevice;
     XRecordRange xi2 = xi1;
-    xi2.ext_requests.minor.first = X_XIGrabDevice;
-    xi2.ext_requests.minor.last = X_XIUngrabDevice;
+    xi2.ext_requests.ext_minor.first = X_XIGrabDevice;
+    xi2.ext_requests.ext_minor.last = X_XIUngrabDevice;
     XRecordRange *ranges[] = { &core, &xi1, &xi2 };
     XRecordClientSpec clients = XRecordAllClients;
     XRecordContext context = XRecordCreateContext(control, 0, &clients, 1, ranges, 3);

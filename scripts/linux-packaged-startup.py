@@ -147,10 +147,21 @@ SETTINGS_TITLE = "^mimi UI test settings$"
 @contextmanager
 def trace_x11_grabs(root):
     path = root / "x11-grabs.log"
+    probe = os.environ["MIMI_LINUX_GRAB_PROBE"]
     with path.open("w") as output:
-        observer = subprocess.Popen([os.environ["MIMI_LINUX_GRAB_PROBE"]], stdout=output, stderr=subprocess.STDOUT)
+        observer = subprocess.Popen([probe], stdout=output, stderr=subprocess.STDOUT)
         try:
             waiting_for(observer, "X11 grab observer", lambda: "MimiLinuxX11GrabReady" in path.read_text())
+            with subprocess.Popen([probe, "--exercise"], stdin=subprocess.PIPE) as client:
+                def observed_client():
+                    lines = [line for line in path.read_text().splitlines() if f" pid={client.pid} " in line]
+                    return all(any(f" request={request} " in line for line in lines)
+                               for request in ("GrabKeyboard", "UngrabKeyboard"))
+
+                waiting_for(client, "the control client's grab and release with its PID", observed_client)
+                client.communicate(b"\n", timeout=2)
+                if client.returncode != 0:
+                    raise RuntimeError("X11 grab observer control client did not exit cleanly")
             yield
         finally:
             observer.terminate()
