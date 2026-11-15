@@ -144,16 +144,23 @@ wmctrl -ir "$overlay_window" -e 0,120,140,-1,-1
 assert_control_attached 120 140
 echo "Linux overlay geometry passed: initial attachment, exact island bounds, native move following."
 
+wait_for_session_state() {
+  local expected="$1" interval="$2"
+  for _ in {1..40}; do
+    # The app can rewrite the marker between reads. Use the matching sample
+    # rather than reading it again while the next write may be in progress.
+    if [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == "$expected" ]]; then return 0; fi
+    sleep "$interval"
+  done
+  return 1
+}
+
 # Leave a geometry debounce pending, then stop before it fires. Neither that
 # callback nor a later mapping event may resurrect a stopped control window.
 wmctrl -ir "$overlay_window" -e 0,160,160,-1,-1
 stop_key_at="$EPOCHREALTIME"
 xdotool key --clearmodifiers ctrl+shift+space
-for _ in {1..40}; do
-  [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == idle ]] && break
-  sleep 0.05
-done
-[[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == idle ]] || {
+wait_for_session_state idle 0.05 || {
   echo "Linux session shortcut did not stop the UI-test session (key_at=$stop_key_at)." >&2
   cat "$smoke_dir/app.log" >&2
   exit 1
@@ -164,11 +171,7 @@ if xdotool search --onlyvisible --name '^mimi$' >/dev/null; then
 fi
 restart_key_at="$EPOCHREALTIME"
 xdotool key --clearmodifiers ctrl+shift+space
-for _ in {1..40}; do
-  [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == listening ]] && break
-  sleep 0.05
-done
-[[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == listening ]] || {
+wait_for_session_state listening 0.05 || {
   echo "Linux session shortcut did not restart the UI-test session (stop_at=$stop_key_at restart_at=$restart_key_at)." >&2
   sha256sum "$executable" >&2
   ps -o pid=,stat=,etime= -p "$app_pid" >&2 || true
@@ -214,10 +217,7 @@ run_desktop_command() {
   fi
 }
 wait_session_state() {
-  for _ in {1..40}; do
-    [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == "$1" ]] && return
-    sleep 0.1
-  done
+  if wait_for_session_state "$1" 0.1; then return; fi
   echo "Desktop shortcut did not reach session state: $1" >&2
   cat "$smoke_dir/app.log" "$smoke_dir/commands.log" >&2
   exit 1
