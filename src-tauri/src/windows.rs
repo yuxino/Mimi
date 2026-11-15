@@ -725,7 +725,10 @@ impl OverlayWindowManager {
                 #[cfg(target_os = "macos")]
                 macos_pointer::install(&window);
                 #[cfg(target_os = "linux")]
-                follow_linux_overlay_on_map(&window);
+                {
+                    follow_linux_overlay_on_map(&window);
+                    trace_linux_test_mouse(&window);
+                }
                 pipeline_log!("overlay window created");
             }
             Err(_) => pipeline_log!("overlay window failed label=create_failed"),
@@ -3131,6 +3134,32 @@ fn overlay_control_geometry(
         width,
         height,
     }
+}
+
+#[cfg(target_os = "linux")]
+fn trace_linux_test_mouse(window: &tauri::WebviewWindow) {
+    if !crate::commands::app_is_ui_test()
+        || std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR").is_none()
+    {
+        return;
+    }
+
+    let _ = window.with_webview(|platform| {
+        use gtk::{gdk::EventType, glib::Propagation, prelude::WidgetExt};
+
+        // GTK emits this signal before the widget's event-specific handlers.
+        // Report only event kinds and focus, and leave GTK's routing intact.
+        platform.inner().connect_event(|view, event| {
+            let stage = match event.event_type() {
+                EventType::ButtonPress => "press",
+                EventType::ButtonRelease => "release",
+                EventType::FocusChange => "focus",
+                _ => return Propagation::Proceed,
+            };
+            tracing::debug!(target: "mimi_smoke_overlay", stage, focused = view.has_focus(), "GTK overlay input");
+            Propagation::Proceed
+        });
+    });
 }
 
 /// Shows the settings window, creating it first if it does not exist (the

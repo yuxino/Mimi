@@ -181,7 +181,13 @@ def exercise_pause_resume(process, work, preferences, settings, overlay, session
             except RuntimeError:
                 print(f"Expected {action} input package={package} sample={number} cycle={cycle} "
                       f"overlay={overlay} point={point[0]},{point[1]}", file=sys.stderr)
-                for command in (["xdotool", "getmouselocation", "--shell"], ["wmctrl", "-lG"], ["xwininfo", "-id", overlay]):
+                for command in (
+                    ["xdotool", "getmouselocation", "--shell"],
+                    ["xdotool", "getwindowfocus"],
+                    ["xprop", "-root", "_NET_ACTIVE_WINDOW"],
+                    ["wmctrl", "-lG"],
+                    ["xwininfo", "-id", overlay],
+                ):
                     try:
                         subprocess.run(command, stdout=sys.stderr, stderr=sys.stderr, timeout=2, check=False)
                     except subprocess.TimeoutExpired:
