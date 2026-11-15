@@ -45,6 +45,7 @@ export MIMI_UI_TEST_PREFERENCES_DIR="$smoke_dir"
 export MIMI_AUTO_START=0
 export MIMI_UI_TEST_SESSION_STATE_FILE="$smoke_dir/session-state"
 export MIMI_UI_TEST_FRONTEND_READY_DIR="$smoke_dir/frontend-ready"
+export RUST_LOG=info,mimi_smoke_shortcut=debug
 
 openbox >"$smoke_dir/openbox.log" 2>&1 &
 wm_pid=$!
@@ -146,25 +147,36 @@ echo "Linux overlay geometry passed: initial attachment, exact island bounds, na
 # Leave a geometry debounce pending, then stop before it fires. Neither that
 # callback nor a later mapping event may resurrect a stopped control window.
 wmctrl -ir "$overlay_window" -e 0,160,160,-1,-1
+stop_key_at="$EPOCHREALTIME"
 xdotool key --clearmodifiers ctrl+shift+space
 for _ in {1..40}; do
   [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == idle ]] && break
   sleep 0.05
 done
 [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == idle ]] || {
-  echo "Linux session shortcut did not stop the UI-test session." >&2; exit 1;
+  echo "Linux session shortcut did not stop the UI-test session (key_at=$stop_key_at)." >&2
+  cat "$smoke_dir/app.log" >&2
+  exit 1
 }
 sleep 0.75
 if xdotool search --onlyvisible --name '^mimi$' >/dev/null; then
   echo "A stopped overlay control became visible again." >&2; exit 1
 fi
+restart_key_at="$EPOCHREALTIME"
 xdotool key --clearmodifiers ctrl+shift+space
 for _ in {1..40}; do
   [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == listening ]] && break
   sleep 0.05
 done
 [[ "$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" == listening ]] || {
-  echo "Linux session shortcut did not restart the UI-test session." >&2; exit 1;
+  echo "Linux session shortcut did not restart the UI-test session (stop_at=$stop_key_at restart_at=$restart_key_at)." >&2
+  sha256sum "$executable" >&2
+  ps -o pid=,stat=,etime= -p "$app_pid" >&2 || true
+  if [[ -r "$MIMI_UI_TEST_SESSION_STATE_FILE" ]]; then
+    echo "Last session state: $(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")" >&2
+  fi
+  cat "$smoke_dir/app.log" >&2
+  exit 1
 }
 assert_control_attached
 echo "Linux overlay lifecycle passed: move-stop stays hidden; restart reattaches."

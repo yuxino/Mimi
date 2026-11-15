@@ -1215,6 +1215,7 @@ fn setup_global_shortcuts(
     let session_register =
         app.global_shortcut()
             .on_shortcut(session_shortcut, move |_app, _shortcut, event| {
+                tracing::debug!(target: "mimi_smoke_shortcut", state = ?event.state(), "session shortcut delivered");
                 if event.state() != ShortcutState::Pressed {
                     return;
                 }
@@ -1225,12 +1226,14 @@ fn setup_global_shortcuts(
                     .unwrap_or(0);
                 let previous = last_trigger.load(std::sync::atomic::Ordering::SeqCst);
                 if now_ms.saturating_sub(previous) < 500 {
+                    tracing::debug!(target: "mimi_smoke_shortcut", elapsed_ms = now_ms.saturating_sub(previous), "session shortcut suppressed by debounce");
                     return;
                 }
                 last_trigger.store(now_ms, std::sync::atomic::Ordering::SeqCst);
                 let session = Arc::clone(&session_for_handler);
                 tauri::async_runtime::spawn(async move {
                     let status = session.status_kind();
+                    tracing::debug!(target: "mimi_smoke_shortcut", status, "session shortcut action entered");
                     if status == "connecting" || status == "stopping" {
                         return;
                     }
