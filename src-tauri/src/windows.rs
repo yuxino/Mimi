@@ -1860,11 +1860,27 @@ fn follow_linux_overlay_on_map(window: &tauri::WebviewWindow) {
     let app = window.app_handle().clone();
     let _ = window.run_on_main_thread(move || {
         if let Ok(window) = native_window.gtk_window() {
+            let redraw_probe = app
+                .try_state::<crate::commands::AppState>()
+                .filter(|state| state.settings.is_ui_test())
+                .and_then(|_| std::env::var_os("MIMI_UI_TEST_FIRST_CAPTION_DIR"))
+                .map(|directory| {
+                    let marker = std::path::PathBuf::from(directory).join("overlay-mapped");
+                    let redraw =
+                        std::env::var("MIMI_UI_TEST_OVERLAY_MAP_REDRAW").as_deref() == Ok("1");
+                    (marker, redraw)
+                });
             let input_app = app.clone();
             linux_input_region::restore_on_surface_change(&window, move |window| {
                 reconcile_linux_overlay_input(&input_app, window, true);
             });
-            window.connect_map_event(move |_, _| {
+            window.connect_map_event(move |window, _| {
+                if let Some((marker, redraw)) = &redraw_probe {
+                    if *redraw {
+                        window.queue_draw();
+                    }
+                    let _ = std::fs::write(marker, if *redraw { "queue-draw" } else { "baseline" });
+                }
                 // Wait until GTK has processed the mapping event, without a
                 // timer or a polling loop. Re-read mode so a stop wins races.
                 let app = app.clone();

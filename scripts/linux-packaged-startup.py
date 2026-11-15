@@ -1,4 +1,4 @@
-"""Compare the first synthetic caption with the status animation on or off."""
+"""Compare the first synthetic caption with GTK's ordinary and queued draws."""
 
 from contextlib import contextmanager
 import ctypes as c
@@ -129,15 +129,15 @@ def state(path):
         return "idle"
 
 
-def sample(executable, root, number, pulse_on, bright_pixels):
-    variant = "pulse-on" if pulse_on else "pulse-off"
+def sample(executable, root, number, queue_draw, bright_pixels):
+    variant = "queue-draw" if queue_draw else "baseline"
     work = root / f"sample-{number}-{variant}"
     work.mkdir(mode=0o700)
     for key in ("CONFIG", "DATA", "CACHE"):
         (work / key.lower()).mkdir(mode=0o700)
     with tempfile.TemporaryDirectory(prefix="mimi-ui-test-linux-startup-") as preferences:
         Path(preferences, "preferences.json").write_text(json.dumps({
-            "ui_language": "en", "subtitle_animation": False, "pulse_animation": pulse_on,
+            "ui_language": "en", "subtitle_animation": False, "pulse_animation": True,
         }))
         ready = work / "frontend-ready"
         session = work / "session-state"
@@ -151,6 +151,7 @@ def sample(executable, root, number, pulse_on, bright_pixels):
             "MIMI_UI_TEST_SESSION_STATE_FILE": str(session),
             "MIMI_UI_TEST_STARTUP_PHASE_FILE": str(phases),
             "MIMI_UI_TEST_FIRST_CAPTION_DIR": str(work),
+            "MIMI_UI_TEST_OVERLAY_MAP_REDRAW": "1" if queue_draw else "0",
         }
         command = [str(executable)]
         if executable.suffix == ".AppImage":
@@ -187,13 +188,15 @@ def sample(executable, root, number, pulse_on, bright_pixels):
                 published_ms = (time.monotonic() - requested) * 1000
                 *bounds, observed_pulse = waiting_for(process, "committed caption", lambda: caption_commit(work / "draft-committed"))
                 committed_ms = (time.monotonic() - requested) * 1000
-                if observed_pulse != int(pulse_on):
-                    raise RuntimeError(f"Caption window did not apply {variant} before the first draft")
+                if observed_pulse != 1:
+                    raise RuntimeError("Caption window did not enable the status animation")
                 overlay_id = waiting_for(process, "visible caption window", lambda: window("^mimi Subtitles$"))
                 pixel_ms, frame_ms, glyph_pixels, first_read_ms = caption_pixels(
                     process, overlay_id, bounds, work / "draft-frame", requested, bright_pixels,
                 )
                 waiting_for(process, "visible overlay with committed frontend", overlay_ready)
+                if (work / "overlay-mapped").read_text() != variant:
+                    raise RuntimeError(f"Caption window did not run the {variant} map callback")
                 waiting_for(process, "Settings listening smoke marker", (ready / "settings").is_file)
 
                 subprocess.run(["wmctrl", "-ic", settings], check=True, timeout=2)
@@ -224,5 +227,5 @@ if __name__ == "__main__":
     executable, root = map(Path, sys.argv[1:])
     with x11_capture() as bright_pixels:
         for number in range(1, 9):
-            for pulse_on in ((True, False) if number % 2 else (False, True)):
-                sample(executable, root, number, pulse_on, bright_pixels)
+            for queue_draw in ((False, True) if number % 2 else (True, False)):
+                sample(executable, root, number, queue_draw, bright_pixels)
