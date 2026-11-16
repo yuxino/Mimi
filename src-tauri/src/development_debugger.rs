@@ -198,6 +198,48 @@ fn start_linux_caption_timing(app: &AppHandle) {
     trace::set_enabled_at(true, epoch).expect("development timing epoch");
 }
 
+// Diagnostic branch only. Set the overlay's policy before the session starts,
+// then report the policy WebKit actually accepted on this runner.
+#[cfg(target_os = "linux")]
+pub(crate) fn configure_linux_caption_compositing(window: &tauri::WebviewWindow) {
+    use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+
+    if window.app_handle().config().identifier
+        != crate::settings_store::DEVELOPMENT_APPLICATION_IDENTIFIER
+    {
+        return;
+    }
+    let Ok(request) = std::env::var("MIMI_LINUX_CAPTION_COMPOSITING") else {
+        return;
+    };
+    let disable = match request.as_str() {
+        "default" => false,
+        "never" => true,
+        _ => panic!("unknown Linux compositing probe mode"),
+    };
+    fn label(policy: HardwareAccelerationPolicy) -> &'static str {
+        match policy {
+            HardwareAccelerationPolicy::OnDemand => "on-demand",
+            HardwareAccelerationPolicy::Always => "always",
+            HardwareAccelerationPolicy::Never => "never",
+            _ => "unknown",
+        }
+    }
+
+    window
+        .with_webview(move |platform| {
+            let webview = platform.inner();
+            let settings = WebViewExt::settings(&webview).expect("probe WebKit settings");
+            let before = label(settings.hardware_acceleration_policy());
+            if disable {
+                settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
+            }
+            let accepted = label(settings.hardware_acceleration_policy());
+            println!("MIMI_CAPTION_COMPOSITING {request} {before} {accepted}");
+        })
+        .expect("probe WebKit policy dispatch");
+}
+
 // Sample the WebKit surface independently of X11. The explicit diagnostic
 // request can repaint the WebView, so pair these samples with capture disabled.
 #[cfg(target_os = "linux")]

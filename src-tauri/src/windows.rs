@@ -731,6 +731,8 @@ impl OverlayWindowManager {
                 if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
                     presentation.invalidate();
                 }
+                #[cfg(all(target_os = "linux", feature = "development-debugger"))]
+                crate::development_debugger::configure_linux_caption_compositing(&window);
                 configure_overlay_window(&window);
                 #[cfg(target_os = "macos")]
                 macos_pointer::install(&window);

@@ -22,6 +22,9 @@ import pyatspi
 from gi.repository import GLib
 from PIL import Image, ImageGrab
 
+COMPOSITING_MODES = {"default", "never"}
+TRACE_MODES = {"trace", "surface"} | COMPOSITING_MODES
+
 
 def command(*args):
     return subprocess.run(args, capture_output=True, text=True, check=True, timeout=4).stdout
@@ -225,7 +228,7 @@ def observe_caption(overlay, sampling):
     for index, frame in enumerate(frames):
         detection = recognize(frame, cache)
         if detection is not None:
-            pixels = first_matching_caption_pixels(frames, index) if sampling in {"trace", "surface"} else {}
+            pixels = first_matching_caption_pixels(frames, index) if sampling in TRACE_MODES else {}
             return (*detection, pixels)
     raise RuntimeError("No synthetic caption in the bounded offline screenshot burst")
 
@@ -295,6 +298,8 @@ def app_run(executable, root, results, sampling):
                 observations[marker] = [int(value) for value in values]
             elif line.startswith("MIMI_CAPTION_TRACE "):
                 trace.append(json.loads(line.split(" ", 1)[1]))
+            elif line.startswith("MIMI_CAPTION_COMPOSITING "):
+                observations["compositing_policy"] = line.split()[1:]
             for label in ("session start entered", "audio capture started",
                           "audio3 asr draft length=", "audio3 asr final length="):
                 if label in line:
@@ -306,6 +311,11 @@ def app_run(executable, root, results, sampling):
         try:
             settings = wait_for("visible Settings", lambda: window("^Mimi$"))
             x, y = wait_for("enabled Live Subtitles switch", start_switch)
+            if sampling in COMPOSITING_MODES:
+                request, before, effective = wait_for("applied WebKit policy", lambda: observations.get("compositing_policy"))
+                if request != sampling or effective == "unknown" or effective != (before if sampling == "default" else "never"):
+                    raise RuntimeError(f"Unexpected WebKit policy: {request}, {before}, {effective}")
+                results["compositing_policy"] = {"before": before, "effective": effective}
             started_early = "session start entered" in observations or "audio capture started" in observations
             if started_early or window("^Mimi Subtitles$"):
                 raise RuntimeError("App started a session before receiving the Settings click")
@@ -338,7 +348,7 @@ def app_run(executable, root, results, sampling):
                            playback=playback_requested, visible=visible, last_negative=last_negative, draft_log=draft_log)
             if (final_log := observations.get("audio3 asr final length=")) is not None:
                 results.update(final_log=final_log)
-            if sampling in {"trace", "surface"}:
+            if sampling in TRACE_MODES:
                 results.update(trace_milestones(observations, trace))
                 results.update(pixel_observations)
         except Exception:
@@ -367,6 +377,10 @@ def webkit_caption_frames(directory):
 
 
 def sample(executable, peer_script, root, pair, sampling):
+    if sampling in COMPOSITING_MODES:
+        os.environ["MIMI_LINUX_CAPTION_COMPOSITING"] = sampling
+    else:
+        os.environ.pop("MIMI_LINUX_CAPTION_COMPOSITING", None)
     surface_directory = root / "runtime" / "webkit-frames"
     if sampling == "surface":
         surface_directory.mkdir(mode=0o700)
@@ -378,7 +392,7 @@ def sample(executable, peer_script, root, pair, sampling):
         sys.executable, "-B", peer_script, "--ready-file", str(port_file), stdout=events_out,
     ) as peer:
         port = int(wait_for("loopback ASR peer", lambda: port_file.read_text() if port_file.is_file() else None))
-        application_id = "app.yuxino.mimi.dev" if sampling in {"trace", "surface"} else "app.yuxino.mimi"
+        application_id = "app.yuxino.mimi.dev" if sampling in TRACE_MODES else "app.yuxino.mimi"
         write_profile(Path(os.environ["XDG_CONFIG_HOME"]) / application_id, port, application_id)
         write_fixture(root / "tone.wav")
         with (root / "pulse.log").open("w+") as pulse_log, child(
@@ -420,7 +434,7 @@ def sample(executable, peer_script, root, pair, sampling):
         if not results["click"] <= results["start"] <= results["ready"] <= results["playback"] \
            <= results["first_pcm_at_peer"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
             raise RuntimeError(f"Timing observations fell out of order: {results}")
-        if sampling in {"trace", "surface"} and not results["reply"] <= results["identical_caption_pixels"] <= results["visible"]:
+        if sampling in TRACE_MODES and not results["reply"] <= results["identical_caption_pixels"] <= results["visible"]:
             raise RuntimeError("Matching caption pixels did not follow the provider reply")
         if sampling == "surface":
             results.update(webkit_caption_frames(surface_directory))
@@ -431,10 +445,12 @@ def sample(executable, peer_script, root, pair, sampling):
         if "final" in timestamps:
             results.update(final_from_peer=timestamps["final"])
         milliseconds = {key: round((value - results["click"]) / 1_000_000, 3)
-                        for key, value in results.items() if key not in {"click", "same_pointer"}}
+                        for key, value in results.items() if key not in {"click", "same_pointer", "compositing_policy"}}
         print(json.dumps({"pair": pair, "sampling": sampling, "sink_state": state,
                           "pointer_already_on_switch": results["same_pointer"],
+                          "compositing_policy": results.get("compositing_policy"),
                           "elapsed_from_click_ms": milliseconds}), flush=True)
+        return results.get("compositing_policy")
 
 
 if __name__ == "__main__":
@@ -447,9 +463,10 @@ if __name__ == "__main__":
                 return None
 
         wait_for("Openbox readiness", window_manager_ready)
-        orders = ([("trace", "surface"), ("surface", "trace")] * 2 if os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
+        orders = ([("default", "never"), ("never", "default")] * 2 if os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
                   [("online", "offline"), ("offline", "online")] * 2)
         for pair, order in enumerate(orders, start=1):
+            effective = {}
             for sampling in order:
                 with tempfile.TemporaryDirectory(prefix="mimi-visible-capture-") as directory:
                     root = Path(directory)
@@ -459,4 +476,9 @@ if __name__ == "__main__":
                         os.environ[f"XDG_{key}_{'DIR' if key == 'RUNTIME' else 'HOME'}"] = str(location)
                     os.environ["PULSE_SERVER"] = f"unix:{root / 'pulse.sock'}"
                     os.environ["PULSE_RUNTIME_PATH"] = str(root / "runtime")
-                    sample(executable, peer_script, root, pair, sampling)
+                    policy = sample(executable, peer_script, root, pair, sampling)
+                    if policy is not None:
+                        effective[sampling] = policy["effective"]
+            if effective.keys() == COMPOSITING_MODES and len(set(effective.values())) == 1:
+                print(json.dumps({"compositing_contrast": False, "effective_by_mode": effective}), flush=True)
+                break
