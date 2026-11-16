@@ -25,6 +25,7 @@ import {
   languageStatus,
   pendingSourceTranslation,
 } from "../overlay/overlayModel";
+import { useOverlayChromePeers } from "../overlay/useOverlayChromePeers";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
@@ -43,6 +44,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const errorSettingsTarget = useStore(state => state.session.status.kind === "error" ? sessionErrorSettingsTarget(state.session.status.message) : null);
   const errorRequiresConfiguration = errorSettingsTarget !== null;
   const start = useStore(state => state.start);
+  const collapsed = useStore((state) => state.session.isOverlayCollapsed);
   const sessionIsPaused = useStore((state) => state.session.isPaused);
   const audioRecording = useStore((state) => state.session.audioRecording);
   const detectedLanguage = useStore(
@@ -65,6 +67,10 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
+  useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
+  const quietIsland = isTauri && mode === "island" && sessionStatusKind !== "error" &&
+    !collapsed && !settings.isOverlayLocked && !settings.subtitleBlendsWithBackground &&
+    (!audioRecording || audioRecording === "off");
   const translationTarget = useRef({ profileId: settings.activeProfileId, language: settings.targetLanguage });
   useEffect(() => {
     if (translationTarget.current.profileId !== settings.activeProfileId || settings.targetLanguage !== "original") {
@@ -183,8 +189,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
 
   return (
-    <div ref={surfaceRef} className={embedded ? "overlay-control-embedded" : undefined}
-      data-mode={embedded ? mode : undefined}>
+    <div ref={surfaceRef} className={embedded ? "overlay-control-embedded" : "overlay-control-detached"}
+      data-mode={embedded ? mode : undefined} data-quiet-island={quietIsland ? "" : undefined}>
       {mode === "panel" && (
         <OverlayControlPanel
           phase={phase}

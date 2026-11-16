@@ -16,7 +16,9 @@ Original preference does not disable the actual translation route. Matching
 names or compatible protocols do not prove independently configured services
 are the same provider. Do not infer models or endpoints.
 
-Keep the existing dark overlay, shared typography and provider assets. The
+Keep the existing dark overlay, shared typography and provider assets.
+Use 580 × 240 logical pixels for the initial expanded frame. Honor a saved
+frame and the existing minimum height for the configured subtitle layout. The
 metadata row reserves the centered drag target at normal widths. Below 552 px,
 put metadata below that target, using 20 px of additional header height so both
 timing values remain readable. Native and browser resize minima reserve this
@@ -32,14 +34,17 @@ subtitle origin stable when toggling immersive mode; hide service chrome in
 immersive and collapsed presentations.
 
 On the regular expanded canvas, mouse-capable windows show the toolbar, drag
-handle, service names, measured timings and decorative listening wave on hover
-or keyboard focus. Keep the separate language capsule (status, recording and
-unlock), captions, session feedback, translation progress/recovery and Back to
-live visible. Pin the controls during errors and while the control panel is
-open. Devices without fine hover keep the controls visible. Use the same space
+handle, service names, measured timings and the language capsule on hover or
+keyboard focus. Keep the listening wave, text, captions, translation
+progress/recovery and Back to live visible. The capsule stays visible for
+recording feedback and when required to unlock the overlay. Pin controls
+during errors and while the control panel is open. Devices without fine hover keep the controls visible. Use the same space
 for the captions and exclude concealed controls from pointer hit testing; do
 not remount captions, move the reading edge or remove controls from tab order.
-The compact and immersive presentations keep their existing controls.
+The compact and immersive presentations keep their existing controls. A
+detached language capsule exchanges only exposure changes with the subtitle
+surface through a same-origin channel. Each window retains its own mouse and
+keyboard access and its native geometry.
 
 Use the browser's hover state independently of macOS's native pointer bridge.
 Losing WebView focus clears the native marker, but on Windows the pointer may

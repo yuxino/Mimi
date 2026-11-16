@@ -6,9 +6,9 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
 
-  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, theme = "dark" }) {
+  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, theme = "dark", hasCaptions = true }) {
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
-    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName }) => {
+    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, hasCaptions }) => {
       if (typeof window.__TAURI_INTERNALS__ !== "undefined") throw new Error("Memory-only browser preview required");
       // Vite may keep timestamped dependency imports even after page reload.
       // Import the actual module already loaded by the mounted UI; importing
@@ -25,12 +25,12 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
       const { translationService } = await mountedModule("/src/windows/overlay/translationService.ts");
       setStoredUiLanguage(language);
       // Short lanes distinguish clipping from normal compact long-text layout.
-      const history = [
+      const history = hasCaptions ? [
         { audioSource: audioInput === "microphone" ? "microphone" : "system", source: "Synthetic S", translation: "Synthetic T", createdAt: 1_700_000_000_000 },
         ...(audioInput === "both" ? [
           { audioSource: "microphone", source: "Mic S", translation: "Mic T", createdAt: 1_700_000_001_000 },
         ] : []),
-      ];
+      ] : [];
       const emptyLine = { text: "", isFinal: false };
       const tracks = history.map(pair => ({
         audioSource: pair.audioSource,
@@ -83,13 +83,13 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           timelinePresent: Boolean(timeline),
           missingTexts: expectedTexts.filter(text => !actualTexts.includes(text)),
         };
-        if (fixtureState.profileMatches && fixtureState.activeChrome && fixtureState.timelinePresent
+        if (fixtureState.profileMatches && fixtureState.activeChrome && fixtureState.timelinePresent === hasCaptions
           && actualLabels.join("\n") === expectedService.stages.map(stage => stage.label).join("\n") && fixtureState.missingTexts.length === 0) {
           return minimumOverlayHeight(useStore.getState().settings);
         }
       }
       throw new Error(`Overlay fixture did not reach the mounted UI. Restart Vite and reload after HMR/rebase changes before retrying. ${JSON.stringify({ language, route, audioInput, timestamps, ...fixtureState })}`);
-    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName });
+    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, hasCaptions });
   }
 
   async function resize(width, height) {
@@ -141,6 +141,21 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
       && !pause.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
   });
   if (!hiddenAfterLeave) throw new Error("Pause remained visible or clickable after pointer exit.");
+  await configure({ hasCaptions: false });
+  const listeningAfterLeave = await page.evaluate(() => {
+    const surface = document.querySelector(".overlay-surface");
+    const wave = surface?.querySelector(".overlay-listening-wave");
+    const status = wave?.nextElementSibling;
+    const isVisible = element => {
+      if (!element) return false;
+      const { width, height } = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return width > 0 && height > 0 && style.visibility === "visible" && style.opacity !== "0";
+    };
+    return surface && !surface.matches(":hover") && !surface.hasAttribute("data-overlay-hover")
+      && isVisible(wave) && isVisible(status) && status.textContent.trim() === "Listening";
+  });
+  if (!listeningAfterLeave) throw new Error("Listening wave or status was hidden with the pointer outside the overlay.");
   await page.hover(".overlay-surface");
   await page.waitForSelector(".overlay-service__button");
   const failures = [];

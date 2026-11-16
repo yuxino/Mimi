@@ -87,6 +87,16 @@
   max-width: 100%;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .overlay-control-detached[data-quiet-island]:not(:hover, [data-overlay-peer-hover], :has(:focus-visible)) .overlay-control-island {
+    opacity: 0;
+  }
+
+  .overlay-control-detached[data-quiet-island]:not(:hover, [data-overlay-peer-hover], :has(:focus-visible)) :is(.overlay-control-island, .overlay-control-island *) {
+    pointer-events: none;
+  }
+}
+
 .overlay-control-island-measure {
   position: absolute;
   top: 0;

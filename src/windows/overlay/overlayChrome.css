@@ -1,9 +1,9 @@
 /* The outline changes color without moving the subtitle reading edge. */
-.overlay-surface:is(:hover, [data-overlay-hover]) .overlay-expanded-canvas:not([data-overlay-locked]) {
+.overlay-surface:is(:hover, [data-overlay-hover], [data-overlay-peer-hover]) .overlay-expanded-canvas:not([data-overlay-locked]) {
   --overlay-canvas-outline: rgba(122, 168, 255, 0.34);
 }
 
-.overlay-surface:is(:hover, [data-overlay-hover]) .overlay-compact-canvas {
+.overlay-surface:is(:hover, [data-overlay-hover], [data-overlay-peer-hover]) .overlay-compact-canvas {
   --overlay-canvas-outline: rgba(122, 168, 255, 0.3);
 }
 
@@ -14,20 +14,16 @@
    hover and the native pointer bridge each reveal these controls independently.
    Inactive controls keep their geometry and tab order without taking clicks. */
 @media (hover: hover) and (pointer: fine) {
-  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-service) {
+  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-service, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
     opacity: 0;
     pointer-events: none;
   }
 
-  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-hover-control * {
+  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
     pointer-events: none;
   }
 
-  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-latency__measurement {
+  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-latency__measurement {
     display: none;
-  }
-
-  .overlay-surface:not(:hover, [data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-listening-wave {
-    visibility: hidden;
   }
 }

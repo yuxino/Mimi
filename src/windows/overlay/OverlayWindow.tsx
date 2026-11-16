@@ -29,6 +29,7 @@ import { useSubtitleTail } from "./useSubtitleTail";
 import type { SourceSubtitleSnapshot } from "../../lib/types";
 import { overlaySessionChromeLayout } from "./overlayChromeLayout";
 import { minimumOverlayHeight } from "./overlayMinimumHeight";
+import { useOverlayChromePeers } from "./useOverlayChromePeers";
 import { useSessionAction } from "./useSessionAction";
 import { publishOverlayPointerMotion } from "../../lib/overlayPointer";
 import {
@@ -55,6 +56,7 @@ type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const revealDetachedChrome = useOverlayChromePeers(surfaceRef, "overlay", isTauri && !hasEmbeddedOverlayControls);
   const subtitleRootRef = useRef<HTMLDivElement>(null);
   const session = useStore((state) => state.session);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
@@ -111,6 +113,7 @@ export function OverlayWindow() {
       // The first native hit test must see the revealed controls, even
       // when the nonactivating WebView never dispatches mouseenter.
       surfaceRef.current?.toggleAttribute("data-overlay-hover", point !== null);
+      revealDetachedChrome(point !== null);
       publishOverlayPointerMotion(point);
     }).then((unlisten) => {
       if (disposed) unlisten();
@@ -122,11 +125,11 @@ export function OverlayWindow() {
       removeListener?.();
       publishOverlayPointerMotion(null);
     };
-  }, []);
+  }, [revealDetachedChrome]);
   const [overlaySize, setOverlaySize] = useState(() => ({
-    width: typeof window === "undefined" || !isTauri ? 640 : window.innerWidth,
+    width: typeof window === "undefined" || !isTauri ? 580 : window.innerWidth,
     height:
-      typeof window === "undefined" || !isTauri ? 482 : window.innerHeight,
+      typeof window === "undefined" || !isTauri ? 240 : window.innerHeight,
   }));
   const topChromeLayout = overlaySessionChromeLayout(
     Math.max(0, overlaySize.width - OVERLAY_INSET * 2),

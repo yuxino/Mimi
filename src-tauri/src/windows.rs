@@ -194,8 +194,8 @@ fn frame_layout_is_current(version: u64) -> bool {
 pub struct SubtitleOverlayMetrics;
 
 impl SubtitleOverlayMetrics {
-    pub const REFERENCE_WIDTH: f64 = 659.0;
-    pub const REFERENCE_HEIGHT: f64 = 328.0;
+    pub const DEFAULT_WIDTH: f64 = 580.0;
+    pub const DEFAULT_HEIGHT: f64 = 240.0;
     pub const MINIMUM_WIDTH: f64 = 360.0;
     pub const MINIMUM_HEIGHT: f64 = BASE_MINIMUM_HEIGHT;
     pub const MAXIMUM_WIDTH: f64 = 1_200.0;
@@ -483,10 +483,10 @@ impl OverlayState {
             });
         let width = trusted
             .as_ref()
-            .map_or(SubtitleOverlayMetrics::REFERENCE_WIDTH, |f| f.width);
+            .map_or(SubtitleOverlayMetrics::DEFAULT_WIDTH, |f| f.width);
         let height = trusted
             .as_ref()
-            .map_or(SubtitleOverlayMetrics::REFERENCE_HEIGHT, |f| f.height)
+            .map_or(SubtitleOverlayMetrics::DEFAULT_HEIGHT, |f| f.height)
             .max(minimum_height);
         let (x, y) = default_overlay_origin(app, width, height, &trusted);
         let mut user_frame = OverlayFrame {
