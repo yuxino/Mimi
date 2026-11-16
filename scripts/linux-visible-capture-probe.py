@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pyatspi
 from gi.repository import GLib
-from PIL import ImageGrab
+from PIL import Image, ImageGrab
 
 
 def command(*args):
@@ -225,7 +225,7 @@ def observe_caption(overlay, sampling):
     for index, frame in enumerate(frames):
         detection = recognize(frame, cache)
         if detection is not None:
-            pixels = first_matching_caption_pixels(frames, index) if sampling == "trace" else {}
+            pixels = first_matching_caption_pixels(frames, index) if sampling in {"trace", "surface"} else {}
             return (*detection, pixels)
     raise RuntimeError("No synthetic caption in the bounded offline screenshot burst")
 
@@ -338,7 +338,7 @@ def app_run(executable, root, results, sampling):
                            playback=playback_requested, visible=visible, last_negative=last_negative, draft_log=draft_log)
             if (final_log := observations.get("audio3 asr final length=")) is not None:
                 results.update(final_log=final_log)
-            if sampling == "trace":
+            if sampling in {"trace", "surface"}:
                 results.update(trace_milestones(observations, trace))
                 results.update(pixel_observations)
         except Exception:
@@ -346,13 +346,39 @@ def app_run(executable, root, results, sampling):
             raise
 
 
+def webkit_caption_frames(directory):
+    frames = []
+    for path in directory.glob("*.png"):
+        requested_us, replied_us = map(int, path.stem.split("-"))
+        frames.append((requested_us, replied_us, path))
+    for requested_us, replied_us, path in sorted(frames):
+        with Image.open(path) as image:
+            # Match the desktop test's subtitle band. Composite transparent
+            # widget pixels on the same neutral background before OCR.
+            crop = image.crop((10, image.height // 2, image.width - 10, image.height - 5)).convert("RGBA")
+            background = Image.new("RGBA", crop.size, (18, 18, 18, 255))
+            background.alpha_composite(crop)
+            if found_caption(background.convert("RGB")):
+                return {
+                    "webkit_requested": requested_us * 1000,
+                    "webkit_replied": replied_us * 1000,
+                }
+    raise RuntimeError(f"No recognized caption in {len(frames)} WebKit snapshots")
+
+
 def sample(executable, peer_script, root, pair, sampling):
+    surface_directory = root / "runtime" / "webkit-frames"
+    if sampling == "surface":
+        surface_directory.mkdir(mode=0o700)
+        os.environ["MIMI_LINUX_WEBKIT_SNAPSHOTS"] = "1"
+    else:
+        os.environ.pop("MIMI_LINUX_WEBKIT_SNAPSHOTS", None)
     port_file, event_file = root / "port", root / "peer-events.jsonl"
     with event_file.open("w") as events_out, child(
         sys.executable, "-B", peer_script, "--ready-file", str(port_file), stdout=events_out,
     ) as peer:
         port = int(wait_for("loopback ASR peer", lambda: port_file.read_text() if port_file.is_file() else None))
-        application_id = "app.yuxino.mimi.dev" if sampling == "trace" else "app.yuxino.mimi"
+        application_id = "app.yuxino.mimi.dev" if sampling in {"trace", "surface"} else "app.yuxino.mimi"
         write_profile(Path(os.environ["XDG_CONFIG_HOME"]) / application_id, port, application_id)
         write_fixture(root / "tone.wav")
         with (root / "pulse.log").open("w+") as pulse_log, child(
@@ -394,8 +420,12 @@ def sample(executable, peer_script, root, pair, sampling):
         if not results["click"] <= results["start"] <= results["ready"] <= results["playback"] \
            <= results["first_pcm_at_peer"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
             raise RuntimeError(f"Timing observations fell out of order: {results}")
-        if sampling == "trace" and not results["reply"] <= results["identical_caption_pixels"] <= results["visible"]:
+        if sampling in {"trace", "surface"} and not results["reply"] <= results["identical_caption_pixels"] <= results["visible"]:
             raise RuntimeError("Matching caption pixels did not follow the provider reply")
+        if sampling == "surface":
+            results.update(webkit_caption_frames(surface_directory))
+            if not results["reply"] <= results["webkit_requested"] <= results["webkit_replied"]:
+                raise RuntimeError(f"WebKit snapshot did not follow the provider reply: {results}")
         if results["draft_log"] < results["reply"]:
             raise RuntimeError("The application logged a draft before the fixture sent it")
         if "final" in timestamps:
@@ -417,7 +447,7 @@ if __name__ == "__main__":
                 return None
 
         wait_for("Openbox readiness", window_manager_ready)
-        orders = ([("trace",)] * 4 if os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
+        orders = ([("trace", "surface"), ("surface", "trace")] * 2 if os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
                   [("online", "offline"), ("offline", "online")] * 2)
         for pair, order in enumerate(orders, start=1):
             for sampling in order:

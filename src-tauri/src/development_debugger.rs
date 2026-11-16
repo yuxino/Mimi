@@ -114,7 +114,7 @@ pub fn initialize(app: &AppHandle) {
     trace::initialize(available);
     #[cfg(target_os = "linux")]
     if available && timing_probe {
-        start_linux_caption_timing();
+        start_linux_caption_timing(app);
     }
     let selection = initialize_evidence_storage(
         available,
@@ -140,12 +140,46 @@ pub fn initialize(app: &AppHandle) {
 // Diagnostic branch only: reuse the development journal without recording audio
 // or subtitle payloads. Anchor its epoch to the Linux driver's monotonic clock.
 #[cfg(target_os = "linux")]
-fn start_linux_caption_timing() {
+fn start_linux_caption_timing(app: &AppHandle) {
+    let snapshot_dir = (std::env::var("MIMI_LINUX_WEBKIT_SNAPSHOTS").as_deref() == Ok("1"))
+        .then(|| std::env::var_os("XDG_RUNTIME_DIR"))
+        .flatten()
+        .map(|root| PathBuf::from(root).join("webkit-frames"))
+        .filter(|path| path.is_absolute() && path.is_dir());
+    let app = app.clone();
+    let first_source_snapshot = AtomicU64::new(0);
+    let started_snapshots = AtomicBool::new(false);
     let before_us = gtk::glib::monotonic_time();
     let epoch = Instant::now();
     let after_us = gtk::glib::monotonic_time();
     println!("MIMI_CAPTION_EPOCH {before_us} {after_us}");
-    trace::set_sink(Some(trace::TraceSink::new(|entry| {
+    trace::set_sink(Some(trace::TraceSink::new(move |entry| {
+        if let Some(directory) = &snapshot_dir {
+            match &entry.event {
+                trace::DebugEvent::Snapshot {
+                    snapshot_id,
+                    summary,
+                    ..
+                } if summary.source_characters > 0 => {
+                    let _ = first_source_snapshot.compare_exchange(
+                        0,
+                        *snapshot_id,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    );
+                }
+                trace::DebugEvent::Published {
+                    snapshot_id,
+                    delivered: true,
+                    ..
+                } if *snapshot_id == first_source_snapshot.load(Ordering::Relaxed)
+                    && !started_snapshots.swap(true, Ordering::Relaxed) =>
+                {
+                    sample_linux_webkit_surface(&app, directory.clone());
+                }
+                _ => {}
+            }
+        }
         if !matches!(&entry.event, trace::DebugEvent::Pipeline { .. }) {
             println!(
                 "MIMI_CAPTION_TRACE {}",
@@ -162,6 +196,62 @@ fn start_linux_caption_timing() {
     })))
     .expect("development timing sink");
     trace::set_enabled_at(true, epoch).expect("development timing epoch");
+}
+
+// Sample the WebKit surface independently of X11. The explicit diagnostic
+// request can repaint the WebView, so pair these samples with capture disabled.
+#[cfg(target_os = "linux")]
+fn sample_linux_webkit_surface(app: &AppHandle, directory: PathBuf) {
+    use gtk::glib::{self, ControlFlow};
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::time::Duration;
+    use webkit2gtk::{SnapshotOptions, SnapshotRegion, WebViewExt};
+
+    let window = app.get_webview_window("overlay").expect("probe overlay");
+    window
+        .with_webview(move |platform| {
+            let webview = platform.inner();
+            let busy = Rc::new(Cell::new(false));
+            let deadline = Instant::now() + Duration::from_millis(1200);
+            glib::timeout_add_local(Duration::from_millis(40), move || {
+                if Instant::now() >= deadline {
+                    return ControlFlow::Break;
+                }
+                if busy.replace(true) {
+                    return ControlFlow::Continue;
+                }
+                let busy = Rc::clone(&busy);
+                let directory = directory.clone();
+                let requested_us = glib::monotonic_time();
+                webview.snapshot(
+                    SnapshotRegion::Visible,
+                    SnapshotOptions::empty(),
+                    None::<&gtk::gio::Cancellable>,
+                    move |result| {
+                        let replied_us = glib::monotonic_time();
+                        busy.set(false);
+                        let Ok(surface) = result else {
+                            println!("MIMI_WEBKIT_SNAPSHOT_FAILED {requested_us} {replied_us}");
+                            return;
+                        };
+                        let mut png = Vec::new();
+                        if surface.write_to_png(&mut png).is_err() {
+                            println!(
+                                "MIMI_WEBKIT_SNAPSHOT_ENCODE_FAILED {requested_us} {replied_us}"
+                            );
+                            return;
+                        }
+                        let file = directory.join(format!("{requested_us}-{replied_us}.png"));
+                        tauri::async_runtime::spawn_blocking(move || {
+                            fs::write(file, png).expect("probe-created snapshot directory");
+                        });
+                    },
+                );
+                ControlFlow::Continue
+            });
+        })
+        .expect("probe WebKit main-thread dispatch");
 }
 
 // Both closures are deliberately evaluated only after the exact dev gate.
