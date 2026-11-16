@@ -1,5 +1,20 @@
 # 集成实测记录
 
+## 2026-11-17：Linux 浮窗加速策略同机对照
+
+- [`5b542048` 四对实测](https://github.com/yuxino/Mimi/actions/runs/43967911842/job/133652219280)
+  使用同一个 release profile 诊断程序、Ubuntu 22.04 Xvfb／Openbox、
+  软件 OpenGL 和 WebKitGTK 2.50.4。沿用 997 Hz 合成音和本地识别夹具，
+  八次交错运行均复核实际字幕像素，两组都没有发起主动 WebKit 快照。
+  只改变字幕浮窗的[加速策略](https://webkitgtk.org/reference/webkit2gtk/stable/method.Settings.set_hardware_acceleration_policy.html)。
+  对照组读回 `always`，试验组每次都从 `always` 改为并读回 `never`。
+- 点击到桌面确认完整字幕的中位数从 741.15 ms 降至 253.13 ms，
+  四对均提前，配对中位数提前 494.98 ms（444.26–589.98 ms）。
+  从后端发布到匹配像素也在四对中缩短，配对中位数提前 481.27 ms。
+  这是虚拟 X11 桌面、软件 OpenGL 和固定合成输入的结果，未测普通
+  Linux 桌面、物理 GPU 或其他系统。下一轮用正式前端复测，再检查
+  暂停／继续、透明度与窗口缩放后评估适用条件。产品默认策略未调整。
+
 ## 2026-11-17：Linux WebKit 快照与桌面呈现
 
 - [`21d4ee30` 同机对照](https://github.com/yuxino/Mimi/actions/runs/43958058825/job/133618000938)
