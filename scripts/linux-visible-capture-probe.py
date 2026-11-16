@@ -88,7 +88,7 @@ def write_profile(config, port):
             "profiles": [{"id": "local-timing", "name": "Local timing", "provider": "customOpenAIASR"}],
         },
         credentials / "credentials.json": {
-            "schema_version": 1, "pending_import": [], "pending_cleanup": [],
+            "schemaVersion": 1, "pendingImport": [], "pendingCleanup": [],
             "entries": {"app.yuxino.mimi.credentials.profiles": {
                 "provider-profile:local-timing:customOpenAIASR:api-key": json.dumps({
                     "kind": "customSpeech", "endpoint": f"ws://127.0.0.1:{port}/asr",

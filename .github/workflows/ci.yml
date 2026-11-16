@@ -387,7 +387,7 @@ jobs:
         shell: bash
         timeout-minutes: 5
         run: |
-          sudo apt-get install --no-install-recommends -y python3-venv python3-pyatspi python3-pil tesseract-ocr
+          sudo apt-get install --no-install-recommends -y python3-venv python3-pyatspi at-spi2-core python3-pil tesseract-ocr tesseract-ocr-eng
           /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/mimi-asr-timing"
           "$RUNNER_TEMP/mimi-asr-timing/bin/python" -m pip install --disable-pip-version-check 'websockets==15.0.1'
           sudo unshare --net bash -c '
