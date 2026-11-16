@@ -11,10 +11,13 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
 Add-Type @'
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
 public static class MimiPointerSmoke {
+    private const uint DwmwaCloaked = 14;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct MouseInput {
         internal int X, Y;
@@ -47,6 +50,8 @@ public static class MimiPointerSmoke {
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr window, out Rect rect);
@@ -60,6 +65,20 @@ public static class MimiPointerSmoke {
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out uint value, uint size);
+
+    private static string DescribeProcess(uint pid) {
+        try {
+            using (var process = Process.GetProcessById((int)pid)) return process.ProcessName;
+        } catch (ArgumentException) {
+            return "unavailable";
+        } catch (InvalidOperationException) {
+            return "unavailable";
+        } catch (System.ComponentModel.Win32Exception) {
+            return "unavailable";
+        }
+    }
 
     private static string DescribeWindow(IntPtr window) {
         if (window == IntPtr.Zero) return "none";
@@ -71,8 +90,12 @@ public static class MimiPointerSmoke {
         var bounds = GetWindowRect(window, out rect)
             ? String.Format("{0},{1}..{2},{3}", rect.Left, rect.Top, rect.Right, rect.Bottom)
             : "unavailable";
-        return String.Format("0x{0:X} class={1} pid={2} bounds={3} dpi={4} ex=0x{5:X}",
-            window.ToInt64(), name, process, bounds, GetDpiForWindow(window), GetWindowExStyle(window, -20));
+        uint cloakFlags;
+        var cloak = DwmGetWindowAttribute(window, DwmwaCloaked, out cloakFlags, sizeof(uint)) == 0
+            ? cloakFlags.ToString("X") : "unavailable";
+        return String.Format("0x{0:X} class={1} pid={2} process={3} bounds={4} dpi={5} ex=0x{6:X} visible={7} cloak={8}",
+            window.ToInt64(), name, process, DescribeProcess(process), bounds, GetDpiForWindow(window),
+            GetWindowExStyle(window, -20), IsWindowVisible(window), cloak);
     }
 
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
@@ -81,8 +104,9 @@ public static class MimiPointerSmoke {
         var root = GetAncestor(hit, 2);
         if (root != overlay)
             throw new InvalidOperationException(String.Format(
-                "{0} point ({1},{2}) did not hit the overlay. Expected {3}; hit {4}; hit root {5}.",
-                action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
+                "{0} point ({1},{2}) did not hit the overlay. Expected {3}; hit {4}; hit root {5}; foreground {6}.",
+                action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root),
+                DescribeWindow(GetForegroundWindow())));
         if (!SetCursorPos(x, y))
             throw new InvalidOperationException("Could not move the pointer on the test desktop.");
         var clicks = new Input[] {
