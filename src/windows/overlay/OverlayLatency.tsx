@@ -23,11 +23,11 @@ export function OverlayLatency({ session, translationRequired = true }: { sessio
   const translationHelp = follow ? I18N.overlay.translationFollowLatencyHelp : I18N.overlay.translationLatencyHelp;
   return (
     <div className="overlay-latency" data-testid="overlay-latency">
-      {showApi && <span title={`${I18N.overlay.apiLatencyHelp} ${api}`} aria-label={`${I18N.overlay.apiLatency}: ${api}`}>
+      {showApi && <span className="overlay-latency__measurement" title={`${I18N.overlay.apiLatencyHelp} ${api}`} aria-label={`${I18N.overlay.apiLatency}: ${api}`}>
         <span>{I18N.overlay.apiLatencyShort}</span><strong data-tone={latencyTone(session.apiLatencyMs, "api")}>{api}</strong>
       </span>}
-      {showApi && showTranslation && <span className="overlay-latency__separator" aria-hidden="true">·</span>}
-      {showTranslation && <span role={translationStatus ? "status" : undefined}
+      {showApi && showTranslation && <span className="overlay-latency__separator overlay-latency__measurement" aria-hidden="true">·</span>}
+      {showTranslation && <span className={translationStatus ? undefined : "overlay-latency__measurement"} role={translationStatus ? "status" : undefined}
         title={translationStatus ?? `${translationHelp} ${translationSample}`}
         aria-label={translationStatus ?? `${translationLabel}: ${translationSample}`}>
         {!translationStatus && <span>{translationLabel}</span>}

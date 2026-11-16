@@ -4,7 +4,7 @@
 async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true } = {}) => {
   await page.goto(`${baseUrl}/?window=overlay`);
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
-  await page.waitForSelector(".overlay-service__button");
+  await page.waitForSelector(".overlay-surface");
 
   async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, theme = "dark" }) {
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
@@ -113,6 +113,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   }
 
   await configure({});
+  await page.hover(".overlay-surface");
   await page.waitForSelector(".overlay-service__button");
   const failures = [];
   let chromeChecked = 0;
@@ -131,6 +132,9 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         ]) {
           const minimumHeight = await configure({ language, theme, ...candidate });
           await resize(width, minimumHeight);
+          // Measurements and service labels are revealed only while using
+          // the expanded canvas. Move inside after resizing from an edge.
+          await page.hover(".overlay-surface");
           const result = await page.evaluate(() => {
             const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
             const service = rect(".overlay-service__button");

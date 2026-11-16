@@ -53,9 +53,17 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   const commits = vi.fn();
   await act(async () => root.render(<Profiler id="overlay" onRender={commits}><OverlayWindow /></Profiler>));
   expect(listenPointer).toHaveBeenCalledOnce();
+  const surface = host.querySelector(".overlay-surface")!;
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
   const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.openSettings}"]`)!;
-  const hitTest = vi.fn(() => button.querySelector("svg"));
+  const hitTest = vi.fn(() => surface.hasAttribute("data-overlay-hover") ? button.querySelector("svg") : null);
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: hitTest });
+  const beforeEntering = commits.mock.calls.length;
+  hitTest.mockReturnValueOnce(null);
+  await act(async () => pointer({ x: 10, y: 10 }));
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(true);
+  expect(commits).toHaveBeenCalledTimes(beforeEntering);
+  await act(async () => pointer(null));
   await act(async () => pointer({ x: 20, y: 20 }));
   expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.openSettings);
   expect(button.dataset.hovered).toBe("true");
@@ -64,10 +72,12 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   for (let i = 0; i < 30; i++) await act(async () => pointer({ x: 20 + i, y: 20 }));
   expect(commits).toHaveBeenCalledTimes(afterEntering);
   await act(async () => window.dispatchEvent(new Event("blur")));
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   await act(async () => pointer({ x: 20, y: 20 }));
   expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
   await act(async () => pointer(null));
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   expect(button.dataset.hovered).toBeUndefined();
   await act(async () => root.unmount());
@@ -75,6 +85,21 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   const previousCalls = hitTest.mock.calls.length;
   await act(async () => pointer({ x: 20, y: 20 }));
   expect(hitTest).toHaveBeenCalledTimes(previousCalls);
+});
+
+it("keeps error recovery available when the native pointer is outside", async () => {
+  useStore.setState(state => ({ session: { ...state.session, isActive: false,
+    status: { kind: "error", message: "unavailable" },
+  } }));
+  await act(async () => root.render(<OverlayWindow />));
+  const surface = host.querySelector(".overlay-surface")!;
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
+  expect(surface.hasAttribute("data-overlay-chrome-pinned")).toBe(true);
+  expect(host.querySelector(".overlay-session-error-content")).not.toBeNull();
+  await act(async () => useStore.setState(state => ({ session: { ...state.session,
+    isActive: true, status: { kind: "listening" },
+  } })));
+  expect(surface.hasAttribute("data-overlay-chrome-pinned")).toBe(false);
 });
 
 it("releases a native listener that finishes registering after the overlay unmounts", async () => {

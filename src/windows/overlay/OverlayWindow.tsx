@@ -15,7 +15,7 @@ import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../../lib/store";
 import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
-import { OVERLAY_ACTIVITY_PHASES, hexToRgba } from "../../lib/types";
+import { OVERLAY_ACTIVITY_PHASES } from "../../lib/types";
 import { ControlButton } from "./ControlButton";
 import { DragHandle, OverlayDragArea } from "./DragHandle";
 import { PulseRing } from "./PulseRing";
@@ -42,8 +42,8 @@ import {
   usesAtomicSubtitlePreview,
   usesStreamingSubtitlePreview,
 } from "./overlayModel";
+import "./overlayChrome.css";
 
-const ACCENT = "#7AA8FF";
 const OVERLAY_INSET = 6;
 const EMPTY_MICROPHONE: SourceSubtitleSnapshot = {
   audioSource: "microphone", source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
@@ -54,6 +54,7 @@ type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | 
 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const subtitleRootRef = useRef<HTMLDivElement>(null);
   const session = useStore((state) => state.session);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
@@ -95,28 +96,22 @@ export function OverlayWindow() {
     });
   };
 
-  const [isHovering, setIsHovering] = useState(false);
   const [readingHistory, setReadingHistory] = useState(false);
   const [followTailRequest, setFollowTailRequest] = useState(0);
   useEffect(() => {
-    if (!isTauri) return;
     let disposed = false;
-    let pointerInside = false;
     let removeListener: (() => void) | undefined;
     const blurWindow = () => {
-      pointerInside = false;
+      surfaceRef.current?.removeAttribute("data-overlay-hover");
       publishOverlayPointerMotion(null);
-      setIsHovering(false);
     };
     window.addEventListener("blur", blurWindow);
-    void listenOverlayPointerMotion((point) => {
+    if (isTauri) void listenOverlayPointerMotion((point) => {
       if (disposed) return;
+      // The first native hit test must see the revealed controls, even
+      // when the nonactivating WebView never dispatches mouseenter.
+      surfaceRef.current?.toggleAttribute("data-overlay-hover", point !== null);
       publishOverlayPointerMotion(point);
-      const nextInside = point !== null;
-      if (pointerInside !== nextInside) {
-        pointerInside = nextInside;
-        setIsHovering(nextInside);
-      }
     }).then((unlisten) => {
       if (disposed) unlisten();
       else removeListener = unlisten;
@@ -272,21 +267,21 @@ export function OverlayWindow() {
     </>
   );
 
-  if (isTauri) {
-    return <div className="relative h-full w-full">{content}
-      {hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
-    </div>;
-  }
+  const surface = <div ref={surfaceRef} className="overlay-surface relative h-full w-full"
+    style={isTauri ? undefined : overlaySize}
+    data-overlay-chrome-pinned={hasSessionError || controlMode === "panel" ? "" : undefined}
+    onMouseEnter={(event) => event.currentTarget.setAttribute("data-overlay-hover", "")}
+    onMouseLeave={(event) => event.currentTarget.removeAttribute("data-overlay-hover")}
+  >
+    {content}
+    {isTauri && hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
+  </div>;
+  if (isTauri) return surface;
 
   // Plain `vite dev` preview: a fixed box anchored near the bottom-center.
   return (
     <div className="flex h-screen w-screen items-end justify-center pb-[72px]">
-      <div
-        className="relative"
-        style={{ width: overlaySize.width, height: overlaySize.height }}
-      >
-        {content}
-      </div>
+      {surface}
     </div>
   );
 
@@ -371,26 +366,20 @@ export function OverlayWindow() {
       );
     }
 
-    const hoverHighlight = isHovering && !presentationLocked;
-    const borderColor = hoverHighlight
-      ? hexToRgba(ACCENT, 0.34)
-      : "rgba(255,255,255,0.12)";
-    const borderWidth = hoverHighlight ? 1 : 0.75;
     return (
       <div
-        className="relative h-full w-full overflow-hidden"
+        className="overlay-expanded-canvas relative h-full w-full overflow-hidden"
+        data-overlay-locked={presentationLocked ? "" : undefined}
         style={{
           borderRadius: 16,
+          border: "1px solid var(--overlay-canvas-outline, rgba(255, 255, 255, 0.12))",
           // Ordinary mode keeps the same canvas through errors and retries.
           // The error feedback owns its contrast; only a saved immersive mode
           // needs a temporary opaque canvas while recovery is interactive.
           background: hasSessionError && settings.subtitleBlendsWithBackground
             ? "rgba(16,16,16,0.96)"
             : subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
-          border: `${borderWidth}px solid ${borderColor}`,
         }}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
       >
         <div className="relative flex h-full flex-col" style={{ padding: 5 }}>
           {renderStatusLine()}
@@ -398,13 +387,9 @@ export function OverlayWindow() {
               and metadata sit above this layer; subtitle content and resize
               edges retain their own pointer handling. */}
           <div
-            className="absolute inset-x-0 top-0"
+            className="overlay-hover-control overlay-drag-layer absolute inset-x-0 top-0"
             style={{
               height: topChromeLayout.topBandHeight,
-              pointerEvents: "none",
-              // Keep the drag affordance legible before the user discovers it.
-              opacity: isHovering ? 1 : 0.8,
-              transition: "opacity 160ms ease-out",
             }}
           >
             <OverlayDragArea
@@ -419,7 +404,6 @@ export function OverlayWindow() {
                 left: topChromeLayout.dragHandleCenterX,
                 bottom: 0,
                 transform: "translateX(-50%)",
-                pointerEvents: "auto",
               }}
             >
               <DragHandle
@@ -436,14 +420,11 @@ export function OverlayWindow() {
             !presentationLocked &&
             topChromeLayout.showPrimaryAction && (
             <div
-              className="absolute flex"
+              className="overlay-hover-control absolute flex"
               style={{
                 top: 10,
                 right: 10,
                 gap: 4,
-                opacity: isHovering || session.isPaused || session.status.kind === "error" ? 1 : 0.75,
-                pointerEvents: "auto",
-                transition: "opacity 120ms ease",
               }}
             >
               {topChromeLayout.showSessionAction && !errorRequiresConfiguration && <ControlButton
@@ -532,7 +513,7 @@ export function OverlayWindow() {
             >
               {showEmptyPulse && (
                 <div
-                  className="flex shrink-0 items-center justify-center"
+                  className={`flex shrink-0 items-center justify-center${session.status.kind === "listening" ? " overlay-listening-wave" : ""}`}
                   style={{ height: emptyPulseSize, width: emptyPulseSize }}
                 >
                   <div style={{ transform: `scale(${emptyPulseSize / pulseBaseSize})` }}>
@@ -589,16 +570,14 @@ export function OverlayWindow() {
     const recordingLabel = recordingStatusLabel(session.audioRecording, effectiveUiLanguage());
     return (
       <div
-        className="relative h-full w-full"
+        className="overlay-compact-canvas relative h-full w-full"
         role="group"
         aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput, settings.systemAudioTarget)}${recordingLabel ? ` · ${recordingLabel}` : ""}`}
         style={{
           borderRadius: 14,
+          border: "0.75px solid var(--overlay-canvas-outline, rgba(122, 168, 255, 0.16))",
           background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
-          border: `0.75px solid ${hexToRgba(ACCENT, isHovering ? 0.3 : 0.16)}`,
         }}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
         onWheel={(event) => {
           if (event.deltaY !== 0) {
             event.preventDefault();
