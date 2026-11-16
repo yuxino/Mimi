@@ -54,8 +54,13 @@ jobs:
           CI_PACKAGES: ${{ inputs.packages }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF_NAME" == test/windows-arm64-pointer-owner ]]; then
-            printf '%s\n' frontend=false native=false rust_os='[]' windows_arm=true arm_bundle=true \
-              arm_pointer_experiment=true bundle=false bundle_os='[]' >> "$GITHUB_OUTPUT"
+            if [[ "$CI_PACKAGES" == none ]]; then
+              printf '%s\n' frontend=false native=false rust_os='[]' windows_arm=false arm_bundle=false \
+                bundle=false bundle_os='[]' >> "$GITHUB_OUTPUT"
+            else
+              printf '%s\n' frontend=false native=false rust_os='[]' windows_arm=true arm_bundle=true \
+                arm_pointer_experiment=true bundle=false bundle_os='[]' >> "$GITHUB_OUTPUT"
+            fi
           else
             python3 scripts/ci-scope.py
           fi
@@ -182,6 +187,16 @@ jobs:
       - name: Test vendored WASAPI capture packets
         if: ${{ matrix.os == 'windows-2025' }}
         run: cargo test --manifest-path src-tauri/vendor/cpal/Cargo.toml --lib capture_packet_tests
+
+  windows-arm64-desktop-probe:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'test/windows-arm64-pointer-owner' && inputs.packages == 'none' }}
+    runs-on: windows-11-arm
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Prove mouse delivery on a temporary native desktop
+        shell: pwsh
+        run: ./scripts/windows-isolated-input-probe.ps1
 
   windows-arm64:
     needs: scope
