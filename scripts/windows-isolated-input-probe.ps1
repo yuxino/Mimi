@@ -1,3 +1,5 @@
+param([string]$ChildDesktop, [string]$Receipt)
+
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'ARM64') {
@@ -8,6 +10,7 @@ Add-Type @'
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -41,6 +44,19 @@ public static class MimiIsolatedInputProbe {
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct Input { internal uint Type; internal MouseInput Mouse; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct StartupInfo {
+        internal uint Size;
+        internal string Reserved, Desktop, Title;
+        internal uint X, Y, Width, Height, XChars, YChars, Fill, Flags;
+        internal ushort ShowWindow, ReservedBytes;
+        internal IntPtr ReservedData, StandardInput, StandardOutput, StandardError;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInfo {
+        internal IntPtr Process, Thread;
+        internal uint ProcessId, ThreadId;
+    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
@@ -85,6 +101,17 @@ public static class MimiIsolatedInputProbe {
     private static extern uint SendInput(uint count, Input[] entries, int size);
     [DllImport("user32.dll", ExactSpelling = true)]
     private static extern bool PeekMessageW(out Message message, IntPtr window, uint min, uint max, uint remove);
+    [DllImport("kernel32.dll", ExactSpelling = true, CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateProcessW(string app, StringBuilder command, IntPtr processSecurity, IntPtr threadSecurity,
+        bool inherit, uint flags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInfo info);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetExitCodeProcess(IntPtr process, out uint status);
+    [DllImport("kernel32.dll")]
+    private static extern bool TerminateProcess(IntPtr process, uint status);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
 
     private static InvalidOperationException Win32Failure(string operation) {
         int code = Marshal.GetLastWin32Error();
@@ -185,7 +212,58 @@ public static class MimiIsolatedInputProbe {
         throw new InvalidOperationException("The owned probe window did not receive both mouse messages.");
     }
 
-    public static void Run() {
+    private static IntPtr OpenProbeWindow() {
+        var window = CreateWindowExW(0, "BUTTON", "Mimi isolated input probe", Popup | Visible | Border,
+            80, 100, 240, 140, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        if (window == IntPtr.Zero) throw Win32Failure("CreateWindowExW (probe)");
+        return window;
+    }
+
+    public static void RunChild(string desktopName) {
+        if (DesktopName(GetThreadDesktop(GetCurrentThreadId())) != desktopName || ActiveDesktopName() != desktopName)
+            throw new InvalidOperationException("The child launch did not attach to the active temporary desktop.");
+        var window = OpenProbeWindow();
+        try {
+            ClickOwnWindow(window, desktopName);
+            RequireClickPair(window);
+        } finally {
+            if (!DestroyWindow(window)) throw Win32Failure("DestroyWindow (child probe)");
+        }
+    }
+
+    private static void LaunchProbeChild(string shell, string script, string receipt, string desktopName) {
+        if (shell.Contains("\"") || script.Contains("\"") || receipt.Contains("\""))
+            throw new InvalidOperationException("Unexpected quote in probe launch paths.");
+        var command = new StringBuilder("\"" + shell + "\" -NoLogo -NoProfile -NonInteractive -File \"" + script +
+            "\" -ChildDesktop \"" + desktopName + "\" -Receipt \"" + receipt + "\"");
+        var startup = new StartupInfo { Size = (uint)Marshal.SizeOf(typeof(StartupInfo)), Desktop = "WinSta0\\" + desktopName };
+        ProcessInfo child;
+        const uint noConsole = 0x08000000;
+        if (!CreateProcessW(shell, command, IntPtr.Zero, IntPtr.Zero, false, noConsole, IntPtr.Zero, null, ref startup, out child))
+            throw Win32Failure("CreateProcessW (isolated probe)");
+        var childExited = false;
+        try {
+            var wait = WaitForSingleObject(child.Process, 20000);
+            if (wait == 0x0102) throw new TimeoutException("The isolated probe process did not finish.");
+            if (wait != 0) throw Win32Failure("WaitForSingleObject (isolated probe)");
+            childExited = true;
+            uint code;
+            if (!GetExitCodeProcess(child.Process, out code)) throw Win32Failure("GetExitCodeProcess (isolated probe)");
+            var outcome = File.Exists(receipt) ? File.ReadAllText(receipt).Trim() : "No child receipt.";
+            Console.WriteLine("Isolated child exit={0}: {1}", code, outcome);
+            if (code != 0 || outcome != "Child observed both owned-window mouse messages.")
+                throw new InvalidOperationException("The isolated child did not prove native mouse delivery.");
+        } finally {
+            if (!childExited) {
+                TerminateProcess(child.Process, 1);
+                WaitForSingleObject(child.Process, 3000);
+            }
+            CloseHandle(child.Thread);
+            CloseHandle(child.Process);
+        }
+    }
+
+    public static void Run(string shell, string script, string receipt) {
         var original = OpenInputDesktop(0, false, ReadObjects | SwitchAccess);
         if (original == IntPtr.Zero) throw Win32Failure("OpenInputDesktop (original)");
         try {
@@ -196,6 +274,7 @@ public static class MimiIsolatedInputProbe {
             var gate = new object();
             var canceled = false;
             var switched = false;
+            var separateProcess = !String.IsNullOrEmpty(shell);
             Exception failure = null;
             using (var ready = new ManualResetEventSlim(false))
             using (var permitInput = new ManualResetEventSlim(false)) {
@@ -205,6 +284,10 @@ public static class MimiIsolatedInputProbe {
                         temporary = CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0,
                             ReadObjects | CreateWindow | WriteObjects | SwitchAccess, IntPtr.Zero);
                         if (temporary == IntPtr.Zero) throw Win32Failure("CreateDesktopW");
+                        if (separateProcess) {
+                            ready.Set();
+                            return;
+                        }
                         // The hosted runner kept the worker on Default after CreateDesktopW.
                         // Bind this windowless thread explicitly before creating the probe.
                         var before = DesktopName(GetThreadDesktop(GetCurrentThreadId()));
@@ -212,9 +295,7 @@ public static class MimiIsolatedInputProbe {
                         if (DesktopName(GetThreadDesktop(GetCurrentThreadId())) != desktopName)
                             throw new InvalidOperationException("The probe worker did not enter the temporary desktop.");
                         Console.WriteLine("Probe worker desktop: {0} -> {1}.", before, desktopName);
-                        window = CreateWindowExW(0, "BUTTON", "Mimi isolated input probe", Popup | Visible | Border,
-                            80, 100, 240, 140, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-                        if (window == IntPtr.Zero) throw Win32Failure("CreateWindowExW (probe)");
+                        window = OpenProbeWindow();
                         ready.Set();
                         if (!permitInput.Wait(6000)) throw new TimeoutException("The input desktop was never enabled.");
                         lock (gate) {
@@ -242,8 +323,12 @@ public static class MimiIsolatedInputProbe {
                     if (ActiveDesktopName() != desktopName)
                         throw new InvalidOperationException("The switch did not give the temporary desktop input.");
                     Console.WriteLine("Windows switched to the temporary input desktop.");
-                    permitInput.Set();
-                    if (!worker.Join(5500)) throw new TimeoutException("The mouse probe did not settle.");
+                    if (separateProcess) {
+                        LaunchProbeChild(shell, script, receipt, desktopName);
+                    } else {
+                        permitInput.Set();
+                        if (!worker.Join(5500)) throw new TimeoutException("The mouse probe did not settle.");
+                    }
                     if (failure != null) throw failure;
                 } finally {
                     try {
@@ -271,4 +356,30 @@ public static class MimiIsolatedInputProbe {
     }
 }
 '@
-[MimiIsolatedInputProbe]::Run()
+if ($ChildDesktop) {
+    if ($ChildDesktop -cnotmatch '^MimiQa[a-f0-9]{32}$' -or -not $Receipt) {
+        throw 'The isolated child needs the controller-generated desktop and receipt.'
+    }
+    try {
+        [MimiIsolatedInputProbe]::RunChild($ChildDesktop)
+        Set-Content -LiteralPath $Receipt -Value 'Child observed both owned-window mouse messages.'
+        exit 0
+    }
+    catch {
+        Set-Content -LiteralPath $Receipt -Value ($_.Exception.GetBaseException().Message)
+        exit 1
+    }
+}
+if ($env:MIMI_SMOKE_DESKTOP_CHILD -eq '1') {
+    $childReceipt = Join-Path ([IO.Path]::GetTempPath()) "mimi-desktop-probe-$([guid]::NewGuid().ToString('N')).txt"
+    try {
+        [MimiIsolatedInputProbe]::Run((Join-Path $PSHOME 'pwsh.exe'), $PSCommandPath, $childReceipt)
+    }
+    finally {
+        if (Test-Path -LiteralPath $childReceipt -PathType Leaf) {
+            Remove-Item -LiteralPath $childReceipt -Force
+        }
+    }
+} else {
+    [MimiIsolatedInputProbe]::Run('', '', '')
+}

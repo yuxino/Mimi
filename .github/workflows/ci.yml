@@ -196,6 +196,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Prove mouse delivery on a temporary native desktop
         shell: pwsh
+        env:
+          MIMI_SMOKE_DESKTOP_CHILD: '1'
         run: ./scripts/windows-isolated-input-probe.ps1
 
   windows-arm64:
