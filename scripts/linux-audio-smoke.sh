@@ -7,6 +7,7 @@ if [[ "$(uname -s)" != Linux ]]; then
 fi
 test_prefix=audio::linux::tests::native_
 test_names=(
+  audio::linux::tests::native_active_monitor_stop_and_restart_timing
   audio::linux::tests::native_monitor_capture_is_pcm16_and_restarts
   audio::linux::tests::native_microphone_captures_only_explicit_input_and_restarts
   audio::linux::tests::native_dual_inputs_keep_audio_separate_and_restart

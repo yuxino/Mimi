@@ -28,7 +28,7 @@ use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
@@ -46,6 +46,8 @@ static SUPPORTS_TIMED_POLL: LazyLock<bool> = LazyLock::new(|| {
 #[derive(Clone, Default)]
 pub struct LinuxSystemAudioCapture {
     state: Arc<CaptureState>,
+    #[cfg(test)]
+    fixed_stop_wait: bool,
 }
 
 #[derive(Default)]
@@ -56,7 +58,7 @@ struct CaptureState {
 impl Drop for CaptureState {
     fn drop(&mut self) {
         if let Some(worker) = self.worker.get_mut().unwrap().as_ref() {
-            worker.cancelled.store(true, Ordering::SeqCst);
+            worker.cancel();
         }
     }
 }
@@ -65,6 +67,33 @@ impl Drop for CaptureState {
 pub(super) struct WorkerControl {
     cancelled: AtomicBool,
     completion: CaptureCompletion,
+    capture_thread: OnceLock<std::thread::Thread>,
+    #[cfg(test)]
+    fixed_stop_wait: bool,
+}
+
+impl WorkerControl {
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        #[cfg(test)]
+        if self.fixed_stop_wait {
+            return;
+        }
+        if let Some(thread) = self.capture_thread.get() {
+            thread.unpark();
+        }
+    }
+
+    fn wait_after_read(&self) {
+        #[cfg(test)]
+        if self.fixed_stop_wait {
+            std::thread::sleep(POLL_INTERVAL);
+            return;
+        }
+        // The dedicated worker owns the park token. Cancellation just
+        // before parking still wakes the wait, with the same poll timeout.
+        std::thread::park_timeout(POLL_INTERVAL);
+    }
 }
 
 /// Dropping an awaited start (for example SessionManager's timeout) must
@@ -74,7 +103,7 @@ struct CancelStartOnDrop(Option<Arc<WorkerControl>>);
 impl Drop for CancelStartOnDrop {
     fn drop(&mut self) {
         if let Some(worker) = &self.0 {
-            worker.cancelled.store(true, Ordering::SeqCst);
+            worker.cancel();
         }
     }
 }
@@ -159,6 +188,9 @@ impl LinuxSystemAudioCapture {
                 // Constructed first, dropped last: finished means libpulse
                 // has disconnected and released the stream and context.
                 let _finished = FinishWorkerOnDrop(Arc::clone(&worker_control));
+                worker_control
+                    .capture_thread
+                    .get_or_init(std::thread::current);
                 let mut capture = match PulseCapture::connect(&worker_control, format, input, token)
                 {
                     Ok(capture) => capture,
@@ -210,7 +242,13 @@ impl LinuxSystemAudioCapture {
                 });
             }
         }
-        let worker = Arc::new(WorkerControl::default());
+        let worker = WorkerControl::default();
+        #[cfg(test)]
+        let worker = WorkerControl {
+            fixed_stop_wait: self.fixed_stop_wait,
+            ..worker
+        };
+        let worker = Arc::new(worker);
         *slot = Some(Arc::clone(&worker));
         Ok(worker)
     }
@@ -219,7 +257,7 @@ impl LinuxSystemAudioCapture {
         let worker = {
             let slot = self.state.worker.lock().unwrap();
             slot.as_ref().map(|worker| {
-                worker.cancelled.store(true, Ordering::SeqCst);
+                worker.cancel();
                 Arc::clone(worker)
             })
         };
@@ -533,7 +571,7 @@ impl PulseCapture {
                     return Ok(());
                 }
             }
-            std::thread::sleep(POLL_INTERVAL);
+            control.wait_after_read();
         }
         Ok(())
     }
@@ -2323,6 +2361,85 @@ mod tests {
             );
             assert!(failures.try_recv().is_err());
             pipeline.stop();
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires an isolated PulseAudio or PipeWire server and paplay"]
+    async fn native_active_monitor_stop_and_restart_timing() {
+        isolated_audio_directory();
+        let tone = prepare_test_frequency(997.0);
+        let _playback = tone.play_on("@DEFAULT_SINK@");
+        let server = if pactl(&["info"]).contains("on PipeWire ") {
+            "pipewire"
+        } else {
+            "pulseaudio"
+        };
+        const RATE: u32 = 16_000;
+        let format = AudioCaptureFormat::pcm16_mono(RATE).unwrap();
+        for round in 1..=8 {
+            let fixed_wait_first = round % 2 == 1;
+            for fixed_stop_wait in [fixed_wait_first, !fixed_wait_first] {
+                let mode = if fixed_stop_wait { "sleep" } else { "wake" };
+                let capture = LinuxSystemAudioCapture {
+                    fixed_stop_wait,
+                    ..LinuxSystemAudioCapture::default()
+                };
+                let (pipeline, mut pcm) = recording_pipeline();
+                let (failure_tx, mut failures) = CaptureFailureSender::channel();
+                tokio::time::timeout(
+                    Duration::from_secs(7),
+                    capture.start(pipeline.ingress().unwrap(), failure_tx, format),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                expect_monitor_frequency(&mut pcm, &mut failures, RATE, 997.0, "before-timed-stop")
+                    .await;
+                let stop_at = Instant::now();
+                tokio::time::timeout(Duration::from_secs(1), capture.stop())
+                    .await
+                    .unwrap();
+                let release_ms = stop_at.elapsed().as_secs_f64() * 1000.0;
+                // Drain any PCM the old generation admitted before stopping,
+                // then keep its receiver open to detect a late native write.
+                while pcm.try_recv().is_ok() {}
+                tokio::time::sleep(Duration::from_millis(75)).await;
+                while pcm.try_recv().is_ok() {}
+
+                let (resumed, mut resumed_pcm) = recording_pipeline();
+                let (failure_tx, mut resumed_failures) = CaptureFailureSender::channel();
+                let restart_at = Instant::now();
+                tokio::time::timeout(
+                    Duration::from_secs(7),
+                    capture.start(resumed.ingress().unwrap(), failure_tx, format),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                let restart_ready_ms = restart_at.elapsed().as_secs_f64() * 1000.0;
+                expect_monitor_frequency(
+                    &mut resumed_pcm,
+                    &mut resumed_failures,
+                    RATE,
+                    997.0,
+                    "after-timed-stop",
+                )
+                .await;
+                let restart_audio_ms = restart_at.elapsed().as_secs_f64() * 1000.0;
+                assert!(
+                    matches!(pcm.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+                    "stopped monitor must not emit PCM into the old generation"
+                );
+                assert!(failures.try_recv().is_err());
+                assert!(resumed_failures.try_recv().is_err());
+                tokio::time::timeout(Duration::from_secs(1), capture.stop())
+                    .await
+                    .unwrap();
+                resumed.stop();
+                pipeline.stop();
+                eprintln!("linux capture stop server={server} round={round} wait={mode} releaseMs={release_ms:.3} restartReadyMs={restart_ready_ms:.3} restartAudioMs={restart_audio_ms:.3}");
+            }
         }
     }
 
