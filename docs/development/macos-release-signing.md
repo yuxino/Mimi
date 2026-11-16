@@ -106,6 +106,12 @@ do not create an `android-v*` release.
 
 ## Publish after acceptance
 
+For the Android upgrade check, launch the current public APK in an isolated
+emulator and choose an interface language in Mimi before installing the draft
+over it. Confirm the chosen language before replacement and again after a cold
+launch. Setting it through the test shell before the old app's first launch
+has also yielded an empty selection on a same-version reinstall.
+
 Wait for explicit maintainer approval after testing the draft assets. Before
 publication, verify the tag still matches the signed source, all tag CI jobs
 passed, the draft contains exactly the expected 18 assets (including the Android
