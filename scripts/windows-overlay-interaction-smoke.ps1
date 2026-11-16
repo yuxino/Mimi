@@ -11,8 +11,10 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
 Add-Type @'
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
@@ -32,6 +34,13 @@ public static class MimiPointerSmoke {
     public struct Point { public int X, Y; }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct CursorInfo {
+        internal int Size, Flags;
+        internal IntPtr Cursor;
+        internal Point Position;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct Rect { internal int Left, Top, Right, Bottom; }
 
     [DllImport("user32.dll")]
@@ -42,6 +51,10 @@ public static class MimiPointerSmoke {
     public static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetCursorInfo(ref CursorInfo info);
+    [DllImport("user32.dll", EntryPoint = "LoadCursorW", SetLastError = true)]
+    private static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool PostMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
     [DllImport("user32.dll")]
@@ -75,7 +88,7 @@ public static class MimiPointerSmoke {
             window.ToInt64(), name, process, bounds, GetDpiForWindow(window), GetWindowExStyle(window, -20));
     }
 
-    public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
+    private static void AssertOverlayHit(IntPtr overlay, int x, int y, string action) {
         var point = new Point { X = x, Y = y };
         var hit = WindowFromPoint(point);
         var root = GetAncestor(hit, 2);
@@ -83,8 +96,48 @@ public static class MimiPointerSmoke {
             throw new InvalidOperationException(String.Format(
                 "{0} point ({1},{2}) did not hit the overlay. Expected {3}; hit {4}; hit root {5}.",
                 action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
+    }
+
+    private static void MovePointer(int x, int y) {
         if (!SetCursorPos(x, y))
             throw new InvalidOperationException("Could not move the pointer on the test desktop.");
+    }
+
+    private static void WaitForPointerCursor(int x, int y, string action) {
+        var hand = LoadCursor(IntPtr.Zero, new IntPtr(32649)); // IDC_HAND
+        if (hand == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+
+        // Reaching the screen position precedes WebView2 processing the move.
+        // Move within the button and wait for its rendered cursor before
+        // clicking. The accessibility bounds also exist while tools are hidden.
+        var info = new CursorInfo { Size = Marshal.SizeOf(typeof(CursorInfo)) };
+        var elapsed = Stopwatch.StartNew();
+        int offset = 0;
+        do {
+            if (!GetCursorInfo(ref info))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            if (info.Cursor == hand && info.Position.X == x && info.Position.Y == y) {
+                Console.WriteLine("{0} exposed its pointing hand after {1} ms.", action, elapsed.ElapsedMilliseconds);
+                return;
+            }
+            MovePointer(x - offset, y);
+            offset = 1 - offset;
+            Thread.Sleep(15);
+        } while (elapsed.ElapsedMilliseconds < 1000);
+        throw new InvalidOperationException(String.Format(
+            "{0} did not expose a pointing hand at ({1},{2}); last cursor=0x{3:X}, position=({4},{5}).",
+            action, x, y, info.Cursor.ToInt64(), info.Position.X, info.Position.Y));
+    }
+
+    public static void ClickOverlay(IntPtr overlay, int x, int y, string action, bool requirePointerCursor) {
+        AssertOverlayHit(overlay, x, y, action);
+        if (requirePointerCursor) {
+            WaitForPointerCursor(x, y, action);
+            AssertOverlayHit(overlay, x, y, action);
+        } else {
+            MovePointer(x, y);
+        }
         var clicks = new Input[] {
             new Input { Mouse = new MouseInput { Flags = 0x0002 } }, // left down
             new Input { Mouse = new MouseInput { Flags = 0x0004 } }  // left up
@@ -153,7 +206,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
                     if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
                         $x = [int]($bounds.X + $bounds.Width / 2)
                         $y = [int]($bounds.Y + $bounds.Height / 2)
-                        [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action)
+                        [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action, $true)
                         if ($ReturnPoint) { return @{ X = $x; Y = $y } }
                         return
                     }
@@ -227,7 +280,7 @@ try {
         finally {
             Remove-Item -LiteralPath $failureTrigger -Force -ErrorAction SilentlyContinue
         }
-        [MimiPointerSmoke]::ClickOverlay($overlay, $pause.X, $pause.Y, 'Repeat click at the old Pause point')
+        [MimiPointerSmoke]::ClickOverlay($overlay, $pause.X, $pause.Y, 'Repeat click at the old Pause point', $false)
         $deadline = [DateTime]::UtcNow.AddMilliseconds(500)
         do {
             Assert-SettingsHidden
