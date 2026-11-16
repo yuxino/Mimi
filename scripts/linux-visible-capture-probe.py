@@ -57,6 +57,11 @@ def window(pattern):
     return next(iter(output.splitlines()), None)
 
 
+def pointer_location():
+    values = dict(line.split("=", 1) for line in command("xdotool", "getmouselocation", "--shell").splitlines())
+    return values["X"], values["Y"]
+
+
 def start_switch():
     desktop = pyatspi.Registry.getDesktop(0)
     roles = {pyatspi.ROLE_TOGGLE_BUTTON, pyatspi.ROLE_CHECK_BOX, pyatspi.ROLE_PUSH_BUTTON,
@@ -156,7 +161,11 @@ def app_run(executable, root, results):
             if observations or window("^Mimi Subtitles$"):
                 raise RuntimeError("App started a session before receiving the Settings click")
             command("xdotool", "windowactivate", "--sync", settings)
-            command("xdotool", "mousemove", "--sync", x, y)
+            cursor_already_there = pointer_location() == (x, y)
+            if not cursor_already_there:
+                command("xdotool", "mousemove", x, y)
+            if pointer_location() != (x, y):
+                raise RuntimeError("The native pointer did not reach the Settings switch")
             clicked = time.monotonic_ns()
             command("xdotool", "mousedown", "1", "mouseup", "1")
             requested = wait_for("native start request", lambda: observations.get("session start entered"))
@@ -172,7 +181,7 @@ def app_run(executable, root, results):
             command("wmctrl", "-ic", settings)
             if app.wait(timeout=10) != 0:
                 raise RuntimeError("Mimi did not close cleanly")
-            results.update(click=clicked, start=requested, ready=ready, playback=playback_requested, visible=visible)
+            results.update(click=clicked, same_pointer=cursor_already_there, start=requested, ready=ready, playback=playback_requested, visible=visible)
         except Exception:
             print("\n".join(tail), file=sys.stderr)
             raise
@@ -226,8 +235,9 @@ def sample(executable, peer_script, root, number):
            <= results["first_pcm_at_peer"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
             raise RuntimeError(f"Timing observations fell out of order: {results}")
         milliseconds = {key: round((value - results["click"]) / 1_000_000, 3)
-                        for key, value in results.items() if key != "click"}
-        print(json.dumps({"sample": number, "sink_state": state, "elapsed_from_click_ms": milliseconds}), flush=True)
+                        for key, value in results.items() if key not in {"click", "same_pointer"}}
+        print(json.dumps({"sample": number, "sink_state": state, "pointer_already_on_switch": results["same_pointer"],
+                          "elapsed_from_click_ms": milliseconds}), flush=True)
 
 
 if __name__ == "__main__":

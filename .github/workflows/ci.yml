@@ -329,6 +329,9 @@ jobs:
       matrix:
         os: ${{ fromJSON(needs.scope.outputs.bundle_os) }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      actions: read
     env:
       MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os == 'macos-latest' && '13.0' || '' }}
       APPIMAGE_EXTRACT_AND_RUN: "1"
@@ -375,11 +378,11 @@ jobs:
           args: --config src-tauri/tauri.ci.conf.json
 
       - name: Build Linux packages
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline'
         run: ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
 
       - name: Install and smoke-test Linux packages
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
       - name: Smoke launch x64 UI-test app and click overlay controls
@@ -405,7 +408,7 @@ jobs:
           ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
 
       - name: Upload bundles
-        if: runner.os != 'macOS'
+        if: runner.os != 'macOS' && github.ref_name != 'test/linux-visible-capture-baseline'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mimi-${{ matrix.os }}
@@ -417,6 +420,30 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 7
+
+      - name: Download the Linux package from the first native sample
+        if: runner.os == 'Linux' && github.ref_name == 'test/linux-visible-capture-baseline'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: mimi-ubuntu-22.04
+          path: ${{ runner.temp }}/mimi-linux-reference
+          run-id: 43918954832
+          github-token: ${{ github.token }}
+
+      - name: Verify and install the same Linux package
+        if: runner.os == 'Linux' && github.ref_name == 'test/linux-visible-capture-baseline'
+        shell: bash
+        run: |
+          baseline=9234cc824ba95ea89ea5862915514917fd052205
+          git fetch --no-tags origin "$baseline"
+          git diff --exit-code "$baseline" HEAD -- src src-tauri shared package.json package-lock.json config scripts/build-linux-packages.sh
+          mapfile -t packages < <(find "$RUNNER_TEMP/mimi-linux-reference" -type f -name 'mimi_*_amd64.deb')
+          [[ "${#packages[@]}" == 1 ]]
+          deb="${packages[0]}"
+          [[ "$(dpkg-deb --field "$deb" Package)" == mimi ]]
+          sudo apt-get install --reinstall --no-install-recommends -y "$deb"
+          package_hash="$(dpkg-deb --fsys-tarfile "$deb" | tar -xOf - usr/bin/mimi | sha256sum | cut -d ' ' -f1)"
+          [[ "$(sha256sum /usr/bin/mimi | cut -d ' ' -f1)" == "$package_hash" ]]
 
       - name: Measure Linux click to captured tone and visible subtitle
         if: runner.os == 'Linux' && github.ref_name == 'test/linux-visible-capture-baseline'
