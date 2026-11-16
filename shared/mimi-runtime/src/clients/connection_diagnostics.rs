@@ -948,6 +948,7 @@ pub(crate) fn connection_reason(error: &ConnectError) -> ConnectionCheckReason {
     use crate::clients::tencent_cloud_client::TencentCloudClientError as Tencent;
     use crate::clients::volcano_engine_client::VolcanoEngineClientError as Volcano;
     use crate::clients::xai_realtime_client::XAIRealtimeClientError as Xai;
+    use crate::core::protocols::openai_realtime::OpenAIRealtimeFailure as OpenAIFailure;
     match error {
         ConnectError::MT(error) => qwen_reason(error),
         ConnectError::TencentCloud(Tencent::ProviderRejected { code }) => match code {
@@ -958,7 +959,18 @@ pub(crate) fn connection_reason(error: &ConnectError) -> ConnectionCheckReason {
             6006 => ConnectionCheckReason::ConcurrencyLimited,
             _ => ConnectionCheckReason::ServiceRejected,
         },
-        ConnectError::OpenAI(OpenAI::AuthenticationFailed)
+        ConnectError::OpenAI(OpenAI::ProviderRejected(OpenAIFailure::Quota)) => {
+            ConnectionCheckReason::QuotaExhausted
+        }
+        ConnectError::OpenAI(OpenAI::ProviderRejected(OpenAIFailure::RateLimited)) => {
+            ConnectionCheckReason::ConcurrencyLimited
+        }
+        ConnectError::OpenAI(OpenAI::ProviderRejected(
+            OpenAIFailure::ModelUnavailable | OpenAIFailure::InvalidRequest,
+        )) => ConnectionCheckReason::InvalidConfiguration,
+        ConnectError::OpenAI(
+            OpenAI::AuthenticationFailed | OpenAI::ProviderRejected(OpenAIFailure::Permission),
+        )
         | ConnectError::Live(Live::AuthenticationFailed)
         | ConnectError::Gemini(Gemini::AuthenticationFailed)
         | ConnectError::AzureOpenAI(Azure::AuthenticationFailed)
@@ -1825,7 +1837,7 @@ mod tests {
                 Some(
                     r#"{"type":"error","error":{"code":"invalid_request_error","message":"fixture-only server text"}}"#,
                 ),
-                Err(ConnectionCheckReason::ServiceRejected),
+                Err(ConnectionCheckReason::InvalidConfiguration),
             ),
             (None, Err(ConnectionCheckReason::Timeout)),
         ] {
@@ -1859,8 +1871,8 @@ mod tests {
                         serde_json::from_str(acknowledgement).unwrap();
                     if acknowledgement["type"] == "error" {
                         // The service rejected this exact session.update.
-                        // A generic recoverable error without that relation
-                        // is correctly ignored by the production ready gate.
+                        // A recoverable error explicitly tied to a different
+                        // request is ignored by the production ready gate.
                         assert!(update["event_id"].as_str().is_some());
                         acknowledgement["error"]["event_id"] = update["event_id"].clone();
                     }

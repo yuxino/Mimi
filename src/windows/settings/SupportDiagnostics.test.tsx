@@ -54,6 +54,20 @@ it("prepares diagnostics only after an explicit action while its page is inactiv
   expect(host.querySelector("pre")?.textContent).toBe(report);
 });
 
+it("shows the OpenAI expiry reason in the status and recent events", async () => {
+  const classification = { category: "timeout", code: "OPENAI_REALTIME_SESSION_EXPIRED" };
+  mocks.invoke.mockResolvedValue(JSON.stringify({
+    schema: "mimi.support.v2",
+    session_status: "error",
+    last_error: { classification, observed_ago_ms: 2_000 },
+    journal: { recent_events: [{ kind: "failure", classification, sequence: 1, elapsed_since_app_start_ms: 5_000 }] },
+  }));
+  await act(async () => root.render(<SupportDiagnostics visible />));
+  const reason = "OpenAI Realtime session expired.";
+  expect(host.textContent?.split(reason)).toHaveLength(3);
+  expect(host.textContent).not.toContain("OPENAI_REALTIME_SESSION_EXPIRED");
+});
+
 it("offers a selectable report directly when clipboard access fails", async () => {
   mocks.clipboard.mockRejectedValue(new Error("synthetic-clipboard-denial"));
   await mount();

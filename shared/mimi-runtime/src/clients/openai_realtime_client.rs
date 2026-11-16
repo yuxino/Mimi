@@ -5,8 +5,8 @@ use crate::core::models::TargetLanguage;
 use crate::core::openai_transcript_committer::OpenAITranscriptPairCommitter;
 use crate::core::protocols::live_translate::LiveTranslateServerEvent;
 use crate::core::protocols::openai_realtime::{
-    OpenAIRealtimeEndpoint, OpenAIRealtimeProtocolError, OpenAIRealtimeRequestEncoder,
-    OpenAIRealtimeServerEvent,
+    OpenAIRealtimeEndpoint, OpenAIRealtimeFailure, OpenAIRealtimeProtocolError,
+    OpenAIRealtimeRequestEncoder, OpenAIRealtimeServerEvent,
 };
 use futures_util::{SinkExt, StreamExt};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -21,7 +21,6 @@ use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
-const GENERIC_PROVIDER_ERROR: &str = "OpenAI Realtime Translation rejected the session.";
 const GENERIC_PROTOCOL_ERROR: &str = "OpenAI Realtime Translation returned an invalid response.";
 const GENERIC_TRANSPORT_ERROR: &str = "The OpenAI Realtime Translation connection failed.";
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
@@ -42,6 +41,10 @@ pub enum OpenAIRealtimeClientError {
     TransportFailure,
     #[error("OpenAI Realtime Translation rejected the session configuration.")]
     SessionSetupRejected,
+    #[error("OpenAI Realtime Translation rejected the request.")]
+    ProviderRejected(OpenAIRealtimeFailure),
+    #[error("OpenAI Realtime Translation is temporarily unavailable.")]
+    UpgradeUnavailable,
     #[error("OpenAI Realtime Translation did not confirm the session configuration in time.")]
     SessionSetupTimedOut,
 }
@@ -55,16 +58,60 @@ enum SetupState {
     Rejected(OpenAIRealtimeClientError),
 }
 
-fn setup_provider_failure(code: &str) -> OpenAIRealtimeClientError {
-    match code {
-        "invalid_api_key"
-        | "authentication_error"
-        | "authorization_error"
-        | "unauthorized"
-        | "forbidden"
-        | "permission_denied" => OpenAIRealtimeClientError::AuthenticationFailed,
-        _ => OpenAIRealtimeClientError::SessionSetupRejected,
+impl OpenAIRealtimeClientError {
+    fn setup_rejection(failure: OpenAIRealtimeFailure) -> Self {
+        match failure {
+            OpenAIRealtimeFailure::Authentication => Self::AuthenticationFailed,
+            OpenAIRealtimeFailure::Rejected => Self::SessionSetupRejected,
+            other => Self::ProviderRejected(other),
+        }
     }
+
+    pub fn recognition_failure_label(&self) -> Option<&'static str> {
+        match self {
+            Self::AuthenticationFailed => Some(OpenAIRealtimeFailure::Authentication.label()),
+            Self::SessionSetupRejected => Some(OpenAIRealtimeFailure::Rejected.label()),
+            // An expiry before readiness is a rejected setup. A replacement
+            // cannot renew its retry budget by rejecting every setup as expired.
+            Self::ProviderRejected(OpenAIRealtimeFailure::SessionExpired) => {
+                Some("openai_realtime_setup_expired")
+            }
+            Self::ProviderRejected(failure) => Some(failure.label()),
+            Self::UpgradeUnavailable => Some("openai_realtime_service_unavailable"),
+            _ => None,
+        }
+    }
+}
+
+fn upgrade_failure(error: tokio_tungstenite::tungstenite::Error) -> OpenAIRealtimeClientError {
+    use OpenAIRealtimeFailure as Failure;
+    let tokio_tungstenite::tungstenite::Error::Http(response) = error else {
+        return OpenAIRealtimeClientError::TransportFailure;
+    };
+    let failure = match response.status().as_u16() {
+        400 => Failure::InvalidRequest,
+        401 => Failure::Authentication,
+        403 => Failure::Permission,
+        404 => Failure::ModelUnavailable,
+        429 => {
+            // HTTP 429 also covers quota and billing. Only an exact code can
+            // establish which limit was reached when a response body is present.
+            let body_failure = response
+                .body()
+                .as_deref()
+                .filter(|body| body.len() <= 16 * 1024)
+                .and_then(|body| serde_json::from_slice::<serde_json::Value>(body).ok())
+                .map(|body| Failure::from_error(&body["error"]));
+            if body_failure == Some(Failure::Quota) {
+                Failure::Quota
+            } else {
+                Failure::RateLimited
+            }
+        }
+        500 | 502 | 503 | 504 => return OpenAIRealtimeClientError::UpgradeUnavailable,
+        _ => return OpenAIRealtimeClientError::TransportFailure,
+    };
+    OpenAIRealtimeClientError::setup_rejection(failure)
 }
 
 struct Inner {
@@ -204,13 +251,7 @@ impl OpenAIRealtimeClient {
         )
         .await
         .map_err(|_| OpenAIRealtimeClientError::TransportFailure)?
-        .map_err(|error| {
-            if super::connection_diagnostics::authentication_rejected(&error) {
-                OpenAIRealtimeClientError::AuthenticationFailed
-            } else {
-                OpenAIRealtimeClientError::TransportFailure
-            }
-        })?;
+        .map_err(upgrade_failure)?;
         let (sink, stream) = socket.split();
         *self.inner.sink.lock().await = Some(sink);
         self.inner.ready.store(false, Ordering::SeqCst);
@@ -606,8 +647,8 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
                     emit_if_current(
                         context,
                         LiveTranslateServerEvent::Error {
-                            code: "openai_session_configuration_mismatch".into(),
-                            message: GENERIC_PROVIDER_ERROR.into(),
+                            code: OpenAIRealtimeFailure::InvalidRequest.label().into(),
+                            message: OpenAIRealtimeFailure::InvalidRequest.label().into(),
                         },
                     );
                 }
@@ -666,12 +707,11 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
             return true;
         }
         OpenAIRealtimeServerEvent::ProviderError {
-            code,
-            is_recoverable,
+            failure,
             related_event_id,
         } => {
             if *context.setup.borrow() == SetupState::Awaiting {
-                if is_recoverable
+                if !failure.ends_active_session()
                     && related_event_id
                         .as_deref()
                         .is_some_and(|id| id != context.setup_event_id)
@@ -684,12 +724,12 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
                 // the service omitted its related event id. "Recoverable"
                 // means an established socket may continue, not permission to
                 // reconnect an unaccepted configuration or an unknown error.
-                let _ = context
-                    .setup
-                    .send(SetupState::Rejected(setup_provider_failure(&code)));
+                let _ = context.setup.send(SetupState::Rejected(
+                    OpenAIRealtimeClientError::setup_rejection(failure),
+                ));
                 return true;
             }
-            if is_recoverable {
+            if !failure.ends_active_session() {
                 // Recoverable provider errors keep the session open. A fixed
                 // diagnostic kind cannot expose provider text or error fields.
                 crate::pipeline_log!("openai_realtime recoverable_provider_error");
@@ -698,14 +738,8 @@ async fn handle_server_event(context: &ReceiveContext, event: OpenAIRealtimeServ
             emit_if_current(
                 context,
                 LiveTranslateServerEvent::Error {
-                    code: if setup_provider_failure(&code)
-                        == OpenAIRealtimeClientError::AuthenticationFailed
-                    {
-                        "credential_authentication_failed".into()
-                    } else {
-                        format!("openai_provider_error.{code}")
-                    },
-                    message: GENERIC_PROVIDER_ERROR.into(),
+                    code: failure.label().into(),
+                    message: failure.label().into(),
                 },
             );
             return true;
@@ -966,6 +1000,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn upgrade_distinguishes_account_quota_from_request_limiting() {
+        use tokio_tungstenite::tungstenite::{http::Response, Error};
+        for (body, expected) in [
+            (
+                Some(
+                    r#"{"error":{"type":"rate_limit_error","code":"project_spend_limit_exceeded"}}"#,
+                ),
+                OpenAIRealtimeFailure::Quota,
+            ),
+            (
+                Some(
+                    r#"{"error":{"type":"rate_limit_error","code":"slow_down","message":"project_spend_limit_exceeded"}}"#,
+                ),
+                OpenAIRealtimeFailure::RateLimited,
+            ),
+            (None, OpenAIRealtimeFailure::RateLimited),
+        ] {
+            let response = Response::builder()
+                .status(429)
+                .body(body.map(|body| body.as_bytes().to_vec()))
+                .unwrap();
+            assert_eq!(
+                upgrade_failure(Error::Http(Box::new(response))),
+                OpenAIRealtimeClientError::ProviderRejected(expected)
+            );
+        }
+    }
+
     #[tokio::test]
     async fn pre_ready_provider_errors_keep_typed_failure() {
         let mut observed = Vec::new();
@@ -981,7 +1044,7 @@ mod tests {
                 "authorization_error",
                 "permission_denied",
                 false,
-                OpenAIRealtimeClientError::AuthenticationFailed,
+                OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::Permission),
             ),
             (
                 "authentication_error",
@@ -993,31 +1056,31 @@ mod tests {
                 "authorization_error",
                 "invalid_event",
                 true,
-                OpenAIRealtimeClientError::AuthenticationFailed,
+                OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::Permission),
             ),
             (
                 "invalid_request_error",
                 "insufficient_quota",
                 false,
-                OpenAIRealtimeClientError::SessionSetupRejected,
+                OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::Quota),
             ),
             (
                 "invalid_request_error",
                 "invalid_event",
                 false,
-                OpenAIRealtimeClientError::SessionSetupRejected,
+                OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::InvalidRequest),
             ),
             (
                 "server_error",
                 "unknown_service_code",
                 false,
-                OpenAIRealtimeClientError::SessionSetupRejected,
+                OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::ServiceError),
             ),
             (
                 "server_error",
                 "unknown_service_code",
                 true,
-                OpenAIRealtimeClientError::SessionSetupRejected,
+                OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::ServiceError),
             ),
         ] {
             let (client, mut events) = test_client(move |mut socket| {
@@ -1058,27 +1121,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_authentication_errors_keep_the_fixed_terminal_label() {
-        for (kind, code, expected) in [
+    async fn active_terminal_errors_keep_their_safe_recovery_reason() {
+        for (kind, code, expected, retryable) in [
             (
                 "invalid_request_error",
                 "invalid_api_key",
                 "credential_authentication_failed",
+                false,
             ),
             (
                 "authentication_error",
                 "key_expired",
                 "credential_authentication_failed",
+                false,
             ),
             (
                 "authorization_error",
                 "invalid_event",
-                "credential_authentication_failed",
+                "openai_realtime_permission_denied",
+                false,
             ),
             (
-                "authentication_error!",
-                "unknown_code",
-                "openai_provider_error.unknown_code",
+                "invalid_request_error",
+                "session_expired",
+                "openai_realtime_session_expired",
+                true,
+            ),
+            (
+                "rate_limit_error",
+                "project_spend_limit_exceeded",
+                "openai_realtime_quota_exhausted",
+                false,
             ),
         ] {
             let (release, released) = tokio::sync::oneshot::channel();
@@ -1119,13 +1192,14 @@ mod tests {
                 event,
                 LiveTranslateServerEvent::Error {
                     code: expected.into(),
-                    message: GENERIC_PROVIDER_ERROR.into(),
+                    message: expected.into(),
                 },
                 "{kind}/{code}"
             );
-            assert!(!crate::core::recovery::provider_error_is_retryable(
-                expected
-            ));
+            assert_eq!(
+                crate::core::recovery::provider_error_is_retryable(expected),
+                retryable
+            );
         }
     }
 
@@ -1300,7 +1374,7 @@ mod tests {
                 .connect_with_timeout(Duration::from_millis(500))
                 .await
                 .unwrap_err(),
-            OpenAIRealtimeClientError::SessionSetupRejected
+            OpenAIRealtimeClientError::ProviderRejected(OpenAIRealtimeFailure::InvalidRequest)
         );
         assert!(!client.inner.ready.load(Ordering::SeqCst));
         assert!(events.try_recv().is_err());
@@ -1335,7 +1409,7 @@ mod tests {
             event,
             LiveTranslateServerEvent::Error {
                 code: "credential_authentication_failed".into(),
-                message: GENERIC_PROVIDER_ERROR.into(),
+                message: "credential_authentication_failed".into(),
             }
         );
         let receive_task = client.inner.receive_task.lock().await.take().unwrap();

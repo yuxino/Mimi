@@ -6,6 +6,13 @@
     <string name="need_audio_permission">Android ต้องการสิทธิ์บันทึกเสียงเพื่อจับเสียงที่แอปกำลังเล่น</string>
     <string name="capture_failed">เซสชันคำบรรยายหยุดแล้ว ตรวจสอบสิทธิ์ การตั้งค่าบริการ และเครือข่าย แล้วลองอีกครั้ง</string>
     <string name="service_authentication_failed">ยืนยันตัวตนกับบริการไม่สำเร็จ ตรวจสอบข้อมูลรับรองและสิทธิ์ของบริการปัจจุบันในการตั้งค่า แล้วเริ่มคำบรรยายอีกครั้ง</string>
+    <string name="openai_realtime_session_expired">เซสชันเรียลไทม์ของ OpenAI หมดอายุแล้ว</string>
+    <string name="openai_realtime_permission_denied">OpenAI ปฏิเสธการเข้าถึง โปรดตรวจสอบสิทธิ์ของโปรเจกต์และภูมิภาค</string>
+    <string name="openai_realtime_quota_exhausted">โควตาหรือเครดิต OpenAI หมดแล้ว โปรดตรวจสอบการเรียกเก็บเงินและการใช้งาน</string>
+    <string name="openai_realtime_rate_limited">OpenAI จำกัดคำขอ โปรดรอสักครู่และตรวจสอบขีดจำกัดการใช้งาน</string>
+    <string name="openai_realtime_model_unavailable">ไม่สามารถใช้โมเดลหรือปลายทางของ OpenAI ที่ขอได้</string>
+    <string name="openai_realtime_invalid_request">OpenAI ปฏิเสธพารามิเตอร์ของเซสชัน</string>
+    <string name="openai_realtime_service_error">เกิดข้อผิดพลาดในบริการ OpenAI โปรดลองอีกครั้งในอีกสักครู่</string>
     <string name="need_api_key">เพิ่ม API key ในการตั้งค่าก่อน</string>
     <string name="notification_channel">บริการคำบรรยาย</string>
     <string name="notification_title">Mimi กำลังจับเสียงที่เล่นอยู่</string>

@@ -7,6 +7,13 @@
     <string name="need_audio_permission">Android exige l’autorisation d’enregistrement audio pour capturer le son des applications.</string>
     <string name="capture_failed">La session de sous-titres s’est arrêtée. Vérifiez les autorisations, le service et le réseau, puis réessayez.</string>
     <string name="service_authentication_failed">Échec de l’authentification. Vérifiez les identifiants et les droits d’accès du service dans les réglages, puis redémarrez les sous-titres.</string>
+    <string name="openai_realtime_session_expired">La session OpenAI en temps réel a expiré.</string>
+    <string name="openai_realtime_permission_denied">OpenAI a refusé l’accès. Vérifiez les autorisations du projet et la région.</string>
+    <string name="openai_realtime_quota_exhausted">Le quota ou le crédit OpenAI est épuisé. Vérifiez la facturation et l’utilisation.</string>
+    <string name="openai_realtime_rate_limited">OpenAI a limité les requêtes. Patientez et vérifiez les limites d’utilisation.</string>
+    <string name="openai_realtime_model_unavailable">Le modèle ou le point de terminaison OpenAI demandé est indisponible.</string>
+    <string name="openai_realtime_invalid_request">OpenAI a refusé les paramètres de la session.</string>
+    <string name="openai_realtime_service_error">OpenAI a signalé une erreur de service. Réessayez dans un instant.</string>
     <string name="need_api_key">Ajoutez d’abord une clé API dans les réglages.</string>
     <string name="notification_channel">Service de sous-titres</string>
     <string name="notification_title">Mimi capture le son de lecture</string>

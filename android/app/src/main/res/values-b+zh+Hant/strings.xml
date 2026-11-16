@@ -7,6 +7,13 @@
     <string name="need_audio_permission">Android 需要錄音權限才能擷取其他應用程式播放的聲音。</string>
     <string name="capture_failed">字幕會話已停止，請檢查權限、服務設定或網路後重試。</string>
     <string name="service_authentication_failed">服務認證失敗。請在設定中檢查當前服務的憑證和訪問權限，再開始字幕。</string>
+    <string name="openai_realtime_session_expired">OpenAI 即時工作階段已到期。</string>
+    <string name="openai_realtime_permission_denied">OpenAI 拒絕存取。請檢查專案權限和地區。</string>
+    <string name="openai_realtime_quota_exhausted">OpenAI 額度或餘額已用完。請檢查帳務和用量。</string>
+    <string name="openai_realtime_rate_limited">OpenAI 限制了請求。請稍後重試並查看用量限制。</string>
+    <string name="openai_realtime_model_unavailable">所請求的 OpenAI 模型或端點無法使用。</string>
+    <string name="openai_realtime_invalid_request">OpenAI 拒絕了工作階段參數。</string>
+    <string name="openai_realtime_service_error">OpenAI 服務發生錯誤，請稍後重試。</string>
     <string name="need_api_key">請先在設定中填寫 API Key。</string>
     <string name="notification_channel">字幕服務</string>
     <string name="notification_title">Mimi 正在捕獲系統音訊</string>

@@ -101,6 +101,41 @@ impl SafeFailure {
             };
         }
         let runtime_failure = match error {
+            "openai_realtime_session_expired" | "openai_realtime_setup_expired" => Some((
+                "websocket_connection",
+                "timeout",
+                "OPENAI_REALTIME_SESSION_EXPIRED",
+            )),
+            "openai_realtime_permission_denied" => Some((
+                "websocket_connection",
+                "configuration",
+                "OPENAI_REALTIME_PERMISSION_DENIED",
+            )),
+            "openai_realtime_quota_exhausted" => Some((
+                "websocket_connection",
+                "configuration",
+                "OPENAI_REALTIME_QUOTA_EXHAUSTED",
+            )),
+            "openai_realtime_rate_limited" => Some((
+                "websocket_connection",
+                "rate_limit",
+                "OPENAI_REALTIME_RATE_LIMITED",
+            )),
+            "openai_realtime_model_unavailable" => Some((
+                "websocket_connection",
+                "configuration",
+                "OPENAI_REALTIME_MODEL_UNAVAILABLE",
+            )),
+            "openai_realtime_invalid_request" => Some((
+                "websocket_connection",
+                "request_rejected",
+                "OPENAI_REALTIME_INVALID_REQUEST",
+            )),
+            "openai_realtime_service_error" | "openai_realtime_service_unavailable" => Some((
+                "websocket_connection",
+                "service_error",
+                "OPENAI_REALTIME_SERVICE_ERROR",
+            )),
             "gemini_live_service_unavailable" => Some((
                 "websocket_connection",
                 "service_error",
@@ -562,7 +597,17 @@ impl SafeFailure {
             return failure;
         }
         match code {
-            "translation_rate_limited"
+            "credential_authentication_failed"
+            | "openai_realtime_session_expired"
+            | "openai_realtime_permission_denied"
+            | "openai_realtime_quota_exhausted"
+            | "openai_realtime_rate_limited"
+            | "openai_realtime_model_unavailable"
+            | "openai_realtime_invalid_request"
+            | "openai_realtime_service_error"
+            | "openai_realtime_service_unavailable"
+            | "openai_realtime_setup_expired"
+            | "translation_rate_limited"
             | "translation_temporarily_unavailable"
             | "translation_backlog_overflow"
             | "provider_event_backlog_overflow"
@@ -1603,6 +1648,34 @@ mod tests {
                 assert!(!json.contains("private"));
                 assert!(!json.contains("provider_status_code"));
             }
+        }
+    }
+
+    #[test]
+    fn openai_expiry_and_quota_diagnostics_keep_safe_reasons() {
+        for (label, category, code) in [
+            (
+                "openai_realtime_session_expired",
+                "timeout",
+                "OPENAI_REALTIME_SESSION_EXPIRED",
+            ),
+            (
+                "openai_realtime_quota_exhausted",
+                "configuration",
+                "OPENAI_REALTIME_QUOTA_EXHAUSTED",
+            ),
+        ] {
+            let failure =
+                SafeFailure::from_provider_error(label, "synthetic private provider response");
+            assert_eq!(
+                (failure.phase, failure.category, failure.code),
+                ("websocket_connection", category, code)
+            );
+            assert_eq!(SafeFailure::from_error(label), failure);
+            assert_eq!(
+                SafeFailure::from_provider_error(&format!("{label}.private"), "private").code,
+                "OTHER"
+            );
         }
     }
 

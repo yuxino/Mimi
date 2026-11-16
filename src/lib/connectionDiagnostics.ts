@@ -1,5 +1,6 @@
 import { SUPPLEMENTAL_EN } from "./locales/supplemental-schema";
 import { supplemental } from "./locales/supplemental";
+import { openAIRealtimeErrorMessage } from "./locales/openaiRealtimeErrors";
 import { audio3ErrorMessage, audio3ErrorRequiresConfiguration } from "./audio3Errors";
 import { effectiveUiLanguage, I18N } from "./i18n";
 import type { ConnectionDiagnostic, SettingsNavigationTarget } from "./ipc";
@@ -402,7 +403,7 @@ export function credentialErrorMessage(error: unknown, platform?: DiagnosticPlat
   // Match exactly: native transport details or provider bodies are never safe copy.
   if (["The speech recognition transport failed.", "The speech recognition session is not connected.", "The speech recognition connection closed."].includes(error)) return diagnosticCopy().speechUnreachable;
   if (["The speech recognition connection could not be established in time.", "The speech recognition connection stopped responding."].includes(error)) return diagnosticCopy().speechTimeout;
-  const builtinMessage = builtinServiceErrorMessage(error);
+  const builtinMessage = openAIRealtimeErrorMessage(error) ?? builtinServiceErrorMessage(error);
   if (builtinMessage) return builtinMessage;
   if (error === "credential_authentication_failed") return diagnosticCopy().auth;
   if (/^Add the connection credentials for .+ in Settings\.$/.test(error)) return diagnosticCopy().missing;
@@ -455,6 +456,10 @@ export function sessionErrorSettingsTarget(error: unknown): SettingsNavigationTa
     "Invalid xAI speech mode or text model.",
     "tencent_configuration_rejected",
     "tencent_service_activation_required",
+    "openai_realtime_permission_denied",
+    "openai_realtime_quota_exhausted",
+    "openai_realtime_model_unavailable",
+    "openai_realtime_invalid_request",
     "tencent_quota_exhausted",
   ].includes(label) || builtinServiceErrors.missing.has(label) ||
     builtinServiceErrors.invalidConfiguration.has(label) || builtinServiceErrors.unsupportedLanguage.has(label)) return "service";

@@ -1,5 +1,25 @@
 # Provider authentication and safe recovery errors
 
+## OpenAI Realtime Translation rejection and expiry
+
+Use the [translation error event](https://developers.openai.com/api/reference/resources/realtime/translation-server-events)
+and [OpenAI error guide](https://developers.openai.com/api/docs/guides/error-codes)
+to separate authentication, access, account quota, request limits, unavailable
+models, invalid setup parameters and service errors. Retain fixed reason labels
+in the overlay, diagnostic report and Android foreground session. HTTP 429
+without a recognized quota code does not establish that the account is out of
+credit. Raw error text, parameters and arbitrary codes stay out of reports.
+
+An exact expiry event after readiness retires the old socket and enters the same
+bounded replacement flow used for transport recovery. Expiry during setup stops
+with a specific reason. Other recoverable events can leave an active socket
+usable. Use the shared TLS loopback cases to prove replacement accepts new PCM
+and captions, and that quota failures stop after one connection.
+
+The installed 1.7.0 diagnostic recorded a final failure 59 minutes 59.69 seconds after the
+previous successful reconnect. Its original error was discarded. This is
+consistent with expiry, but cannot verify the original service code.
+
 The Gemini, Azure OpenAI, Tencent, Baidu, Volcano and xAI clients reduced an HTTP
 401/403 WebSocket handshake rejection to a generic transport failure. Connection
 diagnostics therefore lost the actionable authentication category, and session

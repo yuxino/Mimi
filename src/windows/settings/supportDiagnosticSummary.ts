@@ -1,3 +1,5 @@
+import { openAIRealtimeErrorCode } from "../../lib/locales/openaiRealtimeErrors";
+
 const STATUSES = ["idle", "connecting", "stopping", "listening", "paused", "error"] as const;
 const FAILURE_CATEGORIES = ["unknown", "recognition", "configuration", "authentication", "credential_storage", "device_unavailable", "timeout", "request_rejected", "service_error", "rate_limit", "backlog", "transport", "stopped", "processing", "size_limit", "permission", "user_stopped", "start"] as const;
 const LIFECYCLE_ACTIONS = ["start_requested", "start_busy", "start_already_active", "start_superseded", "stop_requested", "pause_requested", "resume_requested"] as const;
@@ -10,7 +12,7 @@ export type DiagnosticRecoveryAction = (typeof RECOVERY_ACTIONS)[number];
 type EventFacts =
   | { kind: "status"; status: DiagnosticStatus }
   | { kind: "lifecycle"; action: DiagnosticLifecycleAction }
-  | { kind: "failure"; category: DiagnosticFailureCategory }
+  | { kind: "failure"; category: DiagnosticFailureCategory; code?: string }
   | { kind: "recovery"; action: DiagnosticRecoveryAction }
   | { kind: "translation_backoff"; reason: "rateLimited" | "temporarilyUnavailable"; retryScheduled: boolean };
 export type DiagnosticSummaryEvent = EventFacts & { sequence: number; elapsedMs: number };
@@ -20,6 +22,7 @@ export interface SupportDiagnosticSummary {
   translationLatencyMs: number | null;
   translationLatencyKind: "request" | "follow" | null;
   lastError: DiagnosticFailureCategory | null;
+  lastErrorCode?: string;
   lastErrorAgeMs: number | null;
   recoveredAfterError: boolean;
   elapsedMs: number | null;
@@ -60,6 +63,10 @@ function translationRecovery(value: unknown): SupportDiagnosticSummary["translat
 function failureCategory(value: unknown): DiagnosticFailureCategory | null {
   return enumeration(object(value)?.category, FAILURE_CATEGORIES);
 }
+function safeFailureCode(value: unknown): string | undefined {
+  const code = object(value)?.code;
+  return typeof code === "string" ? openAIRealtimeErrorCode(code.toLowerCase()) : undefined;
+}
 function summaryEvent(value: unknown): DiagnosticSummaryEvent | null {
   const event = object(value);
   if (!event) return null;
@@ -77,7 +84,8 @@ function summaryEvent(value: unknown): DiagnosticSummaryEvent | null {
     }
     case "failure": {
       const category = failureCategory(event.classification);
-      return category ? { ...timing, kind: "failure", category } : null;
+      const code = safeFailureCode(event.classification);
+      return category ? { ...timing, kind: "failure", category, ...(code && { code }) } : null;
     }
     case "recovery": {
       const action = enumeration(event.action, RECOVERY_ACTIONS);
@@ -106,6 +114,7 @@ export function supportDiagnosticSummary(report: string | null): SupportDiagnost
     const allEvents = Array.isArray(events) ? events.slice(-24).map(summaryEvent).filter((event): event is DiagnosticSummaryEvent => event !== null) : [];
     const failure = object(data.last_error);
     const recovery = object(data.recent_recovery);
+    const lastErrorCode = safeFailureCode(failure?.classification);
     const lastErrorAgeMs = nonNegativeInteger(failure?.observed_ago_ms);
     const recoveryAgeMs = nonNegativeInteger(recovery?.observed_ago_ms);
     // A retained recovery must not dismiss a newer failure. Missing ages do
@@ -123,6 +132,7 @@ export function supportDiagnosticSummary(report: string | null): SupportDiagnost
       translationLatencyMs: translationLatencyKind ? nonNegativeInteger(service?.translation_duration_ms) : null,
       translationLatencyKind,
       lastError: failureCategory(object(data.last_error)?.classification),
+      ...(lastErrorCode && { lastErrorCode }),
       lastErrorAgeMs,
       recoveredAfterError,
       elapsedMs: nonNegativeInteger(snapshot?.elapsed_since_app_start_ms),

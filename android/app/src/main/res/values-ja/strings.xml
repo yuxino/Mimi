@@ -6,6 +6,13 @@
     <string name="need_audio_permission">ほかのアプリの再生音声を取得するには、Android の録音権限が必要です。</string>
     <string name="capture_failed">字幕セッションが停止しました。権限、サービス設定、ネットワークを確認して再試行してください。</string>
     <string name="service_authentication_failed">サービスの認証に失敗しました。設定で現在のサービスの認証情報とアクセス権を確認してから、字幕を開始してください。</string>
+    <string name="openai_realtime_session_expired">OpenAI のリアルタイムセッションの有効期限が切れました。</string>
+    <string name="openai_realtime_permission_denied">OpenAI がアクセスを拒否しました。プロジェクトの権限と地域を確認してください。</string>
+    <string name="openai_realtime_quota_exhausted">OpenAI の利用枠または残高を使い切りました。請求情報と使用量を確認してください。</string>
+    <string name="openai_realtime_rate_limited">OpenAI がリクエストを制限しました。しばらく待ってから利用制限を確認してください。</string>
+    <string name="openai_realtime_model_unavailable">指定した OpenAI モデルまたはエンドポイントは利用できません。</string>
+    <string name="openai_realtime_invalid_request">OpenAI がセッションの設定を拒否しました。</string>
+    <string name="openai_realtime_service_error">OpenAI のサービスでエラーが発生しました。しばらくしてから再試行してください。</string>
     <string name="need_api_key">先に設定で API Key を入力してください。</string>
     <string name="notification_channel">字幕サービス</string>
     <string name="notification_title">Mimi が再生音声を取得中</string>

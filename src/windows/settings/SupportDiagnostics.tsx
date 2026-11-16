@@ -1,3 +1,4 @@
+import { openAIRealtimeErrorMessage } from "../../lib/locales/openaiRealtimeErrors";
 import { SUPPLEMENTAL_EN } from "../../lib/locales/supplemental-schema";
 import { supplemental } from "../../lib/locales/supplemental";
 import { SettingsHelp } from "./SettingsHelp";
@@ -61,7 +62,11 @@ function statusLabel(status: DiagnosticStatus): string {
   }[status];
 }
 
-function failureLabel(category: DiagnosticFailureCategory, text: typeof copy.en | typeof copy.zh | typeof copy.ja, added: DiagnosticsCopy): string {
+function failureLabel(category: DiagnosticFailureCategory, text: typeof copy.en | typeof copy.zh | typeof copy.ja, added: DiagnosticsCopy, code?: string): string {
+  if (code) {
+    const message = openAIRealtimeErrorMessage(code);
+    if (message) return message;
+  }
   if (category === "permission") return added.permission;
   if (category === "user_stopped") return added.userStopped;
   if (category === "start") return added.startFailed;
@@ -73,7 +78,7 @@ function eventLabel(event: DiagnosticSummaryEvent, text: typeof copy.en | typeof
   switch (event.kind) {
     case "status": return statusLabel(event.status);
     case "lifecycle": return text.lifecycle[event.action];
-    case "failure": return failureLabel(event.category, text, added);
+    case "failure": return failureLabel(event.category, text, added, event.code);
     case "recovery": return text.recovery[event.action];
     case "translation_backoff": return event.reason === "rateLimited"
       ? event.retryScheduled ? I18N.overlay.translationRateLimited : I18N.overlay.translationLimited
@@ -238,7 +243,7 @@ export function SupportDiagnostics({ visible = false, onOpenAudio, onOpenService
       </div>
       {readFailed && <p className="diagnostics-read-state" role="alert">{added.staleRead}</p>}
       {summary.lastError && <div className={`diagnostics-last-error${summary.status === "error" && !summary.recoveredAfterError && summary.lastError !== "user_stopped" ? " is-current" : ""}`}>
-        <AlertCircle size={16} aria-hidden="true" /><div><span>{added.recentError}{summary.lastErrorAgeMs !== null && <> · {relativeTime(summary.lastErrorAgeMs, language)}</>}</span><strong>{failureLabel(summary.lastError, text, added)}</strong>{summary.recoveredAfterError && <span>{added.recoveredAfter}</span>}</div>
+        <AlertCircle size={16} aria-hidden="true" /><div><span>{added.recentError}{summary.lastErrorAgeMs !== null && <> · {relativeTime(summary.lastErrorAgeMs, language)}</>}</span><strong>{failureLabel(summary.lastError, text, added, summary.lastErrorCode)}</strong>{summary.recoveredAfterError && <span>{added.recoveredAfter}</span>}</div>
       </div>}
     </header>}
     {!summary && (busy || readFailed || report !== null) && <div className="diagnostics-read-state" role={readFailed && !busy ? "alert" : undefined}>

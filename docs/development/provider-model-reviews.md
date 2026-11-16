@@ -4,6 +4,15 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-16：OpenAI 实时翻译错误核对
+
+- 路线仍为 `gpt-realtime-translate`，源转写为 `gpt-realtime-whisper`。
+  [翻译事件](https://developers.openai.com/api/reference/resources/realtime/translation-server-events)
+  的错误含结构化类型与可选错误码。按
+  [官方错误指南](https://developers.openai.com/api/docs/guides/error-codes)
+  区分访问拒绝、额度和请求限流；无确切额度码的 HTTP 429 不推断欠费。
+  本次只调整恢复与反馈，模型、音频协议和服务配置保持原样。
+
 ## 2026-11-14 — 二进制 JSON 与识别握手边界
 
 - 核对 [Gemini WebSocket schema](https://aistudio.google.com/api-reference/live) 与

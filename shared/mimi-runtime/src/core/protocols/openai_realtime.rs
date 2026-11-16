@@ -105,6 +105,87 @@ impl OpenAIRealtimeRequestEncoder {
     }
 }
 
+/// OpenAI documents structured error types and optional codes. Inspect them
+/// before any sanitization and only carry Mimi-owned categories across the
+/// adapter boundary. Provider messages and parameters can contain user data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenAIRealtimeFailure {
+    Authentication,
+    Permission,
+    Quota,
+    RateLimited,
+    ModelUnavailable,
+    InvalidRequest,
+    ServiceError,
+    SessionExpired,
+    Rejected,
+}
+
+impl OpenAIRealtimeFailure {
+    pub fn from_error(value: &Value) -> Self {
+        let code = value["code"].as_str();
+        let kind = value["type"].as_str();
+        match code {
+            Some("invalid_api_key" | "authentication_error" | "unauthorized") => {
+                Self::Authentication
+            }
+            Some(
+                "authorization_error"
+                | "permission_denied"
+                | "forbidden"
+                | "unsupported_country_region_territory",
+            ) => Self::Permission,
+            Some(
+                "insufficient_quota"
+                | "billing_hard_limit_reached"
+                | "credit_balance_exhausted"
+                | "organization_spend_limit_exceeded"
+                | "project_spend_limit_exceeded"
+                | "organization_usage_limit_exceeded",
+            ) => Self::Quota,
+            Some("rate_limit_exceeded" | "slow_down") => Self::RateLimited,
+            Some("model_not_found") => Self::ModelUnavailable,
+            Some("session_expired") => Self::SessionExpired,
+            Some("server_is_overloaded") => Self::ServiceError,
+            _ => match kind.or(code) {
+                Some("authentication_error" | "unauthorized") => Self::Authentication,
+                Some("authorization_error" | "permission_denied" | "forbidden") => Self::Permission,
+                Some("rate_limit_error") => Self::RateLimited,
+                Some("invalid_request_error") => Self::InvalidRequest,
+                Some("server_error" | "service_unavailable_error") => Self::ServiceError,
+                _ => Self::Rejected,
+            },
+        }
+    }
+
+    /// A socket may survive rejected events. Expiry is different: the old
+    /// socket is finished, and only a new connection can resume translation.
+    pub fn ends_active_session(self) -> bool {
+        matches!(
+            self,
+            Self::Authentication
+                | Self::Permission
+                | Self::Quota
+                | Self::ModelUnavailable
+                | Self::SessionExpired
+        )
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Authentication => "credential_authentication_failed",
+            Self::Permission => "openai_realtime_permission_denied",
+            Self::Quota => "openai_realtime_quota_exhausted",
+            Self::RateLimited => "openai_realtime_rate_limited",
+            Self::ModelUnavailable => "openai_realtime_model_unavailable",
+            Self::InvalidRequest => "openai_realtime_invalid_request",
+            Self::ServiceError => "openai_realtime_service_error",
+            Self::SessionExpired => "openai_realtime_session_expired",
+            Self::Rejected => "openai_realtime_provider_error",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenAIRealtimeServerEvent {
     SessionCreated,
@@ -123,8 +204,7 @@ pub enum OpenAIRealtimeServerEvent {
     OutputAudioDelta,
     SessionClosed,
     ProviderError {
-        code: String,
-        is_recoverable: bool,
+        failure: OpenAIRealtimeFailure,
         related_event_id: Option<String>,
     },
     Ignored {
@@ -179,41 +259,13 @@ impl OpenAIRealtimeServerEvent {
             "session.output_audio.delta" => Ok(Self::OutputAudioDelta),
             "session.closed" => Ok(Self::SessionClosed),
             "error" => {
-                let error = value.get("error");
-                let raw_type = error
-                    .and_then(|error| error.get("type"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("provider_error");
-                let raw_code = error
-                    .and_then(|error| error.get("code"))
-                    .and_then(Value::as_str)
-                    .unwrap_or(raw_type);
-                let sanitized_type = sanitize_label(raw_type, 64, "provider_error");
-                // Keep an exact authentication category even when the service adds
-                // a new detail code. Existing authentication aliases stay intact.
-                let raw_code = if matches!(raw_type, "authentication_error" | "authorization_error")
-                    && !matches!(
-                        raw_code,
-                        "invalid_api_key"
-                            | "authentication_error"
-                            | "authorization_error"
-                            | "unauthorized"
-                            | "forbidden"
-                            | "permission_denied"
-                    ) {
-                    raw_type
-                } else {
-                    raw_code
-                };
-                let code = sanitize_label(raw_code, 64, "provider_error");
-                let related_event_id = error
-                    .and_then(|error| error.get("event_id"))
-                    .and_then(Value::as_str)
-                    .map(|value| sanitize_label(value, 128, ""))
-                    .filter(|value| !value.is_empty());
+                let error = &value["error"];
+                let related_event_id = error["event_id"]
+                    .as_str()
+                    .filter(|id| !id.is_empty() && id.len() <= 128)
+                    .map(str::to_owned);
                 Ok(Self::ProviderError {
-                    is_recoverable: is_recoverable_provider_error(&sanitized_type, &code),
-                    code,
+                    failure: OpenAIRealtimeFailure::from_error(error),
                     related_event_id,
                 })
             }
@@ -254,22 +306,6 @@ fn sanitize_label(value: &str, maximum_length: usize, fallback: &str) -> String 
     }
 }
 
-fn is_recoverable_provider_error(kind: &str, code: &str) -> bool {
-    const TERMINAL: [&str; 10] = [
-        "authentication_error",
-        "authorization_error",
-        "billing_hard_limit_reached",
-        "forbidden",
-        "insufficient_quota",
-        "invalid_api_key",
-        "model_not_found",
-        "permission_denied",
-        "session_expired",
-        "unauthorized",
-    ];
-    !TERMINAL.contains(&kind) && !TERMINAL.contains(&code)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,17 +316,17 @@ mod tests {
             (
                 "authentication_error",
                 "key_expired",
-                "authentication_error",
+                OpenAIRealtimeFailure::Authentication,
             ),
             (
                 "authorization_error",
                 "invalid_event",
-                "authorization_error",
+                OpenAIRealtimeFailure::Permission,
             ),
             (
                 "authentication_error",
                 "unknown_provider_detail",
-                "authentication_error",
+                OpenAIRealtimeFailure::Authentication,
             ),
         ] {
             let event = OpenAIRealtimeServerEvent::decode_value(&serde_json::json!({
@@ -300,19 +336,21 @@ mod tests {
             assert_eq!(
                 event,
                 OpenAIRealtimeServerEvent::ProviderError {
-                    code: expected.into(),
-                    is_recoverable: false,
+                    failure: expected,
                     related_event_id: Some("foreign-request".into())
                 }
             );
         }
-        for kind in ["server_error", "authentication_error!"] {
+        for (kind, expected) in [
+            ("server_error", OpenAIRealtimeFailure::ServiceError),
+            ("authentication_error!", OpenAIRealtimeFailure::Rejected),
+        ] {
             let event = OpenAIRealtimeServerEvent::decode_value(&serde_json::json!({
                 "type": "error",
                 "error": { "type": kind, "code": "unknown_provider_detail", "message": "authentication_error authorization_error" }
             })).unwrap();
             assert!(
-                matches!(event, OpenAIRealtimeServerEvent::ProviderError { code, .. } if code == "unknown_provider_detail")
+                matches!(event, OpenAIRealtimeServerEvent::ProviderError { failure, .. } if failure == expected)
             );
         }
     }
@@ -412,13 +450,13 @@ mod tests {
         assert_eq!(
             event,
             OpenAIRealtimeServerEvent::ProviderError {
-                code: "badcodesecret".into(),
-                is_recoverable: true,
-                related_event_id: Some("setupprivate".into())
+                failure: OpenAIRealtimeFailure::Rejected,
+                related_event_id: Some("setup/<private>".into())
             }
         );
         let description = format!("{event:?}");
         assert!(!description.contains("recognized private words"));
+        assert!(!description.contains("bad code"));
     }
 
     #[test]
@@ -429,8 +467,7 @@ mod tests {
             )
             .unwrap(),
             OpenAIRealtimeServerEvent::ProviderError {
-                code: "invalid_api_key".into(),
-                is_recoverable: false,
+                failure: OpenAIRealtimeFailure::Authentication,
                 related_event_id: None
             }
         );

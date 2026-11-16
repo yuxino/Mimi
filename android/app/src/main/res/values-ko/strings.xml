@@ -7,6 +7,13 @@
     <string name="need_audio_permission">다른 앱에서 재생되는 소리를 캡처하려면 Android의 오디오 녹음 권한이 필요합니다.</string>
     <string name="capture_failed">자막 세션이 중지되었습니다. 권한, 서비스 설정, 네트워크를 확인한 후 다시 시도하세요.</string>
     <string name="service_authentication_failed">서비스 인증에 실패했습니다. 설정에서 현재 서비스의 인증 정보와 접근 권한을 확인한 후 자막을 다시 시작하세요.</string>
+    <string name="openai_realtime_session_expired">OpenAI 실시간 세션이 만료되었습니다.</string>
+    <string name="openai_realtime_permission_denied">OpenAI에서 액세스를 거부했습니다. 프로젝트 권한과 지역을 확인하세요.</string>
+    <string name="openai_realtime_quota_exhausted">OpenAI 할당량이나 잔액이 소진되었습니다. 결제와 사용량을 확인하세요.</string>
+    <string name="openai_realtime_rate_limited">OpenAI에서 요청을 제한했습니다. 잠시 기다린 뒤 사용량 한도를 확인하세요.</string>
+    <string name="openai_realtime_model_unavailable">요청한 OpenAI 모델 또는 엔드포인트를 사용할 수 없습니다.</string>
+    <string name="openai_realtime_invalid_request">OpenAI에서 세션 매개변수를 거부했습니다.</string>
+    <string name="openai_realtime_service_error">OpenAI 서비스에 오류가 발생했습니다. 잠시 후 다시 시도하세요.</string>
     <string name="need_api_key">먼저 설정에서 API 키를 추가하세요.</string>
     <string name="notification_channel">자막 서비스</string>
     <string name="notification_title">Mimi가 재생 소리를 캡처하고 있습니다</string>

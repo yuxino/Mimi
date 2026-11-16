@@ -604,14 +604,11 @@ impl ConnectError {
     /// message is returned here.
     pub fn recognition_failure_label(&self) -> Option<&'static str> {
         match self {
-            Self::OpenAI(OpenAIRealtimeClientError::AuthenticationFailed)
-            | Self::Gemini(GeminiLiveClientError::AuthenticationFailed)
+            Self::OpenAI(error) => return error.recognition_failure_label(),
+            Self::Gemini(GeminiLiveClientError::AuthenticationFailed)
             | Self::Xai(XAIRealtimeClientError::AuthenticationFailed)
             | Self::BaiduTranslate(BaiduTranslateClientError::AuthenticationFailed) => {
                 return Some("credential_authentication_failed");
-            }
-            Self::OpenAI(OpenAIRealtimeClientError::SessionSetupRejected) => {
-                return Some("openai_realtime_provider_error");
             }
             Self::Xai(XAIRealtimeClientError::SessionSetupRejected) => {
                 return Some("xai_realtime_provider_error");

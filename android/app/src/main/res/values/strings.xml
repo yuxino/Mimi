@@ -6,6 +6,13 @@
     <string name="need_audio_permission">Android requires audio recording permission to capture app playback.</string>
     <string name="capture_failed">Caption session stopped. Check permissions, service settings and network, then retry.</string>
     <string name="service_authentication_failed">Service authentication failed. Check the current service credentials and access permissions in Settings, then start captions again.</string>
+    <string name="openai_realtime_session_expired">OpenAI Realtime session expired.</string>
+    <string name="openai_realtime_permission_denied">OpenAI denied access. Check project permissions and region.</string>
+    <string name="openai_realtime_quota_exhausted">OpenAI quota or credit balance is exhausted. Check billing and usage.</string>
+    <string name="openai_realtime_rate_limited">OpenAI has limited requests. Wait and check the usage limits.</string>
+    <string name="openai_realtime_model_unavailable">The requested OpenAI model or endpoint is unavailable.</string>
+    <string name="openai_realtime_invalid_request">OpenAI rejected the session parameters.</string>
+    <string name="openai_realtime_service_error">OpenAI reported a service error. Try again shortly.</string>
     <string name="need_api_key">Add an API key in Settings first.</string>
     <string name="notification_channel">Caption service</string>
     <string name="notification_title">Mimi is capturing playback audio</string>

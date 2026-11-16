@@ -7,6 +7,13 @@
     <string name="need_audio_permission">Для захвата звука из других приложений Android требует разрешение на запись аудио.</string>
     <string name="capture_failed">Сеанс субтитров остановлен. Проверьте разрешения, настройки службы и сеть, затем повторите попытку.</string>
     <string name="service_authentication_failed">Не удалось выполнить аутентификацию в службе. Проверьте учётные данные и права доступа текущей службы в настройках, затем снова включите субтитры.</string>
+    <string name="openai_realtime_session_expired">Сеанс OpenAI в реальном времени истёк.</string>
+    <string name="openai_realtime_permission_denied">OpenAI отказал в доступе. Проверьте права проекта и регион.</string>
+    <string name="openai_realtime_quota_exhausted">Квота или баланс OpenAI исчерпаны. Проверьте оплату и использование.</string>
+    <string name="openai_realtime_rate_limited">OpenAI ограничил запросы. Подождите и проверьте лимиты использования.</string>
+    <string name="openai_realtime_model_unavailable">Запрошенная модель или точка подключения OpenAI недоступна.</string>
+    <string name="openai_realtime_invalid_request">OpenAI отклонил параметры сеанса.</string>
+    <string name="openai_realtime_service_error">Ошибка сервиса OpenAI. Повторите попытку чуть позже.</string>
     <string name="need_api_key">Сначала добавьте ключ API в настройках.</string>
     <string name="notification_channel">Служба субтитров</string>
     <string name="notification_title">Mimi захватывает звук воспроизведения</string>

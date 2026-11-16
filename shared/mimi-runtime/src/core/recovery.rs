@@ -32,6 +32,15 @@ pub fn normalize_provider_error_code(code: &str) -> &'static str {
         "alibaba_realtime_service_unavailable" => "alibaba_realtime_service_unavailable",
         "alibaba_realtime_idle_timeout" => "alibaba_realtime_idle_timeout",
         "gemini_live_service_unavailable" => "gemini_live_service_unavailable",
+        "openai_realtime_session_expired" => "openai_realtime_session_expired",
+        "openai_realtime_setup_expired" => "openai_realtime_setup_expired",
+        "openai_realtime_permission_denied" => "openai_realtime_permission_denied",
+        "openai_realtime_quota_exhausted" => "openai_realtime_quota_exhausted",
+        "openai_realtime_rate_limited" => "openai_realtime_rate_limited",
+        "openai_realtime_model_unavailable" => "openai_realtime_model_unavailable",
+        "openai_realtime_invalid_request" => "openai_realtime_invalid_request",
+        "openai_realtime_service_error" => "openai_realtime_service_error",
+        "openai_realtime_service_unavailable" => "openai_realtime_service_unavailable",
         "translation_backlog_overflow" => "translation_backlog_overflow",
         "translation_rate_limited" => "translation_rate_limited",
         "translation_temporarily_unavailable" => "translation_temporarily_unavailable",
@@ -75,6 +84,10 @@ pub fn provider_error_requires_user_action(error: &str) -> bool {
                 | "xai_stt_credentials_missing"
                 | "xai_stt_language_unsupported"
                 | "text_translation_credentials_missing"
+                | "openai_realtime_permission_denied"
+                | "openai_realtime_quota_exhausted"
+                | "openai_realtime_model_unavailable"
+                | "openai_realtime_invalid_request"
                 | "tencent_configuration_rejected"
                 | "tencent_service_activation_required"
                 | "tencent_quota_exhausted"
@@ -812,6 +825,8 @@ pub fn provider_error_is_retryable(code: &str) -> bool {
             | "alibaba_realtime_service_unavailable"
             | "alibaba_realtime_idle_timeout"
             | "gemini_live_service_unavailable"
+            | "openai_realtime_session_expired"
+            | "openai_realtime_service_unavailable"
             | "translation_backlog_overflow"
             | "translation_rate_limited"
             | "translation_temporarily_unavailable"
