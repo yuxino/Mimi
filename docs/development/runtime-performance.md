@@ -69,6 +69,11 @@ becomes visible. Confirm the click through the resulting native state. A paint
 callback used by the probe can delay the click, especially on a virtual display,
 so measure that callback separately from input readiness.
 
+For native Linux audio tests, record the audio server and virtual sink's initial
+state and buffer options. Measure capture readiness, first PCM admission,
+matching audio and recognition separately. A virtual sink may open immediately
+but wait for its next render before delivering a frame.
+
 Keep behavior regressions on production code and shared fixtures. Use synthetic
 loopback peers for protocol, retry, cancellation and deadline checks. An old
 implementation copied into a test does not establish current-product coverage.
