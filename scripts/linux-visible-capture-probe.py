@@ -24,6 +24,7 @@ from PIL import Image, ImageGrab
 
 COMPOSITING_MODES = {"default", "never"}
 TRACE_MODES = {"trace", "surface"} | COMPOSITING_MODES
+RELEASE_FRONTEND = os.environ.get("MIMI_LINUX_RELEASE_FRONTEND") == "1"
 
 
 def command(*args):
@@ -67,7 +68,7 @@ def pointer_location():
     return values["X"], values["Y"]
 
 
-def start_switch():
+def native_control(label, *, enabled_only=True):
     desktop = pyatspi.Registry.getDesktop(0)
     roles = {pyatspi.ROLE_TOGGLE_BUTTON, pyatspi.ROLE_CHECK_BOX, pyatspi.ROLE_PUSH_BUTTON,
              getattr(pyatspi, "ROLE_SWITCH", None)}
@@ -76,12 +77,13 @@ def start_switch():
         while todo:
             node = todo.pop()
             try:
-                if node.name == "Live Subtitles" and node.getRole() in roles:
+                if node.name == label and node.getRole() in roles:
                     state = node.getState()
-                    if state.contains(pyatspi.STATE_ENABLED) and state.contains(pyatspi.STATE_SHOWING):
+                    enabled = state.contains(pyatspi.STATE_ENABLED) and state.contains(pyatspi.STATE_SENSITIVE)
+                    if (enabled or not enabled_only) and state.contains(pyatspi.STATE_SHOWING):
                         x, y, width, height = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
                         if x >= 0 and y >= 0 and width > 0 and height > 0:
-                            return str(x + width // 2), str(y + height // 2)
+                            return (str(x + width // 2), str(y + height // 2)), enabled
                 todo.extend(child for child in node if child is not None)
             except GLib.Error as error:
                 # A WebKit accessibility subtree can disappear during page load.
@@ -89,6 +91,66 @@ def start_switch():
                 if error.domain != "atspi_error" or "application no longer exists" not in error.message:
                     raise
     return None
+
+
+def click_at(point):
+    cursor_already_there = pointer_location() == point
+    if not cursor_already_there:
+        command("xdotool", "mousemove", *point)
+    if pointer_location() != point:
+        raise RuntimeError("The native pointer did not reach the expected control")
+    clicked = time.monotonic_ns()
+    command("xdotool", "mousedown", "1", "mouseup", "1")
+    return clicked, cursor_already_there
+
+
+def pulse_streams(kind):
+    return command("pactl", "list", "short", kind).strip()
+
+
+def peer_events(path):
+    # The peer flushes each complete line. Ignore only a partial last write
+    # when the playback and the event collector are both still running.
+    data = path.read_text()
+    return [json.loads(line) for line in data.split("\n")[:-1] if line]
+
+
+def pause_and_resume(root, events_file, observations, results):
+    with child("paplay", "--device=mimi-output", str(root / "sustained-tone.wav")) as player:
+        wait_for("isolated playback and an active monitor stream", lambda:
+                 True if pulse_streams("sink-inputs") and pulse_streams("source-outputs") else None)
+        pause, _ = wait_for("the enabled Pause translating button", lambda: native_control("Pause translating"))
+        pause_click, _ = click_at(pause)
+        wait_for("first visible Resume translating accessibility label", lambda:
+                 native_control("Resume translating", enabled_only=False))
+        pause_feedback = time.monotonic_ns()
+        resume, _ = wait_for("the enabled Resume translating button", lambda: native_control("Resume translating"))
+        resume_enabled = time.monotonic_ns()
+        paused = wait_for("native pause cleanup", lambda: observations.get("session paused"))
+        if player.poll() is not None or not pulse_streams("sink-inputs") or pulse_streams("source-outputs"):
+            raise RuntimeError("Pause did not release capture while the isolated source was still playing")
+
+        first_close = wait_for("closed first recognition transport", lambda:
+                               next((row for row in peer_events(events_file) if row["event"] == "close"
+                                     and row["connection"] == 1), None))
+        resume_click, _ = click_at(resume)
+        wait_for("the enabled Pause translating button after resume", lambda: native_control("Pause translating"))
+        next_pause_enabled = time.monotonic_ns()
+        resumed = wait_for("native resume completion", lambda: observations.get("session resumed"))
+        next_reply = wait_for("matching audio on the new recognition connection", lambda:
+                              next((row for row in peer_events(events_file) if row["event"] == "reply"
+                                    and row["connection"] == 2), None))
+        if player.poll() is not None or not pulse_streams("source-outputs"):
+            raise RuntimeError("Resume did not restore capture while the isolated source was still playing")
+
+    # A ready capture may admit PCM before the app finishes publishing
+    # resume feedback; require session ownership, not that incidental order.
+    if not pause_click <= paused <= resume_click <= min(resumed, next_reply["monotonic_ns"]):
+        raise RuntimeError("The native pause/resume observations did not follow their clicks")
+    results.update(pause_click=pause_click, pause_feedback=pause_feedback, resume_enabled=resume_enabled,
+                   pause_cleanup=paused, pause_socket_close=first_close["monotonic_ns"],
+                   resume_click=resume_click, resume_native=resumed, resume_control_ready=next_pause_enabled,
+                   resume_matched_reply=next_reply["monotonic_ns"])
 
 
 def write_profile(config, port, application_id):
@@ -120,10 +182,10 @@ def write_profile(config, port, application_id):
     (config / "credentials-file-mode-complete").touch(mode=0o600)
 
 
-def write_fixture(path):
+def write_fixture(path, tone_seconds=0.5):
     rate = 24_000
     signal = b"".join(struct.pack("<h", round(6000 * math.sin(2 * math.pi * 997 * sample / rate)))
-                      for sample in range(rate // 2))
+                      for sample in range(round(rate * tone_seconds)))
     with wave.open(str(path), "wb") as stream:
         stream.setparams((1, 2, rate, 0, "NONE", "not compressed"))
         stream.writeframes(signal + b"\0" * rate * 2)
@@ -283,7 +345,7 @@ def trace_milestones(observations, trace):
     return {key: epoch + item["elapsedMs"] * 1_000_000 for key, item in milestones.items()}
 
 
-def app_run(executable, root, results, sampling):
+def app_run(executable, root, events_file, results, sampling):
     observations = {}
     trace = []
     tail = []
@@ -301,7 +363,8 @@ def app_run(executable, root, results, sampling):
             elif line.startswith("MIMI_CAPTION_COMPOSITING "):
                 observations["compositing_policy"] = line.split()[1:]
             for label in ("session start entered", "audio capture started",
-                          "audio3 asr draft length=", "audio3 asr final length="):
+                          "audio3 asr draft length=", "audio3 asr final length=",
+                          "session paused", "session resumed"):
                 if label in line:
                     observations.setdefault(label, observed)
 
@@ -310,7 +373,7 @@ def app_run(executable, root, results, sampling):
         collector.start()
         try:
             settings = wait_for("visible Settings", lambda: window("^Mimi$"))
-            x, y = wait_for("enabled Live Subtitles switch", start_switch)
+            switch, _ = wait_for("enabled Live Subtitles switch", lambda: native_control("Live Subtitles"))
             if sampling in COMPOSITING_MODES:
                 request, before, effective = wait_for("applied WebKit policy", lambda: observations.get("compositing_policy"))
                 if request != sampling or effective == "unknown" or effective != (before if sampling == "default" else "never"):
@@ -320,13 +383,7 @@ def app_run(executable, root, results, sampling):
             if started_early or window("^Mimi Subtitles$"):
                 raise RuntimeError("App started a session before receiving the Settings click")
             command("xdotool", "windowactivate", "--sync", settings)
-            cursor_already_there = pointer_location() == (x, y)
-            if not cursor_already_there:
-                command("xdotool", "mousemove", x, y)
-            if pointer_location() != (x, y):
-                raise RuntimeError("The native pointer did not reach the Settings switch")
-            clicked = time.monotonic_ns()
-            command("xdotool", "mousedown", "1", "mouseup", "1")
+            clicked, cursor_already_there = click_at(switch)
             requested = wait_for("native start request", lambda: observations.get("session start entered"))
             ready = wait_for("native capture readiness", lambda: observations.get("audio capture started"))
             playback_requested = time.monotonic_ns()
@@ -335,6 +392,11 @@ def app_run(executable, root, results, sampling):
                 visible, last_negative, pixel_observations = observe_caption(overlay, sampling)
                 if player.wait(timeout=5) != 0:
                     raise RuntimeError("PulseAudio failed to play the synthetic tone")
+
+            if RELEASE_FRONTEND:
+                pause_and_resume(root, events_file, observations, results)
+                from linux_compositing_interactions import verify_overlay_geometry
+                results["geometry"] = verify_overlay_geometry(overlay, settings, command, wait_for)
 
             # Normal Settings close requests let the app finalize the session.
             command("wmctrl", "-ic", settings)
@@ -349,7 +411,8 @@ def app_run(executable, root, results, sampling):
             if (final_log := observations.get("audio3 asr final length=")) is not None:
                 results.update(final_log=final_log)
             if sampling in TRACE_MODES:
-                results.update(trace_milestones(observations, trace))
+                if not RELEASE_FRONTEND:
+                    results.update(trace_milestones(observations, trace))
                 results.update(pixel_observations)
         except Exception:
             print("\n".join(tail), file=sys.stderr)
@@ -395,6 +458,8 @@ def sample(executable, peer_script, root, pair, sampling):
         application_id = "app.yuxino.mimi.dev" if sampling in TRACE_MODES else "app.yuxino.mimi"
         write_profile(Path(os.environ["XDG_CONFIG_HOME"]) / application_id, port, application_id)
         write_fixture(root / "tone.wav")
+        if RELEASE_FRONTEND:
+            write_fixture(root / "sustained-tone.wav", tone_seconds=6)
         with (root / "pulse.log").open("w+") as pulse_log, child(
             "pulseaudio", "--daemonize=no", "--exit-idle-time=-1", "--use-pid-file=no", "-n",
             f"--load=module-native-protocol-unix socket={root / 'pulse.sock'} auth-anonymous=1",
@@ -413,7 +478,7 @@ def sample(executable, peer_script, root, pair, sampling):
                 if state != "IDLE":
                     raise RuntimeError(f"Expected an idle virtual sink, got {state}")
                 command("pactl", "set-default-sink", "mimi-output")
-                app_run(executable, root, results, sampling)
+                app_run(executable, root, event_file, results, sampling)
             except Exception:
                 pulse_log.seek(0)
                 print(pulse_log.read()[-2400:], file=sys.stderr)
@@ -424,8 +489,8 @@ def sample(executable, peer_script, root, pair, sampling):
             raise RuntimeError("The loopback peer exited prematurely")
         events = [json.loads(line) for line in event_file.read_text().splitlines()]
         replies = [item for item in events if item["event"] == "reply"]
-        if len(replies) != 1:
-            raise RuntimeError("Expected one actual audio-triggered local recognition reply")
+        if len(replies) != (2 if RELEASE_FRONTEND else 1):
+            raise RuntimeError("Expected one actual audio-triggered recognition reply per connection")
         connection = replies[0]["connection"]
         timestamps = {item["event"]: item["monotonic_ns"] for item in events
                       if item.get("connection") == connection}
@@ -445,10 +510,11 @@ def sample(executable, peer_script, root, pair, sampling):
         if "final" in timestamps:
             results.update(final_from_peer=timestamps["final"])
         milliseconds = {key: round((value - results["click"]) / 1_000_000, 3)
-                        for key, value in results.items() if key not in {"click", "same_pointer", "compositing_policy"}}
+                        for key, value in results.items() if key not in {"click", "same_pointer", "compositing_policy", "geometry"}}
         print(json.dumps({"pair": pair, "sampling": sampling, "sink_state": state,
                           "pointer_already_on_switch": results["same_pointer"],
                           "compositing_policy": results.get("compositing_policy"),
+                          "geometry": results.get("geometry"),
                           "elapsed_from_click_ms": milliseconds}), flush=True)
         return results.get("compositing_policy")
 
@@ -463,7 +529,7 @@ if __name__ == "__main__":
                 return None
 
         wait_for("Openbox readiness", window_manager_ready)
-        orders = ([("default", "never"), ("never", "default")] * 2 if os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
+        orders = ([("default", "never"), ("never", "default")] * 2 if RELEASE_FRONTEND or os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
                   [("online", "offline"), ("offline", "online")] * 2)
         for pair, order in enumerate(orders, start=1):
             effective = {}

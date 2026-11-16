@@ -378,11 +378,11 @@ jobs:
           args: --config src-tauri/tauri.ci.conf.json
 
       - name: Build Linux packages
-        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace'
+        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace' && github.ref_name != 'test/linux-compositing-release-frontend'
         run: ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
 
       - name: Install and smoke-test Linux packages
-        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace'
+        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace' && github.ref_name != 'test/linux-compositing-release-frontend'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
       - name: Smoke launch x64 UI-test app and click overlay controls
@@ -408,7 +408,7 @@ jobs:
           ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
 
       - name: Upload bundles
-        if: runner.os != 'macOS' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace'
+        if: runner.os != 'macOS' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace' && github.ref_name != 'test/linux-compositing-release-frontend'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mimi-${{ matrix.os }}
@@ -446,25 +446,29 @@ jobs:
           [[ "$(sha256sum /usr/bin/mimi | cut -d ' ' -f1)" == "$package_hash" ]]
 
       - name: Build the Linux WebKit rendering probe
-        if: runner.os == 'Linux' && github.ref_name == 'test/linux-caption-trace'
+        if: runner.os == 'Linux' && (github.ref_name == 'test/linux-caption-trace' || github.ref_name == 'test/linux-compositing-release-frontend')
         shell: bash
         run: |
-          npx --no-install vite build --config config/vite.config.ts --mode development
+          if [[ "$GITHUB_REF_NAME" == test/linux-compositing-release-frontend ]]; then
+            npm run build
+          else
+            npx --no-install vite build --config config/vite.config.ts --mode development
+          fi
           MIMI_DEBUG_REVISION="$GITHUB_SHA" MIMI_DEBUG_TREE_STATE=clean \
             TAURI_CONFIG="$(cat src-tauri/tauri.dev.conf.json)" cargo build --release --locked \
             --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol,development-debugger
 
       - name: Keep the isolated WebKit diagnostic executable for probe retries
-        if: runner.os == 'Linux' && github.ref_name == 'test/linux-caption-trace'
+        if: runner.os == 'Linux' && (github.ref_name == 'test/linux-caption-trace' || github.ref_name == 'test/linux-compositing-release-frontend')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mimi-linux-compositing-probe
+          name: mimi-linux-compositing-frontend-probe
           path: src-tauri/target/release/mimi
           if-no-files-found: error
           retention-days: 2
 
       - name: Measure Linux click to captured tone and visible subtitle
-        if: runner.os == 'Linux' && (github.ref_name == 'test/linux-visible-capture-baseline' || github.ref_name == 'test/linux-caption-trace')
+        if: runner.os == 'Linux' && (github.ref_name == 'test/linux-visible-capture-baseline' || github.ref_name == 'test/linux-caption-trace' || github.ref_name == 'test/linux-compositing-release-frontend')
         shell: bash
         timeout-minutes: 5
         run: |
@@ -474,19 +478,23 @@ jobs:
           dpkg-query -W libwebkit2gtk-4.1-0
           executable=/usr/bin/mimi
           mode=""
+          release_frontend=""
           if [[ "$GITHUB_REF_NAME" == test/linux-caption-trace ]]; then
             executable="$PWD/src-tauri/target/release/mimi"
             mode=1
+          elif [[ "$GITHUB_REF_NAME" == test/linux-compositing-release-frontend ]]; then
+            executable="$PWD/src-tauri/target/release/mimi"
+            release_frontend=1
           fi
           sudo unshare --net bash -c '
             set -e
             ip link set lo up
             exec sudo -u "$SUDO_USER" -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 \
-              NO_AT_BRIDGE=0 GTK_MODULES=atk-bridge LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=C.UTF-8 MIMI_LINUX_CAPTION_TRACE="$4" \
+              NO_AT_BRIDGE=0 GTK_MODULES=atk-bridge LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=C.UTF-8 MIMI_LINUX_CAPTION_TRACE="$4" MIMI_LINUX_RELEASE_FRONTEND="$6" \
               dbus-run-session -- xvfb-run -a -s "-screen 0 1280x900x24" timeout 180 \
               "$1" -B "$2" "$5" "$3"
           ' mimi-isolated-timing "$RUNNER_TEMP/mimi-asr-timing/bin/python" \
-            "$PWD/scripts/linux-visible-capture-probe.py" "$PWD/scripts/linux-visible-capture-peer.py" "$mode" "$executable"
+            "$PWD/scripts/linux-visible-capture-probe.py" "$PWD/scripts/linux-visible-capture-peer.py" "$mode" "$executable" "$release_frontend"
 
   ci-complete:
     if: ${{ always() }}

@@ -106,7 +106,7 @@ fn flush_notify() -> &'static tokio::sync::Notify {
 }
 pub fn initialize(app: &AppHandle) {
     #[cfg(target_os = "linux")]
-    let timing_probe = std::env::var_os("MIMI_LINUX_CAPTION_TRACE").is_some();
+    let timing_probe = std::env::var("MIMI_LINUX_CAPTION_TRACE").as_deref() == Ok("1");
     #[cfg(not(target_os = "linux"))]
     let timing_probe = false;
     let available = (crate::windows::is_dev_build() || timing_probe)
