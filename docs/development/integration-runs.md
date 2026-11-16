@@ -1,5 +1,17 @@
 # 集成实测记录
 
+## 2026-11-16：Linux 暂停时停止采音
+
+- [`a8446c0f` 同机对照](https://github.com/yuxino/Mimi/actions/runs/43881400617/job/133348105712)
+  在 Ubuntu 22.04 上分别用 PulseAudio 和 PipeWire-Pulse 的隔离虚拟输出，
+  每种服务交替测八对。每个样本重新播放同一合成音，收到匹配 PCM 后在仍
+  播放时请求停止，并等待采音线程释放连接。两种服务的中位数分别从
+  5.051 降至 0.276 ms、从 4.902 降至 0.148 ms，每对均更快。
+  排空队列后无新 PCM，重新启动同一采音对象后能再次收到匹配音频。
+- [正式改动 `7a0283dc` 的 Linux CI](https://github.com/yuxino/Mimi/actions/runs/43881966972)
+  通过。这里测的是采音线程的停止等待，尚未测实体设备、暂停按钮整体耗时
+  或真实服务的清理和重新连接。
+
 ## 2026-11-16：Linux 采音到首个本地识别回包
 
 - [`c95c3949` 原生测试](https://github.com/yuxino/Mimi/actions/runs/43852070088/job/133246985655)
