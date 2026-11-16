@@ -471,14 +471,13 @@ $previousTrayVisibleFile = $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE
 $previousSettingsActivationFile = $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE
 $previousFrontendReadyDir = $env:MIMI_UI_TEST_FRONTEND_READY_DIR
 $previousPreferencesDir = $env:MIMI_UI_TEST_PREFERENCES_DIR
-$previousWebViewArgs = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
-$previousWebViewProfile = $env:WEBVIEW2_USER_DATA_FOLDER
-$overlayDomPort = 0
+$previousOverlayPointerTrace = $env:MIMI_UI_TEST_OVERLAY_POINTER_TRACE
 $startupGateReadyFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-startup-$([Guid]::NewGuid().ToString('N')).ready"
 $sessionStateFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-session-$([Guid]::NewGuid().ToString('N')).state"
 $trayVisibleFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-tray-$([Guid]::NewGuid().ToString('N')).ready"
 $settingsActivationFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-settings-activation-$([Guid]::NewGuid().ToString('N')).state"
 $frontendReadyDir = Join-Path ([IO.Path]::GetTempPath()) "mimi-frontend-$([Guid]::NewGuid().ToString('N'))"
+$overlayPointerTraceDirectory = $null
 $preferencesDir = $null
 $process = $null
 $spoofedProcess = $null
@@ -503,15 +502,9 @@ try {
     }
     if ($OverlayInteraction -eq 'pointer' -and $ExpectedArchitecture -eq 'x64' -and
         $env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted') {
-        # Inspect the packaged WebView only on this synthetic hosted run.
-        $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
-        try {
-            $listener.Start()
-            $overlayDomPort = $listener.LocalEndpoint.Port
-        }
-        finally { $listener.Stop() }
-        $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $preferencesDir 'webview'
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$overlayDomPort"
+        New-Item -ItemType Directory -Path $frontendReadyDir | Out-Null
+        $overlayPointerTraceDirectory = $frontendReadyDir
+        $env:MIMI_UI_TEST_OVERLAY_POINTER_TRACE = '1'
     }
 
     if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
@@ -821,8 +814,12 @@ try {
         foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
             '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
             '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
-            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir, '-DomDiagnosticPort', $overlayDomPort)) {
+            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir)) {
             $interactionProbe.ArgumentList.Add([string]$argument)
+        }
+        if ($overlayPointerTraceDirectory) {
+            $interactionProbe.ArgumentList.Add('-OverlayPointerTraceDirectory')
+            $interactionProbe.ArgumentList.Add($overlayPointerTraceDirectory)
         }
         $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
         # Pointer coverage includes a second, separate configuration-error scenario.
@@ -859,6 +856,7 @@ try {
         throw 'The original smoke primary did not exit before the restart check.'
     }
     Reset-SmokeFrontendMarkers $frontendReadyDir
+    if ($overlayPointerTraceDirectory) { $env:MIMI_UI_TEST_OVERLAY_POINTER_TRACE = $null }
     Remove-Item -LiteralPath $sessionStateFile -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $sessionStateFile) {
         throw 'Could not reset the session marker before the automatic-start restart.'
@@ -961,7 +959,6 @@ finally {
         $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $previousSettingsActivationFile
         $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $previousFrontendReadyDir
         $env:MIMI_UI_TEST_PREFERENCES_DIR = $previousPreferencesDir
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousWebViewArgs
-        $env:WEBVIEW2_USER_DATA_FOLDER = $previousWebViewProfile
+        $env:MIMI_UI_TEST_OVERLAY_POINTER_TRACE = $previousOverlayPointerTrace
     }
 }

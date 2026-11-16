@@ -5,13 +5,15 @@ param(
     [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
     [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility')][string]$Interaction,
     [Parameter(Mandatory = $true)][string]$FixtureDirectory,
-    [ValidateRange(0, 65535)][int]$DomDiagnosticPort = 0
+    [string]$OverlayPointerTraceDirectory = ''
 )
 
 $ErrorActionPreference = 'Stop'
-if ($DomDiagnosticPort -gt 0 -and ($Interaction -ne 'pointer' -or
-    $env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted')) {
-    throw 'The overlay DOM diagnostic is limited to hosted Windows pointer checks.'
+if ($OverlayPointerTraceDirectory -and ($Interaction -ne 'pointer' -or
+    $env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
+    $env:MIMI_UI_TEST_OVERLAY_POINTER_TRACE -ne '1' -or
+    $OverlayPointerTraceDirectory -ne $env:MIMI_UI_TEST_FRONTEND_READY_DIR)) {
+    throw 'The overlay pointer trace is limited to the hosted UI-test frontend directory.'
 }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
 Add-Type @'
@@ -80,7 +82,7 @@ public static class MimiPointerSmoke {
             window.ToInt64(), name, process, bounds, GetDpiForWindow(window), GetWindowExStyle(window, -20));
     }
 
-    public static void AssertOverlayHit(IntPtr overlay, int x, int y, string action) {
+    public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
         var point = new Point { X = x, Y = y };
         var hit = WindowFromPoint(point);
         var root = GetAncestor(hit, 2);
@@ -88,10 +90,6 @@ public static class MimiPointerSmoke {
             throw new InvalidOperationException(String.Format(
                 "{0} point ({1},{2}) did not hit the overlay. Expected {3}; hit {4}; hit root {5}.",
                 action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
-    }
-
-    public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
-        AssertOverlayHit(overlay, x, y, action);
         if (!SetCursorPos(x, y))
             throw new InvalidOperationException("Could not move the pointer on the test desktop.");
         var clicks = new Input[] {
@@ -133,83 +131,45 @@ function Read-SmokeMarker([string]$Path) {
     }
 }
 
-function Wait-OverlayControlHover($Root, [string]$Name, [int]$X, [int]$Y) {
-    [MimiPointerSmoke]::AssertOverlayHit($overlay, $X, $Y, "Hover $Name")
-    $byName = [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
-    $byRole = [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ToolTip)
-    $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
-    $elapsed = [Diagnostics.Stopwatch]::StartNew()
-    $offset = 0
+$overlayPointerTraceId = 0
+
+function Read-OverlayPointerTrace([string]$Phase, [int]$X, [int]$Y) {
+    $script:overlayPointerTraceId++
+    $id = $script:overlayPointerTraceId
+    $request = Join-Path $OverlayPointerTraceDirectory 'overlay-pointer-request'
+    $result = Join-Path $OverlayPointerTraceDirectory "overlay-pointer-$id.json"
+    $cursor = [MimiPointerSmoke+Point]::new()
+    $screenPointer = $null
+    if ([MimiPointerSmoke]::GetCursorPos([ref]$cursor)) { $screenPointer = @($cursor.X, $cursor.Y) }
+    [IO.File]::WriteAllText($request, [string]$id, [Text.Encoding]::ASCII)
+    $deadline = [DateTime]::UtcNow.AddSeconds(2)
     do {
-        Assert-SettingsHidden
-        # The hidden button still has accessibility bounds. Its tooltip is
-        # created only after the renderer receives hover on the revealed tool.
-        if (-not [MimiPointerSmoke]::SetCursorPos(($X - $offset), $Y)) {
-            throw "Could not move to '$Name' while waiting for its hover tooltip."
-        }
-        $offset = 1 - $offset
-        Start-Sleep -Milliseconds 20
-        try {
-            $tooltip = $Root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
-            if ($null -ne $tooltip -and -not $tooltip.Current.IsOffscreen) {
-                Write-Host "Hover reached '$Name' after $($elapsed.ElapsedMilliseconds) ms."
-                return
+        $text = Read-SmokeMarker $result
+        if ($text) {
+            $sample = $null
+            try { $sample = ConvertFrom-Json -InputObject $text -ErrorAction Stop }
+            catch { # The writer can still be completing the file.
+            }
+            if ($null -ne $sample) {
+                $state = Read-SmokeMarker $SessionStateFile
+                $evidence = @{
+                    phase = $Phase
+                    screenTarget = @($X, $Y)
+                    screenPointer = $screenPointer
+                    state = if ($state -in @('listening', 'paused', 'error')) { $state } else { 'unknown' }
+                    sample = $sample
+                }
+                Write-Host ('mimi-overlay-pointer ' + (ConvertTo-Json -InputObject $evidence -Depth 12 -Compress))
+                return $true
             }
         }
-        catch [System.Windows.Automation.ElementNotAvailableException] {
-            # The native tree can update while the tooltip is being rendered.
-        }
-    } while ($elapsed.ElapsedMilliseconds -lt 1000)
-    throw "Hover at ($X,$Y) did not expose the '$Name' tooltip within one second."
+        Start-Sleep -Milliseconds 20
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Write-Warning "No Windows overlay pointer trace at $Phase. The native assertions still apply."
+    return $false
 }
 
-function Read-OverlayDomDiagnostic([string]$Phase, [string]$Name, [int]$X, [int]$Y) {
-    if ($Phase -eq 'before-move') {
-        try {
-            $listeners = @(Get-NetTCPConnection -LocalPort $DomDiagnosticPort -State Listen -ErrorAction SilentlyContinue)
-        }
-        catch {
-            Write-Warning 'Windows overlay DOM diagnostic could not inspect the listener.'
-            return $false
-        }
-        if ($listeners | Where-Object { $_.LocalAddress -notin @('127.0.0.1', '::1') }) {
-            throw 'Windows overlay DOM diagnostic listener is not loopback-only.'
-        }
-        if ($listeners.Count -eq 0) {
-            Write-Warning 'Windows overlay DOM diagnostic did not find a listener.'
-            return $false
-        }
-    }
-    try {
-        $cursor = [MimiPointerSmoke+Point]::new()
-        $pointer = @('unavailable', 'unavailable')
-        if ([MimiPointerSmoke]::GetCursorPos([ref]$cursor)) { $pointer = @($cursor.X, $cursor.Y) }
-        $result = & node "$PSScriptRoot/windows-overlay-dom-diagnostic.mjs" $DomDiagnosticPort $Phase $Name $X $Y ($pointer[0]) ($pointer[1]) 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Windows overlay DOM diagnostic unavailable at $Phase."
-            return $false
-        }
-        $result | ForEach-Object { Write-Host $_ }
-        return $true
-    }
-    catch {
-        Write-Warning "Windows overlay DOM diagnostic failed at $Phase."
-        return $false
-    }
-}
-
-function Move-ObservedOverlayPointer([string]$Name, [int]$X, [int]$Y) {
-    [MimiPointerSmoke]::AssertOverlayHit($overlay, $X, $Y, "Hover $Name")
-    if (-not [MimiPointerSmoke]::SetCursorPos(($X - 1), $Y)) {
-        throw "Could not move to '$Name' during the DOM diagnostic."
-    }
-    Read-OverlayDomDiagnostic 'after-move' $Name $X $Y | Out-Null
-    Assert-SettingsHidden
-}
-
-function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$RevealOnHover, [switch]$ObserveFastClick) {
+function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$ObserveFirstClick) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
     $byRole = [System.Windows.Automation.PropertyCondition]::new(
@@ -238,24 +198,14 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
                     if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
                         $x = [int]($bounds.X + $bounds.Width / 2)
                         $y = [int]($bounds.Y + $bounds.Height / 2)
-                        $observing = $false
-                        if (($RevealOnHover -or $ObserveFastClick) -and $DomDiagnosticPort -gt 0) {
-                            [MimiPointerSmoke]::AssertOverlayHit($overlay, $x, $y, "Hover $Name")
-                            $observing = Read-OverlayDomDiagnostic 'before-move' $Name $x $y
-                            if ($observing -and $RevealOnHover) { Move-ObservedOverlayPointer $Name $x $y }
-                        }
-                        elseif ($RevealOnHover -or $ObserveFastClick) { Wait-OverlayControlHover $root $Name $x $y }
+                        $observing = $ObserveFirstClick -and $OverlayPointerTraceDirectory -and
+                            (Read-OverlayPointerTrace 'before-click' $x $y)
                         [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action)
                         if ($observing) {
-                            Read-OverlayDomDiagnostic 'after-click' $Name $x $y | Out-Null
-                            $postClickState = Read-SmokeMarker $SessionStateFile
-                            if ($postClickState -in @('listening', 'paused', 'error')) {
-                                Write-Host "Windows overlay state after observed click: $postClickState"
-                            }
-                            if ($ObserveFastClick -and $postClickState -eq $State -and
-                                (Read-OverlayDomDiagnostic 'before-move' $Name $x $y)) {
-                                # The original click already ran. Observe a distinct move without retrying it.
-                                Move-ObservedOverlayPointer $Name $x $y
+                            Read-OverlayPointerTrace 'after-click' $x $y | Out-Null
+                            if ((Read-SmokeMarker $SessionStateFile) -eq $State -and
+                                [MimiPointerSmoke]::SetCursorPos(($x - 1), $y)) {
+                                Read-OverlayPointerTrace 'after-move' $x $y | Out-Null
                             }
                         }
                         if ($ReturnPoint) { return @{ X = $x; Y = $y } }
@@ -311,11 +261,11 @@ try {
     Close-SettingsForOverlayCheck
 
     for ($round = 1; $round -le 3; $round++) {
-        Use-OverlayControl 'Pause translating' 'listening' "Pause $round" -ObserveFastClick:($round -eq 1)
+        Use-OverlayControl 'Pause translating' 'listening' "Pause $round" -ObserveFirstClick:($round -eq 1)
         Use-OverlayControl 'Resume translating' 'paused' "Resume $round"
     }
 
-    Use-OverlayControl 'Open Mimi Settings' 'listening' 'Settings gear' -RevealOnHover
+    Use-OverlayControl 'Open Mimi Settings' 'listening' 'Settings gear'
     Wait-SettingsOpened 'Settings gear'
     Write-Output "Native overlay $Interaction passed: three Pause/Resume cycles kept Settings hidden, then the gear opened it."
 
@@ -325,7 +275,7 @@ try {
         $failureTrigger = Join-Path $FixtureDirectory 'fail-next-pause'
         try {
             New-Item -ItemType File -Path $failureTrigger | Out-Null
-            $pause = Use-OverlayControl 'Pause translating' 'listening' 'Pause with configuration failure' -ReturnPoint -RevealOnHover
+            $pause = Use-OverlayControl 'Pause translating' 'listening' 'Pause with configuration failure' -ReturnPoint
             Use-OverlayControl 'Open speech settings' 'error' 'Wait for configuration error' -WaitOnly
         }
         finally {

@@ -109,6 +109,8 @@ pub async fn set_overlay_pointer_cursor(
     macos_pointer::set_pointer_cursor(app, point, pointing).await
 }
 
+#[cfg(any(target_os = "windows", test))]
+mod overlay_pointer_fixture;
 #[cfg(target_os = "windows")]
 mod windows_workspace;
 
@@ -710,6 +712,14 @@ impl OverlayWindowManager {
             .visible_on_all_workspaces(true);
         #[cfg(target_os = "windows")]
         let builder = builder.focusable(false).focused(false);
+        #[cfg(target_os = "windows")]
+        let trace_directory = overlay_pointer_fixture::trace_directory(app);
+        #[cfg(target_os = "windows")]
+        let builder = if trace_directory.is_some() {
+            builder.initialization_script(overlay_pointer_fixture::INITIALIZATION_SCRIPT)
+        } else {
+            builder
+        };
         // A nonactivating panel's first deliberate click must also reach its
         // WebView control, rather than merely focusing the native window.
         #[cfg(target_os = "macos")]
@@ -727,6 +737,9 @@ impl OverlayWindowManager {
                     set_desktop_position(&window, frame.x, frame.y);
                     let scale = desktop_scale_for_frame(app, &window, &frame);
                     set_desktop_size(&window, frame.width, frame.height, scale);
+                    if let Some(directory) = trace_directory {
+                        overlay_pointer_fixture::observe(&window, directory);
+                    }
                 }
                 if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
                     presentation.invalidate();
