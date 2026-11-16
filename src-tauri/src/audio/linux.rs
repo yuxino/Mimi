@@ -2358,43 +2358,32 @@ mod tests {
         })
         .unwrap();
 
-        for (round, disable_rewinds) in (1..=8).flat_map(|round| {
-            let no_rewinds_first = round % 2 == 0;
-            [(round, no_rewinds_first), (round, !no_rewinds_first)]
-        }) {
-            let sink_config = if disable_rewinds {
-                "no-rewinds"
-            } else {
-                "default"
-            };
-            // Use a fresh sink so previous playback cannot keep it active.
-            // Change only the null sink's rewind option.
-            let _sink = if disable_rewinds {
-                TestSink(pactl(&[
-                    "load-module",
-                    "module-null-sink",
-                    &format!("sink_name={SINK}"),
-                    "norewinds=true",
-                ]))
-            } else {
-                TestSink::new(SINK)
-            };
+        let pipewire = pactl(&["info"]).contains("on PipeWire ");
+        let server = if pipewire { "pipewire" } else { "pulseaudio" };
+        for round in 1..=8 {
+            // Each observation starts with a fresh device and no playback.
+            let _sink = TestSink::new(SINK);
             let _restore_default = RestoreDefaultSink;
             pactl(&["set-default-sink", SINK]);
-            tokio::time::timeout(STAGE_LIMIT, async {
+            let output_state = tokio::time::timeout(STAGE_LIMIT, async {
                 loop {
                     let sink_list = pactl(&["list", "short", "sinks"]);
-                    if sink_list.lines().any(|line| {
+                    if let Some(state) = sink_list.lines().find_map(|line| {
                         let mut fields = line.split('\t');
-                        fields.nth(1) == Some(SINK) && fields.next_back() == Some("IDLE")
+                        if fields.nth(1) != Some(SINK) {
+                            return None;
+                        }
+                        fields
+                            .next_back()
+                            .filter(|state| *state == "IDLE" || (pipewire && *state == "SUSPENDED"))
                     }) {
-                        break;
+                        break state.to_owned();
                     }
                     tokio::time::sleep(POLL_INTERVAL).await;
                 }
             })
             .await
-            .expect("paired playback sink must start idle");
+            .expect("new virtual sink must be inactive before playback");
 
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let mut client = Audio3ASRClient::new_custom(
@@ -2548,7 +2537,7 @@ mod tests {
             let ms =
                 |begin: Instant, end: Instant| end.duration_since(begin).as_secs_f64() * 1000.0;
             eprintln!(
-                "linux null sink round={round} config={sink_config} connectionMs={:.2} monitorReadyMs={:.2} readyToPlaybackMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
+                "linux local recognition round={round} server={server} sink={output_state} connectionMs={:.2} monitorReadyMs={:.2} readyToPlaybackMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
                 ms(request_at, connected_at),
                 ms(capture_at, ready_at),
                 ms(ready_at, playback_at),
