@@ -2358,14 +2358,27 @@ mod tests {
         })
         .unwrap();
 
-        for (round, wait_for_silence) in (1..=8).flat_map(|round| {
-            let silence_first = round % 2 == 0;
-            [(round, silence_first), (round, !silence_first)]
+        for (round, disable_rewinds) in (1..=8).flat_map(|round| {
+            let no_rewinds_first = round % 2 == 0;
+            [(round, no_rewinds_first), (round, !no_rewinds_first)]
         }) {
-            let playback_gate = if wait_for_silence { "silence" } else { "ready" };
-            // A new, identically configured sink per observation prevents
-            // previous playback or an earlier monitor from keeping it active.
-            let _sink = TestSink::new(SINK);
+            let sink_config = if disable_rewinds {
+                "no-rewinds"
+            } else {
+                "default"
+            };
+            // Use a fresh sink so previous playback cannot keep it active.
+            // Change only the null sink's rewind option.
+            let _sink = if disable_rewinds {
+                TestSink(pactl(&[
+                    "load-module",
+                    "module-null-sink",
+                    &format!("sink_name={SINK}"),
+                    "norewinds=true",
+                ]))
+            } else {
+                TestSink::new(SINK)
+            };
             let _restore_default = RestoreDefaultSink;
             pactl(&["set-default-sink", SINK]);
             tokio::time::timeout(STAGE_LIMIT, async {
@@ -2395,7 +2408,7 @@ mod tests {
             let (events, mut received) = provider_event_channel();
             client.set_event_sender(events).await;
 
-            let (first_pcm_tx, mut first_pcm_rx) = oneshot::channel();
+            let (first_pcm_tx, first_pcm_rx) = oneshot::channel();
             let playback_requested = Arc::new(AtomicBool::new(false));
             let peer_playback = Arc::clone(&playback_requested);
             let setup = response["setup"].to_string();
@@ -2495,16 +2508,6 @@ mod tests {
             .unwrap()
             .unwrap();
             let ready_at = Instant::now();
-            let silent_pcm_at = if wait_for_silence {
-                Some(
-                    tokio::time::timeout(STAGE_LIMIT, &mut first_pcm_rx)
-                        .await
-                        .unwrap()
-                        .unwrap(),
-                )
-            } else {
-                None
-            };
             assert!(
                 matches!(
                     received.try_recv_with_revision(),
@@ -2515,13 +2518,10 @@ mod tests {
             let playback_at = Instant::now();
             playback_requested.store(true, Ordering::SeqCst);
             let playback = tone.play_on(SINK);
-            let first_pcm_at = match silent_pcm_at {
-                Some(at) => at,
-                None => tokio::time::timeout(STAGE_LIMIT, &mut first_pcm_rx)
-                    .await
-                    .unwrap()
-                    .unwrap(),
-            };
+            let first_pcm_at = tokio::time::timeout(STAGE_LIMIT, first_pcm_rx)
+                .await
+                .unwrap()
+                .unwrap();
             let native_pcm_at = *first_native_pcm.get().expect("first native PCM admission");
             let first = tokio::time::timeout(STAGE_LIMIT, received.recv_with_revision())
                 .await
@@ -2544,14 +2544,11 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert!(capture_at <= native_pcm_at && native_pcm_at <= first_pcm_at);
-            if wait_for_silence {
-                assert!(first_pcm_at <= playback_at);
-            }
             assert!(playback_at <= tone_at && tone_at <= event_at);
             let ms =
                 |begin: Instant, end: Instant| end.duration_since(begin).as_secs_f64() * 1000.0;
             eprintln!(
-                "linux first tone round={round} guard={playback_gate} connectionMs={:.2} monitorReadyMs={:.2} readyToPlaybackMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
+                "linux null sink round={round} config={sink_config} connectionMs={:.2} monitorReadyMs={:.2} readyToPlaybackMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
                 ms(request_at, connected_at),
                 ms(capture_at, ready_at),
                 ms(ready_at, playback_at),
