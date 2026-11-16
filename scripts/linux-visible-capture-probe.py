@@ -2,6 +2,7 @@
 """Click the shipped Linux Settings switch and time a local ASR reply through visible pixels."""
 
 import contextlib
+import csv
 import hashlib
 import io
 import json
@@ -139,12 +140,50 @@ def screenshot(crop):
     return before, time.monotonic_ns(), picture
 
 
-def found_caption(picture):
+def recognize_picture(picture, *options):
     buffer = io.BytesIO()
     picture.save(buffer, format="PNG")
-    read = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "6"], input=buffer.getvalue(),
-                          capture_output=True, check=True, timeout=4).stdout.decode().lower()
-    return bool(re.search(r"mimi\s+synthetic\s+997\s*hz\s+caption", read))
+    return subprocess.run(["tesseract", "stdin", "stdout", "--psm", "6", *options], input=buffer.getvalue(),
+                          capture_output=True, check=True, timeout=4).stdout.decode()
+
+
+def found_caption(picture):
+    return bool(re.search(r"mimi\s+synthetic\s+997\s*hz\s+caption", recognize_picture(picture).lower()))
+
+
+def caption_rectangle(picture):
+    lines = {}
+    for row in csv.DictReader(io.StringIO(recognize_picture(picture, "tsv")), delimiter="\t"):
+        if row["level"] == "5" and row["text"].strip():
+            key = (row["block_num"], row["par_num"], row["line_num"])
+            lines.setdefault(key, []).append(row)
+    for words in lines.values():
+        normalized = re.sub(r"[^a-z0-9]", "", "".join(row["text"].lower() for row in words))
+        if normalized == "mimisynthetic997hzcaption":
+            boxes = [(int(row["left"]), int(row["top"]), int(row["width"]), int(row["height"])) for row in words]
+            left = min(x for x, _, _, _ in boxes)
+            top = min(y for _, y, _, _ in boxes)
+            right = max(x + width for x, _, width, _ in boxes)
+            bottom = max(y + height for _, y, _, height in boxes)
+            if not (0 <= left < right <= picture.width and 0 <= top < bottom <= picture.height):
+                raise RuntimeError("The identified caption rectangle was outside the screenshot")
+            return left, top, right, bottom
+    raise RuntimeError("OCR confirmed the caption but did not localize its whole line")
+
+
+def first_matching_caption_pixels(frames, confirmed_index):
+    # The reference is independently identified by OCR. Compare just the
+    # verified caption rectangle in earlier screenshots, ignoring other UI.
+    reference = frames[confirmed_index][2]
+    box = caption_rectangle(reference)
+    expected = reference.crop(box).tobytes()
+    for index, (_, observed_by, picture) in enumerate(frames[:confirmed_index + 1]):
+        if picture.crop(box).tobytes() == expected:
+            result = {"identical_caption_pixels": observed_by}
+            if index:
+                result["last_different_caption_pixels"] = frames[index - 1][0]
+            return result
+    raise AssertionError("The verified caption did not match its own reference pixels")
 
 
 def observe_caption(overlay, sampling):
@@ -169,7 +208,8 @@ def observe_caption(overlay, sampling):
         return None
 
     if sampling == "online":
-        return wait_for("the synthetic caption in the actual overlay pixels", lambda: recognize(screenshot(crop)))
+        times = wait_for("the synthetic caption in the actual overlay pixels", lambda: recognize(screenshot(crop)))
+        return (*times, {})
 
     # Collect a bounded burst before asking OCR to recognize any images. X11
     # capture is the only work on the clock; OCR can't delay the next sample.
@@ -182,10 +222,11 @@ def observe_caption(overlay, sampling):
         if remaining > 0:
             time.sleep(remaining)
     cache = {}
-    for frame in frames:
+    for index, frame in enumerate(frames):
         detection = recognize(frame, cache)
         if detection is not None:
-            return detection
+            pixels = first_matching_caption_pixels(frames, index) if sampling == "trace" else {}
+            return (*detection, pixels)
     raise RuntimeError("No synthetic caption in the bounded offline screenshot burst")
 
 
@@ -281,7 +322,7 @@ def app_run(executable, root, results, sampling):
             playback_requested = time.monotonic_ns()
             with child("paplay", "--device=mimi-output", str(root / "tone.wav")) as player:
                 overlay = wait_for("visible subtitle window", lambda: window("^Mimi Subtitles$"))
-                visible, last_negative = observe_caption(overlay, sampling)
+                visible, last_negative, pixel_observations = observe_caption(overlay, sampling)
                 if player.wait(timeout=5) != 0:
                     raise RuntimeError("PulseAudio failed to play the synthetic tone")
 
@@ -299,6 +340,7 @@ def app_run(executable, root, results, sampling):
                 results.update(final_log=final_log)
             if sampling == "trace":
                 results.update(trace_milestones(observations, trace))
+                results.update(pixel_observations)
         except Exception:
             print("\n".join(tail), file=sys.stderr)
             raise
@@ -352,6 +394,8 @@ def sample(executable, peer_script, root, pair, sampling):
         if not results["click"] <= results["start"] <= results["ready"] <= results["playback"] \
            <= results["first_pcm_at_peer"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
             raise RuntimeError(f"Timing observations fell out of order: {results}")
+        if sampling == "trace" and not results["reply"] <= results["identical_caption_pixels"] <= results["visible"]:
+            raise RuntimeError("Matching caption pixels did not follow the provider reply")
         if results["draft_log"] < results["reply"]:
             raise RuntimeError("The application logged a draft before the fixture sent it")
         if "final" in timestamps:
