@@ -16,6 +16,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 public static class MimiPointerSmoke {
+    public static long LastInputTimestamp { get; private set; }
     private const uint DwmwaCloaked = 14;
     private const int ExtendedStyle = -20;
     private const int TopmostStyle = 0x0008;
@@ -155,10 +156,12 @@ public static class MimiPointerSmoke {
             new Input { Mouse = new MouseInput { Flags = 0x0004 } }  // left up
         };
         var size = Marshal.SizeOf(typeof(Input));
+        var inputTimestamp = Stopwatch.GetTimestamp();
         var sent = SendInput(2, clicks, size);
         if (sent == 1) SendInput(1, new Input[] { clicks[1] }, size);
         if (sent != 2)
             throw new InvalidOperationException("Windows did not accept both mouse events.");
+        LastInputTimestamp = inputTimestamp;
     }
 }
 '@
@@ -189,12 +192,16 @@ function Read-SmokeMarker([string]$Path) {
     }
 }
 
-function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$CompareZOrder) {
+function New-OverlayButtonCondition([string]$Name) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
     $byRole = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
-    $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
+    return [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
+}
+
+function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$CompareZOrder) {
+    $condition = New-OverlayButtonCondition $Name
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     $observedState = ''
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -232,6 +239,67 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
         Start-Sleep -Milliseconds 100
     }
     throw "Overlay did not expose an enabled '$Name' in state '$State' (last state: '$observedState')."
+}
+
+function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name) {
+    $condition = New-OverlayButtonCondition $Name
+    $frequency = [Diagnostics.Stopwatch]::Frequency
+    $deadline = $InputTimestamp + 10 * $frequency
+    $stateAt = 0L
+    $labelAt = 0L
+    $enabledAt = 0L
+    $previousSample = $InputTimestamp
+    $longestSampleGap = 0L
+    $longestUiQuery = 0L
+    $queries = 0
+    while ([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline) {
+        Assert-SettingsHidden
+        $sample = [Diagnostics.Stopwatch]::GetTimestamp()
+        $longestSampleGap = [Math]::Max($longestSampleGap, $sample - $previousSample)
+        $previousSample = $sample
+        if ($stateAt -eq 0 -and (Read-SmokeMarker $SessionStateFile) -eq $State) {
+            $stateAt = [Diagnostics.Stopwatch]::GetTimestamp()
+        }
+
+        if ($enabledAt -eq 0) {
+            $queryStarted = [Diagnostics.Stopwatch]::GetTimestamp()
+            $queries++
+            try {
+                $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
+                $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                if ($null -ne $button -and -not $button.Current.IsOffscreen) {
+                    if ($labelAt -eq 0) { $labelAt = [Diagnostics.Stopwatch]::GetTimestamp() }
+                    if ($button.Current.IsEnabled) { $enabledAt = [Diagnostics.Stopwatch]::GetTimestamp() }
+                }
+            }
+            catch [System.Windows.Automation.ElementNotAvailableException] {
+                # The next query observes the current WebView2 control.
+            }
+            finally {
+                $longestUiQuery = [Math]::Max($longestUiQuery, [Diagnostics.Stopwatch]::GetTimestamp() - $queryStarted)
+            }
+        }
+
+        if ($stateAt -ne 0 -and $labelAt -ne 0 -and $enabledAt -ne 0) {
+            Assert-SettingsHidden
+            $milliseconds = 1000.0 / $frequency
+            $timing = [ordered]@{
+                round = $Round
+                action = $Action
+                state_ms = [Math]::Round(($stateAt - $InputTimestamp) * $milliseconds, 2)
+                label_ms = [Math]::Round(($labelAt - $InputTimestamp) * $milliseconds, 2)
+                enabled_ms = [Math]::Round(($enabledAt - $InputTimestamp) * $milliseconds, 2)
+                label_to_enabled_ms = [Math]::Round(($enabledAt - $labelAt) * $milliseconds, 2)
+                max_query_ms = [Math]::Round($longestUiQuery * $milliseconds, 2)
+                max_sample_gap_ms = [Math]::Round($longestSampleGap * $milliseconds, 2)
+                queries = $queries
+            }
+            Write-Output ('Mimi pointer timing ' + ($timing | ConvertTo-Json -Compress))
+            return
+        }
+        Start-Sleep -Milliseconds 10
+    }
+    throw "Timed $Action $Round did not observe the $State marker and visible, enabled '$Name' within ten seconds."
 }
 
 function Close-SettingsForOverlayCheck {
@@ -276,6 +344,15 @@ try {
         $compareZOrder = $round -eq 1 -and $env:MIMI_SMOKE_COMPARE_OVERLAY_Z_ORDER -eq '1'
         Use-OverlayControl 'Pause translating' 'listening' "Pause $round" -CompareZOrder:$compareZOrder
         Use-OverlayControl 'Resume translating' 'paused' "Resume $round"
+    }
+
+    if ($Interaction -eq 'pointer' -and $env:MIMI_SMOKE_MEASURE_POINTER -eq '1') {
+        for ($round = 1; $round -le 8; $round++) {
+            Use-OverlayControl 'Pause translating' 'listening' "Timed Pause $round"
+            Measure-OverlayTransition $round 'pause' ([MimiPointerSmoke]::LastInputTimestamp) 'paused' 'Resume translating'
+            Use-OverlayControl 'Resume translating' 'paused' "Timed Resume $round"
+            Measure-OverlayTransition $round 'resume' ([MimiPointerSmoke]::LastInputTimestamp) 'listening' 'Pause translating'
+        }
     }
 
     Use-OverlayControl 'Open Mimi Settings' 'listening' 'Settings gear'

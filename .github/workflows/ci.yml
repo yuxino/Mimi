@@ -260,6 +260,7 @@ jobs:
         shell: pwsh
         env:
           MIMI_SMOKE_DESKTOP_CHILD: '1'
+          MIMI_SMOKE_MEASURE_POINTER: '1'
         run: |
           $exe = (Resolve-Path ./src-tauri/target/release/mimi.exe).Path
           Write-Output "ARM64 test image SHA-256: $((Get-FileHash -LiteralPath $exe).Hash)"
