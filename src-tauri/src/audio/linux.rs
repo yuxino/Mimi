@@ -2326,6 +2326,180 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    #[ignore = "requires an isolated PulseAudio server and paplay"]
+    async fn native_monitor_reaches_first_loopback_recognition_event() {
+        use futures_util::{SinkExt, StreamExt};
+        use mimi_runtime::clients::audio3_client::Audio3ASRClient;
+        use mimi_runtime::clients::provider_events::provider_event_channel;
+        use mimi_runtime::clients::provider_network::ProviderNetwork;
+        use mimi_runtime::core::models::SourceLanguage;
+        use mimi_runtime::core::network_proxy::{ProxyConfig, ProxyMode};
+        use mimi_runtime::core::protocols::live_translate::LiveTranslateServerEvent;
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::{accept_async, tungstenite::Message};
+
+        const RATE: u32 = 16_000;
+        const FRAME_BYTES: usize = RATE as usize * 2 * FRAGMENT_MS / 1_000;
+        const TASK: &str = "binary-json-fixture";
+        const STAGE_LIMIT: Duration = Duration::from_secs(7);
+        isolated_audio_directory();
+        let tone = prepare_test_frequency(997.0);
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../shared/translation-contracts.json"))
+                .unwrap();
+        let response = &fixtures["binaryJsonTransports"]["audio3"];
+        let expected = response["expectedSource"].as_str().unwrap();
+        let direct = ProviderNetwork::resolve(&ProxyConfig {
+            mode: ProxyMode::Direct,
+            url: None,
+        })
+        .unwrap();
+
+        for round in 1..=8 {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let mut client = Audio3ASRClient::new_custom(
+                &format!("ws://{}/asr", listener.local_addr().unwrap()),
+                "synthetic-model",
+                "synthetic-key",
+                SourceLanguage::English,
+            )
+            .unwrap();
+            client.set_network(direct.clone()).unwrap();
+            let (events, mut received) = provider_event_channel();
+            client.set_event_sender(events).await;
+
+            let (silence_tx, silence_rx) = oneshot::channel();
+            let playback_requested = Arc::new(AtomicBool::new(false));
+            let peer_playback = Arc::clone(&playback_requested);
+            let setup = response["setup"].to_string();
+            let transcript = response["transcript"].to_string();
+            let peer = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = accept_async(stream).await.unwrap();
+                let request = socket.next().await.unwrap().unwrap().into_text().unwrap();
+                let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+                assert_eq!(request["header"]["action"], "run-task");
+                assert_eq!(request["payload"]["parameters"]["sample_rate"], RATE);
+                socket.send(Message::Text(setup.into())).await.unwrap();
+
+                let mut silence_tx = Some(silence_tx);
+                let mut tone_at = None;
+                while let Some(frame) = socket.next().await {
+                    match frame.unwrap() {
+                        Message::Close(_) => break,
+                        Message::Binary(pcm) if pcm.len() == FRAME_BYTES => {
+                            if !peer_playback.load(Ordering::SeqCst) {
+                                assert!(pcm.as_chunks::<2>().0.iter().all(|sample| {
+                                    i16::from_le_bytes(*sample).unsigned_abs() <= 2
+                                }));
+                                if let Some(sender) = silence_tx.take() {
+                                    sender.send(Instant::now()).unwrap();
+                                }
+                            } else if tone_at.is_none() && matches_tone(&pcm, RATE) {
+                                tone_at = Some(Instant::now());
+                                socket
+                                    .send(Message::Text(transcript.clone().into()))
+                                    .await
+                                    .unwrap();
+                            }
+                        }
+                        // Audio3 can supply its own, longer idle silence frames.
+                        Message::Binary(pcm) => {
+                            assert_eq!(pcm.len(), 3_200);
+                            assert!(pcm.iter().all(|byte| *byte == 0));
+                        }
+                        unexpected => panic!("unexpected loopback frame: {unexpected:?}"),
+                    }
+                }
+                tone_at.expect("recognition requires captured synthetic PCM")
+            });
+
+            let request_at = Instant::now();
+            tokio::time::timeout(STAGE_LIMIT, client.connect(TASK))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                tokio::time::timeout(STAGE_LIMIT, received.recv())
+                    .await
+                    .unwrap(),
+                Some(LiveTranslateServerEvent::SessionCreated)
+            );
+            let connected_at = Instant::now();
+
+            let sender = client.clone();
+            let send_failed = Arc::new(AtomicBool::new(false));
+            let failed = Arc::clone(&send_failed);
+            let pipeline = AudioSendPipeline::spawn(
+                move |pcm| {
+                    let sender = sender.clone();
+                    async move { sender.send_audio(&pcm).await }
+                },
+                move |_| {
+                    failed.store(true, Ordering::SeqCst);
+                },
+            );
+            let capture = LinuxSystemAudioCapture::new();
+            let (failure_tx, mut failures) = CaptureFailureSender::channel();
+            let capture_at = Instant::now();
+            tokio::time::timeout(
+                STAGE_LIMIT,
+                capture.start(
+                    pipeline.ingress().unwrap(),
+                    failure_tx,
+                    AudioCaptureFormat::pcm16_mono(RATE).unwrap(),
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            let ready_at = Instant::now();
+            let silence_at = tokio::time::timeout(STAGE_LIMIT, silence_rx)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                received.try_recv().is_err(),
+                "peer must wait for captured tone"
+            );
+            let playback_at = Instant::now();
+            playback_requested.store(true, Ordering::SeqCst);
+            let playback = tone.play_on("@DEFAULT_SINK@");
+            let first = tokio::time::timeout(STAGE_LIMIT, received.recv())
+                .await
+                .unwrap();
+            let event_at = Instant::now();
+            assert!(
+                matches!(first, Some(LiveTranslateServerEvent::SourceUtteranceFinal { text, .. }) if text == expected)
+            );
+            drop(playback);
+            tokio::time::timeout(Duration::from_secs(1), capture.stop())
+                .await
+                .unwrap();
+            assert!(failures.try_recv().is_err());
+            assert!(!send_failed.load(Ordering::SeqCst));
+            pipeline.stop();
+            client.disconnect().await;
+            let tone_at = tokio::time::timeout(STAGE_LIMIT, peer)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(playback_at <= tone_at && tone_at <= event_at);
+            let ms =
+                |begin: Instant, end: Instant| end.duration_since(begin).as_secs_f64() * 1000.0;
+            eprintln!(
+                "linux first recognition round={round} connectionMs={:.2} monitorReadyMs={:.2} firstSilentPcmMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
+                ms(request_at, connected_at),
+                ms(capture_at, ready_at),
+                ms(capture_at, silence_at),
+                ms(playback_at, tone_at),
+                ms(tone_at, event_at),
+                ms(request_at, event_at)
+            );
+        }
+    }
+
     /// Run under scripts/linux-audio-smoke.sh: it supplies a private server,
     /// a null playback sink, and a deliberately different default source.
     /// No provider credentials, device capture, or display are needed.
