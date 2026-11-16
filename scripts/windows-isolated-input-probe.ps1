@@ -61,6 +61,20 @@ public static class MimiIsolatedInputProbe {
     private static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")]
     private static extern IntPtr WindowFromPoint(Point point);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDesktop(uint threadId);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
+    private static extern int GetClassNameW(IntPtr window, StringBuilder name, int max);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr window, uint kind, out uint flags, uint size);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll", SetLastError = true)]
@@ -90,14 +104,49 @@ public static class MimiIsolatedInputProbe {
         finally { CloseDesktop(handle); }
     }
 
+    private static string DescribeWindow(IntPtr window) {
+        if (window == IntPtr.Zero) return "none";
+        var kind = new StringBuilder(96);
+        GetClassNameW(window, kind, kind.Capacity);
+        uint pid, cloak;
+        GetWindowThreadProcessId(window, out pid);
+        Rect rect;
+        var bounds = GetWindowRect(window, out rect) ?
+            String.Format("{0},{1}..{2},{3}", rect.Left, rect.Top, rect.Right, rect.Bottom) : "unknown";
+        var cloakState = DwmGetWindowAttribute(window, 14, out cloak, sizeof(uint)) == 0 ? cloak.ToString() : "unknown";
+        return String.Format("0x{0:X} class={1} pid={2} bounds={3} visible={4} cloak={5}",
+            window.ToInt64(), kind, pid, bounds, IsWindowVisible(window), cloakState);
+    }
+
+    private static void ObserveInitialMiss(Point point, IntPtr window, IntPtr firstHit) {
+        var clock = Stopwatch.StartNew();
+        var ownerDesktop = DesktopName(GetThreadDesktop(GetCurrentThreadId()));
+        Console.WriteLine("Probe point {0},{1}: thread={2}; input={3}; expected {4}; original hit {5}.",
+            point.X, point.Y, ownerDesktop, ActiveDesktopName(), DescribeWindow(window), DescribeWindow(firstHit));
+        // Observe only. Preserve the original failed assertion and send no input,
+        // even if the compositor starts returning the probe window later.
+        foreach (int sample in new[] { 0, 25, 75, 200, 500 }) {
+            var remaining = sample - (int)clock.ElapsedMilliseconds;
+            if (remaining > 0) Thread.Sleep(remaining);
+            var hit = WindowFromPoint(point);
+            Console.WriteLine("Probe miss follow-up t={0}ms: input={1}; hit_own={2}; hit {3}; foreground {4}.",
+                clock.ElapsedMilliseconds, ActiveDesktopName(), hit == window, DescribeWindow(hit),
+                DescribeWindow(GetForegroundWindow()));
+        }
+    }
+
     private static void ClickOwnWindow(IntPtr window, string desktopName) {
         if (ActiveDesktopName() != desktopName)
             throw new InvalidOperationException("The probe desktop does not own input.");
         Rect rect;
         if (!GetWindowRect(window, out rect)) throw Win32Failure("GetWindowRect");
         var point = new Point { X = (rect.Left + rect.Right) / 2, Y = (rect.Top + rect.Bottom) / 2 };
-        if (WindowFromPoint(point) != window)
+        var firstHit = WindowFromPoint(point);
+        if (firstHit != window) {
+            try { ObserveInitialMiss(point, window, firstHit); }
+            catch (Exception error) { Console.WriteLine("Probe miss observation stopped: {0}", error.Message); }
             throw new InvalidOperationException("The probe coordinates do not hit its own window.");
+        }
         if (!SetCursorPos(point.X, point.Y)) throw Win32Failure("SetCursorPos");
         Point actual;
         if (!GetCursorPos(out actual)) throw Win32Failure("GetCursorPos");
