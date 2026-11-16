@@ -325,7 +325,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
     throw "Overlay did not expose an enabled '$Name' in state '$State' (last state: '$observedState')."
 }
 
-function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name, [MimiPointerSmoke+MarkerObserver]$Observer, [System.Windows.Automation.AutomationElement]$RetainedButton) {
+function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name, [MimiPointerSmoke+MarkerObserver]$Observer, [System.Windows.Automation.AutomationElement]$RetainedButton, [int]$PauseReplyDelayMs) {
     $condition = New-OverlayButtonCondition $Name
     $frequency = [Diagnostics.Stopwatch]::Frequency
     $deadline = $InputTimestamp + 10 * $frequency
@@ -351,7 +351,7 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
 
         if ($enabledAt -eq 0) {
             $queryStarted = [Diagnostics.Stopwatch]::GetTimestamp()
-            if ($retainedOutcome -eq 'observed' -and $queryStarted -ge $retainedDeadline) {
+            if ($retainedOutcome -eq 'observed' -and $labelAt -eq 0 -and $queryStarted -ge $retainedDeadline) {
                 $retainedOutcome = 'not_seen_within_350ms'
                 $labelAt = 0L
             }
@@ -390,6 +390,7 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
             $timing = [ordered]@{
                 round = $Round
                 action = $Action
+                synthetic_pause_reply_delay_ms = $PauseReplyDelayMs
                 query_method = if ($null -eq $RetainedButton) { 'tree' } else { 'retained' }
                 retained_outcome = $retainedOutcome
                 state_ms = [Math]::Round(($stateAt - $InputTimestamp) * $milliseconds, 2)
@@ -411,14 +412,18 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
     throw "Timed $Action $Round did not observe the $State marker and visible, enabled '$Name' within ten seconds."
 }
 
-function Invoke-TimedOverlayTransition([int]$Round, [string]$Action, [string]$Before, [string]$BeforeButton, [string]$After, [string]$AfterButton, [switch]$RetainButton) {
-    $observer = [MimiPointerSmoke+MarkerObserver]::new($SessionStateFile, $Before, $After)
+function Invoke-TimedPause([int]$Round, [switch]$DelayPauseReply) {
+    $delayFile = Join-Path $FixtureDirectory 'delay-pause-reply'
+    $observer = [MimiPointerSmoke+MarkerObserver]::new($SessionStateFile, 'listening', 'paused')
     try {
-        $button = Use-OverlayControl $BeforeButton $Before "Timed $Action $Round" -Observer $observer -ReturnButton:$RetainButton
-        if ($RetainButton -and $null -eq $button) { throw 'The native click did not return its button.' }
-        Measure-OverlayTransition $Round $Action ([MimiPointerSmoke]::LastInputTimestamp) $After $AfterButton $observer $button
+        if ($DelayPauseReply) { New-Item -ItemType File -Path $delayFile | Out-Null }
+        $button = Use-OverlayControl 'Pause translating' 'listening' "Timed pause $Round" -Observer $observer -ReturnButton
+        if ($null -eq $button) { throw 'The native click did not return its button.' }
+        $delayMs = if ($DelayPauseReply) { 240 } else { 0 }
+        Measure-OverlayTransition $Round 'pause' ([MimiPointerSmoke]::LastInputTimestamp) 'paused' 'Resume translating' $observer $button $delayMs
     }
     finally {
+        if ($DelayPauseReply) { Remove-Item -LiteralPath $delayFile -Force -ErrorAction SilentlyContinue }
         $observer.Dispose()
     }
 }
@@ -469,10 +474,10 @@ try {
 
     if ($Interaction -eq 'pointer' -and $env:MIMI_SMOKE_MEASURE_POINTER -eq '1') {
         for ($round = 1; $round -le 8; $round++) {
-            $retainedFirst = $round % 2 -eq 0
-            foreach ($retain in @($retainedFirst, (-not $retainedFirst))) {
-                Invoke-TimedOverlayTransition $round 'pause' 'listening' 'Pause translating' 'paused' 'Resume translating' -RetainButton:$retain
-                Invoke-TimedOverlayTransition $round 'resume' 'paused' 'Resume translating' 'listening' 'Pause translating' -RetainButton:$retain
+            $delayedFirst = $round % 2 -eq 0
+            foreach ($delay in @($delayedFirst, (-not $delayedFirst))) {
+                Invoke-TimedPause $round -DelayPauseReply:$delay
+                Use-OverlayControl 'Resume translating' 'paused' "Resume after timed pause $round"
             }
         }
     }

@@ -2571,6 +2571,17 @@ impl SessionManager {
                 self.controller.lock().unwrap().did_pause();
             }
             self.publish_lifecycle_state().await;
+            // Simulate a pending cleanup reply after publishing the paused
+            // snapshot so the isolated native test can observe both boundaries.
+            if !request.resume
+                && std::env::var_os("MIMI_UI_TEST_PREFERENCES_DIR").is_some_and(|directory| {
+                    std::path::Path::new(&directory)
+                        .join("delay-pause-reply")
+                        .is_file()
+                })
+            {
+                tokio::time::sleep(Duration::from_millis(240)).await;
+            }
             return Ok(());
         }
         if request.resume {
