@@ -2369,7 +2369,6 @@ mod tests {
     async fn native_active_monitor_stop_and_restart_timing() {
         isolated_audio_directory();
         let tone = prepare_test_frequency(997.0);
-        let _playback = tone.play_on("@DEFAULT_SINK@");
         let server = if pactl(&["info"]).contains("on PipeWire ") {
             "pipewire"
         } else {
@@ -2380,6 +2379,9 @@ mod tests {
         for round in 1..=8 {
             let fixed_wait_first = round % 2 == 1;
             for fixed_stop_wait in [fixed_wait_first, !fixed_wait_first] {
+                // Reuse the identical 30-second input for each observation so
+                // it remains playing until this monitor has restarted.
+                let mut playback = tone.play_on("@DEFAULT_SINK@");
                 let mode = if fixed_stop_wait { "sleep" } else { "wake" };
                 let capture = LinuxSystemAudioCapture {
                     fixed_stop_wait,
@@ -2427,6 +2429,10 @@ mod tests {
                 )
                 .await;
                 let restart_audio_ms = restart_at.elapsed().as_secs_f64() * 1000.0;
+                assert!(
+                    playback.0.try_wait().unwrap().is_none(),
+                    "the synthetic input must outlive the stop and restart"
+                );
                 assert!(
                     matches!(pcm.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
                     "stopped monitor must not emit PCM into the old generation"
