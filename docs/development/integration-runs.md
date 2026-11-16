@@ -1,5 +1,16 @@
 # 集成实测记录
 
+## 2026-11-16：OpenAI 实时翻译会话到期与错误分类
+
+- 正式版 1.7.0 的脱敏诊断中，最后一次恢复聆听到失败间隔为 59 分 59.69 秒。
+  旧版记录为 `OTHER`，这个间隔符合会话到期，但无法追溯原服务错误码。
+- 源码 `78beaf8f` 通过本机完整检查和
+  [桌面 CI](https://github.com/yuxino/Mimi/actions/runs/43889041217)。
+  [Android Debug、Release JNI 验收](https://github.com/yuxino/Mimi/actions/runs/43889040902/job/133374923987)
+  用本地 TLS 模拟会话验证：已连接的会话收到到期事件后建立新连接，重新接收
+  PCM 并得到确认字幕；连接建立时的到期和明确额度错误都停止尝试。
+  诊断页显示固定原因。本次未重新调用真实服务。
+
 ## 2026-11-16：Linux 暂停时停止采音
 
 - [`a8446c0f` 同机对照](https://github.com/yuxino/Mimi/actions/runs/43881400617/job/133348105712)
