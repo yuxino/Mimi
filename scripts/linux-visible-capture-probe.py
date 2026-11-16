@@ -17,6 +17,7 @@ import wave
 from pathlib import Path
 
 import pyatspi
+from gi.repository import GLib
 from PIL import ImageGrab
 
 
@@ -64,13 +65,19 @@ def start_switch():
         todo = [app]
         while todo:
             node = todo.pop()
-            if node.name == "Live Subtitles" and node.getRole() in roles:
-                state = node.getState()
-                if state.contains(pyatspi.STATE_ENABLED) and state.contains(pyatspi.STATE_SHOWING):
-                    x, y, width, height = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
-                    if x >= 0 and y >= 0 and width > 0 and height > 0:
-                        return str(x + width // 2), str(y + height // 2)
-            todo.extend(child for child in node if child is not None)
+            try:
+                if node.name == "Live Subtitles" and node.getRole() in roles:
+                    state = node.getState()
+                    if state.contains(pyatspi.STATE_ENABLED) and state.contains(pyatspi.STATE_SHOWING):
+                        x, y, width, height = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
+                        if x >= 0 and y >= 0 and width > 0 and height > 0:
+                            return str(x + width // 2), str(y + height // 2)
+                todo.extend(child for child in node if child is not None)
+            except GLib.Error as error:
+                # A WebKit accessibility subtree can disappear during page load.
+                # A later lookup must still find an enabled control before clicking.
+                if error.domain != "atspi_error" or "application no longer exists" not in error.message:
+                    raise
     return None
 
 
@@ -117,14 +124,14 @@ def visible_caption(overlay):
     x, y, width, height = (int(re.search(rf"{field}:\s*(-?\d+)", info).group(1)) for field in
                            ("Absolute upper-left X", "Absolute upper-left Y", "Width", "Height"))
     # Sample the subtitle half of the composited desktop, away from toolbar labels.
-    taken = time.monotonic_ns()
     picture = ImageGrab.grab(bbox=(x + 10, y + height // 2, x + width - 10, y + height - 5))
+    observed_by = time.monotonic_ns()
     buffer = io.BytesIO()
     picture.save(buffer, format="PNG")
     read = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "6"], input=buffer.getvalue(),
                           capture_output=True, check=True, timeout=4).stdout.decode().lower()
     if re.search(r"mimi\s+synthetic\s+997\s*hz\s+caption", read):
-        return taken
+        return observed_by
     return None
 
 
@@ -207,12 +214,16 @@ def sample(executable, peer_script, root, number):
         if peer.poll() is not None:
             raise RuntimeError("The loopback peer exited prematurely")
         events = [json.loads(line) for line in event_file.read_text().splitlines()]
-        timestamps = {item["event"]: item["monotonic_ns"] for item in events}
-        if sum(item["event"] == "reply" for item in events) != 1:
+        replies = [item for item in events if item["event"] == "reply"]
+        if len(replies) != 1:
             raise RuntimeError("Expected one actual audio-triggered local recognition reply")
-        results.update({key: timestamps[key] for key in ("first_pcm", "matching_pcm", "reply")})
+        connection = replies[0]["connection"]
+        timestamps = {item["event"]: item["monotonic_ns"] for item in events
+                      if item.get("connection") == connection}
+        results.update(first_pcm_at_peer=timestamps["first_pcm"], matching_pcm=timestamps["matching_pcm"],
+                       reply=timestamps["reply"])
         if not results["click"] <= results["start"] <= results["ready"] <= results["playback"] \
-           <= results["first_pcm"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
+           <= results["first_pcm_at_peer"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
             raise RuntimeError(f"Timing observations fell out of order: {results}")
         milliseconds = {key: round((value - results["click"]) / 1_000_000, 3)
                         for key, value in results.items() if key != "click"}

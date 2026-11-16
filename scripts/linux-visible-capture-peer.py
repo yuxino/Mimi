@@ -133,8 +133,9 @@ async def serve_connection(socket, connection):
             if not caption_started and detector.push(pcm):
                 record("matching_pcm", connection, at_ns=received_ns, window_samples=WINDOW_SAMPLES)
                 # The client can bind a live delta before its local VAD commits.
+                send_requested = time.monotonic_ns()
                 await send(socket, {"type": f"{TRANSCRIPTION_EVENT}.delta", **item, "delta": CAPTION})
-                record("reply", connection)
+                record("reply", connection, at_ns=send_requested)
                 caption_started = True
                 matched_turn = True
         elif kind == "input_audio_buffer.commit":

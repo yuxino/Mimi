@@ -382,24 +382,6 @@ jobs:
         if: runner.os == 'Linux'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
-      - name: Measure Linux click to captured tone and visible subtitle
-        if: runner.os == 'Linux' && github.ref_name == 'test/linux-visible-capture-baseline'
-        shell: bash
-        timeout-minutes: 5
-        run: |
-          sudo apt-get install --no-install-recommends -y python3-venv python3-pyatspi at-spi2-core python3-pil tesseract-ocr tesseract-ocr-eng
-          /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/mimi-asr-timing"
-          "$RUNNER_TEMP/mimi-asr-timing/bin/python" -m pip install --disable-pip-version-check 'websockets==15.0.1'
-          sudo unshare --net bash -c '
-            set -e
-            ip link set lo up
-            exec sudo -u "$SUDO_USER" -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 \
-              NO_AT_BRIDGE=0 GTK_MODULES=atk-bridge LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=C.UTF-8 \
-              dbus-run-session -- xvfb-run -a -s "-screen 0 1280x900x24" timeout 180 \
-              "$1" -B "$2" /usr/bin/mimi "$3"
-          ' mimi-isolated-timing "$RUNNER_TEMP/mimi-asr-timing/bin/python" \
-            "$PWD/scripts/linux-visible-capture-probe.py" "$PWD/scripts/linux-visible-capture-peer.py"
-
       - name: Smoke launch x64 UI-test app and click overlay controls
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
@@ -435,6 +417,24 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
           retention-days: 7
+
+      - name: Measure Linux click to captured tone and visible subtitle
+        if: runner.os == 'Linux' && github.ref_name == 'test/linux-visible-capture-baseline'
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          sudo apt-get install --no-install-recommends -y python3-venv python3-pyatspi at-spi2-core python3-pil tesseract-ocr tesseract-ocr-eng
+          /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/mimi-asr-timing"
+          "$RUNNER_TEMP/mimi-asr-timing/bin/python" -m pip install --disable-pip-version-check 'websockets==15.0.1'
+          sudo unshare --net bash -c '
+            set -e
+            ip link set lo up
+            exec sudo -u "$SUDO_USER" -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 \
+              NO_AT_BRIDGE=0 GTK_MODULES=atk-bridge LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=C.UTF-8 \
+              dbus-run-session -- xvfb-run -a -s "-screen 0 1280x900x24" timeout 180 \
+              "$1" -B "$2" /usr/bin/mimi "$3"
+          ' mimi-isolated-timing "$RUNNER_TEMP/mimi-asr-timing/bin/python" \
+            "$PWD/scripts/linux-visible-capture-probe.py" "$PWD/scripts/linux-visible-capture-peer.py"
 
   ci-complete:
     if: ${{ always() }}
