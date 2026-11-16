@@ -2,6 +2,7 @@
 """Click the shipped Linux Settings switch and time a local ASR reply through visible pixels."""
 
 import contextlib
+import hashlib
 import io
 import json
 import math
@@ -124,23 +125,71 @@ def write_fixture(path):
         stream.writeframes(signal + b"\0" * rate * 2)
 
 
-def visible_caption(overlay):
+def overlay_crop(overlay):
     info = command("xwininfo", "-id", overlay)
     x, y, width, height = (int(re.search(rf"{field}:\s*(-?\d+)", info).group(1)) for field in
                            ("Absolute upper-left X", "Absolute upper-left Y", "Width", "Height"))
-    # Sample the subtitle half of the composited desktop, away from toolbar labels.
-    picture = ImageGrab.grab(bbox=(x + 10, y + height // 2, x + width - 10, y + height - 5))
-    observed_by = time.monotonic_ns()
+    # Sample the subtitle half of the desktop, away from toolbar labels.
+    return x + 10, y + height // 2, x + width - 10, y + height - 5
+
+
+def screenshot(crop):
+    before = time.monotonic_ns()
+    picture = ImageGrab.grab(bbox=crop)
+    return before, time.monotonic_ns(), picture
+
+
+def found_caption(picture):
     buffer = io.BytesIO()
     picture.save(buffer, format="PNG")
     read = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "6"], input=buffer.getvalue(),
                           capture_output=True, check=True, timeout=4).stdout.decode().lower()
-    if re.search(r"mimi\s+synthetic\s+997\s*hz\s+caption", read):
-        return observed_by
-    return None
+    return bool(re.search(r"mimi\s+synthetic\s+997\s*hz\s+caption", read))
 
 
-def app_run(executable, root, results):
+def observe_caption(overlay, sampling):
+    crop = overlay_crop(overlay)
+    last_negative = None
+
+    def recognize(frame, cache=None):
+        nonlocal last_negative
+        before, after, picture = frame
+        if cache is None:
+            match = found_caption(picture)
+        else:
+            fingerprint = hashlib.sha256(picture.tobytes()).digest()
+            if fingerprint not in cache:
+                cache[fingerprint] = found_caption(picture)
+            match = cache[fingerprint]
+        if match:
+            if last_negative is None:
+                raise RuntimeError("Caption was already present in the first frame")
+            return after, last_negative
+        last_negative = before
+        return None
+
+    if sampling == "online":
+        return wait_for("the synthetic caption in the actual overlay pixels", lambda: recognize(screenshot(crop)))
+
+    # Collect a bounded burst before asking OCR to recognize any images. X11
+    # capture is the only work on the clock; OCR can't delay the next sample.
+    frames = []
+    deadline = time.monotonic() + 1.5
+    while time.monotonic() < deadline and len(frames) < 75:
+        started = time.monotonic()
+        frames.append(screenshot(crop))
+        remaining = 0.020 - (time.monotonic() - started)
+        if remaining > 0:
+            time.sleep(remaining)
+    cache = {}
+    for frame in frames:
+        detection = recognize(frame, cache)
+        if detection is not None:
+            return detection
+    raise RuntimeError("No synthetic caption in the bounded offline screenshot burst")
+
+
+def app_run(executable, root, results, sampling):
     observations = {}
     tail = []
 
@@ -149,12 +198,14 @@ def app_run(executable, root, results):
             observed = time.monotonic_ns()
             tail.append(line.rstrip())
             del tail[:-25]
-            for label in ("session start entered", "audio capture started", "session stopped"):
+            for label in ("session start entered", "audio capture started",
+                          "audio3 asr draft length=", "audio3 asr final length="):
                 if label in line:
                     observations.setdefault(label, observed)
 
     with child(executable, stdout=subprocess.PIPE) as app:
-        threading.Thread(target=collect, args=(app,), daemon=True).start()
+        collector = threading.Thread(target=collect, args=(app,), daemon=True)
+        collector.start()
         try:
             settings = wait_for("visible Settings", lambda: window("^Mimi$"))
             x, y = wait_for("enabled Live Subtitles switch", start_switch)
@@ -173,7 +224,7 @@ def app_run(executable, root, results):
             playback_requested = time.monotonic_ns()
             with child("paplay", "--device=mimi-output", str(root / "tone.wav")) as player:
                 overlay = wait_for("visible subtitle window", lambda: window("^Mimi Subtitles$"))
-                visible = wait_for("the synthetic caption in the actual overlay pixels", lambda: visible_caption(overlay))
+                visible, last_negative = observe_caption(overlay, sampling)
                 if player.wait(timeout=5) != 0:
                     raise RuntimeError("PulseAudio failed to play the synthetic tone")
 
@@ -181,13 +232,20 @@ def app_run(executable, root, results):
             command("wmctrl", "-ic", settings)
             if app.wait(timeout=10) != 0:
                 raise RuntimeError("Mimi did not close cleanly")
-            results.update(click=clicked, same_pointer=cursor_already_there, start=requested, ready=ready, playback=playback_requested, visible=visible)
+            collector.join(timeout=1)
+            draft_log = observations.get("audio3 asr draft length=")
+            if draft_log is None:
+                raise RuntimeError("No accepted ASR draft was observed in the production log")
+            results.update(click=clicked, same_pointer=cursor_already_there, start=requested, ready=ready,
+                           playback=playback_requested, visible=visible, last_negative=last_negative, draft_log=draft_log)
+            if (final_log := observations.get("audio3 asr final length=")) is not None:
+                results.update(final_log=final_log)
         except Exception:
             print("\n".join(tail), file=sys.stderr)
             raise
 
 
-def sample(executable, peer_script, root, number):
+def sample(executable, peer_script, root, pair, sampling):
     port_file, event_file = root / "port", root / "peer-events.jsonl"
     with event_file.open("w") as events_out, child(
         sys.executable, "-B", peer_script, "--ready-file", str(port_file), stdout=events_out,
@@ -213,7 +271,7 @@ def sample(executable, peer_script, root, number):
                 if state != "IDLE":
                     raise RuntimeError(f"Expected an idle virtual sink, got {state}")
                 command("pactl", "set-default-sink", "mimi-output")
-                app_run(executable, root, results)
+                app_run(executable, root, results, sampling)
             except Exception:
                 pulse_log.seek(0)
                 print(pulse_log.read()[-2400:], file=sys.stderr)
@@ -234,9 +292,14 @@ def sample(executable, peer_script, root, number):
         if not results["click"] <= results["start"] <= results["ready"] <= results["playback"] \
            <= results["first_pcm_at_peer"] <= results["matching_pcm"] <= results["reply"] <= results["visible"]:
             raise RuntimeError(f"Timing observations fell out of order: {results}")
+        if results["draft_log"] < results["reply"]:
+            raise RuntimeError("The application logged a draft before the fixture sent it")
+        if "final" in timestamps:
+            results.update(final_from_peer=timestamps["final"])
         milliseconds = {key: round((value - results["click"]) / 1_000_000, 3)
                         for key, value in results.items() if key not in {"click", "same_pointer"}}
-        print(json.dumps({"sample": number, "sink_state": state, "pointer_already_on_switch": results["same_pointer"],
+        print(json.dumps({"pair": pair, "sampling": sampling, "sink_state": state,
+                          "pointer_already_on_switch": results["same_pointer"],
                           "elapsed_from_click_ms": milliseconds}), flush=True)
 
 
@@ -250,13 +313,15 @@ if __name__ == "__main__":
                 return None
 
         wait_for("Openbox readiness", window_manager_ready)
-        for number in range(1, 5):
-            with tempfile.TemporaryDirectory(prefix="mimi-visible-capture-") as directory:
-                root = Path(directory)
-                for key in ("CONFIG", "DATA", "CACHE", "RUNTIME"):
-                    location = root / key.lower()
-                    location.mkdir(mode=0o700)
-                    os.environ[f"XDG_{key}_{'DIR' if key == 'RUNTIME' else 'HOME'}"] = str(location)
-                os.environ["PULSE_SERVER"] = f"unix:{root / 'pulse.sock'}"
-                os.environ["PULSE_RUNTIME_PATH"] = str(root / "runtime")
-                sample(executable, peer_script, root, number)
+        orders = [("online", "offline"), ("offline", "online")] * 2
+        for pair, order in enumerate(orders, start=1):
+            for sampling in order:
+                with tempfile.TemporaryDirectory(prefix="mimi-visible-capture-") as directory:
+                    root = Path(directory)
+                    for key in ("CONFIG", "DATA", "CACHE", "RUNTIME"):
+                        location = root / key.lower()
+                        location.mkdir(mode=0o700)
+                        os.environ[f"XDG_{key}_{'DIR' if key == 'RUNTIME' else 'HOME'}"] = str(location)
+                    os.environ["PULSE_SERVER"] = f"unix:{root / 'pulse.sock'}"
+                    os.environ["PULSE_RUNTIME_PATH"] = str(root / "runtime")
+                    sample(executable, peer_script, root, pair, sampling)
