@@ -12,8 +12,10 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, WindowsBase
 Add-Type @'
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public static class MimiPointerSmoke {
     public static long LastInputTimestamp { get; private set; }
@@ -140,7 +142,87 @@ public static class MimiPointerSmoke {
             throw new InvalidOperationException("The comparison changed window bounds or the foreground window.");
     }
 
+    // Observe the marker on a worker that never calls UI Automation.
+    public sealed class MarkerObserver : IDisposable {
+        private readonly string path, before, after;
+        private readonly ManualResetEventSlim armed = new ManualResetEventSlim(false);
+        private readonly ManualResetEventSlim canceled = new ManualResetEventSlim(false);
+        private readonly Thread worker;
+        private Exception failure;
+        private long previousRead;
+
+        public long FirstReadAt { get; private set; }
+        public long StateAt { get; private set; }
+        public long SampleGap { get; private set; }
+
+        public MarkerObserver(string path, string before, string after) {
+            this.path = path;
+            this.before = before;
+            this.after = after;
+            worker = new Thread(Observe) { IsBackground = true };
+            worker.Start();
+        }
+
+        private string ReadMarker() {
+            try {
+                using (var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var reader = new StreamReader(stream))
+                    return reader.ReadToEnd().Trim();
+            } catch (FileNotFoundException) {
+                return "";
+            } catch (IOException error) {
+                if (error.HResult == unchecked((int)0x80070020)) return "";
+                throw;
+            }
+        }
+
+        internal void Arm() {
+            if (ReadMarker() != before)
+                throw new InvalidOperationException("The independent observer did not see the expected state before the click.");
+            previousRead = Stopwatch.GetTimestamp();
+            armed.Set();
+        }
+
+        private void Observe() {
+            try {
+                armed.Wait();
+                while (!canceled.IsSet) {
+                    var state = ReadMarker();
+                    var observedAt = Stopwatch.GetTimestamp();
+                    if (FirstReadAt == 0) FirstReadAt = observedAt;
+                    if (state == after) {
+                        StateAt = observedAt;
+                        SampleGap = observedAt - previousRead;
+                        return;
+                    }
+                    if (state == before) previousRead = observedAt;
+                    if (canceled.Wait(2)) return;
+                }
+            } catch (Exception error) {
+                failure = error;
+            }
+        }
+
+        public void Complete() {
+            if (!worker.Join(1000) || StateAt == 0)
+                throw new InvalidOperationException("The independent observer did not see the new state.", failure);
+        }
+
+        public void Dispose() {
+            canceled.Set();
+            armed.Set();
+            if (!worker.Join(1000))
+                throw new InvalidOperationException("The independent marker observer did not exit.");
+            canceled.Dispose();
+            armed.Dispose();
+        }
+    }
+
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
+        ClickOverlay(overlay, x, y, action, null);
+    }
+
+    public static void ClickOverlay(IntPtr overlay, int x, int y, string action, MarkerObserver observer) {
         var point = new Point { X = x, Y = y };
         var hit = WindowFromPoint(point);
         var root = GetAncestor(hit, 2);
@@ -156,6 +238,7 @@ public static class MimiPointerSmoke {
             new Input { Mouse = new MouseInput { Flags = 0x0004 } }  // left up
         };
         var size = Marshal.SizeOf(typeof(Input));
+        if (observer != null) observer.Arm();
         var inputTimestamp = Stopwatch.GetTimestamp();
         var sent = SendInput(2, clicks, size);
         if (sent == 1) SendInput(1, new Input[] { clicks[1] }, size);
@@ -200,7 +283,7 @@ function New-OverlayButtonCondition([string]$Name) {
     return [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
 }
 
-function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$CompareZOrder) {
+function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$CompareZOrder, [MimiPointerSmoke+MarkerObserver]$Observer) {
     $condition = New-OverlayButtonCondition $Name
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     $observedState = ''
@@ -226,7 +309,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
                         $x = [int]($bounds.X + $bounds.Width / 2)
                         $y = [int]($bounds.Y + $bounds.Height / 2)
                         if ($CompareZOrder) { [MimiPointerSmoke]::CompareFirstPauseHit($overlay, $x, $y) }
-                        [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action)
+                        [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action, $Observer)
                         if ($ReturnPoint) { return @{ X = $x; Y = $y } }
                         return
                     }
@@ -241,7 +324,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
     throw "Overlay did not expose an enabled '$Name' in state '$State' (last state: '$observedState')."
 }
 
-function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name) {
+function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name, [MimiPointerSmoke+MarkerObserver]$Observer) {
     $condition = New-OverlayButtonCondition $Name
     $frequency = [Diagnostics.Stopwatch]::Frequency
     $deadline = $InputTimestamp + 10 * $frequency
@@ -282,11 +365,16 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
 
         if ($stateAt -ne 0 -and $labelAt -ne 0 -and $enabledAt -ne 0) {
             Assert-SettingsHidden
+            $Observer.Complete()
+            if ($Observer.StateAt -lt $InputTimestamp) { throw 'The independent state appeared before the click.' }
             $milliseconds = 1000.0 / $frequency
             $timing = [ordered]@{
                 round = $Round
                 action = $Action
                 state_ms = [Math]::Round(($stateAt - $InputTimestamp) * $milliseconds, 2)
+                independent_state_ms = [Math]::Round(($Observer.StateAt - $InputTimestamp) * $milliseconds, 2)
+                observer_first_read_ms = [Math]::Round(($Observer.FirstReadAt - $InputTimestamp) * $milliseconds, 2)
+                observer_sample_gap_ms = [Math]::Round($Observer.SampleGap * $milliseconds, 2)
                 label_ms = [Math]::Round(($labelAt - $InputTimestamp) * $milliseconds, 2)
                 enabled_ms = [Math]::Round(($enabledAt - $InputTimestamp) * $milliseconds, 2)
                 label_to_enabled_ms = [Math]::Round(($enabledAt - $labelAt) * $milliseconds, 2)
@@ -300,6 +388,17 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
         Start-Sleep -Milliseconds 10
     }
     throw "Timed $Action $Round did not observe the $State marker and visible, enabled '$Name' within ten seconds."
+}
+
+function Invoke-TimedOverlayTransition([int]$Round, [string]$Action, [string]$Before, [string]$BeforeButton, [string]$After, [string]$AfterButton) {
+    $observer = [MimiPointerSmoke+MarkerObserver]::new($SessionStateFile, $Before, $After)
+    try {
+        Use-OverlayControl $BeforeButton $Before "Timed $Action $Round" -Observer $observer
+        Measure-OverlayTransition $Round $Action ([MimiPointerSmoke]::LastInputTimestamp) $After $AfterButton $observer
+    }
+    finally {
+        $observer.Dispose()
+    }
 }
 
 function Close-SettingsForOverlayCheck {
@@ -348,10 +447,8 @@ try {
 
     if ($Interaction -eq 'pointer' -and $env:MIMI_SMOKE_MEASURE_POINTER -eq '1') {
         for ($round = 1; $round -le 8; $round++) {
-            Use-OverlayControl 'Pause translating' 'listening' "Timed Pause $round"
-            Measure-OverlayTransition $round 'pause' ([MimiPointerSmoke]::LastInputTimestamp) 'paused' 'Resume translating'
-            Use-OverlayControl 'Resume translating' 'paused' "Timed Resume $round"
-            Measure-OverlayTransition $round 'resume' ([MimiPointerSmoke]::LastInputTimestamp) 'listening' 'Pause translating'
+            Invoke-TimedOverlayTransition $round 'pause' 'listening' 'Pause translating' 'paused' 'Resume translating'
+            Invoke-TimedOverlayTransition $round 'resume' 'paused' 'Resume translating' 'listening' 'Pause translating'
         }
     }
 
