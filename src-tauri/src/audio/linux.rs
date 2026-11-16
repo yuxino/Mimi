@@ -2474,9 +2474,10 @@ mod tests {
             let first_native_pcm = Arc::new(OnceLock::new());
             let native_sample = Arc::clone(&first_native_pcm);
             let queue = pipeline.ingress().unwrap();
+            let forwarding_queue = queue.clone();
             let ingress = queue.redirected(move |packet| {
                 native_sample.get_or_init(|| packet.captured_at);
-                queue.enqueue_packet(packet)
+                forwarding_queue.enqueue_packet(packet)
             });
             let capture_at = Instant::now();
             tokio::time::timeout(
