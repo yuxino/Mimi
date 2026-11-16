@@ -471,6 +471,9 @@ $previousTrayVisibleFile = $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE
 $previousSettingsActivationFile = $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE
 $previousFrontendReadyDir = $env:MIMI_UI_TEST_FRONTEND_READY_DIR
 $previousPreferencesDir = $env:MIMI_UI_TEST_PREFERENCES_DIR
+$previousWebViewArgs = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+$previousWebViewProfile = $env:WEBVIEW2_USER_DATA_FOLDER
+$overlayDomPort = 0
 $startupGateReadyFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-startup-$([Guid]::NewGuid().ToString('N')).ready"
 $sessionStateFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-session-$([Guid]::NewGuid().ToString('N')).state"
 $trayVisibleFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-tray-$([Guid]::NewGuid().ToString('N')).ready"
@@ -497,6 +500,18 @@ try {
         New-Item -ItemType Directory -Path $preferencesDir | Out-Null
         Set-Content -LiteralPath (Join-Path $preferencesDir 'preferences.json') -Value '{"ui_language":"en"}' -Encoding ascii
         $env:MIMI_UI_TEST_PREFERENCES_DIR = $preferencesDir
+    }
+    if ($OverlayInteraction -eq 'pointer' -and $ExpectedArchitecture -eq 'x64' -and
+        $env:GITHUB_ACTIONS -eq 'true' -and $env:RUNNER_ENVIRONMENT -eq 'github-hosted') {
+        # Inspect the packaged WebView only on this synthetic hosted run.
+        $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+        try {
+            $listener.Start()
+            $overlayDomPort = $listener.LocalEndpoint.Port
+        }
+        finally { $listener.Stop() }
+        $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $preferencesDir 'webview'
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$overlayDomPort"
     }
 
     if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
@@ -806,7 +821,7 @@ try {
         foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
             '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
             '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
-            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir)) {
+            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir, '-DomDiagnosticPort', $overlayDomPort)) {
             $interactionProbe.ArgumentList.Add([string]$argument)
         }
         $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
@@ -946,5 +961,7 @@ finally {
         $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $previousSettingsActivationFile
         $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $previousFrontendReadyDir
         $env:MIMI_UI_TEST_PREFERENCES_DIR = $previousPreferencesDir
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $previousWebViewArgs
+        $env:WEBVIEW2_USER_DATA_FOLDER = $previousWebViewProfile
     }
 }
