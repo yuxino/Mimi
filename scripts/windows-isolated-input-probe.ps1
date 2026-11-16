@@ -65,6 +65,8 @@ public static class MimiIsolatedInputProbe {
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     private static extern IntPtr GetThreadDesktop(uint threadId);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetThreadDesktop(IntPtr desktop);
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")]
@@ -203,7 +205,13 @@ public static class MimiIsolatedInputProbe {
                         temporary = CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0,
                             ReadObjects | CreateWindow | WriteObjects | SwitchAccess, IntPtr.Zero);
                         if (temporary == IntPtr.Zero) throw Win32Failure("CreateDesktopW");
-                        // CreateDesktopW assigns only this new worker thread to its desktop.
+                        // The hosted runner kept the worker on Default after CreateDesktopW.
+                        // Bind this windowless thread explicitly before creating the probe.
+                        var before = DesktopName(GetThreadDesktop(GetCurrentThreadId()));
+                        if (!SetThreadDesktop(temporary)) throw Win32Failure("SetThreadDesktop (probe worker)");
+                        if (DesktopName(GetThreadDesktop(GetCurrentThreadId())) != desktopName)
+                            throw new InvalidOperationException("The probe worker did not enter the temporary desktop.");
+                        Console.WriteLine("Probe worker desktop: {0} -> {1}.", before, desktopName);
                         window = CreateWindowExW(0, "BUTTON", "Mimi isolated input probe", Popup | Visible | Border,
                             80, 100, 240, 140, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
                         if (window == IntPtr.Zero) throw Win32Failure("CreateWindowExW (probe)");
