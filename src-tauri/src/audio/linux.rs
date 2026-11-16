@@ -2347,7 +2347,6 @@ mod tests {
         const STAGE_LIMIT: Duration = Duration::from_secs(7);
         isolated_audio_directory();
         let tone = prepare_test_frequency(997.0);
-        let silence = prepare_test_frequency(0.0);
         let fixtures: serde_json::Value =
             serde_json::from_str(include_str!("../../../shared/translation-contracts.json"))
                 .unwrap();
@@ -2359,23 +2358,22 @@ mod tests {
         })
         .unwrap();
 
-        for (round, active) in (1..=8).flat_map(|round| {
-            let active_first = round % 2 == 0;
-            [(round, active_first), (round, !active_first)]
+        for (round, wait_for_silence) in (1..=8).flat_map(|round| {
+            let silence_first = round % 2 == 0;
+            [(round, silence_first), (round, !silence_first)]
         }) {
+            let playback_gate = if wait_for_silence { "silence" } else { "ready" };
             // A new, identically configured sink per observation prevents
             // previous playback or an earlier monitor from keeping it active.
             let _sink = TestSink::new(SINK);
             let _restore_default = RestoreDefaultSink;
             pactl(&["set-default-sink", SINK]);
-            let _silent_playback = active.then(|| silence.play_on(SINK));
-            let state = if active { "RUNNING" } else { "IDLE" };
             tokio::time::timeout(STAGE_LIMIT, async {
                 loop {
                     let sink_list = pactl(&["list", "short", "sinks"]);
                     if sink_list.lines().any(|line| {
                         let mut fields = line.split('\t');
-                        fields.nth(1) == Some(SINK) && fields.next_back() == Some(state)
+                        fields.nth(1) == Some(SINK) && fields.next_back() == Some("IDLE")
                     }) {
                         break;
                     }
@@ -2383,7 +2381,7 @@ mod tests {
                 }
             })
             .await
-            .unwrap_or_else(|_| panic!("paired playback sink must reach {state}"));
+            .expect("paired playback sink must start idle");
 
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let mut client = Audio3ASRClient::new_custom(
@@ -2397,7 +2395,7 @@ mod tests {
             let (events, mut received) = provider_event_channel();
             client.set_event_sender(events).await;
 
-            let (silence_tx, silence_rx) = oneshot::channel();
+            let (first_pcm_tx, mut first_pcm_rx) = oneshot::channel();
             let playback_requested = Arc::new(AtomicBool::new(false));
             let peer_playback = Arc::clone(&playback_requested);
             let setup = response["setup"].to_string();
@@ -2411,20 +2409,25 @@ mod tests {
                 assert_eq!(request["payload"]["parameters"]["sample_rate"], RATE);
                 socket.send(Message::Text(setup.into())).await.unwrap();
 
-                let mut silence_tx = Some(silence_tx);
+                let mut first_pcm_tx = Some(first_pcm_tx);
                 let mut tone_at = None;
                 while let Some(frame) = socket.next().await {
                     match frame.unwrap() {
                         Message::Close(_) => break,
                         Message::Binary(pcm) if pcm.len() == FRAME_BYTES => {
-                            if !peer_playback.load(Ordering::SeqCst) {
+                            let has_requested_playback = peer_playback.load(Ordering::SeqCst);
+                            if !has_requested_playback {
                                 assert!(pcm.as_chunks::<2>().0.iter().all(|sample| {
                                     i16::from_le_bytes(*sample).unsigned_abs() <= 2
                                 }));
-                                if let Some(sender) = silence_tx.take() {
-                                    sender.send(Instant::now()).unwrap();
-                                }
-                            } else if tone_at.is_none() && matches_tone(&pcm, RATE) {
+                            }
+                            if let Some(sender) = first_pcm_tx.take() {
+                                sender.send(Instant::now()).unwrap();
+                            }
+                            if has_requested_playback
+                                && tone_at.is_none()
+                                && matches_tone(&pcm, RATE)
+                            {
                                 tone_at = Some(Instant::now());
                                 socket
                                     .send(Message::Text(transcript.clone().into()))
@@ -2492,11 +2495,16 @@ mod tests {
             .unwrap()
             .unwrap();
             let ready_at = Instant::now();
-            let silence_at = tokio::time::timeout(STAGE_LIMIT, silence_rx)
-                .await
-                .unwrap()
-                .unwrap();
-            let native_pcm_at = *first_native_pcm.get().expect("first native PCM admission");
+            let silent_pcm_at = if wait_for_silence {
+                Some(
+                    tokio::time::timeout(STAGE_LIMIT, &mut first_pcm_rx)
+                        .await
+                        .unwrap()
+                        .unwrap(),
+                )
+            } else {
+                None
+            };
             assert!(
                 matches!(
                     received.try_recv_with_revision(),
@@ -2506,7 +2514,15 @@ mod tests {
             );
             let playback_at = Instant::now();
             playback_requested.store(true, Ordering::SeqCst);
-            let playback = tone.play_on("@DEFAULT_SINK@");
+            let playback = tone.play_on(SINK);
+            let first_pcm_at = match silent_pcm_at {
+                Some(at) => at,
+                None => tokio::time::timeout(STAGE_LIMIT, &mut first_pcm_rx)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            };
+            let native_pcm_at = *first_native_pcm.get().expect("first native PCM admission");
             let first = tokio::time::timeout(STAGE_LIMIT, received.recv_with_revision())
                 .await
                 .unwrap()
@@ -2527,17 +2543,20 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap();
-            assert!(capture_at <= native_pcm_at && native_pcm_at <= silence_at);
+            assert!(capture_at <= native_pcm_at && native_pcm_at <= first_pcm_at);
+            if wait_for_silence {
+                assert!(first_pcm_at <= playback_at);
+            }
             assert!(playback_at <= tone_at && tone_at <= event_at);
             let ms =
                 |begin: Instant, end: Instant| end.duration_since(begin).as_secs_f64() * 1000.0;
             eprintln!(
-                "linux first recognition round={round} sink={state} connectionMs={:.2} monitorReadyMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} firstSilentPcmMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
+                "linux first tone round={round} guard={playback_gate} connectionMs={:.2} monitorReadyMs={:.2} readyToPlaybackMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
                 ms(request_at, connected_at),
                 ms(capture_at, ready_at),
+                ms(ready_at, playback_at),
                 ms(capture_at, native_pcm_at),
-                ms(native_pcm_at, silence_at),
-                ms(capture_at, silence_at),
+                ms(native_pcm_at, first_pcm_at),
                 ms(playback_at, tone_at),
                 ms(tone_at, event_at),
                 ms(request_at, event_at)
