@@ -265,7 +265,8 @@ def app_run(executable, root, results, sampling):
         try:
             settings = wait_for("visible Settings", lambda: window("^Mimi$"))
             x, y = wait_for("enabled Live Subtitles switch", start_switch)
-            if observations or window("^Mimi Subtitles$"):
+            started_early = "session start entered" in observations or "audio capture started" in observations
+            if started_early or window("^Mimi Subtitles$"):
                 raise RuntimeError("App started a session before receiving the Settings click")
             command("xdotool", "windowactivate", "--sync", settings)
             cursor_already_there = pointer_location() == (x, y)
