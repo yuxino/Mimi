@@ -114,6 +114,34 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
 
   await configure({});
   await page.hover(".overlay-surface");
+  const hoveredAfterBlur = await page.evaluate(() => {
+    // Losing WebView focus clears the native hover marker even with the pointer
+    // still inside. The real CSS hover must continue to expose pointer targets.
+    window.dispatchEvent(new Event("blur"));
+    const surface = document.querySelector(".overlay-surface");
+    const pause = surface?.querySelector('button[aria-label="Pause translating"]');
+    const rect = pause?.getBoundingClientRect();
+    return {
+      hover: surface?.matches(":hover"),
+      nativeHover: surface?.hasAttribute("data-overlay-hover"),
+      visible: pause && getComputedStyle(pause.closest(".overlay-hover-control")).opacity === "1",
+      hit: rect && pause.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)),
+    };
+  });
+  if (!hoveredAfterBlur.hover || hoveredAfterBlur.nativeHover || !hoveredAfterBlur.visible || !hoveredAfterBlur.hit) {
+    throw new Error(`Hovered pause became unavailable after blur: ${JSON.stringify(hoveredAfterBlur)}`);
+  }
+  await page.mouse.move(4, 4, { label: "Move outside subtitle overlay" });
+  const hiddenAfterLeave = await page.evaluate(() => {
+    const surface = document.querySelector(".overlay-surface");
+    const pause = surface?.querySelector('button[aria-label="Pause translating"]');
+    const rect = pause?.getBoundingClientRect();
+    return !surface?.matches(":hover") && pause
+      && getComputedStyle(pause.closest(".overlay-hover-control")).opacity === "0"
+      && !pause.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  });
+  if (!hiddenAfterLeave) throw new Error("Pause remained visible or clickable after pointer exit.");
+  await page.hover(".overlay-surface");
   await page.waitForSelector(".overlay-service__button");
   const failures = [];
   let chromeChecked = 0;
