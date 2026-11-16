@@ -803,6 +803,9 @@ try {
         # A stalled accessibility provider must not block package verification.
         $interactionProbe = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
         $interactionProbe.UseShellExecute = $false
+        $capturePointerLog = $env:MIMI_SMOKE_CAPTURE_POINTER_LOG -eq '1'
+        $interactionProbe.RedirectStandardOutput = $capturePointerLog
+        $interactionProbe.RedirectStandardError = $capturePointerLog
         foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
             '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
             '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
@@ -810,6 +813,10 @@ try {
             $interactionProbe.ArgumentList.Add([string]$argument)
         }
         $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
+        if ($capturePointerLog) {
+            $probeStdout = $probeProcess.StandardOutput.ReadToEndAsync()
+            $probeStderr = $probeProcess.StandardError.ReadToEndAsync()
+        }
         # Pointer coverage includes a second, separate configuration-error scenario.
         $probeTimeoutMs = if ($OverlayInteraction -eq 'pointer') { 125000 } else { 95000 }
         try {
@@ -817,6 +824,10 @@ try {
                 $probeProcess.Kill()
                 $probeProcess.WaitForExit(5000) | Out-Null
                 throw "The Windows overlay $OverlayInteraction check did not finish."
+            }
+            if ($capturePointerLog) {
+                Write-Output ($probeStdout.GetAwaiter().GetResult())
+                Write-Output ($probeStderr.GetAwaiter().GetResult())
             }
             if ($probeProcess.ExitCode -ne 0) {
                 throw "The Windows overlay $OverlayInteraction check exited with code $($probeProcess.ExitCode)."

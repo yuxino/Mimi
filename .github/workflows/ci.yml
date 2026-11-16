@@ -255,12 +255,15 @@ jobs:
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         run: npm run tauri -- build --no-bundle -- --locked
 
-      - name: Diagnose native ARM64 mouse hit testing
+      - name: Run the native ARM64 mouse smoke on an isolated desktop
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         shell: pwsh
         env:
-          MIMI_SMOKE_COMPARE_OVERLAY_Z_ORDER: ${{ needs.scope.outputs.arm_pointer_experiment == 'true' && '1' || '0' }}
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -OverlayInteraction pointer
+          MIMI_SMOKE_DESKTOP_CHILD: '1'
+        run: |
+          $exe = (Resolve-Path ./src-tauri/target/release/mimi.exe).Path
+          Write-Output "ARM64 test image SHA-256: $((Get-FileHash -LiteralPath $exe).Hash)"
+          ./scripts/windows-isolated-input-probe.ps1 -MimiExecutable $exe
 
   msrv:
     needs: scope
