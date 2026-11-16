@@ -283,7 +283,7 @@ function New-OverlayButtonCondition([string]$Name) {
     return [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
 }
 
-function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$CompareZOrder, [MimiPointerSmoke+MarkerObserver]$Observer) {
+function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly, [switch]$CompareZOrder, [MimiPointerSmoke+MarkerObserver]$Observer, [switch]$ReturnButton) {
     $condition = New-OverlayButtonCondition $Name
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     $observedState = ''
@@ -311,6 +311,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
                         if ($CompareZOrder) { [MimiPointerSmoke]::CompareFirstPauseHit($overlay, $x, $y) }
                         [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action, $Observer)
                         if ($ReturnPoint) { return @{ X = $x; Y = $y } }
+                        if ($ReturnButton) { return $button }
                         return
                     }
                 }
@@ -324,7 +325,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
     throw "Overlay did not expose an enabled '$Name' in state '$State' (last state: '$observedState')."
 }
 
-function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name, [MimiPointerSmoke+MarkerObserver]$Observer) {
+function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTimestamp, [string]$State, [string]$Name, [MimiPointerSmoke+MarkerObserver]$Observer, [System.Windows.Automation.AutomationElement]$RetainedButton) {
     $condition = New-OverlayButtonCondition $Name
     $frequency = [Diagnostics.Stopwatch]::Frequency
     $deadline = $InputTimestamp + 10 * $frequency
@@ -335,6 +336,10 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
     $longestSampleGap = 0L
     $longestUiQuery = 0L
     $queries = 0
+    $retainedOutcome = if ($null -eq $RetainedButton) { 'not_requested' } else { 'observed' }
+    # Treat an obsolete reference as a measurement failure. The ordinary
+    # full-tree checks still have their original deadline after a fallback.
+    $retainedDeadline = $InputTimestamp + 0.35 * $frequency
     while ([Diagnostics.Stopwatch]::GetTimestamp() -lt $deadline) {
         Assert-SettingsHidden
         $sample = [Diagnostics.Stopwatch]::GetTimestamp()
@@ -346,17 +351,31 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
 
         if ($enabledAt -eq 0) {
             $queryStarted = [Diagnostics.Stopwatch]::GetTimestamp()
+            if ($retainedOutcome -eq 'observed' -and $queryStarted -ge $retainedDeadline) {
+                $retainedOutcome = 'not_seen_within_350ms'
+                $labelAt = 0L
+            }
+            $queryingRetained = $retainedOutcome -eq 'observed'
             $queries++
             try {
-                $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
-                $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                if ($queryingRetained) {
+                    $button = $RetainedButton
+                    if ($button.Current.Name -ne $Name) { $button = $null }
+                }
+                else {
+                    $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
+                    $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                }
                 if ($null -ne $button -and -not $button.Current.IsOffscreen) {
                     if ($labelAt -eq 0) { $labelAt = [Diagnostics.Stopwatch]::GetTimestamp() }
                     if ($button.Current.IsEnabled) { $enabledAt = [Diagnostics.Stopwatch]::GetTimestamp() }
                 }
             }
             catch [System.Windows.Automation.ElementNotAvailableException] {
-                # The next query observes the current WebView2 control.
+                if ($queryingRetained) {
+                    $retainedOutcome = 'element_unavailable'
+                    $labelAt = 0L
+                }
             }
             finally {
                 $longestUiQuery = [Math]::Max($longestUiQuery, [Diagnostics.Stopwatch]::GetTimestamp() - $queryStarted)
@@ -371,6 +390,8 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
             $timing = [ordered]@{
                 round = $Round
                 action = $Action
+                query_method = if ($null -eq $RetainedButton) { 'tree' } else { 'retained' }
+                retained_outcome = $retainedOutcome
                 state_ms = [Math]::Round(($stateAt - $InputTimestamp) * $milliseconds, 2)
                 independent_state_ms = [Math]::Round(($Observer.StateAt - $InputTimestamp) * $milliseconds, 2)
                 observer_first_read_ms = [Math]::Round(($Observer.FirstReadAt - $InputTimestamp) * $milliseconds, 2)
@@ -390,11 +411,12 @@ function Measure-OverlayTransition([int]$Round, [string]$Action, [long]$InputTim
     throw "Timed $Action $Round did not observe the $State marker and visible, enabled '$Name' within ten seconds."
 }
 
-function Invoke-TimedOverlayTransition([int]$Round, [string]$Action, [string]$Before, [string]$BeforeButton, [string]$After, [string]$AfterButton) {
+function Invoke-TimedOverlayTransition([int]$Round, [string]$Action, [string]$Before, [string]$BeforeButton, [string]$After, [string]$AfterButton, [switch]$RetainButton) {
     $observer = [MimiPointerSmoke+MarkerObserver]::new($SessionStateFile, $Before, $After)
     try {
-        Use-OverlayControl $BeforeButton $Before "Timed $Action $Round" -Observer $observer
-        Measure-OverlayTransition $Round $Action ([MimiPointerSmoke]::LastInputTimestamp) $After $AfterButton $observer
+        $button = Use-OverlayControl $BeforeButton $Before "Timed $Action $Round" -Observer $observer -ReturnButton:$RetainButton
+        if ($RetainButton -and $null -eq $button) { throw 'The native click did not return its button.' }
+        Measure-OverlayTransition $Round $Action ([MimiPointerSmoke]::LastInputTimestamp) $After $AfterButton $observer $button
     }
     finally {
         $observer.Dispose()
@@ -447,8 +469,11 @@ try {
 
     if ($Interaction -eq 'pointer' -and $env:MIMI_SMOKE_MEASURE_POINTER -eq '1') {
         for ($round = 1; $round -le 8; $round++) {
-            Invoke-TimedOverlayTransition $round 'pause' 'listening' 'Pause translating' 'paused' 'Resume translating'
-            Invoke-TimedOverlayTransition $round 'resume' 'paused' 'Resume translating' 'listening' 'Pause translating'
+            $retainedFirst = $round % 2 -eq 0
+            foreach ($retain in @($retainedFirst, (-not $retainedFirst))) {
+                Invoke-TimedOverlayTransition $round 'pause' 'listening' 'Pause translating' 'paused' 'Resume translating' -RetainButton:$retain
+                Invoke-TimedOverlayTransition $round 'resume' 'paused' 'Resume translating' 'listening' 'Pause translating' -RetainButton:$retain
+            }
         }
     }
 
