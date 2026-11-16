@@ -6,9 +6,9 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
 
-  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, theme = "dark", hasCaptions = true }) {
+  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, theme = "dark", hasCaptions = true, longHistory = false }) {
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
-    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, hasCaptions }) => {
+    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, hasCaptions, longHistory }) => {
       if (typeof window.__TAURI_INTERNALS__ !== "undefined") throw new Error("Memory-only browser preview required");
       // Vite may keep timestamped dependency imports even after page reload.
       // Import the actual module already loaded by the mounted UI; importing
@@ -27,6 +27,12 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
       // Short lanes distinguish clipping from normal compact long-text layout.
       const history = hasCaptions ? [
         { audioSource: audioInput === "microphone" ? "microphone" : "system", source: "Synthetic S", translation: "Synthetic T", createdAt: 1_700_000_000_000 },
+        ...(longHistory ? Array.from({ length: 7 }, (_, i) => ({
+          audioSource: "system",
+          source: "Original sample " + (i + 1),
+          translation: "Translated sample " + (i + 1),
+          createdAt: 1_700_000_001_000 + i * 1000,
+        })) : []),
         ...(audioInput === "both" ? [
           { audioSource: "microphone", source: "Mic S", translation: "Mic T", createdAt: 1_700_000_001_000 },
         ] : []),
@@ -44,7 +50,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           audioInput, fontSize: 20, subtitleDisplayMode: route === "original" ? "original" : "bilingual",
           subtitleAlignment: "center", showSubtitleTimestamps: timestamps, showSubtitleDividers: false,
           subtitleBlendsWithBackground: false, isOverlayLocked: false,
-          pulseAnimation: false, subtitleAnimation: false,
+          pulseAnimation: false, subtitleAnimation: false, customSubtitleCountEnabled: false,
           activeProfileId: "preview",
           profiles: [{
             id: "preview", name: "Long configuration name · 長い設定名 · 较长的配置名称",
@@ -89,7 +95,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         }
       }
       throw new Error(`Overlay fixture did not reach the mounted UI. Restart Vite and reload after HMR/rebase changes before retrying. ${JSON.stringify({ language, route, audioInput, timestamps, ...fixtureState })}`);
-    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, hasCaptions });
+    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, hasCaptions, longHistory });
   }
 
   async function resize(width, height) {
@@ -112,7 +118,27 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
     });
   }
 
-  await configure({});
+  await configure({ longHistory: true });
+  await resize(580, 240);
+
+  async function captionViewport(remember = false) {
+    return page.evaluate(async remember => {
+      for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame);
+      const timeline = document.querySelector(".overlay-timeline");
+      if (remember) window.__timelineUnderReview = timeline;
+      const { top, bottom } = timeline.getBoundingClientRect();
+      const live = [...timeline.querySelectorAll("span")].find(node =>
+        node.childElementCount === 0 && node.textContent === "Translated sample 7").getBoundingClientRect();
+      return {
+        top, bottom,
+        sameTimeline: window.__timelineUnderReview === timeline,
+        overflow: timeline.scrollHeight - timeline.clientHeight,
+        distanceFromLive: timeline.scrollHeight - timeline.clientHeight - timeline.scrollTop,
+        liveBottom: live.bottom,
+      };
+    }, remember);
+  }
+
   await page.hover(".overlay-surface");
   const hoveredAfterBlur = await page.evaluate(() => {
     // Losing WebView focus clears the native hover marker even with the pointer
@@ -131,6 +157,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   if (!hoveredAfterBlur.hover || hoveredAfterBlur.nativeHover || !hoveredAfterBlur.visible || !hoveredAfterBlur.hit) {
     throw new Error(`Hovered pause became unavailable after blur: ${JSON.stringify(hoveredAfterBlur)}`);
   }
+  const hoveredViewport = await captionViewport(true);
   await page.mouse.move(4, 4, { label: "Move outside subtitle overlay" });
   const hiddenAfterLeave = await page.evaluate(() => {
     const surface = document.querySelector(".overlay-surface");
@@ -141,6 +168,48 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
       && !pause.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
   });
   if (!hiddenAfterLeave) throw new Error("Pause remained visible or clickable after pointer exit.");
+  const quietViewport = await captionViewport();
+  if (hoveredViewport.top - quietViewport.top < 40
+    || Math.abs(hoveredViewport.bottom - quietViewport.bottom) > 1
+    || !quietViewport.sameTimeline
+    || [hoveredViewport, quietViewport].some(view => view.overflow <= 1 || Math.abs(view.distanceFromLive) > 2)
+    || Math.abs(hoveredViewport.liveBottom - quietViewport.liveBottom) > 2) {
+    throw new Error("Quiet chrome did not give its space to captions while keeping the latest caption in place: "
+      + JSON.stringify({ hoveredViewport, quietViewport }));
+  }
+  async function historyViewport() {
+    return page.evaluate(async () => {
+      for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame);
+      const timeline = document.querySelector(".overlay-timeline");
+      const top = timeline.getBoundingClientRect().top;
+      const first = [...timeline.children].find(row => row.getBoundingClientRect().bottom > top);
+      const back = document.querySelector(".overlay-return-to-live");
+      return {
+        top, id: first?.dataset.utteranceId, offset: first?.getBoundingClientRect().top - top,
+        backBottom: back?.getBoundingClientRect().bottom,
+      };
+    });
+  }
+  await page.hover(".overlay-timeline");
+  const readingPoint = await page.evaluate(() => {
+    const { x, y, width, height } = document.querySelector(".overlay-timeline").getBoundingClientRect();
+    return { x: Math.round(x + width / 2), y: Math.round(y + height / 2) };
+  });
+  // Use a single deterministic wheel input; smooth native gestures may still
+  // be dispatched while the pointer moves outside the test overlay.
+  await page.cdp("Input.dispatchMouseEvent", {
+    type: "mouseWheel", ...readingPoint, deltaX: 0, deltaY: -140,
+  });
+  const hoveredHistory = await historyViewport();
+  await page.mouse.move(4, 4, { label: "Hide tools while reading" });
+  const quietHistory = await historyViewport();
+  if (!hoveredHistory.id || hoveredHistory.id !== quietHistory.id
+    || Math.abs(hoveredHistory.offset - quietHistory.offset) > 2
+    || hoveredHistory.top - quietHistory.top < 30
+    || quietHistory.backBottom === undefined || quietHistory.backBottom > quietHistory.top) {
+    throw new Error("Hiding tools moved the reading anchor or covered the return action: "
+      + JSON.stringify({ hoveredHistory, quietHistory }));
+  }
   await configure({ hasCaptions: false });
   const listeningAfterLeave = await page.evaluate(() => {
     const surface = document.querySelector(".overlay-surface");

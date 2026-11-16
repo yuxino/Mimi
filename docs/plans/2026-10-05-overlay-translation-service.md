@@ -38,9 +38,12 @@ handle, service names, measured timings and the language capsule on hover or
 keyboard focus. Keep the listening wave, text, captions, translation
 progress/recovery and Back to live visible. The capsule stays visible for
 recording feedback and when required to unlock the overlay. Pin controls
-during errors and while the control panel is open. Devices without fine hover keep the controls visible. Use the same space
-for the captions and exclude concealed controls from pointer hit testing; do
-not remount captions, move the reading edge or remove controls from tab order.
+during errors and while the control panel is open. Devices without fine hover
+keep the controls visible. With captions present, release the hidden toolbar's
+space. A visible status, action failure or Back to live needs only one short
+row. Keep the same timeline and bottom edge so live following and history
+anchors survive the viewport change. Concealed controls retain keyboard access
+and do not take pointer input. The idle listening indicator retains its layout.
 The compact and immersive presentations keep their existing controls. A
 detached language capsule exchanges only exposure changes with the subtitle
 surface through a same-origin channel. Each window retains its own mouse and

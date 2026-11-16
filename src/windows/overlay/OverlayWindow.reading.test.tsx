@@ -141,7 +141,7 @@ it.each(["zh", "en", "ja"] as const)("keeps the return action beside timings and
   useStore.setState({ stop: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")) });
   await mount(); await readHistory();
   const row = host.querySelector<HTMLElement>(".overlay-status-row")!;
-  expect(row.style.top).toBe("67px");
+  expect(row.style.top).toBe("var(--overlay-status-top, 67px)");
   expect(returnButton()?.textContent).toBe({ zh: "回到实时", en: "Back to live", ja: "リアルタイムへ" }[language]);
   expect(row.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
   expect(returnButton()?.closest(".overlay-status-row")).toBe(row);

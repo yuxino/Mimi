@@ -273,6 +273,7 @@ export function OverlayWindow() {
   const surface = <div ref={surfaceRef} className="overlay-surface relative h-full w-full"
     style={isTauri ? undefined : overlaySize}
     data-overlay-chrome-pinned={hasSessionError || controlMode === "panel" ? "" : undefined}
+    data-overlay-island-pinned={settings.isOverlayLocked || (session.audioRecording && session.audioRecording !== "off") ? "" : undefined}
   >
     {content}
     {isTauri && hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
@@ -293,7 +294,10 @@ export function OverlayWindow() {
     const visibleService = blendsWithBackground ? null : service;
     if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive && !visibleService) return null;
     return <div className={`overlay-status-row${separateMetadataRow ? " overlay-status-row--narrow" : ""}`}
-      style={{ top: contentTopBandHeight - 14, columnGap: separateMetadataRow || blendsWithBackground ? 8 : topChromeLayout.dragHandleWidth + 16 }}>
+      style={{
+        top: `var(--overlay-status-top, ${contentTopBandHeight - 14}px)`,
+        columnGap: `var(--overlay-status-column-gap, ${separateMetadataRow || blendsWithBackground ? 8 : topChromeLayout.dragHandleWidth + 16}px)`,
+      }}>
       <div className="overlay-status-row__leading">
         {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
           {pendingSessionLabel ?? actionFailureMessage}
@@ -371,6 +375,7 @@ export function OverlayWindow() {
       <div
         className="overlay-expanded-canvas relative h-full w-full overflow-hidden"
         data-overlay-locked={presentationLocked ? "" : undefined}
+        data-overlay-has-captions={blocks.length > 0 ? "" : undefined}
         style={{
           borderRadius: 16,
           border: "1px solid var(--overlay-canvas-outline, rgba(255, 255, 255, 0.12))",
@@ -491,10 +496,9 @@ export function OverlayWindow() {
           <div
             className={`flex min-h-0 flex-col${hasSessionError ? " overlay-session-error-content" : ""}`}
             style={{
-              // The top band floats over the canvas, so reserve its exact
-              // height or subtitle rows will slide underneath the controls.
-              // The band includes space below the native control capsule.
-              paddingTop: topBandHeight,
+              // Reserve room for visible controls and use that room for
+              // captions while the chrome is quiet. Keep one timeline mounted.
+              paddingTop: `var(--overlay-caption-inset, ${topBandHeight}px)`,
               height: "100%",
             }}
           >
