@@ -188,17 +188,15 @@ jobs:
         if: ${{ matrix.os == 'windows-2025' }}
         run: cargo test --manifest-path src-tauri/vendor/cpal/Cargo.toml --lib capture_packet_tests
 
-  windows-arm64-desktop-probe:
+  windows-arm64-audio-probe:
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'test/windows-arm64-pointer-owner' && inputs.packages == 'none' }}
     runs-on: windows-11-arm
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Prove mouse delivery on a temporary native desktop
+      - name: Inspect default Windows playback endpoints
         shell: pwsh
-        env:
-          MIMI_SMOKE_DESKTOP_CHILD: '1'
-        run: ./scripts/windows-isolated-input-probe.ps1
+        run: ./scripts/windows-audio-endpoint-probe.ps1
 
   windows-arm64:
     needs: scope
