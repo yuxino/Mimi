@@ -41,6 +41,11 @@ for the captions and exclude concealed controls from pointer hit testing; do
 not remount captions, move the reading edge or remove controls from tab order.
 The compact and immersive presentations keep their existing controls.
 
+Use the browser's hover state independently of macOS's native pointer bridge.
+Losing WebView focus clears the native marker, but on Windows the pointer may
+remain inside the overlay without another mouse-enter event. Existing hover
+must still reveal the controls and make the first click available.
+
 Validation: focused route/action/state tests, the repository check, and
 `scripts/verify-overlay-service-layout.js` exercise browser combinations of three
 languages, both system color schemes, built-in/independent/custom speech routes,

@@ -270,8 +270,6 @@ export function OverlayWindow() {
   const surface = <div ref={surfaceRef} className="overlay-surface relative h-full w-full"
     style={isTauri ? undefined : overlaySize}
     data-overlay-chrome-pinned={hasSessionError || controlMode === "panel" ? "" : undefined}
-    onMouseEnter={(event) => event.currentTarget.setAttribute("data-overlay-hover", "")}
-    onMouseLeave={(event) => event.currentTarget.removeAttribute("data-overlay-hover")}
   >
     {content}
     {isTauri && hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
