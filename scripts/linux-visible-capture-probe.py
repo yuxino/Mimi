@@ -87,7 +87,7 @@ def start_switch():
     return None
 
 
-def write_profile(config, port):
+def write_profile(config, port, application_id):
     credentials = config / "credentials"
     credentials.mkdir(parents=True, mode=0o700)
     files = {
@@ -102,7 +102,7 @@ def write_profile(config, port):
         },
         credentials / "credentials.json": {
             "schemaVersion": 1, "pendingImport": [], "pendingCleanup": [],
-            "entries": {"app.yuxino.mimi.credentials.profiles": {
+            "entries": {f"{application_id}.credentials.profiles": {
                 "provider-profile:local-timing:customOpenAIASR:api-key": json.dumps({
                     "kind": "customSpeech", "endpoint": f"ws://127.0.0.1:{port}/asr",
                     "model": "local-timing", "apiKey": "synthetic-fixture",
@@ -189,8 +189,59 @@ def observe_caption(overlay, sampling):
     raise RuntimeError("No synthetic caption in the bounded offline screenshot burst")
 
 
+def trace_milestones(observations, trace):
+    assert observations["MIMI_CAPTION_LOSS"] == [0, 0, 0], observations["MIMI_CAPTION_LOSS"]
+    before_us, after_us = observations["MIMI_CAPTION_EPOCH"]
+    assert after_us - before_us < 1000, (before_us, after_us)
+    epoch = (before_us + after_us) * 500
+    entries = sorted(trace, key=lambda entry: entry["id"])
+
+    def pick(label, predicate):
+        for entry in entries:
+            if predicate(entry["event"]):
+                return entry
+        counts = {}
+        for entry in entries:
+            kind = entry["event"]["kind"]
+            counts[kind] = counts.get(kind, 0) + 1
+        raise RuntimeError(f"Missing {label} trace milestone; event counts={counts}")
+
+    admitted = pick("admitted source draft", lambda event:
+                    event["kind"] == "provider"
+                    and event["observation"]["eventKind"] == "sourceDraft"
+                    and event["observation"]["admission"] == "accepted"
+                    and event["observation"]["producer"] == "session"
+                    and event["observation"]["sourceCharacters"] > 0)
+    generation = admitted["event"]["observation"]["generation"]
+    reduced = pick("first nonempty source state", lambda event:
+                   event["kind"] == "reduced" and event["changed"] and event["generation"] == generation
+                   and event["after"]["sourceCharacters"] > 0)
+    snapshot = pick("first nonempty source snapshot", lambda event:
+                    event["kind"] == "snapshot" and event["generation"] == generation
+                    and event["summary"]["sourceCharacters"] > 0)
+    snapshot_id = snapshot["event"]["snapshotId"]
+    publication = pick("source snapshot publication", lambda event:
+                       event["kind"] == "published" and event["snapshotId"] == snapshot_id and event["delivered"])
+    milestones = {"draft_admitted": admitted, "draft_reduced": reduced, "snapshot_created": snapshot,
+                  "snapshot_published": publication}
+    for stage in ("wireReceived", "storeApplied", "overlayCommitted"):
+        def matches_stage(event):
+            if event["kind"] != "frontend":
+                return False
+            item = event["observation"]
+            return item["window"] == "overlay" and item["stage"] == stage and item["snapshotId"] == snapshot_id \
+                and (stage != "overlayCommitted" or (item["visibleCharacters"] or 0) > 0)
+        milestones[f"trace_{stage}_received"] = pick(stage, matches_stage)
+    stopped = pick("flushed metadata trace", lambda event: event["kind"] == "stopped")
+    assert not stopped["event"]["unflushedWindows"], stopped
+    print(json.dumps({"trace_snapshot_id": snapshot_id,
+                      "trace_event_ids": {key: item["id"] for key, item in milestones.items()}}), flush=True)
+    return {key: epoch + item["elapsedMs"] * 1_000_000 for key, item in milestones.items()}
+
+
 def app_run(executable, root, results, sampling):
     observations = {}
+    trace = []
     tail = []
 
     def collect(process):
@@ -198,6 +249,11 @@ def app_run(executable, root, results, sampling):
             observed = time.monotonic_ns()
             tail.append(line.rstrip())
             del tail[:-25]
+            if line.startswith(("MIMI_CAPTION_EPOCH ", "MIMI_CAPTION_LOSS ")):
+                marker, *values = line.split()
+                observations[marker] = [int(value) for value in values]
+            elif line.startswith("MIMI_CAPTION_TRACE "):
+                trace.append(json.loads(line.split(" ", 1)[1]))
             for label in ("session start entered", "audio capture started",
                           "audio3 asr draft length=", "audio3 asr final length="):
                 if label in line:
@@ -240,6 +296,8 @@ def app_run(executable, root, results, sampling):
                            playback=playback_requested, visible=visible, last_negative=last_negative, draft_log=draft_log)
             if (final_log := observations.get("audio3 asr final length=")) is not None:
                 results.update(final_log=final_log)
+            if sampling == "trace":
+                results.update(trace_milestones(observations, trace))
         except Exception:
             print("\n".join(tail), file=sys.stderr)
             raise
@@ -251,7 +309,8 @@ def sample(executable, peer_script, root, pair, sampling):
         sys.executable, "-B", peer_script, "--ready-file", str(port_file), stdout=events_out,
     ) as peer:
         port = int(wait_for("loopback ASR peer", lambda: port_file.read_text() if port_file.is_file() else None))
-        write_profile(Path(os.environ["XDG_CONFIG_HOME"]) / "app.yuxino.mimi", port)
+        application_id = "app.yuxino.mimi.dev" if sampling == "trace" else "app.yuxino.mimi"
+        write_profile(Path(os.environ["XDG_CONFIG_HOME"]) / application_id, port, application_id)
         write_fixture(root / "tone.wav")
         with (root / "pulse.log").open("w+") as pulse_log, child(
             "pulseaudio", "--daemonize=no", "--exit-idle-time=-1", "--use-pid-file=no", "-n",
@@ -313,7 +372,8 @@ if __name__ == "__main__":
                 return None
 
         wait_for("Openbox readiness", window_manager_ready)
-        orders = [("online", "offline"), ("offline", "online")] * 2
+        orders = ([("trace",)] * 4 if os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
+                  [("online", "offline"), ("offline", "online")] * 2)
         for pair, order in enumerate(orders, start=1):
             for sampling in order:
                 with tempfile.TemporaryDirectory(prefix="mimi-visible-capture-") as directory:

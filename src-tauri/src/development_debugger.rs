@@ -105,9 +105,17 @@ fn flush_notify() -> &'static tokio::sync::Notify {
     NOTIFY.get_or_init(Default::default)
 }
 pub fn initialize(app: &AppHandle) {
-    let available = crate::windows::is_dev_build()
+    #[cfg(target_os = "linux")]
+    let timing_probe = std::env::var_os("MIMI_LINUX_CAPTION_TRACE").is_some();
+    #[cfg(not(target_os = "linux"))]
+    let timing_probe = false;
+    let available = (crate::windows::is_dev_build() || timing_probe)
         && app.config().identifier == crate::settings_store::DEVELOPMENT_APPLICATION_IDENTIFIER;
     trace::initialize(available);
+    #[cfg(target_os = "linux")]
+    if available && timing_probe {
+        start_linux_caption_timing();
+    }
     let selection = initialize_evidence_storage(
         available,
         || app.path().app_data_dir().ok(),
@@ -127,6 +135,33 @@ pub fn initialize(app: &AppHandle) {
             debugger.route = serde_json::json!({"evidenceWorkspaceError":error});
         }
     }
+}
+
+// Diagnostic branch only: reuse the development journal without recording audio
+// or subtitle payloads. Anchor its epoch to the Linux driver's monotonic clock.
+#[cfg(target_os = "linux")]
+fn start_linux_caption_timing() {
+    let before_us = gtk::glib::monotonic_time();
+    let epoch = Instant::now();
+    let after_us = gtk::glib::monotonic_time();
+    println!("MIMI_CAPTION_EPOCH {before_us} {after_us}");
+    trace::set_sink(Some(trace::TraceSink::new(|entry| {
+        if !matches!(&entry.event, trace::DebugEvent::Pipeline { .. }) {
+            println!(
+                "MIMI_CAPTION_TRACE {}",
+                serde_json::to_string(&entry).expect("content-free diagnostic event")
+            );
+        }
+        if matches!(entry.event, trace::DebugEvent::Stopped { .. }) {
+            let snapshot = trace::snapshot(0);
+            println!(
+                "MIMI_CAPTION_LOSS {} {} {}",
+                snapshot.evicted, snapshot.frontend_dropped, snapshot.stale_frontend_rejected
+            );
+        }
+    })))
+    .expect("development timing sink");
+    trace::set_enabled_at(true, epoch).expect("development timing epoch");
 }
 
 // Both closures are deliberately evaluated only after the exact dev gate.

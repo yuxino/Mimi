@@ -378,11 +378,11 @@ jobs:
           args: --config src-tauri/tauri.ci.conf.json
 
       - name: Build Linux packages
-        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline'
+        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace'
         run: ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
 
       - name: Install and smoke-test Linux packages
-        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline'
+        if: runner.os == 'Linux' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace'
         run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
       - name: Smoke launch x64 UI-test app and click overlay controls
@@ -408,7 +408,7 @@ jobs:
           ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
 
       - name: Upload bundles
-        if: runner.os != 'macOS' && github.ref_name != 'test/linux-visible-capture-baseline'
+        if: runner.os != 'macOS' && github.ref_name != 'test/linux-visible-capture-baseline' && github.ref_name != 'test/linux-caption-trace'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mimi-${{ matrix.os }}
@@ -445,23 +445,47 @@ jobs:
           package_hash="$(dpkg-deb --fsys-tarfile "$deb" | tar -xOf - usr/bin/mimi | sha256sum | cut -d ' ' -f1)"
           [[ "$(sha256sum /usr/bin/mimi | cut -d ' ' -f1)" == "$package_hash" ]]
 
+      - name: Build an embedded Linux development trace probe
+        if: runner.os == 'Linux' && github.ref_name == 'test/linux-caption-trace'
+        shell: bash
+        run: |
+          npx --no-install vite build --config config/vite.config.ts --mode development
+          MIMI_DEBUG_REVISION="$GITHUB_SHA" MIMI_DEBUG_TREE_STATE=clean \
+            TAURI_CONFIG="$(cat src-tauri/tauri.dev.conf.json)" cargo build --release --locked \
+            --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol,development-debugger
+
+      - name: Keep the isolated diagnostic executable for probe retries
+        if: runner.os == 'Linux' && github.ref_name == 'test/linux-caption-trace'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mimi-linux-development-trace
+          path: src-tauri/target/release/mimi
+          if-no-files-found: error
+          retention-days: 2
+
       - name: Measure Linux click to captured tone and visible subtitle
-        if: runner.os == 'Linux' && github.ref_name == 'test/linux-visible-capture-baseline'
+        if: runner.os == 'Linux' && (github.ref_name == 'test/linux-visible-capture-baseline' || github.ref_name == 'test/linux-caption-trace')
         shell: bash
         timeout-minutes: 5
         run: |
           sudo apt-get install --no-install-recommends -y python3-venv python3-pyatspi at-spi2-core python3-pil tesseract-ocr tesseract-ocr-eng
           /usr/bin/python3 -m venv --system-site-packages "$RUNNER_TEMP/mimi-asr-timing"
           "$RUNNER_TEMP/mimi-asr-timing/bin/python" -m pip install --disable-pip-version-check 'websockets==15.0.1'
+          executable=/usr/bin/mimi
+          mode=""
+          if [[ "$GITHUB_REF_NAME" == test/linux-caption-trace ]]; then
+            executable="$PWD/src-tauri/target/release/mimi"
+            mode=1
+          fi
           sudo unshare --net bash -c '
             set -e
             ip link set lo up
             exec sudo -u "$SUDO_USER" -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 XDG_SESSION_TYPE=x11 \
-              NO_AT_BRIDGE=0 GTK_MODULES=atk-bridge LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=C.UTF-8 \
+              NO_AT_BRIDGE=0 GTK_MODULES=atk-bridge LIBGL_ALWAYS_SOFTWARE=1 LC_ALL=C.UTF-8 MIMI_LINUX_CAPTION_TRACE="$4" \
               dbus-run-session -- xvfb-run -a -s "-screen 0 1280x900x24" timeout 180 \
-              "$1" -B "$2" /usr/bin/mimi "$3"
+              "$1" -B "$2" "$5" "$3"
           ' mimi-isolated-timing "$RUNNER_TEMP/mimi-asr-timing/bin/python" \
-            "$PWD/scripts/linux-visible-capture-probe.py" "$PWD/scripts/linux-visible-capture-peer.py"
+            "$PWD/scripts/linux-visible-capture-probe.py" "$PWD/scripts/linux-visible-capture-peer.py" "$mode" "$executable"
 
   ci-complete:
     if: ${{ always() }}
