@@ -2421,9 +2421,10 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert_eq!(
-                tokio::time::timeout(STAGE_LIMIT, received.recv())
+                tokio::time::timeout(STAGE_LIMIT, received.recv_with_revision())
                     .await
-                    .unwrap(),
+                    .unwrap()
+                    .map(|event| event.event),
                 Some(LiveTranslateServerEvent::SessionCreated)
             );
             let connected_at = Instant::now();
@@ -2460,15 +2461,19 @@ mod tests {
                 .unwrap()
                 .unwrap();
             assert!(
-                received.try_recv().is_err(),
+                matches!(
+                    received.try_recv_with_revision(),
+                    Err(mpsc::error::TryRecvError::Empty)
+                ),
                 "peer must wait for captured tone"
             );
             let playback_at = Instant::now();
             playback_requested.store(true, Ordering::SeqCst);
             let playback = tone.play_on("@DEFAULT_SINK@");
-            let first = tokio::time::timeout(STAGE_LIMIT, received.recv())
+            let first = tokio::time::timeout(STAGE_LIMIT, received.recv_with_revision())
                 .await
-                .unwrap();
+                .unwrap()
+                .map(|event| event.event);
             let event_at = Instant::now();
             assert!(
                 matches!(first, Some(LiveTranslateServerEvent::SourceUtteranceFinal { text, .. }) if text == expected)
