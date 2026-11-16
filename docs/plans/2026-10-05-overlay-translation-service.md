@@ -29,7 +29,17 @@ keep logos from shrinking; reveal complete names in the tooltip. Never let a lon
 translation alias consume the recognition label. When reading history, retain
 both provider icons beside Back to live. Keep the
 subtitle origin stable when toggling immersive mode; hide service chrome in
-immersive and collapsed presentations. Paused, locked and error states retain it.
+immersive and collapsed presentations.
+
+On the regular expanded canvas, mouse-capable windows show the toolbar, drag
+handle, service names, measured timings and decorative listening wave on hover
+or keyboard focus. Keep the separate language capsule (status, recording and
+unlock), captions, session feedback, translation progress/recovery and Back to
+live visible. Pin the controls during errors and while the control panel is
+open. Devices without fine hover keep the controls visible. Use the same space
+for the captions and exclude concealed controls from pointer hit testing; do
+not remount captions, move the reading edge or remove controls from tab order.
+The compact and immersive presentations keep their existing controls.
 
 Validation: focused route/action/state tests, the repository check, and
 `scripts/verify-overlay-service-layout.js` exercise browser combinations of three

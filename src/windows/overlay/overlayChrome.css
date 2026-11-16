@@ -1,0 +1,32 @@
+/* The outline changes color without moving the subtitle reading edge. */
+.overlay-surface[data-overlay-hover] .overlay-expanded-canvas:not([data-overlay-locked]) {
+  --overlay-canvas-outline: rgba(122, 168, 255, 0.34);
+}
+
+.overlay-surface[data-overlay-hover] .overlay-compact-canvas {
+  --overlay-canvas-outline: rgba(122, 168, 255, 0.3);
+}
+
+.overlay-drag-layer { pointer-events: none; }
+.overlay-drag-layer button { pointer-events: auto; }
+
+/* Keep the controls in the tab order while removing their inactive hit targets.
+   The subtitle canvas and the native language capsule keep their geometry. */
+@media (hover: hover) and (pointer: fine) {
+  .overlay-surface:not([data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-service) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .overlay-surface:not([data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-hover-control * {
+    pointer-events: none;
+  }
+
+  .overlay-surface:not([data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-latency__measurement {
+    display: none;
+  }
+
+  .overlay-surface:not([data-overlay-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) .overlay-listening-wave {
+    visibility: hidden;
+  }
+}
