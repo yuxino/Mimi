@@ -34,6 +34,7 @@ jobs:
       rust_os: ${{ steps.plan.outputs.rust_os }}
       windows_arm: ${{ steps.plan.outputs.windows_arm }}
       arm_bundle: ${{ steps.plan.outputs.arm_bundle }}
+      arm_pointer_experiment: ${{ steps.plan.outputs.arm_pointer_experiment }}
       bundle: ${{ steps.plan.outputs.bundle }}
       bundle_os: ${{ steps.plan.outputs.bundle_os }}
     steps:
@@ -51,7 +52,13 @@ jobs:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           CI_VALIDATION: ${{ inputs.validation }}
           CI_PACKAGES: ${{ inputs.packages }}
-        run: python3 scripts/ci-scope.py
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF_NAME" == test/windows-arm64-pointer-owner ]]; then
+            printf '%s\n' frontend=false native=false rust_os='[]' windows_arm=true arm_bundle=true \
+              arm_pointer_experiment=true bundle=false bundle_os='[]' >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/ci-scope.py
+          fi
 
   rust:
     needs: scope
@@ -215,12 +222,15 @@ jobs:
           }
 
       - name: Clippy
+        if: ${{ needs.scope.outputs.arm_pointer_experiment != 'true' }}
         run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Test
+        if: ${{ needs.scope.outputs.arm_pointer_experiment != 'true' }}
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Shared subtitle core and JNI adapter
+        if: ${{ needs.scope.outputs.arm_pointer_experiment != 'true' }}
         shell: bash
         run: bash scripts/check-shared-core.sh
 
@@ -231,6 +241,8 @@ jobs:
       - name: Diagnose native ARM64 mouse hit testing
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
         shell: pwsh
+        env:
+          MIMI_SMOKE_COMPARE_OVERLAY_Z_ORDER: ${{ needs.scope.outputs.arm_pointer_experiment == 'true' && '1' || '0' }}
         run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -OverlayInteraction pointer
 
   msrv:
