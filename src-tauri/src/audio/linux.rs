@@ -28,7 +28,7 @@ use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 
@@ -56,7 +56,7 @@ struct CaptureState {
 impl Drop for CaptureState {
     fn drop(&mut self) {
         if let Some(worker) = self.worker.get_mut().unwrap().as_ref() {
-            worker.cancelled.store(true, Ordering::SeqCst);
+            worker.cancel();
         }
     }
 }
@@ -65,6 +65,16 @@ impl Drop for CaptureState {
 pub(super) struct WorkerControl {
     cancelled: AtomicBool,
     completion: CaptureCompletion,
+    capture_thread: OnceLock<std::thread::Thread>,
+}
+
+impl WorkerControl {
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        if let Some(thread) = self.capture_thread.get() {
+            thread.unpark();
+        }
+    }
 }
 
 /// Dropping an awaited start (for example SessionManager's timeout) must
@@ -74,7 +84,7 @@ struct CancelStartOnDrop(Option<Arc<WorkerControl>>);
 impl Drop for CancelStartOnDrop {
     fn drop(&mut self) {
         if let Some(worker) = &self.0 {
-            worker.cancelled.store(true, Ordering::SeqCst);
+            worker.cancel();
         }
     }
 }
@@ -159,6 +169,9 @@ impl LinuxSystemAudioCapture {
                 // Constructed first, dropped last: finished means libpulse
                 // has disconnected and released the stream and context.
                 let _finished = FinishWorkerOnDrop(Arc::clone(&worker_control));
+                worker_control
+                    .capture_thread
+                    .get_or_init(std::thread::current);
                 let mut capture = match PulseCapture::connect(&worker_control, format, input, token)
                 {
                     Ok(capture) => capture,
@@ -219,7 +232,7 @@ impl LinuxSystemAudioCapture {
         let worker = {
             let slot = self.state.worker.lock().unwrap();
             slot.as_ref().map(|worker| {
-                worker.cancelled.store(true, Ordering::SeqCst);
+                worker.cancel();
                 Arc::clone(worker)
             })
         };
@@ -533,7 +546,10 @@ impl PulseCapture {
                     return Ok(());
                 }
             }
-            std::thread::sleep(POLL_INTERVAL);
+            // Cancellation stores a wake token even if it arrives just before
+            // this wait. The dedicated capture thread otherwise keeps the same
+            // poll timeout.
+            std::thread::park_timeout(POLL_INTERVAL);
         }
         Ok(())
     }

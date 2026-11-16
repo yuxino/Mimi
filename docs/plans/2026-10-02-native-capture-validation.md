@@ -60,6 +60,13 @@ PCM at 16/24 kHz and bounded stop/restart. An equivalent private PipeWire-Pulse
 server is a separate compatibility test. Neither server connects physical
 capture devices or providers.
 
+The Linux capture worker owns its thread handle for one generation. A stop marks
+that worker cancelled and wakes its normal timed read wait. Publishing completion
+still follows release of the Pulse stream and context, and a restart still has
+to wait for that completion. Startup retains the existing bounded libpulse wait.
+Use active synthetic playback when measuring teardown and restart so an idle
+virtual device does not determine the first-frame timing.
+
 ## Android native playback results
 
 Android 15 / API 35 Google APIs ARM64 emulator, system image revision 09,
