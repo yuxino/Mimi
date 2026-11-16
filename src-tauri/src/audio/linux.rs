@@ -2336,15 +2336,18 @@ mod tests {
         use mimi_runtime::core::models::SourceLanguage;
         use mimi_runtime::core::network_proxy::{ProxyConfig, ProxyMode};
         use mimi_runtime::core::protocols::live_translate::LiveTranslateServerEvent;
+        use std::sync::OnceLock;
         use tokio::net::TcpListener;
         use tokio_tungstenite::{accept_async, tungstenite::Message};
 
         const RATE: u32 = 16_000;
         const FRAME_BYTES: usize = RATE as usize * 2 * FRAGMENT_MS / 1_000;
         const TASK: &str = "binary-json-fixture";
+        const SINK: &str = "mimi-first-reply";
         const STAGE_LIMIT: Duration = Duration::from_secs(7);
         isolated_audio_directory();
         let tone = prepare_test_frequency(997.0);
+        let silence = prepare_test_frequency(0.0);
         let fixtures: serde_json::Value =
             serde_json::from_str(include_str!("../../../shared/translation-contracts.json"))
                 .unwrap();
@@ -2356,7 +2359,32 @@ mod tests {
         })
         .unwrap();
 
-        for round in 1..=8 {
+        for (round, active) in (1..=8).flat_map(|round| {
+            let active_first = round % 2 == 0;
+            [(round, active_first), (round, !active_first)]
+        }) {
+            // A new, identically configured sink per observation prevents
+            // previous playback or an earlier monitor from keeping it active.
+            let _sink = TestSink::new(SINK);
+            let _restore_default = RestoreDefaultSink;
+            pactl(&["set-default-sink", SINK]);
+            let _silent_playback = active.then(|| silence.play_on(SINK));
+            let state = if active { "RUNNING" } else { "IDLE" };
+            tokio::time::timeout(STAGE_LIMIT, async {
+                loop {
+                    let sink_list = pactl(&["list", "short", "sinks"]);
+                    if sink_list.lines().any(|line| {
+                        let mut fields = line.split('\t');
+                        fields.nth(1) == Some(SINK) && fields.next_back() == Some(state)
+                    }) {
+                        break;
+                    }
+                    tokio::time::sleep(POLL_INTERVAL).await;
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("paired playback sink must reach {state}"));
+
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let mut client = Audio3ASRClient::new_custom(
                 &format!("ws://{}/asr", listener.local_addr().unwrap()),
@@ -2443,11 +2471,18 @@ mod tests {
             );
             let capture = LinuxSystemAudioCapture::new();
             let (failure_tx, mut failures) = CaptureFailureSender::channel();
+            let first_native_pcm = Arc::new(OnceLock::new());
+            let native_sample = Arc::clone(&first_native_pcm);
+            let queue = pipeline.ingress().unwrap();
+            let ingress = queue.redirected(move |packet| {
+                native_sample.get_or_init(|| packet.captured_at);
+                queue.enqueue_packet(packet)
+            });
             let capture_at = Instant::now();
             tokio::time::timeout(
                 STAGE_LIMIT,
                 capture.start(
-                    pipeline.ingress().unwrap(),
+                    ingress,
                     failure_tx,
                     AudioCaptureFormat::pcm16_mono(RATE).unwrap(),
                 ),
@@ -2460,6 +2495,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap();
+            let native_pcm_at = *first_native_pcm.get().expect("first native PCM admission");
             assert!(
                 matches!(
                     received.try_recv_with_revision(),
@@ -2490,13 +2526,16 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap();
+            assert!(capture_at <= native_pcm_at && native_pcm_at <= silence_at);
             assert!(playback_at <= tone_at && tone_at <= event_at);
             let ms =
                 |begin: Instant, end: Instant| end.duration_since(begin).as_secs_f64() * 1000.0;
             eprintln!(
-                "linux first recognition round={round} connectionMs={:.2} monitorReadyMs={:.2} firstSilentPcmMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
+                "linux first recognition round={round} sink={state} connectionMs={:.2} monitorReadyMs={:.2} firstNativePcmMs={:.2} nativeToPeerMs={:.2} firstSilentPcmMs={:.2} playbackToToneMs={:.2} toneToEventMs={:.2} requestToEventMs={:.2}",
                 ms(request_at, connected_at),
                 ms(capture_at, ready_at),
+                ms(capture_at, native_pcm_at),
+                ms(native_pcm_at, silence_at),
                 ms(capture_at, silence_at),
                 ms(playback_at, tone_at),
                 ms(tone_at, event_at),
