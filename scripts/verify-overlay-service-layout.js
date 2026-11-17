@@ -141,8 +141,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
 
   await page.hover(".overlay-surface");
   const hoveredAfterBlur = await page.evaluate(() => {
-    // Losing WebView focus clears the native hover marker even with the pointer
-    // still inside. The real CSS hover must continue to expose pointer targets.
+    // Focus loss must not hide the controls while the pointer stays inside.
     window.dispatchEvent(new Event("blur"));
     const surface = document.querySelector(".overlay-surface");
     const pause = surface?.querySelector('button[aria-label="Pause translating"]');
@@ -154,7 +153,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
       hit: rect && pause.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)),
     };
   });
-  if (!hoveredAfterBlur.hover || hoveredAfterBlur.nativeHover || !hoveredAfterBlur.visible || !hoveredAfterBlur.hit) {
+  if (!hoveredAfterBlur.hover || !hoveredAfterBlur.visible || !hoveredAfterBlur.hit) {
     throw new Error(`Hovered pause became unavailable after blur: ${JSON.stringify(hoveredAfterBlur)}`);
   }
   const hoveredViewport = await captionViewport(true);
@@ -169,7 +168,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   });
   if (!hiddenAfterLeave) throw new Error("Pause remained visible or clickable after pointer exit.");
   const quietViewport = await captionViewport();
-  if (hoveredViewport.top - quietViewport.top < 40
+  if (hoveredViewport.top - quietViewport.top < 34
     || Math.abs(hoveredViewport.bottom - quietViewport.bottom) > 1
     || !quietViewport.sameTimeline
     || [hoveredViewport, quietViewport].some(view => view.overflow <= 1 || Math.abs(view.distanceFromLive) > 2)
@@ -205,7 +204,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   const quietHistory = await historyViewport();
   if (!hoveredHistory.id || hoveredHistory.id !== quietHistory.id
     || Math.abs(hoveredHistory.offset - quietHistory.offset) > 2
-    || hoveredHistory.top - quietHistory.top < 30
+    || hoveredHistory.top - quietHistory.top < 28
     || quietHistory.backBottom === undefined || quietHistory.backBottom > quietHistory.top) {
     throw new Error("Hiding tools moved the reading anchor or covered the return action: "
       + JSON.stringify({ hoveredHistory, quietHistory }));
@@ -250,7 +249,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           const result = await page.evaluate(() => {
             const rect = selector => document.querySelector(selector)?.getBoundingClientRect();
             const service = rect(".overlay-service__button");
-            const drag = rect('[data-testid="drag-handle"]');
+            const drag = rect('[data-testid="overlay-drag-area"]');
             const icons = [...document.querySelectorAll(".overlay-service .provider-icon")];
             const names = [...document.querySelectorAll(".overlay-service__name")];
             const latency = document.querySelector(".overlay-latency");

@@ -1,71 +1,159 @@
+import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 type ChromeSurface = "overlay" | "island";
+type HoverMessage = { kind: "ready" | "visibility"; visible: boolean };
 
-/** A detached language island and the subtitle surface share only whether
- * their top controls should be visible. Each keeps its own hit testing. */
-export function useOverlayChromePeers(ref: RefObject<HTMLElement | null>, surface: ChromeSurface, enabled: boolean) {
+const HOVER_EVENT = "overlay-chrome-hover";
+const LEAVE_GRACE_MS = 160;
+const WINDOW_LABEL: Record<ChromeSurface, string> = { overlay: "overlay", island: "overlay-control" };
+
+/** Share top-control visibility without sharing hit targets or pointer coordinates. */
+export function useOverlayChromePeers(
+  ref: RefObject<HTMLElement | null>,
+  surface: ChromeSurface,
+  shareWithPeer: boolean,
+) {
   const nativeHover = useRef<(inside: boolean) => void>(() => {});
+  const outgoing = useRef<Promise<void> | undefined>(undefined);
   useEffect(() => {
     const element = ref.current;
-    if (!enabled || !element || typeof BroadcastChannel === "undefined") return;
+    if (!element) return;
+
     const fineHover = window.matchMedia("(hover: hover) and (pointer: fine)");
-    const channel = new BroadcastChannel("mimi-overlay-chrome");
-    let pointerInside = element.matches(":hover");
-    let lastExposure: boolean | undefined;
-    const publish = (force = false) => {
-      const exposed = fineHover.matches && (pointerInside ||
-        (document.hasFocus() && element.querySelector(":focus-visible") !== null));
-      if (!force && exposed === lastExposure) return;
-      lastExposure = exposed;
-      channel.postMessage({ surface, exposed });
+    const ownWindow = { kind: "WebviewWindow", label: WINDOW_LABEL[surface] } as const;
+    const peerWindow = { kind: "WebviewWindow", label: WINDOW_LABEL[surface === "overlay" ? "island" : "overlay"] } as const;
+    let domInside = element.matches(":hover");
+    let nativeInside = false;
+    let receivedNativeMotion = false;
+    let pointerVisible = false;
+    let leaveTimer: number | undefined;
+    let disposed = false;
+    let unlisten: UnlistenFn | undefined;
+    let lastShared: boolean | undefined;
+
+    const send = (message: HoverMessage) => {
+      outgoing.current = (outgoing.current ?? Promise.resolve())
+        .then(() => emitTo(peerWindow, HOVER_EVENT, message)).catch(() => {});
     };
-    const setPointerInside = (inside: boolean) => {
-      pointerInside = inside;
+
+    const publish = (kind: HoverMessage["kind"] = "visibility", force = false) => {
+      if (!unlisten) return;
+      const visible = fineHover.matches && (pointerVisible ||
+        (document.hasFocus() && element.querySelector(":focus-visible") !== null));
+      if (!force && visible === lastShared) return;
+      lastShared = visible;
+      send({ kind, visible });
+    };
+
+    const setPointerVisible = (visible: boolean) => {
+      pointerVisible = visible;
+      element.toggleAttribute("data-overlay-hover", visible);
       publish();
     };
-    const enter = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") setPointerInside(true);
+
+    const cancelLeave = () => {
+      window.clearTimeout(leaveTimer);
+      leaveTimer = undefined;
     };
-    const leave = () => setPointerInside(false);
-    const refreshFocus = () => queueMicrotask(() => {
-      if (nativeHover.current === setPointerInside) publish();
-    });
-    const receive = (event: MessageEvent<unknown>) => {
-      const data = event.data;
-      if (!data || typeof data !== "object" || !("surface" in data) ||
-        data.surface !== (surface === "overlay" ? "island" : "overlay")) return;
-      if ("request" in data && data.request === true) publish(true);
-      else if ("exposed" in data && typeof data.exposed === "boolean") {
-        element.toggleAttribute("data-overlay-peer-hover", data.exposed);
+
+    const updatePointer = () => {
+      const inside = nativeInside || (fineHover.matches && domInside);
+      if (inside || !fineHover.matches || !shareWithPeer) {
+        cancelLeave();
+        setPointerVisible(inside);
+      } else if (pointerVisible && leaveTimer === undefined) {
+        // Both windows retain the old surface's exposure until its successor
+        // has a chance to report entry. An actual departure still expires.
+        leaveTimer = window.setTimeout(() => {
+          leaveTimer = undefined;
+          setPointerVisible(false);
+        }, LEAVE_GRACE_MS);
       }
     };
-    nativeHover.current = setPointerInside;
+
+    const setNativeInside = (inside: boolean) => {
+      if (receivedNativeMotion && nativeInside === inside && (inside || !domInside)) return;
+      if (!receivedNativeMotion) {
+        receivedNativeMotion = true;
+        element.setAttribute("data-overlay-pointer-tracked", "");
+      }
+      nativeInside = inside;
+      // AppKit has verified departure even if a non-key WebView kept its
+      // old :hover state or never delivered a DOM leave after resizing.
+      if (!inside) domInside = false;
+      updatePointer();
+    };
+    const enter = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || domInside) return;
+      domInside = true;
+      updatePointer();
+    };
+    const leave = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || !domInside) return;
+      domInside = false;
+      updatePointer();
+    };
+    // Blur ends keyboard exposure but does not report a physical departure.
+    const refreshFocus = () => queueMicrotask(() => {
+      if (!disposed) publish();
+    });
+    const refreshInput = () => {
+      updatePointer();
+      publish();
+    };
+
+    nativeHover.current = setNativeInside;
     element.addEventListener("pointerenter", enter);
-    // A WebView may retain browser hover while its window loses focus.
-    // Movement reestablishes the shared state without waiting for reentry.
     element.addEventListener("pointermove", enter);
     element.addEventListener("pointerleave", leave);
     element.addEventListener("focusin", refreshFocus);
     element.addEventListener("focusout", refreshFocus);
-    window.addEventListener("blur", leave);
-    fineHover.addEventListener("change", refreshFocus);
-    channel.addEventListener("message", receive);
-    channel.postMessage({ surface, request: true });
-    publish(true);
+    window.addEventListener("focus", refreshFocus);
+    window.addEventListener("blur", refreshFocus);
+    fineHover.addEventListener("change", refreshInput);
+    updatePointer();
+
+    if (shareWithPeer) {
+      void listen<unknown>(HOVER_EVENT, ({ payload }) => {
+        if (disposed || !payload || typeof payload !== "object" ||
+          !("kind" in payload) || (payload.kind !== "visibility" && payload.kind !== "ready") ||
+          !("visible" in payload) || typeof payload.visible !== "boolean") return;
+        element.toggleAttribute("data-overlay-peer-hover", payload.visible);
+        if (payload.kind === "ready") publish("visibility", true);
+      }, { target: ownWindow }).then((remove) => {
+        if (disposed) {
+          remove();
+          return;
+        }
+        unlisten = remove;
+        // A window that registers after its peer was already hovered asks
+        // for the current state instead of waiting for a new pointer move.
+        publish("ready", true);
+      }).catch(() => {});
+    }
+
     return () => {
+      disposed = true;
       nativeHover.current = () => {};
-      channel.postMessage({ surface, exposed: false });
-      channel.close();
+      cancelLeave();
+      if (unlisten) {
+        if (lastShared) send({ kind: "visibility", visible: false });
+        unlisten();
+      }
+      element.removeAttribute("data-overlay-pointer-tracked");
+      element.removeAttribute("data-overlay-hover");
       element.removeAttribute("data-overlay-peer-hover");
       element.removeEventListener("pointerenter", enter);
       element.removeEventListener("pointermove", enter);
       element.removeEventListener("pointerleave", leave);
       element.removeEventListener("focusin", refreshFocus);
       element.removeEventListener("focusout", refreshFocus);
-      window.removeEventListener("blur", leave);
-      fineHover.removeEventListener("change", refreshFocus);
+      window.removeEventListener("focus", refreshFocus);
+      window.removeEventListener("blur", refreshFocus);
+      fineHover.removeEventListener("change", refreshInput);
     };
-  }, [enabled, ref, surface]);
+  }, [ref, shareWithPeer, surface]);
+
   return useCallback((inside: boolean) => nativeHover.current(inside), []);
 }

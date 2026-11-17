@@ -5,13 +5,22 @@ export default async function verifyOverlayTooltip(page, baseUrl = "http://127.0
   await page.waitForFunction(() => window.tooltipReady === true);
   const failures = [];
   let checked = 0;
-  for (const width of [280, 360]) for (const compact of [true, false]) {
+  for (const [width, compact] of [[280, true], [360, true], [360, false]]) {
     await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: compact ? 54 : 136, deviceScaleFactor: 1, mobile: false });
     for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"]) for (const audioInput of ["system", "microphone", "both"]) {
       await page.evaluate(({ language, compact, audioInput }) => window.renderTooltipFixture(language, compact, audioInput), { language, compact, audioInput });
-      await page.waitForFunction(compact => document.querySelector('[data-testid="drag-handle"]')?.getBoundingClientRect().height === (compact ? 30 : 18), compact);
-      await page.hover('[data-testid="drag-handle"]');
-      await page.waitForSelector('[role="tooltip"]');
+      const drag = '[data-testid="overlay-drag-area"]';
+      const action = compact ? '[data-testid="expand-subtitles"]' : '.overlay-action-strip > span:last-child button';
+      // Re-rendering at the same size can leave the pointer on the new
+      // button. Enter from the drag area as a person moving the mouse would.
+      await page.hover(drag);
+      await page.waitForSelector(action);
+      await page.hover(action);
+      try {
+        await page.waitForSelector('[role="tooltip"]');
+      } catch (error) {
+        throw new Error(`No tooltip: ${width}px, ${compact ? "compact" : "expanded"}, ${language}, ${audioInput}`, { cause: error });
+      }
       const issues = await page.evaluate(compact => {
         const issues = [];
         const tooltip = document.querySelector('[role="tooltip"]');
@@ -27,7 +36,11 @@ export default async function verifyOverlayTooltip(page, baseUrl = "http://127.0
       checked++;
       if (issues.length) failures.push({ width, compact, language, audioInput, issues });
       if (compact) {
-        await page.dblclick('[data-testid="drag-handle"]');
+        await page.dblclick(drag);
+        if (!await page.evaluate(() => Boolean(document.querySelector('[data-testid="expand-subtitles"]')))) {
+          failures.push({ width, compact, language, audioInput, issues: ["double-click unexpectedly expands"] });
+        }
+        await page.click(action);
         await page.waitForFunction(() => !document.querySelector('[data-testid="expand-subtitles"]'));
       }
     }

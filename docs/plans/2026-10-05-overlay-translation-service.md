@@ -33,8 +33,8 @@ both provider icons beside Back to live. Keep the
 subtitle origin stable when toggling immersive mode; hide service chrome in
 immersive and collapsed presentations.
 
-On the regular expanded canvas, mouse-capable windows show the toolbar, drag
-handle, service names, measured timings and the language capsule on hover or
+On the regular expanded canvas, mouse-capable windows show the action strip,
+service names, measured timings and the language capsule on hover or
 keyboard focus. Keep the listening wave, text, captions, translation
 progress/recovery and Back to live visible. The capsule stays visible for
 recording feedback and when required to unlock the overlay. Pin controls
@@ -44,15 +44,20 @@ space. A visible status, action failure or Back to live needs only one short
 row. Keep the same timeline and bottom edge so live following and history
 anchors survive the viewport change. Concealed controls retain keyboard access
 and do not take pointer input. The idle listening indicator retains its layout.
-The compact and immersive presentations keep their existing controls. A
-detached language capsule exchanges only exposure changes with the subtitle
-surface through a same-origin channel. Each window retains its own mouse and
-keyboard access and its native geometry.
+The language capsule and action strip align on the first row. A slimmer
+metadata row holds service and measured timing. Empty chrome moves the window
+without a visible handle; fold and expand through the explicit buttons.
+Keep settings for audio input, speech translation and subtitles grouped in the
+language panel, with a full-width configuration name and a separate Settings
+action. Open pickers use an opaque surface so the labels and switches below
+don't compete with the choices.
 
-Use the browser's hover state independently of macOS's native pointer bridge.
-Losing WebView focus clears the native marker, but on Windows the pointer may
-remain inside the overlay without another mouse-enter event. Existing hover
-must still reveal the controls and make the first click available.
+Detached surfaces exchange exposure changes through targeted Tauri events and
+retain their own hit testing and native geometry. Local DOM and macOS pointer
+evidence are independent. Focus loss updates focus-based exposure without
+treating a stationary pointer as departed. A brief hold on real departure
+covers crossing between the neighboring native views; leaving both surfaces
+clears the chrome.
 
 Validation: focused route/action/state tests, the repository check, and
 `scripts/verify-overlay-service-layout.js` exercise browser combinations of three

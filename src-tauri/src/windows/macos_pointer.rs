@@ -1,10 +1,9 @@
-//! Hover for the nonactivating subtitle panel without activating its app.
+//! Hover for the nonactivating subtitle and language panels.
 //!
-//! WKWebView's normal tracking is active in a key window; the subtitle panel
-//! stays non-key until an explicit click needs its responder. An independent
-//! public-AppKit tracking owner relays only view-local coordinates to that renderer. It
-//! does not replace Tao's window delegate, synthesize clicks, or monitor
-//! events globally. InVisibleRect follows resizing without polling.
+//! Each visible panel owns one AppKit tracking area and relays view-local
+//! coordinates to its own renderer. InVisibleRect follows resizing; the
+//! language panel's geometry transitions also reconcile the current hit
+//! without waiting for another movement after a panel shrinks.
 
 use crate::core::overlay_pointer::{
     css_position, OverlayPointerPosition, PointerDelivery, PointerMotionGate,
@@ -12,8 +11,8 @@ use crate::core::overlay_pointer::{
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{define_class, msg_send, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSCursor, NSEvent, NSTrackingArea, NSTrackingAreaOptions, NSView};
-use objc2_foundation::NSObjectProtocol;
+use objc2_app_kit::{NSCursor, NSEvent, NSTrackingArea, NSTrackingAreaOptions, NSView, NSWindow};
+use objc2_foundation::{NSObjectProtocol, NSPoint};
 use std::{
     cell::{Cell, RefCell},
     sync::{
@@ -26,9 +25,34 @@ use tauri::{AppHandle, Emitter, EventTarget, Manager, WebviewWindow};
 
 const EVENT: &str = "overlay-pointer-motion";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Surface {
+    Overlay,
+    Control,
+}
+
+impl Surface {
+    fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "overlay" => Some(Self::Overlay),
+            "overlay-control" => Some(Self::Control),
+            _ => None,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Overlay => "overlay",
+            Self::Control => "overlay-control",
+        }
+    }
+}
+
 struct PointerOwnerIvars {
     app: AppHandle,
+    surface: Surface,
     view: Retained<NSView>,
+    inside: Cell<bool>,
     gate: RefCell<PointerMotionGate>,
     flush_scheduled: Cell<bool>,
     pointing_cursor: Cell<bool>,
@@ -47,7 +71,7 @@ define_class!(
     impl MimiOverlayPointerOwner {
         #[unsafe(method(mouseEntered:))]
         fn entered(&self, event: &NSEvent) {
-            self.clear();
+            self.clear(false);
             self.motion(event);
         }
 
@@ -58,7 +82,7 @@ define_class!(
 
         #[unsafe(method(mouseExited:))]
         fn exited(&self, _event: &NSEvent) {
-            self.clear();
+            self.clear(true);
         }
     }
 
@@ -66,10 +90,17 @@ define_class!(
 );
 
 impl MimiOverlayPointerOwner {
-    fn new(app: AppHandle, view: Retained<NSView>, mtm: MainThreadMarker) -> Retained<Self> {
+    fn new(
+        app: AppHandle,
+        surface: Surface,
+        view: Retained<NSView>,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(PointerOwnerIvars {
             app,
+            surface,
             view,
+            inside: Cell::new(false),
             gate: RefCell::new(PointerMotionGate::default()),
             flush_scheduled: Cell::new(false),
             pointing_cursor: Cell::new(false),
@@ -79,14 +110,18 @@ impl MimiOverlayPointerOwner {
     }
 
     fn motion(&self, event: &NSEvent) {
+        self.update_position(event.locationInWindow(), false);
+    }
+
+    fn update_position(&self, point_in_window: NSPoint, report_current: bool) {
         let ivars = self.ivars();
         let view = &ivars.view;
         // Tracking must never make a locked, hidden surface appear clickable.
         if !self.tracking_allowed() {
-            self.clear();
+            self.clear(report_current);
             return;
         }
-        let point = view.convertPoint_fromView(event.locationInWindow(), None);
+        let point = view.convertPoint_fromView(point_in_window, None);
         let bounds = view.bounds();
         let Some(point) = css_position(
             (point.x, point.y),
@@ -94,9 +129,18 @@ impl MimiOverlayPointerOwner {
             (bounds.size.width, bounds.size.height),
             view.isFlipped(),
         ) else {
-            self.clear();
+            self.clear(report_current);
             return;
         };
+        let was_inside = ivars.inside.replace(true);
+        // Only the subtitle renderer hit-tests cursor positions. The child
+        // reports presence transitions, so motion inside it adds no IPC.
+        if ivars.surface == Surface::Control {
+            if !was_inside || report_current {
+                self.emit(Some(point));
+            }
+            return;
+        }
         if ivars.pointing_cursor.get() {
             // WebKit/Tao may reset a cursor while processing the same move.
             // Reassert this owner's intent on real movement, never a timer.
@@ -114,15 +158,19 @@ impl MimiOverlayPointerOwner {
                 .is_some_and(|window| window.isVisible() && !window.ignoresMouseEvents())
     }
 
+    fn emit(&self, point: Option<OverlayPointerPosition>) {
+        let ivars = self.ivars();
+        let _ = ivars.app.emit_to(
+            EventTarget::webview_window(ivars.surface.label()),
+            EVENT,
+            point,
+        );
+    }
+
     fn deliver(&self, delivery: PointerDelivery) {
         let ivars = self.ivars();
         match delivery {
-            PointerDelivery::Position(point) => {
-                let _ =
-                    ivars
-                        .app
-                        .emit_to(EventTarget::webview_window("overlay"), EVENT, Some(point));
-            }
+            PointerDelivery::Position(point) => self.emit(Some(point)),
             PointerDelivery::Delay(delay) if !ivars.flush_scheduled.replace(true) => {
                 let app = ivars.app.clone();
                 let generation = Arc::clone(&ivars.generation);
@@ -133,27 +181,23 @@ impl MimiOverlayPointerOwner {
                         return;
                     }
                     let _ = app.run_on_main_thread(move || {
-                        REGISTRATION.with(|slot| {
-                            let slot = slot.borrow();
-                            let Some(registration) = slot.as_ref() else {
-                                return;
-                            };
-                            let owner = &registration.owner;
-                            if !Arc::ptr_eq(&owner.ivars().generation, &generation)
-                                || generation.load(Ordering::Relaxed) != token
-                            {
-                                return;
-                            }
-                            // Visibility/passthrough may have changed while
-                            // this single delayed flush was waiting.
-                            if !owner.tracking_allowed() {
-                                owner.clear();
-                                return;
-                            }
-                            owner.ivars().flush_scheduled.set(false);
-                            let delivery = owner.ivars().gate.borrow_mut().flush(Instant::now());
-                            owner.deliver(delivery);
-                        });
+                        let Some(owner) = owner(Surface::Overlay) else {
+                            return;
+                        };
+                        if !Arc::ptr_eq(&owner.ivars().generation, &generation)
+                            || generation.load(Ordering::Relaxed) != token
+                        {
+                            return;
+                        }
+                        // Visibility/passthrough may have changed while
+                        // this single delayed flush was waiting.
+                        if !owner.tracking_allowed() {
+                            owner.clear(false);
+                            return;
+                        }
+                        owner.ivars().flush_scheduled.set(false);
+                        let delivery = owner.ivars().gate.borrow_mut().flush(Instant::now());
+                        owner.deliver(delivery);
                     });
                 });
             }
@@ -161,22 +205,24 @@ impl MimiOverlayPointerOwner {
         }
     }
 
-    fn clear(&self) {
-        self.restore_cursor();
-        self.ivars().generation.fetch_add(1, Ordering::Relaxed);
-        self.ivars().flush_scheduled.set(false);
-        if self.ivars().gate.borrow_mut().clear() {
-            let _ = self.ivars().app.emit_to(
-                EventTarget::webview_window("overlay"),
-                EVENT,
-                None::<OverlayPointerPosition>,
-            );
+    fn clear(&self, report_outside: bool) {
+        if self.reset() || report_outside {
+            self.emit(None);
         }
+    }
+
+    fn reset(&self) -> bool {
+        self.restore_cursor();
+        let ivars = self.ivars();
+        ivars.generation.fetch_add(1, Ordering::Relaxed);
+        ivars.flush_scheduled.set(false);
+        ivars.gate.borrow_mut().clear();
+        ivars.inside.replace(false)
     }
 
     fn set_pointer_cursor(&self, point: OverlayPointerPosition, pointing: bool) -> bool {
         if !self.tracking_allowed() {
-            self.clear();
+            self.clear(false);
             return false;
         }
         if !self.ivars().gate.borrow().accepts_cursor_reply(point) {
@@ -213,18 +259,26 @@ impl Drop for PointerRegistration {
         // AppKit does not retain the area's owner. Keep it alive until after
         // removing the area; replacing/destroying the overlay releases both.
         self.view.removeTrackingArea(&self.area);
-        self.owner.clear();
+        self.owner.reset();
     }
 }
 
 thread_local! {
-    static REGISTRATION: RefCell<Option<PointerRegistration>> = const { RefCell::new(None) };
+    static REGISTRATIONS: RefCell<[Option<PointerRegistration>; 2]> = const { RefCell::new([None, None]) };
+}
+
+fn owner(surface: Surface) -> Option<Retained<MimiOverlayPointerOwner>> {
+    REGISTRATIONS.with_borrow(|slots| {
+        slots[surface as usize]
+            .as_ref()
+            .map(|registration| registration.owner.clone())
+    })
 }
 
 pub(super) fn install(window: &WebviewWindow) {
-    if window.label() != "overlay" {
+    let Some(surface) = Surface::from_label(window.label()) else {
         return;
-    }
+    };
     let app = window.app_handle().clone();
     let _ = window.with_webview(move |platform| {
         let Some(mtm) = MainThreadMarker::new() else {
@@ -235,7 +289,16 @@ pub(super) fn install(window: &WebviewWindow) {
         let Some(view) = (unsafe { Retained::retain(platform.inner().cast::<NSView>()) }) else {
             return;
         };
-        let owner = MimiOverlayPointerOwner::new(app, view.clone(), mtm);
+        if !view.window().is_some_and(|window| window.isVisible()) {
+            return;
+        }
+        if owner(surface)
+            .is_some_and(|owner| Retained::as_ptr(&owner.ivars().view) == Retained::as_ptr(&view))
+        {
+            return;
+        }
+        drop(take_registration(surface));
+        let owner = MimiOverlayPointerOwner::new(app, surface, view.clone(), mtm);
         let owner_object: &AnyObject = owner.as_ref();
         let options = NSTrackingAreaOptions::ActiveAlways
             | NSTrackingAreaOptions::MouseEnteredAndExited
@@ -250,24 +313,89 @@ pub(super) fn install(window: &WebviewWindow) {
                 None,
             )
         };
-        REGISTRATION.with(|slot| {
-            let mut slot = slot.borrow_mut();
-            // Remove the old area before adding another, keeping one owner.
-            *slot = None;
-            view.addTrackingArea(&area);
-            *slot = Some(PointerRegistration { view, area, owner });
+        view.addTrackingArea(&area);
+        REGISTRATIONS.with_borrow_mut(|slots| {
+            slots[surface as usize] = Some(PointerRegistration { view, area, owner });
         });
     });
 }
 
-pub(super) fn clear(app: &AppHandle, remove: bool) {
-    if MainThreadMarker::new().is_some() {
-        clear_on_main(remove);
+fn on_main(app: &AppHandle, operation: impl FnOnce(MainThreadMarker) + Send + 'static) {
+    if let Some(mtm) = MainThreadMarker::new() {
+        operation(mtm);
         return;
     }
     let _ = app.run_on_main_thread(move || {
-        clear_on_main(remove);
+        if let Some(mtm) = MainThreadMarker::new() {
+            operation(mtm);
+        }
     });
+}
+
+pub(super) fn remove(app: &AppHandle, label: &str) {
+    if let Some(surface) = Surface::from_label(label) {
+        on_main(app, move |_| remove_on_main(surface));
+    }
+}
+
+fn take_registration(surface: Surface) -> Option<PointerRegistration> {
+    REGISTRATIONS.with_borrow_mut(|slots| slots[surface as usize].take())
+}
+
+fn remove_on_main(surface: Surface) {
+    if let Some(registration) = take_registration(surface) {
+        registration.owner.clear(true);
+    }
+}
+
+pub(super) fn remove_all(app: &AppHandle) {
+    on_main(app, |_| {
+        remove_on_main(Surface::Overlay);
+        remove_on_main(Surface::Control);
+    });
+}
+
+pub(super) fn clear_overlay(app: &AppHandle) {
+    on_main(app, |_| {
+        if let Some(owner) = owner(Surface::Overlay) {
+            owner.clear(true);
+        }
+    });
+}
+
+pub(super) fn refresh_after_window_update(app: &AppHandle) {
+    // Tauri first delivers window changes to its dispatcher; Tao then queues
+    // the AppKit frame setters. Sample on the same queue after those setters
+    // and after any enclosing with_webview callback has returned.
+    on_main(app, |_| {
+        dispatch2::DispatchQueue::main().exec_async(|| {
+            if let Some(mtm) = MainThreadMarker::new() {
+                refresh_on_main(mtm);
+            }
+        });
+    });
+}
+
+fn refresh_on_main(mtm: MainThreadMarker) {
+    let screen_point = NSEvent::mouseLocation();
+    let frontmost = NSWindow::windowNumberAtPoint_belowWindowWithWindowNumber(screen_point, 0, mtm);
+    for surface in [Surface::Overlay, Surface::Control] {
+        let Some(owner) = owner(surface) else {
+            continue;
+        };
+        let window = owner
+            .ivars()
+            .view
+            .window()
+            .filter(|window| window.windowNumber() == frontmost);
+        if let Some(window) = window {
+            owner.update_position(window.convertPointFromScreen(screen_point), true);
+        } else {
+            // A stationary pointer may now be over another window after a
+            // resize. Report outside even if only the DOM observed entry.
+            owner.clear(true);
+        }
+    }
 }
 
 pub(super) async fn set_pointer_cursor(
@@ -289,19 +417,5 @@ pub(super) async fn set_pointer_cursor(
 }
 
 fn set_pointer_cursor_on_main(point: OverlayPointerPosition, pointing: bool) -> bool {
-    REGISTRATION.with(|slot| {
-        slot.borrow()
-            .as_ref()
-            .is_some_and(|registration| registration.owner.set_pointer_cursor(point, pointing))
-    })
-}
-
-fn clear_on_main(remove: bool) {
-    REGISTRATION.with(|slot| {
-        if remove {
-            *slot.borrow_mut() = None;
-        } else if let Some(registration) = slot.borrow().as_ref() {
-            registration.owner.clear();
-        }
-    });
+    owner(Surface::Overlay).is_some_and(|owner| owner.set_pointer_cursor(point, pointing))
 }

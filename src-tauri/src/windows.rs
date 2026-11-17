@@ -91,13 +91,13 @@ mod macos_control_dismiss;
 mod macos_pointer;
 
 #[cfg(target_os = "macos")]
-pub fn remove_overlay_pointer_tracking(app: &AppHandle) {
-    macos_pointer::clear(app, true);
+pub fn remove_overlay_pointer_tracking(app: &AppHandle, label: &str) {
+    macos_pointer::remove(app, label);
 }
 
 #[cfg(target_os = "macos")]
-pub fn clear_overlay_pointer_hover(app: &AppHandle) {
-    macos_pointer::clear(app, false);
+pub fn remove_all_overlay_pointer_tracking(app: &AppHandle) {
+    macos_pointer::remove_all(app);
 }
 
 #[cfg(target_os = "macos")]
@@ -364,7 +364,7 @@ impl OverlayPresentationState {
             *current = Some(enabled);
             #[cfg(target_os = "macos")]
             if enabled {
-                macos_pointer::clear(window.app_handle(), false);
+                macos_pointer::clear_overlay(window.app_handle());
             }
         }
     }
@@ -765,8 +765,6 @@ impl OverlayWindowManager {
                     configure_overlay_for_software_gl(&window);
                 }
                 configure_overlay_window(&window);
-                #[cfg(target_os = "macos")]
-                macos_pointer::install(&window);
                 #[cfg(target_os = "linux")]
                 follow_linux_overlay_on_map(&window);
                 pipeline_log!("overlay window created");
@@ -898,10 +896,9 @@ impl OverlayWindowManager {
         // child control on every subtitle update.
         if is_active && !visible {
             show_overlay_window(&window);
-        } else if !is_active && visible {
+        } else if !is_active && visible && window.hide().is_ok() {
             #[cfg(target_os = "macos")]
-            macos_pointer::clear(app, false);
-            let _ = window.hide();
+            macos_pointer::remove(app, window.label());
         }
     }
 
@@ -1659,6 +1656,8 @@ fn configure_overlay_window_impl_macos(
 
         if order_front {
             ns_window.orderFrontRegardless();
+            macos_pointer::install(&window_for_main);
+            macos_pointer::refresh_after_window_update(window_for_main.app_handle());
         }
     });
 }
@@ -2891,6 +2890,8 @@ impl OverlayControlWindowManager {
         let _ = window.set_focusable(focus_policy.focusable_before_show);
         if mode == OverlayControlMode::Hidden {
             let _ = window.hide();
+            #[cfg(target_os = "macos")]
+            macos_pointer::remove(app, window.label());
             let _ = window.emit(OVERLAY_CONTROL_MODE_EVENT, mode);
             return;
         }
@@ -2976,6 +2977,8 @@ impl OverlayControlWindowManager {
                 work_area.coordinate_scale,
             );
             set_desktop_position(&window, geometry.x, geometry.y);
+            #[cfg(target_os = "macos")]
+            macos_pointer::refresh_after_window_update(app);
         }
         true
     }

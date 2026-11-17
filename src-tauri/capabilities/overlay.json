@@ -3,5 +3,5 @@
   "identifier": "overlay-window",
   "description": "The subtitle canvas may drag and resize itself, control its session view, and open settings.",
   "windows": ["overlay"],
-  "permissions": ["app-overlay"]
+  "permissions": ["app-overlay", "core:event:allow-emit-to"]
 }

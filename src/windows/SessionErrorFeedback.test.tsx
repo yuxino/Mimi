@@ -110,7 +110,7 @@ it.each(["zh", "en", "ja"] as const)("keeps localized unsupported-language cause
     if (["history", "immersive", "collapsed", "locked"].includes(surface)) {
       expect(host.querySelector('[data-testid="retained-subtitles"]')?.textContent).toContain("Retained synthetic subtitle");
       expect(host.querySelector(".overlay-swap-collapsed, [data-presentation='background-blend']")).toBeNull();
-      expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')?.disabled).toBe(false);
+      expect(host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')?.disabled).toBe(false);
     }
     await act(async () => configure().focus());
     expect(document.activeElement).toBe(configure());
@@ -200,9 +200,9 @@ it.each(["zh", "en", "ja"] as const)("shows an Audio3 startup transport cause an
 // Error presentation is interactive even when the saved reading mode is locked.
 it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("keeps movement and top actions visible through %s error presentation", async surface => {
   await mount(surface);
-  const drag = host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')!;
+  const drag = host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')!;
   expect(drag.disabled).toBe(false);
-  expect(drag.getAttribute("aria-label")).toBe(I18N.overlay.moveSubtitle);
+  expect(drag.tabIndex).toBe(-1);
   const topActions = [...host.querySelectorAll<HTMLButtonElement>(".overlay-control-button")];
   expect(topActions.map(button => button.getAttribute("aria-label"))).not.toContain(I18N.settings.openSpeechSettings);
   const settingsAction = topActions.find(button => button.getAttribute("aria-label") === I18N.overlay.openSettings)!;
@@ -243,7 +243,7 @@ it.each(["zh", "en", "ja"] as const)("assigns detailed %s recovery to the open o
   expect(feedback().querySelector("p")?.textContent).toBe(summary);
   expect(feedback().querySelector("button")).toBeNull();
   expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(7);
-  expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')?.disabled).toBe(false);
+  expect(host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')?.disabled).toBe(false);
 
   await mount("control");
   expect(feedback().querySelector("p")?.textContent).toBe(fullMessage);

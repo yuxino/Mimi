@@ -53,6 +53,10 @@
 
 .overlay-control-island {
   width: max-content;
+  padding-inline: 8px;
+  border-radius: 10px;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(16, 16, 16, 0.94);
   /* The subtitle chrome reserves 280px for this native child window. */
   max-width: 280px;
   opacity: 1;
@@ -88,11 +92,11 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .overlay-control-detached[data-quiet-island]:not(:hover, [data-overlay-peer-hover], :has(:focus-visible)) .overlay-control-island {
+  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], :has(:focus-visible)) .overlay-control-island {
     opacity: 0;
   }
 
-  .overlay-control-detached[data-quiet-island]:not(:hover, [data-overlay-peer-hover], :has(:focus-visible)) :is(.overlay-control-island, .overlay-control-island *) {
+  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], :has(:focus-visible)) :is(.overlay-control-island, .overlay-control-island *) {
     pointer-events: none;
   }
 }
@@ -160,12 +164,18 @@
 }
 
 .overlay-control-panel {
+  --control-bg: #202020;
+  --control-border: rgba(255, 255, 255, 0.17);
+  --control-border-strong: rgba(255, 255, 255, 0.32);
+  --settings-border-strong: var(--control-border);
+  --settings-control: var(--control-surface);
+  --settings-selection-soft: var(--control-surface-hover);
   display: block;
   max-height: 100vh;
   padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid var(--control-border-strong);
+  border: 1px solid var(--control-border);
   border-radius: 13px;
   background: var(--control-bg);
   font-size: 12px;
@@ -178,8 +188,37 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
+  gap: 6px;
+  padding: 7px 10px 8px;
+}
+
+.overlay-control-section {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.overlay-control-section + .overlay-control-section {
+  border-top: 1px solid var(--control-border);
+  padding-top: 6px;
+}
+
+.overlay-control-section__heading,
+.overlay-control-capture__heading {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
   gap: 3px;
-  padding: 7px;
+}
+
+.overlay-control-section__title,
+.overlay-control-capture__heading {
+  margin: 0;
+  color: var(--control-text-faint);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .overlay-control-capture {
@@ -192,21 +231,11 @@
   line-height: 1.4;
 }
 
-.overlay-control-capture__heading {
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 3px;
-  padding: 0 8px;
-  color: var(--control-text-faint);
-}
-
 .overlay-control-capture__sources {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
   gap: 6px;
-  padding: 0 4px 3px;
 }
 
 .overlay-control-capture__sources.is-unavailable {
@@ -225,8 +254,8 @@
   width: 100%;
   min-width: 0;
   min-height: 32px;
-  gap: 4px;
-  padding: 5px;
+  gap: 5px;
+  padding: 5px 7px;
   border: 1px solid var(--control-border);
   border-radius: 7px;
   align-items: center;
@@ -246,7 +275,7 @@
   min-width: 0;
   flex: 1;
   font-weight: 500;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .overlay-control-capture__check {
@@ -288,26 +317,24 @@
 }
 
 .overlay-control-capture .overlay-control-capture__application {
-  padding: 0 4px 4px;
+  padding: 0;
 }
 
-.overlay-control-capture .settings-help-control__button,
-.overlay-control-setting-row .settings-help-control__button {
+.overlay-control-section .settings-help-control__button {
   width: 20px;
-  height: 24px;
+  height: 20px;
   font-size: 12px;
   color: var(--control-text-faint);
 }
 
-.overlay-control-capture .settings-help-control__button:hover,
-.overlay-control-capture .settings-help-control__button:focus-visible,
-.overlay-control-setting-row .settings-help-control__button:hover,
-.overlay-control-setting-row .settings-help-control__button:focus-visible {
+.overlay-control-section .settings-help-control__button:hover,
+.overlay-control-section .settings-help-control__button:focus-visible {
   color: var(--control-text);
 }
 
 .overlay-control-header {
   height: 30px;
+  padding-inline: 4px;
   border-color: transparent;
   border-radius: 8px;
   background: transparent;
@@ -339,22 +366,16 @@
   opacity: 0.5;
 }
 
-.overlay-control-divider {
-  height: 1px;
-  margin: 1px 3px;
-  background: var(--control-border);
-}
-
 .overlay-control-setting,
 .overlay-control-setting-row {
   display: grid;
   width: 100%;
-  min-height: 32px;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  min-height: 28px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
-  padding: 3px 8px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 0 2px;
+  border-radius: 6px;
   text-align: left;
 }
 
@@ -372,26 +393,17 @@
   justify-content: center;
 }
 
-.overlay-control-setting__icon {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  color: var(--control-text-muted);
-  font-size: 12px;
-}
-
 .overlay-control-setting__copy {
   display: flex;
   min-width: 0;
 }
 
 .overlay-control-setting__copy strong {
-  overflow: hidden;
+  min-width: 0;
   font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .overlay-control-switch {
@@ -425,14 +437,18 @@
 }
 
 .overlay-control-settings-link {
-  display: flex;
-  min-height: 31px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 32px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 5px 7px;
   border-radius: 7px;
+  background: var(--control-surface);
   color: var(--control-text-muted);
   font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .overlay-control-settings-link > svg {
@@ -508,30 +524,48 @@
 .overlay-control-picker {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, 136px);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
   color: var(--control-text);
 }
-.overlay-control-picker > span:first-child {
+.overlay-control-picker__label {
   min-width: 0;
   font-size: 12px;
-  color: var(--control-text-faint);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  color: var(--control-text-muted);
 }
 .overlay-control-picker--profile {
-  grid-template-columns: minmax(0, 1fr) minmax(112px, 128px);
-}
-.overlay-control-picker__profile-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr);
 }
 .overlay-control-picker .mimi-select__trigger {
-  height: 28px;
-  padding: 0 8px;
+  height: auto;
+  min-height: 30px;
+  padding: 4px 8px;
   gap: 6px;
   font-size: 12px;
+}
+
+/* The trigger is translucent; the portaled menu must cover the controls underneath. */
+.overlay-control-panel .mimi-select__trigger {
+  --select-menu-bg: #292929;
+}
+
+.overlay-control-panel .mimi-select__trigger:hover:not(:disabled),
+.overlay-control-panel .mimi-select__trigger[aria-expanded="true"] {
+  background: var(--control-surface-hover);
+  border-color: var(--control-border-strong);
+}
+
+.overlay-control-picker .mimi-select__trigger .mimi-select__label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.overlay-control-picker--profile .mimi-select__trigger {
+  min-height: 32px;
+  font-weight: 550;
 }
 
 .overlay-control-panel .settings-toast {

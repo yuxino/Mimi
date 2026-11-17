@@ -7,6 +7,7 @@ import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
   isTauri,
+  listenOverlayPointerMotion,
   overlayControlSetIslandWidth,
   overlayControlSetPopupBounds,
   overlayPopoverHide,
@@ -67,7 +68,22 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
-  useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
+  const updateNativePointer = useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
+  useEffect(() => {
+    if (!isTauri || embedded) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listenOverlayPointerMotion(point => {
+      if (!disposed) updateNativePointer(point !== null);
+    }, "overlay-control").then(remove => {
+      if (disposed) remove();
+      else unlisten = remove;
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [embedded, updateNativePointer]);
   const quietIsland = isTauri && mode === "island" && sessionStatusKind !== "error" &&
     !collapsed && !settings.isOverlayLocked && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");

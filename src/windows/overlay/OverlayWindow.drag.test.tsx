@@ -63,22 +63,22 @@ async function press(target: Element, detail = 1, button = 0) {
   return event;
 }
 
-it("moves from empty top chrome without focusing and keeps double-click collapse", async () => {
+it("moves from empty top chrome without focusing or folding on double-click", async () => {
   await mount();
   const drag = area()!;
   expect(drag.tabIndex).toBe(-1);
   expect(drag.getAttribute("aria-hidden")).toBe("true");
-  expect(isClickablePointerTarget(drag)).toBe(true);
+  expect(isClickablePointerTarget(drag)).toBe(false);
   expect((await press(drag)).defaultPrevented).toBe(true);
   expect(document.activeElement).not.toBe(drag);
   expect(native.move).toHaveBeenCalledOnce();
   expect(collapse).not.toHaveBeenCalled();
   await press(drag, 2);
-  expect(collapse).toHaveBeenCalledExactlyOnceWith(true);
-  expect(native.move).toHaveBeenCalledOnce();
+  expect(collapse).not.toHaveBeenCalled();
+  expect(native.move).toHaveBeenCalledTimes(2);
   await press(drag, 1, 1);
   await press(drag, 1, 2);
-  expect(native.move).toHaveBeenCalledOnce();
+  expect(native.move).toHaveBeenCalledTimes(2);
 });
 
 it("does not turn controls, service help, captions or resize edges into drag targets", async () => {
@@ -98,14 +98,13 @@ it("does not turn controls, service help, captions or resize edges into drag tar
   expect(collapse).not.toHaveBeenCalled();
 });
 
-it("shares the in-flight control guard with the visible handle", async () => {
+it("uses the explicit collapse button and guards the drag while folding", async () => {
   let resolve!: () => void;
   collapse.mockImplementationOnce(() => new Promise<void>(finish => { resolve = finish; }));
   await mount();
-  await press(area()!, 2);
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="collapse-subtitles"]')!.click());
   expect(area()!.disabled).toBe(true);
   expect(isClickablePointerTarget(area())).toBe(false);
-  expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')!.disabled).toBe(true);
   await press(area()!);
   await press(area()!, 2);
   expect(native.move).not.toHaveBeenCalled();
@@ -115,10 +114,9 @@ it("shares the in-flight control guard with the visible handle", async () => {
   expect(native.move).toHaveBeenCalledOnce();
 });
 
-it.each(["locked", "immersive", "collapsed"] as const)("keeps the empty-top gesture unavailable in %s mode", async mode => {
+it.each(["locked", "immersive"] as const)("keeps the empty-top gesture unavailable in %s mode", async mode => {
   useStore.setState(state => ({
     settings: { ...state.settings, isOverlayLocked: mode === "locked", subtitleBlendsWithBackground: mode === "immersive" },
-    session: { ...state.session, isOverlayCollapsed: mode === "collapsed" },
   }));
   await mount();
   if (mode === "locked") {
@@ -127,7 +125,6 @@ it.each(["locked", "immersive", "collapsed"] as const)("keeps the empty-top gest
     await press(area()!);
   } else {
     expect(area()).toBeNull();
-    if (mode === "collapsed") expect(host.querySelector('[data-testid="drag-handle"]')).not.toBeNull();
   }
   expect(native.move).not.toHaveBeenCalled();
   expect(collapse).not.toHaveBeenCalled();
@@ -142,7 +139,17 @@ it("allows error-state movement without collapsing or changing saved lock and im
   expect(area()!.disabled).toBe(false);
   await press(area()!);
   await press(area()!, 2);
-  expect(native.move).toHaveBeenCalledOnce();
+  expect(native.move).toHaveBeenCalledTimes(2);
   expect(collapse).not.toHaveBeenCalled();
   expect(useStore.getState().settings).toMatchObject({ isOverlayLocked: true, subtitleBlendsWithBackground: true });
+});
+
+it("lets the compact status area move without folding and expands from its button", async () => {
+  useStore.setState(state => ({ session: { ...state.session, isOverlayCollapsed: true } }));
+  await mount();
+  await press(area()!, 2);
+  expect(native.move).toHaveBeenCalledOnce();
+  expect(collapse).not.toHaveBeenCalled();
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-testid="expand-subtitles"]')!.click());
+  expect(collapse).toHaveBeenCalledExactlyOnceWith(false);
 });

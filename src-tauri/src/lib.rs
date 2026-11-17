@@ -265,8 +265,10 @@ pub fn run() {
             let app = window.app_handle();
             match event {
                 #[cfg(target_os = "macos")]
-                WindowEvent::Destroyed if window.label() == "overlay" => {
-                    windows::remove_overlay_pointer_tracking(app);
+                WindowEvent::Destroyed
+                    if matches!(window.label(), "overlay" | "overlay-control") =>
+                {
+                    windows::remove_overlay_pointer_tracking(app, window.label());
                 }
                 // The overlay geometry manager folds the final frame in after
                 // a debounce; transient states (control panel, collapse
@@ -382,9 +384,7 @@ pub fn run() {
                 {
                     api.prevent_close();
                     #[cfg(target_os = "macos")]
-                    if window.label() == "overlay" {
-                        windows::clear_overlay_pointer_hover(app);
-                    }
+                    windows::remove_overlay_pointer_tracking(app, window.label());
                     if let Err(error) = window.hide() {
                         tracing::warn!(
                             window_label = window.label(),
@@ -497,7 +497,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Exit) {
                 mac_native_quit::remove();
-                windows::remove_overlay_pointer_tracking(app);
+                windows::remove_all_overlay_pointer_tracking(app);
             }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {

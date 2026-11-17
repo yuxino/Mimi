@@ -180,7 +180,7 @@ export async function verifySubtitleOverlayLayout(page, baseUrl = "http://127.0.
               if (!dragArea) issues.push("top drag area missing");
               if (!document.querySelector(".overlay-service__button")) issues.push("configured service missing");
               if (document.querySelectorAll(".overlay-service__stage").length !== 2) issues.push("configured ASR/MT stages missing");
-              for (const button of document.querySelectorAll(".overlay-service__button, .overlay-control-button, [data-testid='drag-handle']")) {
+              for (const button of document.querySelectorAll(".overlay-service__button, .overlay-control-button")) {
                 const rect = button.getBoundingClientRect();
                 if (rect.width > 0 && rect.height > 0 && !button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))) {
                   issues.push("top control obstructed");

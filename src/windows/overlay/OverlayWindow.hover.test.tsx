@@ -12,6 +12,7 @@ const listenPointer = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/ipc", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/ipc")>(),
   isTauri: true,
+  hasEmbeddedOverlayControls: true,
   listenOverlayPointerMotion: listenPointer,
 }));
 vi.mock("./PulseRing", () => ({ PulseRing: () => null }));
@@ -25,7 +26,7 @@ const unlisten = vi.fn();
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   unlisten.mockClear();
   listenPointer.mockReset().mockImplementation((handler) => {
@@ -72,7 +73,7 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   for (let i = 0; i < 30; i++) await act(async () => pointer({ x: 20 + i, y: 20 }));
   expect(commits).toHaveBeenCalledTimes(afterEntering);
   await act(async () => window.dispatchEvent(new Event("blur")));
-  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(true);
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   await act(async () => pointer({ x: 20, y: 20 }));
   expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
