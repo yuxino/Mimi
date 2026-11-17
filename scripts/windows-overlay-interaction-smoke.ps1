@@ -59,6 +59,8 @@ public static class MimiPointerSmoke {
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr window, uint flags);
     [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(Point point, uint flags);
     private delegate bool WindowVisitor(IntPtr window, IntPtr data);
     [DllImport("user32.dll")]
@@ -220,6 +222,19 @@ public static class MimiPointerSmoke {
         MoveAndVerify(x, y);
     }
 
+    public static string PointerOwnership(IntPtr overlay, IntPtr controls) {
+        Point point;
+        if (!GetCursorPos(out point)) return "pointer_position=unavailable";
+        var hit = GetAncestor(WindowFromPoint(point), 2);
+        return String.Format("point=({0},{1}) overlay_hit={2} controls_hit={3}", point.X, point.Y, hit == overlay, hit == controls);
+    }
+
+    public static string WindowVisibilityAndFocus(IntPtr overlay, IntPtr controls) {
+        var foreground = GetForegroundWindow();
+        return String.Format("overlay_visible={0} controls_visible={1} overlay_foreground={2} controls_foreground={3}",
+            IsWindowVisible(overlay), IsWindowVisible(controls), foreground == overlay, foreground == controls);
+    }
+
     public static Point MoveOutside(IntPtr overlay, IntPtr controls) {
         Rect main, child;
         if (!GetWindowRect(overlay, out main) || !GetWindowRect(controls, out child))
@@ -364,6 +379,49 @@ function Read-HoverPatches($Toolbar, $Capsule) {
     return @{ Toolbar = $Toolbar.Read(); Capsule = $Capsule.Read() }
 }
 
+function Wait-QuietHover($Toolbar, $Capsule, $ToolbarReference, $CapsuleReference) {
+    $leave = [Diagnostics.Stopwatch]::StartNew()
+    $quietSamples = 0
+    do {
+        Start-Sleep -Milliseconds 30
+        $sample = Read-HoverPatches $Toolbar $Capsule
+        $toolbarExposure = $ToolbarReference.Exposure($sample.Toolbar)
+        $capsuleExposure = $CapsuleReference.Exposure($sample.Capsule)
+        if ($toolbarExposure -le 0.12 -and $capsuleExposure -le 0.12) { $quietSamples++ } else { $quietSamples = 0 }
+    } until ($quietSamples -ge 3 -or $leave.ElapsedMilliseconds -ge 1800)
+    return @{ Quiet = $quietSamples -ge 3; ElapsedMs = $leave.ElapsedMilliseconds; Toolbar = $toolbarExposure; Capsule = $capsuleExposure }
+}
+
+function Wait-CapsuleRevealed($Capsule, $CapsuleReference, [string]$Action) {
+    $reveal = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        Start-Sleep -Milliseconds 25
+        $exposure = $CapsuleReference.Exposure($Capsule.Read())
+    } until ($exposure -ge 0.80 -or $reveal.ElapsedMilliseconds -ge 1800)
+    if ($exposure -lt 0.80) { throw "The language capsule did not reveal again before $Action." }
+}
+
+function Assert-HoverHandoff($Toolbar, $Capsule, $ToolbarReference, $CapsuleReference, [IntPtr]$Controls, [System.Windows.Rect]$Island) {
+    Move-OverControlBounds $Controls $Island 'Move from the toolbar to the owned language capsule'
+    $handoff = [Diagnostics.Stopwatch]::StartNew()
+    $sampleCount = 0
+    $minimumToolbar = 1.0
+    $minimumCapsule = 1.0
+    do {
+        $sampleStartedMs = $handoff.ElapsedMilliseconds
+        $sample = Read-HoverPatches $Toolbar $Capsule
+        $sampleCount++
+        $minimumToolbar = [Math]::Min($minimumToolbar, $ToolbarReference.Exposure($sample.Toolbar))
+        $minimumCapsule = [Math]::Min($minimumCapsule, $CapsuleReference.Exposure($sample.Capsule))
+        if ($minimumToolbar -lt 0.80 -or $minimumCapsule -lt 0.80) {
+            throw ('A control dimmed during the native handoff at {0}ms (toolbar={1:F2}, capsule={2:F2}).' -f $sampleStartedMs, $minimumToolbar, $minimumCapsule)
+        }
+        if ($sampleStartedMs -lt 400) { Start-Sleep -Milliseconds 20 }
+    } until ($sampleStartedMs -ge 400)
+    if ($sampleCount -lt 4) { throw "The test desktop yielded only $sampleCount hover handoff samples." }
+    Write-Output ('Native hover handoff: {0} samples ending at {1}ms (minimum exposure toolbar={2:F2}, capsule={3:F2}).' -f $sampleCount, $sampleStartedMs, $minimumToolbar, $minimumCapsule)
+}
+
 function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     $readBounds = @{ BoundsOnly = $true; WaitMs = 2500 }
     $waitForAction = @{ WaitMs = 2500 }
@@ -407,24 +465,17 @@ function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     }
     Write-Output "Native hover references separated: toolbar=$($toolbarReference.ForegroundCount) px, capsule=$($capsuleReference.ForegroundCount) px."
 
-    Move-OverControlBounds $Controls $island 'Move from the toolbar to the owned language capsule'
-    $handoff = [Diagnostics.Stopwatch]::StartNew()
-    $sampleCount = 0
-    $minimumToolbar = 1.0
-    $minimumCapsule = 1.0
-    do {
-        $sampleStartedMs = $handoff.ElapsedMilliseconds
-        $sample = Read-HoverPatches $toolbar $capsule
-        $sampleCount++
-        $minimumToolbar = [Math]::Min($minimumToolbar, $toolbarReference.Exposure($sample.Toolbar))
-        $minimumCapsule = [Math]::Min($minimumCapsule, $capsuleReference.Exposure($sample.Capsule))
-        if ($minimumToolbar -lt 0.80 -or $minimumCapsule -lt 0.80) {
-            throw ('A control dimmed during the native handoff at {0}ms (toolbar={1:F2}, capsule={2:F2}).' -f $sampleStartedMs, $minimumToolbar, $minimumCapsule)
-        }
-        if ($sampleStartedMs -lt 400) { Start-Sleep -Milliseconds 20 }
-    } until ($sampleStartedMs -ge 400)
-    if ($sampleCount -lt 4) { throw "The test desktop yielded only $sampleCount hover handoff samples." }
-    Write-Output ('Native hover handoff: {0} samples ending at {1}ms (minimum exposure toolbar={2:F2}, capsule={3:F2}).' -f $sampleCount, $sampleStartedMs, $minimumToolbar, $minimumCapsule)
+    Assert-HoverHandoff $toolbar $capsule $toolbarReference $capsuleReference $Controls $island
+    [void][MimiPointerSmoke]::MoveOutside($overlay, $Controls)
+    $directLeave = Wait-QuietHover $toolbar $capsule $toolbarReference $capsuleReference
+    if (-not $directLeave.Quiet) {
+        throw ('The controls did not return to quiet after a direct capsule exit (toolbar={0:F2}, capsule={1:F2}).' -f $directLeave.Toolbar, $directLeave.Capsule)
+    }
+    Write-Output "Direct capsule exit returned both controls to quiet in $($directLeave.ElapsedMs)ms."
+    Assert-SettingsHidden
+    Move-OverControlBounds $overlay $collapse 'Hover the root toolbar before opening the panel'
+    Wait-CapsuleRevealed $capsule $capsuleReference 'the panel test'
+    Assert-HoverHandoff $toolbar $capsule $toolbarReference $capsuleReference $Controls $island
 
     Use-OverlayControl 'Open subtitle controls' 'listening' 'Open the hovered capsule' -Surface $Controls -NameSuffix @waitForAction
     $panelAction = Use-OverlayControl $MoreSettings 'listening' 'Locate an interior panel control' -Surface $Controls @readBounds
@@ -434,33 +485,33 @@ function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     Use-OverlayControl $MoreSettings 'listening' 'The expanded panel stayed usable' -Surface $Controls -WaitOnly @waitForAction
     Use-OverlayControl 'Collapse subtitle controls' 'listening' 'Close the hovered panel' -Surface $Controls -NameSuffix @waitForAction
     $null = Use-OverlayControl 'Open subtitle controls' 'listening' 'The compact capsule' -Surface $Controls -NameSuffix -ExpectedBounds $island @readBounds
+    Write-Output ('Pointer after exact compact bounds, before moving outside: ' + [MimiPointerSmoke]::PointerOwnership($overlay, $Controls))
     [void][MimiPointerSmoke]::MoveOutside($overlay, $Controls)
 
-    $leave = [Diagnostics.Stopwatch]::StartNew()
-    $quietSamples = 0
-    do {
-        Start-Sleep -Milliseconds 30
-        $sample = Read-HoverPatches $toolbar $capsule
-        $toolbarExposure = $toolbarReference.Exposure($sample.Toolbar)
-        $capsuleExposure = $capsuleReference.Exposure($sample.Capsule)
-        if ($toolbarExposure -le 0.12 -and $capsuleExposure -le 0.12) { $quietSamples++ } else { $quietSamples = 0 }
-    } until ($quietSamples -ge 3 -or $leave.ElapsedMilliseconds -ge 1800)
-    if ($quietSamples -lt 3) {
-        throw ('The controls did not return to quiet outside both windows (toolbar={0:F2}, capsule={1:F2}).' -f $toolbarExposure, $capsuleExposure)
+    $panelLeave = Wait-QuietHover $toolbar $capsule $toolbarReference $capsuleReference
+    if (-not $panelLeave.Quiet) {
+        $originalFailure = 'The controls did not return to quiet outside both windows (toolbar={0:F2}, capsule={1:F2}).' -f $panelLeave.Toolbar, $panelLeave.Capsule
+        Write-Output ('Windows after failed post-panel exit: ' + [MimiPointerSmoke]::WindowVisibilityAndFocus($overlay, $Controls))
+        try {
+            Move-OverControlBounds $Controls $island 'Re-enter the compact capsule for diagnosis'
+            Start-Sleep -Milliseconds 160
+            [void][MimiPointerSmoke]::MoveOutside($overlay, $Controls)
+            $reentry = Wait-QuietHover $toolbar $capsule $toolbarReference $capsuleReference
+            Write-Output ('Compact re-entry diagnostic: quiet={0} elapsed={1}ms (toolbar={2:F2}, capsule={3:F2}).' -f $reentry.Quiet, $reentry.ElapsedMs, $reentry.Toolbar, $reentry.Capsule)
+        }
+        catch {
+            Write-Output "Compact re-entry diagnostic could not finish ($($_.Exception.GetType().Name))."
+        }
+        throw $originalFailure
     }
     Assert-SettingsHidden
     if ((Read-SmokeMarker $SessionStateFile) -ne 'listening') { throw 'The hover handoff changed the active session.' }
-    Write-Output "Native panel opened and stayed under hover, then both controls returned to quiet in $($leave.ElapsedMilliseconds)ms."
+    Write-Output "Native panel opened and stayed under hover, then both controls returned to quiet in $($panelLeave.ElapsedMs)ms."
 
     # The existing Settings-click path begins with the pointer over the root
     # toolbar, as it did after the three Pause/Resume cycles.
     Move-OverControlBounds $overlay $pause 'Restore the original toolbar hover'
-    $restore = [Diagnostics.Stopwatch]::StartNew()
-    do {
-        Start-Sleep -Milliseconds 25
-        $islandExposure = $capsuleReference.Exposure($capsule.Read())
-    } until ($islandExposure -ge 0.80 -or $restore.ElapsedMilliseconds -ge 1800)
-    if ($islandExposure -lt 0.80) { throw 'The language capsule did not reveal again before the existing Settings check.' }
+    Wait-CapsuleRevealed $capsule $capsuleReference 'the existing Settings check'
 }
 
 function Close-SettingsForOverlayCheck {
