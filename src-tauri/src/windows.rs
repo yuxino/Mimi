@@ -628,6 +628,33 @@ fn geometry_for(
     }
 }
 
+#[cfg(target_os = "linux")]
+fn configure_overlay_for_software_gl(window: &tauri::WebviewWindow) {
+    use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+
+    // On X11 with software GL, WebKit's accelerated path delayed visible
+    // subtitles. Keep the change local to the subtitle WebView and require
+    // an explicit software-rendering launch on an X11 session.
+    if std::env::var("XDG_SESSION_TYPE").as_deref() != Ok("x11")
+        || !matches!(
+            std::env::var("LIBGL_ALWAYS_SOFTWARE").as_deref(),
+            Ok("1" | "true")
+        )
+    {
+        return;
+    }
+
+    let _ = window.with_webview(|platform| {
+        if let Some(settings) = WebViewExt::settings(&platform.inner()) {
+            settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
+            pipeline_log!(
+                "overlay software GL acceleration disabled={}",
+                settings.hardware_acceleration_policy() == HardwareAccelerationPolicy::Never
+            );
+        }
+    });
+}
+
 pub struct OverlayWindowManager;
 
 impl OverlayWindowManager {
@@ -674,13 +701,15 @@ impl OverlayWindowManager {
             (state.user_frame, state.minimum_height)
         };
         #[cfg(target_os = "linux")]
-        let native_resize = {
+        let uses_x11 = {
             use gtk::prelude::*;
-            // GTK's X11 resize grips can take the press meant for an overlay
-            // button. Mimi's own handles still resize the window through Tao.
-            !gtk::gdk::Display::default()
+            gtk::gdk::Display::default()
                 .is_some_and(|display| display.type_().name() == "GdkX11Display")
         };
+        // GTK's X11 resize grips can take the press meant for an overlay
+        // button. Mimi's own handles still resize the window through Tao.
+        #[cfg(target_os = "linux")]
+        let native_resize = !uses_x11;
         #[cfg(not(target_os = "linux"))]
         let native_resize = true;
         let builder =
@@ -730,6 +759,10 @@ impl OverlayWindowManager {
                 }
                 if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
                     presentation.invalidate();
+                }
+                #[cfg(target_os = "linux")]
+                if uses_x11 {
+                    configure_overlay_for_software_gl(&window);
                 }
                 configure_overlay_window(&window);
                 #[cfg(target_os = "macos")]
