@@ -287,10 +287,8 @@ export const useStore = create<StoreState>()((set, get) => ({
       );
     }
     const bootstrap = snapshotBootstrap;
-    const attempt = bootstrap.initialize().then(() => {
-      if (bootstrap !== snapshotBootstrap || !bootstrap.ready) return;
-      set({ initialized: true, initializationStatus: "ready", initializationError: null });
-    }).catch((error: unknown) => {
+    // onReady owns successful hydration, including events arriving after a deadline.
+    const attempt = bootstrap.initialize().catch((error: unknown) => {
       if (bootstrap !== snapshotBootstrap || bootstrap.ready) return;
       // Preserve listeners and their generation. Retrying reuses any pending
       // OS read; later settings events/late success can recover every window.
