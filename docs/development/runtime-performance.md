@@ -74,6 +74,13 @@ state and buffer options. Measure capture readiness, first PCM admission,
 matching audio and recognition separately. A virtual sink may open immediately
 but wait for its next render before delivering a frame.
 
+The Linux subtitle window uses unaccelerated WebKit compositing when GDK is
+on X11, the session declares X11 and `LIBGL_ALWAYS_SOFTWARE` is explicitly
+enabled. With software GL, accelerating this transparent window delayed its
+first visible caption in the [native comparisons](integration-runs.md). Apply
+the policy before showing the subtitle window, leaving settings, separate
+controls and other launch environments on WebKit's default policy.
+
 Keep behavior regressions on production code and shared fixtures. Use synthetic
 loopback peers for protocol, retry, cancellation and deadline checks. An old
 implementation copied into a test does not establish current-product coverage.
