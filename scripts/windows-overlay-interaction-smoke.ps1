@@ -310,7 +310,10 @@ function Use-OverlayControl(
                 $root = [System.Windows.Automation.AutomationElement]::FromHandle($Surface)
                 if ($NameSuffix) {
                     $button = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $byRole) |
-                        Where-Object { $_.Current.Name.EndsWith($Name, [StringComparison]::Ordinal) } |
+                        Where-Object {
+                            $elementName = $_.Current.Name
+                            -not [string]::IsNullOrEmpty($elementName) -and $elementName.EndsWith($Name, [StringComparison]::Ordinal)
+                        } |
                         Select-Object -First 1
                 }
                 else {
