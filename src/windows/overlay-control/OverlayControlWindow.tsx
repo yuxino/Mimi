@@ -1,7 +1,8 @@
 import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
+import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/useSettingsToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
-import { effectiveUiLanguage, subscribeUiLanguage } from "../../lib/i18n";
+import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
@@ -21,12 +22,12 @@ import {
 } from "../../lib/store";
 import {
   computeActivityPhaseFromSignals,
-  hasSubtitleContent,
   isWaitingForFinalTranslation,
   languageStatus,
   pendingSourceTranslation,
 } from "../overlay/overlayModel";
 import { useOverlayChromePeers } from "../overlay/useOverlayChromePeers";
+import { useSessionAction } from "../overlay/useSessionAction";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
@@ -66,10 +67,13 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const switchTargetLanguage = useStore((state) => state.switchTargetLanguage);
   const saveSettings = useStore((state) => state.saveSettings);
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
-  const clearSubtitles = useStore((state) => state.clearSubtitles);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
-  const hasContent = useStore(state => mode === "panel" && hasSubtitleContent(state.session.subtitles));
+  const { pending: unlockPending, run: runUnlock } = useSessionAction();
+  const { runWithToast: unlockWithToast, clearToast: clearUnlockToast } = useSettingsToast();
+  const toast = useSyncExternalStore(subscribeSettingsToast, settingsToastSnapshot);
+  // Match native recovery, which temporarily lifts the saved lock.
+  const lockedIsland = settings.isOverlayLocked && sessionStatusKind !== "error";
   const updateNativePointer = useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
   useEffect(() => {
     if (!isTauri || embedded) return;
@@ -87,16 +91,35 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     };
   }, [embedded, updateNativePointer]);
   const quietIsland = isTauri && mode === "island" && sessionStatusKind !== "error" &&
-    !collapsed && !settings.isOverlayLocked && !settings.subtitleBlendsWithBackground &&
+    !collapsed && !lockedIsland && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");
 
   const toggle = useCallback(() => {
+    if (mode !== "island" || unlockPending) return;
+    if (lockedIsland) {
+      void runUnlock(async () => {
+        await unlockWithToast(() => setOverlayLocked(false), I18N.overlay.controlActionFailed);
+      });
+      return;
+    }
     if (isTauri) {
       void overlayPopoverToggle().catch(() => {});
     } else {
       setMode((current) => (current === "panel" ? "island" : "panel"));
     }
-  }, [setMode]);
+  }, [lockedIsland, mode, runUnlock, setMode, setOverlayLocked, unlockPending, unlockWithToast]);
+
+  useEffect(() => {
+    if (mode !== "island" || !lockedIsland) return;
+    const clearWhenHidden = () => { if (document.hidden) clearUnlockToast(); };
+    window.addEventListener("blur", clearUnlockToast);
+    document.addEventListener("visibilitychange", clearWhenHidden);
+    return () => {
+      window.removeEventListener("blur", clearUnlockToast);
+      document.removeEventListener("visibilitychange", clearWhenHidden);
+      clearUnlockToast();
+    };
+  }, [clearUnlockToast, lockedIsland, mode]);
 
   const dismiss = useCallback(() => {
     if (isTauri) {
@@ -113,7 +136,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   useEffect(() => {
     if (mode !== "panel") return;
     const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       event.preventDefault();
       dismiss();
     };
@@ -204,7 +227,6 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
           isWaitingForFinalTranslation={isWaiting}
           isChangingSession={isChangingSession}
           isStopping={sessionStatusKind === "stopping"}
-          hasContent={hasContent}
           permissionRequired={permissionRequired}
           sessionErrorMessage={sessionErrorMessage}
           errorSettingsTarget={errorSettingsTarget}
@@ -218,11 +240,6 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
             catch (error) { finishLanguageChange(false); throw error; }
           }}
           onSetSubtitleDisplayMode={(subtitleDisplayMode) => saveSettings({ subtitleDisplayMode })}
-          onSetImmersiveMode={(subtitleBlendsWithBackground) =>
-            saveSettings({ subtitleBlendsWithBackground })
-          }
-          onSetOverlayLocked={setOverlayLocked}
-          onClearSubtitles={clearSubtitles}
           onShowSettings={showSettings}
         />
       )}
@@ -240,6 +257,10 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
           expanded={false}
           animationVisible={mode === "island"}
           isStopping={sessionStatusKind === "stopping"}
+          unlock={lockedIsland ? {
+            pending: unlockPending,
+            failure: mode === "island" && toast?.failure ? toast.message : null,
+          } : undefined}
           onToggle={toggle}
           onWidthChange={isTauri ? reportIslandWidth : undefined}
         />

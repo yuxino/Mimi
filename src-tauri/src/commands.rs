@@ -21,6 +21,9 @@ use std::sync::{
 use tauri::{AppHandle, Emitter, Listener, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
+#[cfg(target_os = "windows")]
+mod windows_hover_fixture;
+
 const SETTINGS_NAVIGATION_EVENT: &str = "settings-navigate";
 const SETTINGS_NAVIGATION_READY_EVENT: &str = "settings-navigation-ready";
 const RELEASES_LATEST_URL: &str = "https://github.com/yuxino/mimi/releases/latest";
@@ -1216,6 +1219,63 @@ mod tests {
     }
 
     #[test]
+    fn panel_drag_targets_only_the_subtitle_root_while_open_and_unlocked() {
+        assert_eq!(
+            panel_drag_target(OverlayControlMode::Panel, false, false),
+            Some("overlay")
+        );
+        assert_eq!(
+            panel_drag_target(OverlayControlMode::Island, false, false),
+            None
+        );
+        assert_eq!(
+            panel_drag_target(OverlayControlMode::Hidden, false, false),
+            None
+        );
+        assert_eq!(
+            panel_drag_target(OverlayControlMode::Panel, true, false),
+            None
+        );
+        assert_eq!(
+            panel_drag_target(OverlayControlMode::Panel, false, true),
+            None
+        );
+    }
+
+    #[test]
+    fn native_overlay_drag_is_authorized_only_for_overlay_surfaces() {
+        let permitted: Vec<_> = include_str!("../permissions/app.toml")
+            .split("[[permission]]")
+            .filter(|entry| entry.contains("\"overlay_move_start\""))
+            .collect();
+        assert_eq!(permitted.len(), 2);
+        for (identifier, label, capability) in [
+            (
+                "app-overlay",
+                "overlay",
+                include_str!("../capabilities/overlay.json"),
+            ),
+            (
+                "app-overlay-control",
+                "overlay-control",
+                include_str!("../capabilities/overlay-control.json"),
+            ),
+        ] {
+            assert!(permitted
+                .iter()
+                .any(|entry| entry.contains(&format!("identifier = \"{identifier}\""))));
+            let capability: serde_json::Value = serde_json::from_str(capability).unwrap();
+            assert_eq!(capability["windows"], serde_json::json!([label]));
+            assert!(capability["permissions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|permission| permission == identifier));
+        }
+        assert!(include_str!("lib.rs").contains("commands::overlay_move_start,"));
+    }
+
+    #[test]
     fn capture_status_is_readable_in_settings_and_control_panel_only() {
         let permissions = include_str!("../permissions/app.toml");
         let permitted: Vec<_> = permissions
@@ -2047,12 +2107,15 @@ pub fn app_is_ui_test() -> bool {
 /// Neither the destination nor marker contents can be supplied by the frontend.
 #[tauri::command]
 pub fn app_ui_test_frontend_ready(window: tauri::WebviewWindow) -> Result<(), String> {
-    write_ui_test_frontend_ready(
-        app_is_ui_test(),
-        window.label(),
-        std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR").as_deref(),
-    )
-    .map_err(|_| "Could not write the UI-test readiness marker.".to_string())
+    let is_ui_test = app_is_ui_test();
+    let directory = std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR");
+    write_ui_test_frontend_ready(is_ui_test, window.label(), directory.as_deref())
+        .map_err(|_| "Could not write the UI-test readiness marker.".to_string())?;
+    #[cfg(target_os = "windows")]
+    if is_ui_test {
+        windows_hover_fixture::observe_ready(&window, directory.as_deref());
+    }
+    Ok(())
 }
 
 fn write_ui_test_frontend_ready(
@@ -3101,17 +3164,41 @@ pub async fn overlay_set_pointer_cursor(
     }
 }
 
-/// Marks an explicit user drag before Tauri hands the gesture to AppKit.
+fn panel_drag_target(
+    mode: OverlayControlMode,
+    overlay_locked: bool,
+    immersive: bool,
+) -> Option<&'static str> {
+    (mode == OverlayControlMode::Panel && !overlay_locked && !immersive).then_some("overlay")
+}
+
+/// Records a user drag and moves the subtitle root from either overlay surface.
 #[tauri::command]
 pub fn overlay_move_start(
     app: AppHandle,
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    let target = match window.label() {
+        "overlay" => window,
+        "overlay-control" => {
+            let preferences = state.settings.preferences();
+            let Some(label) = panel_drag_target(
+                OverlayControlWindowManager::mode(&app),
+                preferences.overlay_locked,
+                preferences.subtitle_blends_with_background,
+            ) else {
+                return Ok(());
+            };
+            app.get_webview_window(label)
+                .ok_or_else(|| "Could not find the subtitle overlay.".to_string())?
+        }
+        _ => return Err("overlay_move_not_allowed".into()),
+    };
     if !OverlayWindowManager::move_start(&app, &state.overlay) {
         return Ok(());
     }
-    if window.start_dragging().is_err() {
+    if target.start_dragging().is_err() {
         OverlayWindowManager::move_cancel(&state.overlay);
         return Err("Could not start overlay drag.".to_string());
     }

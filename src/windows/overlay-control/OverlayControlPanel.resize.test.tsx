@@ -72,10 +72,10 @@ async function mount() {
   await act(async () => root.render(<OverlayControlPanel
     settings={settings} model={overlayControlPanelModel(settings)} phase="listening"
     status={{ source: "Automatic", separator: "→", target: "Chinese" }}
-    isPaused={false} isWaitingForFinalTranslation={false} isChangingSession={false} hasContent={false}
+    isPaused={false} isWaitingForFinalTranslation={false} isChangingSession={false}
     onDismiss={() => {}} onSelectProfile={operation} onSwitchSourceLanguage={operation}
     onSwitchTargetLanguage={operation} onSetSubtitleDisplayMode={operation}
-    onSetImmersiveMode={operation} onSetOverlayLocked={operation} onClearSubtitles={operation} onShowSettings={operation}
+    onShowSettings={operation}
   />));
 }
 

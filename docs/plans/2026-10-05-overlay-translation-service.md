@@ -1,9 +1,11 @@
 # Floating subtitle controls and service details
 
 The expanded overlay uses a single control row. The language capsule opens the
-control panel, and the action strip offers pause or resume, collapse and close.
-Keep a 224 px maximum for the capsule, including on an embedded surface. When
-space is limited, prioritize close, then the session action, then collapse.
+control panel, and the action strip offers pause or resume, collapse, clear,
+immersive mode, position lock and close. Keep a 156 px maximum for the capsule,
+including on an embedded surface. Preserve the full accessible language label
+when its visible text truncates. At the supported 360 px minimum width all six
+actions retain 24 px targets and remain separate from the capsule.
 The empty drag area moves the window. Collapse and expand through their
 explicit buttons.
 
@@ -17,6 +19,8 @@ appear, disappear or switch between modes.
 On the regular expanded canvas, hover and keyboard focus reveal the capsule
 and action strip. Errors and an open control panel keep controls available.
 Keep the capsule visible during recording and while the overlay is locked.
+The locked capsule exposes one-click unlock while the subtitle canvas remains
+click-through. An error temporarily restores the regular recovery controls.
 Devices without fine hover keep the controls visible. Hidden controls stay
 reachable by keyboard and release their pointer targets. Live subtitles
 reclaim the control row when quiet. Pending or failed actions, translation
@@ -41,17 +45,24 @@ and control size consistent at this width.
   Show the current configuration in a full-width picker. Choosing Original
   in the target picker uses recognition alone. Select a target language to
   start translating again.
+  Omit a repeated provider-brand row for a single built-in service; preserve
+  distinct recognition/translation routes and custom recognition names.
+  Timing and recovery observations remain available independently.
 - Put audio input second. Keep the existing system sound, microphone and
   application choices according to platform availability. Keep status and
-  device details in the existing help controls.
+  device details in the heading help. Ordinary source buttons show hover
+  feedback without opening a large tooltip over neighboring controls; their
+  detailed descriptions remain available to assistive technology.
 - Put subtitles third. Offer the original, translated and bilingual display
   preferences as three directly selectable buttons. The Subtitles page in
   Settings holds the draft display, sentence dividers and timestamps options.
-- Place immersive mode and position lock side by side above the bottom row.
-  Put Clear subtitles and More settings in that row. Clear calls the existing
-  subtitle action and is available when the timeline has content. Serialize clearing
-  with the panel's other settings actions and show a sanitized failure if
-  clearing fails.
+- End the panel with a compact, right-aligned More settings action. Keep
+  immersive mode and position lock in the toolbar rather than duplicate them
+  in this configuration panel. Clear subtitles belongs beside Pause,
+  Collapse and Close in the expanded overlay toolbar. Disable Clear while empty
+  or another session/control action is pending; preserve the existing guarded
+  action and sanitized retryable failure feedback. Keep the capsule and toolbar
+  separated at the minimum supported width.
 
 Keep visible labels and values readable as they wrap. Help remains independently
 focusable. Give open pickers an opaque surface so their options are readable

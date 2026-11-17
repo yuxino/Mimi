@@ -2636,11 +2636,11 @@ impl OverlayControlWindowManager {
         Self::apply_geometry(app, Self::mode(app));
     }
 
-    pub const DEFAULT_ISLAND_WIDTH: f64 = 200.0;
+    pub const DEFAULT_ISLAND_WIDTH: f64 = Self::MAX_ISLAND_WIDTH;
     pub const ISLAND_HEIGHT: f64 = 30.0;
     const MIN_ISLAND_WIDTH: f64 = 80.0;
-    // Match the CSS capsule cap and leave all three actions usable at 360px.
-    const MAX_ISLAND_WIDTH: f64 = 224.0;
+    // Match the CSS capsule cap and leave all six actions usable at 360px.
+    const MAX_ISLAND_WIDTH: f64 = 156.0;
     pub const PANEL_WIDTH: f64 = 280.0;
     // Matches the compact control panel on first open; React
     // immediately replaces it with the measured provider/locale-specific
@@ -4438,9 +4438,9 @@ mod geometry_tests {
 
     #[test]
     fn island_measurements_are_finite_rounded_and_bounded() {
-        assert_eq!(measured_island_width(173.2), Some(174.0));
+        assert_eq!(measured_island_width(143.2), Some(144.0));
         assert_eq!(measured_island_width(2.0), Some(80.0));
-        assert_eq!(measured_island_width(10000.0), Some(224.0));
+        assert_eq!(measured_island_width(10000.0), Some(156.0));
         assert_eq!(measured_island_width(f64::NAN), None);
         assert_eq!(measured_island_width(f64::INFINITY), None);
     }

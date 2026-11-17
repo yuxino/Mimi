@@ -14,16 +14,28 @@ import { profileLanguagePresetLabel } from "../../lib/profileLanguagePreset";
 import { SUBTITLE_DISPLAY_OPTIONS } from "../../lib/subtitleDisplay";
 import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
 
+const native = vi.hoisted(() => ({ active: false, move: vi.fn() }));
+vi.mock("../../lib/ipc", async original => ({
+  ...await original<typeof import("../../lib/ipc")>(),
+  get isTauri() { return native.active; },
+  overlayMoveStart: native.move,
+  overlayControlSetPanelHeight: async () => {},
+  appDesktopShortcutCommands: async () => null,
+}));
+
 let host: HTMLDivElement;
 let root: Root;
 let props: Parameters<typeof OverlayControlPanel>[0];
 const scrollIntoView = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
 
 beforeEach(() => {
+  native.active = false;
+  native.move.mockReset().mockResolvedValue(undefined);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   Element.prototype.scrollIntoView = vi.fn();
   setStoredUiLanguage("en");
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -32,12 +44,11 @@ beforeEach(() => {
   props = {
     settings, model: overlayControlPanelModel(settings), phase: "listening",
     status: { source: "Automatic", separator: "→", target: "Chinese" },
-    isPaused: false, isWaitingForFinalTranslation: false, isChangingSession: false, hasContent: false,
+    isPaused: false, isWaitingForFinalTranslation: false, isChangingSession: false,
     onDismiss: vi.fn(), onSwitchSourceLanguage: vi.fn().mockResolvedValue(undefined),
     onSwitchTargetLanguage: vi.fn().mockResolvedValue(undefined),
     onSelectProfile: vi.fn().mockResolvedValue(undefined),
-    onSetSubtitleDisplayMode: vi.fn().mockResolvedValue(undefined), onSetImmersiveMode: vi.fn().mockResolvedValue(undefined),
-    onSetOverlayLocked: vi.fn().mockResolvedValue(undefined), onClearSubtitles: vi.fn().mockResolvedValue(undefined),
+    onSetSubtitleDisplayMode: vi.fn().mockResolvedValue(undefined),
     onShowSettings: vi.fn().mockResolvedValue(undefined),
   };
 });
@@ -70,6 +81,90 @@ async function searchSource(query: string) {
   return search;
 }
 
+async function press(target: Element, button = 0) {
+  const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button });
+  await act(() => { target.dispatchEvent(event); });
+  return event;
+}
+
+it("hands header and blank padding to native drag independently of collapse", async () => {
+  native.active = true;
+  configure({ isOverlayLocked: false, subtitleBlendsWithBackground: false });
+  await mount();
+  const label = host.querySelector(".overlay-control-header__summary strong")!;
+  const blank = host.querySelector(".overlay-control-panel__content")!;
+  const collapse = host.querySelector<HTMLButtonElement>(".overlay-control-header__collapse")!;
+  expect(collapse.getAttribute("aria-label")?.endsWith(I18N.overlay.closeControls)).toBe(true);
+  expect(collapse.tabIndex).toBe(0);
+  const focused = document.activeElement;
+
+  expect((await press(label)).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(focused);
+  expect(native.move).toHaveBeenCalledOnce();
+  await act(() => { document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); });
+  expect((await press(blank)).defaultPrevented).toBe(true);
+  expect(native.move).toHaveBeenCalledTimes(2);
+  expect(props.onDismiss).not.toHaveBeenCalled();
+
+  expect((await press(label, 2)).defaultPrevented).toBe(false);
+  expect((await press(collapse)).defaultPrevented).toBe(false);
+  await act(() => collapse.click());
+  expect(props.onDismiss).toHaveBeenCalledOnce();
+  expect(native.move).toHaveBeenCalledTimes(2);
+});
+
+it("keeps controls, the portaled picker, and wheel scrolling free of drag", async () => {
+  native.active = true;
+  configure({ isOverlayLocked: false, subtitleBlendsWithBackground: false });
+  await mount();
+  const target = picker(I18N.settings.translateTo);
+  const panel = host.querySelector(".overlay-control-panel")!;
+  for (const control of [target, displayChoices()[0],
+    host.querySelector(".overlay-control-settings-link")!, panel]) {
+    await press(control);
+  }
+  await act(() => target.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    .find(node => node.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.ja)!;
+  expect(option.closest(".mimi-select__menu")?.parentElement).toBe(panel);
+  expect(panel.querySelector(".overlay-control-panel__content")?.contains(option)).toBe(false);
+  await press(option);
+  await act(() => option.click());
+  expect(props.onSwitchTargetLanguage).toHaveBeenCalledExactlyOnceWith("ja");
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+  await act(() => { panel.dispatchEvent(wheel); });
+  expect(wheel.defaultPrevented).toBe(false);
+  expect(native.move).not.toHaveBeenCalled();
+  expect(props.onDismiss).not.toHaveBeenCalled();
+});
+
+it("leaves the chevron usable while movement is unavailable or a display choice is saving", async () => {
+  native.active = true;
+  configure({ isOverlayLocked: false, subtitleBlendsWithBackground: false, subtitleDisplayMode: "translation" });
+  let finishDisplay!: () => void;
+  props.onSetSubtitleDisplayMode = vi.fn(() => new Promise<void>(resolve => { finishDisplay = resolve; }));
+  await mount();
+  const summary = host.querySelector(".overlay-control-header__summary")!;
+  const blank = host.querySelector(".overlay-control-panel__content")!;
+  await act(() => displayChoices()[1].click());
+  const expectNoDrag = async () => {
+    expect((await press(summary)).defaultPrevented).toBe(false);
+    expect((await press(blank)).defaultPrevented).toBe(false);
+    expect(native.move).not.toHaveBeenCalled();
+  };
+  await expectNoDrag();
+  await act(() => finishDisplay());
+  expect(props.onDismiss).not.toHaveBeenCalled();
+  configure({ isOverlayLocked: true });
+  await mount();
+  await expectNoDrag();
+  configure({ isOverlayLocked: false, subtitleBlendsWithBackground: true });
+  await mount();
+  await expectNoDrag();
+  await act(() => host.querySelector<HTMLButtonElement>(".overlay-control-header__collapse")!.click());
+  expect(props.onDismiss).toHaveBeenCalledOnce();
+});
+
 it.each(["zh", "en", "ja"] as const)("groups %s language, audio and subtitle controls in reading order", async (language) => {
   setStoredUiLanguage(language);
   await mount();
@@ -82,8 +177,6 @@ it.each(["zh", "en", "ja"] as const)("groups %s language, audio and subtitle con
   expect(displayChoices().map(choice => choice.textContent)).toEqual(SUBTITLE_DISPLAY_OPTIONS.map(option => option.label));
   expect(host.querySelectorAll('.application-audio-picker')).toHaveLength(1);
   expect(host.querySelector('fieldset, .overlay-control-options, .overlay-control-group')).toBeNull();
-  expect(host.querySelectorAll('[role="switch"]')).toHaveLength(2);
-  expect(host.querySelector('.overlay-control-setting small')).toBeNull();
   expect(picker(I18N.overlay.sourceLanguage)).toBe(document.activeElement);
   expect(props.onSwitchSourceLanguage).not.toHaveBeenCalled();
   expect(props.onSetSubtitleDisplayMode).not.toHaveBeenCalled();
@@ -104,7 +197,11 @@ it("keeps system audio application selection and More settings without hidden in
   expect(audioControls.querySelector('[data-audio-source="microphone"]')).toBeNull();
   expect(audioControls.querySelector('.application-audio-picker')).not.toBeNull();
   expect(audioControls.querySelector(`button[aria-label="${I18N.settings.audioInputTitle}"]`)).toBeNull();
-  await act(async () => host.querySelector<HTMLButtonElement>(".overlay-control-settings-link")!.click());
+  const footer = host.querySelector(".overlay-control-footer")!;
+  const [settings] = footer.querySelectorAll("button");
+  expect(footer.querySelectorAll("button")).toHaveLength(1);
+  expect(settings.textContent).toBe(I18N.overlay.moreSettings);
+  await act(async () => settings.click());
   expect(props.onShowSettings).toHaveBeenCalledExactlyOnceWith();
   expect(props.onDismiss).not.toHaveBeenCalled();
 });
@@ -126,95 +223,35 @@ it("changes subtitle display directly without closing the panel", async () => {
   expect(props.onDismiss).not.toHaveBeenCalled();
 });
 
-it("clears only available subtitles, blocks concurrent actions, and keeps a sanitized retry in the panel", async () => {
-  let reject!: (error: Error) => void;
-  props.onClearSubtitles = vi.fn()
-    .mockImplementationOnce(() => new Promise<void>((_resolve, failure) => { reject = failure; }))
-    .mockResolvedValue(undefined);
-  await mount();
-  const clear = host.querySelector<HTMLButtonElement>(".overlay-control-clear")!;
-  expect(clear.disabled).toBe(true);
-  await act(async () => clear.click());
-  expect(props.onClearSubtitles).not.toHaveBeenCalled();
-
-  props.hasContent = true;
-  await mount();
-  const bilingual = displayChoices().find(choice => choice.textContent === I18N.settings.displayBilingual)!;
-  await act(async () => { clear.click(); clear.click(); bilingual.click(); });
-  expect(props.onClearSubtitles).toHaveBeenCalledOnce();
-  expect(props.onSetSubtitleDisplayMode).not.toHaveBeenCalled();
-  expect(clear.disabled).toBe(true);
-  expect(displayChoices().every(choice => choice.disabled)).toBe(true);
-
-  await act(async () => reject(new Error("private-clear-failure")));
-  expect(host.querySelector('.settings-toast[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
-  expect(host.textContent).not.toContain("private-clear-failure");
-  expect(clear.disabled).toBe(false);
-  await act(async () => clear.click());
-  expect(props.onClearSubtitles).toHaveBeenCalledTimes(2);
-  expect(host.querySelector(".settings-toast")).toBeNull();
-  expect(props.onDismiss).not.toHaveBeenCalled();
-});
-
-it("blocks conflicting operations and retains an inline error after a failed toggle", async () => {
+it("blocks conflicting operations and keeps the previous subtitle display when a save fails", async () => {
+  configure({ subtitleDisplayMode: "translation" });
   let reject!: (reason: Error) => void;
-  props.onSetImmersiveMode = vi.fn(() => new Promise<void>((_resolve, failure) => { reject = failure; }));
+  props.onSetSubtitleDisplayMode = vi.fn(() => new Promise<void>((_resolve, failure) => { reject = failure; }));
   await mount();
-  await act(async () => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.overlay.immersiveMode}"]`)!.click());
-  expect([...host.querySelectorAll<HTMLButtonElement>('[role="combobox"], [role="switch"]'), ...displayChoices()].every((button) => button.disabled)).toBe(true);
-  await act(async () => reject(new Error("synthetic-toggle-failure")));
+  const [translation, bilingual] = displayChoices();
+  const settings = host.querySelector<HTMLButtonElement>(".overlay-control-settings-link")!;
+  await act(() => bilingual.click());
+  expect([...host.querySelectorAll<HTMLButtonElement>('[role="combobox"]'), ...displayChoices(), settings].every(button => button.disabled)).toBe(true);
+  await act(() => reject(new Error("synthetic-display-failure")));
+  expect(translation.getAttribute("aria-pressed")).toBe("true");
+  expect(bilingual.disabled).toBe(false);
   expect(host.querySelector('[role="alert"]')?.textContent).toContain(I18N.overlay.controlActionFailed);
   expect(props.onDismiss).not.toHaveBeenCalled();
 });
 
-it.each(["immersive", "lock"] as const)("does not dismiss a reopened panel when an old %s save completes", async action => {
+it("does not dismiss a reopened panel when an old recovery navigation completes", async () => {
+  props.sessionErrorMessage = I18N.settings.sessionError;
   let finish!: () => void;
   const operation = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
-  if (action === "immersive") props.onSetImmersiveMode = operation;
-  else props.onSetOverlayLocked = operation;
+  props.onShowSettings = operation;
   await mount();
-  const label = action === "immersive" ? I18N.overlay.immersiveMode : I18N.overlay.lockPosition;
-  await act(async () => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!.click());
-  expect(operation).toHaveBeenCalledOnce();
+  await act(() => host.querySelector<HTMLButtonElement>(".session-error-feedback__action")!.click());
+  expect(operation).toHaveBeenCalledExactlyOnceWith("service");
   await act(async () => root.render(null));
   await mount();
   await act(async () => finish());
   expect(props.onDismiss).not.toHaveBeenCalled();
   expect(host.querySelector('[role="dialog"]')).not.toBeNull();
-});
-
-it.each([false, true])("preserves saved reading mode %j while error presentation overrides lock and immersive actions", async enabled => {
-  configure({ subtitleBlendsWithBackground: enabled, isOverlayLocked: enabled });
-  const savedSettings = props.settings;
-  const actions = () => [I18N.overlay.immersiveMode, I18N.overlay.lockPosition].map(label =>
-    host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${label}"]`)!,
-  );
-  await mount();
-  expect(actions().every(button => !button.disabled)).toBe(true);
-  props.sessionErrorMessage = I18N.settings.sessionError;
-  await mount();
-  for (const button of actions()) {
-    expect(button.disabled).toBe(true);
-    expect(button.getAttribute("aria-checked")).toBe(String(enabled));
-    await act(async () => button.click());
-    expect(button.disabled).toBe(true);
-  }
-  expect(props.onSetImmersiveMode).not.toHaveBeenCalled();
-  expect(props.onSetOverlayLocked).not.toHaveBeenCalled();
-  expect(props.onDismiss).not.toHaveBeenCalled();
-  expect(displayChoices().every(choice => !choice.disabled)).toBe(true);
-  expect(host.querySelector<HTMLButtonElement>(".overlay-control-settings-link")!.disabled).toBe(false);
-  props.sessionErrorMessage = null;
-  await mount();
-  expect(props.settings).toBe(savedSettings);
-  for (const button of actions()) {
-    expect(button.disabled).toBe(false);
-    expect(button.getAttribute("aria-checked")).toBe(String(enabled));
-    await act(async () => button.click());
-  }
-  expect(props.onSetImmersiveMode).toHaveBeenCalledExactlyOnceWith(!enabled);
-  expect(props.onSetOverlayLocked).toHaveBeenCalledExactlyOnceWith(!enabled);
-  expect(props.onDismiss).toHaveBeenCalledTimes(2);
 });
 
 it("keeps recognition locked during transitions while independent display remains available", async () => {
@@ -581,7 +618,7 @@ it("shows Gemini automatic source and an expanded target without inventing manua
   expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
   expect(picker(I18N.settings.translateTo).disabled).toBe(false);
   expect(host.textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES.uk);
-  expect(host.querySelector(".overlay-control-header")?.getAttribute("aria-label")).toContain(I18N.overlay.autoDetecting);
+  expect(host.querySelector(".overlay-control-header__collapse")?.getAttribute("aria-label")).toContain(I18N.overlay.autoDetecting);
 });
 
 it.each(["zh", "en", "ja"] as const)("offers every Gemini target beside the disabled automatic source in %s", async locale => {
@@ -619,10 +656,12 @@ it("keeps the saved target after a failed switch and permits retry without dismi
   expect(host.querySelector('[role="alert"]')).toBeNull();
 });
 
-it.each(["zh", "en", "ja"] as const)("keeps duplicate pause/close actions out of the %s configuration panel", async language => {
+it.each(["zh", "en", "ja"] as const)("keeps duplicate toolbar actions out of the %s configuration panel", async language => {
   setStoredUiLanguage(language);
   await mount();
   expect(host.querySelector(".overlay-control-session-action")).toBeNull();
   expect(host.querySelector(`button[aria-label="${I18N.overlay.pause}"]`)).toBeNull();
   expect(host.querySelector(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)).toBeNull();
+  expect(host.querySelector(`button[aria-label="${I18N.overlay.immersiveMode}"]`)).toBeNull();
+  expect(host.querySelector(`button[aria-label="${I18N.overlay.lockPosition}"]`)).toBeNull();
 });

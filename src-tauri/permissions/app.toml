@@ -111,6 +111,7 @@ commands.allow = [
   "session_switch_translation_mode",
   "settings_save",
   "overlay_set_locked",
+  "overlay_move_start",
   "app_show_settings",
   "overlay_popover_toggle",
   "overlay_popover_hide",

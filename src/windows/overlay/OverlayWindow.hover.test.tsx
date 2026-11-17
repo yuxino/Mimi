@@ -126,7 +126,8 @@ it("keeps the same toolbar buttons and hover target when another surface clears 
   await act(async () => root.render(<OverlayWindow />));
   const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
-    I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.closeSubtitles,
+    I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
+    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
   ]);
   const pause = buttons[0];
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => pause.querySelector("svg") });
@@ -137,6 +138,7 @@ it("keeps the same toolbar buttons and hover target when another surface clears 
   const emptyButtons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(emptyButtons).toHaveLength(buttons.length);
   emptyButtons.forEach((button, index) => expect(button).toBe(buttons[index]));
+  expect(emptyButtons[2].disabled).toBe(true);
   expect(pause.disabled).toBe(false);
   expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
 });

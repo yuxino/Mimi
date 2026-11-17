@@ -67,6 +67,7 @@ afterEach(async () => {
 });
 
 it("embeds island/panel in one surface and keeps portaled picker selections inside the panel interaction", async () => {
+  useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: false } }));
   await act(async () => root.render(<OverlayControlWindow embedded />));
   const surface = host.querySelector(".overlay-control-embedded")!;
   expect(surface.getAttribute("data-mode")).toBe("island");

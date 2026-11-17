@@ -381,7 +381,9 @@ it("keeps paused text readable across modes and resumes with a new complete pair
 it("clears all three modes through the real clear action without resurrecting a pending draft", async () => {
   await mount({ ...empty, source: { text: "Visible original before clear.", isFinal: false },
     previewPair: { source: "Visible paired original before clear.", translation: "清空前的译文。" }, history: [confirmed] });
-  await act(async () => useStore.getState().clearSubtitles());
+  const clear = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.clearSubtitles}"]`)!;
+  expect(clear.disabled).toBe(false);
+  await act(async () => clear.click());
   for (const displayMode of modes) {
     await mode(displayMode);
     expect(visibleLanes()).toEqual([]);

@@ -32,7 +32,7 @@ vi.mock("../../lib/ipc", async original => ({
   },
 }));
 
-it("honors the saved divider preference when the floating panel changes immersive mode", async () => {
+it("honors the saved divider preference across native immersive changes", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -43,15 +43,11 @@ it("honors the saved divider preference when the floating panel changes immersiv
   let savedSettings: SettingsSnapshot = { ...initial.settings, uiLanguage: "en",
     showSubtitleDividers: false, subtitleBlendsWithBackground: false };
   const session = { ...initial.session, status: { kind: "listening" as const }, isActive: true };
-  const save = vi.fn(async (draft: Partial<SettingsSnapshot>) => {
-    savedSettings = { ...savedSettings, ...draft };
-    native.onSettings!(savedSettings);
-    return savedSettings;
-  });
-  vi.mocked(invoke).mockImplementation(async (command, args) => {
+  const save = vi.fn();
+  vi.mocked(invoke).mockImplementation(async command => {
     if (command === "settings_get") return savedSettings;
     if (command === "session_get_state") return session;
-    if (command === "settings_save") return save((args as { draft: Partial<SettingsSnapshot> }).draft);
+    if (command === "settings_save") return save();
     return null;
   });
   useStore.setState({ ...initial, initialized: false }, true);
@@ -80,14 +76,15 @@ it("honors the saved divider preference when the floating panel changes immersiv
     });
     expect(useStore.getState().settings.showSubtitleDividers).toBe(true);
     expect(subtitleMarkup()).toContain("subtitle-separator");
-    expect(save).not.toHaveBeenCalled();
-
     for (const immersive of [true, false]) {
-      await act(async () => host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.overlay.immersiveMode}"]`)!.click());
-      expect(save).toHaveBeenLastCalledWith({ subtitleBlendsWithBackground: immersive });
+      await act(async () => {
+        savedSettings = { ...savedSettings, subtitleBlendsWithBackground: immersive };
+        native.onSettings!(savedSettings);
+      });
       expect(useStore.getState().settings.showSubtitleDividers).toBe(true);
       expect(subtitleMarkup().includes("subtitle-separator")).toBe(!immersive);
     }
+    expect(save).not.toHaveBeenCalled();
     expect(useStore.getState().session).toBe(session);
   } finally {
     await act(async () => root.unmount()); host.remove(); disposeStoreSnapshotStreams();
@@ -207,7 +204,7 @@ it("switches saved profiles through the shared store from the paused floating pa
 });
 
 
-it("lets IME Escape cancel composition without dismissing application search or the floating panel", async () => {
+it("keeps the floating panel open when Escape belongs to composition or a child control", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("navigator", { userAgent: "Macintosh" });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
@@ -225,15 +222,22 @@ it("lets IME Escape cancel composition without dismissing application search or 
     await act(async () => trigger.click());
     const input = document.querySelector<HTMLInputElement>('.mimi-select__search')!;
     expect(document.activeElement).toBe(input);
-    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true, cancelable: true })));
-    expect(document.querySelector('.mimi-select__search')).toBe(input);
-    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
-    expect(native.hide).not.toHaveBeenCalled();
-    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    const escape = (options: KeyboardEventInit = {}) =>
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, ...options });
+    for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
+      await act(() => { input.dispatchEvent(escape(composition)); });
+      expect(document.querySelector('.mimi-select__search')).toBe(input);
+      expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+      expect(native.hide).not.toHaveBeenCalled();
+    }
+    await act(() => { input.dispatchEvent(escape()); });
     expect(document.querySelector('.mimi-select__search')).toBeNull();
     expect(document.activeElement).toBe(trigger);
     expect(native.hide).not.toHaveBeenCalled();
-    await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    trigger.addEventListener("keydown", (event) => event.preventDefault(), { once: true });
+    await act(() => { trigger.dispatchEvent(escape()); });
+    expect(native.hide).not.toHaveBeenCalled();
+    await act(() => { trigger.dispatchEvent(escape()); });
     expect(native.hide).toHaveBeenCalledOnce();
   } finally {
     await act(async () => root.unmount()); host.remove();

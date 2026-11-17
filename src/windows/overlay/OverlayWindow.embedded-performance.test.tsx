@@ -311,14 +311,14 @@ it("keeps locale, settings, lifecycle, native mode and resize subscriptions live
     expect(useStore.getState().settings).toBe(settings);
     expect(host.querySelector(".overlay-control-panel")).toBe(panel);
     expect(panel.getAttribute("aria-label")).toBe(I18N.overlay.controlPanel);
-    expect(island.title).toContain(I18N.overlay.openControls);
+    expect(island.title).toContain(I18N.overlay.unlockPosition);
     expect(subtitleDisplayControl()).not.toBeNull();
   }
   vi.spyOn(navigator, "language", "get").mockReturnValue("fr-CA");
   await act(async () => setStoredUiLanguage("system"));
   expect(effectiveUiLanguage()).toBe("fr");
   expect(panel.getAttribute("aria-label")).toBe(I18N.overlay.controlPanel);
-  expect(island.title).toContain(I18N.overlay.openControls);
+  expect(island.title).toContain(I18N.overlay.unlockPosition);
   await act(async () => setStoredUiLanguage("en"));
   await act(async () => useStore.setState(state => ({ settings: { ...state.settings, targetLanguage: "ja", pulseStyle: "ribbon" } })));
   expect(picker(I18N.settings.translateTo).textContent).toContain(TARGET_LANGUAGE_DISPLAY_NAMES.ja);
@@ -332,7 +332,7 @@ it("keeps locale, settings, lifecycle, native mode and resize subscriptions live
   expect(surface.getAttribute("data-mode")).toBe("island");
   expect(host.querySelector(".overlay-control-panel")).toBeNull();
   await act(async () => setStoredUiLanguage("zh"));
-  expect(island.title).toContain(I18N.overlay.openControls);
+  expect(island.title).toContain(I18N.overlay.unlockPosition);
   expect(island.querySelector(".overlay-control-island__phase")?.textContent).toBe(capsuleLabels(useStore.getState().settings, "stopping").phase);
   await act(async () => setStoredUiLanguage("en"));
   native.width.mockClear(); islandWidth = 230;

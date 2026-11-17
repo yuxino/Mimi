@@ -24,7 +24,7 @@ export function OverlaySessionDetails({ onOpenProfile, disabled }: {
   })));
   const service = translationService(settings);
   return <div className="overlay-session-details">
-    {service && <OverlayTranslationService service={service} onClick={onOpenProfile} disabled={disabled} />}
+    {service?.showInProfileDetails && <OverlayTranslationService service={service} onClick={onOpenProfile} disabled={disabled} />}
     <OverlayLatency session={{ ...session, status: { kind: status } }} translationRequired={settings.targetLanguage !== "original"} />
   </div>;
 }

@@ -22,7 +22,19 @@
   line-height: 1.25;
   overflow-wrap: anywhere;
   visibility: hidden;
+}
+
+.mimi-tooltip[data-inline] {
   pointer-events: none;
+}
+
+/* Its viewport-relative position keeps the narrow gap outside the clipped text. */
+.mimi-tooltip[data-hover-bridge]::before {
+  content: "";
+  position: fixed;
+  inset: var(--tooltip-bridge-origin);
+  width: var(--tooltip-bridge-width);
+  height: var(--tooltip-bridge-height);
 }
 
 @media (forced-colors: active) {

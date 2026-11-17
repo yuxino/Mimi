@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
+import { I18N } from "../../lib/i18n";
 import type { OverlayControlMode } from "../../lib/ipc";
 import { OverlayControlWindow } from "./OverlayControlWindow";
 import { useStore } from "../../lib/store";
@@ -9,6 +10,7 @@ import { useStore } from "../../lib/store";
 const native = vi.hoisted(() => ({
   onMode: undefined as ((mode: OverlayControlMode) => void) | undefined,
   reportWidth: vi.fn(async () => {}),
+  toggle: vi.fn(async () => {}),
 }));
 
 vi.mock("../../lib/ipc", async (importOriginal) => ({
@@ -16,6 +18,7 @@ vi.mock("../../lib/ipc", async (importOriginal) => ({
   isTauri: true,
   overlayControlGetState: async () => "hidden",
   overlayControlSetIslandWidth: native.reportWidth,
+  overlayPopoverToggle: native.toggle,
   listenOverlayControlMode: async (callback: (mode: OverlayControlMode) => void) => {
     native.onMode = callback;
     return () => { native.onMode = undefined; };
@@ -87,4 +90,80 @@ it("keeps the collapsed capsule measured across hidden/panel modes without expos
     vi.unstubAllGlobals();
   }
   expect(disconnect).toHaveBeenCalledOnce();
+});
+
+it.each([false, true])("unlocks directly from the capsule and preserves panel access in recovery (embedded=%s)", async embedded => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+  const initial = useStore.getState();
+  let rejectUnlock!: (error: Error) => void;
+  const setOverlayLocked = vi.fn()
+    .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectUnlock = reject; }))
+    .mockImplementation(async (locked: boolean) => {
+      useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: locked } }));
+    });
+  useStore.setState({
+    settings: { ...initial.settings, isOverlayLocked: true },
+    session: { ...initial.session, isActive: true, status: { kind: "listening" } },
+    setOverlayLocked,
+  });
+  native.toggle.mockImplementation(async () => { native.onMode?.("panel"); });
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(() => root.render(<OverlayControlWindow embedded={embedded} />));
+    const capsule = host.querySelector<HTMLButtonElement>(".overlay-control-island")!;
+    expect(capsule.closest('[aria-hidden="true"]')).not.toBeNull();
+    await act(() => capsule.click());
+    expect(setOverlayLocked).not.toHaveBeenCalled();
+    await act(() => native.onMode?.("island"));
+    expect(capsule.closest('[aria-hidden="true"]')).toBeNull();
+    expect(capsule.getAttribute("aria-label")?.endsWith(I18N.overlay.unlockPosition)).toBe(true);
+    expect(capsule.querySelector(".overlay-control-island__unlock")).not.toBeNull();
+    expect(capsule.hasAttribute("aria-haspopup")).toBe(false);
+
+    await act(() => { capsule.click(); capsule.click(); });
+    expect(setOverlayLocked).toHaveBeenCalledExactlyOnceWith(false);
+    expect(capsule.disabled).toBe(true);
+    expect(capsule.getAttribute("aria-busy")).toBe("true");
+    expect(native.toggle).not.toHaveBeenCalled();
+    await act(() => rejectUnlock(new Error("private storage failure")));
+    const alert = host.querySelector('[role="alert"]');
+    expect(alert?.textContent).toBe(I18N.overlay.controlActionFailed);
+    expect(host.textContent).not.toContain("private storage failure");
+    expect(capsule.getAttribute("aria-describedby")).toBe(alert?.id);
+    expect(capsule.disabled).toBe(false);
+    expect(useStore.getState().settings.isOverlayLocked).toBe(true);
+
+    await act(() => capsule.click());
+    expect(setOverlayLocked).toHaveBeenCalledTimes(2);
+    expect(useStore.getState().settings.isOverlayLocked).toBe(false);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(capsule.getAttribute("aria-label")?.endsWith(I18N.overlay.openControls)).toBe(true);
+    expect(capsule.getAttribute("aria-haspopup")).toBe("dialog");
+    await act(() => capsule.click());
+    expect(native.toggle).toHaveBeenCalledOnce();
+    expect(host.querySelector('[data-testid="panel"]')).not.toBeNull();
+
+    await act(() => {
+      useStore.setState(state => ({
+        settings: { ...state.settings, isOverlayLocked: true },
+        session: { ...state.session, status: { kind: "error", message: "unavailable" } },
+      }));
+      native.onMode?.("island");
+    });
+    expect(capsule.getAttribute("aria-label")?.endsWith(I18N.overlay.openControls)).toBe(true);
+    await act(() => capsule.click());
+    expect(native.toggle).toHaveBeenCalledTimes(2);
+    expect(setOverlayLocked).toHaveBeenCalledTimes(2);
+  } finally {
+    await act(() => root.unmount());
+    host.remove();
+    useStore.setState(initial, true);
+    native.toggle.mockReset();
+    native.reportWidth.mockClear();
+    vi.unstubAllGlobals();
+  }
 });

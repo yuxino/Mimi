@@ -74,7 +74,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         },
       }));
       await document.fonts.ready;
-      const expectedService = translationService?.(useStore.getState().settings);
+      const selectedService = translationService?.(useStore.getState().settings);
+      const expectedService = selectedService?.showInProfileDetails ? selectedService : undefined;
       const expectedTexts = history.flatMap(pair => route === "original" ? [pair.source] : [pair.source, pair.translation]);
       let fixtureState;
       // Verify the actual screen before measuring geometry. An unrelated HMR
@@ -89,7 +90,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           const profileMatches = expectedService ? service?.getAttribute("aria-label") === expectedService.detail : !service;
           fixtureState = { expectedLabels, actualLabels, profileMatches, panelPresent: Boolean(details) };
           if (details && profileMatches && actualLabels.join("\n") === expectedLabels.join("\n")
-            && details.querySelector(".overlay-latency strong")?.textContent === "128 ms" && effectiveUiLanguage() === language) return;
+            && details.querySelector(".overlay-latency strong")?.textContent === "128 ms" && effectiveUiLanguage() === language) return { showServiceDetails: Boolean(expectedService) };
           continue;
         }
         const canvas = document.querySelector(".overlay-expanded-canvas");
@@ -272,7 +273,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           const timeline = canvas?.querySelector(".overlay-timeline");
           const buttons = [...(strip?.querySelectorAll("button") ?? [])];
           const issues = [];
-          if (!canvas || !strip || !drag || !timeline || buttons.length !== 3) return { issues: ["overlay chrome missing"] };
+          if (!canvas || !strip || !drag || !timeline || buttons.length !== 6) return { issues: ["overlay chrome missing"] };
           const hitCenter = node => {
             const rect = node.getBoundingClientRect();
             return node.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
@@ -386,8 +387,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         const route = candidate.route ?? "deepL";
         const ordinaryProfile = !candidate.provider && !candidate.alias && !candidate.speechRecognitionName && !candidate.profileName;
         const footerWithoutScrolling = ordinaryProfile && ["zh", "en"].includes(language) && ["followService", "deepL"].includes(route);
-        await configure({ language, theme, profileName: ordinaryProfile ? "Mimi preview" : undefined, ...candidate, surface: "panel" });
-        const result = await page.evaluate(({ route, footerWithoutScrolling }) => {
+        const { showServiceDetails } = await configure({ language, theme, profileName: ordinaryProfile ? "Mimi preview" : undefined, ...candidate, surface: "panel" });
+        const result = await page.evaluate(({ route, footerWithoutScrolling, showServiceDetails, compactRows }) => {
           const panel = document.querySelector(".overlay-control-panel");
           const content = panel?.querySelector(".overlay-control-panel__content");
           const details = panel?.querySelector(".overlay-session-details");
@@ -396,21 +397,29 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           const names = [...(service?.querySelectorAll(".overlay-service__name") ?? [])];
           const latency = details?.querySelector(".overlay-latency");
           const issues = [];
-          if (!panel || !content || !service || !latency || !names.length) return { issues: ["panel details missing"] };
+          if (!panel || !content || !latency || Boolean(service) !== showServiceDetails
+            || showServiceDetails && !names.length) return { issues: ["panel details missing or redundant"] };
           panel.scrollTop = 0;
-          const serviceBox = service.getBoundingClientRect();
+          const serviceBox = service?.getBoundingClientRect();
           const timing = latency.getBoundingClientRect();
           const measurements = [...latency.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent);
           if (measurements.join("\n") !== (route === "original" ? "128 ms" : "128 ms\n246 ms")) issues.push("panel latency samples missing");
           if (icons.length !== names.length || icons.some(icon => Math.abs(icon.getBoundingClientRect().width - 16) > 0.5)) issues.push("provider icon squeezed");
           if (latency.scrollWidth > latency.clientWidth + 1 || timing.right > innerWidth + 1) issues.push("latency clipped");
-          if (timing.top < serviceBox.bottom || serviceBox.right > innerWidth + 1) issues.push("panel details overlap or overflow");
+          if (serviceBox && (timing.top < serviceBox.bottom || serviceBox.right > innerWidth + 1)) issues.push("panel details overlap or overflow");
           for (const name of names) {
             const style = getComputedStyle(name), box = name.getBoundingClientRect();
             if (style.whiteSpace !== "nowrap" || style.textOverflow !== "ellipsis" || box.height > 16.5) issues.push("name wraps");
             if (box.width < 22 || box.left < serviceBox.left || box.right > serviceBox.right + 1) issues.push("name squeezed or outside its button");
           }
           if (panel.scrollWidth > panel.clientWidth + 1 || content.scrollWidth > content.clientWidth + 1) issues.push("panel content overflows horizontally");
+          for (const picker of panel.querySelectorAll(".overlay-control-language-pair .overlay-control-picker")) {
+            const field = picker.querySelector('[role="combobox"]')?.getBoundingClientRect();
+            const column = picker.getBoundingClientRect();
+            if (!field || Math.abs(field.left - column.left) > 1 || Math.abs(field.right - column.right) > 1) issues.push("language picker does not fill its column");
+          }
+          if (compactRows && [...panel.querySelectorAll('.overlay-control-display button')]
+            .some(button => button.getBoundingClientRect().height > 42)) issues.push("caption display row stretched beyond its text");
           const system = panel.querySelector('[data-audio-source="system"] button[role="switch"]');
           const microphone = panel.querySelector('[data-audio-source="microphone"] button[role="switch"]');
           if (system?.getAttribute("aria-checked") !== "true" || !system.hasAttribute("data-required")
@@ -424,11 +433,11 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
             bottom: Math.min(innerHeight, panelBox.top + panel.clientTop + panel.clientHeight),
           };
           const footerBottom = Math.max(...footer.map(button => button.getBoundingClientRect().bottom));
-          if (footer.length !== 2 || footer.some(button => button.disabled)) issues.push("primary footer actions missing or disabled");
+          if (footer.length !== 1 || !footer[0]?.matches(".overlay-control-settings-link") || footer.some(button => button.disabled)) issues.push("primary footer actions missing or disabled");
           if (footerWithoutScrolling && footerBottom > clip.bottom + 1) issues.push("primary footer actions need scrolling");
 
-          const checkTargets = [".overlay-control-header", ".overlay-control-picker [role=combobox]", ".overlay-service__button",
-            ".overlay-control-capture__toggle", ".overlay-control-display button", ".overlay-control-setting", ".overlay-control-footer button"];
+          const checkTargets = [".overlay-control-header__collapse", ".overlay-control-picker [role=combobox]", ".overlay-service__button",
+            ".overlay-control-capture__toggle", ".overlay-control-display button", ".overlay-control-footer button"];
           for (const button of panel.querySelectorAll(checkTargets.join(","))) {
             // A longer locale may scroll vertically, but each target must be
             // reachable without horizontal clipping or a neighboring layer.
@@ -445,7 +454,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           panel.scrollTop = 0;
           return { issues, labels: names.map(name => name.textContent), nameWidths: names.map(name => name.clientWidth), measurements,
             panelHeight: panelBox.height, panelContentHeight: panel.scrollHeight, footerBottom };
-        }, { route, footerWithoutScrolling });
+        }, { route, footerWithoutScrolling, showServiceDetails, compactRows: ["zh", "en"].includes(language) });
         panelChecked++;
         if (result.issues.length) failures.push({ check: "panel", language, theme, ...candidate, ...result });
       }

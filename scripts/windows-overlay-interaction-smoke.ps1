@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory = $true)][string]$SessionStateFile,
     [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
     [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility')][string]$Interaction,
-    [Parameter(Mandatory = $true)][string]$FixtureDirectory
+    [Parameter(Mandatory = $true)][string]$FixtureDirectory,
+    [string]$FrontendReadyDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -305,10 +306,38 @@ function Read-SmokeMarker([string]$Path) {
     }
 }
 
+function Write-HoverMetadata([ValidateSet('root-rehover', 'panel-exit')][string]$Phase) {
+    if ($Interaction -ne 'pointer' -or [string]::IsNullOrEmpty($FrontendReadyDirectory)) { return }
+    try {
+        $optIn = Join-Path $FrontendReadyDirectory 'windows-hover-sample-enabled'
+        if (-not (Test-Path -LiteralPath $optIn -PathType Leaf)) { return }
+        $request = Join-Path $FrontendReadyDirectory 'windows-hover-sample-request'
+        [IO.File]::Open($request, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write).Dispose()
+        $pending = @('overlay', 'overlay-control')
+        $deadline = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            foreach ($label in $pending) {
+                $path = Join-Path $FrontendReadyDirectory "windows-hover-sample-$label.json"
+                # The app publishes complete, typed JSON with an atomic rename.
+                if (Test-Path -LiteralPath $path -PathType Leaf) {
+                    if ((Get-Item -LiteralPath $path).Length -gt 2048) { continue }
+                    $sample = Read-SmokeMarker $path
+                    if (-not $sample) { continue }
+                    Write-Output "Native hover metadata phase=$Phase surface=$label $sample"
+                    $pending = @($pending | Where-Object { $_ -ne $label })
+                }
+            }
+            if ($pending.Count -gt 0) { Start-Sleep -Milliseconds 20 }
+        } until ($pending.Count -eq 0 -or $deadline.ElapsedMilliseconds -ge 1800)
+        if ($pending.Count -gt 0) { Write-Output "Native hover metadata unavailable phase=$Phase surfaces=$($pending -join ',')." }
+    }
+    catch { Write-Output "Native hover metadata diagnostic could not finish phase=$Phase." }
+}
+
 function Use-OverlayControl(
     [string]$Name, [string]$State, [string]$Action,
     [switch]$ReturnPoint, [switch]$WaitOnly, [IntPtr]$Surface = $overlay, [switch]$NameSuffix,
-    [switch]$BoundsOnly, [int]$WaitMs = 10000, [System.Windows.Rect]$ExpectedBounds = [System.Windows.Rect]::Empty
+    [switch]$BoundsOnly, [switch]$Expand, [int]$WaitMs = 10000, [System.Windows.Rect]$ExpectedBounds = [System.Windows.Rect]::Empty
 ) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
@@ -343,10 +372,25 @@ function Use-OverlayControl(
                     }
                     elseif ($Interaction -eq 'accessibility') {
                         $pattern = $null
-                        if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
-                            throw "The '$Name' control does not support accessibility activation."
+                        if ($Expand) {
+                            # Chromium exposes aria-haspopup/aria-expanded through
+                            # ExpandCollapse rather than Invoke. Assert that contract.
+                            if (-not $button.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {
+                                throw "The '$Name' control does not support accessibility expansion."
+                            }
+                            $expandState = $pattern.Current.ExpandCollapseState
+                            Write-Output "Language capsule accessibility state: $expandState."
+                            if ($expandState -ne [System.Windows.Automation.ExpandCollapseState]::Collapsed) {
+                                throw "The language capsule was not collapsed before accessibility expansion."
+                            }
+                            $pattern.Expand()
                         }
-                        $pattern.Invoke()
+                        else {
+                            if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
+                                throw "The '$Name' control does not support accessibility activation."
+                            }
+                            $pattern.Invoke()
+                        }
                         return
                     }
                     else {
@@ -392,13 +436,16 @@ function Wait-QuietHover($Toolbar, $Capsule, $ToolbarReference, $CapsuleReferenc
     return @{ Quiet = $quietSamples -ge 3; ElapsedMs = $leave.ElapsedMilliseconds; Toolbar = $toolbarExposure; Capsule = $capsuleExposure }
 }
 
-function Wait-CapsuleRevealed($Capsule, $CapsuleReference, [string]$Action) {
+function Wait-CapsuleRevealed($Capsule, $CapsuleReference, [string]$Action, [switch]$DiagnoseRootRehover) {
     $reveal = [Diagnostics.Stopwatch]::StartNew()
     do {
         Start-Sleep -Milliseconds 25
         $exposure = $CapsuleReference.Exposure($Capsule.Read())
     } until ($exposure -ge 0.80 -or $reveal.ElapsedMilliseconds -ge 1800)
-    if ($exposure -lt 0.80) { throw "The language capsule did not reveal again before $Action." }
+    if ($exposure -lt 0.80) {
+        if ($DiagnoseRootRehover) { Write-HoverMetadata 'root-rehover' }
+        throw "The language capsule did not reveal again before $Action."
+    }
 }
 
 function Assert-HoverHandoff($Toolbar, $Capsule, $ToolbarReference, $CapsuleReference, [IntPtr]$Controls, [System.Windows.Rect]$Island) {
@@ -474,7 +521,7 @@ function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     Write-Output "Direct capsule exit returned both controls to quiet in $($directLeave.ElapsedMs)ms."
     Assert-SettingsHidden
     Move-OverControlBounds $overlay $collapse 'Hover the root toolbar before opening the panel'
-    Wait-CapsuleRevealed $capsule $capsuleReference 'the panel test'
+    Wait-CapsuleRevealed $capsule $capsuleReference 'the panel test' -DiagnoseRootRehover
     Assert-HoverHandoff $toolbar $capsule $toolbarReference $capsuleReference $Controls $island
 
     Use-OverlayControl 'Open subtitle controls' 'listening' 'Open the hovered capsule' -Surface $Controls -NameSuffix @waitForAction
@@ -492,6 +539,7 @@ function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
     if (-not $panelLeave.Quiet) {
         $originalFailure = 'The controls did not return to quiet outside both windows (toolbar={0:F2}, capsule={1:F2}).' -f $panelLeave.Toolbar, $panelLeave.Capsule
         Write-Output ('Windows after failed post-panel exit: ' + [MimiPointerSmoke]::WindowVisibilityAndFocus($overlay, $Controls))
+        Write-HoverMetadata 'panel-exit'
         try {
             Move-OverControlBounds $Controls $island 'Re-enter the compact capsule for diagnosis'
             Start-Sleep -Milliseconds 160
@@ -563,7 +611,7 @@ try {
     }
     $moreSettings = 'More Settings' + [char]0x2026
     if ($Interaction -eq 'pointer') { Test-OverlayHoverHandoff $controls $moreSettings }
-    Use-OverlayControl 'Open subtitle controls' 'listening' 'Language capsule' -Surface $controls -NameSuffix
+    Use-OverlayControl 'Open subtitle controls' 'listening' 'Language capsule' -Surface $controls -NameSuffix -Expand
     Use-OverlayControl $moreSettings 'listening' 'More Settings in subtitle controls' -Surface $controls
     Wait-SettingsOpened 'More Settings in subtitle controls'
     Write-Output "Native overlay $Interaction passed: three Pause/Resume cycles kept Settings hidden, then More Settings in the owned control window opened it."

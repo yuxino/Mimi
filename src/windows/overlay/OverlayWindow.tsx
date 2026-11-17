@@ -25,7 +25,7 @@ import { Timeline } from "./Timeline";
 import { useResolvedMotion } from "./animation";
 import { useSubtitleTail } from "./useSubtitleTail";
 import type { SourceSubtitleSnapshot } from "../../lib/types";
-import { overlaySessionChromeLayout } from "./overlayChromeLayout";
+import { OVERLAY_INSET, overlaySessionChromeLayout } from "./overlayChromeLayout";
 import { minimumOverlayHeight } from "./overlayMinimumHeight";
 import { useOverlayChromePeers } from "./useOverlayChromePeers";
 import { useSessionAction } from "./useSessionAction";
@@ -37,18 +37,18 @@ import {
   emptyStateDensity,
   emptyStateIsError,
   emptyStateText,
+  hasSubtitleContent,
   usesAtomicSubtitlePreview,
   usesStreamingSubtitlePreview,
 } from "./overlayModel";
 import "./overlayChrome.css";
 
-const OVERLAY_INSET = 6;
 const EMPTY_MICROPHONE: SourceSubtitleSnapshot = {
   audioSource: "microphone", source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
   history: [], detectedLanguage: null, isTranslationPending: false, isTranslationTimedOut: false,
 };
 const EMPTY_SYSTEM: SourceSubtitleSnapshot = { ...EMPTY_MICROPHONE, audioSource: "system" };
-type ControlAction = "collapse" | "settings" | "close";
+type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | "close";
 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
@@ -68,7 +68,10 @@ export function OverlayWindow() {
   const togglePaused = useStore((state) => state.togglePaused);
   const start = useStore((state) => state.start);
   const stop = useStore((state) => state.stop);
+  const clearSubtitles = useStore((state) => state.clearSubtitles);
   const setOverlayCollapsed = useStore((state) => state.setOverlayCollapsed);
+  const saveSettings = useStore((state) => state.saveSettings);
+  const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showSettings = useStore((state) => state.showSettings);
   const sessionAction = useSessionAction();
   const [pauseRequested, setPauseRequested] = useState(false);
@@ -122,10 +125,7 @@ export function OverlayWindow() {
     height:
       typeof window === "undefined" || !isTauri ? 240 : window.innerHeight,
   }));
-  const topChromeLayout = overlaySessionChromeLayout(
-    Math.max(0, overlaySize.width - OVERLAY_INSET * 2),
-    session,
-  );
+  const topChromeLayout = overlaySessionChromeLayout(overlaySize.width, session);
   const showSessionControls = topChromeLayout.showControls;
 
   const collapsed = session.isOverlayCollapsed;
@@ -381,15 +381,36 @@ export function OverlayWindow() {
                 busy={sessionActionProgress !== null}
                 disabled={sessionActionDisabled}
               />}
-              {topChromeLayout.showActions && <>
-              <ControlButton
+              {topChromeLayout.showCollapseAction && <ControlButton
                 icon="chevron-up"
                 label={I18N.overlay.collapseSubtitle}
                 onClick={() => runControlAction("collapse", () => setOverlayCollapsed(true))}
                 busy={pendingControl === "collapse"}
                 disabled={controlAction.pending || hasSessionError}
                 data-testid="collapse-subtitles"
-              />
+              />}
+              {topChromeLayout.showClearAction && <ControlButton
+                icon="eraser"
+                label={I18N.overlay.clearSubtitles}
+                onClick={() => runControlAction("clear", clearSubtitles)}
+                busy={pendingControl === "clear"}
+                disabled={sessionActionDisabled || !hasSubtitleContent(session.subtitles)}
+              />}
+              {topChromeLayout.showPresentationActions && <>
+                <ControlButton
+                  icon="blend"
+                  label={I18N.overlay.enterImmersiveMode}
+                  onClick={() => runControlAction("immersive", () => saveSettings({ subtitleBlendsWithBackground: true }))}
+                  busy={pendingControl === "immersive"}
+                  disabled={sessionActionDisabled || hasSessionError}
+                />
+                <ControlButton
+                  icon="lock"
+                  label={I18N.overlay.lockPosition}
+                  onClick={() => runControlAction("lock", () => setOverlayLocked(true))}
+                  busy={pendingControl === "lock"}
+                  disabled={sessionActionDisabled || hasSessionError}
+                />
               </>}
               <ControlButton
                 icon="close"

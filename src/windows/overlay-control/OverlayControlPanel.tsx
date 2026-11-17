@@ -1,6 +1,5 @@
 import { profileSelectionState } from "../../lib/profileSelection";
 import { SettingsToastRegion } from "../settings/SettingsToast";
-import { useSettingsToast } from "../settings/useSettingsToast";
 import { activeServiceProfile } from "../../lib/providerCapabilities";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
@@ -9,13 +8,14 @@ import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { Select } from "../../components/Select";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { LanguageSelect } from "../../components/LanguageSelect";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { diagnosticPlatform, languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage } from "../../lib/connectionDiagnostics";
 import {
   isTauri,
   overlayControlSetPanelHeight,
+  overlayMoveStart,
   type SettingsNavigationTarget,
 } from "../../lib/ipc";
 import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
@@ -41,9 +41,6 @@ type PendingAction =
   | "display"
   | "source"
   | "target"
-  | "immersive"
-  | "lock"
-  | "clear"
   | "settings";
 
 interface OverlayControlPanelProps {
@@ -56,7 +53,6 @@ interface OverlayControlPanelProps {
   isWaitingForFinalTranslation: boolean;
   isChangingSession: boolean;
   isStopping?: boolean;
-  hasContent: boolean;
   sessionErrorMessage?: string | null;
   permissionRequired?: boolean;
   errorSettingsTarget?: SettingsNavigationTarget | null;
@@ -66,9 +62,6 @@ interface OverlayControlPanelProps {
   onSwitchSourceLanguage: (language: SourceLanguage) => Promise<void>;
   onSwitchTargetLanguage: (language: TargetLanguage) => Promise<void>;
   onSetSubtitleDisplayMode: (mode: SubtitleDisplayMode) => Promise<void>;
-  onSetImmersiveMode: (enabled: boolean) => Promise<void>;
-  onSetOverlayLocked: (locked: boolean) => Promise<void>;
-  onClearSubtitles: () => Promise<void>;
   onShowSettings: (target?: SettingsNavigationTarget) => Promise<void>;
 }
 
@@ -82,7 +75,6 @@ export function OverlayControlPanel({
   isWaitingForFinalTranslation,
   isChangingSession,
   isStopping = false,
-  hasContent,
   sessionErrorMessage,
   permissionRequired = false,
   errorSettingsTarget,
@@ -92,27 +84,28 @@ export function OverlayControlPanel({
   onSwitchSourceLanguage,
   onSwitchTargetLanguage,
   onSetSubtitleDisplayMode,
-  onSetImmersiveMode,
-  onSetOverlayLocked,
-  onClearSubtitles,
   onShowSettings,
 }: OverlayControlPanelProps) {
   const { nativeShortcuts } = useDesktopShortcuts();
-  const { beginToast } = useSettingsToast();
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const sourceControlRef = useRef<HTMLDivElement>(null);
   const targetControlRef = useRef<HTMLDivElement>(null);
   const displayControlRef = useRef<HTMLDivElement>(null);
-  const immersiveRef = useRef<HTMLButtonElement>(null);
-  const lockRef = useRef<HTMLButtonElement>(null);
   const subtitlesHeadingId = useId();
   const actionInFlight = useRef(false);
   const mounted = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const canChangeSessionSettings = !isChangingSession && pendingAction === null;
+  const canDragPanel = isTauri && !model.overlayLocked && !model.immersiveModeEnabled && canChangeSessionSettings;
   const sourceGuidance = speechLanguageGuidance(settings);
+
+  const startDrag = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    void overlayMoveStart().catch(() => {});
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -187,8 +180,6 @@ export function OverlayControlPanel({
       sourceControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       targetControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       displayControlRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]'),
-      immersiveRef.current,
-      lockRef.current,
     ].find((candidate) => candidate != null && !candidate.disabled);
     // WebView2 may still have the island viewport while native resize is
     // pending. Other platforms retain their existing focus/scroll behavior.
@@ -209,17 +200,12 @@ export function OverlayControlPanel({
     setPendingAction(name);
     setOperationError(null);
     const failureMessage = I18N.overlay.controlActionFailed;
-    const notifyClearFailure = name === "clear" ? beginToast() : null;
     void operation()
       .then(() => {
         if (mounted.current && dismissAfter) onDismiss();
       })
       .catch((error: unknown) => {
         if (!mounted.current) return;
-        if (notifyClearFailure) {
-          notifyClearFailure(failureMessage, true);
-          return;
-        }
         setOperationError(
           name === "profile" ? profileErrorMessage(error)
             : name === "source" || name === "target" ? languageActionErrorMessage(error, failureMessage)
@@ -244,7 +230,16 @@ export function OverlayControlPanel({
       aria-busy={pendingAction !== null}
     >
       <SettingsToastRegion />
-      <div ref={contentRef} className="overlay-control-panel__content">
+      <div
+        ref={contentRef}
+        className="overlay-control-panel__content"
+        data-drag-enabled={canDragPanel ? "" : undefined}
+        onMouseDown={canDragPanel ? (event) => {
+          // Only padding and gaps belong to this element. Its controls and
+          // React portals have their own event targets.
+          if (event.target === event.currentTarget) startDrag(event);
+        } : undefined}
+      >
         <LanguageStatusCapsule
           phase={phase}
           status={status}
@@ -255,6 +250,7 @@ export function OverlayControlPanel({
           expanded
           isStopping={isStopping}
           onToggle={onDismiss}
+          onDragPress={canDragPanel ? startDrag : undefined}
         />
 
         {sessionErrorMessage && <SessionErrorFeedback permissionRequired={permissionRequired}
@@ -355,74 +351,16 @@ export function OverlayControlPanel({
           </div>
         </section>
 
-        <div className="overlay-control-section overlay-control-section--actions">
+        <div className="overlay-control-footer">
           <button
-            ref={immersiveRef}
             type="button"
-            role="switch"
-            aria-checked={model.immersiveModeEnabled}
-            aria-label={I18N.overlay.immersiveMode}
-            className={`overlay-control-setting${model.immersiveModeEnabled ? " is-on" : ""}`}
-            disabled={pendingAction !== null || Boolean(sessionErrorMessage)}
-            onClick={() =>
-              performAction("immersive", () =>
-                onSetImmersiveMode(!model.immersiveModeEnabled),
-              )
-            }
+            className="overlay-control-settings-link"
+            disabled={pendingAction !== null}
+            onClick={() => performAction("settings", onShowSettings, false)}
           >
-            <span className="overlay-control-setting__copy">
-              <strong>{I18N.overlay.immersiveMode}</strong>
-            </span>
-            <span className="overlay-control-switch" aria-hidden="true">
-              <span />
-            </span>
+            <span>{I18N.overlay.moreSettings}</span>
+            <Icon name="chevron-right" />
           </button>
-
-          <button
-            ref={lockRef}
-            type="button"
-            role="switch"
-            aria-checked={model.overlayLocked}
-            aria-label={I18N.overlay.lockPosition}
-            className={`overlay-control-setting${model.overlayLocked ? " is-on" : ""}`}
-            disabled={pendingAction !== null || Boolean(sessionErrorMessage)}
-            onClick={() =>
-              performAction("lock", () =>
-                onSetOverlayLocked(!model.overlayLocked),
-              )
-            }
-          >
-            <span className="overlay-control-setting__copy">
-              <strong>
-                {model.overlayLocked
-                  ? I18N.overlay.unlockPosition
-                  : I18N.overlay.lockPosition}
-              </strong>
-            </span>
-            <span className="overlay-control-switch" aria-hidden="true">
-              <span />
-            </span>
-          </button>
-          <div className="overlay-control-footer">
-            <button
-              type="button"
-              className="overlay-control-clear"
-              disabled={!hasContent || pendingAction !== null}
-              onClick={() => performAction("clear", onClearSubtitles, false)}
-            >
-              <Icon name="eraser" />
-              <span>{I18N.overlay.clearSubtitles}</span>
-            </button>
-            <button
-              type="button"
-              className="overlay-control-settings-link"
-              disabled={pendingAction !== null}
-              onClick={() => performAction("settings", onShowSettings, false)}
-            >
-              <span>{I18N.overlay.moreSettings}</span>
-              <Icon name="chevron-right" />
-            </button>
-          </div>
         </div>
 
         {operationError && (

@@ -206,8 +206,11 @@ it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("ke
   expect(drag.tabIndex).toBe(-1);
   expect(host.querySelector(".overlay-surface")?.hasAttribute("data-overlay-chrome-pinned")).toBe(true);
   const topActions = toolbarButtons();
-  expect(topActions.map(button => button.getAttribute("aria-label"))).toEqual([I18N.overlay.collapseSubtitle, I18N.overlay.closeSubtitles]);
-  expect(topActions.map(button => button.disabled)).toEqual([true, false]);
+  expect(topActions.map(button => button.getAttribute("aria-label"))).toEqual([
+    I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles, I18N.overlay.enterImmersiveMode,
+    I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
+  ]);
+  expect(topActions.map(button => button.disabled)).toEqual([true, surface === "overlay", true, true, false]);
   expect(configure().textContent).toBe(I18N.settings.openSpeechSettings);
   expect(configure().disabled).toBe(false);
   await act(async () => configure().click());
@@ -243,8 +246,11 @@ it.each(["zh", "en", "ja"] as const)("assigns detailed %s recovery to the open o
   expect(feedback().querySelector("p")?.textContent).toBe(summary);
   expect(feedback().querySelector("button")).toBeNull();
   const actions = toolbarButtons();
-  expect(actions.map(button => button.getAttribute("aria-label"))).toEqual([I18N.overlay.retry, I18N.overlay.collapseSubtitle, I18N.overlay.closeSubtitles]);
-  expect(actions.map(button => button.disabled)).toEqual([false, true, false]);
+  expect(actions.map(button => button.getAttribute("aria-label"))).toEqual([
+    I18N.overlay.retry, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
+    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
+  ]);
+  expect(actions.map(button => button.disabled)).toEqual([false, true, true, true, true, false]);
   expect(host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')?.disabled).toBe(false);
 
   await mount("control");

@@ -2,7 +2,7 @@
 import { act, Profiler } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { setStoredUiLanguage } from "../../lib/i18n";
+import { I18N, providerDisplayName, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { OverlaySessionDetails } from "./OverlaySessionDetails";
 
@@ -38,8 +38,37 @@ it("keeps actual service roles and changing measurements in the panel with an ex
   await act(async () => root.render(<OverlaySessionDetails onOpenProfile={openProfile} disabled />));
   await act(async () => profile.click()); expect(openProfile).toHaveBeenCalledOnce();
   await act(async () => useStore.setState(state => ({ settings: { ...state.settings, targetLanguage: "original" } })));
-  expect(host.querySelectorAll("[data-provider]")).toHaveLength(1);
+  expect(host.querySelector(".overlay-service__button")).toBeNull();
+  expect(host.textContent).toContain("API80 ms");
   expect(host.textContent).not.toContain("700 ms");
+});
+
+it.each([["zh", "Alibaba Cloud"], ["en", "Daily subtitles"]] as const)(
+  "omits the single built-in brand in %s and keeps timing and recovery", async (language, name) => {
+    setStoredUiLanguage(language);
+    useStore.setState(state => ({ settings: { ...state.settings, profiles: [{
+      ...state.settings.profiles[0], name, textTranslation: "followService",
+    }] } }));
+    await act(async () => root.render(<OverlaySessionDetails onOpenProfile={() => {}} disabled={false} />));
+    expect(host.querySelector(".overlay-service__button")).toBeNull();
+    expect([...host.querySelectorAll(".overlay-latency strong")].map(node => node.textContent)).toEqual(["120 ms", "700 ms"]);
+
+    await act(async () => useStore.setState(state => ({ session: { ...state.session,
+      translationRecovery: { reason: "rateLimited", retryAfterMs: 600, retryScheduled: true },
+    } })));
+    expect(host.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translationRateLimited);
+    expect(host.querySelector(".overlay-service__button")).toBeNull();
+  },
+);
+
+it.each(["Private recognizer", undefined])("keeps a standalone custom recognition service named %s", async speechRecognitionName => {
+  useStore.setState(state => ({ settings: { ...state.settings, targetLanguage: "original", profiles: [{
+    ...state.settings.profiles[0], provider: "customOpenAIASR", speechRecognitionName,
+  }] } }));
+  await act(async () => root.render(<OverlaySessionDetails onOpenProfile={() => {}} disabled={false} />));
+  const stage = host.querySelector('[data-stage="recognition"]');
+  expect(stage?.querySelector('[data-provider="customOpenAIASR"]')).not.toBeNull();
+  expect(stage?.querySelector(".overlay-service__name")?.textContent).toBe(speechRecognitionName ?? providerDisplayName("customOpenAIASR"));
 });
 
 it("does not subscribe to caption text or unchanged status snapshots", async () => {
