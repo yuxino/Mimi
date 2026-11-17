@@ -25,6 +25,7 @@ from PIL import Image, ImageGrab
 COMPOSITING_MODES = {"default", "never"}
 TRACE_MODES = {"trace", "surface"} | COMPOSITING_MODES
 RELEASE_FRONTEND = os.environ.get("MIMI_LINUX_RELEASE_FRONTEND") == "1"
+COMPOSITED_ALPHA = os.environ.get("MIMI_LINUX_COMPOSITED_ALPHA") == "1"
 
 
 def command(*args):
@@ -160,7 +161,8 @@ def write_profile(config, port, application_id):
         config / "preferences.json": {
             "ui_language": "en", "source_language": "en", "target_language": "original",
             "subtitle_display_mode": "original", "subtitle_animation": False, "pulse_animation": False,
-            "show_intermediate_subtitles": True, "subtitle_background_opacity": 100, "font_size": 31,
+            "show_intermediate_subtitles": True, "font_size": 31,
+            "subtitle_background_opacity": 75 if COMPOSITED_ALPHA else 100,
         },
         config / "service-profiles.json": {
             "schemaVersion": 1, "activeProfileId": "local-timing",
@@ -397,6 +399,9 @@ def app_run(executable, root, events_file, results, sampling):
                 pause_and_resume(root, events_file, observations, results)
                 from linux_compositing_interactions import verify_overlay_geometry
                 results["geometry"] = verify_overlay_geometry(overlay, settings, command, wait_for)
+                if COMPOSITED_ALPHA:
+                    from linux_compositing_transparency import verify_blended_pixels
+                    results["transparency"] = verify_blended_pixels(overlay, settings, command, wait_for)
 
             # Normal Settings close requests let the app finalize the session.
             command("wmctrl", "-ic", settings)
@@ -510,18 +515,21 @@ def sample(executable, peer_script, root, pair, sampling):
         if "final" in timestamps:
             results.update(final_from_peer=timestamps["final"])
         milliseconds = {key: round((value - results["click"]) / 1_000_000, 3)
-                        for key, value in results.items() if key not in {"click", "same_pointer", "compositing_policy", "geometry"}}
+                        for key, value in results.items() if key not in {"click", "same_pointer", "compositing_policy", "geometry", "transparency"}}
         print(json.dumps({"pair": pair, "sampling": sampling, "sink_state": state,
                           "pointer_already_on_switch": results["same_pointer"],
                           "compositing_policy": results.get("compositing_policy"),
                           "geometry": results.get("geometry"),
+                          "transparency": results.get("transparency"),
                           "elapsed_from_click_ms": milliseconds}), flush=True)
         return results.get("compositing_policy")
 
 
 if __name__ == "__main__":
     executable, peer_script = sys.argv[1:]
-    with child("openbox"):
+    if COMPOSITED_ALPHA and not RELEASE_FRONTEND:
+        raise RuntimeError("Composited alpha requires the release frontend probe")
+    with child("openbox"), contextlib.ExitStack() as compositor:
         def window_manager_ready():
             try:
                 return command("wmctrl", "-m")
@@ -529,6 +537,10 @@ if __name__ == "__main__":
                 return None
 
         wait_for("Openbox readiness", window_manager_ready)
+        if COMPOSITED_ALPHA:
+            from linux_compositing_transparency import wait_for_compositor
+            compositor.enter_context(child("xcompmgr", "-n"))
+            wait_for_compositor(wait_for)
         orders = ([("default", "never"), ("never", "default")] * 2 if RELEASE_FRONTEND or os.environ.get("MIMI_LINUX_CAPTION_TRACE") else
                   [("online", "offline"), ("offline", "online")] * 2)
         for pair, order in enumerate(orders, start=1):
