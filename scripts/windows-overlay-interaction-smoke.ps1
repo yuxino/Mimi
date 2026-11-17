@@ -34,6 +34,16 @@ public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { internal int Left, Top, Right, Bottom; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DibInfo {
+        internal uint HeaderSize;
+        internal int Width, Height;
+        internal ushort Planes, Bits;
+        internal uint Compression, ImageSize;
+        internal int XPixelsPerMeter, YPixelsPerMeter;
+        internal uint ColorsUsed, ColorsImportant, Color;
+    }
+
     [DllImport("user32.dll")]
     public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
     [DllImport("user32.dll")]
@@ -48,6 +58,8 @@ public static class MimiPointerSmoke {
     private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(Point point, uint flags);
     private delegate bool WindowVisitor(IntPtr window, IntPtr data);
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(WindowVisitor visit, IntPtr data);
@@ -65,6 +77,103 @@ public static class MimiPointerSmoke {
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr window);
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr window, IntPtr dc);
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateCompatibleDC(IntPtr source);
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteDC(IntPtr dc);
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateDIBSection(IntPtr dc, ref DibInfo info, uint usage, out IntPtr pixels, IntPtr section, uint offset);
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr SelectObject(IntPtr dc, IntPtr value);
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr value);
+    [DllImport("gdi32.dll")]
+    private static extern bool BitBlt(IntPtr target, int x, int y, int width, int height, IntPtr source, int sourceX, int sourceY, uint operation);
+    [DllImport("gdi32.dll")]
+    private static extern bool GdiFlush();
+
+    public sealed class PixelPatch {
+        private readonly int x, y, width, height;
+
+        public PixelPatch(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        public int[] Read() {
+            IntPtr screen = GetDC(IntPtr.Zero);
+            if (screen == IntPtr.Zero) throw new InvalidOperationException("Could not open the screen DC for hover verification.");
+            IntPtr target = IntPtr.Zero, bitmap = IntPtr.Zero, previous = IntPtr.Zero;
+            try {
+                target = CreateCompatibleDC(screen);
+                if (target == IntPtr.Zero) throw new InvalidOperationException("Could not create the hover sample DC.");
+                var info = new DibInfo { HeaderSize = 40, Width = width, Height = -height, Planes = 1, Bits = 32 };
+                IntPtr pixels;
+                bitmap = CreateDIBSection(target, ref info, 0, out pixels, IntPtr.Zero, 0);
+                if (bitmap == IntPtr.Zero || pixels == IntPtr.Zero) throw new InvalidOperationException("Could not allocate the hover sample bitmap.");
+                previous = SelectObject(target, bitmap);
+                if (previous == IntPtr.Zero || previous == new IntPtr(-1)) throw new InvalidOperationException("Could not select the hover sample bitmap.");
+                // Read the composited desktop, including layered windows.
+                if (!BitBlt(target, 0, 0, width, height, screen, x, y, 0x40CC0020) || !GdiFlush())
+                    throw new InvalidOperationException("Could not read composed hover pixels from the test desktop.");
+                var result = new int[width * height];
+                Marshal.Copy(pixels, result, 0, result.Length);
+                return result;
+            }
+            finally {
+                if (previous != IntPtr.Zero && previous != new IntPtr(-1)) SelectObject(target, previous);
+                if (target != IntPtr.Zero) DeleteDC(target);
+                if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
+                ReleaseDC(IntPtr.Zero, screen);
+            }
+        }
+    }
+
+    public sealed class PixelReference {
+        private readonly int[] quiet, visible;
+        private readonly bool[] foreground;
+        private readonly double contrast;
+        public int ForegroundCount { get; private set; }
+
+        public PixelReference(int[] quiet, int[] visible) {
+            this.quiet = quiet;
+            this.visible = visible;
+            var brightness = Array.ConvertAll(visible, Brightness);
+            Array.Sort(brightness);
+            int background = brightness[brightness.Length / 2];
+            foreground = new bool[visible.Length];
+            for (int i = 0; i < foreground.Length; i++) {
+                int difference = Distance(quiet[i], visible[i]);
+                // The text/icon must be brighter than its own background.
+                // A background fill change alone is not evidence of exposure.
+                if (Brightness(visible[i]) - background < 32 || difference < 96) continue;
+                foreground[i] = true;
+                ForegroundCount++;
+                contrast += difference;
+            }
+        }
+
+        public double Exposure(int[] sample) {
+            double difference = 0;
+            for (int i = 0; i < foreground.Length; i++) {
+                if (foreground[i]) difference += Distance(quiet[i], sample[i]) - Distance(visible[i], sample[i]);
+            }
+            return contrast == 0 ? 0 : (difference / contrast + 1) / 2;
+        }
+
+        private static int Brightness(int value) { return ((value & 255) + ((value >> 8) & 255) + ((value >> 16) & 255)) / 3; }
+
+        private static int Distance(int a, int b) {
+            return Math.Abs((a & 255) - (b & 255)) + Math.Abs(((a >> 8) & 255) - ((b >> 8) & 255))
+                + Math.Abs(((a >> 16) & 255) - ((b >> 16) & 255));
+        }
+    }
 
     private static string DescribeWindow(IntPtr window) {
         if (window == IntPtr.Zero) return "none";
@@ -97,14 +206,49 @@ public static class MimiPointerSmoke {
         return result;
     }
 
-    public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
-        var point = new Point { X = x, Y = y };
+    private static void AssertHit(IntPtr overlay, Point point, string action) {
         var hit = WindowFromPoint(point);
         var root = GetAncestor(hit, 2);
         if (root != overlay)
             throw new InvalidOperationException(String.Format(
                 "{0} point ({1},{2}) did not hit the expected Mimi window. Expected {3}; hit {4}; hit root {5}.",
-                action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
+                action, point.X, point.Y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
+    }
+
+    public static void MoveOverWindow(IntPtr window, int x, int y, string action) {
+        AssertHit(window, new Point { X = x, Y = y }, action);
+        MoveAndVerify(x, y);
+    }
+
+    public static Point MoveOutside(IntPtr overlay, IntPtr controls) {
+        Rect main, child;
+        if (!GetWindowRect(overlay, out main) || !GetWindowRect(controls, out child))
+            throw new InvalidOperationException("Could not determine the overlay and language window bounds.");
+        int middleX = (main.Left + main.Right) / 2, middleY = (main.Top + main.Bottom) / 2;
+        var candidates = new[] {
+            new Point { X = middleX, Y = Math.Min(main.Top, child.Top) - 24 },
+            new Point { X = Math.Max(main.Right, child.Right) + 24, Y = middleY },
+            new Point { X = Math.Min(main.Left, child.Left) - 24, Y = middleY },
+            new Point { X = middleX, Y = Math.Max(main.Bottom, child.Bottom) + 24 }
+        };
+        foreach (var candidate in candidates) {
+            if (MonitorFromPoint(candidate, 0) == IntPtr.Zero) continue;
+            var hit = GetAncestor(WindowFromPoint(candidate), 2);
+            if (hit == overlay || hit == controls) continue;
+            MoveAndVerify(candidate.X, candidate.Y);
+            return candidate;
+        }
+        throw new InvalidOperationException("Could not find an on-screen point outside both Mimi windows.");
+    }
+
+    private static void MoveAndVerify(int x, int y) {
+        Point actual;
+        if (!SetCursorPos(x, y) || !GetCursorPos(out actual) || actual.X != x || actual.Y != y)
+            throw new InvalidOperationException("Could not verify the physical pointer position on the test desktop.");
+    }
+
+    public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
+        AssertHit(overlay, new Point { X = x, Y = y }, action);
         if (!SetCursorPos(x, y))
             throw new InvalidOperationException("Could not move the pointer on the test desktop.");
         var clicks = new Input[] {
@@ -148,14 +292,15 @@ function Read-SmokeMarker([string]$Path) {
 
 function Use-OverlayControl(
     [string]$Name, [string]$State, [string]$Action,
-    [switch]$ReturnPoint, [switch]$WaitOnly, [IntPtr]$Surface = $overlay, [switch]$NameSuffix
+    [switch]$ReturnPoint, [switch]$WaitOnly, [IntPtr]$Surface = $overlay, [switch]$NameSuffix,
+    [switch]$BoundsOnly, [int]$WaitMs = 10000, [System.Windows.Rect]$ExpectedBounds = [System.Windows.Rect]::Empty
 ) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
     $byRole = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
     $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
-    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($WaitMs)
     $observedState = ''
     while ([DateTime]::UtcNow -lt $deadline) {
         Assert-SettingsHidden
@@ -173,7 +318,12 @@ function Use-OverlayControl(
                 }
                 if ($null -ne $button -and $button.Current.IsEnabled -and -not $button.Current.IsOffscreen) {
                     if ($WaitOnly) { return }
-                    if ($Interaction -eq 'accessibility') {
+                    if ($BoundsOnly) {
+                        $bounds = $button.Current.BoundingRectangle
+                        if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0 -and
+                            ($ExpectedBounds.IsEmpty -or $bounds -eq $ExpectedBounds)) { return $bounds }
+                    }
+                    elseif ($Interaction -eq 'accessibility') {
                         $pattern = $null
                         if (-not $button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
                             throw "The '$Name' control does not support accessibility activation."
@@ -181,13 +331,15 @@ function Use-OverlayControl(
                         $pattern.Invoke()
                         return
                     }
-                    $bounds = $button.Current.BoundingRectangle
-                    if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
-                        $x = [int]($bounds.X + $bounds.Width / 2)
-                        $y = [int]($bounds.Y + $bounds.Height / 2)
-                        [MimiPointerSmoke]::ClickOverlay($Surface, $x, $y, $Action)
-                        if ($ReturnPoint) { return @{ X = $x; Y = $y } }
-                        return
+                    else {
+                        $bounds = $button.Current.BoundingRectangle
+                        if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
+                            $x = [int]($bounds.X + $bounds.Width / 2)
+                            $y = [int]($bounds.Y + $bounds.Height / 2)
+                            [MimiPointerSmoke]::ClickOverlay($Surface, $x, $y, $Action)
+                            if ($ReturnPoint) { return @{ X = $x; Y = $y } }
+                            return
+                        }
                     }
                 }
             }
@@ -197,7 +349,115 @@ function Use-OverlayControl(
         }
         Start-Sleep -Milliseconds 100
     }
+    if (-not $ExpectedBounds.IsEmpty) { throw "$Action did not return to the original sample bounds within $WaitMs ms." }
     throw "Overlay did not expose an enabled '$Name' in state '$State' (last state: '$observedState')."
+}
+
+function Move-OverControlBounds([IntPtr]$Window, [System.Windows.Rect]$Bounds, [string]$Label) {
+    [MimiPointerSmoke]::MoveOverWindow($Window, [int]($Bounds.X + $Bounds.Width / 2), [int]($Bounds.Y + $Bounds.Height / 2), $Label)
+}
+
+function Read-HoverPatches($Toolbar, $Capsule) {
+    return @{ Toolbar = $Toolbar.Read(); Capsule = $Capsule.Read() }
+}
+
+function Test-OverlayHoverHandoff([IntPtr]$Controls, [string]$MoreSettings) {
+    $readBounds = @{ BoundsOnly = $true; WaitMs = 2500 }
+    $waitForAction = @{ WaitMs = 2500 }
+    $pause = Use-OverlayControl 'Pause translating' 'listening' 'Locate the toolbar glyph' @readBounds
+    $collapse = Use-OverlayControl 'Collapse subtitles' 'listening' 'Locate the toolbar hover point' @readBounds
+    $island = Use-OverlayControl 'Open subtitle controls' 'listening' 'Locate the language capsule' -Surface $Controls -NameSuffix @readBounds
+    # UIA and the desktop DC use physical pixels under the same per-monitor
+    # DPI context. Measure the Pause glyph and the language/chevron area away
+    # from the animated mark on the left. Keep the cursor off the samples.
+    $toolbarScale = $pause.Height / 24.0
+    $capsuleScale = $island.Height / 30.0
+    if ($island.Width -lt 66 * $capsuleScale) { throw 'The language capsule cannot provide a static text sample.' }
+    $toolbar = [MimiPointerSmoke+PixelPatch]::new([int]($pause.X + $pause.Width / 2 - 8 * $toolbarScale),
+        [int]($pause.Y + 4 * $toolbarScale), [int](16 * $toolbarScale), [int](16 * $toolbarScale))
+    $capsule = [MimiPointerSmoke+PixelPatch]::new([int]($island.Right - 32 * $capsuleScale),
+        [int]($island.Y + 7 * $capsuleScale), [int](26 * $capsuleScale), [int](16 * $capsuleScale))
+
+    [void][MimiPointerSmoke]::MoveOutside($overlay, $Controls)
+    # Give the previous hover's 160ms cross-window hold and the capsule's
+    # 130ms fade room to finish before learning the quiet reference.
+    Start-Sleep -Milliseconds 380
+    $quiet = Read-HoverPatches $toolbar $capsule
+    Start-Sleep -Milliseconds 45
+    $quietCheck = Read-HoverPatches $toolbar $capsule
+    Move-OverControlBounds $overlay $collapse 'Hover the root toolbar'
+    $reveal = [Diagnostics.Stopwatch]::StartNew()
+    $previous = Read-HoverPatches $toolbar $capsule
+    do {
+        Start-Sleep -Milliseconds 35
+        $visible = Read-HoverPatches $toolbar $capsule
+        $toolbarReference = [MimiPointerSmoke+PixelReference]::new($quiet.Toolbar, $visible.Toolbar)
+        $capsuleReference = [MimiPointerSmoke+PixelReference]::new($quiet.Capsule, $visible.Capsule)
+        $calibrated = $reveal.ElapsedMilliseconds -ge 180 -and
+            $toolbarReference.ForegroundCount -ge 10 -and $capsuleReference.ForegroundCount -ge 10 -and
+            $toolbarReference.Exposure($quietCheck.Toolbar) -le 0.12 -and $capsuleReference.Exposure($quietCheck.Capsule) -le 0.12 -and
+            $toolbarReference.Exposure($previous.Toolbar) -ge 0.92 -and $capsuleReference.Exposure($previous.Capsule) -ge 0.92
+        $previous = $visible
+    } until ($calibrated -or $reveal.ElapsedMilliseconds -ge 1800)
+    if (-not $calibrated) {
+        throw "The composed pixels did not establish distinct quiet and revealed controls with the cursor over the root toolbar (foreground toolbar=$($toolbarReference.ForegroundCount), capsule=$($capsuleReference.ForegroundCount))."
+    }
+    Write-Output "Native hover references separated: toolbar=$($toolbarReference.ForegroundCount) px, capsule=$($capsuleReference.ForegroundCount) px."
+
+    Move-OverControlBounds $Controls $island 'Move from the toolbar to the owned language capsule'
+    $handoff = [Diagnostics.Stopwatch]::StartNew()
+    $sampleCount = 0
+    $minimumToolbar = 1.0
+    $minimumCapsule = 1.0
+    do {
+        $sampleStartedMs = $handoff.ElapsedMilliseconds
+        $sample = Read-HoverPatches $toolbar $capsule
+        $sampleCount++
+        $minimumToolbar = [Math]::Min($minimumToolbar, $toolbarReference.Exposure($sample.Toolbar))
+        $minimumCapsule = [Math]::Min($minimumCapsule, $capsuleReference.Exposure($sample.Capsule))
+        if ($minimumToolbar -lt 0.80 -or $minimumCapsule -lt 0.80) {
+            throw ('A control dimmed during the native handoff at {0}ms (toolbar={1:F2}, capsule={2:F2}).' -f $sampleStartedMs, $minimumToolbar, $minimumCapsule)
+        }
+        if ($sampleStartedMs -lt 400) { Start-Sleep -Milliseconds 20 }
+    } until ($sampleStartedMs -ge 400)
+    if ($sampleCount -lt 4) { throw "The test desktop yielded only $sampleCount hover handoff samples." }
+    Write-Output ('Native hover handoff: {0} samples ending at {1}ms (minimum exposure toolbar={2:F2}, capsule={3:F2}).' -f $sampleCount, $sampleStartedMs, $minimumToolbar, $minimumCapsule)
+
+    Use-OverlayControl 'Open subtitle controls' 'listening' 'Open the hovered capsule' -Surface $Controls -NameSuffix @waitForAction
+    $panelAction = Use-OverlayControl $MoreSettings 'listening' 'Locate an interior panel control' -Surface $Controls @readBounds
+    Move-OverControlBounds $Controls $panelAction 'Move inside the expanded language panel'
+    Start-Sleep -Milliseconds 240
+    if ([MimiPointerSmoke]::FindVisibleControlWindow($overlay) -ne $Controls) { throw 'Opening the language panel changed its native window.' }
+    Use-OverlayControl $MoreSettings 'listening' 'The expanded panel stayed usable' -Surface $Controls -WaitOnly @waitForAction
+    Use-OverlayControl 'Collapse subtitle controls' 'listening' 'Close the hovered panel' -Surface $Controls -NameSuffix @waitForAction
+    $null = Use-OverlayControl 'Open subtitle controls' 'listening' 'The compact capsule' -Surface $Controls -NameSuffix -ExpectedBounds $island @readBounds
+    [void][MimiPointerSmoke]::MoveOutside($overlay, $Controls)
+
+    $leave = [Diagnostics.Stopwatch]::StartNew()
+    $quietSamples = 0
+    do {
+        Start-Sleep -Milliseconds 30
+        $sample = Read-HoverPatches $toolbar $capsule
+        $toolbarExposure = $toolbarReference.Exposure($sample.Toolbar)
+        $capsuleExposure = $capsuleReference.Exposure($sample.Capsule)
+        if ($toolbarExposure -le 0.12 -and $capsuleExposure -le 0.12) { $quietSamples++ } else { $quietSamples = 0 }
+    } until ($quietSamples -ge 3 -or $leave.ElapsedMilliseconds -ge 1800)
+    if ($quietSamples -lt 3) {
+        throw ('The controls did not return to quiet outside both windows (toolbar={0:F2}, capsule={1:F2}).' -f $toolbarExposure, $capsuleExposure)
+    }
+    Assert-SettingsHidden
+    if ((Read-SmokeMarker $SessionStateFile) -ne 'listening') { throw 'The hover handoff changed the active session.' }
+    Write-Output "Native panel opened and stayed under hover, then both controls returned to quiet in $($leave.ElapsedMilliseconds)ms."
+
+    # The existing Settings-click path begins with the pointer over the root
+    # toolbar, as it did after the three Pause/Resume cycles.
+    Move-OverControlBounds $overlay $pause 'Restore the original toolbar hover'
+    $restore = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        Start-Sleep -Milliseconds 25
+        $islandExposure = $capsuleReference.Exposure($capsule.Read())
+    } until ($islandExposure -ge 0.80 -or $restore.ElapsedMilliseconds -ge 1800)
+    if ($islandExposure -lt 0.80) { throw 'The language capsule did not reveal again before the existing Settings check.' }
 }
 
 function Close-SettingsForOverlayCheck {
@@ -247,8 +507,9 @@ try {
     if ($controls -eq [IntPtr]::Zero) {
         throw 'The subtitle overlay did not expose its owned language control window.'
     }
-    Use-OverlayControl 'Open subtitle controls' 'listening' 'Language capsule' -Surface $controls -NameSuffix
     $moreSettings = 'More Settings' + [char]0x2026
+    if ($Interaction -eq 'pointer') { Test-OverlayHoverHandoff $controls $moreSettings }
+    Use-OverlayControl 'Open subtitle controls' 'listening' 'Language capsule' -Surface $controls -NameSuffix
     Use-OverlayControl $moreSettings 'listening' 'More Settings in subtitle controls' -Surface $controls
     Wait-SettingsOpened 'More Settings in subtitle controls'
     Write-Output "Native overlay $Interaction passed: three Pause/Resume cycles kept Settings hidden, then More Settings in the owned control window opened it."
