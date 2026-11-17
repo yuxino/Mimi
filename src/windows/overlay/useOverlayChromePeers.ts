@@ -38,9 +38,10 @@ export function useOverlayChromePeers(
     };
 
     const publish = (kind: HoverMessage["kind"] = "visibility", force = false) => {
+      const keyboardVisible = document.hasFocus() && element.querySelector(":focus-visible") !== null;
+      element.toggleAttribute("data-overlay-keyboard-focus", keyboardVisible);
       if (!unlisten) return;
-      const visible = fineHover.matches && (pointerVisible ||
-        (document.hasFocus() && element.querySelector(":focus-visible") !== null));
+      const visible = fineHover.matches && (pointerVisible || keyboardVisible);
       if (!force && visible === lastShared) return;
       lastShared = visible;
       send({ kind, visible });
@@ -94,7 +95,8 @@ export function useOverlayChromePeers(
       domInside = false;
       updatePointer();
     };
-    // Blur ends keyboard exposure but does not report a physical departure.
+    // Read the focus state after the browser handles focus and input modality.
+    // Physical pointer ownership is independent of window focus.
     const refreshFocus = () => queueMicrotask(() => {
       if (!disposed) publish();
     });
@@ -111,6 +113,8 @@ export function useOverlayChromePeers(
     element.addEventListener("focusout", refreshFocus);
     window.addEventListener("focus", refreshFocus);
     window.addEventListener("blur", refreshFocus);
+    window.addEventListener("keydown", refreshFocus, true);
+    window.addEventListener("pointerdown", refreshFocus, true);
     fineHover.addEventListener("change", refreshInput);
     updatePointer();
 
@@ -144,6 +148,7 @@ export function useOverlayChromePeers(
       element.removeAttribute("data-overlay-pointer-tracked");
       element.removeAttribute("data-overlay-hover");
       element.removeAttribute("data-overlay-peer-hover");
+      element.removeAttribute("data-overlay-keyboard-focus");
       element.removeEventListener("pointerenter", enter);
       element.removeEventListener("pointermove", enter);
       element.removeEventListener("pointerleave", leave);
@@ -151,6 +156,8 @@ export function useOverlayChromePeers(
       element.removeEventListener("focusout", refreshFocus);
       window.removeEventListener("focus", refreshFocus);
       window.removeEventListener("blur", refreshFocus);
+      window.removeEventListener("keydown", refreshFocus, true);
+      window.removeEventListener("pointerdown", refreshFocus, true);
       fineHover.removeEventListener("change", refreshInput);
     };
   }, [ref, shareWithPeer, surface]);

@@ -85,22 +85,22 @@
    hover and the native pointer bridge each reveal these controls independently.
    Inactive controls keep their tab order without taking clicks. */
 @media (hover: hover) and (pointer: fine) {
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
     opacity: 0;
     pointer-events: none;
   }
 
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
     pointer-events: none;
   }
 
   /* A quiet caption view gives back the toolbar's space. Only visible
      feedback or a way back to live needs a slim status line at the top. */
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], :has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions] {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions] {
     --overlay-caption-inset: 0px;
   }
 
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], :has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions]:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions]:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
     --overlay-caption-inset: 20px;
     --overlay-status-top: 3px;
   }

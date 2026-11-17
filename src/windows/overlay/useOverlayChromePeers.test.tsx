@@ -27,12 +27,13 @@ let root: Root;
 let nativePointer: Partial<Record<SurfaceKind, (inside: boolean) => void>>;
 const ownHover = "data-overlay-hover";
 const peerHover = "data-overlay-peer-hover";
+const keyboardFocus = "data-overlay-keyboard-focus";
 
 function Surface({ kind, share = true }: { kind: SurfaceKind; share?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const updateNativePointer = useOverlayChromePeers(ref, kind, share);
   useLayoutEffect(() => { nativePointer[kind] = updateNativePointer; }, [kind, updateNativePointer]);
-  return <div ref={ref} data-test-surface={kind} />;
+  return <div ref={ref} data-test-surface={kind}><button type="button">Focus control</button></div>;
 }
 
 function surface(kind: SurfaceKind) {
@@ -93,6 +94,42 @@ it("uses independent native and DOM hover across blur and sends only exposure tr
   expect(shown("overlay") && shown("island")).toBe(true);
   await tick(1);
   expect(shown("overlay") || shown("island")).toBe(false);
+});
+
+it.each([true, false])("exposes keyboard focus only while the document has focus (share=%s)", async share => {
+  await act(async () => root.render(<><Surface kind="overlay" share={share} /><Surface kind="island" share={share} /></>));
+  const island = surface("island");
+  const control = island.querySelector("button")!;
+  await act(async () => control.focus());
+  expect(control.matches(":focus-visible")).toBe(true);
+  expect(island.hasAttribute(keyboardFocus)).toBe(true);
+  expect(surface("overlay").hasAttribute(peerHover)).toBe(share);
+  expect(island.hasAttribute(ownHover)).toBe(false);
+
+  const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  // Model a WebView whose selector retains the focused descendant on blur.
+  const query = island.querySelector.bind(island);
+  const retainedFocus = vi.spyOn(island, "querySelector").mockImplementation(selector =>
+    selector === ":focus-visible" && document.activeElement === control ? control : query(selector));
+  try {
+    await act(async () => window.dispatchEvent(new Event("blur")));
+    expect(document.activeElement).toBe(control);
+    expect(island.querySelector(":focus-visible")).toBe(control);
+    expect(island.hasAttribute(keyboardFocus)).toBe(false);
+    expect(surface("overlay").hasAttribute(peerHover)).toBe(false);
+
+    hasFocus.mockReturnValue(true);
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(island.hasAttribute(keyboardFocus)).toBe(true);
+    expect(surface("overlay").hasAttribute(peerHover)).toBe(share);
+
+    await act(async () => control.blur());
+    expect(island.hasAttribute(keyboardFocus)).toBe(false);
+    expect(surface("overlay").hasAttribute(peerHover)).toBe(false);
+  } finally {
+    retainedFocus.mockRestore();
+    hasFocus.mockRestore();
+  }
 });
 
 it("keeps both surfaces shown between the separate leave and enter events in either direction", async () => {

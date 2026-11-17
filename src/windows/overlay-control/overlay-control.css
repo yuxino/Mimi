@@ -92,11 +92,11 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], :has(:focus-visible)) .overlay-control-island {
+  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-control-island {
     opacity: 0;
   }
 
-  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], :has(:focus-visible)) :is(.overlay-control-island, .overlay-control-island *) {
+  .overlay-control-detached[data-quiet-island]:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-control-island, .overlay-control-island *) {
     pointer-events: none;
   }
 }

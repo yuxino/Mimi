@@ -11,3 +11,9 @@ open while keyboard focus stays on its trigger. Escape dismisses the current
 help before its containing panel, without moving focus; an already consumed
 Escape or an active IME composition must not dismiss the panel. Compact inline
 labels remain pointer-transparent so they do not cover the overlay drag surface.
+
+Keyboard exposure requires both a currently focused document and a live
+`:focus-visible` descendant. A retained focus style in a background WebView
+must not keep the local toolbar or its peer visible after opening Settings.
+Track document focus independently of physical hover; losing focus alone does
+not mean the mouse left a nonactivating subtitle window.
