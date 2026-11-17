@@ -96,7 +96,6 @@ function expectCard(background: string) {
   expect(card).not.toBeNull();
   expect(card!.style.background).toBe(background);
   expect(card!.style.border).not.toBe("");
-  expect(host.querySelector(".overlay-service")).not.toBeNull();
   return card!;
 }
 
@@ -217,7 +216,7 @@ it("respects saved immersive mode as soon as retry leaves the temporary error pr
   expectCard("rgba(16, 16, 16, 0.96)");
   await publishSession({ status: { kind: "connecting" }, isActive: true });
   expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
-  expect(host.querySelector(".overlay-service")).toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
   expectPreferencesUnchanged(settings);
   await publishSession({ status: { kind: "listening" } });
   await act(async () => start.resolve());

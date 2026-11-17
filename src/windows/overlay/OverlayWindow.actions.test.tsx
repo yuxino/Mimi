@@ -59,40 +59,25 @@ it("keeps recording state accessible when collapsed without adding another actio
   }
 });
 
-it("shows the independent translation mark and opens settings with guarded failure feedback", async () => {
-  const showSettings = vi.fn().mockRejectedValueOnce(new Error("synthetic-private-error")).mockResolvedValue(undefined);
-  useStore.setState(state => ({ showSettings, settings: { ...state.settings,
-    profiles: [{ id: "test", name: "Translation profile", provider: "alibabaCloud", textTranslation: "deepL", credentialState: "present" }],
-    activeProfileId: "test",
+it("keeps the error surface actionable and restores saved presentation after recovery", async () => {
+  useStore.setState(state => ({ settings: {
+    ...state.settings, isOverlayLocked: true, subtitleBlendsWithBackground: true,
   } }));
   await act(async () => root.render(<OverlayWindow />));
-  const service = host.querySelector<HTMLButtonElement>(".overlay-service__button")!;
-  expect(service.textContent).toBe("Alibaba CloudDeepL");
-  expect(service.querySelector('[data-stage="recognition"] [data-provider="alibabaCloud"]')).not.toBeNull();
-  expect(service.querySelector('[data-provider="deepL"]')).not.toBeNull();
-  expect(service.getAttribute("aria-label")).toContain("Translation profile");
-  await act(async () => service.click());
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
-  await act(async () => service.click());
-  expect(showSettings).toHaveBeenCalledTimes(2);
-  expect(showSettings).toHaveBeenCalledWith("activeProfile");
-  expect(host.querySelector('[role="alert"]')).toBeNull();
-});
+  expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
 
-it("keeps the service visible through errors and restores immersive or collapsed chrome after recovery", async () => {
-  await act(async () => root.render(<OverlayWindow />));
-  for (const change of [{ isPaused: true }, { isActive: false, status: { kind: "error" as const, message: "unavailable" } }]) {
-    await act(async () => useStore.setState(state => ({ session: { ...state.session, ...change } })));
-    expect(host.querySelector(".overlay-service")).not.toBeNull();
-  }
-  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: true } })));
-  expect(host.querySelector(".overlay-service")).not.toBeNull();
-  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: true } })));
-  expect(host.querySelector(".overlay-service")).not.toBeNull();
-  await act(async () => useStore.setState(state => ({ session: { ...state.session, status: { kind: "listening" }, isActive: true } })));
-  expect(host.querySelector(".overlay-service")).toBeNull();
-  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false }, session: { ...state.session, isOverlayCollapsed: true } })));
-  expect(host.querySelector(".overlay-service")).toBeNull();
+  await act(async () => useStore.setState(state => ({ session: {
+    ...state.session, isActive: false, status: { kind: "error", message: "unavailable" },
+  } })));
+  expect(host.querySelector('[data-presentation="background-blend"]')).toBeNull();
+  expect(button(I18N.overlay.closeSubtitles)).not.toBeNull();
+
+  await act(async () => useStore.setState(state => ({ session: {
+    ...state.session, isActive: true, status: { kind: "listening" },
+  } })));
+  expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
 });
 
 it.each(["system", "microphone", "both"] as const)("keeps %s sources identifiable in the collapsed and paused surface", async audioInput => {
@@ -111,10 +96,6 @@ it.each(["system", "microphone", "both"] as const)("keeps %s sources identifiabl
 
 it.each([
   ["setOverlayCollapsed", () => I18N.overlay.collapseSubtitle],
-  ["clearSubtitles", () => I18N.overlay.clearSubtitles],
-  ["saveSettings", () => I18N.overlay.enterImmersiveMode],
-  ["setOverlayLocked", () => I18N.overlay.lockPosition],
-  ["showSettings", () => I18N.overlay.openSettings],
   ["stop", () => I18N.overlay.closeSubtitles],
 ] as const)("guards %s until settled, shows a safe failure and permits a manual retry", async (action, label) => {
   let reject!: (error: Error) => void;
@@ -126,7 +107,7 @@ it.each([
   expect(operation).toHaveBeenCalledOnce();
   expect(selected.getAttribute("aria-busy")).toBe("true");
   expect(selected.disabled).toBe(true);
-  expect(button(I18N.overlay.openSettings).disabled).toBe(true);
+  expect(button(I18N.overlay.pause).disabled).toBe(true);
   expect(host.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
   await act(async () => reject(new Error("synthetic private detail must not be shown")));
   expect(selected.disabled).toBe(false);
@@ -212,10 +193,10 @@ it("keeps a collapsed close failure visible and disables close while stopping", 
   expect(button(I18N.overlay.closeSubtitles).disabled).toBe(true);
 });
 
-it("retains direct close at the minimum width without overlapping the capsule", async () => {
+it("retains all three direct actions at the minimum width", async () => {
   vi.stubGlobal("innerWidth", 360);
   await act(async () => root.render(<OverlayWindow />));
-  expect(button(I18N.overlay.closeSubtitles)).not.toBeNull();
-  expect(button(I18N.overlay.pause)).toBeNull();
-  expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(1);
+  expect(Array.from(host.querySelectorAll(".overlay-control-button"), button => button.getAttribute("aria-label"))).toEqual([
+    I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.closeSubtitles,
+  ]);
 });

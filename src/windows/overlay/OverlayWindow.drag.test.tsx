@@ -81,11 +81,11 @@ it("moves from empty top chrome without focusing or folding on double-click", as
   expect(native.move).toHaveBeenCalledTimes(2);
 });
 
-it("does not turn controls, service help, captions or resize edges into drag targets", async () => {
+it("does not turn toolbar controls, captions or resize edges into drag targets", async () => {
   await mount();
   for (const selector of [
-    `button[aria-label="${I18N.overlay.openSettings}"]`,
-    ".overlay-service__button",
+    `button[aria-label="${I18N.overlay.pause}"]`,
+    '[data-testid="collapse-subtitles"]',
     '[data-testid="subtitle-content"]',
     '[data-testid="resize-edge"]',
   ]) {

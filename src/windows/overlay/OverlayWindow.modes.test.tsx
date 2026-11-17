@@ -93,7 +93,8 @@ it.each(["zh", "en", "ja"] as const)("uses one status line for a pending or fail
     .mockResolvedValue(undefined);
   useStore.setState({ togglePaused });
   await mount(empty);
-  expect(host.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
+  expect(host.querySelector('.overlay-latency [role="status"]')?.textContent).toBe(I18N.overlay.translating);
+  expect(host.querySelector(".overlay-latency__measurement")).toBeNull();
   const pause = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!;
   await act(async () => pause.click());
   expect(host.querySelector('[data-testid="overlay-latency"]')).toBeNull();
@@ -104,7 +105,8 @@ it.each(["zh", "en", "ja"] as const)("uses one status line for a pending or fail
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!.click());
   expect(togglePaused).toHaveBeenCalledTimes(2);
   expect(host.querySelector(".overlay-action-feedback")).toBeNull();
-  expect(host.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
+  expect(host.querySelector('.overlay-latency [role="status"]')?.textContent).toBe(I18N.overlay.translating);
+  expect(host.querySelector(".overlay-latency__measurement")).toBeNull();
 });
 
 it.each(["Latest corrected English source.", "最新の修正された原文。", "최근에 수정된 원문입니다."])("switches modes using raw %s for original and one complete same-source preview for translated modes", async (source) => {
@@ -352,12 +354,10 @@ it("does not duplicate committed same-language recognition when a prior translat
   }
 });
 
-it("keeps clear reachable while only a complete preview pair remains", async () => {
+it("removes a complete preview pair when another surface clears captions", async () => {
   await mount({ ...empty, previewPair: { source: "Complete source without raw tail.", translation: "原始尾句为空时的完整译文。" } });
   expect(visibleLanes()).toEqual(["Complete source without raw tail.", "原始尾句为空时的完整译文。"]);
-  const clear = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.clearSubtitles}"]`);
-  expect(clear).not.toBeNull();
-  await act(async () => clear!.click());
+  await act(async () => useStore.getState().clearSubtitles());
   expect(visibleLanes()).toEqual([]);
 });
 
@@ -381,9 +381,7 @@ it("keeps paused text readable across modes and resumes with a new complete pair
 it("clears all three modes through the real clear action without resurrecting a pending draft", async () => {
   await mount({ ...empty, source: { text: "Visible original before clear.", isFinal: false },
     previewPair: { source: "Visible paired original before clear.", translation: "清空前的译文。" }, history: [confirmed] });
-  const clear = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.clearSubtitles}"]`)!;
-  expect(clear).not.toBeNull();
-  await act(async () => clear.click());
+  await act(async () => useStore.getState().clearSubtitles());
   for (const displayMode of modes) {
     await mode(displayMode);
     expect(visibleLanes()).toEqual([]);

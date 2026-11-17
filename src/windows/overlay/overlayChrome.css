@@ -72,34 +72,26 @@
   background: rgba(255, 255, 255, 0.10);
 }
 
-.overlay-action-strip__separator {
-  flex: 0 0 1px;
-  margin-inline: 2px;
-  height: 13px;
-  background: rgba(255, 255, 255, 0.15);
-  pointer-events: none;
-}
-
 @media (forced-colors: active) {
   .overlay-action-strip { border-color: ButtonText; background: Canvas; }
-  .overlay-action-strip__separator { background: ButtonText; }
+}
+
+.overlay-expanded-canvas:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
+  --overlay-caption-inset: 60px;
+  --overlay-status-top: 43px;
 }
 
 /* A nonactivating WebView can lose focus while still hovered. The browser's
    hover and the native pointer bridge each reveal these controls independently.
    Inactive controls keep their tab order without taking clicks. */
 @media (hover: hover) and (pointer: fine) {
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-service, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
     opacity: 0;
     pointer-events: none;
   }
 
   .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
     pointer-events: none;
-  }
-
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], :has(:focus-visible)) :is(.overlay-latency__measurement, .overlay-latency:not(:has([role="status"]))) {
-    display: none;
   }
 
   /* A quiet caption view gives back the toolbar's space. Only visible

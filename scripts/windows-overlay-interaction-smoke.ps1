@@ -48,6 +48,11 @@ public static class MimiPointerSmoke {
     private static extern IntPtr WindowFromPoint(Point point);
     [DllImport("user32.dll")]
     private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    private delegate bool WindowVisitor(IntPtr window, IntPtr data);
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(WindowVisitor visit, IntPtr data);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("user32.dll")]
@@ -75,13 +80,30 @@ public static class MimiPointerSmoke {
             window.ToInt64(), name, process, bounds, GetDpiForWindow(window), GetWindowExStyle(window, -20));
     }
 
+    public static IntPtr FindVisibleControlWindow(IntPtr overlay) {
+        IntPtr result = IntPtr.Zero;
+        int count = 0;
+        // On Windows the detached control WebView is an owned top-level
+        // window. Settings can have a similar title, so use native ownership.
+        EnumWindows(delegate(IntPtr window, IntPtr data) {
+            if (IsWindowVisible(window) && GetWindow(window, 4) == overlay) { // GW_OWNER
+                result = window;
+                count++;
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (count > 1)
+            throw new InvalidOperationException("Multiple visible windows are owned by the subtitle overlay.");
+        return result;
+    }
+
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
         var point = new Point { X = x, Y = y };
         var hit = WindowFromPoint(point);
         var root = GetAncestor(hit, 2);
         if (root != overlay)
             throw new InvalidOperationException(String.Format(
-                "{0} point ({1},{2}) did not hit the overlay. Expected {3}; hit {4}; hit root {5}.",
+                "{0} point ({1},{2}) did not hit the expected Mimi window. Expected {3}; hit {4}; hit root {5}.",
                 action, x, y, DescribeWindow(overlay), DescribeWindow(hit), DescribeWindow(root)));
         if (!SetCursorPos(x, y))
             throw new InvalidOperationException("Could not move the pointer on the test desktop.");
@@ -124,7 +146,10 @@ function Read-SmokeMarker([string]$Path) {
     }
 }
 
-function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [switch]$ReturnPoint, [switch]$WaitOnly) {
+function Use-OverlayControl(
+    [string]$Name, [string]$State, [string]$Action,
+    [switch]$ReturnPoint, [switch]$WaitOnly, [IntPtr]$Surface = $overlay, [switch]$NameSuffix
+) {
     $byName = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::NameProperty, $Name)
     $byRole = [System.Windows.Automation.PropertyCondition]::new(
@@ -137,8 +162,15 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
         $observedState = Read-SmokeMarker $SessionStateFile
         if ($observedState -eq $State) {
             try {
-                $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
-                $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                $root = [System.Windows.Automation.AutomationElement]::FromHandle($Surface)
+                if ($NameSuffix) {
+                    $button = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $byRole) |
+                        Where-Object { $_.Current.Name.EndsWith($Name, [StringComparison]::Ordinal) } |
+                        Select-Object -First 1
+                }
+                else {
+                    $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+                }
                 if ($null -ne $button -and $button.Current.IsEnabled -and -not $button.Current.IsOffscreen) {
                     if ($WaitOnly) { return }
                     if ($Interaction -eq 'accessibility') {
@@ -153,7 +185,7 @@ function Use-OverlayControl([string]$Name, [string]$State, [string]$Action, [swi
                     if (-not $bounds.IsEmpty -and $bounds.Width -gt 0 -and $bounds.Height -gt 0) {
                         $x = [int]($bounds.X + $bounds.Width / 2)
                         $y = [int]($bounds.Y + $bounds.Height / 2)
-                        [MimiPointerSmoke]::ClickOverlay($overlay, $x, $y, $Action)
+                        [MimiPointerSmoke]::ClickOverlay($Surface, $x, $y, $Action)
                         if ($ReturnPoint) { return @{ X = $x; Y = $y } }
                         return
                     }
@@ -211,9 +243,15 @@ try {
         Use-OverlayControl 'Resume translating' 'paused' "Resume $round"
     }
 
-    Use-OverlayControl 'Open Mimi Settings' 'listening' 'Settings gear'
-    Wait-SettingsOpened 'Settings gear'
-    Write-Output "Native overlay $Interaction passed: three Pause/Resume cycles kept Settings hidden, then the gear opened it."
+    $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
+    if ($controls -eq [IntPtr]::Zero) {
+        throw 'The subtitle overlay did not expose its owned language control window.'
+    }
+    Use-OverlayControl 'Open subtitle controls' 'listening' 'Language capsule' -Surface $controls -NameSuffix
+    $moreSettings = 'More Settings' + [char]0x2026
+    Use-OverlayControl $moreSettings 'listening' 'More Settings in subtitle controls' -Surface $controls
+    Wait-SettingsOpened 'More Settings in subtitle controls'
+    Write-Output "Native overlay $Interaction passed: three Pause/Resume cycles kept Settings hidden, then More Settings in the owned control window opened it."
 
     if ($Interaction -eq 'pointer') {
         Remove-Item -LiteralPath $SettingsActivationFile -Force

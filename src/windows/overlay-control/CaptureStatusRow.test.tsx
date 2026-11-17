@@ -118,7 +118,7 @@ it("groups independent source choices with one heading help and keeps details in
   expect(toggle("microphone").disabled).toBe(false);
   expect(toggle("system").textContent).toBe("System audio");
   expect(host.querySelectorAll('.settings-help-control__button')).toHaveLength(1);
-  expect(host.querySelector('.overlay-control-capture__heading')?.textContent).toContain("Audio input");
+  expect(host.querySelector('.overlay-control-capture h2')?.textContent).toBe("Audio input");
   expect(toggle("system").querySelector('.overlay-control-capture__check svg')).not.toBeNull();
   expect(toggle("microphone").querySelector('.overlay-control-capture__check svg')).toBeNull();
   expect(status("system")).toBe("Receiving sound");

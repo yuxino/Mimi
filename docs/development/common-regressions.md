@@ -396,7 +396,9 @@ page must include a review of other instances of the same pattern.
   input. Do not gate it on microphone selection or source-icon visibility. Test
   system, microphone and both inputs explicitly in normal and immersive views;
   the Timeline default input can otherwise hide a system-only regression. Keep
-  the Rust/TypeScript minimum-height contract in sync with the metadata row.
+  the Rust/TypeScript minimum-height contract in sync. The single-row toolbar
+  keeps the historical resize allowance; service details live in the language
+  panel, while recovery and Back to live still need room above captions.
 - The multilingual label repair in `dc2143f` did not cover the Windows-only
   output selector. Issue #132 put the selector and idle sentence in one inline
   wrapper: its intrinsic width squeezed Chinese labels into one-character

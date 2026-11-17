@@ -4,8 +4,8 @@ import {
 } from "../../lib/subtitleTypography";
 
 export const OVERLAY_BASE_MINIMUM_HEIGHT = 136;
-const SERVICE_ROW_HEIGHT = 20;
-export const OVERLAY_MAXIMUM_CHROME_HEIGHT = 85 + SERVICE_ROW_HEIGHT;
+const LEGACY_SERVICE_ROW_HEIGHT = 20;
+export const OVERLAY_MAXIMUM_CHROME_HEIGHT = 85 + LEGACY_SERVICE_ROW_HEIGHT;
 const METADATA_ROW_HEIGHT = 22;
 const SOURCE_DIVIDER_HEIGHT = 15;
 
@@ -14,10 +14,11 @@ const SOURCE_DIVIDER_HEIGHT = 15;
 export function minimumOverlayHeight(settings: Pick<SettingsSnapshot,
   "audioInput" | "subtitleDisplayMode" | "targetLanguage" | "fontSize">
   & Partial<Pick<SettingsSnapshot, "showSubtitleTimestamps">>): number {
-  // Keep a width-independent minimum so narrowing a short window cannot take
-  // the extra service row out of its subtitle budget during a resize gesture.
+  // Retain the existing resize minima, including historical service-row space.
+  // The slimmer toolbar releases room inside the viewport; it must not shrink
+  // the saved frame or the budget for large bilingual/source metadata.
   const sourceCount = settings.audioInput === "both" ? 2 : 1;
-  const minimumHeight = OVERLAY_BASE_MINIMUM_HEIGHT + SERVICE_ROW_HEIGHT
+  const minimumHeight = OVERLAY_BASE_MINIMUM_HEIGHT + LEGACY_SERVICE_ROW_HEIGHT
     + (sourceCount === 1 && settings.showSubtitleTimestamps ? METADATA_ROW_HEIGHT : 0);
   const font = normalizeSubtitleFontSize(settings.fontSize);
   const translationLine = Math.ceil(font * SUBTITLE_LINE_HEIGHT);

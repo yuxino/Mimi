@@ -44,6 +44,4 @@
 .overlay-service .provider-icon__image,
 .overlay-service .provider-icon__generic { width: 16px; height: 16px; }
 .overlay-service .provider-icon__image--deeplx { border-radius: 3px; }
-.overlay-status-row__trailing--reading .overlay-service__name { display: none; }
-.overlay-status-row__trailing--reading .overlay-service__stage { flex: 0 0 auto; }
 .overlay-service-tooltip { white-space: pre-line; }

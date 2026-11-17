@@ -2,7 +2,6 @@ import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions"
 import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "../../lib/i18n";
-import { targetLanguagesForSettings } from "../../lib/providerCapabilities";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
@@ -22,6 +21,7 @@ import {
 } from "../../lib/store";
 import {
   computeActivityPhaseFromSignals,
+  hasSubtitleContent,
   isWaitingForFinalTranslation,
   languageStatus,
   pendingSourceTranslation,
@@ -66,8 +66,10 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const switchTargetLanguage = useStore((state) => state.switchTargetLanguage);
   const saveSettings = useStore((state) => state.saveSettings);
   const setOverlayLocked = useStore((state) => state.setOverlayLocked);
+  const clearSubtitles = useStore((state) => state.clearSubtitles);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
+  const hasContent = useStore(state => mode === "panel" && hasSubtitleContent(state.session.subtitles));
   const updateNativePointer = useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
   useEffect(() => {
     if (!isTauri || embedded) return;
@@ -87,22 +89,6 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const quietIsland = isTauri && mode === "island" && sessionStatusKind !== "error" &&
     !collapsed && !settings.isOverlayLocked && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");
-  const translationTarget = useRef({ profileId: settings.activeProfileId, language: settings.targetLanguage });
-  useEffect(() => {
-    if (translationTarget.current.profileId !== settings.activeProfileId || settings.targetLanguage !== "original") {
-      translationTarget.current = { profileId: settings.activeProfileId, language: settings.targetLanguage };
-    }
-  }, [settings.activeProfileId, settings.targetLanguage]);
-  const setSkipTranslation = async (enabled: boolean) => {
-    const targets = targetLanguagesForSettings(settings);
-    const previous = translationTarget.current.profileId === settings.activeProfileId ? translationTarget.current.language : "original";
-    const target = enabled ? "original" : previous !== "original" && targets.includes(previous) ? previous : targets.find(language => language !== "original");
-    if (target) {
-      const finishLanguageChange = trackLanguageChange(target);
-      try { await switchTargetLanguage(target); finishLanguageChange(true); }
-      catch (error) { finishLanguageChange(false); throw error; }
-    }
-  };
 
   const toggle = useCallback(() => {
     if (isTauri) {
@@ -218,6 +204,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
           isWaitingForFinalTranslation={isWaiting}
           isChangingSession={isChangingSession}
           isStopping={sessionStatusKind === "stopping"}
+          hasContent={hasContent}
           permissionRequired={permissionRequired}
           sessionErrorMessage={sessionErrorMessage}
           errorSettingsTarget={errorSettingsTarget}
@@ -230,15 +217,12 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
             try { await switchTargetLanguage(target); finishLanguageChange(true); }
             catch (error) { finishLanguageChange(false); throw error; }
           }}
-          onSetSkipTranslation={setSkipTranslation}
-          onSetIntermediateSubtitles={(showIntermediateSubtitles) => saveSettings({ showIntermediateSubtitles })}
-          onSetSubtitleDividers={(showSubtitleDividers) => saveSettings({ showSubtitleDividers })}
-          onSetSubtitleTimestamps={(showSubtitleTimestamps) => saveSettings({ showSubtitleTimestamps })}
           onSetSubtitleDisplayMode={(subtitleDisplayMode) => saveSettings({ subtitleDisplayMode })}
           onSetImmersiveMode={(subtitleBlendsWithBackground) =>
             saveSettings({ subtitleBlendsWithBackground })
           }
           onSetOverlayLocked={setOverlayLocked}
+          onClearSubtitles={clearSubtitles}
           onShowSettings={showSettings}
         />
       )}

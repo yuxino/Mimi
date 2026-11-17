@@ -25,7 +25,7 @@
   right: 18px;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 10px;
   align-items: center;
   height: 14px;
@@ -35,9 +35,6 @@
 .overlay-status-row__leading,
 .overlay-status-row__trailing { display: flex; align-items: center; min-width: 0; height: 14px; gap: 6px; }
 .overlay-status-row__trailing { justify-content: flex-end; }
-.overlay-status-row--narrow { grid-template-columns: minmax(0, 1fr) fit-content(45%); }
-.overlay-status-row--narrow .overlay-service { max-width: 96px; }
-.overlay-status-row--narrow .overlay-service--split { max-width: 120px; }
 .overlay-status-row .overlay-latency,
 .overlay-status-row .overlay-action-feedback {
   position: static;

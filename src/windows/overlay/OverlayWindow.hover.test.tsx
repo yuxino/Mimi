@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OverlayPointerMotion } from "../../lib/ipc";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { isClickablePointerTarget } from "../../lib/overlayPointer";
 import { useStore } from "../../lib/store";
 import { OverlayWindow } from "./OverlayWindow";
 
@@ -56,7 +55,7 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   expect(listenPointer).toHaveBeenCalledOnce();
   const surface = host.querySelector(".overlay-surface")!;
   expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
-  const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.openSettings}"]`)!;
+  const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!;
   const hitTest = vi.fn(() => surface.hasAttribute("data-overlay-hover") ? button.querySelector("svg") : null);
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: hitTest });
   const beforeEntering = commits.mock.calls.length;
@@ -66,7 +65,7 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   expect(commits).toHaveBeenCalledTimes(beforeEntering);
   await act(async () => pointer(null));
   await act(async () => pointer({ x: 20, y: 20 }));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.openSettings);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
   expect(button.dataset.hovered).toBe("true");
   expect(document.activeElement).not.toBe(button);
   const afterEntering = commits.mock.calls.length;
@@ -112,48 +111,32 @@ it("releases a native listener that finishes registering after the overlay unmou
   expect(unlisten).toHaveBeenCalledOnce();
 });
 
-it("keeps every toolbar action in place after clearing and rejects clicks on the empty clear slot", async () => {
+it("keeps the same toolbar buttons and hover target when another surface clears captions", async () => {
   const subtitles = {
     source: { text: "Synthetic recognition to clear.", isFinal: false },
     translation: { text: "", isFinal: false }, history: [], previewPair: null,
   };
-  const clearSubtitles = vi.fn(async () => {
-    useStore.setState(state => ({ session: { ...state.session, subtitles: {
-      source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
-      history: [], previewPair: null,
-    } } }));
-  });
   useStore.setState(state => ({
-    clearSubtitles,
+    clearSubtitles: async () => useStore.setState(current => ({ session: {
+      ...current.session, subtitles: { ...subtitles, source: { text: "", isFinal: false } },
+    } })),
     settings: { ...state.settings, sourceLanguage: "auto", targetLanguage: "zh", subtitleDisplayMode: "translation" },
     session: { ...state.session, subtitles, detectedLanguage: "en" },
   }));
   await act(async () => root.render(<OverlayWindow />));
   const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
-    I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
-    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.openSettings, I18N.overlay.closeSubtitles,
+    I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.closeSubtitles,
   ]);
-  const clear = buttons[2];
-  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => clear.querySelector("svg") });
+  const pause = buttons[0];
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => pause.querySelector("svg") });
   await act(async () => pointer({ x: 20, y: 20 }));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.clearSubtitles);
-  expect(isClickablePointerTarget(clear)).toBe(true);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
 
-  await act(async () => clear.click());
+  await act(async () => useStore.getState().clearSubtitles());
   const emptyButtons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(emptyButtons).toHaveLength(buttons.length);
   emptyButtons.forEach((button, index) => expect(button).toBe(buttons[index]));
-  expect(clear.disabled).toBe(true);
-  expect(isClickablePointerTarget(clear)).toBe(false);
-  await act(async () => { clear.click(); pointer({ x: 21, y: 20 }); });
-  expect(clearSubtitles).toHaveBeenCalledOnce();
-  expect(document.querySelector('[role="tooltip"]')).toBeNull();
-  await act(async () => pointer(null));
-  await act(async () => pointer({ x: 20, y: 20 }));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.clearSubtitles);
-
-  await act(async () => useStore.setState(state => ({ session: { ...state.session, subtitles } })));
-  expect(host.querySelector(`button[aria-label="${I18N.overlay.clearSubtitles}"]`)).toBe(clear);
-  expect(clear.disabled).toBe(false);
+  expect(pause.disabled).toBe(false);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
 });

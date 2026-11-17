@@ -99,7 +99,7 @@ it("keeps deliberate history reading through mode and pause changes, then return
 
 it("removes the reading action on clear and starts new session content in live following", async () => {
   await mount(); await readHistory(); expect(returnButton()).not.toBeNull();
-  await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.clearSubtitles}"]`)!.click());
+  await act(async () => useStore.getState().clearSubtitles());
   expect(returnButton()).toBeNull(); expect(host.querySelector('[tabindex="0"]')).toBeNull();
   await act(async () => useStore.setState(state => ({ session: { ...state.session, status: { kind: "connecting" }, subtitles: empty } })));
   const next = { source: "New synthetic session.", translation: "新的测试会话。", createdAt: 2 };
@@ -136,14 +136,17 @@ it("opens an unconfirmed long pair through pause and mode changes and returns it
   expect(useStore.getState().session.subtitles.history).toEqual([]);
 });
 
-it.each(["zh", "en", "ja"] as const)("keeps the return action beside timings and actionable errors at 360×136 in %s", async language => {
+it.each(["zh", "en", "ja"] as const)("keeps the return action beside translation status and actionable errors at 360×136 in %s", async language => {
   vi.stubGlobal("innerWidth", 360); setStoredUiLanguage(language);
-  useStore.setState({ stop: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")) });
+  useStore.setState(state => ({
+    stop: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")),
+    session: { ...state.session, isTranslationPending: true },
+  }));
   await mount(); await readHistory();
   const row = host.querySelector<HTMLElement>(".overlay-status-row")!;
-  expect(row.classList.contains("overlay-status-row--narrow")).toBe(true);
   expect(returnButton()?.textContent).toBe({ zh: "回到实时", en: "Back to live", ja: "リアルタイムへ" }[language]);
-  expect(row.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
+  expect(row.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translating);
+  expect(row.querySelector(".overlay-latency__measurement")).toBeNull();
   expect(returnButton()?.closest(".overlay-status-row")).toBe(row);
   expect(timeline().contains(returnButton())).toBe(false);
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)!.click());
@@ -154,7 +157,7 @@ it.each(["zh", "en", "ja"] as const)("keeps the return action beside timings and
   expect(row.querySelector('[role="alert"]')).not.toBeNull();
 });
 
-it.each(["zh", "en", "ja"] as const)("hides immersive timings while retaining bilingual reading and return to live in %s", async language => {
+it.each(["zh", "en", "ja"] as const)("retains bilingual reading and return to live in immersive mode in %s", async language => {
   vi.stubGlobal("innerWidth", 360); setStoredUiLanguage(language);
   useStore.setState(state => ({ session: { ...state.session, apiLatencyMs: 1_500, translationLatencyMs: 3_000 },
     settings: { ...state.settings, subtitleBlendsWithBackground: true } }));
@@ -171,8 +174,8 @@ it.each(["zh", "en", "ja"] as const)("hides immersive timings while retaining bi
   expect(host.querySelector(".overlay-status-row")).toBeNull();
   expect(timeline().scrollTop).toBe(249);
   await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false } })));
-  expect(host.querySelector('[data-testid="overlay-latency"]')).not.toBeNull();
-  expect(Array.from(host.querySelectorAll(".overlay-latency strong"), element => (element as HTMLElement).dataset.tone)).toEqual(["slow", "slow"]);
+  expect(host.querySelector('[data-testid="overlay-latency"]')).toBeNull();
+  expect(host.querySelector('.overlay-status-row :is([role="status"], [role="alert"])')).toBeNull();
 });
 
 it("retains pending and failed action feedback after enabling immersion without restoring timings", async () => {

@@ -1,5 +1,6 @@
 import { profileSelectionState } from "../../lib/profileSelection";
 import { SettingsToastRegion } from "../settings/SettingsToast";
+import { useSettingsToast } from "../settings/useSettingsToast";
 import { activeServiceProfile } from "../../lib/providerCapabilities";
 import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
@@ -31,6 +32,7 @@ import {
 } from "../overlay/overlayModel";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { CaptureStatusRow } from "./CaptureStatusRow";
+import { OverlaySessionDetails } from "./OverlaySessionDetails";
 import type { OverlayControlPanelModel } from "./overlayControlModel";
 
 type PendingAction =
@@ -39,12 +41,9 @@ type PendingAction =
   | "display"
   | "source"
   | "target"
-  | "translation"
-  | "intermediate"
-  | "dividers"
-  | "timestamps"
   | "immersive"
   | "lock"
+  | "clear"
   | "settings";
 
 interface OverlayControlPanelProps {
@@ -57,6 +56,7 @@ interface OverlayControlPanelProps {
   isWaitingForFinalTranslation: boolean;
   isChangingSession: boolean;
   isStopping?: boolean;
+  hasContent: boolean;
   sessionErrorMessage?: string | null;
   permissionRequired?: boolean;
   errorSettingsTarget?: SettingsNavigationTarget | null;
@@ -65,46 +65,11 @@ interface OverlayControlPanelProps {
   onSelectProfile: (profileId: string) => Promise<void>;
   onSwitchSourceLanguage: (language: SourceLanguage) => Promise<void>;
   onSwitchTargetLanguage: (language: TargetLanguage) => Promise<void>;
-  onSetSkipTranslation: (enabled: boolean) => Promise<void>;
-  onSetIntermediateSubtitles: (enabled: boolean) => Promise<void>;
-  onSetSubtitleDividers: (enabled: boolean) => Promise<void>;
-  onSetSubtitleTimestamps: (enabled: boolean) => Promise<void>;
   onSetSubtitleDisplayMode: (mode: SubtitleDisplayMode) => Promise<void>;
   onSetImmersiveMode: (enabled: boolean) => Promise<void>;
   onSetOverlayLocked: (locked: boolean) => Promise<void>;
+  onClearSubtitles: () => Promise<void>;
   onShowSettings: (target?: SettingsNavigationTarget) => Promise<void>;
-}
-
-function CaptionPreferenceSwitch({ label, help, checked, disabled, onToggle }: {
-  label: string;
-  help: string;
-  checked: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  const id = useId();
-  const helpId = `${id}-help`;
-  return (
-    <div className="overlay-control-setting-row">
-      <span className="overlay-control-setting__copy">
-        <label htmlFor={id}><strong>{label}</strong></label>
-        <SettingsHelp id={helpId} text={help} label={I18N.settings.helpLabel} />
-      </span>
-      <button
-        id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        aria-describedby={helpId}
-        className={`overlay-control-setting overlay-control-setting--toggle${checked ? " is-on" : ""}`}
-        disabled={disabled}
-        onClick={onToggle}
-      >
-        <span className="overlay-control-switch" aria-hidden="true"><span /></span>
-      </button>
-    </div>
-  );
 }
 
 export function OverlayControlPanel({
@@ -117,6 +82,7 @@ export function OverlayControlPanel({
   isWaitingForFinalTranslation,
   isChangingSession,
   isStopping = false,
+  hasContent,
   sessionErrorMessage,
   permissionRequired = false,
   errorSettingsTarget,
@@ -125,16 +91,14 @@ export function OverlayControlPanel({
   onSelectProfile,
   onSwitchSourceLanguage,
   onSwitchTargetLanguage,
-  onSetSkipTranslation,
-  onSetIntermediateSubtitles,
-  onSetSubtitleDividers,
-  onSetSubtitleTimestamps,
   onSetSubtitleDisplayMode,
   onSetImmersiveMode,
   onSetOverlayLocked,
+  onClearSubtitles,
   onShowSettings,
 }: OverlayControlPanelProps) {
   const { nativeShortcuts } = useDesktopShortcuts();
+  const { beginToast } = useSettingsToast();
   const panelRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const sourceControlRef = useRef<HTMLDivElement>(null);
@@ -142,13 +106,13 @@ export function OverlayControlPanel({
   const displayControlRef = useRef<HTMLDivElement>(null);
   const immersiveRef = useRef<HTMLButtonElement>(null);
   const lockRef = useRef<HTMLButtonElement>(null);
-  const translationHeadingId = useId();
   const subtitlesHeadingId = useId();
   const actionInFlight = useRef(false);
   const mounted = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const canChangeSessionSettings = !isChangingSession && pendingAction === null;
+  const sourceGuidance = speechLanguageGuidance(settings);
 
   useEffect(() => {
     mounted.current = true;
@@ -222,7 +186,7 @@ export function OverlayControlPanel({
     const target = [
       sourceControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       targetControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
-      displayControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
+      displayControlRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]'),
       immersiveRef.current,
       lockRef.current,
     ].find((candidate) => candidate != null && !candidate.disabled);
@@ -239,21 +203,26 @@ export function OverlayControlPanel({
     name: PendingAction,
     operation: () => Promise<void>,
     dismissAfter = true,
-    failureMessage = I18N.overlay.controlActionFailed,
   ) => {
     if (actionInFlight.current) return;
     actionInFlight.current = true;
     setPendingAction(name);
     setOperationError(null);
+    const failureMessage = I18N.overlay.controlActionFailed;
+    const notifyClearFailure = name === "clear" ? beginToast() : null;
     void operation()
       .then(() => {
         if (mounted.current && dismissAfter) onDismiss();
       })
       .catch((error: unknown) => {
         if (!mounted.current) return;
+        if (notifyClearFailure) {
+          notifyClearFailure(failureMessage, true);
+          return;
+        }
         setOperationError(
           name === "profile" ? profileErrorMessage(error)
-            : name === "source" || name === "target" || name === "translation" ? languageActionErrorMessage(error, failureMessage)
+            : name === "source" || name === "target" ? languageActionErrorMessage(error, failureMessage)
               : name === "retry" ? sessionActionErrorMessage(error, failureMessage) : failureMessage,
         );
       })
@@ -295,16 +264,43 @@ export function OverlayControlPanel({
           onRetry={onRetrySession ? () => performAction("retry", onRetrySession, false) : undefined}
           disabled={pendingAction !== null || isChangingSession}
         />}
-        <div className="overlay-control-section">
-          <CaptureStatusRow disabled={pendingAction !== null} />
-        </div>
+        <section className="overlay-control-section" aria-label={I18N.settings.voiceTranslation}>
+          <div className="overlay-control-language-pair">
+            <div ref={sourceControlRef} className="overlay-control-picker">
+              <span className="overlay-control-picker__label">
+                <span>{I18N.overlay.sourceLanguage}</span>
+                <SettingsHelp text={sourceGuidance.help} label={I18N.settings.helpLabel} />
+              </span>
+              <LanguageSelect
+                label={I18N.overlay.sourceLanguage}
+                value={settings.sourceLanguage}
+                valueLabel={sourceGuidance.optionLabel(settings.sourceLanguage)}
+                options={model.sourceOptions.map(language => ({ value: language, label: sourceGuidance.optionLabel(language) }))}
+                disabled={!canChangeSessionSettings || model.sourceOptions.length === 0 || (model.sourceOptions.length === 1 && model.sourceOptions[0] === settings.sourceLanguage)}
+                onChange={(value) => performAction("source", () => onSwitchSourceLanguage(value as SourceLanguage), false)}
+              />
+            </div>
 
-        <section className="overlay-control-section" aria-labelledby={translationHeadingId}>
-          <div className="overlay-control-section__heading">
-            <h2 className="overlay-control-section__title" id={translationHeadingId}>{I18N.settings.voiceTranslation}</h2>
-            <SettingsHelp text={I18N.settings.profileSwitchHelp} label={`${I18N.settings.currentProfile} · ${I18N.settings.helpLabel}`} />
+            <div ref={targetControlRef} className="overlay-control-picker">
+              <span className="overlay-control-picker__label">
+                <span>{I18N.settings.translateTo}</span>
+                <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} />
+              </span>
+              <LanguageSelect
+                label={I18N.settings.translateTo}
+                value={settings.targetLanguage}
+                valueLabel={targetLanguageOptionLabel(settings, settings.targetLanguage)}
+                options={model.targetOptions.map(language => ({ value: language, label: targetLanguageOptionLabel(settings, language) }))}
+                disabled={!canChangeSessionSettings || model.targetOptions.length === 0 || (model.targetOptions.length === 1 && model.targetOptions[0] === settings.targetLanguage)}
+                onChange={value => performAction("target", () => onSwitchTargetLanguage(value as TargetLanguage), false)}
+              />
+            </div>
           </div>
           <div className="overlay-control-picker overlay-control-picker--profile" aria-busy={pendingAction === "profile"}>
+            <span className="overlay-control-picker__label">
+              <span>{I18N.settings.currentProfile}</span>
+              <SettingsHelp text={I18N.settings.profileSwitchHelp} label={`${I18N.settings.currentProfile} · ${I18N.settings.helpLabel}`} />
+            </span>
             <Select label={I18N.settings.currentProfile} value={settings.activeProfileId ?? ""}
               valueLabel={I18N.settings.noActiveProfile}
               options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name, ...profileSelectionState(profile, settings.targetLanguage),
@@ -319,38 +315,10 @@ export function OverlayControlPanel({
               }} />
           </div>
 
-          <div ref={sourceControlRef} className="overlay-control-picker">
-            <span className="overlay-control-picker__label">
-              <span>{I18N.overlay.sourceLanguage}</span>
-              <SettingsHelp text={speechLanguageGuidance(settings).help} label={I18N.settings.helpLabel} />
-            </span>
-            <LanguageSelect
-              label={I18N.overlay.sourceLanguage}
-              value={settings.sourceLanguage}
-              valueLabel={speechLanguageGuidance(settings).optionLabel(settings.sourceLanguage)}
-              options={model.sourceOptions.map((language) => ({
-                value: language,
-                label: speechLanguageGuidance(settings).optionLabel(language),
-              }))}
-              disabled={!canChangeSessionSettings || model.sourceOptions.length === 0 || (model.sourceOptions.length === 1 && model.sourceOptions[0] === settings.sourceLanguage)}
-              onChange={(value) => performAction("source", () => onSwitchSourceLanguage(value as SourceLanguage), false)}
-            />
-          </div>
-
-          <div ref={targetControlRef} className="overlay-control-picker">
-            <span className="overlay-control-picker__label">
-              <span>{I18N.settings.translateTo}</span>
-              <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} />
-            </span>
-            <LanguageSelect
-              label={I18N.settings.translateTo}
-              value={settings.targetLanguage}
-              valueLabel={targetLanguageOptionLabel(settings, settings.targetLanguage)}
-              options={model.targetOptions.map(language => ({ value: language, label: targetLanguageOptionLabel(settings, language) }))}
-              disabled={!canChangeSessionSettings || model.targetOptions.length === 0 || (model.targetOptions.length === 1 && model.targetOptions[0] === settings.targetLanguage)}
-              onChange={value => performAction("target", () => onSwitchTargetLanguage(value as TargetLanguage), false)}
-            />
-          </div>
+          <OverlaySessionDetails
+            onOpenProfile={() => performAction("settings", () => onShowSettings("activeProfile"))}
+            disabled={pendingAction !== null}
+          />
 
           {activeServiceProfile(settings)?.provider === "appleSpeech" && <div className="speech-resources-actions">
             <button type="button" className="speech-resources-link" disabled={pendingAction !== null}
@@ -358,54 +326,39 @@ export function OverlayControlPanel({
               <Icon name="gear" />{I18N.settings.appleSpeechResources}
             </button>
           </div>}
-          {speechLanguageGuidance(settings).notice && <div className="recognition-language-notice">{speechLanguageGuidance(settings).notice}</div>}
-
-          {model.canSkipTranslation && <button
-            type="button"
-            role="switch"
-            aria-checked={settings.targetLanguage === "original"}
-            aria-label={I18N.settings.skipTranslation}
-            className={`overlay-control-setting${settings.targetLanguage === "original" ? " is-on" : ""}`}
-            disabled={!canChangeSessionSettings}
-            onClick={() => performAction("translation", () => onSetSkipTranslation(settings.targetLanguage !== "original"), false)}
-          >
-            <span className="overlay-control-setting__copy"><strong>{I18N.settings.skipTranslation}</strong></span>
-            <span className="overlay-control-switch" aria-hidden="true"><span /></span>
-          </button>}
+          {sourceGuidance.notice && <div className="recognition-language-notice">{sourceGuidance.notice}</div>}
         </section>
 
+        <CaptureStatusRow disabled={pendingAction !== null} />
+
         <section className="overlay-control-section" aria-labelledby={subtitlesHeadingId}>
-          <div ref={displayControlRef} className="overlay-control-picker" title={nativeShortcuts ? subtitleDisplayShortcut() : undefined}>
-            <h2 className="overlay-control-section__title" id={subtitlesHeadingId}>{I18N.settings.subtitleTitle}</h2>
-            <Select label={I18N.settings.subtitleDisplay} value={settings.subtitleDisplayMode}
-              options={SUBTITLE_DISPLAY_OPTIONS} disabled={pendingAction !== null}
-              onChange={(value) => performAction("display", () => onSetSubtitleDisplayMode(value as SubtitleDisplayMode), false)} />
+          <h2 className="overlay-control-section__title" id={subtitlesHeadingId}>{I18N.settings.subtitleTitle}</h2>
+          <div
+            ref={displayControlRef}
+            className="overlay-control-display"
+            role="group"
+            aria-label={I18N.settings.subtitleDisplay}
+            title={nativeShortcuts ? subtitleDisplayShortcut() : undefined}
+          >
+            {SUBTITLE_DISPLAY_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={value === settings.subtitleDisplayMode}
+                disabled={pendingAction !== null}
+                onClick={() => {
+                  if (value !== settings.subtitleDisplayMode) {
+                    performAction("display", () => onSetSubtitleDisplayMode(value), false);
+                  }
+                }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+        </section>
 
-          <CaptionPreferenceSwitch
-            label={I18N.settings.showIntermediateSubtitles}
-            help={I18N.settings.showIntermediateSubtitlesHelp}
-            checked={settings.showIntermediateSubtitles !== false}
-            disabled={pendingAction !== null}
-            onToggle={() => performAction("intermediate", () => onSetIntermediateSubtitles(settings.showIntermediateSubtitles === false), false)}
-          />
-          <CaptionPreferenceSwitch
-            label={I18N.settings.subtitleDividers}
-            help={I18N.settings.subtitleDividersHelp}
-            checked={settings.showSubtitleDividers}
-            disabled={pendingAction !== null}
-            onToggle={() => performAction("dividers", () => onSetSubtitleDividers(!settings.showSubtitleDividers), false,
-              I18N.settings.settingSaveFailed(I18N.settings.subtitleDividers))}
-          />
-          <CaptionPreferenceSwitch
-            label={I18N.settings.subtitleTimestamps}
-            help={I18N.settings.subtitleTimestampsHelp}
-            checked={settings.showSubtitleTimestamps ?? false}
-            disabled={pendingAction !== null}
-            onToggle={() => performAction("timestamps", () => onSetSubtitleTimestamps(!settings.showSubtitleTimestamps), false,
-              I18N.settings.settingSaveFailed(I18N.settings.subtitleTimestamps))}
-          />
-
+        <div className="overlay-control-section overlay-control-section--actions">
           <button
             ref={immersiveRef}
             type="button"
@@ -453,18 +406,27 @@ export function OverlayControlPanel({
               <span />
             </span>
           </button>
-        </section>
-
-        <button
-          type="button"
-          className="overlay-control-settings-link"
-          disabled={pendingAction !== null}
-          onClick={() => performAction("settings", onShowSettings, false)}
-        >
-          <Icon name="gear" />
-          <span>{I18N.overlay.moreSettings}</span>
-          <Icon name="chevron-right" />
-        </button>
+          <div className="overlay-control-footer">
+            <button
+              type="button"
+              className="overlay-control-clear"
+              disabled={!hasContent || pendingAction !== null}
+              onClick={() => performAction("clear", onClearSubtitles, false)}
+            >
+              <Icon name="eraser" />
+              <span>{I18N.overlay.clearSubtitles}</span>
+            </button>
+            <button
+              type="button"
+              className="overlay-control-settings-link"
+              disabled={pendingAction !== null}
+              onClick={() => performAction("settings", onShowSettings, false)}
+            >
+              <span>{I18N.overlay.moreSettings}</span>
+              <Icon name="chevron-right" />
+            </button>
+          </div>
+        </div>
 
         {operationError && (
           <div className="overlay-control-alert" role="alert">

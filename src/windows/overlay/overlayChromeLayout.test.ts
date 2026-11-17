@@ -5,15 +5,15 @@ const listening = { isActive: true, status: { kind: "listening" as const } };
 const error = { isActive: false, status: { kind: "error" as const, message: "unavailable" } };
 
 describe("subtitle action strip", () => {
-  it.each([listening, error])("keeps Close available beside a maximum-width language capsule", session => {
+  it.each([listening, error])("keeps all three actions beside a maximum-width language capsule at minimum width", session => {
     expect(overlaySessionChromeLayout(348, session)).toMatchObject({
-      showPrimaryAction: true, showSessionAction: false, showActions: false,
+      showPrimaryAction: true, showSessionAction: true, showActions: true,
     });
   });
 
-  it("adds the session control next, then restores the full group at the default size", () => {
+  it("keeps the same controls at intermediate and default sizes", () => {
     expect(overlaySessionChromeLayout(400, listening)).toMatchObject({
-      showPrimaryAction: true, showSessionAction: true, showActions: false,
+      showPrimaryAction: true, showSessionAction: true, showActions: true,
     });
     expect(overlaySessionChromeLayout(568, listening)).toMatchObject({
       showPrimaryAction: true, showSessionAction: true, showActions: true,

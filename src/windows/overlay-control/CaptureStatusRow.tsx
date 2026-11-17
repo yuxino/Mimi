@@ -98,9 +98,9 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
     requiredSource ? `${requiredSource.text.source} · ${requiredSource.help}` : [copy.minimum, copy.switchHelp].join("\n"),
     copy.dualHelp,
   ].join("\n") : sources[0].help;
-  return <div className="overlay-control-capture" aria-label={I18N.settings.audioInputTitle} aria-busy={pending || targetPending}>
-    <div className="overlay-control-capture__heading">
-      <span>{I18N.settings.audioInputTitle}</span>
+  return <section className="overlay-control-section overlay-control-capture" aria-labelledby={id} aria-busy={pending || targetPending}>
+    <div className="overlay-control-section__heading">
+      <h2 className="overlay-control-section__title" id={id}>{I18N.settings.audioInputTitle}</h2>
       <SettingsHelp id={groupHelpId} text={groupHelp} label={`${I18N.settings.audioInputTitle} · ${I18N.settings.helpLabel}`} />
     </div>
     <div className={`overlay-control-capture__sources${microphoneAvailable ? "" : " is-unavailable"}`} role="group" aria-label={I18N.settings.audioInputTitle}>
@@ -133,5 +133,5 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
       <ApplicationAudioPicker disabled={locked} onBusyChange={setTargetPending} />
     </span>}
     {operationError && <div className="overlay-control-alert" role="alert"><Icon name="exclamation-triangle" /><span>{operationError}</span></div>}
-  </div>;
+  </section>;
 }

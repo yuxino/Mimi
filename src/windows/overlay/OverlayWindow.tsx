@@ -20,8 +20,6 @@ import { ControlButton } from "./ControlButton";
 import { OverlayDragArea } from "./OverlayDragArea";
 import { PulseRing } from "./PulseRing";
 import { OverlayLatency } from "./OverlayLatency";
-import { OverlayTranslationService } from "./OverlayTranslationService";
-import { translationService } from "./translationService";
 import { ResizeHandles } from "./ResizeHandles";
 import { Timeline } from "./Timeline";
 import { useResolvedMotion } from "./animation";
@@ -39,7 +37,6 @@ import {
   emptyStateDensity,
   emptyStateIsError,
   emptyStateText,
-  hasSubtitleContent,
   usesAtomicSubtitlePreview,
   usesStreamingSubtitlePreview,
 } from "./overlayModel";
@@ -51,7 +48,7 @@ const EMPTY_MICROPHONE: SourceSubtitleSnapshot = {
   history: [], detectedLanguage: null, isTranslationPending: false, isTranslationTimedOut: false,
 };
 const EMPTY_SYSTEM: SourceSubtitleSnapshot = { ...EMPTY_MICROPHONE, audioSource: "system" };
-type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | "close";
+type ControlAction = "collapse" | "settings" | "close";
 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
@@ -71,10 +68,7 @@ export function OverlayWindow() {
   const togglePaused = useStore((state) => state.togglePaused);
   const start = useStore((state) => state.start);
   const stop = useStore((state) => state.stop);
-  const clearSubtitles = useStore((state) => state.clearSubtitles);
   const setOverlayCollapsed = useStore((state) => state.setOverlayCollapsed);
-  const setOverlayLocked = useStore((state) => state.setOverlayLocked);
-  const saveSettings = useStore((state) => state.saveSettings);
   const showSettings = useStore((state) => state.showSettings);
   const sessionAction = useSessionAction();
   const [pauseRequested, setPauseRequested] = useState(false);
@@ -133,8 +127,6 @@ export function OverlayWindow() {
     session,
   );
   const showSessionControls = topChromeLayout.showControls;
-  const service = translationService(settings);
-  const narrowChrome = overlaySize.width < 480;
 
   const collapsed = session.isOverlayCollapsed;
   // Native geometry temporarily expands an error surface too. Preserve both
@@ -185,7 +177,6 @@ export function OverlayWindow() {
     : buildSubtitleBlocks(displayHistory, settings.subtitleDisplayMode, primaryTail)
       .map(block => ({ ...block, audioSource: block.audioSource ?? primaryAudioSource })),
   [dual, displayHistory, settings.subtitleDisplayMode, primarySubtitles.history, primaryTail, primaryAudioSource, microphoneSubtitles.history, microphoneTail]);
-  const hasContent = hasSubtitleContent(session.subtitles);
   const phaseLabel = session.status.kind === "stopping" ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   // The native pause snapshot can arrive while the IPC still waits for
   // capture and transport cleanup. Show Resume then, keeping it disabled
@@ -283,19 +274,15 @@ export function OverlayWindow() {
     const returnToLive = readingHistory && blocks.length > 0 && !presentationCollapsed;
     const showTiming = session.isActive && !blendsWithBackground;
     const actionFailed = sessionAction.failed || controlAction.failed;
-    const visibleService = blendsWithBackground ? null : service;
-    if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive && !visibleService) return null;
-    return <div className={`overlay-status-row${narrowChrome ? " overlay-status-row--narrow" : ""}`}
-      style={{ top: `var(--overlay-status-top, ${topChromeLayout.topBandHeight - 14}px)` }}>
+    if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive) return null;
+    return <div className="overlay-status-row"
+      style={{ top: `var(--overlay-status-top, ${topChromeLayout.topBandHeight + 3}px)` }}>
       <div className="overlay-status-row__leading">
         {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
           {pendingSessionLabel ?? actionFailureMessage}
-        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
+        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} showMeasurements={false} /> : null}
       </div>
       <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
-        {visibleService && <OverlayTranslationService service={visibleService}
-          onClick={() => runControlAction("settings", () => showSettings("activeProfile"))}
-          disabled={controlAction.pending} />}
         {returnToLive && <button type="button" className="overlay-return-to-live" onClick={() => {
           setReadingHistory(false);
           setFollowTailRequest(request => request + 1);
@@ -402,40 +389,6 @@ export function OverlayWindow() {
                 busy={pendingControl === "collapse"}
                 disabled={controlAction.pending || hasSessionError}
                 data-testid="collapse-subtitles"
-              />
-              <span className="overlay-action-strip__separator" aria-hidden="true" />
-              <ControlButton
-                icon="eraser"
-                label={I18N.overlay.clearSubtitles}
-                onClick={() => runControlAction("clear", clearSubtitles)}
-                busy={pendingControl === "clear"}
-                disabled={!hasContent || controlAction.pending}
-              />
-              <ControlButton
-                icon="blend"
-                label={I18N.overlay.enterImmersiveMode}
-                onClick={() =>
-                  runControlAction("immersive", () => saveSettings({ subtitleBlendsWithBackground: true }))
-                }
-                busy={pendingControl === "immersive"}
-                disabled={controlAction.pending || hasSessionError}
-                data-testid="toggle-immersive-mode"
-              />
-              <ControlButton
-                icon="lock"
-                label={I18N.overlay.lockPosition}
-                onClick={() => runControlAction("lock", () => setOverlayLocked(true))}
-                busy={pendingControl === "lock"}
-                disabled={controlAction.pending || hasSessionError}
-                data-testid="toggle-overlay-lock"
-              />
-              <span className="overlay-action-strip__separator" aria-hidden="true" />
-              <ControlButton
-                icon="gear"
-                label={I18N.overlay.openSettings}
-                onClick={() => runControlAction("settings", () => showSettings())}
-                busy={pendingControl === "settings"}
-                disabled={controlAction.pending}
               />
               </>}
               <ControlButton
