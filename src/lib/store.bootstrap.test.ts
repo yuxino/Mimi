@@ -23,6 +23,34 @@ beforeEach(() => {
 });
 afterEach(() => { disposeStoreSnapshotStreams(); vi.useRealTimers(); useStore.setState(initial, true); });
 
+it.each(["initial read", "event during retry"])("publishes ready once after %s", async (path) => {
+  let complete!: (snapshot: SettingsSnapshot) => void;
+  let settingsHandler!: (snapshot: SettingsSnapshot) => void;
+  if (path === "event during retry") {
+    sources.listenSettings.mockImplementationOnce(async (handler) => { settingsHandler = handler; return vi.fn(); });
+    sources.getSettings.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+  }
+  const ready = vi.fn();
+  const unsubscribe = useStore.subscribe((state) => { if (state.initialized) ready(); });
+  try {
+    const first = useStore.getState().init();
+    expect(useStore.getState().init()).toBe(first);
+    if (path === "event during retry") {
+      await vi.advanceTimersByTimeAsync(SNAPSHOT_STEP_TIMEOUT_MS); await first;
+      expect(useStore.getState().initializationStatus).toBe("error");
+      const retry = useStore.getState().init();
+      await vi.advanceTimersByTimeAsync(0);
+      settingsHandler(settings);
+      expect(useStore.getState().initializationStatus).toBe("ready");
+      complete(settings); await retry;
+    } else await first;
+    expect(useStore.getState()).toMatchObject({ initialized: true, initializationStatus: "ready", initializationError: null });
+    expect(ready).toHaveBeenCalledOnce();
+    await useStore.getState().init();
+    expect(ready).toHaveBeenCalledOnce();
+  } finally { unsubscribe(); }
+});
+
 it("keeps native startup and a fresh settings snapshot free of placeholder profiles", async () => {
   expect(initial.settings.profiles).toEqual([]);
   expect(initial.settings.activeProfileId).toBe("");
