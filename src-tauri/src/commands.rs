@@ -865,6 +865,69 @@ mod tests {
         assert!(!toggled_immersive_mode(true));
     }
 
+    #[test]
+    fn overlay_lock_toggle_persists_without_changing_immersive_mode() {
+        for immersive in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let store = SettingsStore::at_path(
+                directory.path().into(),
+                Box::new(PartiallyUnavailableSecretStore),
+            );
+            store
+                .save_preferences(|prefs| prefs.subtitle_blends_with_background = immersive)
+                .unwrap();
+            for (requested, expected) in [(None, true), (None, false), (Some(true), true)] {
+                persist_overlay_lock(&store, requested).unwrap();
+                let restarted = SettingsStore::at_path(
+                    directory.path().into(),
+                    Box::new(PartiallyUnavailableSecretStore),
+                );
+                assert_eq!(store.preferences().overlay_locked, expected);
+                assert_eq!(restarted.preferences(), store.preferences());
+                assert_eq!(
+                    restarted.preferences().subtitle_blends_with_background,
+                    immersive
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn overlay_lock_failed_write_preserves_the_published_preference() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(PartiallyUnavailableSecretStore),
+        );
+        persist_overlay_lock(&store, Some(true)).unwrap();
+        let before = store.preferences();
+        let preferences = directory.path().join("preferences.json");
+        std::fs::remove_file(&preferences).unwrap();
+        std::fs::create_dir(&preferences).unwrap();
+        assert!(persist_overlay_lock(&store, None).is_err());
+        assert_eq!(store.preferences(), before);
+    }
+
+    #[test]
+    fn overlay_lock_recovery_does_not_require_a_readable_service_catalog() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("service-profiles.json"), "{invalid").unwrap();
+        let store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(PartiallyUnavailableSecretStore),
+        );
+        for expected in [true, false] {
+            persist_overlay_lock(&store, None).unwrap();
+            assert_eq!(store.preferences().overlay_locked, expected);
+            assert!(SettingsSnapshotPayload::try_from_store(&store).is_err());
+            let restarted = SettingsStore::at_path(
+                directory.path().into(),
+                Box::new(PartiallyUnavailableSecretStore),
+            );
+            assert_eq!(restarted.preferences(), store.preferences());
+        }
+    }
+
     struct BootstrapCredentialStore {
         reads: Arc<std::sync::Mutex<Vec<String>>>,
     }
@@ -2695,6 +2758,15 @@ pub(crate) async fn toggle_immersive_mode(app: &AppHandle) -> Result<(), String>
     Ok(())
 }
 
+/// Native recovery remains available while locked overlay controls are hidden.
+pub(crate) async fn toggle_overlay_lock(app: &AppHandle) -> Result<(), String> {
+    let state = app
+        .try_state::<AppState>()
+        .ok_or_else(|| "Application state is unavailable.".to_string())?;
+    let _lifecycle = state.session.settings_mutation_guard(false).await?;
+    apply_overlay_lock(app, &state, None)
+}
+
 /// Uses the same persisted, broadcast mutation as settings and tray controls.
 pub(crate) async fn set_subtitle_display_mode(
     app: &AppHandle,
@@ -3110,20 +3182,34 @@ pub fn overlay_set_locked(
     state: State<'_, AppState>,
     locked: bool,
 ) -> Result<(), String> {
-    state
-        .settings
-        .save_preferences(|prefs| prefs.overlay_locked = locked)?;
+    apply_overlay_lock(&app, &state, Some(locked))
+}
+
+fn persist_overlay_lock(settings: &SettingsStore, requested: Option<bool>) -> Result<(), String> {
+    // Read the toggle under the store's write lock, alongside an explicit
+    // Settings/overlay update. A failed durable write keeps the old value.
+    settings.save_preferences(|prefs| {
+        prefs.overlay_locked = requested.unwrap_or(!prefs.overlay_locked);
+    })
+}
+
+fn apply_overlay_lock(
+    app: &AppHandle,
+    state: &AppState,
+    requested: Option<bool>,
+) -> Result<(), String> {
+    persist_overlay_lock(&state.settings, requested)?;
     let preferences = state.settings.preferences();
     OverlayWindowManager::sync_presentation(
-        &app,
+        app,
         state.session.should_show_overlay(),
         state.session.is_overlay_collapsed(),
-        locked || preferences.subtitle_blends_with_background,
+        preferences.overlay_locked || preferences.subtitle_blends_with_background,
         preferences.subtitle_blends_with_background,
     );
     // A successful overlay preference write must not turn an unreadable
     // service catalog into an apparently valid empty settings snapshot.
-    let _ = emit_settings_snapshot(&app, &state.settings);
+    let _ = emit_settings_snapshot(app, &state.settings);
     Ok(())
 }
 

@@ -415,6 +415,7 @@ export function sessionArchiveClear(): Promise<void> {
 export interface DesktopShortcutCommands {
   toggleSession: string;
   toggleImmersive: string;
+  toggleLock: string;
   cycleSubtitleDisplay: string;
 }
 

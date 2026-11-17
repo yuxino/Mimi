@@ -13,6 +13,7 @@ vi.mock("./ipc", () => ({
 const wayland: DesktopShortcutCommands = {
   toggleSession: "'/opt/Mimi.AppImage' --toggle-session",
   toggleImmersive: "'/opt/Mimi.AppImage' --toggle-immersive",
+  toggleLock: "'/opt/Mimi.AppImage' --toggle-lock",
   cycleSubtitleDisplay: "'/opt/Mimi.AppImage' --cycle-subtitle-display",
 };
 let useDesktopShortcuts: typeof import("./useDesktopShortcuts")["useDesktopShortcuts"];
@@ -20,7 +21,7 @@ let host: HTMLDivElement, root: Root;
 
 function Probe({ id }: { id: string }) {
   const { commands, nativeShortcuts } = useDesktopShortcuts();
-  return <output data-id={id} data-native={nativeShortcuts}>
+  return <output data-id={id} data-native={nativeShortcuts} data-lock={commands?.toggleLock}>
     {commands === undefined ? "unknown" : commands === null ? "native" : commands.toggleSession}
   </output>;
 }
@@ -63,6 +64,7 @@ it.each([null, wayland])("reuses a successful native result after all consumers 
   await render(["replacement"]);
   expect(host.textContent).toBe(expected);
   expect(host.querySelector("output")?.getAttribute("data-native")).toBe(String(commands === null));
+  expect(host.querySelector("output")?.getAttribute("data-lock")).toBe(commands?.toggleLock ?? null);
   expect(native.read).toHaveBeenCalledOnce();
 });
 

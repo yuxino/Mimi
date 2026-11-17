@@ -6,6 +6,7 @@ import "./tooltip.css";
 
 interface TooltipProps {
   label: string;
+  shortcut?: string;
   popupClassName?: string;
   /** An inline space for the label in a window too short to float it. */
   popupArea?: RefObject<HTMLElement | null>;
@@ -29,7 +30,7 @@ function hoverBridge(anchor: DOMRect, left: number, top: number, width: number, 
 }
 
 /** Shared visible label for compact controls, including keyboard focus. */
-export function Tooltip({ label, popupClassName, popupArea, children }: TooltipProps) {
+export function Tooltip({ label, shortcut, popupClassName, popupArea, children }: TooltipProps) {
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const popup = useRef<HTMLDivElement>(null);
@@ -128,7 +129,7 @@ export function Tooltip({ label, popupClassName, popupArea, children }: TooltipP
       window.removeEventListener("resize", position);
       window.removeEventListener("scroll", scrolled, true);
     };
-  }, [open, label, popupArea]);
+  }, [open, label, shortcut, popupArea]);
 
   useEffect(() => {
     const nativeHover = (event: Event) => {
@@ -220,7 +221,7 @@ export function Tooltip({ label, popupClassName, popupArea, children }: TooltipP
         <div ref={popup} id={id} className={popupClassName ? `mimi-tooltip ${popupClassName}` : "mimi-tooltip"}
           role="tooltip" onPointerEnter={trackPointerHover} onMouseEnter={trackHover}
           onPointerLeave={leaveSurface} onMouseLeave={leaveSurface}
-          onPointerDown={(event) => event.preventDefault()}>{label}</div>,
+          onPointerDown={(event) => event.preventDefault()}>{label}{shortcut && <> <kbd className="mimi-tooltip__shortcut">{shortcut}</kbd></>}</div>,
         document.body,
       )}
     </span>

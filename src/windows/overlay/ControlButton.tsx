@@ -10,6 +10,7 @@ interface ControlButtonProps {
   disabled?: boolean;
   busy?: boolean;
   tooltipArea?: RefObject<HTMLElement | null>;
+  shortcutHint?: string;
   "data-testid"?: string;
 }
 
@@ -21,10 +22,11 @@ export function ControlButton({
   disabled = false,
   busy = false,
   tooltipArea,
+  shortcutHint,
   "data-testid": dataTestId,
 }: ControlButtonProps) {
   return (
-    <Tooltip label={label} popupArea={tooltipArea}>
+    <Tooltip label={label} shortcut={shortcutHint} popupArea={tooltipArea}>
       {(descriptionId, hovered) => (
         <button
           type="button"

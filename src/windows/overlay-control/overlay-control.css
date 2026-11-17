@@ -79,6 +79,11 @@
   pointer-events: none;
 }
 
+:is(.overlay-control-detached, .overlay-control-embedded)[data-position-locked] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .overlay-control-embedded[data-mode="panel"] {
   width: 280px;
 }
@@ -131,30 +136,6 @@
   flex: 0 0 auto;
   color: var(--control-text-faint);
   font-size: 8px;
-}
-
-.overlay-control-island > .overlay-control-island__unlock {
-  color: var(--control-text);
-  font-size: 13px;
-}
-
-.overlay-control-island[aria-busy="true"] {
-  cursor: progress;
-}
-
-.overlay-control-island__failure > svg {
-  flex: 0 0 auto;
-  color: #ff8a80;
-  font-size: 11px;
-}
-
-.overlay-control-island__announcement {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 .overlay-control-island__phase {

@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type MouseEventHandler } from "react";
+import { useLayoutEffect, useRef, type MouseEventHandler } from "react";
 import { Icon } from "../../components/Icon";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { RecordingIndicator } from "../../components/RecordingIndicator";
@@ -31,10 +31,9 @@ interface LanguageStatusCapsuleProps {
   onToggle: () => void;
   onWidthChange?: (width: number) => void;
   onDragPress?: MouseEventHandler<HTMLDivElement>;
-  unlock?: { pending: boolean; failure: string | null };
 }
 
-/** Compact, always-reachable entry point for the subtitle control panel. */
+/** Compact entry point shown while the subtitle overlay is interactive. */
 export function LanguageStatusCapsule({
   phase,
   status,
@@ -48,18 +47,15 @@ export function LanguageStatusCapsule({
   onToggle,
   onWidthChange,
   onDragPress,
-  unlock,
 }: LanguageStatusCapsuleProps) {
   const capsuleRef = useRef<HTMLButtonElement>(null);
-  const unlockFailureId = useId();
-  const unlockFailure = unlock?.failure;
   const pulseOn = useResolvedMotion(settings.pulseAnimation);
   const transientPhase = phase === "error" || phase === "idle" ? phase
     : isStopping ? "stopping" : phase === "connecting" ? "connecting"
       : isPaused ? "paused" : phase === "translating" || isWaitingForFinalTranslation ? "translating" : null;
   const actionLabel = expanded
     ? I18N.overlay.closeControls
-    : unlock ? I18N.overlay.unlockPosition : I18N.overlay.openControls;
+    : I18N.overlay.openControls;
   const compact = capsuleLabels(settings, transientPhase);
   const sources = audioInputLabel(settings.audioInput, settings.systemAudioTarget);
   const phaseLabel = isStopping ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
@@ -67,9 +63,7 @@ export function LanguageStatusCapsule({
   const recordingLabel = recordingStatusLabel(audioRecording, effectiveUiLanguage());
   const recordingSuffix = recordingLabel ? ` · ${recordingLabel}` : "";
   const fullLabel = `${sources} · ${phaseLabel} · ${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}`;
-  const title = unlockFailure
-    ? `${unlockFailure} ${actionLabel}`
-    : `${fullLabel}. ${actionLabel}`;
+  const title = `${fullLabel}. ${actionLabel}`;
   const accessibleLabel = `${sources} · ${phaseLabel}${I18N.overlay.accessibilityCurrentLanguagePrefix}${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}. ${actionLabel}`;
 
   useLayoutEffect(() => {
@@ -105,21 +99,14 @@ export function LanguageStatusCapsule({
     <>
       <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />
       <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
-      {!unlockFailure && transientPhase && !(transientPhase === "paused" && audioRecording === "paused") && (
+      {transientPhase && !(transientPhase === "paused" && audioRecording === "paused") && (
         <span className="overlay-control-island__phase">{compact.phase}</span>
       )}
-      {unlockFailure ? (
-        <span className="overlay-control-island__summary overlay-control-island__failure" aria-hidden="true">
-          <Icon name="exclamation-triangle" />
-          <span>{unlockFailure}</span>
-        </span>
-      ) : (
-        <span className="overlay-control-island__summary">
-          <strong>{compact.source}</strong>
-          <span aria-hidden="true">{status.separator}</span>
-          <span>{compact.target}</span>
-        </span>
-      )}
+      <span className="overlay-control-island__summary">
+        <strong>{compact.source}</strong>
+        <span aria-hidden="true">{status.separator}</span>
+        <span>{compact.target}</span>
+      </span>
       <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />
     </>
   );
@@ -149,25 +136,19 @@ export function LanguageStatusCapsule({
   }
 
   return (
-    <>
-      <button
-        ref={capsuleRef}
-        type="button"
-        className="overlay-control-island"
-        onClick={onToggle}
-        title={title}
-        aria-label={accessibleLabel}
-        aria-describedby={unlockFailure ? unlockFailureId : undefined}
-        aria-haspopup={unlock ? undefined : "dialog"}
-        aria-expanded={unlock ? undefined : false}
-        aria-controls={unlock ? undefined : "overlay-control-panel"}
-        aria-busy={unlock?.pending || undefined}
-        disabled={unlock?.pending}
-      >
-        {summary}
-        <Icon name={unlock ? "unlock" : "chevron-down"} className={unlock ? "overlay-control-island__unlock" : undefined} />
-      </button>
-      {unlockFailure && <span id={unlockFailureId} className="overlay-control-island__announcement" role="alert">{unlockFailure}</span>}
-    </>
+    <button
+      ref={capsuleRef}
+      type="button"
+      className="overlay-control-island"
+      onClick={onToggle}
+      title={title}
+      aria-label={accessibleLabel}
+      aria-haspopup="dialog"
+      aria-expanded={false}
+      aria-controls="overlay-control-panel"
+    >
+      {summary}
+      <Icon name="chevron-down" />
+    </button>
   );
 }

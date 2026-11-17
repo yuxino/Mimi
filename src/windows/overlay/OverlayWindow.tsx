@@ -13,11 +13,13 @@ import { audioInputLabel } from "../../lib/audioInput";
 import { hasEmbeddedOverlayControls, isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
+import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../../lib/store";
 import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
 import { OVERLAY_ACTIVITY_PHASES } from "../../lib/types";
 import { ControlButton } from "./ControlButton";
 import { OverlayDragArea } from "./OverlayDragArea";
+import { startOverlayContentDrag } from "./overlayContentDrag";
 import { PulseRing } from "./PulseRing";
 import { OverlayLatency } from "./OverlayLatency";
 import { ResizeHandles } from "./ResizeHandles";
@@ -60,6 +62,8 @@ export function OverlayWindow() {
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
   const sessionErrorSummary = useStore(selectSessionErrorSummary);
   const [controlMode] = useOverlayControlMode();
+  const { nativeShortcuts } = useDesktopShortcuts();
+  const shortcutPrefix = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "⌘⇧" : "Ctrl+Shift+";
   const hasSessionError = session.status.kind === "error";
   const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
   const errorSettingsTarget = session.status.kind === "error" ? sessionErrorSettingsTarget(session.status.message) : null;
@@ -351,7 +355,9 @@ export function OverlayWindow() {
       <div
         className="overlay-expanded-canvas relative h-full w-full overflow-hidden"
         data-overlay-locked={presentationLocked ? "" : undefined}
+        data-overlay-draggable={!presentationLocked && !controlAction.pending ? "" : undefined}
         data-overlay-has-captions={blocks.length > 0 ? "" : undefined}
+        onPointerDownCapture={event => startOverlayContentDrag(event, presentationLocked || controlAction.pending)}
         style={{
           borderRadius: 16,
           border: "1px solid var(--overlay-canvas-outline, rgba(255, 255, 255, 0.12))",
@@ -400,6 +406,7 @@ export function OverlayWindow() {
                 <ControlButton
                   icon="blend"
                   label={I18N.overlay.enterImmersiveMode}
+                  shortcutHint={nativeShortcuts ? `${shortcutPrefix}M` : undefined}
                   onClick={() => runControlAction("immersive", () => saveSettings({ subtitleBlendsWithBackground: true }))}
                   busy={pendingControl === "immersive"}
                   disabled={sessionActionDisabled || hasSessionError}
@@ -407,6 +414,7 @@ export function OverlayWindow() {
                 <ControlButton
                   icon="lock"
                   label={I18N.overlay.lockPosition}
+                  shortcutHint={nativeShortcuts ? `${shortcutPrefix}L` : undefined}
                   onClick={() => runControlAction("lock", () => setOverlayLocked(true))}
                   busy={pendingControl === "lock"}
                   disabled={sessionActionDisabled || hasSessionError}

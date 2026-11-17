@@ -776,7 +776,7 @@ impl OverlayWindowManager {
     /// Applies the complete native overlay presentation in one place:
     /// visibility, click-through behavior, and the child control surface.
     /// The control island is visible only for an active, expanded,
-    /// non-immersive overlay; an already-open panel remains open across
+    /// interactive overlay; an already-open panel remains open across
     /// ordinary state broadcasts.
     pub fn sync_presentation(
         app: &AppHandle,
@@ -853,9 +853,8 @@ impl OverlayWindowManager {
         let is_immersive = is_immersive && !has_error;
         if is_active {
             if click_through {
-                // Ordinary position locking keeps the independent control
-                // island as an unlock escape hatch. Immersive Mode hides all
-                // overlay chrome and is exited via shortcut, tray, or settings.
+                // Lock and immersive mode hide all chrome. The native lock
+                // shortcut and Settings restore ordinary interaction.
                 // GTK can store an input shape before the first native map.
                 // Record lock intent first so realize/map cannot briefly
                 // restore an old unlocked shape when a worker shows a window.
@@ -866,7 +865,7 @@ impl OverlayWindowManager {
                     app,
                     true,
                     is_collapsed,
-                    is_immersive,
+                    click_through || is_immersive,
                 );
                 #[cfg(not(target_os = "linux"))]
                 Self::update_locked(app, true);
@@ -880,7 +879,12 @@ impl OverlayWindowManager {
         } else {
             // Hide the child first so it cannot linger for a frame after its
             // subtitle parent disappears.
-            OverlayControlWindowManager::sync_presentation(app, false, is_collapsed, is_immersive);
+            OverlayControlWindowManager::sync_presentation(
+                app,
+                false,
+                is_collapsed,
+                click_through || is_immersive,
+            );
             Self::sync_overlay_visibility(app, false);
             Self::update_locked(app, click_through);
         }
@@ -2711,19 +2715,19 @@ impl OverlayControlWindowManager {
 
     /// Derives the persistent island visibility from the overlay lifecycle.
     /// An open panel survives ordinary subtitle/status broadcasts, but any
-    /// inactive, collapsed, or immersive transition hides the entire child
+    /// inactive, collapsed, or click-through transition hides the entire child
     /// surface.
     pub fn sync_presentation(
         app: &AppHandle,
         is_active: bool,
         is_collapsed: bool,
-        is_immersive: bool,
+        click_through: bool,
     ) {
         let Some(state) = app.try_state::<OverlayControlState>() else {
             return;
         };
         let current = state.mode();
-        let next = control_mode_for_presentation(current, is_active, is_collapsed, is_immersive);
+        let next = control_mode_for_presentation(current, is_active, is_collapsed, click_through);
         let mode_changed = state.set_mode(next);
         let visible_surface_needs_restore = !mode_changed
             && next != OverlayControlMode::Hidden
@@ -3052,9 +3056,9 @@ fn control_mode_for_presentation(
     current: OverlayControlMode,
     is_active: bool,
     is_collapsed: bool,
-    is_immersive: bool,
+    click_through: bool,
 ) -> OverlayControlMode {
-    if !is_active || is_collapsed || is_immersive {
+    if !is_active || is_collapsed || click_through {
         OverlayControlMode::Hidden
     } else if current == OverlayControlMode::Panel {
         OverlayControlMode::Panel
@@ -3702,6 +3706,18 @@ mod geometry_tests {
             control_mode_for_presentation(OverlayControlMode::Panel, true, false, true),
             OverlayControlMode::Hidden
         );
+    }
+
+    #[test]
+    fn locking_hides_the_island_or_panel_until_interaction_is_restored() {
+        for current in [OverlayControlMode::Island, OverlayControlMode::Panel] {
+            let locked = control_mode_for_presentation(current, true, false, true);
+            assert_eq!(locked, OverlayControlMode::Hidden);
+            assert_eq!(
+                control_mode_for_presentation(locked, true, false, false),
+                OverlayControlMode::Island,
+            );
+        }
     }
 
     #[test]

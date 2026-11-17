@@ -74,6 +74,7 @@ export function SettingsSessionControls(props: SettingsSessionControlsProps) {
       <dl>
         <dt>{I18N.settings.startStopShortcut}</dt><dd><code>{props.desktopShortcuts.toggleSession}</code></dd>
         <dt>{I18N.tray.blendBackground}</dt><dd><code>{props.desktopShortcuts.toggleImmersive}</code></dd>
+        <dt>{I18N.settings.lockPosition}</dt><dd><code>{props.desktopShortcuts.toggleLock}</code></dd>
         <dt>{I18N.settings.subtitleDisplay}</dt><dd><code>{props.desktopShortcuts.cycleSubtitleDisplay}</code></dd>
       </dl>
     </details>}

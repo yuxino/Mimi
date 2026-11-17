@@ -7,7 +7,7 @@ import { isClickablePointerTarget } from "../../lib/overlayPointer";
 import { useStore } from "../../lib/store";
 import { OverlayWindow } from "./OverlayWindow";
 
-const native = vi.hoisted(() => ({ move: vi.fn() }));
+const native = vi.hoisted(() => ({ move: vi.fn(), readPointer: vi.fn(), wheel: vi.fn() }));
 vi.mock("../../lib/ipc", async original => ({
   ...await original<typeof import("../../lib/ipc")>(),
   isTauri: true,
@@ -17,7 +17,8 @@ vi.mock("../../lib/ipc", async original => ({
 }));
 vi.mock("./PulseRing", () => ({ PulseRing: () => null }));
 vi.mock("./ResizeHandles", () => ({ ResizeHandles: () => <div data-testid="resize-edge" /> }));
-vi.mock("./Timeline", () => ({ Timeline: () => <div data-testid="subtitle-content" /> }));
+vi.mock("./Timeline", () => ({ Timeline: () => <div className="overlay-timeline" data-testid="subtitle-content"
+  onPointerDown={native.readPointer} onWheel={native.wheel}><span>Visible subtitle text</span></div> }));
 
 const initial = useStore.getState();
 let root: Root, host: HTMLDivElement;
@@ -31,6 +32,8 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   setStoredUiLanguage("en");
   native.move.mockReset().mockResolvedValue(undefined);
+  native.readPointer.mockReset();
+  native.wheel.mockReset();
   collapse.mockReset().mockResolvedValue(undefined);
   useStore.setState({
     ...initial,
@@ -63,6 +66,13 @@ async function press(target: Element, detail = 1, button = 0) {
   return event;
 }
 
+async function pointerPress(target: Element, pointerType = "mouse", button = 0, clientX = 0) {
+  const event = new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button, clientX });
+  Object.defineProperties(event, { pointerType: { value: pointerType }, isPrimary: { value: true } });
+  await act(async () => target.dispatchEvent(event));
+  return event;
+}
+
 it("moves from empty top chrome without focusing or folding on double-click", async () => {
   await mount();
   const drag = area()!;
@@ -81,21 +91,65 @@ it("moves from empty top chrome without focusing or folding on double-click", as
   expect(native.move).toHaveBeenCalledTimes(2);
 });
 
-it("does not turn toolbar controls, captions or resize edges into drag targets", async () => {
+it("does not turn toolbar controls or resize edges into drag targets", async () => {
   await mount();
   for (const selector of [
     `button[aria-label="${I18N.overlay.pause}"]`,
     '[data-testid="collapse-subtitles"]',
-    '[data-testid="subtitle-content"]',
     '[data-testid="resize-edge"]',
   ]) {
     const target = host.querySelector(selector)!;
     expect(target, selector).not.toBeNull();
     await press(target);
     await press(target, 2);
+    expect((await pointerPress(target)).defaultPrevented).toBe(false);
   }
   expect(native.move).not.toHaveBeenCalled();
   expect(collapse).not.toHaveBeenCalled();
+});
+
+it("moves from the canvas and subtitle text without starting history reading or changing display mode", async () => {
+  await mount();
+  const canvas = host.querySelector(".overlay-expanded-canvas")!;
+  const caption = host.querySelector('[data-testid="subtitle-content"] span')!;
+  expect((await pointerPress(canvas)).defaultPrevented).toBe(true);
+  expect((await pointerPress(caption)).defaultPrevented).toBe(true);
+  expect(native.move).toHaveBeenCalledTimes(2);
+  expect(native.readPointer).not.toHaveBeenCalled();
+  expect(collapse).not.toHaveBeenCalled();
+
+  const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -40 });
+  await act(async () => caption.dispatchEvent(wheel));
+  expect(wheel.defaultPrevented).toBe(false);
+  expect(native.wheel).toHaveBeenCalledOnce();
+  await pointerPress(caption, "touch");
+  await pointerPress(caption, "mouse", 2);
+  expect(native.move).toHaveBeenCalledTimes(2);
+});
+
+it("lets the visible timeline scrollbar retain its pointer gesture", async () => {
+  await mount();
+  const timeline = host.querySelector<HTMLElement>(".overlay-timeline")!;
+  Object.defineProperties(timeline, {
+    scrollHeight: { value: 400 }, clientHeight: { value: 100 },
+    clientWidth: { value: 300 }, offsetWidth: { value: 300 },
+  });
+  vi.spyOn(timeline, "getBoundingClientRect").mockReturnValue({ right: 340 } as DOMRect);
+  expect((await pointerPress(timeline, "mouse", 0, 338)).defaultPrevented).toBe(false);
+  expect(native.readPointer).toHaveBeenCalledOnce();
+  expect(native.move).not.toHaveBeenCalled();
+  expect((await pointerPress(timeline, "mouse", 0, 200)).defaultPrevented).toBe(true);
+  expect(native.move).toHaveBeenCalledOnce();
+});
+
+it("moves from the empty listening state without a top-only hit area", async () => {
+  useStore.setState(state => ({ session: { ...state.session, subtitles: initial.session.subtitles } }));
+  await mount();
+  const listening = Array.from(host.querySelectorAll("div")).find(element =>
+    element.children.length === 0 && element.textContent === "Listening")!;
+  expect(listening).toBeDefined();
+  expect((await pointerPress(listening)).defaultPrevented).toBe(true);
+  expect(native.move).toHaveBeenCalledOnce();
 });
 
 it("uses the explicit collapse button and guards the drag while folding", async () => {
@@ -107,6 +161,7 @@ it("uses the explicit collapse button and guards the drag while folding", async 
   expect(isClickablePointerTarget(area())).toBe(false);
   await press(area()!);
   await press(area()!, 2);
+  await pointerPress(host.querySelector(".overlay-expanded-canvas")!);
   expect(native.move).not.toHaveBeenCalled();
   expect(collapse).toHaveBeenCalledOnce();
   await act(async () => resolve());
@@ -123,6 +178,7 @@ it.each(["locked", "immersive"] as const)("keeps the empty-top gesture unavailab
     expect(area()!.disabled).toBe(true);
     expect(isClickablePointerTarget(area())).toBe(false);
     await press(area()!);
+    expect((await pointerPress(host.querySelector(".overlay-expanded-canvas")!)).defaultPrevented).toBe(false);
   } else {
     expect(area()).toBeNull();
   }

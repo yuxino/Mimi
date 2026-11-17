@@ -1,8 +1,7 @@
 import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
-import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/useSettingsToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
-import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
+import { effectiveUiLanguage, subscribeUiLanguage } from "../../lib/i18n";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
@@ -27,7 +26,6 @@ import {
   pendingSourceTranslation,
 } from "../overlay/overlayModel";
 import { useOverlayChromePeers } from "../overlay/useOverlayChromePeers";
-import { useSessionAction } from "../overlay/useSessionAction";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
@@ -66,14 +64,10 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const switchSourceLanguage = useStore((state) => state.switchSourceLanguage);
   const switchTargetLanguage = useStore((state) => state.switchTargetLanguage);
   const saveSettings = useStore((state) => state.saveSettings);
-  const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showSettings = useStore((state) => state.showSettings);
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
-  const { pending: unlockPending, run: runUnlock } = useSessionAction();
-  const { runWithToast: unlockWithToast, clearToast: clearUnlockToast } = useSettingsToast();
-  const toast = useSyncExternalStore(subscribeSettingsToast, settingsToastSnapshot);
   // Match native recovery, which temporarily lifts the saved lock.
-  const lockedIsland = settings.isOverlayLocked && sessionStatusKind !== "error";
+  const lockedPresentation = settings.isOverlayLocked && sessionStatusKind !== "error";
   const updateNativePointer = useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
   useEffect(() => {
     if (!isTauri || embedded) return;
@@ -91,35 +85,17 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     };
   }, [embedded, updateNativePointer]);
   const quietIsland = isTauri && mode === "island" && sessionStatusKind !== "error" &&
-    !collapsed && !lockedIsland && !settings.subtitleBlendsWithBackground &&
+    !collapsed && !lockedPresentation && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");
 
   const toggle = useCallback(() => {
-    if (mode !== "island" || unlockPending) return;
-    if (lockedIsland) {
-      void runUnlock(async () => {
-        await unlockWithToast(() => setOverlayLocked(false), I18N.overlay.controlActionFailed);
-      });
-      return;
-    }
+    if (mode !== "island" || lockedPresentation) return;
     if (isTauri) {
       void overlayPopoverToggle().catch(() => {});
     } else {
       setMode((current) => (current === "panel" ? "island" : "panel"));
     }
-  }, [lockedIsland, mode, runUnlock, setMode, setOverlayLocked, unlockPending, unlockWithToast]);
-
-  useEffect(() => {
-    if (mode !== "island" || !lockedIsland) return;
-    const clearWhenHidden = () => { if (document.hidden) clearUnlockToast(); };
-    window.addEventListener("blur", clearUnlockToast);
-    document.addEventListener("visibilitychange", clearWhenHidden);
-    return () => {
-      window.removeEventListener("blur", clearUnlockToast);
-      document.removeEventListener("visibilitychange", clearWhenHidden);
-      clearUnlockToast();
-    };
-  }, [clearUnlockToast, lockedIsland, mode]);
+  }, [lockedPresentation, mode, setMode]);
 
   const dismiss = useCallback(() => {
     if (isTauri) {
@@ -134,7 +110,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   }, []);
 
   useEffect(() => {
-    if (mode !== "panel") return;
+    if (mode !== "panel" || lockedPresentation) return;
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       event.preventDefault();
@@ -142,20 +118,20 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
     };
     window.addEventListener("keydown", dismissOnEscape);
     return () => window.removeEventListener("keydown", dismissOnEscape);
-  }, [dismiss, mode]);
+  }, [dismiss, lockedPresentation, mode]);
 
   useEffect(() => {
-    if (!embedded || mode !== "panel") return;
+    if (!embedded || mode !== "panel" || lockedPresentation) return;
     const dismissOutside = (event: PointerEvent) => {
       if (event.target instanceof Element && event.target.closest(".mimi-select__menu, .settings-toast")) return;
       if (event.target instanceof Node && !surfaceRef.current?.contains(event.target)) dismiss();
     };
     window.addEventListener("pointerdown", dismissOutside, true);
     return () => window.removeEventListener("pointerdown", dismissOutside, true);
-  }, [dismiss, embedded, mode]);
+  }, [dismiss, embedded, lockedPresentation, mode]);
 
   useEffect(() => {
-    if (!embedded || mode !== "panel") return;
+    if (!embedded || mode !== "panel" || lockedPresentation) return;
     let frame = 0;
     let previous = "";
     const measure = () => {
@@ -188,7 +164,7 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       if (frame) window.cancelAnimationFrame(frame);
       void overlayControlSetPopupBounds(null).catch(() => {});
     };
-  }, [embedded, mode, subtitleRootRef]);
+  }, [embedded, lockedPresentation, mode, subtitleRootRef]);
 
   const phase = computeActivityPhaseFromSignals(
     {
@@ -215,8 +191,11 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
 
   return (
     <div ref={surfaceRef} className={embedded ? "overlay-control-embedded" : "overlay-control-detached"}
+      data-position-locked={lockedPresentation ? "" : undefined}
+      aria-hidden={lockedPresentation || mode === "hidden" ? true : undefined}
+      inert={lockedPresentation || mode === "hidden" ? true : undefined}
       data-mode={embedded ? mode : undefined} data-quiet-island={quietIsland ? "" : undefined}>
-      {mode === "panel" && (
+      {mode === "panel" && !lockedPresentation && (
         <OverlayControlPanel
           phase={phase}
           status={status}
@@ -255,12 +234,8 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
           isPaused={sessionIsPaused}
           isWaitingForFinalTranslation={isWaiting}
           expanded={false}
-          animationVisible={mode === "island"}
+          animationVisible={mode === "island" && !lockedPresentation}
           isStopping={sessionStatusKind === "stopping"}
-          unlock={lockedIsland ? {
-            pending: unlockPending,
-            failure: mode === "island" && toast?.failure ? toast.message : null,
-          } : undefined}
           onToggle={toggle}
           onWidthChange={isTauri ? reportIslandWidth : undefined}
         />

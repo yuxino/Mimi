@@ -29,6 +29,9 @@
 .overlay-drag-target:active { cursor: grabbing; }
 .overlay-drag-target:disabled { cursor: default; pointer-events: none; }
 
+.overlay-expanded-canvas[data-overlay-draggable] { cursor: grab; }
+.overlay-expanded-canvas[data-overlay-draggable]:active { cursor: grabbing; }
+
 .overlay-compact-reading {
   position: relative;
   display: flex;
