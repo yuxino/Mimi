@@ -18,13 +18,12 @@ are the same provider. Do not infer models or endpoints.
 
 Keep the existing dark overlay, shared typography and provider assets.
 Use 580 × 240 logical pixels for the initial expanded frame. Honor a saved
-frame and the existing minimum height for the configured subtitle layout. The
-metadata row reserves the centered drag target at normal widths. Below 552 px,
-put metadata below that target, using 20 px of additional header height so both
-timing values remain readable. Native and browser resize minima reserve this
-20 px at every width (156 px for the default 16 px system-only case without
-timestamps; larger fonts and source metadata increase the minimum), so narrowing cannot clip
-bilingual or timestamped dual-source text. Preserve the older saved-frame
+frame and the existing minimum height for the configured subtitle layout.
+The language capsule and action strip share the first row; metadata uses the
+second. At narrow widths, omit optional actions before they overlap the capsule.
+Retain the width-independent native and browser resize minima, including their
+service-row allowance, so narrowing cannot clip bilingual or timestamped
+dual-source text. Preserve the older saved-frame
 validation floor while expanding its current minimum in place. Bound longer
 names with single-line ellipsis, reserve readable text space for both stages and
 keep logos from shrinking; reveal complete names in the tooltip. Never let a long
@@ -51,6 +50,12 @@ Keep settings for audio input, speech translation and subtitles grouped in the
 language panel, with a full-width configuration name and a separate Settings
 action. Open pickers use an opaque surface so the labels and switches below
 don't compete with the choices.
+
+Subtitle preference switches use the whole row as their native button target,
+including the label and blank space. Help remains an independent focusable
+control and never changes the preference. Keep the same disabled save guard
+for pointer and keyboard activation. Long language labels wrap within their
+text column while the help stays beside the text, rather than on an isolated row.
 
 Detached surfaces exchange exposure changes through targeted Tauri events and
 retain their own hit testing and native geometry. Local DOM and macOS pointer

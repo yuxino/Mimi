@@ -113,6 +113,36 @@ it("changes subtitle display without closing the panel and lets Escape close onl
   expect(props.onDismiss).not.toHaveBeenCalled();
 });
 
+it.each([
+  ["showIntermediateSubtitles", "onSetIntermediateSubtitles"],
+  ["subtitleDividers", "onSetSubtitleDividers"],
+  ["subtitleTimestamps", "onSetSubtitleTimestamps"],
+] as const)("allows the %s label to save once while help stays independent", async (labelKey, action) => {
+  configure({ showIntermediateSubtitles: false, showSubtitleDividers: false, showSubtitleTimestamps: false });
+  let finish!: () => void;
+  const save = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  props[action] = save;
+  await mount();
+
+  const toggle = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings[labelKey]}"]`)!;
+  const row = toggle.closest(".overlay-control-setting-row")!;
+  const label = row.querySelector("label")!;
+  const help = row.querySelector<HTMLButtonElement>(".settings-help-control__button")!;
+  await act(async () => help.click());
+  expect(save).not.toHaveBeenCalled();
+
+  await act(async () => label.click());
+  expect(save).toHaveBeenCalledExactlyOnceWith(true);
+  expect(toggle.disabled).toBe(true);
+  expect(help.disabled).toBe(false);
+  await act(async () => { label.click(); help.click(); });
+  expect(save).toHaveBeenCalledTimes(1);
+
+  await act(async () => finish());
+  expect(toggle.disabled).toBe(false);
+  expect(props.onDismiss).not.toHaveBeenCalled();
+});
+
 it("blocks conflicting operations and retains an inline error after a failed toggle", async () => {
   let reject!: (reason: Error) => void;
   props.onSetImmersiveMode = vi.fn(() => new Promise<void>((_resolve, failure) => { reject = failure; }));

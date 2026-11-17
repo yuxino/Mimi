@@ -75,6 +75,38 @@ interface OverlayControlPanelProps {
   onShowSettings: (target?: SettingsNavigationTarget) => Promise<void>;
 }
 
+function CaptionPreferenceSwitch({ label, help, checked, disabled, onToggle }: {
+  label: string;
+  help: string;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const id = useId();
+  const helpId = `${id}-help`;
+  return (
+    <div className="overlay-control-setting-row">
+      <span className="overlay-control-setting__copy">
+        <label htmlFor={id}><strong>{label}</strong></label>
+        <SettingsHelp id={helpId} text={help} label={I18N.settings.helpLabel} />
+      </span>
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        aria-describedby={helpId}
+        className={`overlay-control-setting overlay-control-setting--toggle${checked ? " is-on" : ""}`}
+        disabled={disabled}
+        onClick={onToggle}
+      >
+        <span className="overlay-control-switch" aria-hidden="true"><span /></span>
+      </button>
+    </div>
+  );
+}
+
 export function OverlayControlPanel({
   phase,
   status,
@@ -112,9 +144,6 @@ export function OverlayControlPanel({
   const lockRef = useRef<HTMLButtonElement>(null);
   const translationHeadingId = useId();
   const subtitlesHeadingId = useId();
-  const intermediateHelpId = useId();
-  const dividersHelpId = useId();
-  const timestampsHelpId = useId();
   const actionInFlight = useRef(false);
   const mounted = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -291,7 +320,10 @@ export function OverlayControlPanel({
           </div>
 
           <div ref={sourceControlRef} className="overlay-control-picker">
-            <span className="overlay-control-picker__label">{I18N.overlay.sourceLanguage} <SettingsHelp text={speechLanguageGuidance(settings).help} label={I18N.settings.helpLabel} /></span>
+            <span className="overlay-control-picker__label">
+              <span>{I18N.overlay.sourceLanguage}</span>
+              <SettingsHelp text={speechLanguageGuidance(settings).help} label={I18N.settings.helpLabel} />
+            </span>
             <LanguageSelect
               label={I18N.overlay.sourceLanguage}
               value={settings.sourceLanguage}
@@ -306,7 +338,10 @@ export function OverlayControlPanel({
           </div>
 
           <div ref={targetControlRef} className="overlay-control-picker">
-            <span className="overlay-control-picker__label">{I18N.settings.translateTo} <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} /></span>
+            <span className="overlay-control-picker__label">
+              <span>{I18N.settings.translateTo}</span>
+              <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} />
+            </span>
             <LanguageSelect
               label={I18N.settings.translateTo}
               value={settings.targetLanguage}
@@ -347,58 +382,29 @@ export function OverlayControlPanel({
               onChange={(value) => performAction("display", () => onSetSubtitleDisplayMode(value as SubtitleDisplayMode), false)} />
           </div>
 
-          <div className="overlay-control-setting-row">
-            <span className="overlay-control-setting__copy">
-              <strong>{I18N.settings.showIntermediateSubtitles}</strong>
-              <SettingsHelp id={intermediateHelpId} text={I18N.settings.showIntermediateSubtitlesHelp} label={I18N.settings.helpLabel} />
-            </span>
-            <button type="button" role="switch"
-              aria-checked={settings.showIntermediateSubtitles !== false}
-              aria-label={I18N.settings.showIntermediateSubtitles}
-              aria-describedby={intermediateHelpId}
-              className={`overlay-control-setting overlay-control-setting--toggle${settings.showIntermediateSubtitles !== false ? " is-on" : ""}`}
-              disabled={pendingAction !== null}
-              onClick={() => performAction("intermediate", () => onSetIntermediateSubtitles(settings.showIntermediateSubtitles === false), false)}
-            >
-              <span className="overlay-control-switch" aria-hidden="true"><span /></span>
-            </button>
-          </div>
-
-          <div className="overlay-control-setting-row">
-            <span className="overlay-control-setting__copy">
-              <strong>{I18N.settings.subtitleDividers}</strong>
-              <SettingsHelp id={dividersHelpId} text={I18N.settings.subtitleDividersHelp} label={I18N.settings.helpLabel} />
-            </span>
-            <button type="button" role="switch"
-              aria-checked={settings.showSubtitleDividers}
-              aria-label={I18N.settings.subtitleDividers}
-              aria-describedby={dividersHelpId}
-              className={`overlay-control-setting overlay-control-setting--toggle${settings.showSubtitleDividers ? " is-on" : ""}`}
-              disabled={pendingAction !== null}
-              onClick={() => performAction("dividers", () => onSetSubtitleDividers(!settings.showSubtitleDividers), false,
-                I18N.settings.settingSaveFailed(I18N.settings.subtitleDividers))}
-            >
-              <span className="overlay-control-switch" aria-hidden="true"><span /></span>
-            </button>
-          </div>
-
-          <div className="overlay-control-setting-row">
-            <span className="overlay-control-setting__copy">
-              <strong>{I18N.settings.subtitleTimestamps}</strong>
-              <SettingsHelp id={timestampsHelpId} text={I18N.settings.subtitleTimestampsHelp} label={I18N.settings.helpLabel} />
-            </span>
-            <button type="button" role="switch"
-              aria-checked={settings.showSubtitleTimestamps ?? false}
-              aria-label={I18N.settings.subtitleTimestamps}
-              aria-describedby={timestampsHelpId}
-              className={`overlay-control-setting overlay-control-setting--toggle${settings.showSubtitleTimestamps ? " is-on" : ""}`}
-              disabled={pendingAction !== null}
-              onClick={() => performAction("timestamps", () => onSetSubtitleTimestamps(!settings.showSubtitleTimestamps), false,
-                I18N.settings.settingSaveFailed(I18N.settings.subtitleTimestamps))}
-            >
-              <span className="overlay-control-switch" aria-hidden="true"><span /></span>
-            </button>
-          </div>
+          <CaptionPreferenceSwitch
+            label={I18N.settings.showIntermediateSubtitles}
+            help={I18N.settings.showIntermediateSubtitlesHelp}
+            checked={settings.showIntermediateSubtitles !== false}
+            disabled={pendingAction !== null}
+            onToggle={() => performAction("intermediate", () => onSetIntermediateSubtitles(settings.showIntermediateSubtitles === false), false)}
+          />
+          <CaptionPreferenceSwitch
+            label={I18N.settings.subtitleDividers}
+            help={I18N.settings.subtitleDividersHelp}
+            checked={settings.showSubtitleDividers}
+            disabled={pendingAction !== null}
+            onToggle={() => performAction("dividers", () => onSetSubtitleDividers(!settings.showSubtitleDividers), false,
+              I18N.settings.settingSaveFailed(I18N.settings.subtitleDividers))}
+          />
+          <CaptionPreferenceSwitch
+            label={I18N.settings.subtitleTimestamps}
+            help={I18N.settings.subtitleTimestampsHelp}
+            checked={settings.showSubtitleTimestamps ?? false}
+            disabled={pendingAction !== null}
+            onToggle={() => performAction("timestamps", () => onSetSubtitleTimestamps(!settings.showSubtitleTimestamps), false,
+              I18N.settings.settingSaveFailed(I18N.settings.subtitleTimestamps))}
+          />
 
           <button
             ref={immersiveRef}

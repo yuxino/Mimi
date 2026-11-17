@@ -167,6 +167,7 @@
   --control-bg: #202020;
   --control-border: rgba(255, 255, 255, 0.17);
   --control-border-strong: rgba(255, 255, 255, 0.32);
+  --control-switch-width: 32px;
   --settings-border-strong: var(--control-border);
   --settings-control: var(--control-surface);
   --settings-selection-soft: var(--control-surface-hover);
@@ -379,18 +380,35 @@
   text-align: left;
 }
 
+.overlay-control-setting-row {
+  grid-template-columns: minmax(0, 1fr) var(--control-switch-width);
+}
+
+/* The button spans the row. Only the separately focusable help takes hits above it. */
 .overlay-control-setting-row .overlay-control-setting__copy {
+  grid-area: 1 / 1;
+  z-index: 1;
   align-items: center;
   gap: 4px;
+  pointer-events: none;
+}
+
+.overlay-control-setting-row label {
+  min-width: 0;
+}
+
+.overlay-control-setting-row .settings-help-control {
+  pointer-events: auto;
 }
 
 .overlay-control-setting--toggle {
   display: flex;
+  grid-area: 1 / 1 / 2 / -1;
   width: auto;
-  min-height: 26px;
-  padding: 0;
+  margin-inline: -2px;
+  align-self: stretch;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
 }
 
 .overlay-control-setting__copy {
@@ -408,7 +426,7 @@
 
 .overlay-control-switch {
   position: relative;
-  width: 32px;
+  width: var(--control-switch-width);
   height: 18px;
   border: 1px solid var(--control-border-strong);
   border-radius: 999px;
@@ -519,6 +537,10 @@
     color: HighlightText;
     background: Highlight;
   }
+
+  .overlay-control-setting-row:has(.overlay-control-setting--toggle:hover:not(:disabled)) :is(.overlay-control-setting__copy, .settings-help-control__button) {
+    color: HighlightText;
+  }
 }
 
 .overlay-control-picker {
@@ -530,11 +552,18 @@
   color: var(--control-text);
 }
 .overlay-control-picker__label {
+  display: flex;
   min-width: 0;
+  align-items: center;
+  gap: 3px;
   font-size: 12px;
   line-height: 1.3;
-  overflow-wrap: anywhere;
   color: var(--control-text-muted);
+}
+.overlay-control-picker__label > span:first-child {
+  min-width: 0;
+  hyphens: auto;
+  overflow-wrap: anywhere;
 }
 .overlay-control-picker--profile {
   grid-template-columns: minmax(0, 1fr);
