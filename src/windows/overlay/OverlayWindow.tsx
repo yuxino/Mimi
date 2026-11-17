@@ -260,7 +260,7 @@ export function OverlayWindow() {
   const surface = <div ref={surfaceRef} className="overlay-surface relative h-full w-full"
     style={isTauri ? undefined : overlaySize}
     data-overlay-chrome-pinned={hasSessionError || controlMode === "panel" ? "" : undefined}
-    data-overlay-island-pinned={settings.isOverlayLocked || (session.audioRecording && session.audioRecording !== "off") ? "" : undefined}
+    data-overlay-island-pinned={session.audioRecording && session.audioRecording !== "off" ? "" : undefined}
   >
     {content}
     {isTauri && hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}

@@ -50,10 +50,11 @@
 }
 .application-audio-picker__refresh:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .application-audio-picker__refresh:disabled { opacity: 0.45; cursor: default; }
-.application-audio-picker__refresh[aria-busy="true"] > svg { animation: application-audio-refresh 1s linear infinite; }
+.application-audio-picker__refresh:disabled[aria-busy="true"] { opacity: 1; cursor: progress; }
+.application-audio-picker__refresh[data-refreshing="true"] > svg { animation: application-audio-refresh 1s linear infinite; }
 @keyframes application-audio-refresh { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-  .application-audio-picker__refresh[aria-busy="true"] > svg { animation: none; }
+  .application-audio-picker__refresh[data-refreshing="true"] > svg { animation: none; }
 }
 .application-audio-picker__feedback {
   display: block;

@@ -188,9 +188,13 @@ it("keeps disabled options visible while blocking pointer hover and selection", 
   expect(onChange).toHaveBeenCalledExactlyOnceWith("beta");
 });
 
-it.each([false, true])("closes a disabled picker without reviving its old popup or query when enabled again (search=%s)", async searchable => {
-  const show = async (disabled: boolean) => act(() => root.render(<Select label="Choice" value="translation" options={options}
-    disabled={disabled} searchLabel={searchable ? "Filter" : undefined} onChange={onChange} />));
+it.each([
+  { searchable: false, state: "disabled" }, { searchable: true, state: "disabled" },
+  { searchable: false, state: "busy" }, { searchable: true, state: "busy" },
+])("closes a $state picker without reviving its old popup or query (search=$searchable)", async ({ searchable, state }) => {
+  const show = async (blocked: boolean) => act(() => root.render(<Select label="Choice" value="translation" options={options}
+    disabled={state === "disabled" && blocked} busy={state === "busy" && blocked}
+    searchLabel={searchable ? "Filter" : undefined} onChange={onChange} />));
   await show(false);
   await act(() => trigger().click());
   if (searchable) await act(() => {
@@ -200,6 +204,11 @@ it.each([false, true])("closes a disabled picker without reviving its old popup 
   });
   await show(true);
   expect(trigger().disabled).toBe(true);
+  expect(trigger().getAttribute("aria-busy")).toBe(state === "busy" ? "true" : null);
+  await act(() => {
+    trigger().click();
+    trigger().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+  });
   expect(document.querySelector(".mimi-select__menu")).toBeNull();
   await show(false);
   expect(document.querySelector(".mimi-select__menu")).toBeNull();
@@ -208,6 +217,15 @@ it.each([false, true])("closes a disabled picker without reviving its old popup 
   await act(() => trigger().click());
   expect(document.querySelectorAll('[role="option"]')).toHaveLength(3);
   if (searchable) expect(document.querySelector<HTMLInputElement>(".mimi-select__search")!.value).toBe("");
+});
+
+it.each(["disabled", "empty"])("keeps an unavailable %s choice distinct from busy", async state => {
+  await act(() => root.render(<Select label="Choice" value="translation" options={state === "empty" ? [] : options}
+    disabled={state === "disabled"} busy onChange={onChange} />));
+  expect(trigger().disabled).toBe(true);
+  expect(trigger().hasAttribute("aria-busy")).toBe(false);
+  await act(() => trigger().click());
+  expect(document.querySelector(".mimi-select__menu")).toBeNull();
 });
 
 it.each(["Enter", " "])("skips disabled choices with arrows and boundaries before confirming with %j", async confirm => {

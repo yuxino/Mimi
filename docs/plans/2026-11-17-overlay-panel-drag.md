@@ -9,7 +9,13 @@ outside the canvas cannot start a window move. A double-click does not fold the
 overlay. Position lock, immersive presentation and a pending control action
 disable this move path.
 
-An expanded panel lets a mouse user drag its header outside the close control or designated blank space. Its buttons, selectors, links, help, and scrolling retain their own gestures. A blank click does not collapse the panel. Position lock and immersive presentation disable movement from the panel.
+An expanded panel accepts the same primary mouse drag from its header, section
+labels and blank space, including below the first section. Its buttons,
+selectors, links, help, portaled menus and scrolling retain their own gestures.
+A blank click does not collapse the panel. Position lock and immersive
+presentation disable movement from the panel. The panel fits its content up to
+520 CSS pixels and the available viewport; excess content scrolls. This height
+limit must not disable movement or take over the scrollbar's gesture.
 
 The subtitle overlay owns the user frame. A detached panel may invoke the existing `overlay_move_start` command while the native mode is Panel and both presentation locks are off. The command selects the subtitle root before recording drag intent. Existing native root movement keeps the panel attached on AppKit and follows it through geometry events on Windows and X11. On Wayland the panel already shares the same window and uses the compositor's move gesture.
 
@@ -27,12 +33,19 @@ must not keep the local toolbar or its peer visible after opening Settings.
 Track document focus independently of physical hover; losing focus alone does
 not mean the mouse left a nonactivating subtitle window.
 
-Position lock hides the whole independent control window as well as the root
-toolbar; it must not leave an invisible input island. The frontend also marks a
-locked control surface inert while the native mode update arrives. Existing
-error recovery temporarily restores interaction, without changing the saved lock
-preference. Unlock through Settings or the global Command+Shift+L shortcut on
-macOS (Control+Shift+L on Windows/X11). Wayland exposes `--toggle-lock` for the
+Position lock makes the subtitle root click-through and hides its toolbar, but
+keeps the compact independent control region reachable. Moving the pointer over
+that region reveals a direct Unlock action; moving away hides it again. The
+saved lock must not pin this entry visible. Locking closes an expanded panel,
+and unlocking leaves a compact language capsule without opening the panel or
+Settings. The frontend uses the same compact presentation while native mode
+updates arrive. A failed unlock preserves the lock and shows sanitized,
+transient feedback with a retryable action. Recording and error states retain
+their explicit visibility. Error recovery temporarily restores interaction
+without changing the saved preference.
+
+Settings and the global Command+Shift+L shortcut on macOS (Control+Shift+L on
+Windows/X11) provide additional recovery. Wayland exposes `--toggle-lock` for the
 compositor's shortcut configuration, alongside the existing immersive command.
 Each native action has its own debounce and persists through the shared
 preference store. A failed save preserves the current lock state.
@@ -42,3 +55,9 @@ tooltip keycap. Unknown shortcut support and Wayland do not advertise native
 key combinations. Settings exposes the same recovery shortcut/command. Verify
 both lock/unlock and immersive/restore in the signed native app; DOM hiding and
 mocked command calls alone do not establish global-shortcut recovery.
+
+Temporary changes block conflicting actions without fading the whole panel.
+Shared pickers distinguish busy from unavailable: busy keeps the existing
+appearance and accessible pending state; empty or unsupported choices remain
+dimmed. Refresh animation belongs only to an actual refresh. Retain the panel,
+selection, scroll position and retry behavior through success and rejection.

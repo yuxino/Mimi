@@ -56,6 +56,46 @@ it("restores the saved application's icon on first mount without creating choice
   expect(switchTarget).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
 });
 
+it("marks a target switch as busy and retains the same available controls after a rejected save", async () => {
+  let reject!: (reason: Error) => void;
+  switchTarget.mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+  await mount();
+  const button = trigger();
+  await act(() => button.click());
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === chat.name)!;
+  await act(() => { option.click(); option.click(); });
+  expect(switchTarget).toHaveBeenCalledExactlyOnceWith({ kind: "application", id: chat.id, name: chat.name });
+  expect(trigger()).toBe(button);
+  expect(button.disabled).toBe(true);
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  expect(refreshButton().disabled).toBe(true);
+  expect(refreshButton().getAttribute("aria-busy")).toBe("true");
+  expect(refreshButton().hasAttribute("data-refreshing")).toBe(false);
+  expect(document.querySelector(".mimi-select__menu")).toBeNull();
+  await act(() => reject(new Error("private-save-error")));
+  expect(button.disabled).toBe(false);
+  expect(button.hasAttribute("aria-busy")).toBe(false);
+  expect(refreshButton().disabled).toBe(false);
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe(applicationAudioCopy().saveFailed);
+  expect(host.textContent).not.toContain("private-save-error");
+});
+
+it.each(["external", "connecting", "stopping"] as const)("treats %s as temporary busy while unavailable still wins", async kind => {
+  if (kind !== "external") useStore.setState(state => ({ session: { ...state.session, status: { kind } } }));
+  await act(() => root.render(<ApplicationAudioPicker busy={kind === "external"} />));
+  expect(trigger().disabled).toBe(true);
+  expect(trigger().getAttribute("aria-busy")).toBe("true");
+  expect(refreshButton().disabled).toBe(true);
+  expect(refreshButton().getAttribute("aria-busy")).toBe("true");
+  const requests = vi.mocked(invoke).mock.calls.length;
+  await act(() => { trigger().click(); refreshButton().click(); });
+  expect(invoke).toHaveBeenCalledTimes(requests);
+  expect(switchTarget).not.toHaveBeenCalled();
+  await act(() => root.render(<ApplicationAudioPicker disabled busy />));
+  expect(trigger().getAttribute("aria-busy")).toBeNull();
+  expect(refreshButton().getAttribute("aria-busy")).toBeNull();
+});
+
 it("keeps the selected icon immediately after the floating controls unmount and reopen", async () => {
   await mount(); await mount(false);
   const next = deferred(); vi.mocked(invoke).mockReturnValueOnce(next.promise);
@@ -299,7 +339,12 @@ it("clears a Linux icon when its live stream is no longer cached on reopen", asy
 
 it("waits for initialized settings and skips automatic enumeration for all applications", async () => {
   useStore.setState({ initializationStatus: "loading" });
-  await mount(); expect(invoke).not.toHaveBeenCalled();
+  await act(() => root.render(<ApplicationAudioPicker busy />));
+  expect(trigger().disabled).toBe(true);
+  expect(trigger().hasAttribute("aria-busy")).toBe(false);
+  expect(refreshButton().hasAttribute("aria-busy")).toBe(false);
+  expect(invoke).not.toHaveBeenCalled();
+  await mount();
   await act(async () => useStore.setState({ initializationStatus: "ready" }));
   expect(icon()).toBe(player.iconDataUrl);
   await mount(false); vi.mocked(invoke).mockClear();

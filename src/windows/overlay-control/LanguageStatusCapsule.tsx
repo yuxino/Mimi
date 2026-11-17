@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type MouseEventHandler } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Icon } from "../../components/Icon";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { RecordingIndicator } from "../../components/RecordingIndicator";
@@ -30,10 +30,10 @@ interface LanguageStatusCapsuleProps {
   isStopping?: boolean;
   onToggle: () => void;
   onWidthChange?: (width: number) => void;
-  onDragPress?: MouseEventHandler<HTMLDivElement>;
+  unlock?: { pending: boolean; failure: string | null; shortcutHint?: string };
 }
 
-/** Compact entry point shown while the subtitle overlay is interactive. */
+/** Compact control entry, or a hover-revealed way to unlock the subtitles. */
 export function LanguageStatusCapsule({
   phase,
   status,
@@ -46,7 +46,7 @@ export function LanguageStatusCapsule({
   isStopping = false,
   onToggle,
   onWidthChange,
-  onDragPress,
+  unlock,
 }: LanguageStatusCapsuleProps) {
   const capsuleRef = useRef<HTMLButtonElement>(null);
   const pulseOn = useResolvedMotion(settings.pulseAnimation);
@@ -55,7 +55,7 @@ export function LanguageStatusCapsule({
       : isPaused ? "paused" : phase === "translating" || isWaitingForFinalTranslation ? "translating" : null;
   const actionLabel = expanded
     ? I18N.overlay.closeControls
-    : I18N.overlay.openControls;
+    : unlock ? I18N.overlay.unlockPosition : I18N.overlay.openControls;
   const compact = capsuleLabels(settings, transientPhase);
   const sources = audioInputLabel(settings.audioInput, settings.systemAudioTarget);
   const phaseLabel = isStopping ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
@@ -63,7 +63,9 @@ export function LanguageStatusCapsule({
   const recordingLabel = recordingStatusLabel(audioRecording, effectiveUiLanguage());
   const recordingSuffix = recordingLabel ? ` · ${recordingLabel}` : "";
   const fullLabel = `${sources} · ${phaseLabel} · ${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}`;
-  const title = `${fullLabel}. ${actionLabel}`;
+  const title = unlock
+    ? [actionLabel, unlock.shortcutHint, unlock.failure].filter(Boolean).join(" · ")
+    : `${fullLabel}. ${actionLabel}`;
   const accessibleLabel = `${sources} · ${phaseLabel}${I18N.overlay.accessibilityCurrentLanguagePrefix}${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}. ${actionLabel}`;
 
   useLayoutEffect(() => {
@@ -116,8 +118,6 @@ export function LanguageStatusCapsule({
       <div className="overlay-control-header">
         <div
           className="overlay-control-header__summary"
-          data-drag-enabled={onDragPress ? "" : undefined}
-          onMouseDown={onDragPress}
           title={fullLabel}
         >
           {summary}
@@ -142,13 +142,20 @@ export function LanguageStatusCapsule({
       className="overlay-control-island"
       onClick={onToggle}
       title={title}
-      aria-label={accessibleLabel}
-      aria-haspopup="dialog"
-      aria-expanded={false}
-      aria-controls="overlay-control-panel"
+      aria-label={unlock ? actionLabel : accessibleLabel}
+      aria-haspopup={unlock ? undefined : "dialog"}
+      aria-expanded={unlock ? undefined : false}
+      aria-controls={unlock ? undefined : "overlay-control-panel"}
+      aria-busy={unlock?.pending || undefined}
+      disabled={unlock?.pending}
     >
-      {summary}
-      <Icon name="chevron-down" />
+      {unlock ? <>
+        <Icon name={unlock.failure ? "exclamation-triangle" : "unlock"} className="overlay-control-island__unlock" />
+        <span className="overlay-control-island__summary" role={unlock.failure ? "alert" : undefined}>
+          <strong>{unlock.failure ?? actionLabel}</strong>
+        </span>
+        <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />
+      </> : <>{summary}<Icon name="chevron-down" /></>}
     </button>
   );
 }

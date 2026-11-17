@@ -81,13 +81,14 @@ async function searchSource(query: string) {
   return search;
 }
 
-async function press(target: Element, button = 0) {
-  const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button });
+async function press(target: Element, button = 0, clientX = 0) {
+  const event = new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button, clientX });
+  Object.defineProperties(event, { pointerType: { value: "mouse" }, isPrimary: { value: true } });
   await act(() => { target.dispatchEvent(event); });
   return event;
 }
 
-it("hands header and blank padding to native drag independently of collapse", async () => {
+it("moves from header, section text and blank padding independently of collapse", async () => {
   native.active = true;
   configure({ isOverlayLocked: false, subtitleBlendsWithBackground: false });
   await mount();
@@ -104,13 +105,16 @@ it("hands header and blank padding to native drag independently of collapse", as
   await act(() => { document.body.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); });
   expect((await press(blank)).defaultPrevented).toBe(true);
   expect(native.move).toHaveBeenCalledTimes(2);
+  expect((await press(host.querySelector('.overlay-control-section__title')!)).defaultPrevented).toBe(true);
+  expect((await press(host.querySelector('.overlay-control-panel')!)).defaultPrevented).toBe(true);
+  expect(native.move).toHaveBeenCalledTimes(4);
   expect(props.onDismiss).not.toHaveBeenCalled();
 
   expect((await press(label, 2)).defaultPrevented).toBe(false);
   expect((await press(collapse)).defaultPrevented).toBe(false);
   await act(() => collapse.click());
   expect(props.onDismiss).toHaveBeenCalledOnce();
-  expect(native.move).toHaveBeenCalledTimes(2);
+  expect(native.move).toHaveBeenCalledTimes(4);
 });
 
 it("keeps controls, the portaled picker, and wheel scrolling free of drag", async () => {
@@ -120,7 +124,7 @@ it("keeps controls, the portaled picker, and wheel scrolling free of drag", asyn
   const target = picker(I18N.settings.translateTo);
   const panel = host.querySelector(".overlay-control-panel")!;
   for (const control of [target, displayChoices()[0],
-    host.querySelector(".overlay-control-settings-link")!, panel]) {
+    host.querySelector(".overlay-control-settings-link")!]) {
     await press(control);
   }
   await act(() => target.click());
@@ -136,6 +140,19 @@ it("keeps controls, the portaled picker, and wheel scrolling free of drag", asyn
   expect(wheel.defaultPrevented).toBe(false);
   expect(native.move).not.toHaveBeenCalled();
   expect(props.onDismiss).not.toHaveBeenCalled();
+});
+
+it("preserves the panel scrollbar even when its content exceeds the height limit", async () => {
+  native.active = true;
+  configure({ isOverlayLocked: false, subtitleBlendsWithBackground: false });
+  await mount();
+  const panel = host.querySelector<HTMLElement>('.overlay-control-panel')!;
+  Object.defineProperties(panel, { scrollHeight: { value: 700 }, clientHeight: { value: 520 }, offsetWidth: { value: 280 }, clientWidth: { value: 280 } });
+  vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 280 } as DOMRect);
+  expect((await press(panel, 0, 277)).defaultPrevented).toBe(false);
+  expect(native.move).not.toHaveBeenCalled();
+  expect((await press(panel, 0, 140)).defaultPrevented).toBe(true);
+  expect(native.move).toHaveBeenCalledOnce();
 });
 
 it("leaves the chevron usable while movement is unavailable or a display choice is saving", async () => {

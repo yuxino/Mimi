@@ -83,6 +83,11 @@ These project rules apply to implementation and review.
 - Verify wrapping, narrow windows, long labels, empty content and light/dark
   themes. Interactive controls, including help and toast dismissal, keep pointer
   cursors; preserve disabled, text-input, slider and resize cursors.
+- Distinguish temporary busy controls from unavailable choices. A pending
+  preference or session change may block conflicting input without dimming an
+  entire floating panel. Keep its geometry and visible selection stable; use
+  accessible busy state and local progress where appropriate. Empty or
+  unsupported choices retain their unavailable appearance and explanation.
 - Live subtitle geometry needs a stable reading edge as well as unclipped text.
   Automatic glides must retain ownership across row measurement and streaming
   revisions; pointer clicks cannot turn their pending scroll events into history

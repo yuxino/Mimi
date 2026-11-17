@@ -9,6 +9,7 @@ export function LanguageSelect(props: {
   valueLabel?: string;
   options: readonly { value: string; label: string }[];
   disabled?: boolean;
+  busy?: boolean;
   onChange: (value: string) => void;
 }) {
   return <Select {...props}

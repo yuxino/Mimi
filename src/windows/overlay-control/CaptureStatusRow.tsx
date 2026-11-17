@@ -15,7 +15,7 @@ import { SettingsHelp } from "../settings/SettingsHelp";
 const SOURCES: AudioSource[] = ["system", "microphone"];
 
 /** Mounted only in the expanded panel. Status and device details stay in help. */
-export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
+export function CaptureStatusRow({ disabled = false, busy = false }: { disabled?: boolean; busy?: boolean }) {
   const id = useId();
   const [snapshot, setSnapshot] = useState<{ stamp: object; value: CaptureStatus } | null>(null);
   const [pending, setPending] = useState(false);
@@ -65,7 +65,9 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
   const language = effectiveUiLanguage();
   const copy = captureSwitchCopy(language);
   const lifecycle = { status: kind === "error" ? { kind, message: "" } : { kind }, isActive: active, isPaused: paused };
-  const locked = !ready || disabled || pending || targetPending || kind === "connecting" || kind === "stopping";
+  const unavailable = !ready || disabled;
+  const changing = busy || pending || targetPending || kind === "connecting" || kind === "stopping";
+  const locked = unavailable || changing;
   const toggle = async (source: AudioSource) => {
     if (locked || switching.current || input === source) return;
     const next: AudioInput = input === "both" ? source === "system" ? "microphone" : "system" : "both";
@@ -97,7 +99,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
     ]),
     ...(microphoneAvailable ? [copy.minimum, copy.switchHelp, copy.dualHelp] : []),
   ].filter(Boolean).join("\n");
-  return <section className="overlay-control-section overlay-control-capture" aria-labelledby={id} aria-busy={pending || targetPending}>
+  return <section className="overlay-control-section overlay-control-capture" aria-labelledby={id} aria-busy={changing}>
     <div className="overlay-control-section__heading">
       <h2 className="overlay-control-section__title" id={id}>{I18N.settings.audioInputTitle}</h2>
       <SettingsHelp id={groupHelpId} text={groupHelp} label={`${I18N.settings.audioInputTitle} · ${I18N.settings.helpLabel}`} />
@@ -113,7 +115,8 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
             aria-label={text.source}
             aria-describedby={helpId}
             disabled={locked || input === source}
-            data-required={!locked && input === source || undefined}
+            data-required={!unavailable && input === source || undefined}
+            data-busy-disabled={!unavailable && changing || undefined}
             className={`overlay-control-capture__toggle${enabled ? " is-on" : ""}`}
             onClick={() => void toggle(source)}
           >
@@ -125,7 +128,7 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
       })}
     </div>
     {input !== "microphone" && <span className="overlay-control-capture__application">
-      <ApplicationAudioPicker disabled={locked} onBusyChange={setTargetPending} />
+      <ApplicationAudioPicker disabled={unavailable} busy={changing} onBusyChange={setTargetPending} />
     </span>}
     {operationError && <div className="overlay-control-alert" role="alert"><Icon name="exclamation-triangle" /><span>{operationError}</span></div>}
   </section>;

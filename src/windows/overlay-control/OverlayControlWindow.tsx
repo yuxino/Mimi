@@ -1,8 +1,10 @@
 import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
 import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
+import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/useSettingsToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
-import { effectiveUiLanguage, subscribeUiLanguage } from "../../lib/i18n";
+import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
+import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
 import {
   isTauri,
@@ -26,6 +28,7 @@ import {
   pendingSourceTranslation,
 } from "../overlay/overlayModel";
 import { useOverlayChromePeers } from "../overlay/useOverlayChromePeers";
+import { useSessionAction } from "../overlay/useSessionAction";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
@@ -68,6 +71,12 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const [mode, setMode] = useOverlayControlMode(initialPreviewMode);
   // Match native recovery, which temporarily lifts the saved lock.
   const lockedPresentation = settings.isOverlayLocked && sessionStatusKind !== "error";
+  const visibleMode = lockedPresentation && mode === "panel" ? "island" : mode;
+  useEffect(() => {
+    // Unlock settings can arrive before the native Island event. Retire the
+    // old Panel state so that update cannot reopen controls on its own.
+    if (lockedPresentation && mode === "panel") setMode("island");
+  }, [lockedPresentation, mode, setMode]);
   const updateNativePointer = useOverlayChromePeers(surfaceRef, "island", isTauri && !embedded);
   useEffect(() => {
     if (!isTauri || embedded) return;
@@ -84,18 +93,18 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
       unlisten?.();
     };
   }, [embedded, updateNativePointer]);
-  const quietIsland = isTauri && mode === "island" && sessionStatusKind !== "error" &&
-    !collapsed && !lockedPresentation && !settings.subtitleBlendsWithBackground &&
+  const quietIsland = isTauri && visibleMode === "island" && sessionStatusKind !== "error" &&
+    !collapsed && !settings.subtitleBlendsWithBackground &&
     (!audioRecording || audioRecording === "off");
 
   const toggle = useCallback(() => {
-    if (mode !== "island" || lockedPresentation) return;
+    if (mode !== "island") return;
     if (isTauri) {
       void overlayPopoverToggle().catch(() => {});
     } else {
       setMode((current) => (current === "panel" ? "island" : "panel"));
     }
-  }, [lockedPresentation, mode, setMode]);
+  }, [mode, setMode]);
 
   const dismiss = useCallback(() => {
     if (isTauri) {
@@ -188,13 +197,24 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
   const model = overlayControlPanelModel(settings);
   const isChangingSession =
     sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
+  const capsuleProps = {
+    phase,
+    status,
+    settings,
+    audioRecording,
+    isPaused: sessionIsPaused,
+    isWaitingForFinalTranslation: isWaiting,
+    expanded: false,
+    animationVisible: mode === "island" && !lockedPresentation,
+    isStopping: sessionStatusKind === "stopping",
+    onWidthChange: isTauri ? reportIslandWidth : undefined,
+  };
 
   return (
     <div ref={surfaceRef} className={embedded ? "overlay-control-embedded" : "overlay-control-detached"}
-      data-position-locked={lockedPresentation ? "" : undefined}
-      aria-hidden={lockedPresentation || mode === "hidden" ? true : undefined}
-      inert={lockedPresentation || mode === "hidden" ? true : undefined}
-      data-mode={embedded ? mode : undefined} data-quiet-island={quietIsland ? "" : undefined}>
+      aria-hidden={visibleMode === "hidden" ? true : undefined}
+      inert={visibleMode === "hidden" ? true : undefined}
+      data-mode={embedded ? visibleMode : undefined} data-quiet-island={quietIsland ? "" : undefined}>
       {mode === "panel" && !lockedPresentation && (
         <OverlayControlPanel
           phase={phase}
@@ -223,26 +243,47 @@ export const OverlayControlWindow = memo(function OverlayControlWindow({ embedde
         />
       )}
       <div
-        className={mode === "island" ? undefined : "overlay-control-island-measure"}
-        aria-hidden={mode === "island" ? undefined : true}
+        className={visibleMode === "island" ? undefined : "overlay-control-island-measure"}
+        aria-hidden={visibleMode === "island" ? undefined : true}
       >
-        <LanguageStatusCapsule
-          phase={phase}
-          status={status}
-          settings={settings}
-          audioRecording={audioRecording}
-          isPaused={sessionIsPaused}
-          isWaitingForFinalTranslation={isWaiting}
-          expanded={false}
-          animationVisible={mode === "island" && !lockedPresentation}
-          isStopping={sessionStatusKind === "stopping"}
-          onToggle={toggle}
-          onWidthChange={isTauri ? reportIslandWidth : undefined}
-        />
+        {lockedPresentation
+          ? <LockedLanguageStatusCapsule {...capsuleProps} active={visibleMode === "island"} />
+          : <LanguageStatusCapsule {...capsuleProps} onToggle={toggle} />}
       </div>
     </div>
   );
 });
+
+/** Shortcut discovery and unlock feedback update only the locked capsule. */
+function LockedLanguageStatusCapsule({ active, ...props }: Omit<Parameters<typeof LanguageStatusCapsule>[0], "onToggle" | "unlock"> & { active: boolean }) {
+  const setOverlayLocked = useStore(state => state.setOverlayLocked);
+  const { nativeShortcuts } = useDesktopShortcuts();
+  const { pending, run } = useSessionAction();
+  const { runWithToast, clearToast } = useSettingsToast();
+  const toast = useSyncExternalStore(subscribeSettingsToast, settingsToastSnapshot);
+  useEffect(() => {
+    if (!active) return;
+    const clearWhenHidden = () => { if (document.hidden) clearToast(); };
+    window.addEventListener("blur", clearToast);
+    document.addEventListener("visibilitychange", clearWhenHidden);
+    return () => {
+      window.removeEventListener("blur", clearToast);
+      document.removeEventListener("visibilitychange", clearWhenHidden);
+      clearToast();
+    };
+  }, [active, clearToast]);
+  return <LanguageStatusCapsule {...props}
+    unlock={{
+      pending,
+      failure: active && toast?.failure ? toast.message : null,
+      shortcutHint: nativeShortcuts ? `${/Mac|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "⌘⇧" : "Ctrl+Shift+"}L` : undefined,
+    }}
+    onToggle={() => {
+      if (!active) return;
+      void run(async () => { await runWithToast(() => setOverlayLocked(false), I18N.overlay.controlActionFailed); });
+    }}
+  />;
+}
 
 // The body observer supplies only child-list, text, and style-attribute changes.
 function isLocalSubtitleMutation(record: MutationRecord, subtitleRoot: HTMLElement): boolean {

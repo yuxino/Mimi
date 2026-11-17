@@ -8,14 +8,13 @@ import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { Select } from "../../components/Select";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { LanguageSelect } from "../../components/LanguageSelect";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
 import { diagnosticPlatform, languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage } from "../../lib/connectionDiagnostics";
 import {
   isTauri,
   overlayControlSetPanelHeight,
-  overlayMoveStart,
   type SettingsNavigationTarget,
 } from "../../lib/ipc";
 import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
@@ -33,6 +32,7 @@ import {
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { CaptureStatusRow } from "./CaptureStatusRow";
 import { OverlaySessionDetails } from "./OverlaySessionDetails";
+import { startOverlayContentDrag } from "../overlay/overlayContentDrag";
 import type { OverlayControlPanelModel } from "./overlayControlModel";
 
 type PendingAction =
@@ -97,15 +97,10 @@ export function OverlayControlPanel({
   const mounted = useRef(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
-  const canChangeSessionSettings = !isChangingSession && pendingAction === null;
+  const sessionControlsBusy = isChangingSession || pendingAction !== null;
+  const canChangeSessionSettings = !sessionControlsBusy;
   const canDragPanel = isTauri && !model.overlayLocked && !model.immersiveModeEnabled && canChangeSessionSettings;
   const sourceGuidance = speechLanguageGuidance(settings);
-
-  const startDrag = (event: MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    void overlayMoveStart().catch(() => {});
-  };
 
   useEffect(() => {
     mounted.current = true;
@@ -228,17 +223,13 @@ export function OverlayControlPanel({
       aria-modal="false"
       aria-label={I18N.overlay.controlPanel}
       aria-busy={pendingAction !== null}
+      data-drag-enabled={canDragPanel ? "" : undefined}
+      onPointerDownCapture={event => startOverlayContentDrag(event, !canDragPanel)}
     >
       <SettingsToastRegion />
       <div
         ref={contentRef}
         className="overlay-control-panel__content"
-        data-drag-enabled={canDragPanel ? "" : undefined}
-        onMouseDown={canDragPanel ? (event) => {
-          // Only padding and gaps belong to this element. Its controls and
-          // React portals have their own event targets.
-          if (event.target === event.currentTarget) startDrag(event);
-        } : undefined}
       >
         <LanguageStatusCapsule
           phase={phase}
@@ -250,7 +241,6 @@ export function OverlayControlPanel({
           expanded
           isStopping={isStopping}
           onToggle={onDismiss}
-          onDragPress={canDragPanel ? startDrag : undefined}
         />
 
         {sessionErrorMessage && <SessionErrorFeedback permissionRequired={permissionRequired}
@@ -272,7 +262,8 @@ export function OverlayControlPanel({
                 value={settings.sourceLanguage}
                 valueLabel={sourceGuidance.optionLabel(settings.sourceLanguage)}
                 options={model.sourceOptions.map(language => ({ value: language, label: sourceGuidance.optionLabel(language) }))}
-                disabled={!canChangeSessionSettings || model.sourceOptions.length === 0 || (model.sourceOptions.length === 1 && model.sourceOptions[0] === settings.sourceLanguage)}
+                disabled={model.sourceOptions.length === 0 || (model.sourceOptions.length === 1 && model.sourceOptions[0] === settings.sourceLanguage)}
+                busy={sessionControlsBusy}
                 onChange={(value) => performAction("source", () => onSwitchSourceLanguage(value as SourceLanguage), false)}
               />
             </div>
@@ -287,7 +278,8 @@ export function OverlayControlPanel({
                 value={settings.targetLanguage}
                 valueLabel={targetLanguageOptionLabel(settings, settings.targetLanguage)}
                 options={model.targetOptions.map(language => ({ value: language, label: targetLanguageOptionLabel(settings, language) }))}
-                disabled={!canChangeSessionSettings || model.targetOptions.length === 0 || (model.targetOptions.length === 1 && model.targetOptions[0] === settings.targetLanguage)}
+                disabled={model.targetOptions.length === 0 || (model.targetOptions.length === 1 && model.targetOptions[0] === settings.targetLanguage)}
+                busy={sessionControlsBusy}
                 onChange={value => performAction("target", () => onSwitchTargetLanguage(value as TargetLanguage), false)}
               />
             </div>
@@ -297,7 +289,7 @@ export function OverlayControlPanel({
               valueLabel={I18N.settings.noActiveProfile}
               options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name, ...profileSelectionState(profile, settings.targetLanguage),
                 icon: <ProviderIcon provider={profile.provider === "deepLX" ? "alibabaCloud" : profile.provider} size={32} /> }))}
-              disabled={!canChangeSessionSettings}
+              busy={sessionControlsBusy}
               onChange={(profileId) => {
                 const profile = settings.profiles.find(profile => profile.id === profileId);
                 if (!canChangeSessionSettings || !profile || profileSelectionState(profile, settings.targetLanguage).disabled) return;
@@ -322,7 +314,7 @@ export function OverlayControlPanel({
           {sourceGuidance.notice && <div className="recognition-language-notice">{sourceGuidance.notice}</div>}
         </section>
 
-        <CaptureStatusRow disabled={pendingAction !== null} />
+        <CaptureStatusRow busy={pendingAction !== null} />
 
         <section className="overlay-control-section" aria-labelledby={subtitlesHeadingId}>
           <h2 className="overlay-control-section__title" id={subtitlesHeadingId}>{I18N.settings.subtitleTitle}</h2>
