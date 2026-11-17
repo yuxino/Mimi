@@ -264,15 +264,11 @@
   cursor: pointer;
 }
 
-.overlay-control-capture__toggle > svg {
-  flex: 0 0 12px;
-  font-size: 12px;
-}
-
 .overlay-control-capture__toggle > span:first-of-type {
   min-width: 0;
   flex: 1;
   font-weight: 500;
+  hyphens: auto;
   overflow-wrap: anywhere;
 }
 
@@ -596,6 +592,13 @@
 .overlay-control-picker .mimi-select__trigger .mimi-select__label {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.overlay-control-picker--profile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 4px;
 }
 
 .overlay-control-picker--profile .mimi-select__trigger {

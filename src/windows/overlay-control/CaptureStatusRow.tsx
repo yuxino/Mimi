@@ -120,7 +120,6 @@ export function CaptureStatusRow({ disabled = false }: { disabled?: boolean }) {
               className={`overlay-control-capture__toggle${enabled ? " is-on" : ""}`}
               onClick={() => void toggle(source)}
             >
-              <Icon name={source === "system" ? "speaker" : "microphone"} />
               <span>{text.source}</span>
               <span className="overlay-control-capture__check" aria-hidden="true">{enabled && <Icon name="checkmark" />}</span>
             </button>}

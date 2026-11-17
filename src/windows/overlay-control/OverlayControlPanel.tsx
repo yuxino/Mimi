@@ -297,10 +297,6 @@ export function OverlayControlPanel({
             </div>
           </div>
           <div className="overlay-control-picker overlay-control-picker--profile" aria-busy={pendingAction === "profile"}>
-            <span className="overlay-control-picker__label">
-              <span>{I18N.settings.currentProfile}</span>
-              <SettingsHelp text={I18N.settings.profileSwitchHelp} label={`${I18N.settings.currentProfile} · ${I18N.settings.helpLabel}`} />
-            </span>
             <Select label={I18N.settings.currentProfile} value={settings.activeProfileId ?? ""}
               valueLabel={I18N.settings.noActiveProfile}
               options={settings.profiles.map((profile) => ({ value: profile.id, label: profile.name, ...profileSelectionState(profile, settings.targetLanguage),
@@ -313,6 +309,7 @@ export function OverlayControlPanel({
                   performAction("profile", () => onSelectProfile(profileId), false);
                 }
               }} />
+            <SettingsHelp text={I18N.settings.profileSwitchHelp} label={`${I18N.settings.currentProfile} · ${I18N.settings.helpLabel}`} />
           </div>
 
           <OverlaySessionDetails

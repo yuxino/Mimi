@@ -5,9 +5,8 @@ use crate::core::models::{SubtitleDisplayMode, TargetLanguage};
 /// Retain the saved-frame compatibility floor; current requirements add chrome.
 pub const BASE_MINIMUM_HEIGHT: f64 = 136.0;
 const LEGACY_SERVICE_ROW_HEIGHT: f64 = 20.0;
-/// Retained geometry budget: historical active band 61 + service row 20
-/// + inset 12 + inner padding 10 + border 2. The slimmer toolbar releases
-/// caption space without shrinking existing resize minima.
+/// Retain the historical 105px chrome budget, including insets and borders.
+/// The slimmer toolbar releases caption space without shrinking resize minima.
 pub const MAXIMUM_CHROME_HEIGHT: f64 = 85.0 + LEGACY_SERVICE_ROW_HEIGHT;
 pub const FONT_SIZE_RANGE: std::ops::RangeInclusive<f64> = 14.0..=48.0;
 pub const DEFAULT_FONT_SIZE: f64 = 16.0;
