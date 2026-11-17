@@ -107,6 +107,14 @@ Rules:
   verify that the exact executable's process exited with a read-only process
   check; a successful AX click alone does not prove shutdown. Use the explicit
   launcher mode before querying the next test instance.
+- When investigating Settings appearing unexpectedly, stop native UI automation
+  and relaunches before asking the user to reproduce it. The initial settings
+  window is explicitly visible in Tauri configuration, and macOS `Reopen` opens
+  Settings while the Dock icon is enabled. A development install/relaunch can
+  therefore produce the reported symptom without an overlay click. Record that
+  interference separately; do not claim a click-routing defect or a successful
+  repair from that observation. Keep browser-only work in an isolated page while
+  the user tries the installed app.
 - After browser interaction, a CUA click can move the pointer over a WebKit
   control without activating the settings window or invoking its action.
   If navigation remains unchanged, use Mimi's native menu → Settings to
