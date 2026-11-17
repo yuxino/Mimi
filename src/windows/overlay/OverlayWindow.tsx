@@ -56,6 +56,7 @@ type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const compactReadingRef = useRef<HTMLDivElement>(null);
   const updateNativePointer = useOverlayChromePeers(surfaceRef, "overlay", isTauri && !hasEmbeddedOverlayControls);
   const subtitleRootRef = useRef<HTMLDivElement>(null);
   const session = useStore((state) => state.session);
@@ -548,7 +549,7 @@ export function OverlayWindow() {
           className="relative flex h-full items-center"
           style={{ gap: recordingLabel ? (settings.audioInput === "system" ? 6 : 4) : 8, padding: "0 10px" }}
         >
-          <div className="overlay-compact-reading">
+          <div className="overlay-compact-reading" ref={compactReadingRef}>
             <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
             <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
             <RecordingIndicator status={session.audioRecording} language={effectiveUiLanguage()} compact />
@@ -565,6 +566,7 @@ export function OverlayWindow() {
           <ControlButton
             icon={session.status.kind === "error" || session.isPaused ? "play" : "pause"}
             label={sessionActionLabel}
+            tooltipArea={compactReadingRef}
             onClick={runSessionAction}
             busy={sessionActionProgress !== null}
             disabled={sessionActionDisabled}
@@ -572,6 +574,7 @@ export function OverlayWindow() {
           <ControlButton
             icon="chevron-down"
             label={I18N.overlay.expandSubtitle}
+            tooltipArea={compactReadingRef}
             onClick={() => runControlAction("collapse", () => setOverlayCollapsed(false))}
             busy={pendingControl === "collapse"}
             disabled={controlAction.pending}
@@ -580,6 +583,7 @@ export function OverlayWindow() {
           <ControlButton
             icon="close"
             label={I18N.overlay.closeSubtitles}
+            tooltipArea={compactReadingRef}
             onClick={() => runControlAction("close", stop)}
             busy={pendingControl === "close"}
             disabled={controlAction.pending || sessionAction.pending || session.status.kind === "stopping"}

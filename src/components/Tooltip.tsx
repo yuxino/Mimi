@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { tooltipPosition } from "./tooltipPosition";
 import { OVERLAY_POINTER_TARGET_EVENT } from "../lib/overlayPointer";
@@ -7,11 +7,13 @@ import "./tooltip.css";
 interface TooltipProps {
   label: string;
   popupClassName?: string;
+  /** An inline space for the label in a window too short to float it. */
+  popupArea?: RefObject<HTMLElement | null>;
   children: (descriptionId: string | undefined, hovered: boolean) => ReactNode;
 }
 
 /** Shared visible label for compact controls, including keyboard focus. */
-export function Tooltip({ label, popupClassName, children }: TooltipProps) {
+export function Tooltip({ label, popupClassName, popupArea, children }: TooltipProps) {
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const popup = useRef<HTMLDivElement>(null);
@@ -45,11 +47,12 @@ export function Tooltip({ label, popupClassName, children }: TooltipProps) {
       const anchor = trigger.current;
       const tooltip = popup.current;
       if (!anchor || !tooltip) return;
-      const next = tooltipPosition(
-        anchor.getBoundingClientRect(),
-        tooltip.getBoundingClientRect(),
-        { width: window.innerWidth, height: window.innerHeight },
-      );
+      const area = popupArea?.current?.getBoundingClientRect();
+      tooltip.style.maxWidth = area ? `${area.width}px` : "";
+      const rect = tooltip.getBoundingClientRect();
+      const next = area
+        ? { left: area.right - rect.width, top: area.top + (area.height - rect.height) / 2 }
+        : tooltipPosition(anchor.getBoundingClientRect(), rect, { width: window.innerWidth, height: window.innerHeight });
       tooltip.style.left = `${next.left}px`;
       tooltip.style.top = `${next.top}px`;
       tooltip.style.visibility = "visible";
@@ -58,6 +61,7 @@ export function Tooltip({ label, popupClassName, children }: TooltipProps) {
     const observer = new ResizeObserver(position);
     if (trigger.current) observer.observe(trigger.current);
     if (popup.current) observer.observe(popup.current);
+    if (popupArea?.current) observer.observe(popupArea.current);
     window.addEventListener("resize", position);
     const scrolled = (event: Event) => {
       // A sibling subtitle timeline can scroll every animation frame without
@@ -71,7 +75,7 @@ export function Tooltip({ label, popupClassName, children }: TooltipProps) {
       window.removeEventListener("resize", position);
       window.removeEventListener("scroll", scrolled, true);
     };
-  }, [open, label]);
+  }, [open, label, popupArea]);
 
   useEffect(() => {
     const nativeHover = (event: Event) => {

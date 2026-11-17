@@ -27,7 +27,7 @@ export default async function verifyOverlayTooltip(page, baseUrl = "http://127.0
         const rect = tooltip.getBoundingClientRect();
         if (rect.left < 6 || rect.right > innerWidth - 6 || rect.top < 6 || rect.bottom > innerHeight - 6) issues.push("tooltip leaves native bounds");
         if (tooltip.scrollHeight > tooltip.clientHeight || tooltip.scrollWidth > tooltip.clientWidth) issues.push("tooltip text clipped");
-        if (compact) for (const button of document.querySelectorAll('button')) {
+        if (compact) for (const button of document.querySelectorAll('.overlay-control-button')) {
           const other = button.getBoundingClientRect();
           if (rect.left < other.right && rect.right > other.left && rect.top < other.bottom && rect.bottom > other.top) issues.push(`tooltip covers ${button.getAttribute('aria-label')}`);
         }
