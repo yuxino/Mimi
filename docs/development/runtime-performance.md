@@ -61,6 +61,10 @@ inventory loading. Its first read needs only catalog metadata; project saved
 credential states once in the fresh final snapshot. Preserve catalog migration,
 read failures and changes made while the inventory query is pending.
 
+Frontend snapshot streams publish readiness through their lifetime-owned `onReady` callback, including late
+recovery; settling an initialization attempt must not publish the same ready state
+again and notify every store subscriber a second time.
+
 ## Measuring a change
 
 Record the source revision, build profile, fixture, warm-up and measurement
