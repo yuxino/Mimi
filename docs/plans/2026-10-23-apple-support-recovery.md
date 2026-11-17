@@ -25,6 +25,12 @@ snapshot to existing windows. An equivalent read does not need a broadcast.
 Concurrent readers may emit equivalent recovery snapshots; consumers already
 compare resource signatures, so these finite duplicates must not start a loop.
 
+Before loading native inventories, derive only the language capabilities from
+the fallible preferences/catalog read. Keep its existing migration and failure
+handling. After the wait, read the current settings again and project credential
+states only for the returned snapshot. Do not reuse an early full snapshot:
+a profile, language or credential may change during the inventory query.
+
 ## Visible query ownership
 
 Apple Speech must treat reopening a hidden page as a fresh visit, even if its
