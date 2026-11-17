@@ -159,6 +159,17 @@ pub struct LanguageCapabilitiesPayload {
 }
 
 impl LanguageCapabilitiesPayload {
+    fn for_active_profile(
+        profiles: &[ServiceProfile],
+        active_profile_id: &str,
+        target_language: TargetLanguage,
+    ) -> Option<Self> {
+        profiles
+            .iter()
+            .find(|profile| profile.id == active_profile_id)
+            .map(|profile| Self::from_profile(profile, target_language))
+    }
+
     fn from_profile(profile: &ServiceProfile, target: TargetLanguage) -> Self {
         let support = (profile.provider == ProviderKind::AppleSpeech)
             .then(crate::apple_speech_support::cached_with_revision);
@@ -284,19 +295,97 @@ mod tests {
             directory.path().into(),
             Box::new(PartiallyUnavailableSecretStore),
         );
-        let snapshot = load_settings_snapshot(&empty, true).await.unwrap();
+        let snapshot = get_settings_snapshot(&empty, true, |_| {
+            panic!("Empty capabilities must not publish")
+        })
+        .await
+        .unwrap();
         assert!(snapshot.profiles.is_empty());
         assert!(snapshot.active_profile_id.is_empty());
 
         let unavailable =
             SettingsStore::in_memory(Box::new(PartiallyUnavailableSecretStore), false);
-        let snapshot = load_settings_snapshot(&unavailable, true).await.unwrap();
+        let snapshot = get_settings_snapshot(&unavailable, true, |_| {
+            panic!("Equivalent capabilities must not publish")
+        })
+        .await
+        .unwrap();
         assert_eq!(snapshot.profiles.len(), 1);
         assert_eq!(
             snapshot.profiles[0].credential_state,
             CredentialState::Unavailable
         );
         assert!(snapshot.language_capabilities.is_some());
+    }
+
+    #[tokio::test]
+    async fn initial_settings_bootstrap_reads_each_credential_slot_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let alibaba = ServiceProfile::alibaba_default();
+        let mut custom = ServiceProfile::new(
+            "bootstrap-custom",
+            "Synthetic speech",
+            ProviderKind::CustomOpenAIASR,
+        )
+        .unwrap();
+        custom.text_translation = Some(TextTranslation::DeepL);
+        std::fs::write(
+            directory.path().join("service-profiles.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "activeProfileId": alibaba.id,
+                "profiles": [&alibaba, &custom],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let reads = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let store = SettingsStore::at_path(
+            directory.path().into(),
+            Box::new(BootstrapCredentialStore {
+                reads: Arc::clone(&reads),
+            }),
+        );
+
+        let snapshot = get_settings_snapshot(&store, false, |_| {
+            panic!("Equivalent capabilities must not publish a settings change")
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(snapshot.active_profile_id, alibaba.id);
+        assert_eq!(snapshot.profiles.len(), 2);
+        assert_eq!(
+            snapshot.profiles[0].credential_state,
+            CredentialState::Present
+        );
+        assert_eq!(snapshot.profiles[1].id, custom.id);
+        assert_eq!(
+            snapshot.profiles[1].text_translation,
+            TextTranslation::DeepL
+        );
+        assert_eq!(
+            snapshot.profiles[1].speech_credential_state,
+            Some(CredentialState::Missing)
+        );
+        assert_eq!(
+            snapshot.profiles[1].text_credential_state,
+            Some(CredentialState::Unavailable)
+        );
+        assert_eq!(
+            snapshot.profiles[1].credential_state,
+            CredentialState::Unavailable
+        );
+        let mut accounts = reads.lock().unwrap().clone();
+        accounts.sort_unstable();
+        assert_eq!(
+            accounts,
+            [
+                "provider-profile:alibaba-default:alibabaCloud:api-key",
+                "provider-profile:bootstrap-custom:customOpenAIASR:api-key",
+                "provider-profile:bootstrap-custom:customOpenAIASR:text-translation",
+            ]
+        );
     }
 
     #[tokio::test]
@@ -312,7 +401,9 @@ mod tests {
                 directory.path().into(),
                 Box::new(PartiallyUnavailableSecretStore),
             );
-            let result = load_settings_snapshot(&store, true).await;
+            let result =
+                get_settings_snapshot(&store, true, |_| panic!("Failed reads must not publish"))
+                    .await;
             assert_eq!(
                 result.unwrap_err(),
                 "Service profile settings are unavailable."
@@ -326,7 +417,9 @@ mod tests {
             Box::new(PartiallyUnavailableSecretStore),
         );
         assert_eq!(
-            load_settings_snapshot(&store, true).await.unwrap_err(),
+            get_settings_snapshot(&store, true, |_| panic!("Failed reads must not publish"))
+                .await
+                .unwrap_err(),
             "Service profile settings are unavailable."
         );
     }
@@ -767,6 +860,50 @@ mod tests {
     fn immersive_mode_toggle_inverts_the_current_preference() {
         assert!(toggled_immersive_mode(false));
         assert!(!toggled_immersive_mode(true));
+    }
+
+    struct BootstrapCredentialStore {
+        reads: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    impl crate::settings_store::SecretStore for BootstrapCredentialStore {
+        fn uses_local_file(&self) -> bool {
+            true
+        }
+
+        fn load(
+            &self,
+            _service: &str,
+            account: &str,
+        ) -> Result<Option<String>, crate::settings_store::SecretStoreError> {
+            self.reads.lock().unwrap().push(account.into());
+            match account {
+                "provider-profile:alibaba-default:alibabaCloud:api-key" => {
+                    Ok(Some("synthetic-key".into()))
+                }
+                "provider-profile:bootstrap-custom:customOpenAIASR:text-translation" => {
+                    Err(crate::settings_store::SecretStoreError::Unavailable)
+                }
+                _ => Ok(None),
+            }
+        }
+
+        fn save(
+            &self,
+            _service: &str,
+            _account: &str,
+            _value: &str,
+        ) -> Result<(), crate::settings_store::SecretStoreError> {
+            panic!("Settings bootstrap must not write a credential")
+        }
+
+        fn delete(
+            &self,
+            _service: &str,
+            _account: &str,
+        ) -> Result<(), crate::settings_store::SecretStoreError> {
+            panic!("Settings bootstrap must not delete a credential")
+        }
     }
 
     struct PartiallyUnavailableSecretStore;
@@ -1640,12 +1777,11 @@ mod tests {
 impl SettingsSnapshotPayload {
     pub fn try_from_store(store: &SettingsStore) -> Result<Self, String> {
         let (prefs, active_profile_id, profiles) = store.preferences_and_catalog()?;
-        let language_capabilities = profiles
-            .iter()
-            .find(|profile| profile.id == active_profile_id)
-            .map(|profile| {
-                LanguageCapabilitiesPayload::from_profile(profile, prefs.target_language)
-            });
+        let language_capabilities = LanguageCapabilitiesPayload::for_active_profile(
+            &profiles,
+            &active_profile_id,
+            prefs.target_language,
+        );
         Ok(Self {
             credential_storage: store.credential_storage(),
             profiles: profiles
@@ -1723,20 +1859,38 @@ pub struct SettingsDraft {
 }
 
 /// Reads public settings and per-profile credential presence. API-key values
-/// never enter this payload. Async keeps OS credential-store reads off wry's
-/// main-thread path.
+/// never enter this payload. Async keeps credential-file reads off the
+/// WebView's main thread.
 #[tauri::command]
 pub async fn settings_get(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<SettingsSnapshotPayload, String> {
-    let previous = SettingsSnapshotPayload::try_from_store(&state.settings)?.language_capabilities;
+    get_settings_snapshot(&state.settings, app_is_ui_test(), |payload| {
+        let _ = app.emit("settings-changed", payload);
+    })
+    .await
+}
+
+async fn get_settings_snapshot(
+    settings: &SettingsStore,
+    is_ui_test: bool,
+    publish: impl FnOnce(&SettingsSnapshotPayload),
+) -> Result<SettingsSnapshotPayload, String> {
+    // Only language capabilities are compared after the resource load.
+    // Project credential states once, as part of the final snapshot.
+    let previous = {
+        let (prefs, active_profile_id, profiles) = settings.preferences_and_catalog()?;
+        LanguageCapabilitiesPayload::for_active_profile(
+            &profiles,
+            &active_profile_id,
+            prefs.target_language,
+        )
+    };
     load_and_publish_settings_snapshot(
         previous,
-        load_settings_snapshot(&state.settings, app_is_ui_test()),
-        |payload| {
-            let _ = app.emit("settings-changed", payload);
-        },
+        load_settings_snapshot(settings, is_ui_test),
+        publish,
     )
     .await
 }

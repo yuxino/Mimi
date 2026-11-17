@@ -56,6 +56,11 @@ navigation callbacks from overwriting later intent. Reuse process-stable native
 capabilities per WebView, keep failures retryable, and treat an iconless query
 as a completed query. See [UI ownership rules](ui-guidelines.md).
 
+Settings bootstrap compares language capabilities before and after native
+inventory loading. Its first read needs only catalog metadata; project saved
+credential states once in the fresh final snapshot. Preserve catalog migration,
+read failures and changes made while the inventory query is pending.
+
 ## Measuring a change
 
 Record the source revision, build profile, fixture, warm-up and measurement
