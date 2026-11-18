@@ -66,10 +66,14 @@ function Get-CaptionDragPoint {
     throw "The named synthetic caption had no verified bright glyph on its dark background ($lastSample)."
 }
 
-function Wait-CaptionDragPosition($Root, $Child, [IntPtr]$Controls, [int]$X, [int]$Y, [int]$StableMs = 0) {
+function Wait-CaptionDragPosition($Root, $Child, [IntPtr]$Controls, [int]$X, [int]$Y, [int]$StableMs = 0, [switch]$Held) {
     $deadline = [Diagnostics.Stopwatch]::StartNew()
     $stableSince = -1
     do {
+        if ($Held) {
+            if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows did not retain the caption drag held left button.' }
+            [MimiPointerSmoke]::AssertCaptionMoveModal($overlay)
+        }
         Assert-SettingsHidden
         if ((Read-SmokeMarker $SessionStateFile) -ne 'listening') { throw 'Caption dragging changed the active session.' }
         if ([MimiPointerSmoke]::FindVisibleControlWindow($overlay) -ne $Controls) { throw 'Caption dragging replaced or hid the owned control window.' }
@@ -89,6 +93,13 @@ function Wait-CaptionDragPosition($Root, $Child, [IntPtr]$Controls, [int]$X, [in
 }
 
 function Test-NativeCaptionDrag([IntPtr]$Controls) {
+    # Observe the current policy; only the opt-in parent fixture may change it.
+    $fullWindows = [MimiCaptionDragDesktop]::FullWindows()
+    if ($ExpectedFullWindows -and $fullWindows -ne [bool]::Parse($ExpectedFullWindows)) {
+        throw "Windows drag policy did not match the expected test mode (expected=$ExpectedFullWindows observed=$fullWindows)."
+    }
+    $mode = if ($fullWindows) { 'full-window' } else { 'outline' }
+    Write-Output "Native caption drag system mode=$mode."
     $point = Get-CaptionDragPoint
     Write-Output ('Native caption glyph lane={0}x{1} brightness={2} contrast={3} point=({4},{5}).' -f $point.Width, $point.Height, $point.Brightness, $point.Contrast, $point.X, $point.Y)
     $main = [MimiPointerSmoke]::ReadBounds($overlay)
@@ -100,60 +111,40 @@ function Test-NativeCaptionDrag([IntPtr]$Controls) {
     foreach ($direction in @(1, -1)) {
         $point = Get-CaptionDragPoint
         [MimiPointerSmoke]::MoveOverWindow($overlay, $point.X, $point.Y, 'Press a verified caption glyph for native dragging')
-        $dragFailure = $null
-        $releaseFailure = $null
-        $heldFrames = [Collections.Generic.List[object]]::new()
+        $x = if ($direction -eq 1) { $delta.X } else { 0 }
+        $y = if ($direction -eq 1) { $delta.Y } else { 0 }
+        $heldX = if ($fullWindows) { $x } elseif ($direction -eq 1) { 0 } else { $delta.X }
+        $heldY = if ($fullWindows) { $y } elseif ($direction -eq 1) { 0 } else { $delta.Y }
+        $gestureFailure = $null
         try {
-            [MimiPointerSmoke]::SetCaptionButton($true)
-            # A deliberate held gesture, including a short pause mid-drag;
-            # no internal move-loop flag is required before physical motion.
+            [MimiCaptionDragDesktop]::SetLeftButton($true)
+            # Cross the normal drag threshold before requiring the OS move
+            # modal. The same physical gesture serves either system policy.
             Start-Sleep -Milliseconds 80
             for ($step = 1; $step -le 8; $step++) {
                 [MimiPointerSmoke]::MoveAndVerify([int]($point.X + $direction * $delta.X * $step / 8),
                     [int]($point.Y + $direction * $delta.Y * $step / 8))
                 Start-Sleep -Milliseconds $(if ($step -eq 4) { 200 } else { 20 })
-                try {
-                    $heldFrames.Add(@{ Step = $step; Root = [MimiPointerSmoke]::ReadBounds($overlay);
-                        Control = [MimiPointerSmoke]::ReadBounds($Controls) })
-                }
-                catch { $heldFrames.Add(@{ Step = $step; Root = 'unavailable'; Control = 'unavailable' }) }
             }
-            $x = if ($direction -eq 1) { $delta.X } else { 0 }
-            $y = if ($direction -eq 1) { $delta.Y } else { 0 }
-            Wait-CaptionDragPosition $main $child $Controls $x $y
+            # Full-window drags move immediately; outline drags retain both
+            # previous origins until button release commits the OS movement.
+            Wait-CaptionDragPosition $main $child $Controls $heldX $heldY -Held
+            $heldRoot = [MimiPointerSmoke]::ReadBounds($overlay)
+            $heldChild = [MimiPointerSmoke]::ReadBounds($Controls)
+            Write-Output "Native caption drag while held mode=$mode root=$heldRoot control=$heldChild."
         }
-        catch {
-            $dragFailure = $_
-            foreach ($frame in $heldFrames) {
-                Write-Output ('Native caption drag trace step={0} root={1} control={2}' -f $frame.Step, $frame.Root, $frame.Control)
-            }
-            try { Write-Output ('Native caption drag diagnostic phase=held ' + [MimiPointerSmoke]::CaptionDragObservation($overlay, $Controls)) }
-            catch { Write-Output 'Native caption drag diagnostic unavailable phase=held.' }
-        }
+        catch { $gestureFailure = $_ }
         finally {
-            try { [MimiPointerSmoke]::SetCaptionButton($false) }
-            catch { $releaseFailure = $_ }
+            try { [MimiCaptionDragDesktop]::SetLeftButton($false) }
+            catch { if ($null -eq $gestureFailure) { $gestureFailure = $_ } }
         }
-        if ($null -ne $dragFailure -or $null -ne $releaseFailure) {
-            # Observe whether an outline-only system drag commits on release.
-            # These samples never turn the original held-geometry failure into a pass.
-            $released = [Diagnostics.Stopwatch]::StartNew()
-            for ($sample = 0; $sample -lt 3; $sample++) {
-                if ($sample -gt 0) { Start-Sleep -Milliseconds 200 }
-                try {
-                    Write-Output ('Native caption drag diagnostic phase=released elapsed_ms={0} release_input_accepted={1} {2}' -f
-                        $released.ElapsedMilliseconds, ($null -eq $releaseFailure), [MimiPointerSmoke]::CaptionDragObservation($overlay, $Controls))
-                }
-                catch { Write-Output 'Native caption drag diagnostic unavailable phase=released.' }
-            }
-            if ($null -ne $dragFailure) { throw $dragFailure }
-            throw $releaseFailure
-        }
+        if ($null -ne $gestureFailure) { throw $gestureFailure }
         # Includes the native geometry manager's 350ms persistence debounce.
         Wait-CaptionDragPosition $main $child $Controls $x $y -StableMs 400
+        if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the left button after caption drag release.' }
         $observedRoot = [MimiPointerSmoke]::ReadBounds($overlay)
         $observedChild = [MimiPointerSmoke]::ReadBounds($Controls)
-        Write-Output "Native caption drag offset=($x,$y), root=$observedRoot control=$observedChild, release stable=400ms."
+        Write-Output "Native caption drag after release mode=$mode offset=($x,$y) root=$observedRoot control=$observedChild stable=400ms."
     }
     Write-Output 'Native caption drag passed: same root and control HWNDs moved together and returned exactly, click kept position, Settings stayed hidden, session listening.'
 }

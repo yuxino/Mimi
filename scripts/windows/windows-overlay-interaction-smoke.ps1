@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
     [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility', 'caption-drag')][string]$Interaction,
     [Parameter(Mandatory = $true)][string]$FixtureDirectory,
-    [string]$FrontendReadyDirectory
+    [string]$FrontendReadyDirectory,
+    [ValidateSet('True', 'False')][string]$ExpectedFullWindows
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,11 +101,7 @@ public static class MimiPointerSmoke {
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int key);
-    [DllImport("user32.dll")]
     private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern bool SystemParametersInfo(uint action, uint parameter, [MarshalAs(UnmanagedType.Bool)] out bool value, uint flags);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")]
@@ -355,32 +352,12 @@ public static class MimiPointerSmoke {
         return GetAncestor(WindowFromPoint(new Point { X = x, Y = y }), 2) == overlay;
     }
 
-    public static string CaptionDragObservation(IntPtr overlay, IntPtr controls) {
+    public static void AssertCaptionMoveModal(IntPtr overlay) {
         uint process;
         var thread = GetWindowThreadProcessId(overlay, out process);
         var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
-        var hasGui = thread != 0 && GetGUIThreadInfo(thread, ref gui);
-        bool fullWindows;
-        // SPI_GETDRAGFULLWINDOWS is read-only. Never alter the runner's policy.
-        var hasPolicy = SystemParametersInfo(0x0026, 0, out fullWindows, 0);
-        Point pointer;
-        var hasPointer = GetCursorPos(out pointer);
-        var point = hasPointer ? String.Format("({0},{1}) hit={2}", pointer.X, pointer.Y,
-            HitSurface(WindowFromPoint(pointer), overlay, controls)) : "unavailable";
-        Rect main, child;
-        var mainBounds = GetWindowRect(overlay, out main) ? main.ToString() : "unavailable";
-        var childBounds = GetWindowRect(controls, out child) ? child.ToString() : "unavailable";
-        return String.Format("left_down={0} gui_available={1} gui_flags=0x{2:X} in_move_size={3} move_window_is_root={4} capture={5} drag_full_windows={6} pointer={7} root={8} control={9}",
-            (GetAsyncKeyState(1) & 0x8000) != 0, hasGui, gui.Flags,
-            hasGui && (gui.Flags & 0x0002) != 0, hasGui && gui.MoveSize == overlay,
-            hasGui ? HitSurface(gui.Capture, overlay, controls) : "unavailable",
-            hasPolicy ? fullWindows.ToString() : "unavailable", point, mainBounds, childBounds);
-    }
-
-    public static void SetCaptionButton(bool down) {
-        var input = new Input { Mouse = new MouseInput { Flags = down ? 0x0002u : 0x0004u } };
-        if (SendInput(1, new[] { input }, Marshal.SizeOf(typeof(Input))) != 1)
-            throw new InvalidOperationException("Windows did not accept the caption drag button event.");
+        if (thread == 0 || !GetGUIThreadInfo(thread, ref gui) || (gui.Flags & 0x0002) == 0 || gui.MoveSize != overlay)
+            throw new InvalidOperationException("Windows did not enter a native move modal owned by the subtitle root.");
     }
 
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
@@ -746,6 +723,7 @@ try {
     Close-SettingsForOverlayCheck
 
     if ($Interaction -eq 'caption-drag') {
+        Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
         . (Join-Path $PSScriptRoot 'tests/overlay-caption-drag.ps1')
         $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
         if ($controls -eq [IntPtr]::Zero) { throw 'The caption drag fixture did not expose its owned language control window.' }

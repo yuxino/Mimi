@@ -100,53 +100,6 @@ fn marker_exists(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|marker| marker.is_file() && marker.len() == 0)
 }
 
-pub(super) fn record_drag_dispatch(ui_test: bool, stage: u8) {
-    if !ui_test {
-        return;
-    }
-    let Some(directory) = std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR")
-        .and_then(|path| checked_directory(Path::new(&path), &std::env::temp_dir()))
-    else {
-        return;
-    };
-    let marker = directory.join("windows-caption-drag-dispatch");
-    if !fs::symlink_metadata(&marker).is_ok_and(|file| file.is_file() && file.len() < 32) {
-        return;
-    }
-    if let Ok(mut file) = OpenOptions::new().append(true).open(marker) {
-        let _ = file.write_all(&[stage]);
-    }
-}
-
-// This temporary receiver runs only for the opted-in caption-drag process.
-// Compare signed screen coordinates without keeping them or any window payload.
-unsafe extern "system" fn observe_drag_message(
-    hwnd: windows_sys::Win32::Foundation::HWND,
-    message: u32,
-    wparam: usize,
-    lparam: isize,
-    id: usize,
-    _: usize,
-) -> isize {
-    use windows_sys::Win32::UI::{Shell, WindowsAndMessaging as wm};
-    match message {
-        wm::WM_NCLBUTTONDOWN if wparam == wm::HTCAPTION as usize => {
-            let mut point = windows_sys::Win32::Foundation::POINT::default();
-            let matches = unsafe { wm::GetCursorPos(&mut point) } != 0
-                && i32::from(lparam as i16) == point.x
-                && i32::from((lparam >> 16) as i16) == point.y;
-            record_drag_dispatch(true, if matches { b'C' } else { b'X' });
-        }
-        wm::WM_ENTERSIZEMOVE => record_drag_dispatch(true, b'I'),
-        wm::WM_EXITSIZEMOVE => record_drag_dispatch(true, b'O'),
-        wm::WM_NCDESTROY => unsafe {
-            Shell::RemoveWindowSubclass(hwnd, Some(observe_drag_message), id);
-        },
-        _ => {}
-    }
-    unsafe { Shell::DefSubclassProc(hwnd, message, wparam, lparam) }
-}
-
 pub(super) fn observe_ready(window: &WebviewWindow, directory: Option<&OsStr>) {
     if window.label() != "overlay" {
         return;
@@ -163,22 +116,6 @@ pub(super) fn observe_ready(window: &WebviewWindow, directory: Option<&OsStr>) {
     else {
         return;
     };
-    if marker_exists(&directory.join("windows-caption-drag-dispatch")) {
-        let root = window.clone();
-        let _ = window.run_on_main_thread(move || {
-            if let Ok(hwnd) = root.hwnd() {
-                let installed = unsafe {
-                    windows_sys::Win32::UI::Shell::SetWindowSubclass(
-                        hwnd.0,
-                        Some(observe_drag_message),
-                        0x4d44,
-                        0,
-                    )
-                };
-                record_drag_dispatch(true, if installed != 0 { b'S' } else { b'U' });
-            }
-        });
-    }
     let opt_in = directory.join(OPT_IN);
     if !marker_exists(&opt_in) || STARTED.swap(true, Ordering::Relaxed) {
         return;

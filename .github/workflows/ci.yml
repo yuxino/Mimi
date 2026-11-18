@@ -382,10 +382,10 @@ jobs:
         if: runner.os == 'Linux'
         run: ./scripts/linux/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
-      - name: Smoke launch x64 UI-test app and click overlay controls
+      - name: Test x64 overlay controls and both Windows drag preferences
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
-        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer -VerifyBothDragModes
 
       - name: Package and verify portable Windows build
         if: ${{ matrix.os == 'windows-2025' }}

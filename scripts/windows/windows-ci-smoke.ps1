@@ -20,10 +20,15 @@ param(
     # Cross-architecture native acceptance can need longer to initialize the
     # emulation layer. CI keeps the ten-second fail-closed bound by default.
     [ValidateRange(1, 60)]
-    [int]$FailureExitSeconds = 10
+    [int]$FailureExitSeconds = 10,
+
+    [switch]$VerifyBothDragModes
 )
 
 $ErrorActionPreference = 'Stop'
+if ($VerifyBothDragModes -and ($OverlayInteraction -ne 'pointer' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted')) {
+    throw 'Checking both drag preferences requires the isolated GitHub-hosted Windows pointer job.'
+}
 
 Add-Type @'
 using System;
@@ -455,7 +460,7 @@ function Wait-SmokeFrontendReady($TargetProcess, [string]$Directory) {
     throw "mimi frontends did not mount within 30 seconds (settings=$settingsReady overlay=$overlayReady)."
 }
 
-function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow, [string]$Mode, [int]$TimeoutMs) {
+function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow, [string]$Mode, [int]$TimeoutMs, [string]$ExpectedFullWindows) {
     $overlayWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$TargetProcess.Id, 'Mimi Subtitles')
     if ($overlayWindow -eq [IntPtr]::Zero -or -not [MimiWindowSmoke]::IsWindowVisible($overlayWindow)) {
         throw "The primary did not expose its visible subtitle overlay for the $Mode check."
@@ -470,11 +475,18 @@ function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow,
         '-Interaction', $Mode, '-FixtureDirectory', $preferencesDir, '-FrontendReadyDirectory', $frontendReadyDir)) {
         $probe.ArgumentList.Add([string]$argument)
     }
+    if ($ExpectedFullWindows) {
+        $probe.ArgumentList.Add('-ExpectedFullWindows')
+        $probe.ArgumentList.Add($ExpectedFullWindows)
+    }
     $probeProcess = [Diagnostics.Process]::Start($probe)
     try {
         if (-not $probeProcess.WaitForExit($TimeoutMs)) {
             $probeProcess.Kill()
             $probeProcess.WaitForExit(5000) | Out-Null
+            if ($Mode -eq 'caption-drag' -and [MimiCaptionDragDesktop]::LeftDown()) {
+                [MimiCaptionDragDesktop]::SetLeftButton($false)
+            }
             throw "The Windows overlay $Mode check did not finish."
         }
         if ($probeProcess.ExitCode -ne 0) {
@@ -876,8 +888,6 @@ try {
         $fixture['subtitle_display_mode'] = 'bilingual'
         $fixture | ConvertTo-Json -Depth 64 -Compress | Set-Content -LiteralPath $fixturePath -Encoding utf8NoBOM
         Remove-Item -LiteralPath $settingsActivationFile -Force
-        $dragDispatch = Join-Path $frontendReadyDir 'windows-caption-drag-dispatch'
-        New-Item -ItemType File -Path $dragDispatch | Out-Null
     }
     $process = Start-Process -FilePath $resolvedExecutable -PassThru
     Wait-SmokeFrontendReady $process $frontendReadyDir
@@ -918,11 +928,18 @@ try {
         throw "The restarted mimi process exited during its $StartupSeconds-second health check with code $($process.ExitCode)."
     }
     if ($OverlayInteraction -eq 'pointer') {
-        try { Invoke-OverlayInteractionProbe $process $restartedSettingsWindow 'caption-drag' 30000 }
-        finally {
-            $stages = [IO.File]::ReadAllText($dragDispatch)
-            if ($stages -cmatch '^[SUENFQCXIO]{0,32}$') {
-                Write-Output "Caption move command stages: '$stages' (S=observer ready, U=unavailable, E=entered, N=no frame, F=failed, Q=dispatched, C=correct point, X=other point, I/O=system move entered/exited)."
+        Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
+        $originalMode = [MimiCaptionDragDesktop]::FullWindows()
+        Invoke-OverlayInteractionProbe $process $restartedSettingsWindow 'caption-drag' 30000 ($originalMode.ToString())
+        if ($VerifyBothDragModes) {
+            $alternateMode = -not $originalMode
+            try {
+                [MimiCaptionDragDesktop]::SetFullWindows($alternateMode)
+                Invoke-OverlayInteractionProbe $process $restartedSettingsWindow 'caption-drag' 30000 ($alternateMode.ToString())
+            }
+            finally {
+                [MimiCaptionDragDesktop]::SetFullWindows($originalMode)
+                Write-Output "Restored Windows drag preference: full windows=$originalMode."
             }
         }
     }
