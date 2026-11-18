@@ -16,7 +16,7 @@ function Get-CaptionHistoryRows($Context) {
         $box = $element.Current.BoundingRectangle
         $area = if ($box.IsEmpty -or $box.Width -le 0 -or $box.Height -le 0) { 0 } else { $box.Width * $box.Height }
         # Offscreen names can prove delivery even when WebView2 clips their box.
-        $candidate = @{ Element = $element; Name = $name; Box = $box; Area = $area; Number = $number; Kind = $kind; Offscreen = $element.Current.IsOffscreen }
+        $candidate = @{ Element = $element; Name = $name; Box = $box; Area = $area; Offscreen = $element.Current.IsOffscreen }
         # A static-text node can also expose inline fragments. Keep its complete
         # name and enclosing rectangle, rather than treating a word as a lane.
         if (-not $candidates.ContainsKey($key) -or $name.Length -gt $candidates[$key].Name.Length -or
@@ -137,6 +137,8 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
     [MimiPanelCrop]::Save($crop, $pixels, $dpi, (Join-Path $Directory "$Stage.png"))
     $metadata = [ordered]@{ stage = $Stage; dpi = $dpi; root = @($frame.Left, $frame.Top, $frame.Width, $frame.Height)
         viewport = @($view.Left, $view.Top, $view.Width, $view.Height); visible = @() }
+    if ($Context.ContainsKey('Anchor')) { $metadata.anchor = $Context.Anchor; $metadata.wheelDetents = $Context.WheelDetents }
+    if ($Context.ContainsKey('Thumb')) { $metadata.thumb = $Context.Thumb }
     if ($null -ne $State) {
         $metadata.percent = $State.Percent; $metadata.viewSize = $State.ViewSize; $metadata.contentExtent = $State.ContentExtent
         if ($State.ContainsKey('DeliveryEvidence')) { $metadata.deliveryEvidence = $State.DeliveryEvidence }
@@ -232,6 +234,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         Start-Sleep -Milliseconds 250
         $before = Get-CaptionHistoryView $context
         $anchor = Get-CaptionHistoryAnchor $before $context.Scale
+        $context.Anchor = $anchor; $context.WheelDetents = $detents
         Assert-CaptionHistoryEnvironment $context
         Assert-CaptionHistoryReturn $context $before $true
         Save-CaptionHistoryEvidence $context $before $PanelEvidenceDirectory 'history-18'
@@ -274,6 +277,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         Assert-CaptionHistoryReturn $context $state $true
 
         $thumb = Get-CaptionHistoryThumb $context $state
+        $context.Thumb = $thumb
         [MimiPointerSmoke]::MoveOverWindow($window, $thumb.X, $thumb.Y, 'Press the rendered history scrollbar thumb')
         try {
             [MimiCaptionDragDesktop]::SetLeftButton($true)
@@ -281,11 +285,13 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
             for ($step = 1; $step -le 8; $step++) {
                 [MimiPointerSmoke]::MoveAndVerify($thumb.X, [int][Math]::Round($thumb.Y + ($thumb.EndY - $thumb.Y) * $step / 8))
                 Start-Sleep -Milliseconds 30
+                if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
                 Assert-CaptionHistoryEnvironment $context
             }
         } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
         if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the history scrollbar button after release.' }
         $state = Wait-CaptionHistory 'the physical scrollbar reaching the real bottom' {
+            Assert-CaptionHistoryEnvironment $context
             $sample = Get-CaptionHistoryView $context
             if ($sample.Percent -ge 99.99 -and $sample.Rows.source19.Full -and $sample.Rows.translation19.Full) { return $sample }
         }
@@ -306,8 +312,9 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         Write-Host "Native history passed: physical wheel preserved $anchor on append; rendered thumb=$($thumb.Height)px contrast=$($thumb.Contrast); scrollbar release restored bilingual caption 20 at the bottom, same windows, Settings hidden, listening."
     } catch {
         $failure = $_
+        try { if ($null -ne $context.Viewport) { $state = Get-CaptionHistoryView $context } }
+        catch { $state = $null }
         try {
-            if ($null -ne $context.Viewport) { $state = Get-CaptionHistoryView $context }
             Save-CaptionHistoryEvidence $context $state $PanelEvidenceDirectory 'history-failed'
         } catch { Write-Warning 'Could not save the bounded synthetic history failure capture.' }
         throw $failure
