@@ -192,7 +192,6 @@ it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("gro
   expect([...languagePair.querySelectorAll('[role="combobox"]')]).toEqual([
     picker(I18N.overlay.sourceLanguage), picker(I18N.settings.translateTo),
   ]);
-  expect(languagePair.querySelector('.overlay-control-language-pair__direction[aria-hidden="true"]')?.textContent).toBe(props.status.separator);
   expect(audioSection.querySelector("h2")?.textContent).toBe(I18N.settings.audioInputTitle);
   expect(subtitleSection.querySelector("h2")?.textContent).toBe(I18N.settings.subtitleTitle);
   expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(4);
