@@ -121,15 +121,19 @@ it("checks a translated preset even while the current session shows only origina
   expect(state.selectProfile).not.toHaveBeenCalled();
 });
 
-it("does not revive the profile picker after native connecting and active state changes", async () => {
+it("retains focus without reopening the profile picker when a reconnect finishes", async () => {
   state.session.status.kind = "connecting";
   await render();
   expect(document.querySelector('[role="listbox"]')).toBeNull();
-  state.session.status.kind = "active";
+  const picker = host.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+  expect(picker.disabled).toBe(false);
+  expect(picker.getAttribute("aria-busy")).toBe("true");
+  expect(document.activeElement).toBe(picker);
+  state.session.status.kind = "listening";
   await render();
   expect(document.querySelector('[role="listbox"]')).toBeNull();
   expect(state.selectProfile).not.toHaveBeenCalled();
-  await act(() => host.querySelector<HTMLButtonElement>('[role="combobox"]')!.click());
+  await act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
   await act(async () => option("Another ready service").click());
   expect(state.selectProfile).toHaveBeenCalledExactlyOnceWith("another");
 });

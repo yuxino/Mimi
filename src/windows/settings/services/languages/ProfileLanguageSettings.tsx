@@ -11,13 +11,26 @@ import { SettingsHelp } from "../../feedback/SettingsHelp";
 import { SettingsRow } from "../../controls/SettingsPrimitives";
 import { useSettingsToast } from "../../feedback/useSettingsToast";
 
+interface ProfileLanguageSettingsProps {
+  settings: SettingsSnapshot;
+  busy?: boolean;
+  onOpenAppleResources?: () => void;
+  hideSourceLanguage?: boolean;
+  embedded?: boolean;
+  onBusyChange?: (busy: boolean) => void;
+}
+
 /** Explicit language preferences belong to the active service. */
-export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResources, hideSourceLanguage = false, embedded = false, onBusyChange }: { settings: SettingsSnapshot; disabled: boolean; onOpenAppleResources?: () => void; hideSourceLanguage?: boolean; embedded?: boolean; onBusyChange?: (busy: boolean) => void }) {
+export function ProfileLanguageSettings({
+  settings, busy: parentBusy = false, onOpenAppleResources,
+  hideSourceLanguage = false, embedded = false, onBusyChange,
+}: ProfileLanguageSettingsProps) {
   const saveSettings = useStore(state => state.saveSettings);
   const switchSourceLanguage = useStore(state => state.switchSourceLanguage);
   const switchTargetLanguage = useStore(state => state.switchTargetLanguage);
   const sessionOwnsLanguages = useStore(state => state.session.isActive || state.session.isPaused);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const busy = parentBusy || saving;
   const { beginToast } = useSettingsToast();
   const trackLanguageChange = useLanguageNormalizationToast(settings);
   const inFlight = useRef(false);
@@ -35,9 +48,9 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
   const targets = targetLanguagesForSettings(settings);
   const skipped = settings.targetLanguage === "original";
   const save = async (draft: SettingsDraft) => {
-    if (disabled || inFlight.current) return;
+    if (busy || inFlight.current) return;
     inFlight.current = true;
-    setBusy(true);
+    setSaving(true);
     busyCallback.current?.(true);
     const notify = beginToast();
     const finishLanguageChange = trackLanguageChange(draft.targetLanguage, notify);
@@ -55,7 +68,7 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
       if (mounted.current) notify(languageActionErrorMessage(error, I18N.settings.languageSaveFailed), true);
     } finally {
       inFlight.current = false;
-      if (mounted.current) { setBusy(false); busyCallback.current?.(false); }
+      if (mounted.current) { setSaving(false); busyCallback.current?.(false); }
     }
   };
   if (!embedded && hideSourceLanguage && skipped && targets.every(target => target === "original")) return null;
@@ -65,13 +78,13 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
       {appleSpeech && onOpenAppleResources && <button type="button" className="settings-link" onClick={onOpenAppleResources}>{I18N.settings.appleSpeechOpenResources}</button>}
     </>}>
       <LanguageSelect label={I18N.settings.sourceLanguage} value={settings.sourceLanguage} valueLabel={appleSpeech || appleTranslation ? guidance.optionLabel(settings.sourceLanguage) : undefined}
-        disabled={disabled || (sources.length === 1 && sources[0] === settings.sourceLanguage)} busy={busy}
+        disabled={sources.length === 1 && sources[0] === settings.sourceLanguage} busy={busy}
         options={sources.map(value => ({ value, label: guidance.optionLabel(value) }))}
         onChange={value => { const sourceLanguage = sources.find(language => language === value); if (sourceLanguage) void save({ sourceLanguage }); }} />
     </SettingsRow>}
     <SettingsRow label={I18N.settings.translateTo} description={I18N.settings.translationConfiguredHelp}>
       <LanguageSelect label={I18N.settings.translateTo} value={settings.targetLanguage} valueLabel={appleTranslation ? targetLanguageOptionLabel(settings, settings.targetLanguage) : undefined}
-        disabled={disabled || (targets.length === 1 && targets[0] === settings.targetLanguage)} busy={busy}
+        disabled={targets.length === 1 && targets[0] === settings.targetLanguage} busy={busy}
         options={targets.map(value => ({ value, label: targetLanguageOptionLabel(settings, value) }))}
         onChange={value => { const targetLanguage = targets.find(language => language === value); if (targetLanguage) void save({ targetLanguage }); }} />
     </SettingsRow>

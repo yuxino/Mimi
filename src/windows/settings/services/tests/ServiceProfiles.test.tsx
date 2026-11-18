@@ -1147,7 +1147,7 @@ it("autosaves a name without a save button, stealing focus or touching a credent
 
 it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as const)("makes supported %s languages directly selectable in the active service", async (provider) => {
   const snapshot = { ...settings, profiles: [{ ...profile, provider }] };
-  await act(async () => root.render(<ProfileLanguageSettings settings={snapshot} disabled={false} />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={snapshot} />));
   for (const [label, names] of [
     [I18N.settings.sourceLanguage, sourceLanguagesForSettings(snapshot).map(speechLanguageGuidance(snapshot).optionLabel)],
     [I18N.settings.translateTo, targetLanguagesForSettings(snapshot).map(language => targetLanguageOptionLabel(snapshot, language))],
@@ -1169,7 +1169,7 @@ it.each(["openAIRealtime", "volcanoEngine", "tencentCloud", "baiduTranslate"] as
 
 it.each(["deepL", "deepLX", "openAICompatible", "chatMock"] as const)("keeps %s choices scoped to the actual translation route", async (textTranslation) => {
   const snapshot = { ...settings, profiles: [{ ...profile, textTranslation }] };
-  await act(async () => root.render(<ProfileLanguageSettings settings={snapshot} disabled={false} />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={snapshot} />));
   const targets = targetLanguagesForSettings(snapshot).map(language => targetLanguageOptionLabel(snapshot, language));
   expect(host.querySelectorAll("#translation-languages [role=combobox]")).toHaveLength(2);
   await act(async () => host.querySelector<HTMLButtonElement>(`#translation-languages [role="combobox"][aria-label="${I18N.settings.translateTo}"]`)!.click());

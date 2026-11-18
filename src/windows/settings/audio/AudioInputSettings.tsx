@@ -20,22 +20,22 @@ export function AudioInputSettings() {
   const status = useStore(state => state.session.status.kind);
   const initialization = useStore(state => state.initializationStatus);
   const switchAudioInput = useStore(state => state.switchAudioInput);
-  const [busy, setBusy] = useState(false);
+  const [switchingInput, setSwitchingInput] = useState(false);
   const [targetBusy, setTargetBusy] = useState(false);
   const { beginToast } = useSettingsToast();
   const inFlight = useRef(false);
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const copy = captureSwitchCopy();
-  const disabled = status === "connecting" || status === "stopping" || busy || targetBusy || initialization !== "ready";
+  const sourceControlsDisabled = initialization !== "ready" || status === "connecting" || status === "stopping" || switchingInput || targetBusy;
   const toggle = async (source: AudioSource, checked: boolean) => {
     // One source must remain selected. Enabling the other source means both,
     // never implicitly replaces the user's existing choice.
-    if (disabled || inFlight.current || (!checked && selected === source)) return;
+    if (sourceControlsDisabled || inFlight.current || (!checked && selected === source)) return;
     const value: AudioInput = checked ? "both" : source === "system" ? "microphone" : "system";
     if (value === selected) return;
     inFlight.current = true;
-    setBusy(true);
+    setSwitchingInput(true);
     const notify = beginToast();
     try { await switchAudioInput(value); }
     catch (error) {
@@ -44,21 +44,23 @@ export function AudioInputSettings() {
     }
     finally {
       inFlight.current = false;
-      if (mounted.current) setBusy(false);
+      if (mounted.current) setSwitchingInput(false);
     }
   };
   return <SettingsSection id="audio-input" title={I18N.settings.audioInputTitle}>
     <SettingsRow label={I18N.settings.audioInputSystem} description={microphoneAvailable ? `${I18N.settings.audioInputHelp}\n${copy.switchHelp}` : undefined}
       hint={microphoneAvailable && selected === "system" ? I18N.settings.audioInputAtLeastOne : undefined}>
       {microphoneAvailable && <Switch aria-label={I18N.settings.audioInputSystem} checked={selected !== "microphone"}
-        disabled={disabled || selected === "system"} onChange={checked => void toggle("system", checked)} />}
+        disabled={sourceControlsDisabled || selected === "system"} onChange={checked => void toggle("system", checked)} />}
     </SettingsRow>
     {microphoneAvailable && <SettingsRow label={I18N.settings.audioInputMicrophone} description={`${I18N.settings.audioInputMicrophoneHelp}\n${copy.switchHelp}`}
       hint={selected === "microphone" ? I18N.settings.audioInputAtLeastOne : undefined}>
       <Switch aria-label={I18N.settings.audioInputMicrophone} checked={selected !== "system"}
-        disabled={disabled || selected === "microphone"} onChange={checked => void toggle("microphone", checked)} />
+        disabled={sourceControlsDisabled || selected === "microphone"} onChange={checked => void toggle("microphone", checked)} />
     </SettingsRow>}
-    {selected !== "microphone" && <ApplicationAudio disabled={disabled} onBusyChange={setTargetBusy} />}
+    {/* The picker owns its pending/reconnect state; targetBusy only blocks the
+        sibling input switches so it cannot disable its own focused trigger. */}
+    {selected !== "microphone" && <ApplicationAudio busy={switchingInput} onBusyChange={setTargetBusy} />}
     {selected !== "microphone" && target?.kind !== "application" && <WindowsAudioSource />}
   </SettingsSection>;
 }
