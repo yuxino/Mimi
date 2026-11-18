@@ -1,4 +1,9 @@
-//! Desktop-owned shortcuts for Linux sessions that cannot use X11 key grabs.
+//! Global shortcut registration and Linux desktop-owned launch commands.
+
+use crate::commands;
+use crate::session_manager::SessionManager;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 #[cfg(any(target_os = "linux", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -164,6 +169,174 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
     {
         tracing::warn!("desktop shortcut dispatch failed");
     }
+}
+
+/// Registers the global session, immersive, lock, and subtitle display shortcuts. Each action
+/// owns an independent 500ms debounce so presentation switching never blocks
+/// a session lifecycle action (or vice versa).
+pub(crate) fn setup_global_shortcuts(
+    app: &tauri::AppHandle,
+    session: Arc<SessionManager>,
+) -> tauri::Result<()> {
+    use tauri_plugin_global_shortcut::{
+        Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+    };
+
+    if uses_system_shortcuts() {
+        tracing::info!("Wayland shortcuts are configured in desktop settings");
+        return Ok(());
+    }
+
+    // macOS: Cmd+Shift (SUPER is the Command key); Windows: Ctrl+Shift.
+    #[cfg(target_os = "macos")]
+    let modifiers = Modifiers::SUPER | Modifiers::SHIFT;
+    #[cfg(not(target_os = "macos"))]
+    let modifiers = Modifiers::CONTROL | Modifiers::SHIFT;
+    let session_shortcut = Shortcut::new(Some(modifiers), Code::Space);
+    let immersive_shortcut = Shortcut::new(Some(modifiers), Code::KeyM);
+    let lock_shortcut = Shortcut::new(Some(modifiers), Code::KeyL);
+    let display_shortcut = Shortcut::new(Some(modifiers), Code::KeyB);
+
+    let last_trigger = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let session_for_handler = Arc::clone(&session);
+
+    // Register the global shortcut. A failure must not abort startup: another
+    // app (e.g. a second mimi instance) may already own the combination, in
+    // which case the OS keeps delivering it to that app.
+    let session_register =
+        app.global_shortcut()
+            .on_shortcut(session_shortcut, move |_app, _shortcut, event| {
+                if event.state() != ShortcutState::Pressed {
+                    return;
+                }
+                // Debounce repeated global-shortcut presses.
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let previous = last_trigger.load(std::sync::atomic::Ordering::SeqCst);
+                if now_ms.saturating_sub(previous) < 500 {
+                    return;
+                }
+                last_trigger.store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                let session = Arc::clone(&session_for_handler);
+                tauri::async_runtime::spawn(async move {
+                    let status = session.status_kind();
+                    if status == "connecting" || status == "stopping" {
+                        return;
+                    }
+                    if session.is_active() {
+                        session.stop().await;
+                    } else {
+                        let _ = session.start().await;
+                    }
+                });
+            });
+    match session_register {
+        Ok(()) => tracing::info!("global session shortcut registered"),
+        Err(error) => tracing::warn!(
+            "global session shortcut could not be registered: {error} \
+             (another app may already own the start/stop combination)"
+        ),
+    }
+
+    let immersive_last_trigger = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let immersive_register =
+        app.global_shortcut()
+            .on_shortcut(immersive_shortcut, move |app, _shortcut, event| {
+                if event.state() != ShortcutState::Pressed {
+                    return;
+                }
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let previous = immersive_last_trigger.load(std::sync::atomic::Ordering::SeqCst);
+                if now_ms.saturating_sub(previous) < 500 {
+                    return;
+                }
+                immersive_last_trigger.store(now_ms, std::sync::atomic::Ordering::SeqCst);
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = commands::settings::toggle_immersive_mode(&app).await {
+                        tracing::warn!(
+                            "immersive shortcut failed label=settings_unavailable error={error}"
+                        );
+                    }
+                });
+            });
+    match immersive_register {
+        Ok(()) => tracing::info!("global immersive shortcut registered"),
+        Err(error) => tracing::warn!(
+            "global immersive shortcut could not be registered: {error} \
+             (another app may already own the combination)"
+        ),
+    }
+    let lock_last_trigger = std::sync::atomic::AtomicU64::new(0);
+    let lock_register = app
+        .global_shortcut()
+        .on_shortcut(lock_shortcut, move |app, _, event| {
+            if event.state() != ShortcutState::Pressed {
+                return;
+            }
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let previous = lock_last_trigger.load(Ordering::SeqCst);
+            if now_ms.saturating_sub(previous) < 500 {
+                return;
+            }
+            lock_last_trigger.store(now_ms, Ordering::SeqCst);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if commands::overlay::toggle_overlay_lock(&app).await.is_err() {
+                    tracing::warn!("lock shortcut failed label=settings_unavailable");
+                }
+            });
+        });
+    match lock_register {
+        Ok(()) => tracing::info!("global lock shortcut registered"),
+        Err(error) => tracing::warn!(
+            "global lock shortcut could not be registered: {error} \
+             (another app may already own the combination)"
+        ),
+    }
+    let display_last_trigger = std::sync::atomic::AtomicU64::new(0);
+    let display_register =
+        app.global_shortcut()
+            .on_shortcut(display_shortcut, move |app, _, event| {
+                if event.state() != ShortcutState::Pressed {
+                    return;
+                }
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let previous = display_last_trigger.load(Ordering::SeqCst);
+                if now_ms.saturating_sub(previous) < 500 {
+                    return;
+                }
+                display_last_trigger.store(now_ms, Ordering::SeqCst);
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if commands::settings::set_subtitle_display_mode(&app, None)
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            "subtitle display shortcut failed label=settings_unavailable"
+                        );
+                    }
+                });
+            });
+    match display_register {
+        Ok(()) => tracing::info!("global subtitle display shortcut registered"),
+        Err(error) => {
+            tracing::warn!("global subtitle display shortcut could not be registered: {error}")
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

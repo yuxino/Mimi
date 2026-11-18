@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../../lib/i18n";
 import { Select } from "../../../components/inputs/Select";
-import { DestructiveConfirmation, SettingsConfirmation, type SettingsConfirmationProps } from "./DestructiveConfirmation";
+import { SettingsConfirmation, type SettingsConfirmationProps } from "./SettingsConfirmation";
 
 let host: HTMLDivElement, root: Root;
 let extras: HTMLElement[];
@@ -42,7 +42,7 @@ async function key(value: string, shiftKey = false) {
 }
 
 it("opens a real body modal, focuses Cancel, and retains the destructive confirmation defaults", async () => {
-  await act(() => root.render(<DestructiveConfirmation message="Delete this configuration?" disabled={false} {...actions} />));
+  await act(() => root.render(<SettingsConfirmation message="Delete this configuration?" disabled={false} {...actions} />));
   expect(host.querySelector(".settings-confirmation")).toBeNull();
   expect(modal().parentElement?.parentElement).toBe(document.body);
   expect(modal().getAttribute("role")).toBe("alertdialog");

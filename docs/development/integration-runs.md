@@ -22,6 +22,12 @@
 - 首次远端 Clippy 在 Windows／Linux 揭示两处新导入缺少平台条件：
   仅 macOS 调用的屏幕选择，以及仅 macOS／Linux 使用的日志宏。
   已按实际调用收窄 cfg，未增加 lint 豁免；本机通过不能替代其他目标验证。
+- [PR #382](https://github.com/yuxino/Mimi/pull/382) 已合并为 `3895816c`，
+  合并树与待审版本一致。该干净提交再次通过完整检查和显式重跑的 Android
+  Debug／Release 各 246 项 JVM（实际 JNI 各 54 项），以及 lint／四 ABI 检查。
+  [合并后桌面 CI](https://github.com/yuxino/Mimi/actions/runs/44276551515) 与
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/44276551422) 均通过；
+  已完成分支已清理，独立复查后的下一轮只接受有明确归属收益的整理。
 
 ## 2026-11-18：按职责细分拥挤目录
 

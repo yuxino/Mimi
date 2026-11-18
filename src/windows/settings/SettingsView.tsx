@@ -29,7 +29,7 @@ import { QuickStartGuide } from "./guide/QuickStartGuide";
 import { useDesktopShortcuts } from "../../lib/shortcuts/useDesktopShortcuts";
 import { SettingsQuitFooter } from "./navigation/SettingsQuitFooter";
 import { SettingsHelp } from "./feedback/SettingsHelp";
-import { SettingsConfirmation } from "./controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "./controls/SettingsConfirmation";
 import { SettingsInitializationStatus } from "./feedback/SettingsInitializationStatus";
 import { VoiceSettings } from "./audio/VoiceSettings";
 import { settingsPageCopy } from "./navigation/SettingsPageCopy";

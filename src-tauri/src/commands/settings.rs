@@ -624,7 +624,7 @@ fn apply_settings_draft_guarded(
         || draft.subtitle_animation.is_some()
         || draft.show_in_dock.is_some()
     {
-        crate::refresh_native_tray_language(app);
+        crate::platform::menu::refresh_native_tray_language(app);
     }
 
     let payload = SettingsSnapshotPayload::try_from_store(&state.settings)?;

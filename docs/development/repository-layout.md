@@ -26,7 +26,8 @@ src/                         Desktop React UI
     development/, visibility/Explicit dev fixtures/traces and document visibility
 src-tauri/
   src/
-    lib.rs                   Tauri composition, plugins, tray and app events
+    lib.rs                   Tauri composition, plugins and app/window events
+    desktop_shortcuts.rs     Global bindings and Linux desktop launch commands
     commands.rs              IPC state and stable payload entry point
     commands/                Settings, profiles, session, overlay and app handlers
     settings_store/          Desktop preferences, profiles and credential storage
@@ -36,6 +37,7 @@ src-tauri/
     windows/                 Native overlay/window interaction
     windows.rs               Window-management entry point
     platform/
+      menu.rs                Application/tray resources, labels and state listeners
       macos/                 Dock presentation and native quit delegate
       windows/               Startup ownership and updater cleanup
       linux/                 X11 initialization before Tauri/GTK
@@ -136,6 +138,12 @@ stage results and invalidation when credentials, route/proxy or session state
 change. Rendering copy is projected by `serviceProfilePresentation`; no extra
 store, transport or business-rule implementation is introduced.
 
+Call the generic credential form at `services/credentials/SpeechAndTextCredentialEditor`
+directly; it is shared by providers rather than exported through an Alibaba alias.
+`controls/SettingsConfirmation` is the common confirmation entry for ordinary and
+destructive actions. Preserve its explicit variant/default, modal focus restoration
+and cancel behavior instead of adding alternate names that only forward props.
+
 The existing window layouts, CSS cascade, language keys and generated-copy
 entry points remain unchanged. Source moves must also update template-string
 dynamic imports, mock paths, test fixtures and Gradle's generator inputs.
@@ -200,6 +208,14 @@ Keep the saved user frame separate from temporary collapse, error and Space
 presentation. Transient controls never own or persist that frame. The split
 retains the existing locks, generation checks, native panel classes and cfg gates.
 
+`platform/menu.rs` owns the native application/tray menu items, localized labels,
+event callbacks and session-state listener. Settings updates call that actual
+owner to refresh labels. `desktop_shortcuts.rs` owns global binding registration
+alongside the Linux desktop action adapter. `lib.rs` preserves their startup
+order and the settings-close callback's UI-test visibility marker; it does not
+forward menu operations. Menu regressions follow the menu owner, while the
+development-identity startup regression stays at the application entry.
+
 ## Shared Rust and Android adapters
 
 `core/lifecycle/mt_budget.rs` owns translation-route identity and the one retained
@@ -231,6 +247,10 @@ checks and prepares all selected lanes before starting any. It stops every
 recorder before joining/releasing lanes and finishing their shared runtimes.
 `prepare()` declares its already-granted `RECORD_AUDIO` requirement; a revoked
 permission still propagates through the service's existing startup cleanup.
+
+Android `ui/HelpUi` owns both hover explanations and the readable details dialog,
+including per-window deduplication and lifecycle dismissal. Service editors call
+it directly and retain their own message/link construction.
 
 ## Desktop settings
 

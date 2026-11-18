@@ -5,5 +5,6 @@
 pub(crate) mod linux;
 #[cfg(any(target_os = "macos", test))]
 pub(crate) mod macos;
+pub(crate) mod menu;
 #[cfg(any(target_os = "windows", test))]
 pub(crate) mod windows;

@@ -340,7 +340,7 @@ internal class TextTranslationSettings(private val activity: AppCompatActivity, 
             }) + (if (!selected.hasCustomEndpoint) "" else "\n\n" + activity.getString(R.string.translation_help_network)) +
                 "\n\n" + activity.getString(R.string.profiles_translation_help_save)
         }
-        ServiceSettingsUi.showHelp(activity, activity.getString(translationProviderLabel(selected)), body)
+        HelpUi.showDetails(activity, activity.getString(translationProviderLabel(selected)), body)
     }
 
     private fun helpResource() = when (selected) {

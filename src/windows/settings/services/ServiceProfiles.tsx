@@ -27,8 +27,8 @@ import type {
 import { InlineFeedback, SettingsSection } from "../controls/SettingsPrimitives";
 import { dismissSettingsToast, useSettingsToast } from "../feedback/useSettingsToast";
 
-import { DestructiveConfirmation } from "../controls/DestructiveConfirmation";
-import { AlibabaCredentialEditor } from "./providers/alibaba/AlibabaCredentialEditor";
+import { SettingsConfirmation } from "../controls/SettingsConfirmation";
+import { SpeechAndTextCredentialEditor } from "./credentials/SpeechAndTextCredentialEditor";
 import { CustomSpeechCredentialEditor } from "./credentials/CustomSpeechCredentialEditor";
 
 import { SettingsActionMenu } from "../controls/SettingsActionMenu";
@@ -236,7 +236,7 @@ export function ServiceProfiles({
     : selectedProfile && isCustomSpeechProvider(selectedProfile.provider)
       ? CustomSpeechCredentialEditor
       : selectedProfile && ["alibabaCloud", "deepLX"].includes(selectedProfile.provider)
-        ? AlibabaCredentialEditor
+        ? SpeechAndTextCredentialEditor
         : ProviderCredentialEditor;
 
   const requiresStop = sessionIsActive || sessionIsPaused || sessionStatusKind === "connecting" || sessionStatusKind === "stopping";
@@ -807,7 +807,7 @@ export function ServiceProfiles({
       {feedback && !pickerVisible && !(showsEditor && selectedProfile) && <InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback>}
     </SettingsSection>
     {pendingConfirmation?.kind === "profile" && settings.profiles.some(profile => profile.id === pendingConfirmation.profileId) && (
-      <DestructiveConfirmation
+      <SettingsConfirmation
         message={I18N.settings.deleteProfileConfirm(pendingConfirmation.name)}
         disabled={mutationsDisabled}
         onCancel={() => setPendingConfirmation(null)}

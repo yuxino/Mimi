@@ -2,17 +2,17 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { I18N, setStoredUiLanguage } from "../../../../../lib/i18n";
-import { diagnosticCopy } from "../../../../../lib/providers/connectionDiagnostics";
-import { profileCredentialEditorState, profileRevealCredential } from "../../../../../lib/ipc";
-import type { ServiceProfile, TextTranslation } from "../../../../../lib/types";
-import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
+import { I18N, setStoredUiLanguage } from "../../../../lib/i18n";
+import { diagnosticCopy } from "../../../../lib/providers/connectionDiagnostics";
+import { profileCredentialEditorState, profileRevealCredential } from "../../../../lib/ipc";
+import type { ServiceProfile, TextTranslation } from "../../../../lib/types";
+import { SpeechAndTextCredentialEditor } from "./SpeechAndTextCredentialEditor";
 
-vi.mock("../../../../../lib/ipc", () => ({ isTauri: false, profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
+vi.mock("../../../../lib/ipc", () => ({ isTauri: false, profileRevealCredential: vi.fn(), profileCredentialEditorState: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 
 let root: Root;
 let host: HTMLDivElement;
-let props: Parameters<typeof AlibabaCredentialEditor>[0];
+let props: Parameters<typeof SpeechAndTextCredentialEditor>[0];
 const profile: ServiceProfile = { id: "synthetic", name: "Alibaba", provider: "alibabaCloud", credentialState: "present" };
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -27,7 +27,7 @@ beforeEach(() => {
   props = { profile, inputId: "test", disabled: false, busy: false, feedback: null, onSave: vi.fn().mockResolvedValue(null), onRequestDelete: vi.fn(), onConfirmDelete: vi.fn(), confirmingDelete: false, onCancelDelete: vi.fn() };
 });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); setStoredUiLanguage("en"); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-async function render(next = props) { props = next; await act(async () => { root.render(<AlibabaCredentialEditor {...props} />); }); }
+async function render(next = props) { props = next; await act(async () => { root.render(<SpeechAndTextCredentialEditor {...props} />); }); }
 async function change(selector: string, value: string) {
   const node = host.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
   await act(() => {

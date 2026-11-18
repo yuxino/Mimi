@@ -173,7 +173,3 @@ export function SettingsConfirmation({
     )}
   </>;
 }
-
-export function DestructiveConfirmation(props: SettingsConfirmationProps) {
-  return <SettingsConfirmation {...props} />;
-}
