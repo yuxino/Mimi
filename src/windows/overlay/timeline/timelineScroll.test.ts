@@ -97,6 +97,35 @@ it("consumes a scroll input instead of authorizing a later unrelated native scro
   expect(scroll.isFollowing()).toBe(false);
 });
 
+it("keeps a held scrollbar in history when a layout change moves it to the new bottom", () => {
+  const { element, scroll } = fixture();
+  element.scrollTop = 30;
+  scroll.beginReading(element);
+  scroll.pointerDown(element, true);
+  Object.defineProperty(element, "scrollHeight", { value: 170 });
+  element.scrollTop = 70;
+  scroll.scrolled(element);
+  expect(scroll.isFollowing()).toBe(false);
+  // The same hold still owns a deliberate move away and back.
+  element.scrollTop = 40;
+  scroll.scrolled(element);
+  element.scrollTop = 70;
+  scroll.scrolled(element);
+  expect(scroll.isFollowing()).toBe(true);
+});
+
+it("waits for a stationary thumb to be released before following a new caption", () => {
+  const { element, scroll, scrollTo } = fixture();
+  scroll.pointerDown(element, true);
+  Object.defineProperty(element, "scrollHeight", { value: 380 });
+  scroll.contentChanged(element, "instant", false);
+  scroll.reflow(element);
+  expect(scrollTo).not.toHaveBeenCalled();
+  scroll.pointerUp(element);
+  expect(scroll.isFollowing()).toBe(true);
+  expect(scrollTo).toHaveBeenLastCalledWith({ top: 280, behavior: "instant" });
+});
+
 it("does not grant an upward gesture or a stationary pointer permission to resume at the tail", () => {
   const { element, scroll } = fixture();
   scroll.beginReading(element); scroll.scrolled(element);

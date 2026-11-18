@@ -264,6 +264,106 @@ it("renews real scrollbar-drag input on each pointer movement and does not treat
   expect(reading).toHaveBeenLastCalledWith(false);
 });
 
+async function pressTimeline(target: Element = timeline, clientX = 298) {
+  await act(() => {
+    // Model an overlay scrollbar: it occupies the rightmost 6 CSS px without
+    // reducing clientWidth, as in the browser reproduction.
+    Object.defineProperties(timeline, {
+      clientWidth: { value: 300, configurable: true },
+      offsetWidth: { value: 300, configurable: true },
+    });
+    timeline.getBoundingClientRect = () => ({ left: 0, right: 300, top: 0, bottom: 80, width: 300, height: 80 } as DOMRect);
+    const event = new MouseEvent("pointerdown", { bubbles: true, button: 0, buttons: 1, clientX, clientY: 24 });
+    Object.defineProperties(event, { pointerType: { value: "mouse" }, isPrimary: { value: true } });
+    target.dispatchEvent(event);
+  });
+}
+
+async function nativeScroll(top: number) {
+  await act(() => {
+    scrollTop = top;
+    // Native scrollbar movement can emit several scroll events without any
+    // DOM pointermove. Do not replenish user intent between these events.
+    timeline.dispatchEvent(new Event("scroll"));
+  });
+}
+
+async function mountHistoryReader() {
+  await mount();
+  const reading = vi.fn();
+  await render("translation", blocks, 0, reading);
+  await act(() => timeline.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: -30 })));
+  await nativeScroll(20);
+  expect(reading).toHaveBeenLastCalledWith(true);
+  return reading;
+}
+
+const nextAfterScrollbar: SubtitleBlock = {
+  id: "next-after-scrollbar", createdAt: null, presentation: "live", source: null,
+  translation: "Synthetic next caption after the scrollbar gesture.",
+};
+
+it("returns to live after consecutive scrollbar scrolls without pointermove and follows new captions", async () => {
+  const reading = await mountHistoryReader();
+  await pressTimeline();
+
+  for (const top of [35, 55, 75, 95]) {
+    await nativeScroll(top);
+    expect(reading).toHaveBeenLastCalledWith(true);
+  }
+  await nativeScroll(120); // Fifth scroll reaches the actual 200 - 80 tail.
+  expect(reading).toHaveBeenLastCalledWith(false);
+  await act(() => window.dispatchEvent(new Event("pointerup")));
+
+  scrollHeight = 320;
+  await render("translation", [...blocks, nextAfterScrollbar], 0, reading);
+  expect(scrollTop).toBe(240);
+  expect(reading).toHaveBeenLastCalledWith(false);
+});
+
+it("returns to live on window pointerup before the final scrollbar scroll event", async () => {
+  const reading = await mountHistoryReader();
+  await pressTimeline();
+  await nativeScroll(75);
+  expect(reading).toHaveBeenLastCalledWith(true);
+  // The browser has reached the tail, but its final scroll event is still
+  // pending. Releasing outside must publish live mode before another render.
+  scrollTop = 120;
+  await act(() => window.dispatchEvent(new Event("pointerup")));
+  expect(reading).toHaveBeenLastCalledWith(false);
+
+  scrollHeight = 320;
+  await render("translation", [...blocks, nextAfterScrollbar], 0, reading);
+  expect(scrollTop).toBe(240);
+  expect(reading).toHaveBeenLastCalledWith(false);
+});
+
+it.each(["pointerup", "pointercancel", "blur"])("ignores unrelated scrolls after a scrollbar gesture ends (%s)", async end => {
+  const reading = await mountHistoryReader();
+  await pressTimeline();
+  for (const top of [30, 45, 60, 75, 90]) await nativeScroll(top);
+  expect(reading).toHaveBeenLastCalledWith(true);
+  // Release outside the viewport, or lose the gesture. A later layout/anchor
+  // scroll at the tail does not constitute another deliberate user gesture.
+  await act(() => window.dispatchEvent(new Event(end)));
+  await nativeScroll(120);
+  expect(reading).toHaveBeenLastCalledWith(true);
+
+  scrollHeight = 320;
+  await render("translation", [...blocks, nextAfterScrollbar], 0, reading);
+  expect(scrollTop).toBe(120);
+  expect(reading).toHaveBeenLastCalledWith(true);
+});
+
+it("does not retain scrollbar ownership for a content press without pointermove", async () => {
+  const reading = await mountHistoryReader();
+  await pressTimeline(timeline.firstElementChild!, 150);
+  for (const top of [35, 55, 75, 95, 120]) await nativeScroll(top);
+  expect(scrollTop).toBe(120);
+  expect(reading).toHaveBeenLastCalledWith(true);
+  await act(() => window.dispatchEvent(new Event("pointerup")));
+});
+
 it.each(["original", "translation", "bilingual"] as const)("retains a %s reader's viewport when the live row confirms and a new live row arrives together", async mode => {
   const previous = { source: "Older confirmed original.", translation: "较早确认译文。", createdAt: 1 };
   const previewA = { source: "Synthetic draft original A. ".repeat(20), translation: "合成预览译文 A。".repeat(20), isStreaming: true };

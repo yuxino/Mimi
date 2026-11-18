@@ -1,14 +1,22 @@
+type ScrollIntent =
+  | { kind: "down" | "pointer"; top: number }
+  | { kind: "scrollbar"; top: number; range: number };
+
+function maxScrollTop(element: HTMLElement) {
+  return Math.max(0, element.scrollHeight - element.clientHeight);
+}
+
 /** Owns follow/read intent and sentence anchors; never changes subtitle text. */
 export class TimelineScroll {
   private following = true;
-  private userScrolling: { top: number; direction: "down" | "pointer" } | null = null;
+  private userScrolling: ScrollIntent | null = null;
   private modeAnchor = false;
   private reading: { id: string; offset: number } | null = null;
   private readingStart = false;
   private smoothFollowing = false;
   private pointerInterruptedGlide = false;
 
-  pointerDown(element: HTMLElement) {
+  pointerDown(element: HTMLElement, scrollbar = false) {
     this.pointerInterruptedGlide = this.smoothFollowing;
     if (this.pointerInterruptedGlide) {
       // Freeze automatic movement before attributing any scroll to a pointer.
@@ -16,20 +24,29 @@ export class TimelineScroll {
       this.smoothFollowing = false;
       this.move(element, element.scrollTop, "instant");
     }
-    this.userIntent(element);
+    this.userIntent(element, scrollbar ? "scrollbar" : "pointer");
+  }
+
+  pointerMove(element: HTMLElement) {
+    if (this.userScrolling?.kind !== "scrollbar") this.userIntent(element);
   }
 
   pointerUp(element: HTMLElement) {
+    const scrollbar = this.userScrolling?.kind === "scrollbar";
+    // A quick release can precede the last scroll event from the browser.
+    if (scrollbar) this.scrolled(element);
     this.endUserIntent();
     const resume = this.pointerInterruptedGlide && this.following;
     this.pointerInterruptedGlide = false;
     if (resume) this.contentChanged(element, "smooth");
+    else if (scrollbar && this.following && !this.atTail(element)) this.contentChanged(element, "instant");
   }
 
-  userIntent(element: HTMLElement, direction: "down" | "pointer" = "pointer") {
+  userIntent(element: HTMLElement, kind: ScrollIntent["kind"] = "pointer") {
     this.smoothFollowing = false;
     this.readingStart = false;
-    this.userScrolling = { top: element.scrollTop, direction };
+    const top = element.scrollTop;
+    this.userScrolling = kind === "scrollbar" ? { kind, top, range: maxScrollTop(element) } : { kind, top };
     this.rememberReading(element);
   }
 
@@ -63,6 +80,7 @@ export class TimelineScroll {
   }
 
   followTail(element: HTMLElement) {
+    this.endUserIntent();
     this.pointerInterruptedGlide = false;
     this.smoothFollowing = false;
     this.following = true;
@@ -78,15 +96,16 @@ export class TimelineScroll {
   }
 
   scrolled(element: HTMLElement) {
-    if (this.atTail(element)) this.smoothFollowing = false;
+    const atTail = this.atTail(element);
+    if (atTail) this.smoothFollowing = false;
     const intent = this.userScrolling;
-    this.endUserIntent();
-    if (intent) {
+    if (intent && (intent.kind !== "scrollbar" || intent.range === maxScrollTop(element))) {
       const downward = element.scrollTop > intent.top ||
-        (intent.direction === "down" && element.scrollTop === intent.top);
-      if (this.atTail(element) && downward) this.following = true;
-      else if (!this.atTail(element) && element.scrollTop !== intent.top) this.following = false;
+        (intent.kind === "down" && element.scrollTop === intent.top);
+      if (atTail && downward) this.following = true;
+      else if (!atTail && element.scrollTop !== intent.top) this.following = false;
     }
+    this.syncScrollPosition(element);
     // Native layout/anchor corrections may emit scroll without user input.
     // Keep the actual visible anchor, but never use them to leave reading.
     if (!this.following) this.rememberReading(element);
@@ -102,7 +121,7 @@ export class TimelineScroll {
   contentChanged(element: HTMLElement, behavior: ScrollBehavior, motionEnabled = true) {
     this.modeAnchor = false;
     if (!motionEnabled) this.pointerInterruptedGlide = false;
-    if (this.following && this.pointerInterruptedGlide) return;
+    if (this.following && (this.pointerInterruptedGlide || this.userScrolling?.kind === "scrollbar")) return;
     // Streaming revisions can arrive before a new sentence reaches the tail.
     // Keep retargeting that glide until it finishes or motion is disabled.
     const followBehavior = motionEnabled && (behavior === "smooth" || this.smoothFollowing) ? "smooth" : "instant";
@@ -116,7 +135,7 @@ export class TimelineScroll {
       this.restoreReading(element);
       return;
     }
-    if (this.pointerInterruptedGlide) return;
+    if (this.pointerInterruptedGlide || this.userScrolling?.kind === "scrollbar") return;
     // A compact bilingual lane reserves blank space as well as actual text.
     // Start at the newest sentence after a mode change so its original is
     // visible; bottom-pinning can hide that original behind the reserved space.
@@ -136,7 +155,7 @@ export class TimelineScroll {
   }
 
   private restoreReading(element: HTMLElement) {
-    this.endUserIntent();
+    this.syncScrollPosition(element);
     if (this.readingStart) {
       this.move(element, 0, "instant");
       this.rememberReading(element);
@@ -162,11 +181,22 @@ export class TimelineScroll {
   }
 
   private move(element: HTMLElement, top: number, behavior: ScrollBehavior) {
-    this.endUserIntent();
-    element.scrollTo({ top: Math.max(0, Math.min(top, element.scrollHeight - element.clientHeight)), behavior });
+    element.scrollTo({ top: Math.max(0, Math.min(top, maxScrollTop(element))), behavior });
+    this.syncScrollPosition(element);
+  }
+
+  private syncScrollPosition(element: HTMLElement) {
+    // Native thumb drags can send many scroll events without a pointermove.
+    // Retain only that gesture, rebasing it after our own moves and reflows.
+    if (this.userScrolling?.kind === "scrollbar") {
+      this.userScrolling.top = element.scrollTop;
+      this.userScrolling.range = maxScrollTop(element);
+    } else {
+      this.endUserIntent();
+    }
   }
 
   private atTail(element: HTMLElement): boolean {
-    return element.scrollHeight - element.clientHeight - element.scrollTop <= 2;
+    return maxScrollTop(element) - element.scrollTop <= 2;
   }
 }

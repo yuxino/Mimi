@@ -9,6 +9,12 @@ outside the canvas cannot start a window move. A double-click does not fold the
 overlay. Position lock, immersive presentation and a pending control action
 disable this move path.
 
+Dragging the timeline scrollbar back to the bottom resumes live captions.
+Some WebViews send a series of scroll events without pointer movement while
+the thumb is held. Follow that gesture through release, including outside the
+viewport. A resize or a new caption can also move the scrollbar. Keep the
+reader on their sentence when the change comes from layout alone.
+
 An expanded panel accepts the same primary mouse drag from its header, section
 labels and blank space, including below the first section. Its buttons,
 selectors, links, help, portaled menus and scrolling retain their own gestures.
