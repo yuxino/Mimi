@@ -45,7 +45,9 @@ Preserve these product constraints:
   Dock/quit integration and updater cleanup. Keep capture in `audio/` and
   overlay interaction in `windows/`.
 - `src-tauri/src/platform/menu.rs`: native application/tray menu resources,
-  localization and state listeners. `desktop_shortcuts.rs` owns global shortcut
+  localization and state listeners. `platform/language.rs` owns native UI
+  language selection and OS lookup shared with Linux audio metadata.
+  `desktop_shortcuts.rs` owns global shortcut
   registration and Linux desktop launch commands; `lib.rs` only assembles them.
 - `src/`: React frontend — `src/windows/{overlay,overlay-control,settings}/` contain the three product surfaces; `src/lib/{ipc,store,types,i18n}.ts` define the IPC contract.
   Settings feature folders and `src/lib` domain folders hold their implementations;

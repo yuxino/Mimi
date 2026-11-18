@@ -1,5 +1,6 @@
 //! Native application and tray menu resources, localization and event handling.
 
+use super::language::{effective_native_ui_language, system_language_code, NativeUiLanguage};
 use crate::commands::{self, AppState};
 use crate::core::models::SubtitleDisplayMode;
 use crate::windows;
@@ -11,19 +12,6 @@ use tauri::menu::{
 };
 use tauri::tray::TrayIconBuilder;
 use tauri::{Listener, Manager};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NativeMenuLanguage {
-    Chinese,
-    TraditionalChinese,
-    English,
-    Japanese,
-    German,
-    French,
-    Korean,
-    Thai,
-    Russian,
-}
 
 #[derive(Debug, Clone, Copy)]
 struct NativeMenuLabels {
@@ -118,7 +106,7 @@ pub(crate) fn setup_application_menu(app: &tauri::AppHandle) -> tauri::Result<()
         .try_state::<AppState>()
         .and_then(|state| state.settings.preferences().ui_language);
     let system_language = system_language_code();
-    let labels = native_menu_labels(effective_native_menu_language(
+    let labels = native_menu_labels(effective_native_ui_language(
         override_language.as_deref(),
         system_language.as_deref(),
     ));
@@ -139,54 +127,9 @@ pub(crate) fn setup_application_menu(app: &tauri::AppHandle) -> tauri::Result<()
     Ok(())
 }
 
-fn effective_native_menu_language(
-    override_language: Option<&str>,
-    system_language: Option<&str>,
-) -> NativeMenuLanguage {
-    let language = match override_language {
-        Some("zh") | Some("zh-TW") | Some("en") | Some("ja") | Some("de") | Some("fr")
-        | Some("ko") | Some("th") | Some("ru") => override_language,
-        _ => system_language,
-    }
-    .unwrap_or("en")
-    .to_ascii_lowercase()
-    .replace('_', "-");
-    if language.starts_with("zh") {
-        let subtags: Vec<_> = language.split('-').skip(1).collect();
-        let traditional = if subtags.contains(&"hant") {
-            true
-        } else if subtags.contains(&"hans") {
-            false
-        } else {
-            subtags
-                .iter()
-                .any(|subtag| matches!(*subtag, "tw" | "hk" | "mo"))
-        };
-        if traditional {
-            NativeMenuLanguage::TraditionalChinese
-        } else {
-            NativeMenuLanguage::Chinese
-        }
-    } else if language.starts_with("ja") {
-        NativeMenuLanguage::Japanese
-    } else if language.starts_with("de") {
-        NativeMenuLanguage::German
-    } else if language.starts_with("fr") {
-        NativeMenuLanguage::French
-    } else if language.starts_with("ko") {
-        NativeMenuLanguage::Korean
-    } else if language.starts_with("th") {
-        NativeMenuLanguage::Thai
-    } else if language.starts_with("ru") {
-        NativeMenuLanguage::Russian
-    } else {
-        NativeMenuLanguage::English
-    }
-}
-
-fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
+fn native_menu_labels(language: NativeUiLanguage) -> NativeMenuLabels {
     match language {
-        NativeMenuLanguage::Chinese => NativeMenuLabels {
+        NativeUiLanguage::Chinese => NativeMenuLabels {
             start_subtitles: "开始字幕",
             stop_subtitles: "停止字幕",
             toggle_devtools: "打开调试工具",
@@ -197,7 +140,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "在 Dock 中显示",
         },
-        NativeMenuLanguage::TraditionalChinese => NativeMenuLabels {
+        NativeUiLanguage::TraditionalChinese => NativeMenuLabels {
             start_subtitles: "開始字幕",
             stop_subtitles: "停止字幕",
             toggle_devtools: "開啟開發者工具",
@@ -208,7 +151,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "在 Dock 中顯示",
         },
-        NativeMenuLanguage::Japanese => NativeMenuLabels {
+        NativeUiLanguage::Japanese => NativeMenuLabels {
             start_subtitles: "字幕を開始",
             stop_subtitles: "字幕を停止",
             toggle_devtools: "開発者ツールを開く",
@@ -219,7 +162,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Dock に表示",
         },
-        NativeMenuLanguage::German => NativeMenuLabels {
+        NativeUiLanguage::German => NativeMenuLabels {
             start_subtitles: "Untertitel starten",
             stop_subtitles: "Untertitel stoppen",
             toggle_devtools: "Entwicklerwerkzeuge öffnen",
@@ -234,7 +177,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Im Dock anzeigen",
         },
-        NativeMenuLanguage::French => NativeMenuLabels {
+        NativeUiLanguage::French => NativeMenuLabels {
             start_subtitles: "Démarrer les sous-titres",
             stop_subtitles: "Arrêter les sous-titres",
             toggle_devtools: "Ouvrir les outils de développement",
@@ -249,7 +192,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Afficher dans le Dock",
         },
-        NativeMenuLanguage::Korean => NativeMenuLabels {
+        NativeUiLanguage::Korean => NativeMenuLabels {
             start_subtitles: "자막 시작",
             stop_subtitles: "자막 중지",
             toggle_devtools: "개발자 도구 열기",
@@ -260,7 +203,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Dock에 표시",
         },
-        NativeMenuLanguage::Thai => NativeMenuLabels {
+        NativeUiLanguage::Thai => NativeMenuLabels {
             start_subtitles: "เริ่มคำบรรยาย",
             stop_subtitles: "หยุดคำบรรยาย",
             toggle_devtools: "เปิดเครื่องมือสำหรับนักพัฒนา",
@@ -271,7 +214,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "แสดงใน Dock",
         },
-        NativeMenuLanguage::Russian => NativeMenuLabels {
+        NativeUiLanguage::Russian => NativeMenuLabels {
             start_subtitles: "Запустить субтитры",
             stop_subtitles: "Остановить субтитры",
             toggle_devtools: "Открыть инструменты разработчика",
@@ -282,7 +225,7 @@ fn native_menu_labels(language: NativeMenuLanguage) -> NativeMenuLabels {
             #[cfg(any(target_os = "macos", test))]
             show_in_dock: "Показывать в Dock",
         },
-        NativeMenuLanguage::English => NativeMenuLabels {
+        NativeUiLanguage::English => NativeMenuLabels {
             start_subtitles: "Start Subtitles",
             stop_subtitles: "Stop Subtitles",
             toggle_devtools: "Open DevTools",
@@ -312,52 +255,6 @@ fn native_tray_session_is_active(status: &str) -> bool {
     matches!(status, "connecting" | "listening" | "stopping")
 }
 
-/// Reads the operating-system language code when the preference follows the system.
-#[cfg(target_os = "macos")]
-fn system_language_code() -> Option<String> {
-    use objc2::msg_send;
-    use objc2::runtime::AnyClass;
-    use objc2_foundation::{NSArray, NSString};
-    unsafe {
-        let locale_class = AnyClass::get(c"NSLocale")?;
-        // The formatting locale's base language drops scripts such as Hant
-        // and can differ from the user's preferred interface language.
-        let languages: *mut NSArray<NSString> = msg_send![locale_class, preferredLanguages];
-        languages
-            .as_ref()?
-            .firstObject()
-            .map(|language| language.to_string())
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn system_language_code() -> Option<String> {
-    use windows_sys::Win32::Globalization::GetUserDefaultLocaleName;
-
-    // Windows defines LOCALE_NAME_MAX_LENGTH as 85 UTF-16 code units,
-    // including the trailing null terminator.
-    let mut buffer = [0_u16; 85];
-    let length =
-        unsafe { GetUserDefaultLocaleName(buffer.as_mut_ptr(), i32::try_from(buffer.len()).ok()?) };
-    if length <= 1 {
-        return None;
-    }
-    String::from_utf16(&buffer[..usize::try_from(length - 1).ok()?]).ok()
-}
-
-#[cfg(target_os = "linux")]
-fn system_language_code() -> Option<String> {
-    ["LC_ALL", "LC_MESSAGES", "LANG"]
-        .into_iter()
-        .filter_map(|name| std::env::var(name).ok())
-        .find(|value| !value.is_empty())
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-fn system_language_code() -> Option<String> {
-    None
-}
-
 /// Tray icon with the same compact native menu for both mouse buttons.
 /// Copy follows the saved UI override, falling back to the system language.
 fn tray_icon_bytes(is_windows: bool) -> &'static [u8] {
@@ -381,7 +278,7 @@ pub(crate) fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         })
         .unwrap_or((None, false));
     let system_language = system_language_code();
-    let labels = native_menu_labels(effective_native_menu_language(
+    let labels = native_menu_labels(effective_native_ui_language(
         override_language.as_deref(),
         system_language.as_deref(),
     ));
@@ -590,7 +487,7 @@ pub(crate) fn refresh_native_tray_language(app: &tauri::AppHandle) {
         })
         .unwrap_or((None, false));
     let system_language = system_language_code();
-    let labels = native_menu_labels(effective_native_menu_language(
+    let labels = native_menu_labels(effective_native_ui_language(
         override_language.as_deref(),
         system_language.as_deref(),
     ));
@@ -639,7 +536,7 @@ fn refresh_native_tray_session_action(app: &tauri::AppHandle, is_active: bool) {
         .try_state::<AppState>()
         .and_then(|state| state.settings.preferences().ui_language);
     let system_language = system_language_code();
-    let labels = native_menu_labels(effective_native_menu_language(
+    let labels = native_menu_labels(effective_native_ui_language(
         override_language.as_deref(),
         system_language.as_deref(),
     ));

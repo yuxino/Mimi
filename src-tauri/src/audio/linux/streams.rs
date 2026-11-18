@@ -3,6 +3,9 @@
 use super::applications::{ApplicationSnapshot, AudioApplication};
 use super::linux::{check_context, wait_for, ConnectedContext, WorkerControl, START_TIMEOUT};
 use super::SystemAudioCaptureError as Error;
+use crate::platform::language::{
+    effective_native_ui_language, system_language_code, NativeUiLanguage,
+};
 use libpulse_binding as pulse;
 use pulse::callbacks::ListResult;
 use pulse::context::subscribe::{Facility, InterestMaskSet, Operation};
@@ -125,19 +128,16 @@ impl Registry {
 }
 
 fn placeholders(language: &str) -> (&'static str, &'static str) {
-    let language = crate::effective_native_menu_language(
-        Some(language),
-        crate::system_language_code().as_deref(),
-    );
+    let language = effective_native_ui_language(Some(language), system_language_code().as_deref());
     match language {
-        crate::NativeMenuLanguage::Chinese => ("未知应用", "未命名音频流"),
-        crate::NativeMenuLanguage::TraditionalChinese => ("未知應用程式", "未命名音訊串流"),
-        crate::NativeMenuLanguage::Japanese => ("不明なアプリ", "名前のない音声ストリーム"),
-        crate::NativeMenuLanguage::Korean => ("알 수 없는 앱", "이름 없는 오디오 스트림"),
-        crate::NativeMenuLanguage::German => ("Unbekannte Anwendung", "Unbenannter Audiostream"),
-        crate::NativeMenuLanguage::French => ("Application inconnue", "Flux audio sans nom"),
-        crate::NativeMenuLanguage::Thai => ("แอปที่ไม่รู้จัก", "สตรีมเสียงไม่มีชื่อ"),
-        crate::NativeMenuLanguage::Russian => ("Неизвестное приложение", "Аудиопоток без названия"),
+        NativeUiLanguage::Chinese => ("未知应用", "未命名音频流"),
+        NativeUiLanguage::TraditionalChinese => ("未知應用程式", "未命名音訊串流"),
+        NativeUiLanguage::Japanese => ("不明なアプリ", "名前のない音声ストリーム"),
+        NativeUiLanguage::Korean => ("알 수 없는 앱", "이름 없는 오디오 스트림"),
+        NativeUiLanguage::German => ("Unbekannte Anwendung", "Unbenannter Audiostream"),
+        NativeUiLanguage::French => ("Application inconnue", "Flux audio sans nom"),
+        NativeUiLanguage::Thai => ("แอปที่ไม่รู้จัก", "สตรีมเสียงไม่มีชื่อ"),
+        NativeUiLanguage::Russian => ("Неизвестное приложение", "Аудиопоток без названия"),
         _ => ("Unknown application", "Unnamed audio stream"),
     }
 }

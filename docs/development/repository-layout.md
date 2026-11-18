@@ -38,6 +38,7 @@ src-tauri/
     windows.rs               Window-management entry point
     platform/
       menu.rs                Application/tray resources, labels and state listeners
+      language.rs            Native UI language selection and OS language lookup
       macos/                 Dock presentation and native quit delegate
       windows/               Startup ownership and updater cleanup
       linux/                 X11 initialization before Tauri/GTK
@@ -210,7 +211,9 @@ retains the existing locks, generation checks, native panel classes and cfg gate
 
 `platform/menu.rs` owns the native application/tray menu items, localized labels,
 event callbacks and session-state listener. Settings updates call that actual
-owner to refresh labels. `desktop_shortcuts.rs` owns global binding registration
+owner to refresh labels. `platform/language.rs` owns native UI language selection
+and OS language lookup, shared directly by menus and Linux audio metadata.
+`desktop_shortcuts.rs` owns global binding registration
 alongside the Linux desktop action adapter. `lib.rs` preserves their startup
 order and the settings-close callback's UI-test visibility marker; it does not
 forward menu operations. Menu regressions follow the menu owner, while the
@@ -320,3 +323,8 @@ When extracting platform adapters, give new imports the cfg of their actual
 callers, including macros used only inside OS-specific blocks. Host Clippy does
 not check inactive platform paths; require Windows and Linux CI before merging
 macOS-tested moves. Fix the import boundary instead of suppressing the warning.
+Search every moved root-private symbol across the crate, including `crate::`
+references from descendants and inactive OS paths. Root privacy permits those
+descendant callers; moving a symbol into a private feature module changes that
+reachability. Put genuinely shared native logic at its actual common owner and
+update both callers instead of restoring root forwarding aliases.

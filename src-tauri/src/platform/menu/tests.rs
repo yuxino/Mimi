@@ -1,21 +1,5 @@
 use super::*;
 
-#[cfg(target_os = "macos")]
-#[test]
-fn native_system_language_preserves_the_full_preferred_ui_language() {
-    use objc2::{msg_send, runtime::AnyClass};
-    use objc2_foundation::{NSArray, NSString};
-
-    // Read the OS UI preference rather than its region-formatting locale.
-    // The language code alone loses Chinese scripts and regional variants.
-    let class = AnyClass::get(c"NSLocale").unwrap();
-    let languages: *mut NSArray<NSString> = unsafe { msg_send![class, preferredLanguages] };
-    let expected = unsafe { languages.as_ref() }
-        .and_then(|languages| languages.firstObject())
-        .map(|language| language.to_string());
-    assert_eq!(system_language_code(), expected);
-}
-
 #[test]
 fn native_menu_language_preserves_chinese_scripts_and_regions() {
     for locale in [
@@ -27,8 +11,8 @@ fn native_menu_language_preserves_chinese_scripts_and_regions() {
         "ZH_hant_HK",
     ] {
         assert_eq!(
-            effective_native_menu_language(Some("system"), Some(locale)),
-            NativeMenuLanguage::TraditionalChinese,
+            effective_native_ui_language(Some("system"), Some(locale)),
+            NativeUiLanguage::TraditionalChinese,
             "{locale}"
         );
     }
@@ -41,20 +25,20 @@ fn native_menu_language_preserves_chinese_scripts_and_regions() {
         "ZH_hans_CN",
     ] {
         assert_eq!(
-            effective_native_menu_language(None, Some(locale)),
-            NativeMenuLanguage::Chinese,
+            effective_native_ui_language(None, Some(locale)),
+            NativeUiLanguage::Chinese,
             "{locale}"
         );
     }
     assert_eq!(
-        effective_native_menu_language(Some("zh-TW"), Some("zh-CN")),
-        NativeMenuLanguage::TraditionalChinese
+        effective_native_ui_language(Some("zh-TW"), Some("zh-CN")),
+        NativeUiLanguage::TraditionalChinese
     );
     assert_eq!(
-        effective_native_menu_language(Some("zh"), Some("zh-Hant")),
-        NativeMenuLanguage::Chinese
+        effective_native_ui_language(Some("zh"), Some("zh-Hant")),
+        NativeUiLanguage::Chinese
     );
-    let labels = native_menu_labels(NativeMenuLanguage::TraditionalChinese);
+    let labels = native_menu_labels(NativeUiLanguage::TraditionalChinese);
     assert_eq!(labels.start_subtitles, "開始字幕");
     assert_eq!(labels.stop_subtitles, "停止字幕");
     assert_eq!(labels.toggle_devtools, "開啟開發者工具");
@@ -68,24 +52,24 @@ fn native_menu_language_preserves_chinese_scripts_and_regions() {
 #[test]
 fn added_interface_languages_localize_native_menus() {
     for (code, region, language, label) in [
-        ("de", "de-DE", NativeMenuLanguage::German, "Einstellungen…"),
-        ("fr", "fr-CA", NativeMenuLanguage::French, "Réglages…"),
-        ("ko", "ko-KR", NativeMenuLanguage::Korean, "설정…"),
-        ("th", "TH_th", NativeMenuLanguage::Thai, "การตั้งค่า…"),
-        ("ru", "RU_ru", NativeMenuLanguage::Russian, "Настройки…"),
+        ("de", "de-DE", NativeUiLanguage::German, "Einstellungen…"),
+        ("fr", "fr-CA", NativeUiLanguage::French, "Réglages…"),
+        ("ko", "ko-KR", NativeUiLanguage::Korean, "설정…"),
+        ("th", "TH_th", NativeUiLanguage::Thai, "การตั้งค่า…"),
+        ("ru", "RU_ru", NativeUiLanguage::Russian, "Настройки…"),
     ] {
         assert_eq!(
-            effective_native_menu_language(Some(code), Some("en-US")),
+            effective_native_ui_language(Some(code), Some("en-US")),
             language
         );
         assert_eq!(
-            effective_native_menu_language(Some("system"), Some(region)),
+            effective_native_ui_language(Some("system"), Some(region)),
             language
         );
         assert_eq!(native_menu_labels(language).settings, label);
         assert_ne!(
             native_menu_labels(language).quit,
-            native_menu_labels(NativeMenuLanguage::English).quit
+            native_menu_labels(NativeUiLanguage::English).quit
         );
     }
 }
@@ -104,9 +88,9 @@ fn application_settings_and_tray_share_the_settings_route_in_all_languages() {
     }
     assert_eq!(APPLICATION_SETTINGS_ACCELERATOR, "CmdOrCtrl+,");
     for (language, label) in [
-        (NativeMenuLanguage::Chinese, "设置…"),
-        (NativeMenuLanguage::English, "Settings…"),
-        (NativeMenuLanguage::Japanese, "設定…"),
+        (NativeUiLanguage::Chinese, "设置…"),
+        (NativeUiLanguage::English, "Settings…"),
+        (NativeUiLanguage::Japanese, "設定…"),
     ] {
         assert_eq!(native_menu_labels(language).settings, label);
     }
@@ -121,9 +105,9 @@ fn application_and_tray_quit_share_the_normal_finalization_route() {
     }
     assert_eq!(APPLICATION_QUIT_ACCELERATOR, "CmdOrCtrl+Q");
     for (language, label) in [
-        (NativeMenuLanguage::Chinese, "退出 Mimi"),
-        (NativeMenuLanguage::English, "Quit Mimi"),
-        (NativeMenuLanguage::Japanese, "Mimiを終了"),
+        (NativeUiLanguage::Chinese, "退出 Mimi"),
+        (NativeUiLanguage::English, "Quit Mimi"),
+        (NativeUiLanguage::Japanese, "Mimiを終了"),
     ] {
         assert_eq!(native_menu_labels(language).quit, label);
     }
@@ -146,13 +130,13 @@ fn application_quit_replacement_accepts_only_the_last_default_predefined_quit() 
 #[test]
 fn native_tray_session_action_follows_status_in_all_three_languages() {
     for (language, start, stop) in [
-        (NativeMenuLanguage::Chinese, "开始字幕", "停止字幕"),
+        (NativeUiLanguage::Chinese, "开始字幕", "停止字幕"),
         (
-            NativeMenuLanguage::English,
+            NativeUiLanguage::English,
             "Start Subtitles",
             "Stop Subtitles",
         ),
-        (NativeMenuLanguage::Japanese, "字幕を開始", "字幕を停止"),
+        (NativeUiLanguage::Japanese, "字幕を開始", "字幕を停止"),
     ] {
         let labels = native_menu_labels(language);
         assert_eq!(native_session_action_label(labels, false), start);
@@ -169,23 +153,23 @@ fn native_tray_session_action_follows_status_in_all_three_languages() {
 #[test]
 fn native_tray_language_override_precedes_three_language_system_fallback() {
     assert_eq!(
-        effective_native_menu_language(Some("ja"), Some("zh-CN")),
-        NativeMenuLanguage::Japanese
+        effective_native_ui_language(Some("ja"), Some("zh-CN")),
+        NativeUiLanguage::Japanese
     );
     assert_eq!(
-        effective_native_menu_language(None, Some("zh-Hans")),
-        NativeMenuLanguage::Chinese
+        effective_native_ui_language(None, Some("zh-Hans")),
+        NativeUiLanguage::Chinese
     );
     assert_eq!(
-        effective_native_menu_language(Some("system"), Some("ja-JP")),
-        NativeMenuLanguage::Japanese
+        effective_native_ui_language(Some("system"), Some("ja-JP")),
+        NativeUiLanguage::Japanese
     );
     assert_eq!(
-        effective_native_menu_language(None, Some("en-US")),
-        NativeMenuLanguage::English
+        effective_native_ui_language(None, Some("en-US")),
+        NativeUiLanguage::English
     );
     assert_eq!(
-        native_menu_labels(NativeMenuLanguage::Japanese).settings,
+        native_menu_labels(NativeUiLanguage::Japanese).settings,
         "設定…"
     );
 }
@@ -194,15 +178,15 @@ fn native_tray_language_override_precedes_three_language_system_fallback() {
 fn native_dock_visibility_labels_match_the_existing_frontend_copy() {
     for (language, frontend_copy) in [
         (
-            NativeMenuLanguage::Chinese,
+            NativeUiLanguage::Chinese,
             include_str!("../../../../src/lib/locales/zh.ts"),
         ),
         (
-            NativeMenuLanguage::English,
+            NativeUiLanguage::English,
             include_str!("../../../../src/lib/locales/en.ts"),
         ),
         (
-            NativeMenuLanguage::Japanese,
+            NativeUiLanguage::Japanese,
             include_str!("../../../../src/lib/locales/ja.ts"),
         ),
     ] {
