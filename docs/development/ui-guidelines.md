@@ -126,6 +126,9 @@ These project rules apply to implementation and review.
   for actual browser geometry, and keep the native-device evidence separate.
   In a fresh checkout, load the Vite root page once before opening fixtures
   that import optimized dependencies from `/node_modules/.vite/deps/`.
+  Check the floating control panel at its native width of 280 CSS pixels and
+  at 240 pixels under width pressure. Include a long selected language in
+  each field. Measure the rendered text, menu bounds and button hit areas.
   Keep hover, animation and media checks in the foreground, with one browser
   controller at a time. Inspecting another page or native app can pause frames
   or playback; restore focus before retrying and record interrupted playback

@@ -8,7 +8,7 @@ import { useDesktopShortcuts } from "../../../lib/shortcuts/useDesktopShortcuts"
 import { Select } from "../../../components/inputs/Select";
 import { ProviderIcon } from "../../../components/providers/ProviderIcon";
 import { LanguageSelect } from "../../../components/inputs/LanguageSelect";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../../components/Icon";
 import { I18N } from "../../../lib/i18n";
 import { diagnosticPlatform, languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage } from "../../../lib/providers/connectionDiagnostics";
@@ -325,20 +325,23 @@ export function OverlayControlPanel({
             aria-label={I18N.settings.subtitleDisplay}
             title={nativeShortcuts ? subtitleDisplayShortcut() : undefined}
           >
-            {SUBTITLE_DISPLAY_OPTIONS.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={value === settings.subtitleDisplayMode}
-                disabled={pendingAction !== null}
-                onClick={() => {
-                  if (value !== settings.subtitleDisplayMode) {
-                    performAction("display", () => onSetSubtitleDisplayMode(value), false);
-                  }
-                }}
-              >
-                {label}
-              </button>
+            {SUBTITLE_DISPLAY_OPTIONS.map(({ value, label, shortLabel }) => (
+              <Fragment key={value}>
+                <button
+                  type="button"
+                  aria-pressed={value === settings.subtitleDisplayMode}
+                  aria-describedby={`${subtitlesHeadingId}-${value}`}
+                  disabled={pendingAction !== null}
+                  onClick={() => {
+                    if (value !== settings.subtitleDisplayMode) {
+                      performAction("display", () => onSetSubtitleDisplayMode(value), false);
+                    }
+                  }}
+                >
+                  {shortLabel}
+                </button>
+                <span hidden id={`${subtitlesHeadingId}-${value}`}>{label}</span>
+              </Fragment>
             ))}
           </div>
         </section>

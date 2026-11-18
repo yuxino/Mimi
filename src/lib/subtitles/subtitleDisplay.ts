@@ -1,10 +1,22 @@
 import { I18N } from "../i18n";
 import type { SettingsDraft, SettingsSnapshot, SubtitleDisplayMode } from "../types";
 
-export const SUBTITLE_DISPLAY_OPTIONS: readonly { value: SubtitleDisplayMode; label: string }[] = [
-  { value: "translation", get label() { return I18N.settings.displayTranslation; } },
-  { value: "bilingual", get label() { return I18N.settings.displayBilingual; } },
-  { value: "original", get label() { return I18N.settings.displayOriginal; } },
+export const SUBTITLE_DISPLAY_OPTIONS: readonly { value: SubtitleDisplayMode; label: string; shortLabel: string }[] = [
+  {
+    value: "translation",
+    get label() { return I18N.settings.displayTranslation; },
+    get shortLabel() { return I18N.settings.transcriptTranslation; },
+  },
+  {
+    value: "bilingual",
+    get label() { return I18N.settings.displayBilingual; },
+    get shortLabel() { return I18N.settings.displayBoth; },
+  },
+  {
+    value: "original",
+    get label() { return I18N.settings.displayOriginal; },
+    get shortLabel() { return I18N.settings.transcriptSource; },
+  },
 ];
 
 /** Selectable range for the custom visible-subtitle count, and the stored

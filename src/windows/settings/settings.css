@@ -3518,7 +3518,10 @@
 .voice-settings > :not(:first-child) { padding-top: 24px; border-top: 1px solid var(--settings-border); }
 .voice-settings .profile-language-settings__heading { margin-bottom: 16px; }
 .voice-settings .settings-card__header { margin-bottom: 16px; }
-.voice-settings .settings-row { grid-template-columns: 160px minmax(0, 1fr); }
+.voice-settings .settings-row {
+  grid-template-columns: 160px minmax(0, 1fr);
+  column-gap: 18px;
+}
 .voice-settings .settings-row__control { min-width: 0; }
 .voice-settings .settings-select-wrap { width: 100%; }
 @media (max-width: 700px) {

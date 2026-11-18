@@ -165,6 +165,7 @@ export const SETTINGS = {
   showIntermediateSubtitlesHelp: "オンでは字幕を早めに表示し、内容は後から変わることがあります。オフでは確定を待つため、話し続けると表示が遅くなる場合があります。最終的な認識・翻訳の精度は変わりません。",
   displayTranslation: "翻訳のみ",
   displayBilingual: "原文＋翻訳",
+  displayBoth: "両方",
   displayOriginal: "原文のみ",
   subtitleDisplayHelp: "翻訳を中断せずに表示を切り替えます。",
   pulseStyle: "状態ライトのスタイル",

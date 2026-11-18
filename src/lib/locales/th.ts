@@ -165,6 +165,7 @@ export const SETTINGS = {
   showIntermediateSubtitlesHelp: "เปิด: แสดงคำบรรยายเร็วขึ้น แต่ข้อความอาจเปลี่ยนได้ ปิด: รอข้อความยืนยัน ซึ่งอาจนานขึ้นเมื่อพูดต่อเนื่อง ความแม่นยำของการรู้จำและคำแปลสุดท้ายไม่เปลี่ยน",
   displayTranslation: "คำแปลเท่านั้น",
   displayBilingual: "ต้นฉบับ + คำแปล",
+  displayBoth: "ทั้งสอง",
   displayOriginal: "ต้นฉบับเท่านั้น",
   subtitleDisplayHelp: "เปลี่ยนการแสดงผลโดยไม่ขัดจังหวะการแปล",
   pulseStyle: "รูปแบบไฟสถานะ",

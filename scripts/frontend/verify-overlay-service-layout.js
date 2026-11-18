@@ -413,10 +413,20 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
             if (box.width < 22 || box.left < serviceBox.left || box.right > serviceBox.right + 1) issues.push("name squeezed or outside its button");
           }
           if (panel.scrollWidth > panel.clientWidth + 1 || content.scrollWidth > content.clientWidth + 1) issues.push("panel content overflows horizontally");
-          for (const picker of panel.querySelectorAll(".overlay-control-language-pair .overlay-control-picker")) {
-            const field = picker.querySelector('[role="combobox"]')?.getBoundingClientRect();
-            const column = picker.getBoundingClientRect();
-            if (!field || Math.abs(field.left - column.left) > 1 || Math.abs(field.right - column.right) > 1) issues.push("language picker does not fill its column");
+          const pair = panel.querySelector(".overlay-control-language-pair");
+          const pickers = [...(pair?.querySelectorAll(".overlay-control-picker") ?? [])];
+          if (pickers.length !== 2) issues.push("language pair missing");
+          const overlaps = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+          const pairBox = pair?.getBoundingClientRect(), contentBox = content.getBoundingClientRect();
+          if (pairBox && (pairBox.left < contentBox.left - 1 || pairBox.right > contentBox.right + 1)) issues.push("language pair outside panel content");
+          for (const picker of pickers) {
+            const button = picker.querySelector('[role="combobox"]');
+            const field = button?.getBoundingClientRect(), column = picker.getBoundingClientRect();
+            const labelBox = picker.querySelector(".overlay-control-picker__label")?.getBoundingClientRect();
+            if (!field || !labelBox || Math.abs(field.right - column.right) > 1 || labelBox.left < column.left - 1
+              || field.left < column.left - 1 || field.bottom > column.bottom + 1 || labelBox.right > column.right + 1
+              || labelBox.top < column.top - 1 || labelBox.bottom > column.bottom + 1
+              || overlaps(labelBox, field)) issues.push("language field edge or label obscured");
           }
           if (compactRows && [...panel.querySelectorAll('.overlay-control-display button')]
             .some(button => button.getBoundingClientRect().height > 42)) issues.push("caption display row stretched beyond its text");
