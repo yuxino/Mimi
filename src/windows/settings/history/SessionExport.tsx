@@ -10,8 +10,6 @@ import {
   sessionTranscriptPage,
   sessionHistoryList,
   sessionHistoryPage,
-  sessionHistoryAudio,
-  sessionArchiveAudio,
   sessionHistoryDelete,
   sessionHistoryRename,
 } from "../../../lib/ipc";
@@ -30,6 +28,7 @@ import { SettingsConfirmation } from "../controls/DestructiveConfirmation";
 import { useSettingsToast } from "../feedback/useSettingsToast";
 import { SettingsActionMenu } from "../controls/SettingsActionMenu";
 import { SessionAudioPlayer } from "./SessionAudioPlayer";
+import { useSessionAudioPreview } from "./useSessionAudioPreview";
 import { SettingsHelp } from "../feedback/SettingsHelp";
 import { sessionWorkspaceCopy } from "./sessionWorkspaceCopy";
 import "./session-workspace.css";
@@ -73,10 +72,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const catalogScroll = useRef({ page: 0, list: 0 });
   const previousReaderOpen = useRef(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingSource, setRecordingSource] = useState<AudioSource>("system");
-  const [audioError, setAudioError] = useState(false);
-  const [audioLoading, setAudioLoading] = useState(false);
   const [readError, setReadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [historyQuery, setHistoryQuery] = useState("");
@@ -95,19 +91,19 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const transcriptRequest = useRef(0);
   const requestedQuery = useRef("");
   const historyRequest = useRef(0);
-  const audioRequest = useRef(0);
-  const audioInFlight = useRef(false);
   const interaction = useRef(0);
   const selectedHistoryId = useRef<string | null>(null);
-  const [renderedAudioContext, setRenderedAudioContext] = useState({ active, pageVisible, selectedId, recordAudio });
-  if (renderedAudioContext.active !== active || renderedAudioContext.pageVisible !== pageVisible
-    || renderedAudioContext.selectedId !== selectedId || renderedAudioContext.recordAudio !== recordAudio) {
-    setRenderedAudioContext({ active, pageVisible, selectedId, recordAudio });
-    if (active || !pageVisible || (!selectedId && !recordAudio)) {
-      setAudioUrl(null);
-      setAudioError(false);
-    }
-  }
+  const selected = history.find((item) => item.id === selectedId);
+  const audioSources = selected ? selected.audioSources ?? ["system" as const] : archive?.audioSources ?? ["system" as const];
+  const selectedAudioSource = audioSources.includes(recordingSource) ? recordingSource : audioSources[0];
+  const audioPreview = useSessionAudioPreview({
+    active,
+    pageVisible,
+    readerOpen,
+    selectedId,
+    audioSource: selectedAudioSource,
+    recordAudio,
+  });
   // Counts can match across a reset. Current reads belong to an exact local
   // lifecycle, while saved-history reads remain independent of live capture.
   const archiveContext = useMemo(() => Symbol(`${active}:${retainHistory}`), [active, retainHistory]);
@@ -125,9 +121,6 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     }
   }
 
-  const selected = history.find((item) => item.id === selectedId);
-  const audioSources = selected ? selected.audioSources ?? ["system" as const] : archive?.audioSources ?? ["system" as const];
-  const selectedAudioSource = audioSources.includes(recordingSource) ? recordingSource : audioSources[0];
   const availableCount = selectedId ? (selected?.count ?? 0) : (archive?.transcriptCount ?? 0);
   const displayedTranscript = availableCount && transcript?.owner === transcriptContext ? transcript.page : undefined;
   useLayoutEffect(() => {
@@ -160,9 +153,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
 
   function returnToLibrary() {
     interaction.current += 1;
-    audioRequest.current += 1;
-    setAudioUrl(null);
-    setAudioError(false);
+    audioPreview.clear();
     setReaderOpen(false);
     clearToast();
   }
@@ -180,9 +171,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     interaction.current += 1;
     clearToast();
     transcriptRequest.current += 1;
-    audioRequest.current += 1;
-    setAudioUrl(null);
-    setAudioError(false);
+    audioPreview.clear();
     setTranscriptError(false);
     setConfirmDelete(false);
     setRenameOpen(false);
@@ -194,36 +183,12 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     setTranscript(undefined);
   }
 
-  function loadAudio() {
-    // One WAV may be 64 MiB. Superseding its result must not start another
-    // full-file transfer while the native read is still in flight.
-    if (audioInFlight.current || !pageVisible || !readerOpen || useStore.getState().session.isActive) return;
-    audioInFlight.current = true;
-    const currentLifetime = lifetime.current;
-    const request = ++audioRequest.current;
-    setAudioLoading(true);
-    setAudioError(false);
-    const read = selectedId ? sessionHistoryAudio(selectedId, selectedAudioSource) : sessionArchiveAudio(selectedAudioSource);
-    void read.then(
-      (bytes) => {
-        if (request !== audioRequest.current || useStore.getState().session.isActive) return;
-        setAudioUrl(URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })));
-        setAudioError(false);
-      },
-      () => { if (request === audioRequest.current) setAudioError(true); },
-    ).finally(() => {
-      audioInFlight.current = false;
-      if (lifetime.current === currentLifetime) setAudioLoading(false);
-    });
-  }
-
   useEffect(() => {
     lifetime.current += 1;
     return () => {
       lifetime.current += 1;
       transcriptRequest.current += 1;
       historyRequest.current += 1;
-      audioRequest.current += 1;
     };
   }, []);
 
@@ -267,12 +232,6 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   }, [active, retainHistory, recordAudio]);
 
   useEffect(() => {
-    if (active || !pageVisible || (!selectedId && !recordAudio)) {
-      audioRequest.current += 1;
-    }
-  }, [active, pageVisible, selectedId, recordAudio]);
-
-  useEffect(() => {
     if (!pageVisible || !isTauri) return;
     const request = ++historyRequest.current;
     void sessionHistoryList().then(
@@ -285,10 +244,6 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
     ).finally(() => { if (request === historyRequest.current) setSettledHistoryRead(historyRead); });
     return () => { historyRequest.current += 1; };
   }, [pageVisible, historyRead]);
-
-  useEffect(() => {
-    return () => { if (audioUrl) URL.revokeObjectURL(audioUrl); };
-  }, [audioUrl]);
 
   useEffect(() => {
     if (!pageVisible || !readerOpen || !isTauri || !availableCount || !transcriptEnabled) {
@@ -375,9 +330,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
       // A late completion cannot release another session's playback.
       if (lifetime.current === currentLifetime && selectedHistoryId.current === null
         && latestArchiveContext.current === archiveContext) {
-        audioRequest.current += 1;
-        setAudioUrl(null);
-        setAudioError(false);
+        audioPreview.clear();
       }
       return "cleared";
     });
@@ -451,10 +404,8 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
   const sessionName = selected ? selected.title || I18N.settings.historySelectedTitle : I18N.settings.historyCurrent;
   const sourceOptions = audioSources.map(source => ({ value: source, label: source === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone }));
   function changeAudioSource(value: string) {
-    audioRequest.current += 1;
+    audioPreview.clear();
     setRecordingSource(value as AudioSource);
-    setAudioUrl(null);
-    setAudioError(false);
   }
   const sourceControl = audioSources.length > 1
     ? <SettingsSelect label={I18N.settings.recordingSource} value={selectedAudioSource ?? "system"} disabled={busy} options={sourceOptions} onChange={changeAudioSource} />
@@ -576,7 +527,7 @@ export function SessionExport({ visible, onReaderChange }: { visible: boolean; o
             </div>
           </div>
           {canExportAudio && pageVisible && <SessionAudioPlayer key={`${selectedId ?? "current"}:${selectedAudioSource}:${active}`}
-            src={active ? null : audioUrl} loading={audioLoading} readError={audioError} disabled={active || !isTauri || (!selected && readError)} onLoad={loadAudio} sourceControl={sourceControl}
+            src={active ? null : audioPreview.url} loading={audioPreview.loading} readError={audioPreview.readError} disabled={active || !isTauri || (!selected && readError)} onLoad={audioPreview.load} sourceControl={sourceControl}
             labels={{ play: I18N.settings.historyPlayAudio, pause: copy.pause, loading: copy.loadingAudio, retry: copy.retryAudio, seek: copy.seek, playFailed: copy.playFailed, ready: copy.audioReady, label: I18N.settings.historyAudio }} />}
           {canExportAudio && active && <InlineFeedback tone="info">{copy.stopPlayback}</InlineFeedback>}
           {confirmDelete && selected && visible && <SettingsConfirmation message={I18N.settings.historyDeleteConfirm} confirmLabel={I18N.settings.historyDelete} disabled={busy}

@@ -1,12 +1,6 @@
-//! Shared generation ownership, recovery backoff and MT budget continuation.
+//! Shared generation ownership, recovery backoff and connection continuity.
 //! Extracted from the desktop lifecycle; no capture, storage or window APIs.
 
-use crate::core::models::TranslationMode;
-use crate::core::protocols::translation::qwen_mt::QwenMTModel;
-use crate::core::services::configuration::LiveTranslationConfiguration;
-use crate::core::services::credentials::{ProviderCredentials, TextTranslationCredentials};
-use crate::core::services::provider::ProviderKind;
-use crate::core::subtitles::preview_pacing::MTRequestBudget;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -269,6 +263,105 @@ impl RecoveryContinuity {
     /// Explicit Stop, Start/Retry and configuration replacement own a new budget.
     pub fn clear(&mut self) {
         self.connected = None;
+    }
+}
+
+pub fn advance_lifecycle_sequence_if_current(
+    lifecycle_sequence: &AtomicU64,
+    expected: u64,
+) -> Option<u64> {
+    let mut next = expected.wrapping_add(1);
+    if next == NO_GENERATION {
+        next = 1;
+    }
+    lifecycle_sequence
+        .compare_exchange(expected, next, Ordering::SeqCst, Ordering::SeqCst)
+        .ok()
+        .map(|_| next)
+}
+
+pub fn lifecycle_sequence_matches(lifecycle_sequence: &AtomicU64, expected: u64) -> bool {
+    lifecycle_sequence.load(Ordering::SeqCst) == expected
+}
+
+pub fn cancelled_recovery_attempt_is_retryable(
+    retry_generation: u64,
+    attempt_generation: u64,
+    current_epoch: u64,
+    has_active_settings: bool,
+) -> bool {
+    retry_generation == attempt_generation
+        && current_epoch == attempt_generation.wrapping_add(1)
+        && has_active_settings
+}
+
+pub fn recovery_exhaustion_is_still_owned(
+    recovery_epoch: u64,
+    current_epoch: u64,
+    active_generation: u64,
+) -> bool {
+    recovery_epoch == current_epoch && active_generation == NO_GENERATION
+}
+
+pub fn clear_recovery_atoms(is_recovering: &AtomicBool, retry_generation: &AtomicU64) {
+    retry_generation.store(NO_GENERATION, Ordering::SeqCst);
+    is_recovering.store(false, Ordering::SeqCst);
+}
+
+/// Bounded exponential recovery delay with deterministic per-generation
+/// jitter. Determinism keeps lifecycle tests reliable while preventing two
+/// mimi instances from reconnecting in lockstep after a shared outage.
+pub fn recovery_delay(attempt: usize, generation: u64) -> Duration {
+    if attempt == 0 {
+        return Duration::ZERO;
+    }
+    let exponent = (attempt - 1).min(3) as u32;
+    let base_ms = 500_u64 * 2_u64.pow(exponent);
+    let mixed = generation
+        .wrapping_add((attempt as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15))
+        .wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    let jitter_ms = mixed % (base_ms / 4 + 1);
+    Duration::from_millis(base_ms + jitter_ms)
+}
+
+pub fn provider_error_is_retryable(code: &str) -> bool {
+    // Desktop receives provider labels directly while Android supplies their
+    // normalized form. Both adapters must make the same recovery decision.
+    matches!(
+        normalize_provider_error_code(code),
+        "transport_error"
+            | "provider_event_backlog_overflow"
+            | "live_translate_unexpected_session_end"
+            | "alibaba_realtime_service_unavailable"
+            | "alibaba_realtime_idle_timeout"
+            | "gemini_live_service_unavailable"
+            | "openai_realtime_session_expired"
+            | "openai_realtime_service_unavailable"
+            | "translation_backlog_overflow"
+            | "translation_rate_limited"
+            | "translation_temporarily_unavailable"
+            | "apple_speech_runtime_service_unavailable"
+            | "apple_speech_runtime_timeout"
+            | "apple_speech_stream_closed"
+            | "apple_speech_result_backlog"
+    )
+}
+
+pub fn provider_recovery_minimum_delay(code: &str) -> Duration {
+    match code {
+        // A new client must not bypass the MT cooldown by replacing the
+        // generation after finite retries or bounded final-queue pressure.
+        "translation_rate_limited" | "translation_backlog_overflow" => Duration::from_secs(8),
+        "translation_temporarily_unavailable"
+        | "live_translate_unexpected_session_end"
+        | "alibaba_realtime_idle_timeout"
+        | "gemini_live_service_unavailable"
+        | "alibaba_realtime_service_unavailable" => Duration::from_millis(600),
+        "apple_speech_runtime_service_unavailable"
+        | "apple_speech_runtime_timeout"
+        | "apple_speech_stream_closed"
+        | "apple_speech_result_backlog" => Duration::from_millis(600),
+        _ => Duration::ZERO,
     }
 }
 
@@ -630,280 +723,6 @@ mod schedule_tests {
             assert!(!provider_error_is_retryable(normalize_provider_error_code(
                 code
             )));
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum MTBudgetRoute {
-    Apple,
-    Qwen(QwenMTModel),
-    DeepL,
-    DeepLX,
-    OpenAICompatible,
-    ChatMock,
-    XAI,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub struct MTBudgetScope {
-    pub profile_id: String,
-    pub provider: ProviderKind,
-    pub route: MTBudgetRoute,
-}
-
-impl MTBudgetScope {
-    pub fn for_configuration(
-        profile_id: String,
-        configuration: &LiveTranslationConfiguration,
-    ) -> Option<Self> {
-        let route = if let Some(credentials) = &configuration.text_credentials {
-            if !configuration.target_language.translates_audio() {
-                return None;
-            }
-            match credentials {
-                TextTranslationCredentials::Apple => MTBudgetRoute::Apple,
-                TextTranslationCredentials::DeepL { .. } => MTBudgetRoute::DeepL,
-                TextTranslationCredentials::DeepLX { .. } => MTBudgetRoute::DeepLX,
-                TextTranslationCredentials::OpenAICompatible { .. } => {
-                    MTBudgetRoute::OpenAICompatible
-                }
-                TextTranslationCredentials::ChatMock { .. } => MTBudgetRoute::ChatMock,
-                TextTranslationCredentials::XAI { .. } => MTBudgetRoute::XAI,
-            }
-        } else if configuration.is_standalone_asr() {
-            return None;
-        } else {
-            match &configuration.credentials {
-                ProviderCredentials::DeepL { .. } => MTBudgetRoute::DeepL,
-                ProviderCredentials::DeepLX { .. } => MTBudgetRoute::DeepLX,
-                ProviderCredentials::OpenAICompatible { .. } => MTBudgetRoute::OpenAICompatible,
-                ProviderCredentials::ChatMock { .. } => MTBudgetRoute::ChatMock,
-                ProviderCredentials::ApiKey { .. }
-                    if configuration.provider == ProviderKind::AlibabaCloud =>
-                {
-                    let model = match configuration.effective_translation_mode() {
-                        TranslationMode::Turbo => configuration.qwen_mt_model,
-                        TranslationMode::HighQuality => QwenMTModel::Plus,
-                        TranslationMode::LowLatency => return None,
-                    };
-                    MTBudgetRoute::Qwen(model)
-                }
-                _ => return None,
-            }
-        };
-        Some(Self {
-            profile_id,
-            provider: configuration.provider,
-            route,
-        })
-    }
-}
-
-/// One bounded continuation slot. Its token rejects late teardown snapshots
-/// after stop/new-start or after another client/route has already been prepared.
-#[derive(Default)]
-pub struct MTBudgetContinuity {
-    pub token: u64,
-    pub client_scope: Option<(u64, u64, MTBudgetScope)>,
-    pub retained: Option<(MTBudgetScope, MTRequestBudget)>,
-}
-
-impl MTBudgetContinuity {
-    pub fn reset(&mut self) {
-        self.token = self.token.wrapping_add(1).max(1);
-        self.client_scope = None;
-        self.retained = None;
-    }
-
-    pub fn prepare(
-        &mut self,
-        generation: u64,
-        scope: Option<MTBudgetScope>,
-    ) -> Option<MTRequestBudget> {
-        let Some(scope) = scope else {
-            self.reset();
-            return None;
-        };
-        if self
-            .retained
-            .as_ref()
-            .is_some_and(|(previous, _)| previous != &scope)
-        {
-            self.retained = None;
-        }
-        self.token = self.token.wrapping_add(1).max(1);
-        self.client_scope = Some((generation, self.token, scope));
-        self.retained.as_ref().map(|(_, budget)| *budget)
-    }
-
-    pub fn take_lease(&mut self, generation: u64) -> Option<(u64, MTBudgetScope)> {
-        if self
-            .client_scope
-            .as_ref()
-            .is_none_or(|(owner, _, _)| *owner != generation)
-        {
-            return None;
-        }
-        self.client_scope
-            .take()
-            .map(|(_, token, scope)| (token, scope))
-    }
-
-    pub fn remember(&mut self, token: u64, scope: MTBudgetScope, budget: MTRequestBudget) {
-        if token == self.token {
-            self.retained = Some((scope, budget));
-        }
-    }
-}
-
-pub fn advance_lifecycle_sequence_if_current(
-    lifecycle_sequence: &AtomicU64,
-    expected: u64,
-) -> Option<u64> {
-    let mut next = expected.wrapping_add(1);
-    if next == NO_GENERATION {
-        next = 1;
-    }
-    lifecycle_sequence
-        .compare_exchange(expected, next, Ordering::SeqCst, Ordering::SeqCst)
-        .ok()
-        .map(|_| next)
-}
-
-pub fn lifecycle_sequence_matches(lifecycle_sequence: &AtomicU64, expected: u64) -> bool {
-    lifecycle_sequence.load(Ordering::SeqCst) == expected
-}
-
-pub fn cancelled_recovery_attempt_is_retryable(
-    retry_generation: u64,
-    attempt_generation: u64,
-    current_epoch: u64,
-    has_active_settings: bool,
-) -> bool {
-    retry_generation == attempt_generation
-        && current_epoch == attempt_generation.wrapping_add(1)
-        && has_active_settings
-}
-
-pub fn recovery_exhaustion_is_still_owned(
-    recovery_epoch: u64,
-    current_epoch: u64,
-    active_generation: u64,
-) -> bool {
-    recovery_epoch == current_epoch && active_generation == NO_GENERATION
-}
-
-pub fn clear_recovery_atoms(is_recovering: &AtomicBool, retry_generation: &AtomicU64) {
-    retry_generation.store(NO_GENERATION, Ordering::SeqCst);
-    is_recovering.store(false, Ordering::SeqCst);
-}
-
-/// Bounded exponential recovery delay with deterministic per-generation
-/// jitter. Determinism keeps lifecycle tests reliable while preventing two
-/// mimi instances from reconnecting in lockstep after a shared outage.
-pub fn recovery_delay(attempt: usize, generation: u64) -> Duration {
-    if attempt == 0 {
-        return Duration::ZERO;
-    }
-    let exponent = (attempt - 1).min(3) as u32;
-    let base_ms = 500_u64 * 2_u64.pow(exponent);
-    let mixed = generation
-        .wrapping_add((attempt as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15))
-        .wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    let jitter_ms = mixed % (base_ms / 4 + 1);
-    Duration::from_millis(base_ms + jitter_ms)
-}
-
-pub fn provider_error_is_retryable(code: &str) -> bool {
-    // Desktop receives provider labels directly while Android supplies their
-    // normalized form. Both adapters must make the same recovery decision.
-    matches!(
-        normalize_provider_error_code(code),
-        "transport_error"
-            | "provider_event_backlog_overflow"
-            | "live_translate_unexpected_session_end"
-            | "alibaba_realtime_service_unavailable"
-            | "alibaba_realtime_idle_timeout"
-            | "gemini_live_service_unavailable"
-            | "openai_realtime_session_expired"
-            | "openai_realtime_service_unavailable"
-            | "translation_backlog_overflow"
-            | "translation_rate_limited"
-            | "translation_temporarily_unavailable"
-            | "apple_speech_runtime_service_unavailable"
-            | "apple_speech_runtime_timeout"
-            | "apple_speech_stream_closed"
-            | "apple_speech_result_backlog"
-    )
-}
-
-pub fn provider_recovery_minimum_delay(code: &str) -> Duration {
-    match code {
-        // A new client must not bypass the MT cooldown by replacing the
-        // generation after finite retries or bounded final-queue pressure.
-        "translation_rate_limited" | "translation_backlog_overflow" => Duration::from_secs(8),
-        "translation_temporarily_unavailable"
-        | "live_translate_unexpected_session_end"
-        | "alibaba_realtime_idle_timeout"
-        | "gemini_live_service_unavailable"
-        | "alibaba_realtime_service_unavailable" => Duration::from_millis(600),
-        "apple_speech_runtime_service_unavailable"
-        | "apple_speech_runtime_timeout"
-        | "apple_speech_stream_closed"
-        | "apple_speech_result_backlog" => Duration::from_millis(600),
-        _ => Duration::ZERO,
-    }
-}
-
-#[cfg(test)]
-mod independent_budget_tests {
-    use super::*;
-    use crate::core::models::{SourceLanguage, TargetLanguage};
-    use crate::core::services::provider::XAISpeechMode;
-    #[test]
-    fn xai_asr_budget_uses_the_selected_text_route_and_original_has_no_budget() {
-        let configuration = LiveTranslationConfiguration::for_provider(
-            ProviderKind::XAIRealtime,
-            "speech-key",
-            SourceLanguage::English,
-            TargetLanguage::Japanese,
-            TranslationMode::Turbo,
-        )
-        .with_xai_speech(XAISpeechMode::AsrMt, "legacy-unused");
-        assert!(MTBudgetScope::for_configuration("profile".into(), &configuration).is_none());
-        for (credentials, route) in [
-            (
-                TextTranslationCredentials::DeepL {
-                    api_key: "text:fx".into(),
-                },
-                MTBudgetRoute::DeepL,
-            ),
-            (
-                TextTranslationCredentials::OpenAICompatible {
-                    endpoint: "http://127.0.0.1:1".into(),
-                    model: "model".into(),
-                    api_key: "text".into(),
-                },
-                MTBudgetRoute::OpenAICompatible,
-            ),
-            (
-                TextTranslationCredentials::XAI {
-                    api_key: "text".into(),
-                    model: "grok".into(),
-                },
-                MTBudgetRoute::XAI,
-            ),
-        ] {
-            let mut configuration = configuration.clone().with_text_credentials(credentials);
-            assert!(
-                MTBudgetScope::for_configuration("profile".into(), &configuration)
-                    .unwrap()
-                    .route
-                    == route
-            );
-            configuration.target_language = TargetLanguage::Original;
-            assert!(MTBudgetScope::for_configuration("profile".into(), &configuration).is_none());
         }
     }
 }

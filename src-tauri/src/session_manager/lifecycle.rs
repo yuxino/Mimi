@@ -25,6 +25,7 @@ use crate::core::audio::audio_input::{AudioInput, AudioSource};
 use crate::core::diagnostics::support_diagnostics::{
     DiagnosticEvent, LifecycleAction, RecoveryAction, SafeFailure,
 };
+use crate::core::lifecycle::mt_budget::MTBudgetScope;
 use crate::core::lifecycle::session::TranslationSessionController;
 use crate::core::models::SessionStatus;
 use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
@@ -32,9 +33,7 @@ use crate::core::services::configuration::LiveTranslationConfiguration;
 use crate::core::services::provider::ProviderKind;
 use crate::pipeline_log;
 use mimi_runtime::core::lifecycle::health::AUDIO_DRAIN_TIMEOUT;
-use mimi_runtime::core::lifecycle::recovery::{
-    provider_error_requires_user_action, MTBudgetScope, NO_GENERATION,
-};
+use mimi_runtime::core::lifecycle::recovery::{provider_error_requires_user_action, NO_GENERATION};
 use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;

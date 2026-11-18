@@ -594,7 +594,7 @@ export function ServiceProfiles({
           </div>
           </ServiceEditorModule>
           {selectedProfile.provider === "alibabaCloud" && <ServiceEditorModule kind="models">
-          {selectedProfile.provider === "alibabaCloud" && <AlibabaRealtimeSettings
+          <AlibabaRealtimeSettings
             key={`${selectedProfile.id}:${selectedProfile.alibabaRealtimeMode ?? "disabled"}:${selectedProfile.alibabaWorkspaceId ?? ""}`}
             profile={selectedProfile} disabled={mutationsDisabled}
             onSave={async (mode, workspaceId, savedMessage) => {
@@ -607,7 +607,7 @@ export function ServiceProfiles({
                 notify(savedMessage);
                 invalidateProfileCheck(selectedProfile.id);
               } finally { mutationInFlight.current = false; setPendingAction(null); }
-            }} />}
+            }} />
           {!usesAlibabaRealtime(selectedProfile) && textTranslationForProfile(selectedProfile) === "followService" && <QwenMTModelSettings profile={selectedProfile} disabled={mutationsDisabled}
                   onSave={async model => {
                     if (mutationInFlight.current || mutationsDisabled) throw new Error("profile-change-requires-stop");

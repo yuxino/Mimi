@@ -37,7 +37,10 @@ Preserve these product constraints:
   `tests/`. See [repository ownership](docs/development/repository-layout.md).
 - `src-tauri/src/commands.rs` and `commands/`: IPC state/payload entry and actual
   feature handlers. `lib.rs` registers explicit handler module paths.
-- `src-tauri/src/{windows,lib}.rs`: overlay window management and app/tray wiring.
+- `src-tauri/src/windows.rs`: window entry points and platform-driver registration;
+  `windows/{overlay,controls,native,work_area,settings_window}.rs` own subtitle
+  geometry, transient controls, OS presentation, monitor coordinates and settings
+  creation. `lib.rs` owns app/tray wiring.
 - `src-tauri/src/platform/{macos,windows,linux}/`: native shell startup,
   Dock/quit integration and updater cleanup. Keep capture in `audio/` and
   overlay interaction in `windows/`.

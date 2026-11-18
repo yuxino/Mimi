@@ -1,6 +1,7 @@
 //! Outside-click dismissal for nonactivating panels, which need not become
 //! key and therefore cannot reliably produce a focus-lost event.
-use super::{attach_overlay_control_parent_macos, OverlayControlMode, OverlayControlWindowManager};
+use super::controls::{OverlayControlMode, OverlayControlWindowManager};
+use super::native::attach_overlay_control_parent_macos;
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;

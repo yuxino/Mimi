@@ -19,6 +19,14 @@
   凭据或采集音频。原旧分支及其未提交修改保留；原生交互证据仅限此模拟流程。
 - 干净 `d7105df1` 随后以普通 `--ui-only` 安装，从 `tauri://localhost`
   正常打开配置页并退出，验证不依赖预览服务器。开发版指定签名要求保持一致。
+- [PR #381](https://github.com/yuxino/Mimi/pull/381) 已合并为 `2126cc11`，
+  合并树与待审版本一致。该干净提交再次通过完整本地检查、Android 双模式
+  lint／测试 APK／四 ABI 检查，并显式重跑 Debug／Release 各 246 项 JVM
+  测试（实际 JNI 各 54 项，零失败或跳过）。
+  [合并后桌面 CI](https://github.com/yuxino/Mimi/actions/runs/44267582252) 与
+  [Android CI](https://github.com/yuxino/Mimi/actions/runs/44267582337) 均通过。
+  未追加真实采音、供应商请求或设备验收；已完成任务分支已清理，旧分支
+  工作目录及其未提交修改保持原样。
 
 ## 2026-11-18：全仓库职责整理与模拟预览
 

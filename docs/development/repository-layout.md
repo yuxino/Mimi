@@ -140,6 +140,13 @@ The existing window layouts, CSS cascade, language keys and generated-copy
 entry points remain unchanged. Source moves must also update template-string
 dynamic imports, mock paths, test fixtures and Gradle's generator inputs.
 
+`history/SessionExport.tsx` owns catalog selection, transcript paging and archive
+actions. `useSessionAudioPreview.ts` owns the explicit audio read, its single
+in-flight native transfer, stale-result generation and Blob URL lifetime. Page
+navigation and source/selection changes clear that preview synchronously. Clearing
+a result does not release an unfinished native read or let a late archive action
+clear another selection's playback.
+
 ## Desktop IPC and session ownership
 
 `commands.rs` owns `AppState` and stable snapshot/navigation type names. The
@@ -173,10 +180,37 @@ survives a cancelled waiter, generation/task checks, and final drain ordering.
 The module owning an operation must show its real side effects and failures;
 do not replace those operations with a new layer of pass-through calls.
 
+## Desktop window ownership
+
+`windows.rs` exposes the normal entry points and registers native platform
+drivers. Actual window implementation lives with its state and resources:
+
+| Module | Owns |
+| --- | --- |
+| `overlay.rs` | User/presentation frame state, mode and geometry transactions, resize gestures, debounced persistence and animation |
+| `controls.rs` | Transient child-control state, mode events, focus, WebView zoom and control bounds |
+| `native.rs` | Panel classes, presentation cache, OS window configuration and geometry read/write adapters |
+| `work_area.rs` | Monitor coordinate spaces, work-area selection and frame mapping/fitting |
+| `settings_window.rs` | Settings-window creation, restoration/focus and UI-test activation evidence |
+
+Platform pointer, active-Space and Linux input-region drivers stay beside these
+owners. Internal calls name their implementation module; shared geometry test
+fixtures stay small, and regressions live under each owner's test module.
+Keep the saved user frame separate from temporary collapse, error and Space
+presentation. Transient controls never own or persist that frame. The split
+retains the existing locks, generation checks, native panel classes and cfg gates.
+
 ## Shared Rust and Android adapters
 
-`mimi-runtime/clients/high_quality_client.rs` remains the public high-quality
-client and owns one `Arc<Mutex<PipelineState>>`. Its private `recognition`,
+`core/lifecycle/mt_budget.rs` owns translation-route identity and the one retained
+request budget across client replacement. Its private state changes only through
+prepare, retirement-lease, remember and reset operations; desktop and JNI keep
+their existing lifecycle locks and decide when those operations run. Connection
+retry timing and ownership remain in `recovery.rs`. Pure budget regressions live
+beside the shared owner, while platform lifecycle regressions exercise adapters.
+
+`shared/mimi-runtime/src/clients/pipeline/high_quality_client.rs` remains the
+public high-quality client and owns one `Arc<Mutex<PipelineState>>`. Its private `recognition`,
 `preview`, `final_translation`, `request_budget` and `text_translation` modules
 implement the respective flows. Replaceable previews and durable ordered finals
 retain their separate work/ownership while sharing the existing request budget.

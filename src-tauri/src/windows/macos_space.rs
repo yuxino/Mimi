@@ -1,6 +1,7 @@
 //! Public-AppKit observation and screen lookup for macOS Space transitions.
 
-use super::{LogicalWorkArea, OverlayState, OverlayWindowManager};
+use super::overlay::{OverlayState, OverlayWindowManager};
+use super::work_area::LogicalWorkArea;
 use crate::settings_store::SettingsStore;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
