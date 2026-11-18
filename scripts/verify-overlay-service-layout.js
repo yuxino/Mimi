@@ -437,7 +437,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           if (footerWithoutScrolling && footerBottom > clip.bottom + 1) issues.push("primary footer actions need scrolling");
 
           const checkTargets = [".overlay-control-header__collapse", ".overlay-control-picker [role=combobox]", ".overlay-service__button",
-            ".overlay-control-capture__toggle", ".overlay-control-display button", ".overlay-control-footer button"];
+            ".overlay-control-section .settings-help-control__button", ".overlay-control-capture__toggle",
+            ".overlay-control-capture__application button", ".overlay-control-display button", ".overlay-control-footer button"];
           for (const button of panel.querySelectorAll(checkTargets.join(","))) {
             // A longer locale may scroll vertically, but each target must be
             // reachable without horizontal clipping or a neighboring layer.

@@ -252,7 +252,7 @@ export function OverlayControlPanel({
         />}
         <section className="overlay-control-section" aria-label={I18N.settings.voiceTranslation}>
           <div className="overlay-control-language-pair">
-            <div ref={sourceControlRef} className="overlay-control-picker">
+            <div ref={sourceControlRef} className="overlay-control-picker overlay-control-picker--source">
               <span className="overlay-control-picker__label">
                 <span>{I18N.overlay.sourceLanguage}</span>
                 <SettingsHelp text={sourceGuidance.help} label={I18N.settings.helpLabel} />
@@ -268,7 +268,9 @@ export function OverlayControlPanel({
               />
             </div>
 
-            <div ref={targetControlRef} className="overlay-control-picker">
+            <span className="overlay-control-language-pair__direction" aria-hidden="true">{status.separator}</span>
+
+            <div ref={targetControlRef} className="overlay-control-picker overlay-control-picker--target">
               <span className="overlay-control-picker__label">
                 <span>{I18N.settings.translateTo}</span>
                 <SettingsHelp text={I18N.settings.translationConfiguredHelp} label={I18N.settings.helpLabel} />

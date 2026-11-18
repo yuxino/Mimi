@@ -97,21 +97,10 @@ export function LanguageStatusCapsule({
     };
   }, [expanded, onWidthChange]);
 
-  const summary = (
-    <>
-      <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />
-      <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
-      {transientPhase && !(transientPhase === "paused" && audioRecording === "paused") && (
-        <span className="overlay-control-island__phase">{compact.phase}</span>
-      )}
-      <span className="overlay-control-island__summary">
-        <strong>{compact.source}</strong>
-        <span aria-hidden="true">{status.separator}</span>
-        <span>{compact.target}</span>
-      </span>
-      <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />
-    </>
-  );
+  const pulse = <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />;
+  const phaseBadge = transientPhase && !(transientPhase === "paused" && audioRecording === "paused") &&
+    <span className="overlay-control-island__phase">{compact.phase}</span>;
+  const recording = <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />;
 
   if (expanded) {
     return (
@@ -120,7 +109,10 @@ export function LanguageStatusCapsule({
           className="overlay-control-header__summary"
           title={fullLabel}
         >
-          {summary}
+          <strong className="overlay-control-header__title">{I18N.overlay.controlPanel}</strong>
+          <div className="overlay-control-header__status">
+            {pulse}{phaseBadge}{recording}
+          </div>
         </div>
         <button
           type="button"
@@ -154,8 +146,19 @@ export function LanguageStatusCapsule({
         <span className="overlay-control-island__summary" role={unlock.failure ? "alert" : undefined}>
           <strong>{unlock.failure ?? actionLabel}</strong>
         </span>
-        <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />
-      </> : <>{summary}<Icon name="chevron-down" /></>}
+        {recording}
+      </> : <>
+        {pulse}
+        <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
+        {phaseBadge}
+        <span className="overlay-control-island__summary">
+          <strong>{compact.source}</strong>
+          <span aria-hidden="true">{status.separator}</span>
+          <span>{compact.target}</span>
+        </span>
+        {recording}
+        <Icon name="chevron-down" />
+      </>}
     </button>
   );
 }

@@ -182,12 +182,17 @@ it("leaves the chevron usable while movement is unavailable or a display choice 
   expect(props.onDismiss).toHaveBeenCalledOnce();
 });
 
-it.each(["zh", "en", "ja"] as const)("groups %s language, audio and subtitle controls in reading order", async (language) => {
+it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("groups %s language, audio and subtitle controls in reading order", async (language) => {
   setStoredUiLanguage(language);
   await mount();
   const [languageSection, audioSection, subtitleSection] = host.querySelectorAll("section.overlay-control-section");
   expect(languageSection.getAttribute("aria-label")).toBe(I18N.settings.voiceTranslation);
   expect(languageSection.contains(picker(I18N.overlay.sourceLanguage))).toBe(true);
+  const languagePair = languageSection.querySelector(".overlay-control-language-pair")!;
+  expect([...languagePair.querySelectorAll('[role="combobox"]')]).toEqual([
+    picker(I18N.overlay.sourceLanguage), picker(I18N.settings.translateTo),
+  ]);
+  expect(languagePair.querySelector('.overlay-control-language-pair__direction[aria-hidden="true"]')?.textContent).toBe(props.status.separator);
   expect(audioSection.querySelector("h2")?.textContent).toBe(I18N.settings.audioInputTitle);
   expect(subtitleSection.querySelector("h2")?.textContent).toBe(I18N.settings.subtitleTitle);
   expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(4);

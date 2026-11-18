@@ -50,16 +50,37 @@
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid transparent;
   border-radius: 10px;
+}
+
+/* Three distinct groups share the existing 160px toolbar reservation. */
+.overlay-action-strip:has(.overlay-action-group--presentation) { gap: 3px; }
+
+.overlay-action-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.overlay-action-group,
+.overlay-action-strip > .mimi-tooltip-trigger {
+  border-radius: 7px;
   background: rgba(16, 16, 16, 0.94);
+  outline: 1px solid rgba(255, 255, 255, 0.17);
+  outline-offset: -1px;
 }
 
 .overlay-action-strip .overlay-control-button {
   flex-shrink: 0;
   border-color: transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   background: transparent;
+  font-size: 11px;
+}
+
+.overlay-action-strip .overlay-control-button:focus-visible {
+  outline-offset: -2px;
 }
 
 .overlay-action-strip .overlay-control-button:is(:hover, :focus-visible):not(:disabled),
@@ -76,7 +97,8 @@
 }
 
 @media (forced-colors: active) {
-  .overlay-action-strip { border-color: ButtonText; background: Canvas; }
+  .overlay-action-group,
+  .overlay-action-strip > .mimi-tooltip-trigger { outline-color: ButtonText; background: Canvas; }
 }
 
 .overlay-expanded-canvas:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {

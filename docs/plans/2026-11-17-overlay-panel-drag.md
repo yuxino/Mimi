@@ -61,3 +61,10 @@ Shared pickers distinguish busy from unavailable: busy keeps the existing
 appearance and accessible pending state; empty or unsupported choices remain
 dimmed. Refresh animation belongs only to an actual refresh. Retain the panel,
 selection, scroll position and retry behavior through success and rejection.
+
+The compact entry shows the current language pair. Opening it presents one
+source-to-target row with two independently accessible pickers. Each audio
+source has its own switch. The application picker belongs to system audio
+and sits directly under that switch, before the microphone. The three
+subtitle display modes share a single selection. The floating toolbar groups
+reading actions together, then immersive and lock, with Close at the far end.

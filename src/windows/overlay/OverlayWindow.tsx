@@ -379,30 +379,34 @@ export function OverlayWindow() {
             !presentationLocked &&
             topChromeLayout.showPrimaryAction && (
             <div className="overlay-hover-control overlay-action-strip" role="group" aria-label={I18N.overlay.controlPanel}>
-              {topChromeLayout.showSessionAction && !errorRequiresConfiguration && <ControlButton
-                key={hasSessionError ? "retry" : "pause-resume"}
-                icon={hasSessionError || session.isPaused ? "play" : "pause"}
-                label={sessionActionLabel}
-                onClick={runSessionAction}
-                busy={sessionActionProgress !== null}
-                disabled={sessionActionDisabled}
-              />}
-              {topChromeLayout.showCollapseAction && <ControlButton
-                icon="chevron-up"
-                label={I18N.overlay.collapseSubtitle}
-                onClick={() => runControlAction("collapse", () => setOverlayCollapsed(true))}
-                busy={pendingControl === "collapse"}
-                disabled={controlAction.pending || hasSessionError}
-                data-testid="collapse-subtitles"
-              />}
-              {topChromeLayout.showClearAction && <ControlButton
-                icon="eraser"
-                label={I18N.overlay.clearSubtitles}
-                onClick={() => runControlAction("clear", clearSubtitles)}
-                busy={pendingControl === "clear"}
-                disabled={sessionActionDisabled || !hasSubtitleContent(session.subtitles)}
-              />}
-              {topChromeLayout.showPresentationActions && <>
+              {((topChromeLayout.showSessionAction && !errorRequiresConfiguration) ||
+                topChromeLayout.showCollapseAction || topChromeLayout.showClearAction) &&
+                <div className="overlay-action-group">
+                  {topChromeLayout.showSessionAction && !errorRequiresConfiguration && <ControlButton
+                    key={hasSessionError ? "retry" : "pause-resume"}
+                    icon={hasSessionError || session.isPaused ? "play" : "pause"}
+                    label={sessionActionLabel}
+                    onClick={runSessionAction}
+                    busy={sessionActionProgress !== null}
+                    disabled={sessionActionDisabled}
+                  />}
+                  {topChromeLayout.showCollapseAction && <ControlButton
+                    icon="chevron-up"
+                    label={I18N.overlay.collapseSubtitle}
+                    onClick={() => runControlAction("collapse", () => setOverlayCollapsed(true))}
+                    busy={pendingControl === "collapse"}
+                    disabled={controlAction.pending || hasSessionError}
+                    data-testid="collapse-subtitles"
+                  />}
+                  {topChromeLayout.showClearAction && <ControlButton
+                    icon="eraser"
+                    label={I18N.overlay.clearSubtitles}
+                    onClick={() => runControlAction("clear", clearSubtitles)}
+                    busy={pendingControl === "clear"}
+                    disabled={sessionActionDisabled || !hasSubtitleContent(session.subtitles)}
+                  />}
+                </div>}
+              {topChromeLayout.showPresentationActions && <div className="overlay-action-group overlay-action-group--presentation">
                 <ControlButton
                   icon="blend"
                   label={I18N.overlay.enterImmersiveMode}
@@ -419,7 +423,7 @@ export function OverlayWindow() {
                   busy={pendingControl === "lock"}
                   disabled={sessionActionDisabled || hasSessionError}
                 />
-              </>}
+              </div>}
               <ControlButton
                 icon="close"
                 label={I18N.overlay.closeSubtitles}

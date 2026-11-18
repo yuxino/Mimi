@@ -270,4 +270,10 @@ it("retains all six direct actions at the minimum width", async () => {
     I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
     I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
   ]);
+  expect(Array.from(host.querySelectorAll(".overlay-action-group"), group =>
+    Array.from(group.querySelectorAll("button"), button => button.getAttribute("aria-label")))).toEqual([
+    [I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles],
+    [I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition],
+  ]);
+  expect(host.querySelector(".overlay-action-strip > span:last-child button")).toBe(button(I18N.overlay.closeSubtitles));
 });

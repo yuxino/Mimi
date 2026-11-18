@@ -28,8 +28,7 @@
   -webkit-font-smoothing: antialiased;
 }
 
-.overlay-control-island,
-.overlay-control-header {
+.overlay-control-island {
   display: flex;
   height: 30px;
   min-width: 0;
@@ -110,20 +109,17 @@
 }
 
 .overlay-control-island:hover,
-.overlay-control-island:focus-visible,
-.overlay-control-header:hover {
+.overlay-control-island:focus-visible {
   border-color: rgba(255, 255, 255, 0.3);
   background: rgba(20, 20, 20, 0.98);
   opacity: 1;
 }
 
-.overlay-control-island > .relative,
-.overlay-control-header__summary > .relative {
+.overlay-control-island > .relative {
   flex: 0 0 auto;
 }
 
-.overlay-control-island > [data-pulse-style],
-.overlay-control-header__summary > [data-pulse-style] {
+.overlay-control-island > [data-pulse-style] {
   margin-right: 3px;
 }
 
@@ -162,8 +158,11 @@
 }
 
 .overlay-control-panel {
-  --control-bg: #202020;
+  --control-bg: #242424;
   --control-border: rgba(255, 255, 255, 0.17);
+  --control-rule: rgba(255, 255, 255, 0.12);
+  --control-selected: #dededb;
+  --control-selected-ink: #202020;
   --control-border-strong: rgba(255, 255, 255, 0.32);
   --settings-border-strong: var(--control-border);
   --settings-control: var(--control-surface);
@@ -186,8 +185,8 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 9px;
-  padding: 9px 11px 11px;
+  gap: 7px;
+  padding: 8px 12px 5px;
 }
 
 .overlay-control-panel[data-drag-enabled],
@@ -221,8 +220,8 @@
 }
 
 .overlay-control-section + .overlay-control-section {
-  border-top: 1px solid var(--control-border);
-  padding-top: 9px;
+  border-top: 1px solid var(--control-rule);
+  padding-top: 8px;
 }
 
 .overlay-control-section__heading {
@@ -248,72 +247,74 @@
 
 .overlay-control-capture__sources {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
-  gap: 6px;
-}
-
-.overlay-control-capture__sources.is-unavailable {
-  display: none;
+  gap: 3px;
 }
 
 .overlay-control-capture__source {
-  display: flex;
   min-width: 0;
-  width: 100%;
 }
 
 .overlay-control-capture__toggle {
-  display: flex;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
   width: 100%;
-  min-width: 0;
-  min-height: 34px;
-  gap: 5px;
-  padding: 5px 7px;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  min-height: 30px;
+  gap: 7px;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
   align-items: center;
-  color: var(--control-text-faint);
-  background: var(--control-surface);
+  color: var(--control-text-muted);
+  background: transparent;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
+.overlay-control-capture__toggle > svg {
+  justify-self: center;
+  color: var(--control-text-faint);
+  font-size: 15px;
+}
+
 .overlay-control-capture__toggle > span:first-of-type {
-  min-width: 0;
-  flex: 1;
   font-weight: 500;
   hyphens: auto;
   overflow-wrap: anywhere;
 }
 
-.overlay-control-capture__check {
+.overlay-control-capture__track {
   display: flex;
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
+  width: 26px;
+  height: 16px;
+  padding: 2px;
   align-items: center;
-  justify-content: center;
   border: 1px solid var(--control-border-strong);
-  border-radius: 3px;
-  font-size: 10px;
+  border-radius: 9px;
 }
 
-.overlay-control-capture__toggle.is-on {
-  color: var(--control-text);
-  background: var(--control-surface-hover);
+.overlay-control-capture__track::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--control-text-faint);
 }
 
-.overlay-control-capture__toggle.is-on .overlay-control-capture__check {
-  color: var(--control-bg);
-  background: var(--control-text);
-  border-color: var(--control-text);
+.overlay-control-capture__toggle[aria-checked="true"] .overlay-control-capture__track {
+  justify-content: flex-end;
+  border-color: var(--control-selected);
+  background: var(--control-selected);
+}
+
+.overlay-control-capture__toggle[aria-checked="true"] .overlay-control-capture__track::before {
+  background: var(--control-selected-ink);
 }
 
 .overlay-control-capture__toggle:hover:not(:disabled) {
   color: var(--control-text);
-  background: var(--control-surface-pressed);
+  background: var(--control-surface);
 }
 
 .overlay-control-capture__toggle:disabled {
@@ -328,18 +329,19 @@
   opacity: 1;
 }
 
-.overlay-control-capture .overlay-control-capture__application {
-  padding: 0;
+.overlay-control-capture__toggle ~ .overlay-control-capture__application {
+  margin: 0 0 3px 27px;
 }
 
-.overlay-control-capture .mimi-select__trigger {
+.overlay-control-capture__application .mimi-select__trigger {
+  height: 32px;
   border-color: transparent;
   font-size: inherit;
 }
 
 .overlay-control-section .settings-help-control__button {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   font-size: 12px;
   color: var(--control-text-faint);
 }
@@ -350,24 +352,39 @@
 }
 
 .overlay-control-header {
-  height: 30px;
-  gap: 0;
-  padding-inline: 4px 0;
-  border-color: transparent;
-  border-radius: 8px;
-  background: transparent;
-  font-size: 13px;
-  cursor: auto;
-  opacity: 1;
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 3px;
 }
 
 .overlay-control-header__summary {
   display: flex;
   min-width: 0;
-  align-self: stretch;
   flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
+}
+
+.overlay-control-header__title {
+  flex: 1 1 120px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.overlay-control-header__status {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: 3px;
+  color: var(--control-text-muted);
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .overlay-control-header__collapse {
@@ -482,6 +499,9 @@
     --control-surface-pressed: Highlight;
     --control-border: CanvasText;
     --control-border-strong: CanvasText;
+    --control-rule: CanvasText;
+    --control-selected: Highlight;
+    --control-selected-ink: HighlightText;
     --control-text: CanvasText;
     --control-text-muted: CanvasText;
     --control-text-faint: GrayText;
@@ -502,9 +522,27 @@
 
 .overlay-control-language-pair {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px 6px;
+  grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr);
+  border: 1px solid var(--control-rule);
+  border-radius: 9px;
+  background: var(--control-surface);
 }
+
+.overlay-control-language-pair__direction {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: center;
+  color: var(--control-text-faint);
+}
+
+.overlay-control-picker--source,
+.overlay-control-picker--target {
+  grid-row: 1 / span 2;
+}
+
+.overlay-control-picker--source { grid-column: 1; }
+.overlay-control-picker--target { grid-column: 3; }
 
 .overlay-control-picker {
   display: flex;
@@ -515,6 +553,8 @@
 }
 
 @supports (grid-template-rows: subgrid) {
+  .overlay-control-language-pair__direction { grid-row: 2; }
+
   .overlay-control-language-pair .overlay-control-picker {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -531,16 +571,13 @@
   width: auto;
 }
 
-.overlay-control-language-pair .mimi-select__trigger {
-  width: auto;
-}
-
 .overlay-control-picker__label {
   display: flex;
   min-width: 0;
-  min-height: 20px;
+  min-height: 24px;
+  padding: 3px 8px 0;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   font-size: 12px;
   line-height: 1.3;
   color: var(--control-text-muted);
@@ -557,6 +594,15 @@
   gap: 6px;
   border-color: transparent;
   font-size: inherit;
+}
+
+.overlay-control-language-pair .mimi-select__trigger {
+  width: 100%;
+  min-height: 28px;
+  padding-block: 2px 4px;
+  border: 0;
+  background: transparent;
+  font-weight: 550;
 }
 
 /* The trigger is translucent; the portaled menu must cover the controls underneath. */
@@ -612,15 +658,19 @@
   cursor: pointer;
 }
 
-.overlay-control-display button:hover:not(:disabled) {
+.overlay-control-display button[aria-pressed="false"]:hover:not(:disabled) {
   color: var(--control-text);
   background: var(--control-surface-hover);
 }
 
 .overlay-control-display button[aria-pressed="true"] {
-  color: var(--control-text);
-  background: var(--control-surface-pressed);
+  color: var(--control-selected-ink);
+  background: var(--control-selected);
   font-weight: 650;
+}
+
+.overlay-control-display button[aria-pressed="true"]:focus-visible {
+  outline-color: var(--control-selected-ink);
 }
 
 .overlay-control-display button:disabled {
@@ -634,7 +684,7 @@
     border-color: CanvasText;
   }
 
-  .overlay-control-display button:hover:not(:disabled),
+  .overlay-control-display button[aria-pressed="false"]:hover:not(:disabled),
   .overlay-control-display button[aria-pressed="true"] {
     color: HighlightText;
     background: Highlight;

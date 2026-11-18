@@ -104,7 +104,7 @@ export function CaptureStatusRow({ disabled = false, busy = false }: { disabled?
       <h2 className="overlay-control-section__title" id={id}>{I18N.settings.audioInputTitle}</h2>
       <SettingsHelp id={groupHelpId} text={groupHelp} label={`${I18N.settings.audioInputTitle} · ${I18N.settings.helpLabel}`} />
     </div>
-    <div className={`overlay-control-capture__sources${microphoneAvailable ? "" : " is-unavailable"}`} role="group" aria-label={I18N.settings.audioInputTitle}>
+    <div className="overlay-control-capture__sources" role="group" aria-label={I18N.settings.audioInputTitle}>
       {sources.map(({ source, enabled, text, help }) => {
         const helpId = `${id}-${source}-help`;
         return <div className="overlay-control-capture__source" key={source} data-audio-source={source}>
@@ -117,19 +117,20 @@ export function CaptureStatusRow({ disabled = false, busy = false }: { disabled?
             disabled={locked || input === source}
             data-required={!unavailable && input === source || undefined}
             data-busy-disabled={!unavailable && changing || undefined}
-            className={`overlay-control-capture__toggle${enabled ? " is-on" : ""}`}
+            className="overlay-control-capture__toggle"
             onClick={() => void toggle(source)}
           >
+            <Icon name={source === "system" ? "speaker" : "microphone"} />
             <span>{text.source}</span>
-            <span className="overlay-control-capture__check" aria-hidden="true">{enabled && <Icon name="checkmark" />}</span>
+            <span className="overlay-control-capture__track" aria-hidden="true" />
           </button>}
           <span id={helpId} className="settings-help-control__description">{help}</span>
+          {source === "system" && enabled && <div className="overlay-control-capture__application">
+            <ApplicationAudioPicker disabled={unavailable} busy={changing} onBusyChange={setTargetPending} />
+          </div>}
         </div>;
       })}
     </div>
-    {input !== "microphone" && <span className="overlay-control-capture__application">
-      <ApplicationAudioPicker disabled={unavailable} busy={changing} onBusyChange={setTargetPending} />
-    </span>}
     {operationError && <div className="overlay-control-alert" role="alert"><Icon name="exclamation-triangle" /><span>{operationError}</span></div>}
   </section>;
 }

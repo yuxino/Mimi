@@ -119,8 +119,8 @@ it("keeps source hover quiet and reveals details from the heading help", async (
   expect(toggle("system").textContent).toBe("System audio");
   expect(host.querySelectorAll('.settings-help-control__button')).toHaveLength(1);
   expect(host.querySelector('.overlay-control-capture h2')?.textContent).toBe("Audio input");
-  expect(toggle("system").querySelector('.overlay-control-capture__check svg')).not.toBeNull();
-  expect(toggle("microphone").querySelector('.overlay-control-capture__check svg')).toBeNull();
+  expect(host.querySelector('[data-audio-source="system"] .application-audio-picker')).not.toBeNull();
+  expect(host.querySelector('[data-audio-source="microphone"] .application-audio-picker')).toBeNull();
   expect(status("system")).toBe("Receiving sound");
   expect(status("microphone")).toBe("Off");
   expect(host.querySelector('[role="status"]')).toBeNull();
