@@ -876,6 +876,8 @@ try {
         $fixture['subtitle_display_mode'] = 'bilingual'
         $fixture | ConvertTo-Json -Depth 64 -Compress | Set-Content -LiteralPath $fixturePath -Encoding utf8NoBOM
         Remove-Item -LiteralPath $settingsActivationFile -Force
+        $dragDispatch = Join-Path $frontendReadyDir 'windows-caption-drag-dispatch'
+        New-Item -ItemType File -Path $dragDispatch | Out-Null
     }
     $process = Start-Process -FilePath $resolvedExecutable -PassThru
     Wait-SmokeFrontendReady $process $frontendReadyDir
@@ -916,7 +918,13 @@ try {
         throw "The restarted mimi process exited during its $StartupSeconds-second health check with code $($process.ExitCode)."
     }
     if ($OverlayInteraction -eq 'pointer') {
-        Invoke-OverlayInteractionProbe $process $restartedSettingsWindow 'caption-drag' 30000
+        try { Invoke-OverlayInteractionProbe $process $restartedSettingsWindow 'caption-drag' 30000 }
+        finally {
+            $stages = [IO.File]::ReadAllText($dragDispatch)
+            if ($stages -cmatch '^[SUENFQCXIO]{0,32}$') {
+                Write-Output "Caption move command stages: '$stages' (S=observer ready, U=unavailable, E=entered, N=no frame, F=failed, Q=dispatched, C=correct point, X=other point, I/O=system move entered/exited)."
+            }
+        }
     }
 
     Write-Output "mimi $actualArchitecture UI-test process passed cold-start, verified-listener handoff, tray/session retention, minimized/tray-hidden activation, fresh frontend mount/restart, and $StartupSeconds-second health checks."

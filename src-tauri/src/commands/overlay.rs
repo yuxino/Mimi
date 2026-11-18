@@ -150,13 +150,25 @@ pub fn overlay_move_start(
         }
         _ => return Err("overlay_move_not_allowed".into()),
     };
+    #[cfg(target_os = "windows")]
+    let trace = |phase| {
+        super::windows_hover_fixture::record_drag_dispatch(state.settings.is_ui_test(), phase)
+    };
+    #[cfg(target_os = "windows")]
+    trace(b'E');
     if !OverlayWindowManager::move_start(&app, &state.overlay) {
+        #[cfg(target_os = "windows")]
+        trace(b'N');
         return Ok(());
     }
     if target.start_dragging().is_err() {
+        #[cfg(target_os = "windows")]
+        trace(b'F');
         OverlayWindowManager::move_cancel(&state.overlay);
         return Err("Could not start overlay drag.".to_string());
     }
+    #[cfg(target_os = "windows")]
+    trace(b'Q');
     Ok(())
 }
 

@@ -43,6 +43,13 @@ public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
     private struct MonitorInfo { internal int Size; internal Rect Monitor, Work; internal uint Flags; }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo {
+        internal uint Size, Flags;
+        internal IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        internal Rect CaretBounds;
+    }
+
     private static Point lastVerifiedMove;
     private static long lastVerifiedMoveTicks;
     private static IntPtr firstHoverWindow, firstHoverLeaf, lastHoverLeaf;
@@ -92,6 +99,12 @@ public static class MimiPointerSmoke {
     private static extern int GetWindowExStyle(IntPtr window, int index);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+    [DllImport("user32.dll")]
+    private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool SystemParametersInfo(uint action, uint parameter, [MarshalAs(UnmanagedType.Bool)] out bool value, uint flags);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")]
@@ -340,6 +353,28 @@ public static class MimiPointerSmoke {
 
     public static bool IsCaptionPoint(IntPtr overlay, int x, int y) {
         return GetAncestor(WindowFromPoint(new Point { X = x, Y = y }), 2) == overlay;
+    }
+
+    public static string CaptionDragObservation(IntPtr overlay, IntPtr controls) {
+        uint process;
+        var thread = GetWindowThreadProcessId(overlay, out process);
+        var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
+        var hasGui = thread != 0 && GetGUIThreadInfo(thread, ref gui);
+        bool fullWindows;
+        // SPI_GETDRAGFULLWINDOWS is read-only. Never alter the runner's policy.
+        var hasPolicy = SystemParametersInfo(0x0026, 0, out fullWindows, 0);
+        Point pointer;
+        var hasPointer = GetCursorPos(out pointer);
+        var point = hasPointer ? String.Format("({0},{1}) hit={2}", pointer.X, pointer.Y,
+            HitSurface(WindowFromPoint(pointer), overlay, controls)) : "unavailable";
+        Rect main, child;
+        var mainBounds = GetWindowRect(overlay, out main) ? main.ToString() : "unavailable";
+        var childBounds = GetWindowRect(controls, out child) ? child.ToString() : "unavailable";
+        return String.Format("left_down={0} gui_available={1} gui_flags=0x{2:X} in_move_size={3} move_window_is_root={4} capture={5} drag_full_windows={6} pointer={7} root={8} control={9}",
+            (GetAsyncKeyState(1) & 0x8000) != 0, hasGui, gui.Flags,
+            hasGui && (gui.Flags & 0x0002) != 0, hasGui && gui.MoveSize == overlay,
+            hasGui ? HitSurface(gui.Capture, overlay, controls) : "unavailable",
+            hasPolicy ? fullWindows.ToString() : "unavailable", point, mainBounds, childBounds);
     }
 
     public static void SetCaptionButton(bool down) {

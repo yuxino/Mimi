@@ -100,6 +100,9 @@ function Test-NativeCaptionDrag([IntPtr]$Controls) {
     foreach ($direction in @(1, -1)) {
         $point = Get-CaptionDragPoint
         [MimiPointerSmoke]::MoveOverWindow($overlay, $point.X, $point.Y, 'Press a verified caption glyph for native dragging')
+        $dragFailure = $null
+        $releaseFailure = $null
+        $heldFrames = [Collections.Generic.List[object]]::new()
         try {
             [MimiPointerSmoke]::SetCaptionButton($true)
             # A deliberate held gesture, including a short pause mid-drag;
@@ -109,12 +112,43 @@ function Test-NativeCaptionDrag([IntPtr]$Controls) {
                 [MimiPointerSmoke]::MoveAndVerify([int]($point.X + $direction * $delta.X * $step / 8),
                     [int]($point.Y + $direction * $delta.Y * $step / 8))
                 Start-Sleep -Milliseconds $(if ($step -eq 4) { 200 } else { 20 })
+                try {
+                    $heldFrames.Add(@{ Step = $step; Root = [MimiPointerSmoke]::ReadBounds($overlay);
+                        Control = [MimiPointerSmoke]::ReadBounds($Controls) })
+                }
+                catch { $heldFrames.Add(@{ Step = $step; Root = 'unavailable'; Control = 'unavailable' }) }
             }
             $x = if ($direction -eq 1) { $delta.X } else { 0 }
             $y = if ($direction -eq 1) { $delta.Y } else { 0 }
             Wait-CaptionDragPosition $main $child $Controls $x $y
         }
-        finally { [MimiPointerSmoke]::SetCaptionButton($false) }
+        catch {
+            $dragFailure = $_
+            foreach ($frame in $heldFrames) {
+                Write-Output ('Native caption drag trace step={0} root={1} control={2}' -f $frame.Step, $frame.Root, $frame.Control)
+            }
+            try { Write-Output ('Native caption drag diagnostic phase=held ' + [MimiPointerSmoke]::CaptionDragObservation($overlay, $Controls)) }
+            catch { Write-Output 'Native caption drag diagnostic unavailable phase=held.' }
+        }
+        finally {
+            try { [MimiPointerSmoke]::SetCaptionButton($false) }
+            catch { $releaseFailure = $_ }
+        }
+        if ($null -ne $dragFailure -or $null -ne $releaseFailure) {
+            # Observe whether an outline-only system drag commits on release.
+            # These samples never turn the original held-geometry failure into a pass.
+            $released = [Diagnostics.Stopwatch]::StartNew()
+            for ($sample = 0; $sample -lt 3; $sample++) {
+                if ($sample -gt 0) { Start-Sleep -Milliseconds 200 }
+                try {
+                    Write-Output ('Native caption drag diagnostic phase=released elapsed_ms={0} release_input_accepted={1} {2}' -f
+                        $released.ElapsedMilliseconds, ($null -eq $releaseFailure), [MimiPointerSmoke]::CaptionDragObservation($overlay, $Controls))
+                }
+                catch { Write-Output 'Native caption drag diagnostic unavailable phase=released.' }
+            }
+            if ($null -ne $dragFailure) { throw $dragFailure }
+            throw $releaseFailure
+        }
         # Includes the native geometry manager's 350ms persistence debounce.
         Wait-CaptionDragPosition $main $child $Controls $x $y -StableMs 400
         $observedRoot = [MimiPointerSmoke]::ReadBounds($overlay)
