@@ -1,5 +1,43 @@
 # 集成实测记录
 
+## 2026-11-19：v1.7.4 正式包与公开更新回归
+
+- [v1.7.4](https://github.com/yuxino/Mimi/releases/tag/v1.7.4) 已发布，源码为
+  `af53c82d`，Android 为 1.7.4／10704。完整本地检查的 `b17e6e9a` 与最终
+  合并树相同：桌面 709＋8、共享运行时 1027、JNI crate 40、核心 112，前端
+  157 文件／2929 项通过；格式、严格 lint、生产构建与差异检查通过。
+- [最终标签 CI](https://github.com/yuxino/Mimi/actions/runs/44375306814) 第二次运行
+  及 [Android CI](https://github.com/yuxino/Mimi/actions/runs/44375306822) 均成功。
+  首次 Mac 代码任务因 hosted runner 未获分配、零步骤执行而结束；只重试失败项。
+  最终 macOS 26 ARM 的有界 PCM、翻译 invariant／readiness／weak-link 与 Intel
+  编译通过。[#391](https://github.com/yuxino/Mimi/pull/391) 只将签名矩阵改到
+  macOS 15 ARM，两种架构的证书、DMG、封存
+  源码及更新签名检查均实际通过，没有移动或跳过 macOS 26 的运行时测试。
+- 九语言原生界面及 468 组布局证据沿用
+  [#389](https://github.com/yuxino/Mimi/pull/389#issuecomment-6984291193)：最终生产
+  前端源代码与 `8db8ebd9` 相同。最终标签的 Windows x64／ARM64 冷启、托盘／最小化
+  激活与前端重开检查通过，ARM64 另经辅助功能调用浮窗按钮；x64 鼠标交互仍
+  引用 #389 的记录。Linux deb／AppImage 各三次启动、
+  双前端就绪、定位、移动缩放、会话生命周期、快捷键和桌面命令通过。
+- 只读 Android 模拟器中，先在公开 1.7.3 的实际界面选择中文，再保留数据升级。
+  冷启仍显示中文和 1.7.4，服务编辑与已保存会话的新入口均能打开及正常返回。
+  [四张原生附件](https://github.com/yuxino/Mimi/pull/388#issuecomment-6983898601)
+  对应实际升级用包；最终标签 APK 的 SHA-256
+  `92f35c96352a56bcdc1d6c31d31eac99ab7017014add110c4e441a594f10c934`
+  与该包完全相同。正常移除测试用户失败后丢弃只读实例，另一次只读启动已确认
+  仅有原 Owner、测试用户不存在；没有采音、服务请求或真机操作。
+- 18 个草稿文件的实际字节与 API 摘要、17 项校验清单逐一一致；5 个原始 CI ZIP
+  的摘要及其 16 个内部文件、4 个本地签名 Mac 文件和 5 项更新包密码学验签均
+  通过。最终 APK 的正式单证书、10704、四 ABI、16 KiB 边界及配套 R8 mapping
+  通过。正式 Mac 安装身份连续，仅只读比较，没有替换或启动正式应用。
+- 发布后匿名读取 [应用更新入口](https://github.com/yuxino/mimi/releases/latest/download/latest.json)
+  与 [版本清单](https://github.com/yuxino/Mimi/releases/download/v1.7.4/latest.json)，
+  当次均为 1.7.4，字节摘要与已验收清单相同；公开 API 的 18 项资产摘要、实际
+  标签源码和 Latest 一致。公开说明与更新清单使用相同的英文／简体中文内容。
+- 范围仍限于上述自动检查、隔离原生界面和包验收。真实服务质量／长会话、物理
+  全局快捷键、Android 真机，以及 #386 所列 Mac／Windows 原生滚动条与正文
+  拖窗手势未在本轮补齐，不因发布或模拟测试升级为通过。
+
 ## 2026-11-19 桌面字幕控制面板的九种语言
 
 - 在 280 CSS 像素宽的浮窗里，用相同的英语／繁体中文组合对比，两个语言名现在都能完整显示一行。德语在 240 像素宽时，原先字幕模式文字越过按钮边缘，系统声音开关又比麦克风开关向右多出约 17 像素。最终实现 `8db8ebd9` 让语言字段按内容换行，两个音频开关右缘对齐。[同尺寸前后、窄窗及工具栏截图](https://github.com/yuxino/Mimi/pull/389#issuecomment-6984291193)
