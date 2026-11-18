@@ -34,6 +34,8 @@ export function SettingsRow({
   description,
   descriptionId,
   hint,
+  shortcut,
+  shortcutId,
   children,
   feedback,
   align = "center",
@@ -42,6 +44,8 @@ export function SettingsRow({
   description?: string;
   descriptionId?: string;
   hint?: string;
+  shortcut?: string;
+  shortcutId?: string;
   children: ReactNode;
   /** Ongoing state belongs below the controls, outside their intrinsic width. */
   feedback?: ReactNode;
@@ -51,6 +55,7 @@ export function SettingsRow({
     <div className={`settings-row settings-row--${align}`}>
       <span className="settings-row__copy">
         <span className="settings-row__label">{label}{(description || hint) && <SettingsHelp id={descriptionId} text={[description, hint].filter(Boolean).join("\n")} label={I18N.settings.helpLabel} />}</span>
+        {shortcut && <kbd id={shortcutId} className="settings-row__shortcut">{shortcut}</kbd>}
       </span>
       <span className="settings-row__control">{children}</span>
       {feedback && <div className="settings-row__feedback">{feedback}</div>}

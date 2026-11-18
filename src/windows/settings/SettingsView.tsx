@@ -304,7 +304,7 @@ export function SettingsView() {
                     </div>
                     <div className="subtitle-preview__controls">
                       <div className="subtitle-preview__selectors">
-                        <SettingsRow label={I18N.settings.subtitleDisplay} description={`${I18N.settings.subtitleDisplayHelp}${nativeShortcuts ? ` ${subtitleDisplayShortcut()}` : ""}`}>
+                        <SettingsRow label={I18N.settings.subtitleDisplay} description={I18N.settings.subtitleDisplayHelp} shortcut={nativeShortcuts ? subtitleDisplayShortcut() : undefined}>
                           <SettingsSelect
                             label={I18N.settings.subtitleDisplay}
                             value={settings.subtitleDisplayMode}
@@ -443,12 +443,13 @@ export function SettingsView() {
                         label={I18N.settings.lockPosition}
                         description={I18N.settings.lockHelp}
                         descriptionId="subtitle-position-lock-help"
-                        hint={nativeShortcuts ? isMac ? "⌘⇧L" : "Ctrl+Shift+L" : undefined}
+                        shortcut={nativeShortcuts ? isMac ? "⌘⇧L" : "Ctrl+Shift+L" : undefined}
+                        shortcutId="subtitle-position-lock-shortcut"
                       >
                         <Switch
                           checked={settings.isOverlayLocked}
                           aria-label={I18N.settings.lockPosition}
-                          aria-describedby="subtitle-position-lock-help"
+                          aria-describedby={nativeShortcuts ? "subtitle-position-lock-help subtitle-position-lock-shortcut" : "subtitle-position-lock-help"}
                           onChange={(checked) => {
                             void runWithToast(() => setOverlayLocked(checked), I18N.settings.settingSaveFailed(I18N.settings.lockPosition));
                           }}
