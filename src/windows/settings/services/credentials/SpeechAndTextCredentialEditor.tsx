@@ -11,7 +11,7 @@ import { credentialUnavailableHelp } from "../../../../lib/providers/connectionD
 import { isChatCompletionsTranslation, textTranslationForProfile, usesAlibabaRealtime } from "../../../../lib/providers/providerCapabilities";
 import { CHATMOCK_DEFAULT_ENDPOINT, buildTextTranslationCredentials, deepLXEndpointIsValid, emptyCredentialDraft, openAICompatibleModelIsValid } from "../../../../lib/providers/providerCredentials";
 import type { ProviderCredentialsInput, ServiceProfile, SourceLanguage, TargetLanguage, TextTranslation } from "../../../../lib/types";
-import { DestructiveConfirmation } from "../../controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "../../controls/SettingsConfirmation";
 import { InlineFeedback, SettingsSelect } from "../../controls/SettingsPrimitives";
 import { TextTranslationName } from "../profiles/TextTranslationName";
 import { textTranslationDisplayName } from "../../../../lib/providers/textTranslationName";
@@ -332,7 +332,7 @@ export function SpeechAndTextCredentialEditor({ profile, inputId, disabled, busy
         <button type="submit" className="settings-button settings-button--primary settings-button--compact" disabled={disabled || awaitingSavedDestination || !credentials || (!textOnly && editingKey && !draft.apiKey.trim())}><Icon name={nativeTranslation ? "checkmark" : "key"} />{textOnly ? I18N.settings.saveTranslationConfiguration : saved ? I18N.settings.replaceCredentials : integratedRealtime && !profile.alibabaWorkspaceId?.trim() ? I18N.settings.saveCredentials : I18N.settings.saveAndUse}</button>
       </span>}
     </form>
-    {!textOnly && confirmingDelete && <DestructiveConfirmation message={I18N.settings.deleteCredentialsConfirm} disabled={disabled} onCancel={onCancelDelete} onConfirm={() => { discard(); void onConfirmDelete(); }} />}
+    {!textOnly && confirmingDelete && <SettingsConfirmation message={I18N.settings.deleteCredentialsConfirm} disabled={disabled} onCancel={onCancelDelete} onConfirm={() => { discard(); void onConfirmDelete(); }} />}
   </div>;
 }
 

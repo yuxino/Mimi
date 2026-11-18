@@ -580,6 +580,10 @@ guard must wait for concrete owners rather than its own global counter.
   `mimi`. Read `codesign -d -r-` and match the actual bundle executable path
   when verifying processes; a `mimi-dev` binary-name filter can falsely report
   that no instance exists.
+- Treat native Quit as the final UI action. Do not append an application or
+  accessibility-state query to it: a query can relaunch the bundle before the
+  exit check. Confirm the executable is absent through the process list first;
+  only the canonical launcher should start the next preview.
 - A queued UI-state broadcast can be lost when normal exit completes before
   its 60ms coalescing delay. Verify stop completion through content-free
   lifecycle evidence and process exit, not an old UI-test state marker alone.
@@ -666,6 +670,12 @@ artifacts, and signing material.
   `MainActivity.onCreate`. Constructing another `FirstRunGuide` after the
   Activity is resumed attempts late Activity Result registration and fails
   before the intended help interaction. Keep registration checks intact.
+- Android language fixtures must drive the real picker on a live AppCompat
+  Activity and follow its recreated host. Setting framework locales before the
+  first Activity and sleeping does not prove its resources match the sample.
+  Bound the wait for the requested language, theme and focus, keep the original
+  assertions, and restore the prior locale before closing fixture-owned hosts.
+  Apply test themes locally to those hosts so process defaults remain intact.
 
 - Before replacing the canonical development app, identify the source revision
   and any unpublished provider support in the running build. A stable signature

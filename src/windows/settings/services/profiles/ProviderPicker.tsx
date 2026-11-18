@@ -4,7 +4,7 @@ import { ProviderIcon } from "../../../../components/providers/ProviderIcon";
 import { I18N, providerDisplayName } from "../../../../lib/i18n";
 import { SERVICE_PROVIDERS, isCustomSpeechProvider } from "../../../../lib/providers/providerCapabilities";
 import type { ServiceProvider } from "../../../../lib/types";
-import { SettingsConfirmation } from "../../controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "../../controls/SettingsConfirmation";
 import { SettingsHelp } from "../../feedback/SettingsHelp";
 import { InlineFeedback } from "../../controls/SettingsPrimitives";
 import type { useAppleSpeechSupport } from "../providers/apple/useAppleSpeechSupport";

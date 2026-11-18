@@ -2,8 +2,6 @@ package app.yuxino.mimi.android.services.editor
 
 import android.content.Intent
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.text.method.LinkMovementMethod
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -11,8 +9,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.ServiceProvider
@@ -48,41 +44,6 @@ internal object ServiceSettingsUi {
     fun fieldVisible(box: TextInputLayout, visible: Boolean) {
         box.visibility = if (visible) View.VISIBLE else View.GONE
         (box.parent as? View)?.visibility = box.visibility
-    }
-    fun showHelp(activity: AppCompatActivity, title: String, message: CharSequence,
-        links: List<Pair<Int, () -> Unit>> = emptyList()) {
-        if (activity.isFinishing || activity.isDestroyed) return
-        val host = activity.window.decorView
-        if ((host.getTag(R.id.active_help_dialog) as? androidx.appcompat.app.AlertDialog)?.isShowing == true) return
-        HelpUi.dismiss(activity)
-        val body = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(activity, 24), dp(activity, 12), dp(activity, 24), dp(activity, 8))
-        }
-        body.addView(label(activity, "", 16f).apply {
-            tag = "help-message"; text = message; movementMethod = LinkMovementMethod.getInstance()
-        }, LinearLayout.LayoutParams(-1, -2))
-        links.forEach { (label, action) ->
-            body.addView(MaterialButton(activity, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
-                setText(label); isAllCaps = false; isSingleLine = false
-                setTextColor(ContextCompat.getColor(activity, R.color.mimi_text))
-                setPadding(paddingLeft, dp(activity, 12), paddingRight, dp(activity, 12))
-                setOnClickListener { action() }
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(activity, 8) })
-        }
-        val surface = GradientDrawable().apply { cornerRadius = dp(activity, 28).toFloat() }
-        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
-            .setBackground(surface).setTitle(title)
-            .setView(ControlScrollView(activity).apply { addView(body) })
-            .setPositiveButton(android.R.string.ok, null).show()
-        surface.setColor(ContextCompat.getColor(dialog.context, R.color.mimi_surface))
-        host.setTag(R.id.active_help_dialog, dialog)
-        val lifecycle = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) dialog.dismiss() }
-        activity.lifecycle.addObserver(lifecycle)
-        dialog.setOnDismissListener {
-            host.setTag(R.id.active_help_dialog, null)
-            activity.lifecycle.removeObserver(lifecycle)
-        }
     }
     fun dp(activity: AppCompatActivity, value: Int) = (value * activity.resources.displayMetrics.density).toInt()
     fun label(activity: AppCompatActivity, text: String, size: Float = 14f, secondary: Boolean = false) = TextView(activity).apply {

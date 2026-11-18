@@ -12,7 +12,7 @@ import { ConfigInput, type ConfigInputElement } from "../../controls/ConfigInput
 import { SettingsHelp } from "../../feedback/SettingsHelp";
 import { CredentialStorageHelp } from "./CredentialStorageHelp";
 import { InlineFeedback } from "../../controls/SettingsPrimitives";
-import { DestructiveConfirmation } from "../../controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "../../controls/SettingsConfirmation";
 import { AutoSaveNameField } from "../profiles/AutoSaveNameField";
 
 /** Independent ASR and text credentials; neither form can write the other's key. */
@@ -117,6 +117,6 @@ export function CustomSpeechCredentialEditor(props: ComponentProps<typeof Speech
     </section>
     <TextTranslationEditor key={translationEpoch} {...props} inputId={`${inputId}-text`} storageNoteId={noteId} feedback={null} connectionCheck={undefined} />
     {feedback && <div ref={feedbackRef} tabIndex={-1}><InlineFeedback tone={feedback.tone}>{feedback.message}</InlineFeedback></div>}
-    {confirmingDelete && <DestructiveConfirmation message={I18N.settings.deleteCredentialsConfirm} disabled={disabled} onCancel={onCancelDelete} onConfirm={() => { discard(); setTranslationEpoch(current => current + 1); void onConfirmDelete(); }} />}
+    {confirmingDelete && <SettingsConfirmation message={I18N.settings.deleteCredentialsConfirm} disabled={disabled} onCancel={onCancelDelete} onConfirm={() => { discard(); setTranslationEpoch(current => current + 1); void onConfirmDelete(); }} />}
   </div>;
 }

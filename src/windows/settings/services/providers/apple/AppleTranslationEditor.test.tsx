@@ -4,13 +4,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../../../../lib/i18n";
 import { getAppleTranslationStatus, profileCredentialEditorState } from "../../../../../lib/ipc";
-import { AlibabaCredentialEditor } from "../alibaba/AlibabaCredentialEditor";
+import { SpeechAndTextCredentialEditor } from "../../credentials/SpeechAndTextCredentialEditor";
 import { useAppleTranslationSupport } from "./useAppleTranslationSupport";
 
 vi.mock("../../../../../lib/ipc", async original => ({ ...await original<typeof import("../../../../../lib/ipc")>(), getAppleTranslationStatus: vi.fn(), profileCredentialEditorState: vi.fn() }));
 vi.mock("./useAppleTranslationSupport", async original => ({ ...await original<typeof import("./useAppleTranslationSupport")>(), useAppleTranslationSupport: vi.fn() }));
 let host: HTMLDivElement, root: Root;
-let props: ComponentProps<typeof AlibabaCredentialEditor>;
+let props: ComponentProps<typeof SpeechAndTextCredentialEditor>;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
@@ -24,7 +24,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); setStoredUiLanguage("system"); vi.unstubAllGlobals(); });
-const render = async (changes: Partial<typeof props> = {}) => { props = { ...props, ...changes }; await act(async () => root.render(<AlibabaCredentialEditor {...props} />)); };
+const render = async (changes: Partial<typeof props> = {}) => { props = { ...props, ...changes }; await act(async () => root.render(<SpeechAndTextCredentialEditor {...props} />)); };
 const picker = () => host.querySelector<HTMLButtonElement>('.service-stage__selector [role="combobox"]')!;
 async function choose(label: string) {
   await act(async () => picker().click());

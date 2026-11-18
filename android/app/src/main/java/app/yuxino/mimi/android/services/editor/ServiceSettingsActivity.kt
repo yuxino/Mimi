@@ -88,7 +88,7 @@ class ServiceSettingsActivity : AppCompatActivity() {
                     }, start, message.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 message.append("\n\n").append(getString(R.string.guide_local_save))
-                ServiceSettingsUi.showHelp(this@ServiceSettingsActivity, speechProviderName(this@ServiceSettingsActivity, provider), message,
+                HelpUi.showDetails(this@ServiceSettingsActivity, speechProviderName(this@ServiceSettingsActivity, provider), message,
                     listOf(R.string.guide_official to { openHelp(help.documentation) },
                         R.string.guide_billing to { openHelp(help.billing) }))
             }

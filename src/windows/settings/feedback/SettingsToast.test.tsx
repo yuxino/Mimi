@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { setStoredUiLanguage } from "../../../lib/i18n";
 import { SettingsToastRegion } from "./SettingsToast";
 import { useSettingsToast } from "./useSettingsToast";
-import { SettingsConfirmation } from "../controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "../controls/SettingsConfirmation";
 
 const native = vi.hoisted(() => ({ handlers: new Map<string, () => void>(), unlisten: vi.fn() }));
 vi.mock("../../../lib/ipc", () => ({ isTauri: true }));

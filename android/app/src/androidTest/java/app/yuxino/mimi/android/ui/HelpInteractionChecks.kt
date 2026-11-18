@@ -1,12 +1,13 @@
 package app.yuxino.mimi.android.ui
 
 import android.app.Activity
+import android.app.Application
 import android.app.Instrumentation
 import android.app.LocaleManager
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.os.LocaleList
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -16,6 +17,7 @@ import android.view.ViewGroup
 import android.view.inspector.WindowInspector
 import android.widget.ImageButton
 import android.widget.ScrollView
+import android.widget.Spinner
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import app.yuxino.mimi.android.MainActivity
@@ -146,27 +148,97 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
         val baseline = arguments?.getString("baseline") == "true"
         val locale = arguments?.getString("locale") ?: "zh-Hans"
         val prefix = "help-${if (baseline) "before" else "after"}-$locale"
+        val requestedNightMode = if (arguments?.getString("theme") == "dark")
+            AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+        val requestedNightMask = if (requestedNightMode == AppCompatDelegate.MODE_NIGHT_YES)
+            Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
         val manager = context.getSystemService(LocaleManager::class.java)
         val previousLocale = manager.applicationLocales
+        val previousNightMode = AppCompatDelegate.getDefaultNightMode()
         val previousObservation = MimiService.captureObservation
         val prefs = context.getSharedPreferences("first_run", 0)
         val previousSeen = prefs.getBoolean("seen", false)
         val hadSeen = prefs.contains("seen")
-        var home: MainActivity? = null
-        var settings: MainActivity? = null
+        val application = context.applicationContext as Application
+        val fixtureId = java.util.UUID.randomUUID().toString()
+        val ownerExtra = "mimi.help.fixture"
+        val ownedActivities = mutableSetOf<MainActivity>()
+        var resumedHome: MainActivity? = null
+        val callbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, state: Bundle?) {
+                if (activity is MainActivity && activity.intent.getStringExtra(ownerExtra) == fixtureId) {
+                    ownedActivities.add(activity)
+                }
+            }
+            override fun onActivityResumed(activity: Activity) {
+                if (activity is MainActivity && activity in ownedActivities) resumedHome = activity
+            }
+            override fun onActivityDestroyed(activity: Activity) {
+                if (activity is MainActivity) ownedActivities.remove(activity)
+                if (resumedHome === activity) resumedHome = null
+            }
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) = Unit
+        }
         var guide: FirstRunGuide? = null
         var failure: Throwable? = null
         try {
             check(prefs.edit().putBoolean("seen", true).commit())
             ui {
-                manager.applicationLocales = LocaleList.forLanguageTags(locale)
-                AppCompatDelegate.setDefaultNightMode(if (arguments?.getString("theme") == "dark")
-                    AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+                application.registerActivityLifecycleCallbacks(callbacks)
             }
-            SystemClock.sleep(600) // LocaleManager configuration propagation is asynchronous.
-            val currentHome = test.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
-            home = currentHome
-            check(InterfaceLanguage.indexOf(currentHome.resources.configuration.locales[0]) == InterfaceLanguage.tags.indexOf(locale)) { "Activity locale differs from requested sample" }
+            val launchedHome = test.startActivitySync(Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(ownerExtra, fixtureId)) as MainActivity
+            val requestedIndex = InterfaceLanguage.tags.indexOf(locale)
+            check(requestedIndex >= 0) { "Unsupported help locale tag: $locale" }
+            var themeChanged = false
+            ui {
+                themeChanged = (launchedHome.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != requestedNightMask
+                // Local mode belongs only to this fixture's Activity. The
+                // process default may be UNSPECIFIED, which AppCompat cannot
+                // restore through setDefaultNightMode after a global change.
+                launchedHome.delegate.localNightMode = requestedNightMode
+            }
+            var languageOwner: MainActivity? = null
+            var changed = false
+            // Use the production picker after AppCompat has a live delegate,
+            // then follow its replacement Activity rather than the old host.
+            val languageDeadline = SystemClock.elapsedRealtime() + 5000
+            var localizedHome: MainActivity? = null
+            var languageStatus = "requested=$locale"
+            do {
+                ui {
+                    val candidate = resumedHome
+                    val actual = candidate?.resources?.configuration?.locales?.get(0)
+                    val focused = candidate?.hasWindowFocus() == true
+                    val nightMask = candidate?.resources?.configuration?.uiMode?.and(Configuration.UI_MODE_NIGHT_MASK)
+                    val themeReady = nightMask == requestedNightMask && (!themeChanged || candidate !== launchedHome)
+                    languageStatus = "requested=$locale; framework=${manager.applicationLocales.toLanguageTags()}; " +
+                        "appcompat=${AppCompatDelegate.getApplicationLocales().toLanguageTags()}; " +
+                        "activity=${actual?.toLanguageTag() ?: "none"}; resumed=${candidate != null}; " +
+                        "focused=$focused; night=$nightMask; themeReady=$themeReady"
+                    if (candidate != null && !candidate.isFinishing && !candidate.isDestroyed && focused && themeReady) {
+                        if (languageOwner == null) {
+                            candidate.findViewById<View>(R.id.tab_general).performClick()
+                            val picker = candidate.findViewById<Spinner>(R.id.interface_language)
+                            changed = picker.selectedItemPosition != requestedIndex
+                            languageOwner = candidate
+                            picker.setSelection(requestedIndex)
+                        }
+                        if ((!changed || candidate !== languageOwner) && InterfaceLanguage.indexOf(actual) == requestedIndex) {
+                            localizedHome = candidate
+                        }
+                    }
+                }
+                if (localizedHome == null) SystemClock.sleep(50)
+            } while (localizedHome == null && SystemClock.elapsedRealtime() < languageDeadline)
+            val currentHome = checkNotNull(localizedHome) { "Help locale preparation timed out: $languageStatus" }
+            check(InterfaceLanguage.indexOf(currentHome.resources.configuration.locales[0]) == InterfaceLanguage.tags.indexOf(locale)) {
+                "Activity locale differs from requested sample: $languageStatus"
+            }
+            ui { currentHome.findViewById<View>(R.id.tab_caption).performClick() }
             capture("$prefix-home")
             if (!baseline) {
                 help(currentHome, "home-help", currentHome.getString(R.string.home_description), "$prefix-home", hover = true)
@@ -198,7 +270,6 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             ui { check(windows().none { it.findViewWithTag<View>("language-help") != null }) { "Language sheet still open" } }
             val currentSettings = currentHome
             ui { currentSettings.findViewById<View>(R.id.tab_service).performClick() }
-            settings = currentSettings
             if (!baseline && currentSettings.resources.configuration.fontScale >= 1.5f) ui {
                 for (provider in app.yuxino.mimi.android.provider.ServiceProvider.entries) {
                     val row = checkNotNull(currentSettings.findViewById<View>(R.id.service_panel)
@@ -256,13 +327,34 @@ internal class HelpInteractionChecks(private val test: Instrumentation) {
             }
         } catch (error: Throwable) { failure = error }
         finally {
-            ui {
-                field("isRunning", false); field("captureObservation", previousObservation)
-                guide?.dismiss(); settings?.finish(); home?.finish()
-                manager.applicationLocales = previousLocale
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+            try {
+                ui {
+                    field("isRunning", false); field("captureObservation", previousObservation)
+                    guide?.dismiss()
+                    manager.applicationLocales = previousLocale
+                    check(AppCompatDelegate.getDefaultNightMode() == previousNightMode) { "Help fixture changed the default night mode" }
+                }
+            } finally {
+                try {
+                    // The restore above waits for idle and can recreate the
+                    // host. Keep observing until every fixture-owned host is
+                    // destroyed, including replacements created during close.
+                    val closeDeadline = SystemClock.elapsedRealtime() + 5000
+                    var closed = false
+                    do {
+                        ui { ownedActivities.toList().forEach { it.finish() } }
+                        ui { closed = ownedActivities.isEmpty() }
+                        if (!closed) SystemClock.sleep(50)
+                    } while (!closed && SystemClock.elapsedRealtime() < closeDeadline)
+                    check(closed) { "Help fixture Activity cleanup timed out" }
+                } finally {
+                    try {
+                        ui { application.unregisterActivityLifecycleCallbacks(callbacks) }
+                    } finally {
+                        check((if (hadSeen) prefs.edit().putBoolean("seen", previousSeen) else prefs.edit().remove("seen")).commit())
+                    }
+                }
             }
-            check((if (hadSeen) prefs.edit().putBoolean("seen", previousSeen) else prefs.edit().remove("seen")).commit())
         }
         test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (failure == null && baseline) "Native $prefix captured: six comparable screens only; no capture or provider.\n"

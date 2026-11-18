@@ -2,6 +2,7 @@ package app.yuxino.mimi.android.ui
 
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.text.method.LinkMovementMethod
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.PointerIcon
@@ -9,6 +10,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.PopupWindow
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -18,6 +20,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.services.editor.ServiceSettingsUi
 import app.yuxino.mimi.android.ui.layout.ControlScrollView
+import com.google.android.material.button.MaterialButton
 
 /** Hover/long press explains; tap opens readable, scrollable details on touch devices. */
 internal object HelpUi {
@@ -66,7 +69,48 @@ internal object HelpUi {
             }
             onFocusChangeListener = View.OnFocusChangeListener { _, focused -> if (focused) hover.scheduleShow() else hover.dismiss() }
             setOnLongClickListener { performClick(); true }
-            setOnClickListener { ServiceSettingsUi.showHelp(activity, title, hover.message) }
+            setOnClickListener { showDetails(activity, title, hover.message) }
+        }
+    }
+    fun showDetails(activity: AppCompatActivity, title: String, message: CharSequence,
+        links: List<Pair<Int, () -> Unit>> = emptyList()) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val host = activity.window.decorView
+        if ((host.getTag(R.id.active_help_dialog) as? androidx.appcompat.app.AlertDialog)?.isShowing == true) return
+        HelpUi.dismiss(activity)
+        val body = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                ServiceSettingsUi.dp(activity, 24), ServiceSettingsUi.dp(activity, 12),
+                ServiceSettingsUi.dp(activity, 24), ServiceSettingsUi.dp(activity, 8),
+            )
+        }
+        body.addView(ServiceSettingsUi.label(activity, "", 16f).apply {
+            tag = "help-message"; text = message; movementMethod = LinkMovementMethod.getInstance()
+        }, LinearLayout.LayoutParams(-1, -2))
+        links.forEach { (label, action) ->
+            body.addView(MaterialButton(activity, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+                setText(label); isAllCaps = false; isSingleLine = false
+                setTextColor(ContextCompat.getColor(activity, R.color.mimi_text))
+                setPadding(
+                    paddingLeft, ServiceSettingsUi.dp(activity, 12),
+                    paddingRight, ServiceSettingsUi.dp(activity, 12),
+                )
+                setOnClickListener { action() }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ServiceSettingsUi.dp(activity, 8) })
+        }
+        val surface = GradientDrawable().apply { cornerRadius = ServiceSettingsUi.dp(activity, 28).toFloat() }
+        val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(activity)
+            .setBackground(surface).setTitle(title)
+            .setView(ControlScrollView(activity).apply { addView(body) })
+            .setPositiveButton(android.R.string.ok, null).show()
+        surface.setColor(ContextCompat.getColor(dialog.context, R.color.mimi_surface))
+        host.setTag(R.id.active_help_dialog, dialog)
+        val lifecycle = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) dialog.dismiss() }
+        activity.lifecycle.addObserver(lifecycle)
+        dialog.setOnDismissListener {
+            host.setTag(R.id.active_help_dialog, null)
+            activity.lifecycle.removeObserver(lifecycle)
         }
     }
     fun setMessage(button: ImageButton, message: String) {

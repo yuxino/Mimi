@@ -24,7 +24,7 @@ import {
   SettingsSection,
 } from "../controls/SettingsPrimitives";
 import { monitorSessionArchive, sameSessionArchiveState } from "./sessionArchiveMonitor";
-import { SettingsConfirmation } from "../controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "../controls/SettingsConfirmation";
 import { useSettingsToast } from "../feedback/useSettingsToast";
 import { SettingsActionMenu } from "../controls/SettingsActionMenu";
 import { SessionAudioPlayer } from "./SessionAudioPlayer";

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Icon } from "../../../../components/Icon";
 import { I18N } from "../../../../lib/i18n";
 import { diagnosticCopy } from "../../../../lib/providers/connectionDiagnostics";
-import { DestructiveConfirmation } from "../../controls/DestructiveConfirmation";
+import { SettingsConfirmation } from "../../controls/SettingsConfirmation";
 import { isIndependentAsrProfile, supportsSpeechTranslationMode } from "../../../../lib/providers/providerCapabilities";
 import {
   buildProviderCredentials,
@@ -230,7 +230,7 @@ export function ProviderCredentialEditor(
 
         {confirmingDelete
           && (
-            <DestructiveConfirmation
+            <SettingsConfirmation
               message={I18N.settings.deleteCredentialsConfirm}
               disabled={disabled}
               onCancel={onCancelDelete}
