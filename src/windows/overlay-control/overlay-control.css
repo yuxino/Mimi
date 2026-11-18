@@ -248,11 +248,14 @@
 .overlay-control-capture__sources {
   display: grid;
   min-width: 0;
-  gap: 3px;
+  gap: 5px;
 }
 
 .overlay-control-capture__source {
+  display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
 }
 
 .overlay-control-capture__toggle {
@@ -261,7 +264,7 @@
   width: 100%;
   min-height: 30px;
   gap: 7px;
-  padding: 4px;
+  padding: 4px 0;
   border: 0;
   border-radius: 6px;
   align-items: center;
@@ -280,8 +283,8 @@
 
 .overlay-control-capture__toggle > span:first-of-type {
   font-weight: 500;
-  hyphens: auto;
-  overflow-wrap: anywhere;
+  hyphens: none;
+  overflow-wrap: normal;
 }
 
 .overlay-control-capture__track {
@@ -329,14 +332,20 @@
   opacity: 1;
 }
 
-.overlay-control-capture__toggle ~ .overlay-control-capture__application {
-  margin: 0 0 3px 27px;
-}
-
 .overlay-control-capture__application .mimi-select__trigger {
-  height: 32px;
+  height: auto;
+  min-height: 32px;
+  padding-block: 4px;
   border-color: transparent;
   font-size: inherit;
+}
+
+.overlay-control-capture__application .mimi-select__trigger .mimi-select__label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .overlay-control-section .settings-help-control__button {
@@ -429,23 +438,25 @@
 
 .overlay-control-footer {
   display: flex;
+  min-width: 0;
+  align-items: center;
   justify-content: flex-end;
 }
 
 .overlay-control-settings-link {
   display: grid;
   min-width: 0;
-  min-height: 32px;
+  min-height: 30px;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 5px;
-  padding: 4px 5px;
+  padding: 4px 0;
   border-radius: 7px;
   color: var(--control-text-muted);
   text-align: right;
   line-height: 1.3;
-  hyphens: auto;
-  overflow-wrap: anywhere;
+  hyphens: none;
+  overflow-wrap: normal;
 }
 
 .overlay-control-settings-link > svg {
@@ -521,38 +532,48 @@
 }
 
 .overlay-control-language-pair {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .overlay-control-picker {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  justify-content: space-between;
   gap: 3px;
 }
 
-@supports (grid-template-rows: subgrid) {
-  .overlay-control-language-pair .overlay-control-picker {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: subgrid;
-    grid-row: span 2;
-    justify-content: stretch;
-  }
+/* Complete labels and values determine whether two fields fit. Each field
+   keeps its label above the value, including when it takes the full row. */
+.overlay-control-language-pair > .overlay-control-picker {
+  flex: 1 0 max-content;
+  min-inline-size: 35%;
+  max-inline-size: 100%;
+  flex-direction: column;
+  align-items: stretch;
 }
 
-/* Stretch each trigger as a grid item, including the disabled source. */
 .overlay-control-language-pair .mimi-select {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  width: auto;
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .overlay-control-language-pair .mimi-select__trigger {
-  width: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.overlay-control-language-pair .mimi-select__content {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .overlay-control-picker__label {
@@ -567,8 +588,17 @@
 }
 .overlay-control-picker__label > span:first-child {
   min-width: 0;
-  hyphens: auto;
-  overflow-wrap: anywhere;
+  hyphens: none;
+  overflow-wrap: normal;
+}
+
+.overlay-control-language-pair .overlay-control-picker__label {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.overlay-control-language-pair .overlay-control-picker__label > span:first-child {
+  overflow-wrap: break-word;
 }
 .overlay-control-picker .mimi-select__trigger {
   height: auto;
@@ -592,7 +622,17 @@
 
 .overlay-control-picker .mimi-select__trigger .mimi-select__label {
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+}
+
+.overlay-control-language-pair .mimi-select__trigger .mimi-select__label {
+  display: block;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  white-space: normal;
+  overflow-wrap: break-word;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .overlay-control-picker--profile {
@@ -607,8 +647,8 @@
 }
 
 .overlay-control-display {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 2px;
   border: 1px solid transparent;
@@ -617,7 +657,9 @@
 }
 
 .overlay-control-display button {
-  min-width: 0;
+  flex: 1 1 0;
+  min-inline-size: min-content;
+  max-inline-size: 100%;
   min-height: 28px;
   padding: 4px 3px;
   border: 0;
@@ -626,9 +668,10 @@
   background: transparent;
   font: inherit;
   font-size: 12px;
+  font-weight: 550;
   line-height: 1.25;
-  hyphens: auto;
-  overflow-wrap: anywhere;
+  hyphens: none;
+  overflow-wrap: normal;
   cursor: pointer;
 }
 
@@ -638,13 +681,9 @@
 }
 
 .overlay-control-display button[aria-pressed="true"] {
-  color: var(--control-selected-ink);
-  background: var(--control-selected);
-  font-weight: 650;
-}
-
-.overlay-control-display button[aria-pressed="true"]:focus-visible {
-  outline-color: var(--control-selected-ink);
+  color: var(--control-text);
+  background: var(--control-surface-pressed);
+  box-shadow: inset 0 0 0 1px var(--control-border-strong);
 }
 
 .overlay-control-display button:disabled {
@@ -662,6 +701,10 @@
   .overlay-control-display button[aria-pressed="true"] {
     color: HighlightText;
     background: Highlight;
+  }
+
+  .overlay-control-display button:is([aria-pressed="true"], :hover):focus-visible {
+    outline-color: HighlightText;
   }
 }
 

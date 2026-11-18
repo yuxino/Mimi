@@ -165,6 +165,7 @@ export const SETTINGS = {
   showIntermediateSubtitlesHelp: "켜면 자막이 더 빨리 나타나며 내용이 바뀔 수 있습니다. 끄면 확정 후 표시하므로 계속 말할 때 대기가 길어질 수 있습니다. 최종 인식과 번역의 정확도는 바뀌지 않습니다.",
   displayTranslation: "번역만",
   displayBilingual: "원문 + 번역",
+  displayBoth: "둘 다",
   displayOriginal: "원문만",
   subtitleDisplayHelp: "번역을 중단하지 않고 표시 방식을 바꿉니다.",
   pulseStyle: "상태 표시등 스타일",

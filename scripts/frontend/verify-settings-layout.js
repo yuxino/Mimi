@@ -358,15 +358,18 @@ export default async function verifySettingsLayout(page, baseUrl = "http://127.0
 }
 
 /** Actual settings and floating controls; catalogs and native actions are fixtures. */
-export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0.0.1:1420") {
+export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0.0.1:1420", {
+  surfaces = ["settings", "overlay"], overlayWidths = [240, 280, 360, 420],
+  languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["light", "dark"],
+} = {}) {
   await page.goto(new URL("/scripts/frontend/fixtures/settings-layout.html", baseUrl).href);
   await page.waitForFunction(() => window.layoutReady === true);
   const failures = [];
   let checked = 0;
-  for (const surface of ["settings", "overlay"]) {
-    for (const width of surface === "settings" ? [520, 952] : [360, 420]) {
+  for (const surface of surfaces) {
+    for (const width of surface === "settings" ? [520, 952] : overlayWidths) {
       await page.cdp("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-      for (const language of ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"]) for (const theme of ["light", "dark"]) {
+      for (const language of languages) for (const theme of themes) {
         await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
         const cases = surface === "settings"
           ? [{ provider: "googleGeminiLive", sourceLanguage: "auto", targetLanguage: "pt-BR", count: 78, targetMenu: true },
@@ -375,27 +378,159 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
           : [{ provider: "googleGeminiLive", sourceLanguage: "auto", targetLanguage: "pt-BR", count: 78, targetMenu: true },
             { provider: "xAIRealtime", sourceLanguage: "auto", targetLanguage: "pt-PT", count: 21 },
             { provider: "tencentCloud", sourceLanguage: "zh_en", targetLanguage: "en", count: 9 },
-            { provider: "volcanoEngine", sourceLanguage: "zh_en", targetLanguage: "zh_en", count: 23 }];
+            { provider: "volcanoEngine", sourceLanguage: "zh_en", targetLanguage: "zh_en", count: 23 },
+            { provider: "alibabaCloud", sourceLanguage: "en", targetLanguage: "zh_tw", count: 32, targetMenu: true }];
         for (const entry of cases) {
           const issues = await page.evaluate(async ({ entry, surface, language, theme }) => {
             await window.applyLayoutCase({ ...entry, surface: surface === "settings" ? undefined : surface,
-              editor: surface === "settings", platform: "macos", language, theme, state: "idle",
+              category: surface === "settings" ? "voice-settings" : undefined,
+              platform: "macos", language, theme, state: "idle",
               profileName: entry.provider, textTranslation: "followService" });
+            // Current language preferences live beside the active profile in
+            // Audio & Languages, rather than inside the service editor.
+            const scope = surface === "settings" ? document.querySelector("#voice-settings-panel") : document;
+            if (!scope || surface === "settings" && (location.hash !== "#voice-settings" || scope.getBoundingClientRect().width === 0)) return ["Audio & Languages page missing or hidden"];
             const label = entry.targetMenu ? window.layoutFixtureLabels.target : surface === "overlay" ? window.layoutFixtureLabels.overlaySource
               : window.layoutFixtureLabels.source;
-            const trigger = [...document.querySelectorAll('button[role="combobox"]')].find(button => button.getAttribute("aria-label") === label);
+            const trigger = [...scope.querySelectorAll('button[role="combobox"]')].find(button => button.getAttribute("aria-label") === label);
             if (!trigger) return ["language picker missing"];
             const sourceLabel = surface === "overlay" ? window.layoutFixtureLabels.overlaySource : window.layoutFixtureLabels.source;
-            const pickers = [...document.querySelectorAll('button[role="combobox"]')];
+            const pickers = [...scope.querySelectorAll('button[role="combobox"]')];
             const source = pickers.find(button => button.getAttribute("aria-label") === sourceLabel);
             const target = pickers.find(button => button.getAttribute("aria-label") === window.layoutFixtureLabels.target);
             if (!source || !target) return ["source or target picker missing"];
             if (entry.provider === "googleGeminiLive" && !source.disabled) return ["automatic source should be visibly locked"];
+            await document.fonts.ready;
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            const issues = [];
             const sourceRect = source.getBoundingClientRect(), targetRect = target.getBoundingClientRect();
-            if (Math.abs(sourceRect.left - targetRect.left) > 1 || Math.abs(sourceRect.right - targetRect.right) > 1) return ["language controls misaligned"];
-            const profile = document.querySelector('.service-detail__name [role="combobox"], .service-detail__name input');
-            if (surface === "settings" && profile && Math.abs(profile.getBoundingClientRect().left - sourceRect.left) > 1) return ["language controls misaligned with configuration field"];
-            const heading = document.querySelector(".profile-language-settings__heading");
+            if (surface === "settings" && (Math.abs(sourceRect.left - targetRect.left) > 1 || Math.abs(sourceRect.right - targetRect.right) > 1)) return ["language controls misaligned"];
+            let expectedTarget;
+            if (surface === "overlay") {
+              const mountedModule = path => {
+                const loaded = performance.getEntriesByType("resource").filter(item => new URL(item.name).pathname === path);
+                return import(loaded.filter(item => new URL(item.name).search).at(-1)?.name ?? loaded.at(-1)?.name ?? path);
+              };
+              const { useStore } = await mountedModule("/src/lib/store.ts");
+              const { speechLanguageGuidance, targetLanguageOptionLabel } = await mountedModule("/src/lib/providers/speechLanguageGuidance.ts");
+              const { SUBTITLE_DISPLAY_OPTIONS } = await mountedModule("/src/lib/subtitles/subtitleDisplay.ts");
+              const settings = useStore.getState().settings;
+              const panel = document.querySelector(".overlay-control-panel");
+              const content = panel.querySelector(".overlay-control-panel__content");
+              const inside = (box, bounds) => box.left >= bounds.left - 1 && box.right <= bounds.right + 1 && box.top >= bounds.top - 1 && box.bottom <= bounds.bottom + 1;
+              const contentClip = () => {
+                const frame = panel.getBoundingClientRect(), box = content.getBoundingClientRect(), padding = getComputedStyle(content);
+                return {
+                  left: Math.max(0, frame.left + panel.clientLeft, box.left + parseFloat(padding.paddingLeft)),
+                  right: Math.min(innerWidth, frame.left + panel.clientLeft + panel.clientWidth, box.right - parseFloat(padding.paddingRight)),
+                  top: Math.max(0, frame.top + panel.clientTop, box.top + parseFloat(padding.paddingTop)),
+                  bottom: Math.min(innerHeight, frame.top + panel.clientTop + panel.clientHeight, box.bottom - parseFloat(padding.paddingBottom)),
+                };
+              };
+              const checkPanelTarget = (button, name) => {
+                if (!button?.getClientRects().length || getComputedStyle(button).visibility !== "visible") { issues.push(`${name}: target missing or hidden`); return; }
+                button.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+                const box = button.getBoundingClientRect();
+                if (box.width < 24 || box.height < 24 || !inside(box, contentClip())) issues.push(`${name}: incomplete click target`);
+                // Disabled choices still require complete bounds, while only
+                // available choices must receive clicks over their whole area.
+                else if (!button.disabled && ![box.left + 5, box.left + box.width / 2, box.right - 5].every(x =>
+                  [box.top + 5, box.top + box.height / 2, box.bottom - 5].every(y => button.contains(document.elementFromPoint(x, y))))) issues.push(`${name}: click target covered`);
+                return box;
+              };
+              const checkUnbrokenWords = (text, issue) => {
+                // Latin/Cyrillic words include their combining accents. CJK
+                // and Thai retain their natural character/word line breaks.
+                const range = document.createRange();
+                const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) for (const word of node.textContent.matchAll(/[\p{Script=Latin}\p{Script=Cyrillic}][\p{Script=Latin}\p{Script=Cyrillic}\p{M}]*/gu)) {
+                  range.setStart(node, word.index);
+                  range.setEnd(node, word.index + word[0].length);
+                  if (range.getClientRects().length !== 1) issues.push(issue);
+                }
+              };
+              const expectedSource = speechLanguageGuidance(settings).optionLabel(entry.sourceLanguage);
+              expectedTarget = targetLanguageOptionLabel(settings, entry.targetLanguage);
+              if (source.querySelector(".mimi-select__label")?.textContent !== expectedSource
+                || target.querySelector(".mimi-select__label")?.textContent !== expectedTarget) issues.push("selected language text missing or stale");
+              if (language === "en" && entry.provider === "alibabaCloud"
+                && (expectedSource !== "English" || expectedTarget !== "Traditional Chinese")) issues.push("English to Traditional Chinese sample missing");
+              const pair = document.querySelector(".overlay-control-language-pair");
+              const columns = [source, target].map(button => button.closest(".overlay-control-picker"));
+              const boxes = columns.map(column => column.getBoundingClientRect());
+              const pairBox = pair.getBoundingClientRect();
+              const overlaps = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+              if (Math.abs(boxes[0].top - boxes[1].top) <= 1) {
+                if (overlaps(...boxes)
+                  || Math.abs(boxes[0].left - pairBox.left) > 1 || Math.abs(boxes[1].right - pairBox.right) > 1) issues.push("side-by-side language columns overlap or misalign");
+                if (Math.abs(sourceRect.height - targetRect.height) > 1 || Math.abs(sourceRect.top - targetRect.top) > 1) issues.push("side-by-side language fields have uneven height or alignment");
+              } else if (boxes[1].top < boxes[0].bottom - 1 || boxes.some(box => Math.abs(box.left - pairBox.left) > 1 || Math.abs(box.right - pairBox.right) > 1)) issues.push("stacked language rows misalign");
+              if (entry.provider === "alibabaCloud" && (source.disabled || target.disabled)) issues.push("English to Traditional Chinese pickers unavailable");
+              for (const [index, button] of [source, target].entries()) {
+                const column = columns[index], box = boxes[index], field = button.getBoundingClientRect();
+                const label = column.querySelector(".overlay-control-picker__label");
+                const labelBox = label.getBoundingClientRect();
+                if (label.firstElementChild?.textContent !== (index === 0 ? sourceLabel : window.layoutFixtureLabels.target)) issues.push("language field label missing or stale");
+                if (Math.abs(field.right - box.right) > 1 || Math.abs(labelBox.left - box.left) > 1
+                  || field.left < box.left - 1 || field.bottom > box.bottom + 1 || labelBox.right > box.right + 1
+                  || overlaps(labelBox, field)) issues.push("language label and value overlap or lose row alignment");
+                for (const text of [label.firstElementChild, button.querySelector(".mimi-select__label")]) {
+                  const range = document.createRange();
+                  range.selectNodeContents(text);
+                  const lines = [...range.getClientRects()].filter(line => line.width > 0);
+                  const visible = text.getBoundingClientRect();
+                  if (!text.textContent.trim() || !lines.length || lines.some(line => line.left < visible.left - 1 || line.right > visible.right + 1 || line.top < visible.top - 1 || line.bottom > visible.bottom + 1)
+                    || text.scrollWidth > text.clientWidth + 1) issues.push("language text missing or clipped");
+                  checkUnbrokenWords(text, "language text splits a word");
+                }
+                checkPanelTarget(button, "language picker");
+              }
+              const tracks = [];
+              for (const audioSource of ["system", "microphone"]) {
+                const row = panel.querySelector(`[data-audio-source="${audioSource}"]`);
+                const expected = audioSource === "system" || settings.microphoneInputAvailable;
+                if (Boolean(row) !== Boolean(expected)) issues.push(`${audioSource}: audio row missing or unexpected`);
+                if (!row || !settings.microphoneInputAvailable) continue;
+                const button = row.querySelector('button[role="switch"]');
+                const box = checkPanelTarget(button, `${audioSource} switch`);
+                const track = button?.querySelector(".overlay-control-capture__track");
+                if (!track?.getClientRects().length || getComputedStyle(track).visibility !== "visible") { issues.push(`${audioSource}: switch track missing or hidden`); continue; }
+                const bounds = track.getBoundingClientRect();
+                tracks.push(bounds);
+                if (!box || bounds.width <= 0 || bounds.height <= 0 || !inside(bounds, box) || !inside(bounds, contentClip())
+                  || Math.abs(bounds.top + bounds.height / 2 - box.top - box.height / 2) > 1
+                  || ![bounds.left + 3, bounds.left + bounds.width / 2, bounds.right - 3].every(x => track.contains(document.elementFromPoint(x, bounds.top + bounds.height / 2)))) issues.push(`${audioSource}: switch track clipped or covered`);
+              }
+              if (tracks.length === 2 && ["left", "right", "width", "height"].some(edge => Math.abs(tracks[0][edge] - tracks[1][edge]) > 1)) issues.push("system and microphone switch tracks misaligned");
+              const application = panel.querySelector('[data-audio-source="system"] .overlay-control-capture__application');
+              if (settings.audioInput !== "microphone") {
+                checkPanelTarget(application?.querySelector('button[role="combobox"]'), "audio application picker");
+                checkPanelTarget(application?.querySelector(".application-audio-picker__refresh"), "audio application refresh");
+              } else if (application?.getClientRects().length) issues.push("inactive system application picker visible");
+              const displayButtons = [...document.querySelectorAll(".overlay-control-display button")];
+              if (displayButtons.length !== SUBTITLE_DISPLAY_OPTIONS.length
+                || displayButtons.filter(button => button.getAttribute("aria-pressed") === "true").length !== 1) issues.push("subtitle display choices or unique current state missing");
+              for (const [index, option] of SUBTITLE_DISPLAY_OPTIONS.entries()) {
+                const button = displayButtons[index];
+                if (!button) continue;
+                const description = document.getElementById(button.getAttribute("aria-describedby"));
+                if (button.textContent !== option.shortLabel || description?.textContent !== option.label) issues.push("subtitle display short name or full description missing or stale");
+                if (button.getAttribute("aria-pressed") !== String(option.value === settings.subtitleDisplayMode) || button.disabled) issues.push("subtitle display state incorrect or unavailable");
+                const box = checkPanelTarget(button, "subtitle display"), range = document.createRange();
+                range.selectNodeContents(button);
+                const glyphs = [...range.getClientRects()].filter(glyph => glyph.width > 0);
+                if (!box || !glyphs.length || glyphs.some(glyph => !inside(glyph, box))) issues.push("subtitle display glyph outside its button");
+                checkUnbrokenWords(button, "subtitle display text splits a word");
+              }
+            }
+            if (surface === "settings") {
+              const profile = scope.querySelector('#voice-model button[role="combobox"]');
+              if (!profile) return ["active configuration field missing from Audio & Languages"];
+              const profileRect = profile.getBoundingClientRect();
+              if (Math.abs(profileRect.left - sourceRect.left) > 1 || Math.abs(profileRect.right - sourceRect.right) > 1) return ["language controls misaligned with configuration field"];
+            }
+            const heading = scope.querySelector(".profile-language-settings__heading");
+            if (surface === "settings" && !heading) return ["language catalog help heading missing"];
             if (heading) {
               const title = heading.querySelector("h3").getBoundingClientRect(), help = heading.querySelector("button").getBoundingClientRect();
               if (help.left - title.right > 12 || Math.abs((title.top + title.height / 2) - (help.top + help.height / 2)) > 1) return ["detached language catalog help"];
@@ -405,20 +540,26 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
             await new Promise(resolve => requestAnimationFrame(resolve));
             trigger.click();
             await new Promise(resolve => setTimeout(resolve, 0));
-            const issues = [];
             if (document.querySelectorAll('[role="option"]').length !== entry.count) issues.push("catalog options missing");
             if (!document.querySelector("input.mimi-select__search")) issues.push("search unavailable");
             if (document.documentElement.scrollWidth > innerWidth + 1) issues.push("page horizontal overflow");
             for (const element of document.querySelectorAll(".mimi-select__menu")) {
               const rect = element.getBoundingClientRect();
-              if (surface === "overlay") {
-                const background = getComputedStyle(element).backgroundColor;
-                const alpha = /^rgba\(.*?,\s*([\d.]+)\)$/.exec(background)?.[1];
-                if (background === "transparent" || (alpha !== undefined && Number(alpha) < 1)) {
-                  issues.push("controls show through the open menu");
-                }
+              const background = getComputedStyle(element).backgroundColor;
+              const alpha = /^rgba\(.*?,\s*([\d.]+)\)$/.exec(background)?.[1];
+              if (background === "transparent" || (alpha !== undefined && Number(alpha) < 1)) {
+                issues.push("controls show through the open menu");
               }
               if (rect.left < -1 || rect.right > innerWidth + 1 || rect.top < -1 || rect.bottom > innerHeight + 1) issues.push("menu outside viewport");
+            }
+            if (surface === "overlay" && entry.provider === "alibabaCloud") {
+              const selected = document.querySelector('[role="option"][aria-selected="true"]');
+              if (selected?.querySelector(".mimi-select__label")?.textContent !== expectedTarget) issues.push("Traditional Chinese menu selection missing");
+              if (selected) {
+                const box = selected.getBoundingClientRect();
+                if (box.height < 24 || box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1
+                  || ![box.left + 2, box.right - 2].every(x => selected.contains(document.elementFromPoint(x, box.top + box.height / 2)))) issues.push("selected language menu target clipped or covered");
+              }
             }
             if ([...document.querySelectorAll('[role="alert"]')].some(node => node.getBoundingClientRect().width > 0)) issues.push("unexpected action error");
             return issues;

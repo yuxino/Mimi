@@ -75,10 +75,11 @@ appearance and accessible pending state; empty or unsupported choices remain
 dimmed. Refresh animation belongs only to an actual refresh. Retain the panel,
 selection, scroll position and retry behavior through success and rejection.
 
-The compact entry shows the current language pair. Opening it presents two
-separate, equally wide fields for recognition and translation, each with its
-label above its dropdown. Each audio
-source has its own switch. The application picker belongs to system audio
-and sits directly under that switch, before the microphone. The three
-subtitle display modes share a single selection. The floating toolbar groups
-reading actions together, then immersive and lock, with Close at the far end.
+The compact entry shows the current language pair. The open panel keeps each
+label above its own dropdown. The two fields share a row when their labels
+and selected languages fit. A longer name can use the spare width or move
+its field onto a full row. Each audio source has its own switch. The
+application picker sits directly under system audio, before the microphone.
+The three subtitle display modes use short labels with their full meaning
+available to assistive technology. The floating toolbar shares one background.
+Thin dividers separate the reading actions, immersive and lock, and Close.

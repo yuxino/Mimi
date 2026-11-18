@@ -50,11 +50,12 @@
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
+  background: rgba(30, 30, 30, 0.9);
 }
 
-/* Three distinct groups share the existing 160px toolbar reservation. */
+/* Separators use the existing gaps, preserving the 160px toolbar reservation. */
 .overlay-action-strip:has(.overlay-action-group--presentation) { gap: 3px; }
 
 .overlay-action-group {
@@ -65,10 +66,19 @@
 
 .overlay-action-group,
 .overlay-action-strip > .mimi-tooltip-trigger {
-  border-radius: 7px;
-  background: rgba(16, 16, 16, 0.94);
-  outline: 1px solid rgba(255, 255, 255, 0.17);
-  outline-offset: -1px;
+  position: relative;
+}
+
+.overlay-action-group + .overlay-action-group::before,
+.overlay-action-group + .mimi-tooltip-trigger::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: -2px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.16);
+  pointer-events: none;
 }
 
 .overlay-action-strip .overlay-control-button {
@@ -97,8 +107,9 @@
 }
 
 @media (forced-colors: active) {
-  .overlay-action-group,
-  .overlay-action-strip > .mimi-tooltip-trigger { outline-color: ButtonText; background: Canvas; }
+  .overlay-action-strip { border-color: ButtonText; background: Canvas; }
+  .overlay-action-group + .overlay-action-group::before,
+  .overlay-action-group + .mimi-tooltip-trigger::before { background: ButtonText; }
 }
 
 .overlay-expanded-canvas:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {

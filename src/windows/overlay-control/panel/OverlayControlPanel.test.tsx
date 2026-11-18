@@ -195,7 +195,8 @@ it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("gro
   expect(audioSection.querySelector("h2")?.textContent).toBe(I18N.settings.audioInputTitle);
   expect(subtitleSection.querySelector("h2")?.textContent).toBe(I18N.settings.subtitleTitle);
   expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(4);
-  expect(displayChoices().map(choice => choice.textContent)).toEqual(SUBTITLE_DISPLAY_OPTIONS.map(option => option.label));
+  expect(displayChoices().map(choice => choice.textContent)).toEqual(SUBTITLE_DISPLAY_OPTIONS.map(option => option.shortLabel));
+  expect(displayChoices().map(choice => document.getElementById(choice.getAttribute("aria-describedby")!)?.textContent)).toEqual(SUBTITLE_DISPLAY_OPTIONS.map(option => option.label));
   expect(host.querySelectorAll('.application-audio-picker')).toHaveLength(1);
   expect(host.querySelector('fieldset, .overlay-control-options, .overlay-control-group')).toBeNull();
   expect(picker(I18N.overlay.sourceLanguage)).toBe(document.activeElement);

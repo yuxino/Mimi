@@ -164,6 +164,7 @@ export const SETTINGS = {
   showIntermediateSubtitlesHelp: "开启后更早显示字幕，内容可能继续修改。关闭后等字幕确认再显示，连续讲话时可能等得更久。此设置不改变最终识别和翻译的准确率。",
   displayTranslation: "仅译文",
   displayBilingual: "原文＋译文",
+  displayBoth: "双语",
   displayOriginal: "仅原文",
   subtitleDisplayHelp: "切换显示方式，不会中断翻译。",
   pulseStyle: "状态灯样式",
