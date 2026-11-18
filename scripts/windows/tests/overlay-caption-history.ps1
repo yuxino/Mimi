@@ -28,9 +28,7 @@ function Get-CaptionHistoryRows($Context) {
 }
 
 function Get-CaptionHistoryView($Context) {
-    $startedTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     $view = $Context.Viewport.Current.BoundingRectangle
-    $boundsReadEndTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     $frame = [MimiPointerSmoke]::ReadBounds($Context.Window)
     if ($view.IsEmpty -or $view.Width -lt 40 -or $view.Height -lt 40 -or
         $view.Left -lt $frame.Left - 1 -or $view.Right -gt $frame.Right + 1 -or
@@ -45,17 +43,13 @@ function Get-CaptionHistoryView($Context) {
         $row.Full = $row.Visible -and $row.Box.Left -ge $view.Left - 1 -and $row.Box.Right -le $view.Right + 1 -and
             $row.Box.Top -ge $view.Top - 1 -and $row.Box.Bottom -le $view.Bottom + 1
     }
-    $percentReadStartTicks = [Diagnostics.Stopwatch]::GetTimestamp()
+    # Bounds, caption nodes and scroll properties are independent UIA reads;
+    # a layout transition can occur between them. Do not infer a single frame.
     $percent = $Context.Scroll.Current.VerticalScrollPercent
-    $percentReadEndTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     $viewSize = $Context.Scroll.Current.VerticalViewSize
-    $viewSizeReadEndTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     if ($viewSize -le 0) { throw 'The native scroll viewport has no observable content extent.' }
     return @{ View = $view; Rows = $rows; Percent = $percent; ViewSize = $viewSize
-        ContentExtent = $view.Height * 100.0 / $viewSize
-        ObservedStartTicks = $startedTicks; ObservedEndTicks = $viewSizeReadEndTicks
-        BoundsReadTicks = @($startedTicks, $boundsReadEndTicks); PercentReadTicks = @($percentReadStartTicks, $percentReadEndTicks)
-        ViewSizeReadTicks = @($percentReadEndTicks, $viewSizeReadEndTicks) }
+        ContentExtent = $view.Height * 100.0 / $viewSize }
 }
 
 function Wait-CaptionHistory([string]$Action, [scriptblock]$Observe) {
@@ -106,19 +100,16 @@ function Assert-CaptionHistoryAnchor($Before, $After, [string]$Key) {
 }
 
 function Read-CaptionHistoryReturn($Context, $State) {
-    $State.ReturnReadStartTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($Context.Window)
     $named = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, $Context.ReturnName)
     $buttons = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $named) | Where-Object {
         -not $_.Current.IsOffscreen -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button
     })
     $State.ReturnCount = $buttons.Count
-    $State.ReturnButtons = @($buttons | ForEach-Object {
-        $box = $_.Current.BoundingRectangle
-        @{ bounds = @($box.Left, $box.Top, $box.Width, $box.Height); enabled = $_.Current.IsEnabled }
-    })
-    if ($buttons.Count -eq 1) { $State.ReturnBounds = $buttons[0].Current.BoundingRectangle }
-    $State.ReturnReadEndTicks = [Diagnostics.Stopwatch]::GetTimestamp()
+    if ($buttons.Count -eq 1) {
+        $State.ReturnBounds = $buttons[0].Current.BoundingRectangle
+        $State.ReturnEnabled = $buttons[0].Current.IsEnabled
+    }
 }
 
 function Assert-CaptionHistoryReturn($Context, $State, [bool]$Expected) {
@@ -127,7 +118,7 @@ function Assert-CaptionHistoryReturn($Context, $State, [bool]$Expected) {
     if ($State.ReturnCount -ne $count) { throw "The native return-to-live action has the wrong visibility (expected=$count observed=$($State.ReturnCount))." }
     if ($Expected) {
         $box = $State.ReturnBounds
-        if ($box.IsEmpty -or $box.Width -le 0 -or $box.Height -le 0 -or -not $State.ReturnButtons[0].enabled -or
+        if ($box.IsEmpty -or $box.Width -le 0 -or $box.Height -le 0 -or -not $State.ReturnEnabled -or
             $box.Left -lt $State.View.Left - 1 -or $box.Right -gt $State.View.Right + 1 -or
             $box.Top -lt $Context.RootBounds.Top -or $box.Bottom -gt $State.View.Top + 1) {
             throw 'The native return-to-live action is disabled, clipped or covers the reading viewport.'
@@ -136,47 +127,17 @@ function Assert-CaptionHistoryReturn($Context, $State, [bool]$Expected) {
     }
 }
 
-function Read-CaptionHistoryCrop($Context, [Drawing.Rectangle]$Crop) {
+function Save-CaptionHistoryCrop($Context, [Drawing.Rectangle]$Crop, [string]$Path) {
     [MimiPanelCrop]::AssertUnobscured($Context.Window, $Crop)
-    $startedTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     $pixels = [MimiPointerSmoke+PixelPatch]::new($Crop.X, $Crop.Y, $Crop.Width, $Crop.Height).Read()
-    $endedTicks = [Diagnostics.Stopwatch]::GetTimestamp()
     [MimiPanelCrop]::AssertUnobscured($Context.Window, $Crop)
     if ($Context.RootBounds.ToString() -cne [MimiPointerSmoke]::ReadBounds($Context.Window).ToString()) { throw 'The subtitle window moved during history capture.' }
-    return @{ Crop = $Crop; Pixels = $pixels; StartedTicks = $startedTicks; EndedTicks = $endedTicks }
+    [MimiPanelCrop]::SaveInterior($Crop, $pixels, $Path)
 }
 
-function Save-CaptionHistoryCrop($Context, [Drawing.Rectangle]$Crop, [string]$Path) {
-    $capture = Read-CaptionHistoryCrop $Context $Crop
-    [MimiPanelCrop]::SaveInterior($Crop, $capture.Pixels, $Path)
-}
-
-function Read-CaptionHistoryObservation($Context, $State) {
-    # Keep bounded pixels in memory; PNG/JSON writes must not delay append 20.
-    $capture = @{ Frame = [MimiPointerSmoke]::ReadBounds($Context.Window); Available = $false; Action = $null }
-    try {
-        $view = $State.View
-        $crop = [Drawing.Rectangle]::FromLTRB([int][Math]::Ceiling($view.Left), [int][Math]::Ceiling($view.Top),
-            [int][Math]::Floor($view.Right), [int][Math]::Floor($view.Bottom))
-        $capture.Main = Read-CaptionHistoryCrop $Context $crop
-        $capture.Available = $true
-        if ($State.ReturnCount -eq 1 -and -not $State.ReturnBounds.IsEmpty) {
-            $box = $State.ReturnBounds
-            $action = [Drawing.Rectangle]::FromLTRB([int][Math]::Floor($box.Left - 2 * $Context.Scale),
-                [int][Math]::Floor($box.Top - $Context.Scale), [int][Math]::Ceiling($box.Right + 2 * $Context.Scale),
-                [int][Math]::Ceiling($box.Bottom + $Context.Scale))
-            if ($action.Left -ge $capture.Frame.Left -and $action.Top -ge $capture.Frame.Top -and
-                $action.Right -le $capture.Frame.Right -and $action.Bottom -le $capture.Frame.Bottom) {
-                $capture.Action = Read-CaptionHistoryCrop $Context $action
-            }
-        }
-    } catch { $capture.CaptureFailed = $true }
-    return @{ State = $State; Capture = $capture }
-}
-
-function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [string]$Stage, $Captured = $null) {
+function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [string]$Stage) {
     [void][IO.Directory]::CreateDirectory($Directory)
-    $frame = if ($null -ne $Captured) { $Captured.Frame } else { [MimiPointerSmoke]::ReadBounds($Context.Window) }
+    $frame = [MimiPointerSmoke]::ReadBounds($Context.Window)
     $dpi = [MimiPanelCrop]::GetDpiForWindow($Context.Window)
     if ($dpi -eq 0) { throw 'Could not determine the history capture DPI.' }
     # On setup failure only, retain a caption-only crop without inventing a
@@ -189,40 +150,24 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
     $left = [int][Math]::Ceiling($view.Left); $top = [int][Math]::Ceiling($view.Top)
     $crop = [Drawing.Rectangle]::new($left, $top, [int][Math]::Floor($view.Right) - $left, [int][Math]::Floor($view.Bottom) - $top)
     if ($crop.Width -lt 8 -or $crop.Height -lt 8) { throw 'The native history capture is empty.' }
-    if ($null -eq $Captured) { Save-CaptionHistoryCrop $Context $crop (Join-Path $Directory "$Stage.png") }
-    elseif ($Captured.Available) { [MimiPanelCrop]::SaveInterior($Captured.Main.Crop, $Captured.Main.Pixels, (Join-Path $Directory "$Stage.png")) }
-    if ($null -ne $Captured -and $null -ne $Captured.Action) {
-        [MimiPanelCrop]::SaveInterior($Captured.Action.Crop, $Captured.Action.Pixels, (Join-Path $Directory "$Stage-return-to-live.png"))
-    }
-    if ($Stage -eq 'history-18') {
+    Save-CaptionHistoryCrop $Context $crop (Join-Path $Directory "$Stage.png")
+    if ($Stage -eq 'history-18' -or ($Stage -eq 'history-failed' -and $State.ReturnCount -eq 1 -and -not $State.ReturnBounds.IsEmpty)) {
         # The language capsule is a separate window to the left. Take the
         # localized action from its own measured bounds above the timeline.
         $box = $State.ReturnBounds
         $actionCrop = [Drawing.Rectangle]::FromLTRB([int][Math]::Floor($box.Left - 2 * $Context.Scale),
             [int][Math]::Floor($box.Top - $Context.Scale), [int][Math]::Ceiling($box.Right + 2 * $Context.Scale),
             [int][Math]::Ceiling($box.Bottom + $Context.Scale))
-        Save-CaptionHistoryCrop $Context $actionCrop (Join-Path $Directory 'return-to-live.png')
+        $actionName = if ($Stage -eq 'history-18') { 'return-to-live.png' } else { 'history-failed-return-to-live.png' }
+        Save-CaptionHistoryCrop $Context $actionCrop (Join-Path $Directory $actionName)
     }
     $metadata = [ordered]@{ stage = $Stage; dpi = $dpi; root = @($frame.Left, $frame.Top, $frame.Width, $frame.Height)
-        viewport = @($view.Left, $view.Top, $view.Width, $view.Height); visible = @(); clockFrequency = [Diagnostics.Stopwatch]::Frequency }
-    if ($Context.ContainsKey('ReleasedTicks')) { $metadata.releasedTicks = $Context.ReleasedTicks; $metadata.append20Ticks = $Context.Append20Ticks }
-    if ($null -ne $Captured) {
-        $metadata.captureAvailable = $Captured.Available
-        if ($Captured.Available) { $metadata.captureTicks = @($Captured.Main.StartedTicks, $Captured.Main.EndedTicks) }
-        if ($null -ne $Captured.Action) { $metadata.actionCaptureTicks = @($Captured.Action.StartedTicks, $Captured.Action.EndedTicks) }
-        if ($Captured.ContainsKey('CaptureFailed')) { $metadata.captureFailed = $true }
-    }
+        viewport = @($view.Left, $view.Top, $view.Width, $view.Height); visible = @() }
     if ($Context.ContainsKey('Anchor')) { $metadata.anchor = $Context.Anchor; $metadata.wheelDetents = $Context.WheelDetents }
     if ($Context.ContainsKey('Thumb')) { $metadata.thumb = $Context.Thumb }
     if ($null -ne $State) {
         $metadata.percent = $State.Percent; $metadata.viewSize = $State.ViewSize; $metadata.contentExtent = $State.ContentExtent
-        $metadata.observedTicks = @($State.ObservedStartTicks, $State.ObservedEndTicks)
-        $metadata.boundsReadTicks = $State.BoundsReadTicks; $metadata.percentReadTicks = $State.PercentReadTicks
-        $metadata.viewSizeReadTicks = $State.ViewSizeReadTicks
-        if ($State.ContainsKey('ReturnCount')) {
-            $metadata.returnCount = $State.ReturnCount; $metadata.returnButtons = $State.ReturnButtons
-            $metadata.returnReadTicks = @($State.ReturnReadStartTicks, $State.ReturnReadEndTicks)
-        }
+        if ($State.ContainsKey('ReturnCount')) { $metadata.returnCount = $State.ReturnCount }
         if ($State.ContainsKey('DeliveryEvidence')) { $metadata.deliveryEvidence = $State.DeliveryEvidence }
         if ($State.ContainsKey('ReturnBounds')) {
             $box = $State.ReturnBounds
@@ -233,14 +178,27 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
             @{ lane = $_; offset = $row.Box.Top - $view.Top; bounds = @($row.Box.Left, $row.Box.Top, $row.Box.Width, $row.Box.Height)
                 clip = @($row.Clip.Left, $row.Clip.Top, $row.Clip.Width, $row.Clip.Height); full = $row.Full }
         })
-        $metadata.tail = [ordered]@{}
-        foreach ($key in @('source19', 'translation19', 'source20', 'translation20')) {
-            $row = $State.Rows[$key]
-            $metadata.tail[$key] = @{ present = $null -ne $row; visible = [bool]$row.Visible; full = [bool]$row.Full
-                bounds = $(if ($null -ne $row -and $row.Area -gt 0) { @($row.Box.Left, $row.Box.Top, $row.Box.Width, $row.Box.Height) } else { $null }) }
-        }
     }
     [IO.File]::WriteAllText((Join-Path $Directory "$Stage.json"), ($metadata | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+}
+
+function Write-CaptionHistoryCheckpoints($Context, [string]$Directory) {
+    $points = @($Context.Checkpoints.Keys | ForEach-Object {
+        $stage = $_; $sample = $Context.Checkpoints[$stage]
+        $tail = [ordered]@{}
+        foreach ($key in @('source19', 'translation19', 'source20', 'translation20')) {
+            $row = $sample.Rows[$key]
+            $tail[$key] = @{ visible = [bool]$row.Visible; full = [bool]$row.Full
+                bounds = $(if ($null -ne $row -and $row.Area -gt 0) { @($row.Box.Left, $row.Box.Top, $row.Box.Width, $row.Box.Height) } else { $null }) }
+        }
+        Write-Host "Native history checkpoint stage=$stage percent=$($sample.Percent) returnCount=$($sample.ReturnCount) source20Full=$([bool]$sample.Rows.source20.Full) translation20Full=$([bool]$sample.Rows.translation20.Full)."
+        @{ stage = $stage; percent = $sample.Percent; viewSize = $sample.ViewSize; returnCount = $sample.ReturnCount; tail = $tail
+            viewport = @($sample.View.Left, $sample.View.Top, $sample.View.Width, $sample.View.Height) }
+    })
+    [void][IO.Directory]::CreateDirectory($Directory)
+    $metadata = @{ locale = $Context.Locale; independentUiaReads = $true; checkpoints = $points
+        root = $Context.RootBounds.ToString(); controls = $Context.ControlBounds.ToString() }
+    [IO.File]::WriteAllText((Join-Path $Directory 'history-checkpoints.json'), ($metadata | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 }
 
 function Get-CaptionHistoryThumb($Context, $State) {
@@ -282,9 +240,11 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         [string][char]0x56de + [char]0x5230 + [char]0x5b9e + [char]0x65f6
     }
     $context = @{ Window = $window; Controls = $controls; RootBounds = [MimiPointerSmoke]::ReadBounds($window); ReturnName = $returnName
+        Locale = $Locale; Checkpoints = [ordered]@{}
         ControlBounds = [MimiPointerSmoke]::ReadBounds($controls); Scale = [MimiPanelCrop]::GetDpiForWindow($window) / 96.0
         CaptionPattern = '(?<kind>Original|' + $translationPrefix + ') (?<number>[0-9]{2}) '; Viewport = $null; Scroll = $null }
     $state = $null
+    $earlyFailure = $null
     try {
         $rows = Wait-CaptionHistory 'the initial 18 synthetic bilingual captions' {
             if ((Read-SmokeMarker (Join-Path $FixtureDirectory 'caption-history-count')) -ne '18') { return $null }
@@ -376,78 +336,60 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
                 if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
                 Assert-CaptionHistoryEnvironment $context
             }
-        } finally {
-            [MimiCaptionDragDesktop]::SetLeftButton($false)
-            $context.ReleasedTicks = [Diagnostics.Stopwatch]::GetTimestamp()
-        }
+        } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
         if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the history scrollbar button after release.' }
         $state = Wait-CaptionHistory 'the physical scrollbar reaching the real bottom' {
             Assert-CaptionHistoryEnvironment $context
             $sample = Get-CaptionHistoryView $context
             if ($sample.Percent -ge 99.99 -and $sample.Rows.source19.Full -and $sample.Rows.translation19.Full) { return $sample }
         }
-        $earlyFailure = $null
         try { Assert-CaptionHistoryReturn $context $state $false }
         catch { $earlyFailure = $_ }
-        # Preserve the first check. No image capture, fresh UIA read or file
-        # serialization may delay the next caption after that check.
-        $observations = @{
-            'bottom-first' = @{ State = $state; Capture = @{ Frame = $context.RootBounds; Available = $false; Action = $null } }
-            '20-received' = $null; '20-after-400ms' = $null
-        }
-        $bottomExtent = $state.ContentExtent
-        $context.Append20Ticks = [Diagnostics.Stopwatch]::GetTimestamp()
+        # Retain this first result, but append immediately even on failure.
+        # No screenshot, new UIA read, retry or delay belongs before append 20.
+        $context.Checkpoints['bottom-first'] = $state
         [IO.File]::WriteAllText((Join-Path $FixtureDirectory 'append-caption-20'), 'append-caption-20', [Text.UTF8Encoding]::new($false))
-        $followingFailure = $null
-        try {
-            $state = Wait-CaptionHistory 'caption 20 following after scrollbar release' {
-                if ((Read-SmokeMarker (Join-Path $FixtureDirectory 'caption-history-count')) -ne '20') { return $null }
-                $sample = Get-CaptionHistoryView $context
-                if ($null -eq $observations['20-received'] -and
-                    (($sample.Rows.ContainsKey('source20') -and $sample.Rows.ContainsKey('translation20')) -or
-                    $sample.ContentExtent -gt $bottomExtent + $context.Scale)) {
+        $state = Wait-CaptionHistory 'caption 20 following after scrollbar release' {
+            if ((Read-SmokeMarker (Join-Path $FixtureDirectory 'caption-history-count')) -ne '20') { return $null }
+            $sample = Get-CaptionHistoryView $context
+            if ($sample.Rows.ContainsKey('source20') -and $sample.Rows.ContainsKey('translation20') -and
+                $sample.Rows.source20.Full -and $sample.Rows.translation20.Full) {
+                if (-not $context.Checkpoints.Contains('20-visible')) {
                     Read-CaptionHistoryReturn $context $sample
-                    $observations['20-received'] = Read-CaptionHistoryObservation $context $sample
-                    $observations.ReceivedTicks = $sample.ObservedEndTicks
+                    $context.Checkpoints['20-visible'] = $sample
                 }
-                if ($null -ne $observations['20-received'] -and $null -eq $observations['20-after-400ms'] -and
-                    ($sample.ObservedStartTicks - $observations.ReceivedTicks) / [Diagnostics.Stopwatch]::Frequency -ge 0.4) {
-                    Read-CaptionHistoryReturn $context $sample
-                    $observations['20-after-400ms'] = Read-CaptionHistoryObservation $context $sample
-                }
-                # The original 5-second following predicate remains unchanged.
-                if ($sample.Rows.ContainsKey('source20') -and $sample.Rows.ContainsKey('translation20') -and
-                    $sample.Percent -ge 99.99 -and $sample.Rows.source20.Full -and $sample.Rows.translation20.Full) { return $sample }
+                if ($sample.Percent -ge 99.99) { return $sample }
             }
-            Start-Sleep -Milliseconds 400
-            $state = Get-CaptionHistoryView $context
-            try {
-                if ($state.Percent -lt 99.99 -or -not $state.Rows.source20.Full -or -not $state.Rows.translation20.Full) { throw 'The resumed live caption did not remain fully in view.' }
-                Assert-CaptionHistoryEnvironment $context
-                Assert-CaptionHistoryReturn $context $state $false
-            } catch { $followingFailure = $_ }
-            if (-not $state.ContainsKey('ReturnCount')) { Read-CaptionHistoryReturn $context $state }
-            if ($null -eq $observations['20-after-400ms']) { $observations['20-after-400ms'] = Read-CaptionHistoryObservation $context $state }
-            if ($null -eq $followingFailure) { Save-CaptionHistoryEvidence $context $state $PanelEvidenceDirectory 'live-20' }
-        } catch { $followingFailure = $_ }
-        foreach ($stage in @('bottom-first', '20-received', '20-after-400ms')) {
-            $observation = $observations[$stage]
-            if ($null -eq $observation) { continue }
-            $sample = $observation.State
-            Write-Host "Native history observation stage=$stage percent=$($sample.Percent) returnCount=$($sample.ReturnCount) source20Visible=$([bool]$sample.Rows.source20.Visible) source20Full=$([bool]$sample.Rows.source20.Full) translation20Visible=$([bool]$sample.Rows.translation20.Visible) translation20Full=$([bool]$sample.Rows.translation20.Full)."
-            try { Save-CaptionHistoryEvidence $context $sample $PanelEvidenceDirectory $stage $observation.Capture }
-            catch { if ($null -eq $followingFailure) { $followingFailure = $_ } }
         }
+        Start-Sleep -Milliseconds 400
+        $state = Get-CaptionHistoryView $context
+        try {
+            if ($state.Percent -lt 99.99 -or -not $state.Rows.source20.Full -or -not $state.Rows.translation20.Full) { throw 'The resumed live caption did not remain fully in view.' }
+            Assert-CaptionHistoryEnvironment $context
+            Assert-CaptionHistoryReturn $context $state $false
+        } finally {
+            if (-not $state.ContainsKey('ReturnCount')) { Read-CaptionHistoryReturn $context $state }
+            $context.Checkpoints['20-after-400ms'] = $state
+        }
+        Save-CaptionHistoryEvidence $context $state $PanelEvidenceDirectory 'live-20'
         if ($null -ne $earlyFailure) { throw $earlyFailure }
-        if ($null -ne $followingFailure) { throw $followingFailure }
         Write-Host "Native history passed: physical wheel preserved $anchor on append; rendered thumb=$($thumb.Height)px contrast=$($thumb.Contrast); scrollbar release restored bilingual caption 20 at the bottom, same windows, Settings hidden, listening."
     } catch {
-        $failure = $_
-        try { if ($null -ne $context.Viewport) { $state = Get-CaptionHistoryView $context } }
+        $failure = if ($null -ne $earlyFailure) { $earlyFailure } else { $_ }
+        try {
+            if ($null -ne $context.Viewport) {
+                $state = Get-CaptionHistoryView $context
+                Read-CaptionHistoryReturn $context $state
+                $context.Checkpoints['failure'] = $state
+            }
+        }
         catch { $state = $null }
         try {
             Save-CaptionHistoryEvidence $context $state $PanelEvidenceDirectory 'history-failed'
         } catch { Write-Warning 'Could not save the bounded synthetic history failure capture.' }
         throw $failure
+    } finally {
+        try { Write-CaptionHistoryCheckpoints $context $PanelEvidenceDirectory }
+        catch { Write-Warning 'Could not save the bounded caption history checkpoints.' }
     }
 }
