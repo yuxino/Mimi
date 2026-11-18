@@ -15,7 +15,7 @@ public static class MimiPanelCrop {
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
     [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
-    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr window);
 
     public static void AssertUnobscured(IntPtr target, Rectangle crop) {
         for (var window = GetWindow(target, 3); window != IntPtr.Zero; window = GetWindow(window, 3)) { // GW_HWNDPREV
@@ -27,11 +27,11 @@ public static class MimiPanelCrop {
         }
     }
 
-    public static void Save(IntPtr window, Rectangle crop, int[] pixels, string path) {
+    public static void Save(Rectangle crop, int[] pixels, uint dpi, string path) {
         if (pixels.Length != crop.Width * crop.Height) throw new InvalidOperationException("Incomplete panel pixels.");
         // The WebView is transparent outside its 13-CSS-pixel rounded panel.
         // Discard these corner pixels, including the mixed antialias edge.
-        int radius = (int)Math.Ceiling(13.0 * GetDpiForWindow(window) / 96.0);
+        int radius = (int)Math.Ceiling(13.0 * dpi / 96.0);
         for (int y = 0; y < crop.Height; y++) for (int x = 0; x < crop.Width; x++) {
             double dx = Math.Max(0, radius - Math.Min(x + .5, crop.Width - x - .5));
             double dy = Math.Max(0, radius - Math.Min(y + .5, crop.Height - y - .5));
@@ -72,40 +72,39 @@ function Get-PanelToggleState($Element, [string]$Key) {
     throw "The $Key control did not expose its selected state."
 }
 
-function Get-PanelPickerValueEvidence($Element, [string]$Expected, [string]$Key) {
+function Get-PanelPickerValueEvidence($Element, [string]$Key) {
     $scope = [System.Windows.Automation.TreeScope]::Descendants
     $text = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
     $children = @($Element.FindAll($scope, $text) | Where-Object { -not $_.Current.IsOffscreen -and -not [string]::IsNullOrWhiteSpace($_.Current.Name) })
     if ($children.Count) {
-        $matching = @($children | Where-Object { $_.Current.Name -ceq $Expected })
-        if ($matching.Count -eq 0) { throw "The $Key picker shows an unexpected value." }
-        foreach ($child in $matching) { Assert-PanelBounds $child.Current.BoundingRectangle $Element.Current.BoundingRectangle "$Key text" }
-        return 'text bounds'
+        $value = $children[0].Current.Name
+        foreach ($child in $children) {
+            if ($child.Current.Name -cne $value) { throw "The closed $Key picker contains conflicting text values." }
+            Assert-PanelBounds $child.Current.BoundingRectangle $Element.Current.BoundingRectangle "$Key text"
+        }
+        $box = $children[0].Current.BoundingRectangle
+        return @{ value = $value; evidence = 'text bounds'; bounds = @($box.Left, $box.Top, $box.Width, $box.Height) }
     }
     $pattern = $null
-    if ($Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -and $pattern.Current.Value) {
-        if ($pattern.Current.Value -cne $Expected) { throw "The $Key accessible value differs from the fixture." }
-        return 'accessible value only'
+    if ($Element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern) -and
+        -not [string]::IsNullOrWhiteSpace($pattern.Current.Value)) {
+        return @{ value = $pattern.Current.Value; evidence = 'accessible value only' }
     }
     if ($Element.TryGetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern, [ref]$pattern)) {
         $selected = $pattern.GetCurrentSelection()
-        if ($selected.Count) {
-            if ($selected.Count -ne 1 -or $selected[0].Current.Name -cne $Expected) { throw "The $Key picker selection differs from the fixture." }
-            return 'selected item only'
+        if ($selected.Count -eq 1 -and -not [string]::IsNullOrWhiteSpace($selected[0].Current.Name)) {
+            return @{ value = $selected[0].Current.Name; evidence = 'selected item only' }
         }
     }
-    # A renderer may fold the value into the combobox without a UIA text node.
-    # The visible value then requires inspection in the original PNG.
-    return 'review PNG'
+    throw "The closed $Key picker did not expose a readable selected value."
 }
 
-function Save-PanelLanguageEvidence([IntPtr]$Controls, $Labels, [string]$EvidencePath) {
-    $locale = [string]$Labels.locale
-    if (@('zh', 'zh-TW', 'en', 'ja', 'ko', 'de', 'fr', 'th', 'ru') -cnotcontains $locale -or @($Labels.modes).Count -ne 3) {
-        throw 'Invalid panel language fixture.'
-    }
+function Save-PanelLanguageScreenshot([IntPtr]$Controls, [string]$EvidencePath, [string]$FileName, [switch]$PassThru) {
+    if ($FileName -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_-]*\.png$') { throw 'Invalid panel screenshot filename.' }
     $window = [MimiPointerSmoke]::ReadBounds($Controls)
+    $dpi = [MimiPanelCrop]::GetDpiForWindow($Controls)
+    if ($dpi -eq 0) { throw 'Could not determine the panel DPI.' }
     $frame = [System.Windows.Rect]::new($window.Left, $window.Top, $window.Width, $window.Height)
     $root = [System.Windows.Automation.AutomationElement]::FromHandle($Controls)
     $scope = [System.Windows.Automation.TreeScope]::Descendants
@@ -127,27 +126,46 @@ function Save-PanelLanguageEvidence([IntPtr]$Controls, $Labels, [string]$Evidenc
     $pixels = $sample.Read()
     [MimiPanelCrop]::AssertUnobscured($Controls, $crop)
     if ($window.ToString() -cne [MimiPointerSmoke]::ReadBounds($Controls).ToString()) { throw 'Panel moved during capture.' }
-    [MimiPanelCrop]::Save($Controls, $crop, $pixels, (Join-Path $EvidencePath "$locale.png"))
+    [MimiPanelCrop]::Save($crop, $pixels, $dpi, (Join-Path $EvidencePath $FileName))
+    if ($PassThru) { return @{ dpi = $dpi; frame = $frame; panel = $panel; crop = $crop; surface = $surface } }
+}
+
+function Save-PanelLanguageEvidence([IntPtr]$Controls, $Labels, [string]$EvidencePath) {
+    $locale = [string]$Labels.locale
+    if (@('zh', 'zh-TW', 'en', 'ja', 'ko', 'de', 'fr', 'th', 'ru') -cnotcontains $locale -or @($Labels.modes).Count -ne 3) {
+        throw 'Invalid panel language fixture.'
+    }
+    $capture = Save-PanelLanguageScreenshot $Controls $EvidencePath "$locale.png" -PassThru
+    $dpi = $capture.dpi
+    $scale = $dpi / 96.0
+    $minimumTarget = [Math]::Floor(24 * $scale)
+    $frame = $capture.frame
+    $panel = $capture.panel
+    $crop = $capture.crop
+    if ([Math]::Abs($panel.Width - 280 * $scale) -gt 1 -or [Math]::Abs($frame.Width - 280 * $scale) -gt 1) {
+        throw "Expected a 280-logical-pixel panel at $dpi DPI (window=$($frame.Width), dialog=$($panel.Width) physical pixels)."
+    }
 
     $items = [ordered]@{ source = $Labels.source; target = $Labels.target; systemAudio = $Labels.systemAudio; microphone = $Labels.microphone;
         mode0 = $Labels.modes[0]; mode1 = $Labels.modes[1]; mode2 = $Labels.modes[2]; moreSettings = $Labels.moreSettings }
     $controlsMetadata = [ordered]@{}
+    $pickerValues = @{}
     $previousBounds = @()
-    $selectedModes = 0
+    $scope = [System.Windows.Automation.TreeScope]::Descendants
     foreach ($key in $items.Keys) {
         $named = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, [string]$items[$key])
         $isPicker = $key -in @('source', 'target')
         $roles = if ($isPicker) { [System.Windows.Automation.ControlType]::ComboBox }
                  elseif ($key -eq 'moreSettings') { [System.Windows.Automation.ControlType]::Button }
                  else { [System.Windows.Automation.ControlType]::Button, [System.Windows.Automation.ControlType]::CheckBox, [System.Windows.Automation.ControlType]::RadioButton }
-        $matchesByRole = @($surface.FindAll($scope, $named) | Where-Object {
+        $matchesByRole = @($capture.surface.FindAll($scope, $named) | Where-Object {
             -not $_.Current.IsOffscreen -and $roles -contains $_.Current.ControlType
         })
         if ($matchesByRole.Count -ne 1) { throw "$locale has $($matchesByRole.Count) visible $key controls." }
         $element = $matchesByRole[0]
         $box = $element.Current.BoundingRectangle
         Assert-PanelBounds $box $panel $key
-        if ($box.Width -lt 24 -or $box.Height -lt 24) { throw "The $key target is smaller than 24 physical pixels." }
+        if ($box.Width -lt $minimumTarget -or $box.Height -lt $minimumTarget) { throw "The $key target is smaller than 24 logical pixels at $dpi DPI." }
         foreach ($earlier in $previousBounds) {
             $intersection = [System.Windows.Rect]::Intersect($box, $earlier)
             if ($intersection.Width -gt 1 -and $intersection.Height -gt 1) { throw "The $key target overlaps another control." }
@@ -155,19 +173,22 @@ function Save-PanelLanguageEvidence([IntPtr]$Controls, $Labels, [string]$Evidenc
         $previousBounds += $box
         $entry = [ordered]@{ bounds = @($box.Left, $box.Top, $box.Width, $box.Height); enabled = $element.Current.IsEnabled }
         if ($isPicker) {
-            $expected = if ($key -eq 'source') { $Labels.sourceValue } else { $Labels.targetValue }
-            $entry.valueEvidence = Get-PanelPickerValueEvidence $element $expected $key
+            $reading = Get-PanelPickerValueEvidence $element $key
+            $pickerValues[$key] = $reading.value
+            $entry.value = $reading.value
+            $entry.valueEvidence = $reading.evidence
+            if ($reading.ContainsKey('bounds')) { $entry.valueBounds = $reading.bounds }
         } elseif ($key -ne 'moreSettings') {
             $checked = Get-PanelToggleState $element $key
             $entry.selected = $checked
             if ($key -eq 'systemAudio' -and -not $checked -or $key -eq 'microphone' -and $checked) { throw 'Unexpected fixture audio selection.' }
-            if ($key.StartsWith('mode') -and $checked) { $selectedModes++ }
+            if ($key.StartsWith('mode') -and $checked -ne ($key -eq 'mode1')) { throw 'Only the bilingual subtitle mode should be selected.' }
         }
         $controlsMetadata[$key] = $entry
     }
-    if ($selectedModes -ne 1) { throw 'The subtitle mode group must have one selection.' }
-    $metadata = [ordered]@{ locale = $locale; window = @($frame.Left, $frame.Top, $frame.Width, $frame.Height);
+    $metadata = [ordered]@{ locale = $locale; dpi = $dpi; window = @($frame.Left, $frame.Top, $frame.Width, $frame.Height);
         crop = @($crop.X, $crop.Y, $crop.Width, $crop.Height); controls = $controlsMetadata }
     [IO.File]::WriteAllText((Join-Path $EvidencePath "$locale.json"), ($metadata | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
-    Write-Output "Captured $locale panel ($($crop.Width)x$($crop.Height)); 8 control bounds, audio and subtitle selections verified."
+    Write-Host "Captured $locale panel ($($crop.Width)x$($crop.Height) at $dpi DPI); 8 control bounds, audio and bilingual selections verified."
+    return $pickerValues
 }

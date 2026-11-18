@@ -29,21 +29,26 @@ try {
   const { SUBTITLE_DISPLAY_OPTIONS } = await server.ssrLoadModule("/src/lib/subtitles/subtitleDisplay.ts");
   const fixtures = UI_LANGUAGES.map(locale => {
     setStoredUiLanguage(locale);
+    // Only these locales use product-owned language names. For the other six,
+    // Node and WebView2 can ship different Intl/CLDR names; null delegates the
+    // value check to the closed trigger and selected option in the same renderer.
+    const hasFixedLanguageNames = locale === "zh" || locale === "en" || locale === "ja";
     return {
       locale,
       openControls: I18N.overlay.openControls,
       source: I18N.overlay.sourceLanguage,
       target: I18N.settings.translateTo,
       moreSettings: I18N.overlay.moreSettings,
-      sourceValue: sourceLanguageDisplayName("en", locale),
-      targetValue: targetLanguageDisplayName("zh_tw", locale),
+      sourceValue: hasFixedLanguageNames ? sourceLanguageDisplayName("en", locale) : null,
+      targetValue: hasFixedLanguageNames ? targetLanguageDisplayName("zh_tw", locale) : null,
       modes: SUBTITLE_DISPLAY_OPTIONS.map(option => option.shortLabel),
       systemAudio: I18N.settings.audioInputSystem,
       microphone: I18N.settings.audioInputMicrophone,
     };
   });
-  if (fixtures.some(({ modes, ...labels }) => modes.length !== 3 ||
-      [...Object.values(labels), ...modes].some(label => typeof label !== "string" || !label.trim()))) {
+  if (fixtures.some(({ modes, sourceValue, targetValue, ...labels }) => modes.length !== 3 ||
+      [...Object.values(labels), ...modes, ...[sourceValue, targetValue].filter(value => value !== null)]
+        .some(label => typeof label !== "string" || !label.trim()))) {
     throw new Error("A panel language fixture has missing labels.");
   }
   await writeFile(resolve(process.argv[2]), `${JSON.stringify(fixtures, null, 2)}\n`, "utf8");

@@ -141,19 +141,25 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
     Use-OverlayControl $Labels.openControls 'listening' 'Open the native language panel' -Surface $controlsHandle -NameSuffix -WaitMs 5000
     Use-OverlayControl $Labels.moreSettings 'listening' 'Wait for the native language panel' -Surface $controlsHandle -WaitOnly -WaitMs 5000
     $null = Wait-PanelLanguageState 'panel-focus' { [MimiPanelKeyboard]::OwnsFocus($controlsHandle) }
-    Save-PanelLanguageEvidence $controlsHandle $Labels $EvidencePath
+    $visibleValues = Save-PanelLanguageEvidence $controlsHandle $Labels $EvidencePath
 
     foreach ($kind in @('source', 'target')) {
         $name = $Labels.$kind
         $valueKey = $kind + 'Value'
-        $initialValue = $Labels.$valueKey
+        $initialValue = $visibleValues.$kind
+        if ([string]::IsNullOrEmpty($initialValue)) { throw "The native closed language field has no observed value (field=$kind)." }
+        $fixedValue = $Labels.$valueKey
+        if (-not [string]::IsNullOrEmpty($fixedValue) -and -not [string]::Equals($initialValue, $fixedValue, [StringComparison]::Ordinal)) {
+            throw "The native language field does not match its fixed localized label (field=$kind)."
+        }
         $initialCode = Read-PanelLanguageCode $kind
         $field = Wait-PanelLanguageState "$kind-field" { Get-PanelLanguageField $name }
         $bounds = $field.Current.BoundingRectangle
         if ($bounds.IsEmpty -or $bounds.Width -lt 24 -or $bounds.Height -lt 24) { throw 'A native language field has no complete click target.' }
         [MimiPointerSmoke]::ClickOverlay($controlsHandle, [int]($bounds.X + $bounds.Width / 2), [int]($bounds.Y + $bounds.Height / 2), 'Open a native language field')
         $menu = Wait-PanelLanguageState "$kind-initial-menu" { Read-PanelLanguageMenu $name }
-        if ($menu.Selected -cne $initialValue) { throw "The native language field has the wrong initial selection (field=$kind)." }
+        if (-not [string]::Equals($menu.Selected, $initialValue, [StringComparison]::Ordinal)) { throw "The native language field has the wrong initial selection (field=$kind)." }
+        if ($kind -eq 'target') { Save-PanelLanguageScreenshot $controlsHandle $EvidencePath ($Labels.locale + '-target-menu.png') }
         $initialIndex = $menu.Index
         $names = $menu.Names
         $previousCode = $initialCode
