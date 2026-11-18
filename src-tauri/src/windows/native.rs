@@ -150,11 +150,10 @@ impl OverlayPresentationState {
 
 #[cfg(target_os = "linux")]
 pub(in crate::windows) fn configure_overlay_for_software_gl(window: &tauri::WebviewWindow) {
-    use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+    use webkit2gtk::{SettingsExt, WebViewExt};
 
-    // On X11 with software GL, WebKit's accelerated path delayed visible
-    // subtitles. Keep the change local to the subtitle WebView and require
-    // an explicit software-rendering launch on an X11 session.
+    // Controlled package-startup comparison: keep WebKit's default policy
+    // while observing the same X11 software-rendering path as the failed run.
     if std::env::var("XDG_SESSION_TYPE").as_deref() != Ok("x11")
         || !matches!(
             std::env::var("LIBGL_ALWAYS_SOFTWARE").as_deref(),
@@ -166,10 +165,9 @@ pub(in crate::windows) fn configure_overlay_for_software_gl(window: &tauri::Webv
 
     let _ = window.with_webview(|platform| {
         if let Some(settings) = WebViewExt::settings(&platform.inner()) {
-            settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
             pipeline_log!(
-                "overlay software GL acceleration disabled={}",
-                settings.hardware_acceleration_policy() == HardwareAccelerationPolicy::Never
+                "overlay software GL default acceleration policy={:?}",
+                settings.hardware_acceleration_policy()
             );
         }
     });
