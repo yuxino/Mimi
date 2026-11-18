@@ -47,7 +47,7 @@ private func windowInfo(_ windowID: CGWindowID, _ frame: CGRect) throws -> [Stri
     return row
 }
 
-private func captionFrames(pid: pid_t, frame: CGRect) throws -> [CGRect] {
+private func captionFrames(pid: pid_t, frame: CGRect) throws -> [(ax: CGRect, crop: CGRect)] {
     let app = AXUIElementCreateApplication(pid)
     guard let windows = axAttribute(app, kAXWindowsAttribute as CFString) as? [AXUIElement] else {
         throw CaptionCaptureError.failed("caption_ax_windows_unavailable")
@@ -56,7 +56,7 @@ private func captionFrames(pid: pid_t, frame: CGRect) throws -> [CGRect] {
     guard matches.count == 1 else { throw CaptionCaptureError.failed("caption_ax_window_not_unique") }
     var pending: [(AXUIElement, Int)] = [(matches[0], 0)]
     var visited = 0
-    var found: [CGRect] = []
+    var found: [(ax: CGRect, crop: CGRect)] = []
     while let (element, depth) = pending.popLast() {
         visited += 1
         guard visited <= 4096 else { throw CaptionCaptureError.failed("caption_ax_tree_limit") }
@@ -65,7 +65,7 @@ private func captionFrames(pid: pid_t, frame: CGRect) throws -> [CGRect] {
         }
         if named, let bounds = axFrame(element) {
             let visible = bounds.intersection(frame.insetBy(dx: 4, dy: 4))
-            if !visible.isNull && visible.width >= 8 && visible.height >= 8 { found.append(visible) }
+            if !visible.isNull && visible.width >= 8 && visible.height >= 8 { found.append((bounds, visible)) }
         }
         if depth < 20, let children = axAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement] {
             pending.append(contentsOf: children.map { ($0, depth + 1) })
@@ -73,7 +73,7 @@ private func captionFrames(pid: pid_t, frame: CGRect) throws -> [CGRect] {
     }
     // A WebKit group and its text can expose the same name. Prefer the tight
     // text rectangle; never substitute another source, translation or blank area.
-    return found.sorted { $0.width * $0.height < $1.width * $1.height }
+    return found.sorted { $0.crop.width * $0.crop.height < $1.crop.width * $1.crop.height }
 }
 
 private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGImage {
@@ -140,9 +140,18 @@ private func save(_ image: CGImage, frame: CGRect, crop: CGRect, output: URL, st
     print("caption_capture stage=\(stage) pixels=\(clipped.width)x\(clipped.height) crop=\(crop)")
 }
 
-private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> CGPoint? {
+private struct CaptionPixels {
+    let rect: CGRect
+    let width: Int
+    let height: Int
+    let rgba: [UInt8]
+    let levels: [Int]
+    let background: Int
+}
+
+private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> (point: CGPoint?, pixels: CaptionPixels) {
     let rect = try pixelRect(crop.insetBy(dx: 1, dy: 1), frame, image)
-    guard let lane = image.cropping(to: rect) else { return nil }
+    guard let lane = image.cropping(to: rect) else { throw CaptionCaptureError.failed("caption_pixel_crop_failed") }
     let width = lane.width, height = lane.height
     var pixels = [UInt8](repeating: 0, count: width * height * 4)
     try pixels.withUnsafeMutableBytes { bytes in
@@ -158,7 +167,8 @@ private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> CG
         levels[index] = (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
     }
     let background = levels.sorted()[levels.count / 2]
-    guard background <= 120, width >= 6, height >= 6 else { return nil }
+    let sample = CaptionPixels(rect: rect, width: width, height: height, rgba: pixels, levels: levels, background: background)
+    guard background <= 120, width >= 6, height >= 6 else { return (nil, sample) }
     var best: (score: Double, x: Int, y: Int, contrast: Int)?
     for y in 2..<(height - 2) {
         for x in 2..<(width - 2) {
@@ -172,11 +182,37 @@ private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> CG
             if best == nil || score < best!.score { best = (score, x, y, levels[i] - background) }
         }
     }
-    guard let best else { return nil }
+    guard let best else { return (nil, sample) }
     let point = CGPoint(x: frame.minX + (rect.minX + CGFloat(best.x) + 0.5) * frame.width / CGFloat(image.width),
                         y: frame.minY + (rect.minY + CGFloat(best.y) + 0.5) * frame.height / CGFloat(image.height))
     print("caption_stroke point=\(point) contrast=\(best.contrast) nativeScale=\(CGFloat(image.width) / frame.width)")
-    return point
+    return (point, sample)
+}
+
+private func reportPixelFailure(_ sample: CaptionPixels, index: Int, ax: CGRect, crop: CGRect) {
+    var median: [Int] = [], peak: [Int] = []
+    for channel in 0..<4 {
+        let values = stride(from: channel, to: sample.rgba.count, by: 4).map { Int(sample.rgba[$0]) }.sorted()
+        median.append(values[values.count / 2]); peak.append(values.last!)
+    }
+    var bright = 0, contrast = 0, neutral = 0, thresholds = 0, neighbors = 0
+    if sample.width >= 6 && sample.height >= 6 {
+        for y in 2..<(sample.height - 2) {
+            for x in 2..<(sample.width - 2) {
+                let i = y * sample.width + x
+                let channels = [sample.rgba[i * 4], sample.rgba[i * 4 + 1], sample.rgba[i * 4 + 2]]
+                let isBright = sample.levels[i] >= 160
+                let hasContrast = sample.levels[i] - sample.background >= 60
+                let isNeutral = Int(channels.max()!) - Int(channels.min()!) <= 24
+                if isBright { bright += 1 }; if hasContrast { contrast += 1 }; if isNeutral { neutral += 1 }
+                if isBright && hasContrast && isNeutral {
+                    thresholds += 1
+                    if [i - 1, i + 1, i - sample.width, i + sample.width].contains(where: { sample.levels[$0] >= 140 }) { neighbors += 1 }
+                }
+            }
+        }
+    }
+    print("caption_pixel_failure index=\(index) ax=\(ax) visibleCrop=\(crop) samplePixels=\(sample.rect) rgbaPremultMedian=\(median) rgbaPremultPeak=\(peak) brightnessMedian=\(sample.background) brightnessPeak=\(sample.levels.max()!) bright160Hits=\(bright) contrast60Hits=\(contrast) neutral24Hits=\(neutral) combinedHits=\(thresholds) neighbor140Hits=\(neighbors) darkBackgroundPass=\(sample.background <= 120)")
 }
 
 /// Both returned coordinates use Quartz global logical points, top-left origin.
@@ -190,11 +226,26 @@ func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL,
     let frames = try captionFrames(pid: pid, frame: frame)
     guard !frames.isEmpty else { throw CaptionCaptureError.failed("caption_original_ax_lane_not_found") }
     let image = try readWindow(windowID, frame)
-    for crop in frames {
-        if let point = try stroke(in: image, frame: frame, crop: crop) {
-            try save(image, frame: frame, crop: crop, output: output, stage: stage)
-            return (point, crop)
+    var failures: [CaptionPixels] = []
+    for candidate in frames {
+        let result = try stroke(in: image, frame: frame, crop: candidate.crop)
+        if let point = result.point {
+            try save(image, frame: frame, crop: candidate.crop, output: output, stage: stage)
+            return (point, candidate.crop)
         }
+        failures.append(result.pixels)
+    }
+    // Diagnose the exact rejected image. No fresh window capture or weaker
+    // pixel predicate is substituted for the original failed stroke check.
+    print("caption_capture_failure root=\(frame) imagePixels=\(image.width)x\(image.height) scaleX=\(CGFloat(image.width) / frame.width) scaleY=\(CGFloat(image.height) / frame.height) bits=\(image.bitsPerComponent)/\(image.bitsPerPixel) alphaInfo=\(image.alphaInfo.rawValue) bitmapInfo=\(image.bitmapInfo.rawValue) visibleAXMatches=\(frames.count)")
+    func saveFailure(_ crop: CGRect, suffix: String) {
+        do { try save(image, frame: frame, crop: crop, output: output, stage: stage + suffix) }
+        catch { print("caption_failure_png suffix=\(suffix) status=failed") }
+    }
+    saveFailure(frame, suffix: "-root-failed")
+    for (index, candidate) in frames.enumerated() {
+        reportPixelFailure(failures[index], index: index, ax: candidate.ax, crop: candidate.crop)
+        saveFailure(candidate.crop, suffix: "-ax-\(index)-failed")
     }
     throw CaptionCaptureError.failed("caption_original_has_no_verified_stroke")
 }
