@@ -5,7 +5,8 @@ on:
       revision: {description: Exact test revision, type: string, required: true}
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that built the captured executable, type: string}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability], default: both}
+      release_tag: {description: Published Mac release tag, type: string, default: v1.7.4}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag], default: both}
 permissions:
   contents: read
   actions: read
@@ -25,7 +26,7 @@ jobs:
           print("Mac desktop preflight: screens=\(NSScreen.screens.count) graphicalSession=\(foreground != nil) trustedAccessibility=\(AXIsProcessTrusted()) mayPostInput=\(CGPreflightPostEventAccess()) mayReadWindows=\(CGPreflightScreenCaptureAccess())")
           SWIFT
   review:
-    if: ${{ inputs.checks != 'mac-input-capability' }}
+    if: ${{ !startsWith(inputs.checks, 'mac-') }}
     runs-on: windows-2025
     timeout-minutes: 22
     env:
@@ -100,5 +101,44 @@ jobs:
         with:
           name: windows-panel-languages
           path: ${{ runner.temp }}/panel-languages
+          if-no-files-found: ignore
+          retention-days: 7
+
+  caption-drag:
+    if: ${{ inputs.checks == 'mac-caption-drag' }}
+    runs-on: macos-15
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.revision }}
+          persist-credentials: false
+      - name: Install the signed public Apple Silicon app on the test desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$(uname -m)" == arm64 && "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ ! -e /Applications/mimi.app ]]
+          assets="$RUNNER_TEMP/mimi-release"
+          mkdir "$assets"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$assets" --pattern mimi.app.tar.gz --pattern SHA256SUMS.txt
+          cd "$assets"
+          awk '$2 == "mimi.app.tar.gz" { print; count++ } END { if (count != 1) exit 1 }' SHA256SUMS.txt > updater.sha256
+          shasum -a 256 --check updater.sha256
+          shasum -a 256 mimi.app.tar.gz
+          python3 "$GITHUB_WORKSPACE/scripts/macos/extract-macos-updater.py" mimi.app.tar.gz "$RUNNER_TEMP/mimi-extracted"
+          app="$RUNNER_TEMP/mimi-extracted/mimi.app"
+          [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "${TAG#v}" ]]
+          ditto "$app" /Applications/mimi.app
+      - name: Click and drag a visible caption in the signed Mimi overlay
+        run: bash scripts/macos/tests/run-caption-drag.sh "$RUNNER_TEMP/caption-drag"
+      - name: Save the synthetic subtitle crops and measured window positions
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-caption-drag
+          path: ${{ runner.temp }}/caption-drag
           if-no-files-found: ignore
           retention-days: 7
