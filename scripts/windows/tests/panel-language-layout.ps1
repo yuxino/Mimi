@@ -28,10 +28,19 @@ public static class MimiPanelCrop {
     }
 
     public static void Save(Rectangle crop, int[] pixels, uint dpi, string path) {
-        if (pixels.Length != crop.Width * crop.Height) throw new InvalidOperationException("Incomplete panel pixels.");
         // The WebView is transparent outside its 13-CSS-pixel rounded panel.
         // Discard these corner pixels, including the mixed antialias edge.
         int radius = (int)Math.Ceiling(13.0 * dpi / 96.0);
+        SavePixels(crop, pixels, radius, path);
+    }
+
+    public static void SaveInterior(Rectangle crop, int[] pixels, string path) {
+        // A rectangle inside the opaque subtitle canvas has square corners.
+        SavePixels(crop, pixels, 0, path);
+    }
+
+    private static void SavePixels(Rectangle crop, int[] pixels, int radius, string path) {
+        if (pixels.Length != crop.Width * crop.Height) throw new InvalidOperationException("Incomplete capture pixels.");
         for (int y = 0; y < crop.Height; y++) for (int x = 0; x < crop.Width; x++) {
             double dx = Math.Max(0, radius - Math.Min(x + .5, crop.Width - x - .5));
             double dy = Math.Max(0, radius - Math.Min(y + .5, crop.Height - y - .5));

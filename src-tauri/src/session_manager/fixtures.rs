@@ -1,5 +1,7 @@
 //! Credential-free native UI fixtures. These paths never start capture or provider connections.
 
+mod caption_history;
+
 use super::publication::{SessionStateEvent, StatusPayload};
 use super::SessionManager;
 use crate::core::audio::audio_input::{AudioInput, AudioSource};
@@ -113,6 +115,7 @@ impl SessionManager {
     }
 
     pub(super) fn establish_ui_test_session(self: &Arc<Self>) -> Result<(), String> {
+        let caption_history = caption_history::requested_directory()?;
         self.cancel_translation_timeout();
         self.clear_active_settings();
         let generation = self.active_generation.load(Ordering::SeqCst);
@@ -154,6 +157,15 @@ impl SessionManager {
             .lock()
             .unwrap()
             .set_audio_input(preferences.audio_input);
+        if let Some(directory) = caption_history {
+            self.start_ui_test_caption_history(
+                directory,
+                generation,
+                attempt,
+                preferences.audio_input.sources()[0],
+            )?;
+            return Ok(());
+        }
         if preferences.retain_session_history || dual_fixture {
             for &source in preferences.audio_input.sources() {
                 let (original, translation) = match source {

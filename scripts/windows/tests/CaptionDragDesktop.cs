@@ -60,4 +60,14 @@ public static class MimiCaptionDragDesktop
         if (SendInput(1, new[] { input }, Marshal.SizeOf(typeof(Input))) != 1)
             throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows did not accept the caption drag button event.");
     }
+
+    public static void Wheel(int delta)
+    {
+        // Mouse wheel data is a signed multiple of WHEEL_DELTA, packed in DWORD.
+        if (delta == 0 || delta % 120 != 0)
+            throw new ArgumentOutOfRangeException("delta", "Use whole physical wheel detents.");
+        var input = new Input { Mouse = new MouseInput { Data = unchecked((uint)delta), Flags = 0x0800u } };
+        if (SendInput(1, new[] { input }, Marshal.SizeOf(typeof(Input))) != 1)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Windows did not accept the history wheel event.");
+    }
 }
