@@ -104,6 +104,20 @@ builds in CI. The final staging job runs only after macOS, Windows, Linux and
 the signed Android APK pass. The APK shares this release and its checksum list;
 do not create an `android-v*` release.
 
+The signing-only matrix uses the official `macos-15` ARM64 runner pool. It does
+not launch Mimi or compile Swift. Keep Rust, MSRV and ordinary Mac bundle checks
+on their existing runner: moving the Rust job to macOS 15 would skip the
+macOS 26-only translation readiness tests even if its Swift step succeeded.
+Changing a workflow still changes the source revision; rebuild the signed Mac
+assets for the final tag rather than relaxing `MimiSourceRevision` verification.
+
+When inspecting PR attachments or CI artifacts, forward only the fields needed
+for the check: stable comment URL and Markdown body, or artifact ID, name, size
+and digest. Do not print whole `body_html` or `file_uri` objects, signed image
+URLs, or temporary download URLs. Pass a required download lease directly to
+the transfer, keep any temporary lease file private (0600), and remove it on
+success or failure. Verification records retain stable IDs and hashes.
+
 ## Publish after acceptance
 
 For the Android upgrade check, launch the current public APK in an isolated
