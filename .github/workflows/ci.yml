@@ -387,6 +387,22 @@ jobs:
         shell: pwsh
         run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer -VerifyBothDragModes
 
+      - name: Check subtitle controls and keyboard selection in every panel language
+        if: ${{ matrix.os == 'windows-2025' }}
+        shell: pwsh
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -PanelEvidenceDirectory "$env:RUNNER_TEMP/panel-languages"
+
+      - name: Save native panel screenshots and control bounds
+        if: ${{ !cancelled() && matrix.os == 'windows-2025' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-panel-languages
+          path: |
+            ${{ runner.temp }}/panel-languages/*.png
+            ${{ runner.temp }}/panel-languages/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Package and verify portable Windows build
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh

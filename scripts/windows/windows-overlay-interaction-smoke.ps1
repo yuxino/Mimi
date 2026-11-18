@@ -3,9 +3,10 @@ param(
     [Parameter(Mandatory = $true)][long]$SettingsWindow,
     [Parameter(Mandatory = $true)][string]$SessionStateFile,
     [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
-    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility', 'caption-drag')][string]$Interaction,
+    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility', 'caption-drag', 'panel-languages')][string]$Interaction,
     [Parameter(Mandatory = $true)][string]$FixtureDirectory,
     [string]$FrontendReadyDirectory,
+    [string]$PanelEvidenceDirectory,
     [ValidateSet('True', 'False')][string]$ExpectedFullWindows
 )
 
@@ -386,9 +387,10 @@ function Assert-SettingsHidden {
 
 function Read-SmokeMarker([string]$Path) {
     try {
-        # The application may still have the marker open for writing. Read
-        # access must share writes so the two handles can coexist on Windows.
-        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        # Session markers can still be open for writing; preferences are
+        # replaced with MoveFileExW. An observer must allow both operations.
+        $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
         try {
             $reader = [IO.StreamReader]::new($stream)
             try { return $reader.ReadToEnd().Trim() }
@@ -714,13 +716,23 @@ $settings = [IntPtr]$SettingsWindow
 $previousDpi = [IntPtr]::Zero
 $restorePointer = $false
 try {
-    if ($Interaction -in @('pointer', 'caption-drag')) {
+    if ($Interaction -in @('pointer', 'caption-drag', 'panel-languages')) {
         $previousDpi = [MimiPointerSmoke]::SetThreadDpiAwarenessContext([IntPtr](-4))
         if ($previousDpi -eq [IntPtr]::Zero) { throw 'Could not enable per-monitor DPI awareness for pointer testing.' }
         $originalPointer = [MimiPointerSmoke+Point]::new()
         $restorePointer = [MimiPointerSmoke]::GetCursorPos([ref]$originalPointer)
     }
     Close-SettingsForOverlayCheck
+
+    if ($Interaction -eq 'panel-languages') {
+        . (Join-Path $PSScriptRoot 'tests/panel-language-layout.ps1')
+        . (Join-Path $PSScriptRoot 'tests/panel-language-interaction.ps1')
+        $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
+        if ($controls -eq [IntPtr]::Zero) { throw 'Could not identify the language control window.' }
+        $labels = [IO.File]::ReadAllText((Join-Path $FixtureDirectory 'panel-labels.json')) | ConvertFrom-Json
+        Test-PanelLanguage $controls $labels $PanelEvidenceDirectory
+        return
+    }
 
     if ($Interaction -eq 'caption-drag') {
         Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
