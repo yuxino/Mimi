@@ -1,5 +1,6 @@
 //! Native panel classes, presentation cache and platform window adaptation.
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::pipeline_log;
 use crate::settings_store::OverlayFrame;
 use tauri::{AppHandle, Manager};

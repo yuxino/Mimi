@@ -49,13 +49,13 @@ use super::native::{
 use super::native::{reassert_overlay_window_on_active_space, show_overlay_control_window};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use super::remove_overlay_pointer_tracking;
-#[cfg(target_os = "macos")]
-use super::work_area::map_frame_between_work_areas;
 use super::work_area::{
-    available_work_areas, choose_work_area_for_frame, current_work_area_logical,
-    default_overlay_origin, fit_collapsed_position_to_work_areas, fit_user_frame_to_screen,
-    fit_user_frame_to_work_areas, LogicalWorkArea,
+    available_work_areas, current_work_area_logical, default_overlay_origin,
+    fit_collapsed_position_to_work_areas, fit_user_frame_to_screen, fit_user_frame_to_work_areas,
+    LogicalWorkArea,
 };
+#[cfg(target_os = "macos")]
+use super::work_area::{choose_work_area_for_frame, map_frame_between_work_areas};
 
 /// Persisted overlay-coordinate layout version. macOS/Linux use desktop-wide
 /// logical coordinates. Windows v2 uses unambiguous physical desktop origins

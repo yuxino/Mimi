@@ -295,3 +295,8 @@ source tests does not establish Windows/Linux native acceptance or live provider
 quality. See [local regression rules](common-regressions.md).
 
 For directory-only moves, verify all retained test-module registrations and cfg gates, compare protocol/prompt literals, and compare non-text assets byte-for-byte with the baseline. Decode text strictly; skip binary inputs in import/link rewrite tools. Passing compilation alone does not prove moved tests remain registered.
+
+When extracting platform adapters, give new imports the cfg of their actual
+callers, including macros used only inside OS-specific blocks. Host Clippy does
+not check inactive platform paths; require Windows and Linux CI before merging
+macOS-tested moves. Fix the import boundary instead of suppressing the warning.
