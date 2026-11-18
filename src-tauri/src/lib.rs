@@ -323,7 +323,7 @@ pub fn run() {
                             let session = Arc::clone(&state.session);
                             let app = app.clone();
                             tauri::async_runtime::spawn(async move {
-                                let _ = commands::quit_application(app, session).await;
+                                let _ = commands::app::quit_application(app, session).await;
                             });
                         }
                         api.prevent_close();
@@ -397,15 +397,15 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            commands::settings_get,
-            commands::get_apple_speech_support,
-            commands::prepare_apple_speech_language,
-            commands::get_apple_translation_support,
-            commands::get_apple_translation_status,
-            commands::prepare_apple_translation_languages,
+            commands::settings::settings_get,
+            commands::apple_resources::get_apple_speech_support,
+            commands::apple_resources::prepare_apple_speech_language,
+            commands::apple_resources::get_apple_translation_support,
+            commands::apple_resources::get_apple_translation_status,
+            commands::apple_resources::prepare_apple_translation_languages,
             fonts::installed_font_families,
-            commands::windows_audio_status,
-            commands::support_diagnostics,
+            commands::session::windows_audio_status,
+            commands::help::support_diagnostics,
             #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_snapshot,
             #[cfg(any(test, feature = "development-debugger"))]
@@ -430,31 +430,31 @@ pub fn run() {
             development_debugger::development_debug_private_events,
             #[cfg(any(test, feature = "development-debugger"))]
             development_debugger::development_debug_trace_events,
-            commands::app_open_support_issue,
-            commands::capture_status,
-            commands::audio_applications,
-            commands::app_is_ui_test,
-            commands::app_ui_test_frontend_ready,
-            commands::app_is_portable,
-            commands::app_is_linux_package,
+            commands::help::app_open_support_issue,
+            commands::session::capture_status,
+            commands::session::audio_applications,
+            commands::app::app_is_ui_test,
+            commands::app::app_ui_test_frontend_ready,
+            commands::app::app_is_portable,
+            commands::app::app_is_linux_package,
             desktop_shortcuts::app_desktop_shortcut_commands,
-            commands::app_open_releases,
-            commands::app_open_audio_privacy_settings,
-            commands::open_tencent_setup_page,
-            commands::open_alibaba_setup_page,
-            commands::open_text_translation_setup_page,
-            commands::open_service_setup_page,
-            commands::settings_save,
-            commands::profile_create,
-            commands::profile_duplicate,
-            commands::profile_update,
-            commands::profile_select,
-            commands::profile_delete,
-            commands::profile_save_credentials,
-            commands::profile_test_connection,
-            commands::profile_delete_api_key,
-            commands::profile_reveal_credential,
-            commands::profile_credential_editor_state,
+            commands::help::app_open_releases,
+            commands::help::app_open_audio_privacy_settings,
+            commands::help::open_tencent_setup_page,
+            commands::help::open_alibaba_setup_page,
+            commands::help::open_text_translation_setup_page,
+            commands::help::open_service_setup_page,
+            commands::settings::settings_save,
+            commands::profiles::profile_create,
+            commands::profiles::profile_duplicate,
+            commands::profiles::profile_update,
+            commands::profiles::profile_select,
+            commands::profiles::profile_delete,
+            commands::profiles::profile_save_credentials,
+            commands::connection::profile_test_connection,
+            commands::profiles::profile_delete_api_key,
+            commands::profiles::profile_reveal_credential,
+            commands::profiles::profile_credential_editor_state,
             crate::session_export::session_archive_state,
             crate::session_export::session_transcript_page,
             crate::session_export::session_history_list,
@@ -465,31 +465,31 @@ pub fn run() {
             crate::session_export::session_history_rename,
             crate::session_export::session_archive_clear,
             crate::session_export::session_export,
-            commands::session_start,
-            commands::session_stop,
-            commands::session_toggle_paused,
-            commands::session_clear_subtitles,
-            commands::session_switch_source_language,
-            commands::session_switch_target_language,
-            commands::session_switch_audio_input,
-            commands::session_switch_system_audio_target,
-            commands::session_switch_translation_mode,
-            commands::overlay_set_collapsed,
-            commands::overlay_set_locked,
-            commands::overlay_set_pointer_cursor,
-            commands::overlay_move_start,
-            commands::overlay_popover_toggle,
-            commands::overlay_popover_hide,
-            commands::overlay_control_state,
-            commands::overlay_control_set_popup_bounds,
-            commands::overlay_control_set_panel_height,
-            commands::overlay_control_set_island_width,
-            commands::session_get_state,
-            commands::resize_start,
-            commands::resize_move,
-            commands::resize_end,
-            commands::app_show_settings,
-            commands::app_quit,
+            commands::session::session_start,
+            commands::session::session_stop,
+            commands::session::session_toggle_paused,
+            commands::session::session_clear_subtitles,
+            commands::session::session_switch_source_language,
+            commands::session::session_switch_target_language,
+            commands::session::session_switch_audio_input,
+            commands::session::session_switch_system_audio_target,
+            commands::session::session_switch_translation_mode,
+            commands::overlay::overlay_set_collapsed,
+            commands::overlay::overlay_set_locked,
+            commands::overlay::overlay_set_pointer_cursor,
+            commands::overlay::overlay_move_start,
+            commands::overlay::overlay_popover_toggle,
+            commands::overlay::overlay_popover_hide,
+            commands::overlay::overlay_control_state,
+            commands::overlay::overlay_control_set_popup_bounds,
+            commands::overlay::overlay_control_set_panel_height,
+            commands::overlay::overlay_control_set_island_width,
+            commands::session::session_get_state,
+            commands::overlay::resize_start,
+            commands::overlay::resize_move,
+            commands::overlay::resize_end,
+            commands::app::app_show_settings,
+            commands::app::app_quit,
         ])
         .build(context)
         .expect("error while building tauri application")
@@ -506,7 +506,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 if app.state::<AppState>().settings.preferences().show_in_dock {
-                    let _ = commands::app_show_settings(app.clone(), None);
+                    let _ = commands::app::app_show_settings(app.clone(), None);
                 }
             }
             #[cfg(not(target_os = "macos"))]
@@ -997,7 +997,7 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                     };
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        if commands::set_subtitle_display_mode(&app, Some(mode))
+                        if commands::settings::set_subtitle_display_mode(&app, Some(mode))
                             .await
                             .is_err()
                         {
@@ -1023,7 +1023,10 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 "show-in-dock" => {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        if commands::toggle_dock_visibility(app.clone()).await.is_err() {
+                        if commands::settings::toggle_dock_visibility(app.clone())
+                            .await
+                            .is_err()
+                        {
                             // Restore the checkmark from the saved preference
                             // when native application or persistence fails.
                             refresh_native_tray_language(&app);
@@ -1036,20 +1039,20 @@ fn setup_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 id if is_settings_menu_event(id) => {
                     // The shared command also dismisses the always-on-top
                     // control panel so neither surface obscures Settings.
-                    let _ = commands::app_show_settings(app.clone(), None);
+                    let _ = commands::app::app_show_settings(app.clone(), None);
                 }
                 id if is_normal_quit_menu_event(id) => {
                     let session = Arc::clone(&state.session);
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        if commands::quit_application(app.clone(), session)
+                        if commands::app::quit_application(app.clone(), session)
                             .await
                             .is_err()
                         {
                             // archive_state exposes the existing, content-free
                             // historySaveError; the export page explains why
                             // quitting failed and keeps its retry reachable.
-                            let _ = commands::app_show_settings(
+                            let _ = commands::app::app_show_settings(
                                 app,
                                 Some(commands::SettingsNavigationTarget::Export),
                             );
@@ -1248,7 +1251,7 @@ fn setup_global_shortcuts(
                 immersive_last_trigger.store(now_ms, std::sync::atomic::Ordering::SeqCst);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(error) = commands::toggle_immersive_mode(&app).await {
+                    if let Err(error) = commands::settings::toggle_immersive_mode(&app).await {
                         tracing::warn!(
                             "immersive shortcut failed label=settings_unavailable error={error}"
                         );
@@ -1280,7 +1283,7 @@ fn setup_global_shortcuts(
             lock_last_trigger.store(now_ms, Ordering::SeqCst);
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                if commands::toggle_overlay_lock(&app).await.is_err() {
+                if commands::overlay::toggle_overlay_lock(&app).await.is_err() {
                     tracing::warn!("lock shortcut failed label=settings_unavailable");
                 }
             });
@@ -1310,7 +1313,7 @@ fn setup_global_shortcuts(
                 display_last_trigger.store(now_ms, Ordering::SeqCst);
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    if commands::set_subtitle_display_mode(&app, None)
+                    if commands::settings::set_subtitle_display_mode(&app, None)
                         .await
                         .is_err()
                     {

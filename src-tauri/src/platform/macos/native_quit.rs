@@ -72,11 +72,11 @@ define_class!(
             if let Some(state) = app.try_state::<AppState>() {
                 let session = Arc::clone(&state.session);
                 tauri::async_runtime::spawn(async move {
-                    if commands::quit_application(app.clone(), session).await.is_err() {
+                    if commands::app::quit_application(app.clone(), session).await.is_err() {
                         tracing::warn!("native quit failed label=history_save_failed");
                         // Keep the app and pending archive alive. The existing
                         // Export page exposes historySaveError and retry/export.
-                        let _ = commands::app_show_settings(
+                        let _ = commands::app::app_show_settings(
                             app,
                             Some(SettingsNavigationTarget::Export),
                         );
