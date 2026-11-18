@@ -6,8 +6,10 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string]$ExpectedArchitecture,
 
-    [ValidateSet('none', 'pointer', 'accessibility')]
+    [ValidateSet('none', 'pointer', 'accessibility', 'panel-languages')]
     [string]$OverlayInteraction = 'none',
+
+    [string]$PanelEvidenceDirectory,
 
     [ValidateRange(1, 30)]
     [int]$StartupSeconds = 5,
@@ -28,6 +30,10 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($VerifyBothDragModes -and ($OverlayInteraction -ne 'pointer' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted')) {
     throw 'Checking both drag preferences requires the isolated GitHub-hosted Windows pointer job.'
+}
+if ($OverlayInteraction -eq 'panel-languages' -and
+    ($ExpectedArchitecture -ne 'x64' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or -not $PanelEvidenceDirectory)) {
+    throw 'Panel screenshots require a dedicated hosted Windows x64 desktop and an evidence directory.'
 }
 
 Add-Type @'
@@ -479,6 +485,10 @@ function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow,
         $probe.ArgumentList.Add('-ExpectedFullWindows')
         $probe.ArgumentList.Add($ExpectedFullWindows)
     }
+    if ($Mode -eq 'panel-languages') {
+        $probe.ArgumentList.Add('-PanelEvidenceDirectory')
+        $probe.ArgumentList.Add($PanelEvidenceDirectory)
+    }
     $probeProcess = [Diagnostics.Process]::Start($probe)
     try {
         if (-not $probeProcess.WaitForExit($TimeoutMs)) {
@@ -500,6 +510,9 @@ $resolvedExecutable = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $actualArchitecture = Get-PeArchitecture $resolvedExecutable
 if ($actualArchitecture -ne $ExpectedArchitecture) {
     throw "Expected a $ExpectedArchitecture executable, found $actualArchitecture."
+}
+if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
+    throw 'A matching mimi process was already running before the smoke test.'
 }
 
 $previousUiTest = $env:MIMI_UI_TEST
@@ -552,8 +565,10 @@ try {
         $env:MIMI_UI_TEST_PREFERENCES_DIR = $preferencesDir
     }
 
-    if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
-        throw 'A matching mimi process was already running before the smoke test.'
+    if ($OverlayInteraction -eq 'panel-languages') {
+        . (Join-Path $PSScriptRoot 'tests/panel-language-sessions.ps1')
+        Test-PanelLanguageSessions
+        return
     }
 
     # A same-session process can pre-create the plugin's mutex without its
