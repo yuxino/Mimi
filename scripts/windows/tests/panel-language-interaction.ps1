@@ -73,7 +73,8 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             }
             Start-Sleep -Milliseconds 25
         } until ($deadline.ElapsedMilliseconds -ge 5000)
-        throw "Native panel language check timed out (locale=$($Labels.locale) phase=$Phase)."
+        $detail = Get-PanelLanguageFailureDetail $Phase
+        throw "Native panel language check timed out (locale=$($Labels.locale) phase=$Phase $detail)."
     }
 
     function Get-PanelLanguageField([string]$Name) {
@@ -138,6 +139,68 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             if (-not $list.Current.IsOffscreen) { return $false }
         }
         return $true
+    }
+
+    # Only sample after the deadline. Successive native keys must keep their
+    # original timing, including the first ArrowDown after a preference save.
+    function Get-PanelLanguageFailureDetail([string]$Phase) {
+        $details = @()
+        try {
+            $codes = Read-PanelLanguageCodes
+            if ($codes) { $details += "source_code=$($codes.source) target_code=$($codes.target)" }
+            else { $details += 'codes=missing' }
+        } catch { $details += 'codes=unreadable' }
+
+        $parts = $Phase.Split('-')
+        $fieldKind = $parts[0]
+        if ($fieldKind -notin @('source', 'target')) { return $details -join ' ' }
+        $wanted = switch ($parts[-1]) {
+            'Home' { 0 }
+            'End' { $names.Count - 1 }
+            'Restore' { $initialIndex }
+        }
+        if ($null -ne $wanted) { $details += "expected_index=$wanted expected_name='$($names[$wanted])'" }
+
+        try {
+            $root = [System.Windows.Automation.AutomationElement]::FromHandle($controlsHandle)
+            $ownsFocus = [MimiPanelKeyboard]::OwnsFocus($controlsHandle)
+            $focused = if ($ownsFocus) { [System.Windows.Automation.AutomationElement]::FocusedElement }
+            $focus = if ($ownsFocus) { 'other-panel-element' } else { 'outside-panel' }
+            $menu = 'absent'
+            $field = 'absent'
+            $byName = [System.Windows.Automation.PropertyCondition]::new($nameProperty, $Labels.$fieldKind)
+            foreach ($element in $root.FindAll($scope, $byName)) {
+                $type = $element.Current.ControlType
+                if ($type -in @([System.Windows.Automation.ControlType]::ComboBox, [System.Windows.Automation.ControlType]::Button)) {
+                    $field = "enabled=$($element.Current.IsEnabled) offscreen=$($element.Current.IsOffscreen)"
+                    if ($focused -and $focused.Equals($element)) { $focus = 'field' }
+                    try {
+                        $value = Get-PanelPickerValueEvidence $element $fieldKind
+                        $field += " value='$($value.value)'"
+                    } catch { $field += ' value=unreadable' }
+                } elseif ($type -eq [System.Windows.Automation.ControlType]::List) {
+                    if ($element.Current.IsOffscreen) {
+                        if ($menu -eq 'absent') { $menu = 'offscreen' }
+                        continue
+                    }
+                    $index = 0
+                    $selected = @()
+                    $items = [System.Windows.Automation.PropertyCondition]::new($typeProperty, [System.Windows.Automation.ControlType]::ListItem)
+                    foreach ($item in $element.FindAll($scope, $items)) {
+                        if (-not $item.Current.IsEnabled) { continue }
+                        $selection = $null
+                        if ($item.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$selection)) {
+                            if ($selection.Current.IsSelected) { $selected += $index }
+                        } else { $selected += "unknown@$index" }
+                        if ($focused -and $focused.Equals($item)) { $focus = "option[$index]" }
+                        $index++
+                    }
+                    $menu = "open options=$index selected_indices=[$($selected -join ',')]"
+                }
+            }
+            $details += "field=($field) menu=($menu) uia_focus=$focus"
+        } catch { $details += "uia_unavailable=$($_.Exception.GetType().Name)" }
+        return $details -join ' '
     }
 
     $initialCodes = Wait-PanelLanguageState 'initial-preferences-readable' { Read-PanelLanguageCodes }
