@@ -115,6 +115,14 @@ function Assert-CaptionHistoryReturn($Context, $State, [bool]$Expected) {
     }
 }
 
+function Save-CaptionHistoryCrop($Context, [Drawing.Rectangle]$Crop, [string]$Path) {
+    [MimiPanelCrop]::AssertUnobscured($Context.Window, $Crop)
+    $pixels = [MimiPointerSmoke+PixelPatch]::new($Crop.X, $Crop.Y, $Crop.Width, $Crop.Height).Read()
+    [MimiPanelCrop]::AssertUnobscured($Context.Window, $Crop)
+    if ($Context.RootBounds.ToString() -cne [MimiPointerSmoke]::ReadBounds($Context.Window).ToString()) { throw 'The subtitle window moved during history capture.' }
+    [MimiPanelCrop]::SaveInterior($Crop, $pixels, $Path)
+}
+
 function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [string]$Stage) {
     [void][IO.Directory]::CreateDirectory($Directory)
     $frame = [MimiPointerSmoke]::ReadBounds($Context.Window)
@@ -130,11 +138,16 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
     $left = [int][Math]::Ceiling($view.Left); $top = [int][Math]::Ceiling($view.Top)
     $crop = [Drawing.Rectangle]::new($left, $top, [int][Math]::Floor($view.Right) - $left, [int][Math]::Floor($view.Bottom) - $top)
     if ($crop.Width -lt 8 -or $crop.Height -lt 8) { throw 'The native history capture is empty.' }
-    [MimiPanelCrop]::AssertUnobscured($Context.Window, $crop)
-    $pixels = [MimiPointerSmoke+PixelPatch]::new($crop.X, $crop.Y, $crop.Width, $crop.Height).Read()
-    [MimiPanelCrop]::AssertUnobscured($Context.Window, $crop)
-    if ($frame.ToString() -cne [MimiPointerSmoke]::ReadBounds($Context.Window).ToString()) { throw 'The subtitle window moved during history capture.' }
-    [MimiPanelCrop]::Save($crop, $pixels, $dpi, (Join-Path $Directory "$Stage.png"))
+    Save-CaptionHistoryCrop $Context $crop (Join-Path $Directory "$Stage.png")
+    if ($Stage -eq 'history-18') {
+        # The language capsule is a separate window to the left. Take the
+        # localized action from its own measured bounds above the timeline.
+        $box = $State.ReturnBounds
+        $actionCrop = [Drawing.Rectangle]::FromLTRB([int][Math]::Floor($box.Left - 2 * $Context.Scale),
+            [int][Math]::Floor($box.Top - $Context.Scale), [int][Math]::Ceiling($box.Right + 2 * $Context.Scale),
+            [int][Math]::Ceiling($box.Bottom + $Context.Scale))
+        Save-CaptionHistoryCrop $Context $actionCrop (Join-Path $Directory 'return-to-live.png')
+    }
     $metadata = [ordered]@{ stage = $Stage; dpi = $dpi; root = @($frame.Left, $frame.Top, $frame.Width, $frame.Height)
         viewport = @($view.Left, $view.Top, $view.Width, $view.Height); visible = @() }
     if ($Context.ContainsKey('Anchor')) { $metadata.anchor = $Context.Anchor; $metadata.wheelDetents = $Context.WheelDetents }
