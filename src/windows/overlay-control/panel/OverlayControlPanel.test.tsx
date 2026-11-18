@@ -252,7 +252,12 @@ it("blocks conflicting operations and keeps the previous subtitle display when a
   const [translation, bilingual] = displayChoices();
   const settings = host.querySelector<HTMLButtonElement>(".overlay-control-settings-link")!;
   await act(() => bilingual.click());
-  expect([...host.querySelectorAll<HTMLButtonElement>('[role="combobox"]'), ...displayChoices(), settings].every(button => button.disabled)).toBe(true);
+  for (const picker of host.querySelectorAll<HTMLButtonElement>('[role="combobox"]')) {
+    expect(picker.matches(':disabled, [aria-disabled="true"]')).toBe(true);
+    await act(() => picker.click());
+  }
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect([...displayChoices(), settings].every(button => button.disabled)).toBe(true);
   await act(() => reject(new Error("synthetic-display-failure")));
   expect(translation.getAttribute("aria-pressed")).toBe("true");
   expect(bilingual.disabled).toBe(false);
@@ -278,7 +283,7 @@ it("does not dismiss a reopened panel when an old recovery navigation completes"
 it("keeps recognition locked during transitions while independent display remains available", async () => {
   props.isChangingSession = true;
   await mount();
-  expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
+  expect(picker(I18N.overlay.sourceLanguage).getAttribute("aria-disabled")).toBe("true");
   expect(displayChoices().every(choice => !choice.disabled)).toBe(true);
   expect(host.querySelector(".overlay-control-session-action")).toBeNull();
 });
@@ -424,7 +429,7 @@ it("offers recognition-only as a target and lets the listener choose a translati
 it("locks language changes during reconnect and offers Original only on supported profiles", async () => {
   props.isChangingSession = true;
   await mount();
-  expect(picker(I18N.settings.translateTo).disabled).toBe(true);
+  expect(picker(I18N.settings.translateTo).getAttribute("aria-disabled")).toBe("true");
 
   props.isChangingSession = false;
   configure({ profiles: [{ id: "ali", provider: "openAIRealtime", name: "OpenAI", credentialState: "present" }] });
@@ -560,7 +565,7 @@ it("blocks profile changes during transitions, retains the saved profile on fail
   configureProfiles();
   props.isChangingSession = true;
   await mount();
-  expect(picker(I18N.settings.currentProfile).disabled).toBe(true);
+  expect(picker(I18N.settings.currentProfile).getAttribute("aria-disabled")).toBe("true");
   props.isChangingSession = false;
   let reject!: (reason: Error) => void;
   props.onSelectProfile = vi.fn()
@@ -571,7 +576,7 @@ it("blocks profile changes during transitions, retains the saved profile on fail
   const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent === "My recognition model")!;
   await act(async () => { option.click(); option.click(); });
   expect(props.onSelectProfile).toHaveBeenCalledExactlyOnceWith("custom");
-  expect(picker(I18N.settings.currentProfile).disabled).toBe(true);
+  expect(picker(I18N.settings.currentProfile).getAttribute("aria-disabled")).toBe("true");
   expect(displayChoices().every(choice => choice.disabled)).toBe(true);
   expect(host.querySelector('.overlay-control-picker--profile')?.getAttribute("aria-busy")).toBe("true");
   await act(async () => reject(new Error("private-profile-switch-failure")));
@@ -661,17 +666,20 @@ it("keeps the saved target after a failed switch and permits retry without dismi
   props.onSwitchTargetLanguage = vi.fn().mockImplementationOnce(() => new Promise<void>((_, fail) => { reject = fail; })).mockResolvedValue(undefined);
   configure({ sourceLanguage: "auto", targetLanguage: "zh", profiles: [{ ...props.settings.profiles[0], provider: "googleGeminiLive" }] });
   await mount();
-  const change = async () => {
-    await act(async () => picker(I18N.settings.translateTo).click());
-    await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(choice => choice.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.fr)!.click());
-  };
-  await change();
-  expect(picker(I18N.settings.translateTo).disabled).toBe(true);
-  expect(picker(I18N.settings.currentProfile).disabled).toBe(true);
+  const target = picker(I18N.settings.translateTo);
+  const selectFrench = () => act(() => [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+    .find(choice => choice.textContent === TARGET_LANGUAGE_DISPLAY_NAMES.fr)!.click());
+  await act(() => target.click());
+  await selectFrench();
+  expect(target.getAttribute("aria-disabled")).toBe("true");
+  expect(picker(I18N.settings.currentProfile).getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(target);
   await act(async () => reject("target_switch_unsupported"));
-  expect(picker(I18N.settings.translateTo).textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
+  expect(target.textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.zh);
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.languageSwitchUnsupported);
-  await change();
+  await act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(target.getAttribute("aria-expanded")).toBe("true");
+  await selectFrench();
   expect(props.onSwitchTargetLanguage).toHaveBeenCalledTimes(2);
   expect(props.onDismiss).not.toHaveBeenCalled();
   expect(host.querySelector('[role="alert"]')).toBeNull();

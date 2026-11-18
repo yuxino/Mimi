@@ -327,7 +327,7 @@ it("keeps locale, settings, lifecycle, native mode and resize subscriptions live
   expect(island.querySelector(".overlay-control-island__phase")?.textContent).toBe(I18N.overlay.paused);
   await act(async () => useStore.setState(state => ({ session: { ...state.session, isPaused: false, status: { kind: "stopping" } } })));
   expect(island.querySelector(".overlay-control-island__phase")?.textContent).toBe(capsuleLabels(useStore.getState().settings, "stopping").phase);
-  expect(picker(I18N.overlay.sourceLanguage).disabled).toBe(true);
+  expect(picker(I18N.overlay.sourceLanguage).getAttribute("aria-disabled")).toBe("true");
   await act(async () => publishMode("island"));
   expect(surface.getAttribute("data-mode")).toBe("island");
   expect(host.querySelector(".overlay-control-panel")).toBeNull();

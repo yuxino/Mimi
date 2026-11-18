@@ -18,6 +18,11 @@ settings catalogs retain direct choices; one-source services retain the existing
 summary/disabled presentation. Every supported source remains selectable in
 each surface where a source choice exists.
 
+After selecting a language, keep keyboard focus on its picker through the
+asynchronous save. A pending picker skips tab navigation and refuses new
+choices. Once the save succeeds or fails, the next arrow key can open the
+same field again. If the user tabs away while waiting, focus stays there.
+
 All pickers use explicit source selection: choosing Chinese preserves the
 selected target, and leaving Chinese with Original selected keeps Original.
 Remove the old Chinese shortcut's implicit target rewriting; otherwise the six

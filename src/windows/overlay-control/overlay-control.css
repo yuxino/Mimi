@@ -584,7 +584,7 @@
   --select-menu-bg: #292929;
 }
 
-.overlay-control-panel .mimi-select__trigger:hover:not(:disabled),
+.overlay-control-panel .mimi-select__trigger:hover:not(:disabled, [aria-busy="true"]),
 .overlay-control-panel .mimi-select__trigger[aria-expanded="true"] {
   background: var(--control-surface-hover);
   border-color: var(--control-border-strong);

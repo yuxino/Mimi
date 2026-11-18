@@ -66,7 +66,7 @@ it("marks a target switch as busy and retains the same available controls after 
   await act(() => { option.click(); option.click(); });
   expect(switchTarget).toHaveBeenCalledExactlyOnceWith({ kind: "application", id: chat.id, name: chat.name });
   expect(trigger()).toBe(button);
-  expect(button.disabled).toBe(true);
+  expect(button.getAttribute("aria-disabled")).toBe("true");
   expect(button.getAttribute("aria-busy")).toBe("true");
   expect(refreshButton().disabled).toBe(true);
   expect(refreshButton().getAttribute("aria-busy")).toBe("true");
@@ -83,7 +83,7 @@ it("marks a target switch as busy and retains the same available controls after 
 it.each(["external", "connecting", "stopping"] as const)("treats %s as temporary busy while unavailable still wins", async kind => {
   if (kind !== "external") useStore.setState(state => ({ session: { ...state.session, status: { kind } } }));
   await act(() => root.render(<ApplicationAudioPicker busy={kind === "external"} />));
-  expect(trigger().disabled).toBe(true);
+  expect(trigger().getAttribute("aria-disabled")).toBe("true");
   expect(trigger().getAttribute("aria-busy")).toBe("true");
   expect(refreshButton().disabled).toBe(true);
   expect(refreshButton().getAttribute("aria-busy")).toBe("true");

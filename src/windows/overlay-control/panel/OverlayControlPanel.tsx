@@ -175,7 +175,7 @@ export function OverlayControlPanel({
       sourceControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       targetControlRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]'),
       displayControlRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]'),
-    ].find((candidate) => candidate != null && !candidate.disabled);
+    ].find((candidate) => candidate != null && !candidate.disabled && candidate.tabIndex >= 0);
     // WebView2 may still have the island viewport while native resize is
     // pending. Other platforms retain their existing focus/scroll behavior.
     const animationFrame = window.requestAnimationFrame(() => {
