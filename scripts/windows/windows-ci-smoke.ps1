@@ -455,6 +455,35 @@ function Wait-SmokeFrontendReady($TargetProcess, [string]$Directory) {
     throw "mimi frontends did not mount within 30 seconds (settings=$settingsReady overlay=$overlayReady)."
 }
 
+function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow, [string]$Mode, [int]$TimeoutMs) {
+    $overlayWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$TargetProcess.Id, 'Mimi Subtitles')
+    if ($overlayWindow -eq [IntPtr]::Zero -or -not [MimiWindowSmoke]::IsWindowVisible($overlayWindow)) {
+        throw "The primary did not expose its visible subtitle overlay for the $Mode check."
+    }
+    # Windows PowerShell ships with the desktop UI Automation assemblies.
+    # A stalled accessibility provider must not block package verification.
+    $probe = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
+    $probe.UseShellExecute = $false
+    foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
+        '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $SettingsWindow.ToInt64(),
+        '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
+        '-Interaction', $Mode, '-FixtureDirectory', $preferencesDir, '-FrontendReadyDirectory', $frontendReadyDir)) {
+        $probe.ArgumentList.Add([string]$argument)
+    }
+    $probeProcess = [Diagnostics.Process]::Start($probe)
+    try {
+        if (-not $probeProcess.WaitForExit($TimeoutMs)) {
+            $probeProcess.Kill()
+            $probeProcess.WaitForExit(5000) | Out-Null
+            throw "The Windows overlay $Mode check did not finish."
+        }
+        if ($probeProcess.ExitCode -ne 0) {
+            throw "The Windows overlay $Mode check exited with code $($probeProcess.ExitCode)."
+        }
+    }
+    finally { $probeProcess.Dispose() }
+}
+
 $resolvedExecutable = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $actualArchitecture = Get-PeArchitecture $resolvedExecutable
 if ($actualArchitecture -ne $ExpectedArchitecture) {
@@ -463,6 +492,8 @@ if ($actualArchitecture -ne $ExpectedArchitecture) {
 
 $previousUiTest = $env:MIMI_UI_TEST
 $previousStandardOverlay = $env:MIMI_UI_TEST_STANDARD_OVERLAY
+$previousSubtitleFixture = $env:MIMI_UI_TEST_DUAL_SUBTITLES
+$previousLiveSubtitleFixture = $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES
 $previousAutoStart = $env:MIMI_AUTO_START
 $previousStartupGateDelay = $env:MIMI_UI_TEST_STARTUP_GATE_DELAY_MS
 $previousStartupGateReadyFile = $env:MIMI_UI_TEST_STARTUP_GATE_READY_FILE
@@ -494,6 +525,8 @@ try {
     $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $settingsActivationFile
     $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $frontendReadyDir
     if ($OverlayInteraction -eq 'pointer') {
+        $env:MIMI_UI_TEST_DUAL_SUBTITLES = $null
+        $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES = $null
         try {
             New-Item -ItemType Directory -Path $frontendReadyDir | Out-Null
             New-Item -ItemType File -Path $hoverSampleOptIn | Out-Null
@@ -802,37 +835,13 @@ try {
     }
 
     if ($OverlayInteraction -ne 'none') {
-        $overlayWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$process.Id, 'Mimi Subtitles')
-        if ($overlayWindow -eq [IntPtr]::Zero -or -not [MimiWindowSmoke]::IsWindowVisible($overlayWindow)) {
-            throw 'The primary did not expose its visible subtitle overlay for the interaction check.'
-        }
         Remove-Item -LiteralPath $settingsActivationFile -Force
-        # Windows PowerShell ships with the desktop UI Automation assemblies.
-        # A stalled accessibility provider must not block package verification.
-        $interactionProbe = [Diagnostics.ProcessStartInfo]::new('powershell.exe')
-        $interactionProbe.UseShellExecute = $false
-        foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
-            '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
-            '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
-            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir,
-            '-FrontendReadyDirectory', $frontendReadyDir)) {
-            $interactionProbe.ArgumentList.Add([string]$argument)
-        }
-        $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
         # Pointer coverage includes a second, separate configuration-error scenario.
         $probeTimeoutMs = if ($OverlayInteraction -eq 'pointer') { 125000 } else { 95000 }
         try {
-            if (-not $probeProcess.WaitForExit($probeTimeoutMs)) {
-                $probeProcess.Kill()
-                $probeProcess.WaitForExit(5000) | Out-Null
-                throw "The Windows overlay $OverlayInteraction check did not finish."
-            }
-            if ($probeProcess.ExitCode -ne 0) {
-                throw "The Windows overlay $OverlayInteraction check exited with code $($probeProcess.ExitCode)."
-            }
+            Invoke-OverlayInteractionProbe $process $settingsWindow $OverlayInteraction $probeTimeoutMs
         }
         finally {
-            $probeProcess.Dispose()
             Remove-Item -LiteralPath $hoverSampleOptIn -Force -ErrorAction SilentlyContinue
         }
     }
@@ -857,6 +866,16 @@ try {
     Remove-Item -LiteralPath $sessionStateFile -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $sessionStateFile) {
         throw 'Could not reset the session marker before the automatic-start restart.'
+    }
+    if ($OverlayInteraction -eq 'pointer') {
+        # Seed one visible system-audio pair only on the fresh process. The
+        # preceding empty-overlay hover and pause checks keep their original input.
+        $env:MIMI_UI_TEST_DUAL_SUBTITLES = '1'
+        $fixturePath = Join-Path $preferencesDir 'preferences.json'
+        $fixture = Get-Content -LiteralPath $fixturePath -Raw | ConvertFrom-Json -AsHashtable
+        $fixture['subtitle_display_mode'] = 'bilingual'
+        $fixture | ConvertTo-Json -Depth 64 -Compress | Set-Content -LiteralPath $fixturePath -Encoding utf8NoBOM
+        Remove-Item -LiteralPath $settingsActivationFile -Force
     }
     $process = Start-Process -FilePath $resolvedExecutable -PassThru
     Wait-SmokeFrontendReady $process $frontendReadyDir
@@ -895,6 +914,9 @@ try {
     }
     if ($process.WaitForExit($StartupSeconds * 1000)) {
         throw "The restarted mimi process exited during its $StartupSeconds-second health check with code $($process.ExitCode)."
+    }
+    if ($OverlayInteraction -eq 'pointer') {
+        Invoke-OverlayInteractionProbe $process $restartedSettingsWindow 'caption-drag' 30000
     }
 
     Write-Output "mimi $actualArchitecture UI-test process passed cold-start, verified-listener handoff, tray/session retention, minimized/tray-hidden activation, fresh frontend mount/restart, and $StartupSeconds-second health checks."
@@ -948,6 +970,8 @@ finally {
         }
         $env:MIMI_UI_TEST = $previousUiTest
         $env:MIMI_UI_TEST_STANDARD_OVERLAY = $previousStandardOverlay
+        $env:MIMI_UI_TEST_DUAL_SUBTITLES = $previousSubtitleFixture
+        $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES = $previousLiveSubtitleFixture
         $env:MIMI_AUTO_START = $previousAutoStart
         $env:MIMI_UI_TEST_STARTUP_GATE_DELAY_MS = $previousStartupGateDelay
         $env:MIMI_UI_TEST_STARTUP_GATE_READY_FILE = $previousStartupGateReadyFile
