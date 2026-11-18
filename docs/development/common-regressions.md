@@ -767,6 +767,14 @@ renderer again. After a hang, finish heavy builds before native acceptance and
 rerun the same case serially. A successful recovery does not establish the
 original cause or physical-device performance.
 
+For a disposable secondary-user fixture, keep the existing Owner data separate.
+`am switch-user` returns before the switch finishes: do not immediately chain
+user removal after it. Wait with a bounded poll until `am get-current-user`
+reports the original user, then run `am stop-user -w` for only the task user.
+Check every command result and confirm that `pm list users` no longer contains
+that exact task ID before stopping the read-only emulator. A failed first
+removal is unfinished cleanup, not permission to wipe the AVD or remove Owner.
+
 ## Android service dispatch and document export
 
 Capture requests originate from a visible Activity and carry a bounded start
