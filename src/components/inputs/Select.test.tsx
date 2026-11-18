@@ -263,6 +263,30 @@ it.each(["disabled", "empty"])("keeps an unavailable %s choice distinct from bus
   expect(document.querySelector(".mimi-select__menu")).toBeNull();
 });
 
+it.each(["search", "other control", "inactive window"])("handles an interrupted search with focus on %s", async owner => {
+  const show = (busy: boolean) => act(() => root.render(<>
+    <Select label="Language" value="en" options={languages} searchLabel="Search" busy={busy} onChange={onChange} />
+    <button type="button">Next</button>
+  </>));
+  await show(false);
+  await act(() => trigger().click());
+  expect(document.activeElement).toBe(document.querySelector(".mimi-select__search"));
+  const next = host.querySelector<HTMLButtonElement>(":scope > button")!;
+  if (owner === "other control") await act(() => next.focus());
+  // jsdom derives window focus from the last focused element, which it clears
+  // when the search input is removed. Model window activation independently.
+  vi.spyOn(document, "hasFocus").mockReturnValue(owner !== "inactive window");
+
+  await show(true);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  const expectedFocus = owner === "search" ? trigger() : owner === "other control" ? next : document.body;
+  expect(document.activeElement).toBe(expectedFocus);
+  await show(false);
+  expect(document.activeElement).toBe(expectedFocus);
+  expect(trigger().getAttribute("aria-expanded")).toBe("false");
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 it.each(["Enter", " "])("skips disabled choices with arrows and boundaries before confirming with %j", async confirm => {
   await act(() => root.render(<Select label="Choice" value="alpha" options={partlyUnavailable} onChange={onChange} />));
   await act(() => trigger().click());

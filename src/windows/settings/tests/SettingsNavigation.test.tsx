@@ -132,12 +132,15 @@ it("keeps language choices available for active and paused sessions but blocks c
   for (const state of [{ isActive: true, isPaused: false }, { isActive: false, isPaused: true }]) {
     await act(() => useStore.setState({ session: { ...initial.session, status: { kind: "listening" }, ...state } }));
     expect(target.disabled).toBe(false);
+    expect(target.hasAttribute("aria-disabled")).toBe(false);
     expect(host.querySelector("#translation-languages")?.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
     expect(host.querySelector<HTMLButtonElement>('#voice-model [role="combobox"]')?.disabled).toBe(false);
   }
   for (const kind of ["connecting", "stopping"] as const) {
     await act(() => useStore.setState({ session: { ...initial.session, status: { kind }, isActive: false, isPaused: false } }));
-    expect(target.disabled).toBe(true);
+    expect(target.getAttribute("aria-disabled")).toBe("true");
+    await act(() => target.click());
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
   }
 });
 

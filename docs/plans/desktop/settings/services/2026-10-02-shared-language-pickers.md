@@ -22,6 +22,10 @@ After selecting a language, keep keyboard focus on its picker through the
 asynchronous save. A pending picker skips tab navigation and refuses new
 choices. Once the save succeeds or fails, the next arrow key can open the
 same field again. If the user tabs away while waiting, focus stays there.
+The listening session can broadcast a reconnect after publishing a new language.
+Keep the same focus through both events. If the reconnect interrupts a focused
+search field, close the menu and return focus to its trigger in the active
+window. An explicit move to another control takes precedence.
 
 All pickers use explicit source selection: choosing Chinese preserves the
 selected target, and leaving Chinese with Original selected keeps Original.

@@ -6,8 +6,8 @@ import { SettingsRow } from "../controls/SettingsPrimitives";
 import { useSettingsToast } from "../feedback/useSettingsToast";
 import { useStore } from "../../../lib/store";
 
-export function ApplicationAudio({ disabled = false, onBusyChange }: {
-  disabled?: boolean;
+export function ApplicationAudio({ busy = false, onBusyChange }: {
+  busy?: boolean;
   onBusyChange?: (busy: boolean) => void;
 }) {
   const text = applicationAudioCopy();
@@ -18,7 +18,7 @@ export function ApplicationAudio({ disabled = false, onBusyChange }: {
   const targetKey = target?.kind === "application" ? target.id : "";
   useEffect(() => { if (!switching.current) clearToast(); }, [targetKey, clearToast]);
   return <SettingsRow label={text.title} description={`${text.help}\n${captureSwitchCopy().switchHelp}`}>
-    <ApplicationAudioPicker disabled={disabled} onBusyChange={busyChanged} onActionStart={() => {
+    <ApplicationAudioPicker busy={busy} onBusyChange={busyChanged} onActionStart={() => {
       const notify = beginToast();
       return message => notify(message, true);
     }} />

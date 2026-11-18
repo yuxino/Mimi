@@ -34,6 +34,7 @@ afterEach(async () => {
 });
 async function render() { await act(async () => root.render(<><AudioInputSettings /><SettingsToastRegion /></>)); }
 function toggle(source: "system" | "microphone") { return host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${source === "system" ? I18N.settings.audioInputSystem : I18N.settings.audioInputMicrophone}"]`)!; }
+function applicationPicker() { return host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${applicationAudioCopy().title}"]`)!; }
 async function selectMicrophone() { await act(async () => toggle("microphone").click()); }
 
 it.each(["en", "zh", "ja"] as const)("saves the microphone explicitly in %s without starting capture, and clears the prior recording opt-in", async language => {
@@ -60,6 +61,10 @@ it.each([
   await render();
   expect(toggle("microphone").disabled).toBe(true);
   expect(toggle("system").disabled).toBe(true);
+  expect(applicationPicker().disabled).toBe(false);
+  expect(applicationPicker().getAttribute("aria-busy")).toBe("true");
+  await act(() => applicationPicker().click());
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
   await selectMicrophone();
   expect(switchInput).not.toHaveBeenCalled();
 });
@@ -70,10 +75,15 @@ it("prevents duplicate switches and exposes a safe, normal-sized actionable erro
   await render();
   await act(() => { toggle("microphone").click(); toggle("microphone").click(); });
   expect(toggle("microphone").disabled).toBe(true);
+  expect(applicationPicker().disabled).toBe(false);
+  expect(applicationPicker().getAttribute("aria-busy")).toBe("true");
+  await act(() => applicationPicker().click());
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
   await act(() => toggle("microphone").click());
   expect(switchInput).toHaveBeenCalledOnce();
   await act(async () => fail(new Error("synthetic-private-device-details")));
   expect(toggle("microphone").disabled).toBe(false);
+  expect(applicationPicker().hasAttribute("aria-busy")).toBe(false);
   expect(toggle("system").getAttribute("aria-checked")).toBe("true");
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(captureSwitchCopy().switchFailed);
   expect(host.textContent).not.toContain("synthetic-private-device-details");
@@ -82,7 +92,50 @@ it("prevents duplicate switches and exposes a safe, normal-sized actionable erro
 it("does not offer input changes until settings have loaded", async () => {
   useStore.setState({ initializationStatus: "loading" }); await render();
   expect(toggle("microphone").disabled).toBe(true);
+  expect(applicationPicker().disabled).toBe(true);
+  expect(applicationPicker().hasAttribute("aria-busy")).toBe(false);
   expect(switchInput).not.toHaveBeenCalled();
+});
+
+it("keeps an application's pending choice focused while blocking sibling input switches, then permits retry", async () => {
+  let fail!: (reason: Error) => void;
+  const switchTarget = vi.fn<typeof initial.switchSystemAudioTarget>()
+    .mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }))
+    .mockResolvedValue(undefined);
+  useStore.setState({ switchSystemAudioTarget: switchTarget,
+    settings: { ...useStore.getState().settings, systemAudioTarget: { kind: "application", id: "example.player", name: "Player" } },
+    session: { ...initial.session, status: { kind: "listening" }, isActive: true, isPaused: false },
+  });
+  await render();
+  const picker = applicationPicker();
+  const chooseSystemAudio = async () => {
+    await act(async () => picker.click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find(node => node.textContent === applicationAudioCopy().all)!;
+    await act(() => option.click());
+  };
+  await chooseSystemAudio();
+  expect(switchTarget).toHaveBeenCalledExactlyOnceWith({ kind: "system" });
+  expect(applicationPicker()).toBe(picker);
+  expect(picker.disabled).toBe(false);
+  expect(picker.getAttribute("aria-busy")).toBe("true");
+  expect(document.activeElement).toBe(picker);
+  expect(toggle("system").disabled).toBe(true);
+  expect(toggle("microphone").disabled).toBe(true);
+  await act(() => toggle("microphone").click());
+  expect(switchInput).not.toHaveBeenCalled();
+  await act(() => useStore.setState(state => ({ session: { ...state.session, status: { kind: "connecting" } } })));
+  expect(picker.disabled).toBe(false);
+  expect(document.activeElement).toBe(picker);
+  await act(async () => {
+    fail(new Error("synthetic-target-failure"));
+    useStore.setState(state => ({ session: { ...state.session, status: { kind: "listening" } } }));
+  });
+  expect(picker.hasAttribute("aria-busy")).toBe(false);
+  expect(document.activeElement).toBe(picker);
+  expect(toggle("microphone").disabled).toBe(false);
+  await chooseSystemAudio();
+  expect(switchTarget).toHaveBeenCalledTimes(2);
 });
 
 it("allows either source alone or both, but never no source", async () => {

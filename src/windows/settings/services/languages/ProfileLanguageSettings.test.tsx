@@ -8,6 +8,7 @@ import { I18N, setStoredUiLanguage } from "../../../../lib/i18n";
 import { useStore } from "../../../../lib/store";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../../../lib/types";
 import { ProfileLanguageSettings } from "./ProfileLanguageSettings";
+import { VoiceSettings } from "../../audio/VoiceSettings";
 
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;
@@ -29,8 +30,8 @@ afterEach(async () => {
   await act(async () => root.unmount()); host.remove();
   useStore.setState(initial, true); setStoredUiLanguage("system"); vi.unstubAllGlobals();
 });
-async function render(disabled = false) {
-  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} disabled={disabled} /><SettingsToastRegion /></>));
+async function render(busy = false) {
+  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} busy={busy} /><SettingsToastRegion /></>));
 }
 async function choose(label: string, code: string) {
   const trigger = host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
@@ -60,7 +61,7 @@ it("keeps saved Apple text languages visible when the runtime catalog is unavail
 it("keeps one embedded target picker usable from original-only without a duplicate skip control", async () => {
   settings = { ...settings, sourceLanguage: "en", targetLanguage: "original", profiles: [{ ...settings.profiles[0], textTranslation: "apple" }],
     languageCapabilities: { profileId: "test", provider: "alibabaCloud", textTranslation: "apple", targetLanguage: "original", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "ja"] } };
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} embedded hideSourceLanguage />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} embedded hideSourceLanguage />));
   expect(host.querySelector("section, h3, [role=switch]")).toBeNull();
   expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(1);
   expect(host.querySelector<HTMLButtonElement>('[role="combobox"]')!.disabled).toBe(false);
@@ -70,14 +71,14 @@ it("keeps one embedded target picker usable from original-only without a duplica
 
 it("lets the embedded Apple target recover to original-only when the native catalog disappears", async () => {
   settings = { ...settings, sourceLanguage: "en", targetLanguage: "ja", profiles: [{ ...settings.profiles[0], textTranslation: "apple" }] };
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} embedded hideSourceLanguage />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} embedded hideSourceLanguage />));
   await choose(I18N.settings.translateTo, "original");
   expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "original" });
 });
 
 it("lets Apple Speech fall back to original-only when Apple translation is unavailable", async () => {
   settings = { ...settings, sourceLanguage: "en", targetLanguage: "ja", profiles: [{ ...settings.profiles[0], provider: "appleSpeech", textTranslation: "apple" }] };
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} hideSourceLanguage />));
   await choose(I18N.settings.translateTo, "original");
   expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "original" });
 });
@@ -176,11 +177,40 @@ it("guards duplicate saves and reports a safe failure without pretending the cho
   expect(targetPicker.getAttribute("aria-expanded")).toBe("true");
 });
 
-it("disables language controls during a transition without asking to stop an already transitioning session", async () => {
+it("blocks both language controls during a transition without asking to stop the session", async () => {
   await render(true);
-  expect(host.querySelectorAll('button:disabled')).toHaveLength(2);
+  const pickers = host.querySelectorAll<HTMLButtonElement>('button[role="combobox"]');
+  expect(pickers).toHaveLength(2);
+  for (const picker of pickers) {
+    expect(picker.getAttribute("aria-disabled")).toBe("true");
+    await act(() => picker.click());
+  }
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
   expect(host.textContent).not.toContain(I18N.settings.languageChangeRequiresStop);
   expect(save).not.toHaveBeenCalled();
+});
+
+it("keeps keyboard control when a live target change reconnects the session", async () => {
+  let finish!: () => void;
+  switchTarget.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const publish = (kind: "listening" | "connecting") =>
+    useStore.setState(state => ({ session: { ...state.session, isActive: true, status: { kind } } }));
+  publish("listening");
+  await act(() => root.render(<VoiceSettings onOpenModels={() => {}} onOpenAppleResources={() => {}} />));
+  const target = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.settings.translateTo}"]`)!;
+  await choose(I18N.settings.translateTo, "ja");
+  expect(switchTarget).toHaveBeenCalledExactlyOnceWith("ja");
+  await act(() => publish("connecting"));
+  expect(target.disabled).toBe(false);
+  expect(target.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(target);
+  await act(() => target.click());
+  expect(target.getAttribute("aria-expanded")).toBe("false");
+  await act(() => publish("listening"));
+  expect(target.getAttribute("aria-busy")).toBe("true");
+  await act(() => finish());
+  await act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(target.getAttribute("aria-expanded")).toBe("true");
 });
 
 it.each([false, true])("uses the session switch commands while active or paused (paused=%s)", async isPaused => {
@@ -205,7 +235,7 @@ it("retains the target and reports preparation failure when an active Apple targ
   useStore.setState({ session: { ...initial.session, isActive: true, status: { kind: "listening" } } });
   switchTarget.mockRejectedValueOnce(new Error("apple_translation_assets_missing"));
   const onBusy = vi.fn();
-  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} disabled={false} embedded onBusyChange={onBusy} /><SettingsToastRegion /></>));
+  await act(async () => root.render(<><ProfileLanguageSettings settings={settings} embedded onBusyChange={onBusy} /><SettingsToastRegion /></>));
   await choose(I18N.settings.translateTo, "ja");
   expect(switchTarget).toHaveBeenCalledExactlyOnceWith("ja");
   expect(save).not.toHaveBeenCalled();
@@ -287,7 +317,7 @@ it("keeps Apple resource navigation reachable when no language is ready or the s
     profiles: [{ id: "apple", name: "Apple", provider: "appleSpeech", credentialState: "present" }],
     languageCapabilities: { profileId: "apple", provider: "appleSpeech", textTranslation: "followService", targetLanguage: "original", sourceLanguages: [], targetLanguages: ["original"] } };
   const open = vi.fn();
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled onOpenAppleResources={open} />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} busy onOpenAppleResources={open} />));
   const resources = [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === I18N.settings.appleSpeechOpenResources)!;
   expect(resources.disabled).toBe(false);
   await act(async () => resources.click());
@@ -299,11 +329,11 @@ it("omits a duplicate Apple source control while retaining independently configu
   settings = { ...settings, sourceLanguage: "en", targetLanguage: "zh", activeProfileId: "apple",
     profiles: [{ id: "apple", name: "Apple Speech", provider: "appleSpeech", credentialState: "present", textTranslation: "deepL" }],
     languageCapabilities: { profileId: "apple", provider: "appleSpeech", textTranslation: "deepL", targetLanguage: "zh", sourceLanguages: ["en"], targetLanguages: ["original", "zh", "en", "ja"] } };
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} hideSourceLanguage />));
   expect(host.querySelector(`[aria-label="${I18N.settings.sourceLanguage}"]`)).toBeNull();
   expect(host.querySelector(`[aria-label="${I18N.settings.translateTo}"]`)).not.toBeNull();
   settings = { ...settings, targetLanguage: "original", profiles: [{ ...settings.profiles[0], textTranslation: "followService" }], languageCapabilities: undefined };
-  await act(async () => root.render(<ProfileLanguageSettings settings={settings} disabled={false} hideSourceLanguage />));
+  await act(async () => root.render(<ProfileLanguageSettings settings={settings} hideSourceLanguage />));
   expect(host.querySelector("section")).toBeNull();
 });
 

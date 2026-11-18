@@ -61,19 +61,21 @@ export function SettingsRow({
 export function SettingsSelect({
   value,
   disabled = false,
+  busy,
   onChange,
   options,
   label,
 }: {
   value: string;
   disabled?: boolean;
+  busy?: boolean;
   onChange: (value: string) => void;
   options: readonly SelectOption[];
   label: string;
 }) {
   return (
     <span className="settings-select-wrap">
-      <Select label={label} value={value} disabled={disabled} options={options} onChange={onChange} />
+      <Select label={label} value={value} disabled={disabled} busy={busy} options={options} onChange={onChange} />
     </span>
   );
 }

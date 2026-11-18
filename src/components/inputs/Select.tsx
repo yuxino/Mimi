@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../Icon";
 import "./select.css";
@@ -58,6 +58,13 @@ export function Select({ label, value, options, disabled = false, busy = false, 
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const removedFocusedSearch = useRef(false);
+  const attachSearch = useCallback((node: HTMLInputElement | null) => {
+    // React detaches the ref before removing the input. Afterwards the
+    // document can only tell us that focus fell back to the page.
+    removedFocusedSearch.current = node === null && input.current !== null && input.current === document.activeElement;
+    input.current = node;
+  }, []);
   const list = useRef<HTMLDivElement>(null);
   const revealActive = useRef(true);
   const pressedWhilePending = useRef(false);
@@ -90,9 +97,13 @@ export function Select({ label, value, options, disabled = false, busy = false, 
   };
   const active = resolveCursor(cursor);
 
-  // A native connection/busy transition closes the current interaction. Keep
-  // it closed after unlocking until the user explicitly opens the picker.
   if (blocked && popup !== null) setPopup(null);
+  useLayoutEffect(() => {
+    if (pending && removedFocusedSearch.current && document.activeElement === document.body && document.hasFocus()) {
+      trigger.current?.focus({ preventScroll: true });
+    }
+    removedFocusedSearch.current = false;
+  }, [open, pending]);
   useEffect(() => { lastChoice.current = value; }, [value]);
 
   function setActive(index: number | ((previous: number) => number), reveal = true) {
@@ -337,7 +348,7 @@ export function Select({ label, value, options, disabled = false, busy = false, 
         <div ref={menu} id={searchable ? undefined : id} className={`mimi-select__menu${searchable ? " mimi-select__menu--searchable" : ""}`}
           role={searchable ? undefined : "listbox"} aria-label={searchable ? undefined : label} style={popup}>
           {searchable ? <>
-            <input ref={input} className="mimi-select__search" type="text" role="combobox"
+            <input ref={attachSearch} className="mimi-select__search" type="text" role="combobox"
               aria-label={searchLabel} placeholder={searchLabel} aria-expanded={true}
               aria-autocomplete="list" aria-haspopup="listbox" aria-controls={id} aria-activedescendant={activeId}
               autoComplete="off" spellCheck={false} tabIndex={-1} value={query}
