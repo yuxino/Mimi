@@ -22,6 +22,26 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Check a temporarily unreadable preference snapshot
+        shell: pwsh
+        run: |
+          $path = Join-Path $env:RUNNER_TEMP 'mimi-panel-reader-control.json'
+          $source = Resolve-Path './scripts/windows/windows-overlay-interaction-smoke.ps1'
+          $tokens = $null
+          $errors = $null
+          $tree = [Management.Automation.Language.Parser]::ParseFile($source, [ref]$tokens, [ref]$errors)
+          $reader = $tree.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq 'Read-SmokeMarker' }, $true)
+          . ([scriptblock]::Create($reader.Extent.Text))
+          [IO.File]::WriteAllText($path, '{"source_language":"en","target_language":"zh_tw"}')
+          $handle = [IO.File]::Open($path, 'Open', 'ReadWrite', 'None')
+          try {
+            $observation = Read-SmokeMarker $path
+            if ($observation -ne '') { throw 'The exclusively held control file should be unreadable.' }
+          } finally { $handle.Dispose() }
+          $pair = Read-SmokeMarker $path | ConvertFrom-Json
+          if ($pair.source_language -cne 'en' -or $pair.target_language -cne 'zh_tw') { throw 'The control file changed unexpectedly.' }
+          Write-Output 'One read was unavailable under an exclusive handle. Both codes were correct after release without changing the file.'
+          Remove-Item -LiteralPath $path
       - shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
