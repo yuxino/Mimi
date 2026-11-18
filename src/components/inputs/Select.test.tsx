@@ -203,7 +203,7 @@ it.each([
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await show(true);
-  expect(trigger().disabled).toBe(true);
+  expect(trigger().matches(':disabled, [aria-disabled="true"]')).toBe(true);
   expect(trigger().getAttribute("aria-busy")).toBe(state === "busy" ? "true" : null);
   await act(() => {
     trigger().click();
@@ -217,6 +217,41 @@ it.each([
   await act(() => trigger().click());
   expect(document.querySelectorAll('[role="option"]')).toHaveLength(3);
   if (searchable) expect(document.querySelector<HTMLInputElement>(".mimi-select__search")!.value).toBe("");
+});
+
+it("retains the chosen picker's keyboard focus across a pending save and lets the user leave it", async () => {
+  const show = (busy: boolean) => act(() => root.render(<>
+    <Select label="Choice" value="translation" options={options} busy={busy} onChange={onChange} />
+    <button type="button">Next</button>
+  </>));
+  await show(false);
+  await act(() => trigger().click());
+  await act(() => document.querySelectorAll<HTMLElement>('[role="option"]')[1].click());
+  expect(onChange).toHaveBeenCalledExactlyOnceWith("bilingual");
+  const button = trigger();
+  await show(true);
+  expect(button.disabled).toBe(false); // Native disabled clears focus when the browser paints.
+  expect(button.tabIndex).toBe(-1);
+  expect(document.activeElement).toBe(button);
+  const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  await act(() => document.activeElement!.dispatchEvent(space));
+  expect(space.defaultPrevented).toBe(true);
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  const next = host.querySelector<HTMLButtonElement>(":scope > button")!;
+  next.focus();
+  const press = new MouseEvent("pointerdown", { bubbles: true, cancelable: true });
+  await act(() => button.dispatchEvent(press));
+  expect(press.defaultPrevented).toBe(true);
+  await show(false);
+  await act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  expect(document.activeElement).toBe(next);
+  expect(button.tabIndex).toBe(0);
+  await act(() => {
+    button.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+  });
+  expect(button.getAttribute("aria-expanded")).toBe("true");
 });
 
 it.each(["disabled", "empty"])("keeps an unavailable %s choice distinct from busy", async state => {

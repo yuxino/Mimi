@@ -60,6 +60,7 @@ export function Select({ label, value, options, disabled = false, busy = false, 
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const revealActive = useRef(true);
+  const pressedWhilePending = useRef(false);
   const optionNodes = useRef(new Map<string, HTMLDivElement>());
   const typeahead = useRef({ text: "", at: 0 });
   const lastChoice = useRef(value);
@@ -68,6 +69,7 @@ export function Select({ label, value, options, disabled = false, busy = false, 
   const [query, setQuery] = useState("");
   const searchable = searchLabel !== undefined;
   const unavailable = disabled || options.length === 0;
+  const pending = busy && !unavailable;
   const blocked = unavailable || busy;
   const open = popup !== null && !blocked;
   const visible = useMemo(() => {
@@ -210,7 +212,12 @@ export function Select({ label, value, options, disabled = false, busy = false, 
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement | HTMLInputElement>) {
     const editing = event.currentTarget === input.current;
-    if (blocked || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (blocked) {
+      // A Space pressed during a save must not click on keyup after it finishes.
+      if (event.key === " " || event.key === "Enter") event.preventDefault();
+      return;
+    }
     if (event.key === "Tab" || event.key === "Escape") {
       if (open && event.key === "Escape") {
         event.preventDefault();
@@ -299,11 +306,24 @@ export function Select({ label, value, options, disabled = false, busy = false, 
 
   return (
     <span className="mimi-select">
+      {/* Native disabled can clear focus before a save settles. Keep the
+          pending trigger focused while allowing Tab to move past it. */}
       <button ref={trigger} type="button" className="mimi-select__trigger" role="combobox"
         aria-label={label} aria-haspopup="listbox" aria-expanded={open}
         aria-controls={open ? id : undefined} aria-activedescendant={activeId}
-        disabled={blocked} aria-busy={busy && !unavailable || undefined} onKeyDown={onKeyDown}
-        onClick={() => open ? setPopup(null) : show()}>
+        disabled={unavailable} aria-disabled={pending || undefined} aria-busy={pending || undefined}
+        tabIndex={pending ? -1 : undefined} onKeyDown={onKeyDown}
+        onPointerDown={event => {
+          pressedWhilePending.current = pending;
+          if (pending) event.preventDefault();
+        }}
+        onClick={event => {
+          // The save may finish between the press and release. Keyboard and
+          // assistive clicks have no preceding pointer press.
+          if (event.detail > 0 && pressedWhilePending.current) return;
+          if (open) setPopup(null);
+          else show();
+        }}>
         {/* Replacing the label node also invalidates retained WebKit pixels on
             external value changes, while the focused trigger remains stable. */}
         <span key={JSON.stringify([value, selectedLabel])} className="mimi-select__content">

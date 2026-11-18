@@ -166,12 +166,14 @@ it("guards duplicate saves and reports a safe failure without pretending the cho
   await act(() => { button.click(); button.click(); });
   expect(save).toHaveBeenCalledExactlyOnceWith({ targetLanguage: "zh" });
   expect(host.querySelector("section")?.getAttribute("aria-busy")).toBe("true");
-  expect(targetPicker.disabled).toBe(true);
+  expect(targetPicker.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(targetPicker);
   await act(async () => fail(new Error("synthetic-private-provider-body")));
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.settings.languageSaveFailed);
   expect(host.textContent).not.toContain("synthetic-private-provider-body");
   expect(targetPicker.textContent).toBe(TARGET_LANGUAGE_DISPLAY_NAMES.en);
-  expect(targetPicker.disabled).toBe(false);
+  await act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  expect(targetPicker.getAttribute("aria-expanded")).toBe("true");
 });
 
 it("disables language controls during a transition without asking to stop an already transitioning session", async () => {

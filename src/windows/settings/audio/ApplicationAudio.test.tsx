@@ -225,7 +225,7 @@ it("blocks repeated switches without optimistic selection and recovers from a re
   let reject!: (reason: Error) => void;
   switchTarget.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
   await render(); await choose("Player");
-  expect(trigger().disabled).toBe(true);
+  expect(trigger().getAttribute("aria-disabled")).toBe("true");
   expect(trigger().textContent).toContain(text().all);
   await act(async () => trigger().click());
   expect(switchTarget).toHaveBeenCalledOnce();
@@ -251,7 +251,7 @@ it.each([
 ] satisfies Pick<SessionStateEvent, "status" | "isActive" | "isPaused">[])("locks the target during transition: %j", async state => {
   useStore.setState({ session: { ...initial.session, ...state } });
   await render();
-  expect(trigger().disabled).toBe(true);
+  expect(trigger().getAttribute("aria-disabled")).toBe("true");
   expect(refresh().disabled).toBe(true);
   expect(switchTarget).not.toHaveBeenCalled();
 });

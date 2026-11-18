@@ -65,12 +65,13 @@ export function ProfileLanguageSettings({ settings, disabled, onOpenAppleResourc
       {appleSpeech && onOpenAppleResources && <button type="button" className="settings-link" onClick={onOpenAppleResources}>{I18N.settings.appleSpeechOpenResources}</button>}
     </>}>
       <LanguageSelect label={I18N.settings.sourceLanguage} value={settings.sourceLanguage} valueLabel={appleSpeech || appleTranslation ? guidance.optionLabel(settings.sourceLanguage) : undefined}
-        disabled={disabled || busy || sources.length === 0 || (sources.length === 1 && sources[0] === settings.sourceLanguage)}
+        disabled={disabled || (sources.length === 1 && sources[0] === settings.sourceLanguage)} busy={busy}
         options={sources.map(value => ({ value, label: guidance.optionLabel(value) }))}
         onChange={value => { const sourceLanguage = sources.find(language => language === value); if (sourceLanguage) void save({ sourceLanguage }); }} />
     </SettingsRow>}
     <SettingsRow label={I18N.settings.translateTo} description={I18N.settings.translationConfiguredHelp}>
-      <LanguageSelect label={I18N.settings.translateTo} value={settings.targetLanguage} valueLabel={appleTranslation ? targetLanguageOptionLabel(settings, settings.targetLanguage) : undefined} disabled={disabled || busy || (targets.length === 1 && targets[0] === settings.targetLanguage)}
+      <LanguageSelect label={I18N.settings.translateTo} value={settings.targetLanguage} valueLabel={appleTranslation ? targetLanguageOptionLabel(settings, settings.targetLanguage) : undefined}
+        disabled={disabled || (targets.length === 1 && targets[0] === settings.targetLanguage)} busy={busy}
         options={targets.map(value => ({ value, label: targetLanguageOptionLabel(settings, value) }))}
         onChange={value => { const targetLanguage = targets.find(language => language === value); if (targetLanguage) void save({ targetLanguage }); }} />
     </SettingsRow>
