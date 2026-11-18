@@ -83,12 +83,17 @@ state and buffer options. Measure capture readiness, first PCM admission,
 matching audio and recognition separately. A virtual sink may open immediately
 but wait for its next render before delivering a frame.
 
-The Linux subtitle window uses unaccelerated WebKit compositing when GDK is
-on X11, the session declares X11 and `LIBGL_ALWAYS_SOFTWARE` is explicitly
-enabled. With software GL, accelerating this transparent window delayed its
-first visible caption in the [native comparisons](integration-runs.md). Apply
-the policy before showing the subtitle window, leaving settings, separate
-controls and other launch environments on WebKit's default policy.
+Keep WebKit's default compositing policy for transparent Linux subtitle windows,
+including explicitly selected software GL. Forcing `Never` after navigation had
+started left the X11 subtitle window visible but its frontend readiness missing
+on WebKitGTK 2.50.4. Restoring the default passed the same installed deb and
+AppImage cases. Earlier first-caption timings did not establish package startup
+acceptance. See the [rendering decision](../plans/desktop/overlay/2026-11-19-linux-software-overlay-startup.md)
+and [revision-specific comparisons](integration-runs.md).
+
+Before accepting a native compositing change, run the production package's
+frontend-readiness and interaction checks for each Linux format. Window titles
+and a native listening state alone do not prove that subtitles rendered.
 
 Keep behavior regressions on production code and shared fixtures. Use synthetic
 loopback peers for protocol, retry, cancellation and deadline checks. An old
