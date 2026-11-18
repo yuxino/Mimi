@@ -3,9 +3,10 @@ param(
     [Parameter(Mandatory = $true)][long]$SettingsWindow,
     [Parameter(Mandatory = $true)][string]$SessionStateFile,
     [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
-    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility')][string]$Interaction,
+    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility', 'caption-drag')][string]$Interaction,
     [Parameter(Mandatory = $true)][string]$FixtureDirectory,
-    [string]$FrontendReadyDirectory
+    [string]$FrontendReadyDirectory,
+    [ValidateSet('True', 'False')][string]$ExpectedFullWindows
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,7 +34,22 @@ public static class MimiPointerSmoke {
     public struct Point { public int X, Y; }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Rect { internal int Left, Top, Right, Bottom; }
+    public struct Rect {
+        public int Left, Top, Right, Bottom;
+        public int Width { get { return Right - Left; } }
+        public int Height { get { return Bottom - Top; } }
+        public override string ToString() { return String.Format("({0},{1},{2},{3})", Left, Top, Width, Height); }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo { internal int Size; internal Rect Monitor, Work; internal uint Flags; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo {
+        internal uint Size, Flags;
+        internal IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        internal Rect CaretBounds;
+    }
 
     private static Point lastVerifiedMove;
     private static long lastVerifiedMoveTicks;
@@ -67,6 +83,8 @@ public static class MimiPointerSmoke {
     private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(Point point, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
     private delegate bool WindowVisitor(IntPtr window, IntPtr data);
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(WindowVisitor visit, IntPtr data);
@@ -82,6 +100,8 @@ public static class MimiPointerSmoke {
     private static extern int GetWindowExStyle(IntPtr window, int index);
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")]
+    private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")]
@@ -298,12 +318,46 @@ public static class MimiPointerSmoke {
         throw new InvalidOperationException("Could not find an on-screen point outside both Mimi windows.");
     }
 
-    private static void MoveAndVerify(int x, int y) {
+    public static void MoveAndVerify(int x, int y) {
         Point actual;
         if (!SetCursorPos(x, y) || !GetCursorPos(out actual) || actual.X != x || actual.Y != y)
             throw new InvalidOperationException("Could not verify the physical pointer position on the test desktop.");
         lastVerifiedMove = actual;
         lastVerifiedMoveTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+    }
+
+    public static Rect ReadBounds(IntPtr window) {
+        Rect rect;
+        if (!IsWindowVisible(window) || !GetWindowRect(window, out rect))
+            throw new InvalidOperationException("Could not read a visible native drag window.");
+        return rect;
+    }
+
+    public static Point CaptionDragDelta(IntPtr overlay, IntPtr controls) {
+        var main = ReadBounds(overlay);
+        var child = ReadBounds(controls);
+        var info = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
+        var monitor = MonitorFromPoint(new Point { X = (main.Left + main.Right) / 2, Y = (main.Top + main.Bottom) / 2 }, 0);
+        if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info))
+            throw new InvalidOperationException("Could not read the native drag work area.");
+        foreach (int x in new[] { 48, -48 }) foreach (int y in new[] { 32, -32 }) {
+            if (Math.Min(main.Left, child.Left) + x >= info.Work.Left && Math.Max(main.Right, child.Right) + x <= info.Work.Right &&
+                Math.Min(main.Top, child.Top) + y >= info.Work.Top && Math.Max(main.Bottom, child.Bottom) + y <= info.Work.Bottom)
+                return new Point { X = x, Y = y };
+        }
+        throw new InvalidOperationException("The native drag fixture has no room for a reversible caption gesture.");
+    }
+
+    public static bool IsCaptionPoint(IntPtr overlay, int x, int y) {
+        return GetAncestor(WindowFromPoint(new Point { X = x, Y = y }), 2) == overlay;
+    }
+
+    public static void AssertCaptionMoveModal(IntPtr overlay) {
+        uint process;
+        var thread = GetWindowThreadProcessId(overlay, out process);
+        var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
+        if (thread == 0 || !GetGUIThreadInfo(thread, ref gui) || (gui.Flags & 0x0002) == 0 || gui.MoveSize != overlay)
+            throw new InvalidOperationException("Windows did not enter a native move modal owned by the subtitle root.");
     }
 
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
@@ -660,13 +714,22 @@ $settings = [IntPtr]$SettingsWindow
 $previousDpi = [IntPtr]::Zero
 $restorePointer = $false
 try {
-    if ($Interaction -eq 'pointer') {
+    if ($Interaction -in @('pointer', 'caption-drag')) {
         $previousDpi = [MimiPointerSmoke]::SetThreadDpiAwarenessContext([IntPtr](-4))
         if ($previousDpi -eq [IntPtr]::Zero) { throw 'Could not enable per-monitor DPI awareness for pointer testing.' }
         $originalPointer = [MimiPointerSmoke+Point]::new()
         $restorePointer = [MimiPointerSmoke]::GetCursorPos([ref]$originalPointer)
     }
     Close-SettingsForOverlayCheck
+
+    if ($Interaction -eq 'caption-drag') {
+        Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
+        . (Join-Path $PSScriptRoot 'tests/overlay-caption-drag.ps1')
+        $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
+        if ($controls -eq [IntPtr]::Zero) { throw 'The caption drag fixture did not expose its owned language control window.' }
+        Test-NativeCaptionDrag $controls
+        return
+    }
 
     for ($round = 1; $round -le 3; $round++) {
         Use-OverlayControl 'Pause translating' 'listening' "Pause $round"
