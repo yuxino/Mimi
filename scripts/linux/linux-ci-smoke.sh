@@ -67,6 +67,36 @@ else
 fi
 app_pid=$!
 
+dump_readiness_diagnostics() {
+  local state=missing marker title
+  if [[ -f "$MIMI_UI_TEST_SESSION_STATE_FILE" ]]; then
+    state="$(cat "$MIMI_UI_TEST_SESSION_STATE_FILE")"
+    case "$state" in
+      idle|connecting|listening|paused|reconnecting|stopping|error) ;;
+      *) state=unrecognized ;;
+    esac
+  fi
+  printf 'Linux UI readiness: session=%s elapsed_seconds=%s now_epoch=%s\n' "$state" "$SECONDS" "$(date +%s)"
+  for marker in settings overlay; do
+    if [[ -f "$MIMI_UI_TEST_FRONTEND_READY_DIR/$marker" ]]; then
+      printf 'Linux UI readiness: %s_marker=present modified_epoch=%s\n' "$marker" "$(stat -c %Y "$MIMI_UI_TEST_FRONTEND_READY_DIR/$marker")"
+    else
+      printf 'Linux UI readiness: %s_marker=missing\n' "$marker"
+    fi
+  done
+  for title in '^mimi UI test settings$' '^mimi Subtitles$'; do
+    if xdotool search --onlyvisible --name "$title" >/dev/null 2>&1; then
+      printf 'Linux UI readiness: visible[%s]=true\n' "$title"
+    else
+      printf 'Linux UI readiness: visible[%s]=false\n' "$title"
+    fi
+  done
+  # This process owns a fresh private Xvfb display with synthetic UI-test
+  # windows only. Window titles/geometry distinguish mapping failures from a
+  # missing frontend marker without collecting subtitle or credential content.
+  wmctrl -lG || true
+}
+
 ready=0
 for _ in {1..60}; do
   if ! kill -0 "$app_pid" 2>/dev/null; then
@@ -87,6 +117,7 @@ for _ in {1..60}; do
 done
 if [[ "$ready" != 1 ]]; then
   echo "mimi did not render settings and subtitle frontends with a listening UI-test session." >&2
+  dump_readiness_diagnostics >&2
   cat "$smoke_dir/app.log" >&2
   exit 1
 fi
