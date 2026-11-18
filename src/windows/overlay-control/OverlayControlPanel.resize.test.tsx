@@ -74,10 +74,8 @@ async function mount() {
     status={{ source: "Automatic", separator: "→", target: "Chinese" }}
     isPaused={false} isWaitingForFinalTranslation={false} isChangingSession={false}
     onDismiss={() => {}} onSelectProfile={operation} onSwitchSourceLanguage={operation}
-    onSwitchTargetLanguage={operation} onSetSkipTranslation={operation}
-    onSetIntermediateSubtitles={operation} onSetSubtitleDividers={operation}
-    onSetSubtitleTimestamps={operation} onSetSubtitleDisplayMode={operation}
-    onSetImmersiveMode={operation} onSetOverlayLocked={operation} onShowSettings={operation}
+    onSwitchTargetLanguage={operation} onSetSubtitleDisplayMode={operation}
+    onShowSettings={operation}
   />));
 }
 

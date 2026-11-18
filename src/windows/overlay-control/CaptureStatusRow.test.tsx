@@ -82,8 +82,8 @@ it("publishes changed metadata for each source without depending on aggregate ch
   ] });
   await act(async () => vi.advanceTimersByTimeAsync(1000));
   expect(status("microphone")).toBe("Receiving sound");
-  expect(toggle("microphone").title).toBe("Capture device: New synthetic microphone");
-  expect(toggle("system").title).toBe("System output: New synthetic speakers");
+  expect(description("microphone")).toContain("Capture device: New synthetic microphone");
+  expect(description("system")).toContain("System output: New synthetic speakers");
   mocks.invoke.mockResolvedValue({ ...system, kind: "both" });
   await act(async () => vi.advanceTimersByTimeAsync(1000));
   expect(status("system")).toBe("Waiting for audio");
@@ -109,7 +109,7 @@ it("refreshes locale copy and invalidates equal observations across lifecycle st
   expect(status("system")).toBe("音声を受信中");
 });
 
-it("groups independent source choices with one heading help and keeps details in source tooltips", async () => {
+it("keeps source hover quiet and reveals details from the heading help", async () => {
   await mount();
   expect(host.querySelectorAll('[role="switch"]')).toHaveLength(2);
   expect(toggle("system").getAttribute("aria-checked")).toBe("true");
@@ -118,9 +118,9 @@ it("groups independent source choices with one heading help and keeps details in
   expect(toggle("microphone").disabled).toBe(false);
   expect(toggle("system").textContent).toBe("System audio");
   expect(host.querySelectorAll('.settings-help-control__button')).toHaveLength(1);
-  expect(host.querySelector('.overlay-control-capture__heading')?.textContent).toContain("Audio input");
-  expect(toggle("system").querySelector('.overlay-control-capture__check svg')).not.toBeNull();
-  expect(toggle("microphone").querySelector('.overlay-control-capture__check svg')).toBeNull();
+  expect(host.querySelector('.overlay-control-capture h2')?.textContent).toBe("Audio input");
+  expect(host.querySelector('[data-audio-source="system"] .application-audio-picker')).not.toBeNull();
+  expect(host.querySelector('[data-audio-source="microphone"] .application-audio-picker')).toBeNull();
   expect(status("system")).toBe("Receiving sound");
   expect(status("microphone")).toBe("Off");
   expect(host.querySelector('[role="status"]')).toBeNull();
@@ -128,15 +128,21 @@ it("groups independent source choices with one heading help and keeps details in
   expect(description("system")).toContain("System output: Synthetic long headphones name");
   expect(description("system")).toContain("Keep at least one input on");
   expect(description("microphone")).not.toContain("Waiting for audio");
+  for (const source of ["system", "microphone"] as const) {
+    const control = toggle(source);
+    expect(control.hasAttribute("title")).toBe(false);
+    const descriptionId = control.getAttribute("aria-describedby");
+    expect(descriptionId && document.getElementById(descriptionId)?.textContent).toBe(description(source));
+    await act(() => control.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })));
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  }
   const button = host.querySelector<HTMLButtonElement>('.settings-help-control__button')!;
   const matches = button.matches.bind(button);
   vi.spyOn(button, "matches").mockImplementation(selector => selector === ":focus-visible" || matches(selector));
   await act(() => button.focus());
   expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Keep at least one input on");
   expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Synthetic long headphones name");
-  await act(() => button.blur());
-  await act(() => row("system").querySelector('.mimi-tooltip-trigger')!.dispatchEvent(new MouseEvent("mousemove", { bubbles: true })));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Synthetic long headphones name");
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Microphone · Off");
 });
 
 it("switches independently while listening, keeping at least one input selected", async () => {
@@ -300,7 +306,7 @@ it("explains unavailable application failures from an input toggle", async () =>
 
 it.each([
   ["zh", "收到声音", "未收到音频"], ["en", "Receiving sound", "No audio data"], ["ja", "音声を受信中", "データなし"],
-] as const)("keeps truthful independent observations in each source tooltip in %s", async (language, sound, noData) => {
+] as const)("keeps truthful independent observations in the accessible descriptions in %s", async (language, sound, noData) => {
   setStoredUiLanguage(language);
   useStore.setState({ settings: { ...initial.settings, microphoneInputAvailable: true, audioInput: "both" } });
   mocks.invoke.mockResolvedValue(dual);
@@ -311,6 +317,16 @@ it.each([
   expect(description("microphone")).not.toContain("Unrelated output");
   expect(description("microphone")).toContain({ zh: "默认麦克风", en: "default microphone", ja: "既定のマイク" }[language]);
   expect(description("microphone")).toContain({ zh: "用量分别计算", en: "separate recognition and usage", ja: "利用量も個別" }[language]);
+  const heading = host.querySelector<HTMLButtonElement>(".settings-help-control__button")!;
+  const help = document.getElementById(heading.getAttribute("aria-describedby")!)!.textContent!;
+  expect(help).toContain(sound);
+  expect(help).toContain(noData);
+  expect(help).toContain("Synthetic microphone");
+  expect(help).toContain("Synthetic long headphones name");
+  const { minimum, switchHelp, dualHelp } = captureSwitchCopy(language);
+  for (const shared of [minimum, switchHelp, dualHelp]) {
+    expect(help.split(shared)).toHaveLength(2);
+  }
 });
 
 it("keeps switching available when capture status is unavailable", async () => {
@@ -368,13 +384,14 @@ it("ignores pending reads from old source and lifecycle stamps, including return
 });
 
 
-it("keeps long device names bounded in help and readable in full through the source title", async () => {
+it("keeps source descriptions brief and provides the full device name in heading help", async () => {
   const device = "Synthetic headphones " + "耳機".repeat(40);
   mocks.invoke.mockResolvedValueOnce({ ...system, systemOutputDeviceName: device });
   await mount();
   expect(description("system")).not.toContain(device);
   expect(description("system")).toContain(`${Array.from(device).slice(0, 39).join("")}…`);
-  expect(toggle("system").title).toBe(`System output: ${device}`);
+  const heading = host.querySelector<HTMLButtonElement>(".settings-help-control__button")!;
+  expect(document.getElementById(heading.getAttribute("aria-describedby")!)?.textContent).toContain(`System output: ${device}`);
 });
 
 it("keeps restrictions in the relevant source help without repeating dual-input advice", async () => {

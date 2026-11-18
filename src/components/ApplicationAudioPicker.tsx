@@ -13,12 +13,13 @@ function ApplicationIcon({ dataUrl }: { dataUrl?: string | null }) {
 }
 
 /** The same application choice is available in Settings and the floating panel. */
-export function ApplicationAudioPicker({ disabled = false, onBusyChange, onActionStart }: {
+export function ApplicationAudioPicker({ disabled = false, busy = false, onBusyChange, onActionStart }: {
   disabled?: boolean;
+  busy?: boolean;
   onBusyChange?: (busy: boolean) => void;
   onActionStart?: () => (message: string) => void;
 }) {
-  const picker = useApplicationAudioPicker(disabled);
+  const picker = useApplicationAudioPicker(disabled, busy);
   useEffect(() => {
     onBusyChange?.(picker.pending);
     return () => onBusyChange?.(false);
@@ -29,16 +30,18 @@ export function ApplicationAudioPicker({ disabled = false, onBusyChange, onActio
     icon: option.value === "" ? <span className="application-audio-picker__symbol" aria-hidden="true"><Volume1 viewBox="-2.5 0 24 24" /></span> : <ApplicationIcon dataUrl={option.iconDataUrl} />,
   }));
   const failure = picker.error ?? (picker.missing ? picker.text.unavailable : null);
-  return <span className="application-audio-picker" aria-busy={picker.pending || picker.loading}
+  const refreshUnavailable = picker.unavailable || !picker.supported;
+  const refreshBusy = !refreshUnavailable && (picker.busy || picker.loading);
+  return <span className="application-audio-picker" aria-busy={picker.busy || picker.loading}
     title={!picker.supported ? picker.text.unsupported : undefined}>
     <span className="application-audio-picker__controls">
       <Select label={picker.text.title} value={picker.selected} valueLabel={picker.valueLabel} valueIcon={<ApplicationIcon dataUrl={picker.selectedIconDataUrl} />}
         searchLabel={picker.text.search} emptyMessage={picker.text.noMatch} options={options}
-        disabled={picker.locked || (!picker.supported && picker.selected === "")}
+        disabled={picker.unavailable || (!picker.supported && picker.selected === "")} busy={picker.busy}
         onOpen={() => { void picker.refresh(onActionStart?.()); }} onChange={id => { void picker.choose(id, onActionStart?.()); }} />
       <button type="button" className="application-audio-picker__refresh" aria-label={picker.text.refresh}
-        title={picker.loading ? picker.text.loading : picker.empty ? picker.text.empty : picker.text.refresh} disabled={picker.locked || picker.loading || !picker.supported}
-        aria-busy={picker.loading || undefined} onClick={() => { void picker.refresh(onActionStart?.()); }}>
+        title={picker.loading ? picker.text.loading : picker.empty ? picker.text.empty : picker.text.refresh} disabled={refreshUnavailable || refreshBusy}
+        aria-busy={refreshBusy || undefined} data-refreshing={picker.loading || undefined} onClick={() => { void picker.refresh(onActionStart?.()); }}>
         <RotateCw size={14} aria-hidden="true" />
       </button>
     </span>

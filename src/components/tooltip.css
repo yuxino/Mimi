@@ -22,13 +22,40 @@
   line-height: 1.25;
   overflow-wrap: anywhere;
   visibility: hidden;
+}
+
+.mimi-tooltip[data-inline] {
   pointer-events: none;
+}
+
+.mimi-tooltip__shortcut {
+  display: inline-block;
+  margin-inline-start: 5px;
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  white-space: nowrap;
+}
+
+/* Its viewport-relative position keeps the narrow gap outside the clipped text. */
+.mimi-tooltip[data-hover-bridge]::before {
+  content: "";
+  position: fixed;
+  inset: var(--tooltip-bridge-origin);
+  width: var(--tooltip-bridge-width);
+  height: var(--tooltip-bridge-height);
 }
 
 @media (forced-colors: active) {
   .mimi-tooltip {
     border-color: CanvasText;
     background: Canvas;
+    color: CanvasText;
+  }
+  .mimi-tooltip__shortcut {
+    border-color: CanvasText;
     color: CanvasText;
   }
 }

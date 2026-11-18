@@ -40,6 +40,18 @@ it("requires a running session to enter immersive without starting it, and alway
     }
     await act(async () => root.render(<SettingsSessionControls {...base} nativeShortcuts={false} />));
     expect(host.querySelector('kbd')).toBeNull();
+    const desktopShortcuts = {
+      toggleSession: "'/opt/Mimi.AppImage' --toggle-session",
+      toggleImmersive: "'/opt/Mimi.AppImage' --toggle-immersive",
+      toggleLock: "'/opt/Mimi.AppImage' --toggle-lock",
+      cycleSubtitleDisplay: "'/opt/Mimi.AppImage' --cycle-subtitle-display",
+    };
+    await act(() => root.render(<SettingsSessionControls {...base} nativeShortcuts={false} desktopShortcuts={desktopShortcuts} />));
+    expect(host.querySelector("kbd")).toBeNull();
+    expect([...host.querySelectorAll("code")].map(code => code.textContent)).toEqual([
+      desktopShortcuts.toggleSession, desktopShortcuts.toggleImmersive, desktopShortcuts.toggleLock, desktopShortcuts.cycleSubtitleDisplay,
+    ]);
+    expect(host.querySelector("details")?.textContent).toContain(I18N.settings.lockPosition);
   } finally {
     await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   }

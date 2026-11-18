@@ -5,6 +5,7 @@
 pub enum DesktopAction {
     ToggleSession,
     ToggleImmersive,
+    ToggleLock,
     CycleSubtitleDisplay,
 }
 
@@ -19,6 +20,7 @@ impl DesktopAction {
         match args[1].as_str() {
             "--toggle-session" => Some(Self::ToggleSession),
             "--toggle-immersive" => Some(Self::ToggleImmersive),
+            "--toggle-lock" => Some(Self::ToggleLock),
             "--cycle-subtitle-display" => Some(Self::CycleSubtitleDisplay),
             _ => None,
         }
@@ -48,6 +50,7 @@ pub fn uses_system_shortcuts() -> bool {
 pub struct DesktopShortcutCommands {
     toggle_session: String,
     toggle_immersive: String,
+    toggle_lock: String,
     cycle_subtitle_display: String,
 }
 
@@ -75,6 +78,7 @@ pub fn app_desktop_shortcut_commands() -> Result<Option<DesktopShortcutCommands>
         return Ok(Some(DesktopShortcutCommands {
             toggle_session: format!("{command} --toggle-session"),
             toggle_immersive: format!("{command} --toggle-immersive"),
+            toggle_lock: format!("{command} --toggle-lock"),
             cycle_subtitle_display: format!("{command} --cycle-subtitle-display"),
         }));
     }
@@ -98,7 +102,7 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
                 crate::windows::ensure_settings_window(&handle);
                 return;
             };
-            static LAST_ACTION: Mutex<[Option<Instant>; 3]> = Mutex::new([None; 3]);
+            static LAST_ACTION: Mutex<[Option<Instant>; 4]> = Mutex::new([None; 4]);
             let index = action as usize;
             {
                 let mut last = LAST_ACTION.lock().unwrap();
@@ -137,6 +141,11 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
                             tracing::warn!("desktop immersive shortcut failed");
                         }
                     }
+                    DesktopAction::ToggleLock => {
+                        if crate::commands::toggle_overlay_lock(&handle).await.is_err() {
+                            tracing::warn!("desktop lock shortcut failed");
+                        }
+                    }
                     DesktopAction::CycleSubtitleDisplay => {
                         if crate::commands::set_subtitle_display_mode(&handle, None)
                             .await
@@ -163,6 +172,7 @@ mod tests {
         for (flag, expected) in [
             ("--toggle-session", DesktopAction::ToggleSession),
             ("--toggle-immersive", DesktopAction::ToggleImmersive),
+            ("--toggle-lock", DesktopAction::ToggleLock),
             (
                 "--cycle-subtitle-display",
                 DesktopAction::CycleSubtitleDisplay,

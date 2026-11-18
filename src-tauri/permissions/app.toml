@@ -101,6 +101,7 @@ description = "Allows the overlay control island to retry failed sessions, chang
 commands.allow = [
   "profile_select",
   "session_start",
+  "session_clear_subtitles",
   "capture_status",
   "audio_applications",
   "session_switch_audio_input",
@@ -110,6 +111,7 @@ commands.allow = [
   "session_switch_translation_mode",
   "settings_save",
   "overlay_set_locked",
+  "overlay_move_start",
   "app_show_settings",
   "overlay_popover_toggle",
   "overlay_popover_hide",

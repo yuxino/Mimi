@@ -4,9 +4,10 @@ use crate::core::models::{SubtitleDisplayMode, TargetLanguage};
 
 /// Retain the saved-frame compatibility floor; current requirements add chrome.
 pub const BASE_MINIMUM_HEIGHT: f64 = 136.0;
-const SERVICE_ROW_HEIGHT: f64 = 20.0;
-/// Active band 61 + service row 20 + inset 12 + inner padding 10 + border 2.
-pub const MAXIMUM_CHROME_HEIGHT: f64 = 85.0 + SERVICE_ROW_HEIGHT;
+const LEGACY_SERVICE_ROW_HEIGHT: f64 = 20.0;
+/// Retain the historical 105px chrome budget, including insets and borders.
+/// The slimmer toolbar releases caption space without shrinking resize minima.
+pub const MAXIMUM_CHROME_HEIGHT: f64 = 85.0 + LEGACY_SERVICE_ROW_HEIGHT;
 pub const FONT_SIZE_RANGE: std::ops::RangeInclusive<f64> = 14.0..=48.0;
 pub const DEFAULT_FONT_SIZE: f64 = 16.0;
 const LINE_HEIGHT: f64 = 1.32;
@@ -34,10 +35,11 @@ pub fn minimum_overlay_height(
 ) -> f64 {
     let font_size = normalize_font_size(font_size);
     let source_count = audio_input.sources().len();
-    // Reserve the narrow service row at every width: native resize gestures
-    // must never shrink the subtitle body before updating a width-based limit.
+    // Keep the same width-independent resize floor through the toolbar redesign.
+    // Service observations now live in the panel; retained headroom protects
+    // large bilingual captions and their source/timestamp metadata.
     let minimum_height = BASE_MINIMUM_HEIGHT
-        + SERVICE_ROW_HEIGHT
+        + LEGACY_SERVICE_ROW_HEIGHT
         + if source_count == 1 && show_subtitle_timestamps {
             METADATA_ROW_HEIGHT
         } else {

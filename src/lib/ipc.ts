@@ -348,9 +348,11 @@ export function setOverlayPointerCursor(point: NonNullable<OverlayPointerMotion>
 
 export function listenOverlayPointerMotion(
   handler: (point: OverlayPointerMotion) => void,
+  label: "overlay" | "overlay-control" = "overlay",
 ): Promise<UnlistenFn> {
-  return listen<OverlayPointerMotion>("overlay-pointer-motion", (event) =>
-    handler(event.payload),
+  return listen<OverlayPointerMotion>(
+    "overlay-pointer-motion", (event) => handler(event.payload),
+    { target: { kind: "WebviewWindow", label } },
   );
 }
 
@@ -413,6 +415,7 @@ export function sessionArchiveClear(): Promise<void> {
 export interface DesktopShortcutCommands {
   toggleSession: string;
   toggleImmersive: string;
+  toggleLock: string;
   cycleSubtitleDisplay: string;
 }
 

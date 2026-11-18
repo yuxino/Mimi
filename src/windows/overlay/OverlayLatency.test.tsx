@@ -85,6 +85,19 @@ describe("overlay timing observations", () => {
     expect(host.querySelectorAll("strong")[1].dataset.tone).toBe("neutral");
     await render(measured); expect(host.textContent).toContain("Translation700 ms");
   });
+  it("keeps work and recovery on the caption canvas without routine measurements", async () => {
+    for (const work of [
+      { isTranslationPending: true },
+      { translationRecovery: { reason: "rateLimited" as const, retryAfterMs: 600, retryScheduled: true } },
+    ]) {
+      await act(async () => root.render(<OverlayLatency session={{ ...session, ...measured, ...work }} showMeasurements={false} />));
+      expect(host.querySelector('[role="status"]')).not.toBeNull();
+      expect(host.textContent).not.toContain("ms");
+      expect(host.querySelector(".overlay-latency__measurement")).toBeNull();
+    }
+    await act(async () => root.render(<OverlayLatency session={{ ...session, ...measured }} showMeasurements={false} />));
+    expect(host.firstElementChild).toBeNull();
+  });
   it("retains rate-limit and retry states without labeling them as measured translation duration", async () => {
     for (const [reason, retryScheduled, text] of [
       ["rateLimited", true, "Rate limited; retrying"],

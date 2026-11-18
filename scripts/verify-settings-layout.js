@@ -411,6 +411,13 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
             if (document.documentElement.scrollWidth > innerWidth + 1) issues.push("page horizontal overflow");
             for (const element of document.querySelectorAll(".mimi-select__menu")) {
               const rect = element.getBoundingClientRect();
+              if (surface === "overlay") {
+                const background = getComputedStyle(element).backgroundColor;
+                const alpha = /^rgba\(.*?,\s*([\d.]+)\)$/.exec(background)?.[1];
+                if (background === "transparent" || (alpha !== undefined && Number(alpha) < 1)) {
+                  issues.push("controls show through the open menu");
+                }
+              }
               if (rect.left < -1 || rect.right > innerWidth + 1 || rect.top < -1 || rect.bottom > innerHeight + 1) issues.push("menu outside viewport");
             }
             if ([...document.querySelectorAll('[role="alert"]')].some(node => node.getBoundingClientRect().width > 0)) issues.push("unexpected action error");

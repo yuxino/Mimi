@@ -42,7 +42,7 @@ let wasLocked: boolean;
 const mode = (value: OverlayControlMode) => native.listeners.forEach(listener => listener(value));
 beforeEach(() => {
   wasLocked = useStore.getState().settings.isOverlayLocked;
-  useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: true } }));
+  useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: false } }));
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
@@ -152,7 +152,7 @@ it("reads the current subtitle ref and schedules mutations for missing, changed 
   await act(async () => { subtitle.remove(); replacement.remove(); });
 });
 
-it.each([false, true])("keeps a locked notification dismissible alongside a picker (failure=%s)", async failure => {
+it.each([false, true])("keeps a notification dismissible alongside a picker (failure=%s)", async failure => {
   native.failure = failure;
   await act(async () => root.render(<OverlayControlWindow embedded />));
   await act(async () => mode("panel"));

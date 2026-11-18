@@ -1,0 +1,132 @@
+/* The outline changes color without moving the subtitle reading edge. */
+.overlay-surface:is(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover]) .overlay-expanded-canvas:not([data-overlay-locked]) {
+  --overlay-canvas-outline: rgba(122, 168, 255, 0.34);
+}
+
+.overlay-surface:is(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover]) .overlay-compact-canvas {
+  --overlay-canvas-outline: rgba(122, 168, 255, 0.3);
+}
+
+.overlay-drag-layer,
+.overlay-compact-drag-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.overlay-drag-layer { bottom: auto; height: 40px; }
+
+.overlay-drag-target {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.overlay-drag-target:active { cursor: grabbing; }
+.overlay-drag-target:disabled { cursor: default; pointer-events: none; }
+
+.overlay-expanded-canvas[data-overlay-draggable] { cursor: grab; }
+.overlay-expanded-canvas[data-overlay-draggable]:active { cursor: grabbing; }
+
+.overlay-compact-reading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.overlay-action-strip {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+/* Three distinct groups share the existing 160px toolbar reservation. */
+.overlay-action-strip:has(.overlay-action-group--presentation) { gap: 3px; }
+
+.overlay-action-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.overlay-action-group,
+.overlay-action-strip > .mimi-tooltip-trigger {
+  border-radius: 7px;
+  background: rgba(16, 16, 16, 0.94);
+  outline: 1px solid rgba(255, 255, 255, 0.17);
+  outline-offset: -1px;
+}
+
+.overlay-action-strip .overlay-control-button {
+  flex-shrink: 0;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+}
+
+.overlay-action-strip .overlay-control-button:focus-visible {
+  outline-offset: -2px;
+}
+
+.overlay-action-strip .overlay-control-button:is(:hover, :focus-visible):not(:disabled),
+.overlay-action-strip .overlay-control-button[data-hovered="true"]:not(:disabled) {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.overlay-action-strip .overlay-control-button:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.overlay-action-strip .overlay-control-button[aria-busy="true"] {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+@media (forced-colors: active) {
+  .overlay-action-group,
+  .overlay-action-strip > .mimi-tooltip-trigger { outline-color: ButtonText; background: Canvas; }
+}
+
+.overlay-expanded-canvas:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
+  --overlay-caption-inset: 60px;
+  --overlay-status-top: 43px;
+}
+
+/* A nonactivating WebView can lose focus while still hovered. The browser's
+   hover and the native pointer bridge each reveal these controls independently.
+   Inactive controls keep their tab order without taking clicks. */
+@media (hover: hover) and (pointer: fine) {
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) :is(.overlay-hover-control, .overlay-control-embedded[data-quiet-island] .overlay-control-island) * {
+    pointer-events: none;
+  }
+
+  /* A quiet caption view gives back the toolbar's space. Only visible
+     feedback or a way back to live needs a slim status line at the top. */
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions] {
+    --overlay-caption-inset: 0px;
+  }
+
+  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions]:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
+    --overlay-caption-inset: 20px;
+    --overlay-status-top: 3px;
+  }
+}

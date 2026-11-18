@@ -1,4 +1,5 @@
 import { Icon, type IconName } from "../../components/Icon";
+import type { RefObject } from "react";
 import { Tooltip } from "../../components/Tooltip";
 import "./control-button.css";
 
@@ -8,6 +9,8 @@ interface ControlButtonProps {
   onClick: () => void;
   disabled?: boolean;
   busy?: boolean;
+  tooltipArea?: RefObject<HTMLElement | null>;
+  shortcutHint?: string;
   "data-testid"?: string;
 }
 
@@ -18,10 +21,12 @@ export function ControlButton({
   onClick,
   disabled = false,
   busy = false,
+  tooltipArea,
+  shortcutHint,
   "data-testid": dataTestId,
 }: ControlButtonProps) {
   return (
-    <Tooltip label={label}>
+    <Tooltip label={label} shortcut={shortcutHint} popupArea={tooltipArea}>
       {(descriptionId, hovered) => (
         <button
           type="button"

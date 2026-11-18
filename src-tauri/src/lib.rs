@@ -201,6 +201,8 @@ pub fn run() {
             app.manage(windows::OverlayControlState::default());
             app.manage(windows::OverlayControlHost::detect());
             app.manage(windows::OverlayPresentationState::default());
+            #[cfg(target_os = "windows")]
+            app.manage(windows::install_windows_pointer_tracking(&app_handle));
             windows::OverlayWindowManager::ensure_overlay(&app_handle, &overlay);
             #[cfg(target_os = "macos")]
             windows::install_active_space_observer(&app_handle, &overlay, &settings);
@@ -264,9 +266,11 @@ pub fn run() {
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
-                #[cfg(target_os = "macos")]
-                WindowEvent::Destroyed if window.label() == "overlay" => {
-                    windows::remove_overlay_pointer_tracking(app);
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
+                WindowEvent::Destroyed
+                    if matches!(window.label(), "overlay" | "overlay-control") =>
+                {
+                    windows::remove_overlay_pointer_tracking(app, window.label());
                 }
                 // The overlay geometry manager folds the final frame in after
                 // a debounce; transient states (control panel, collapse
@@ -292,8 +296,8 @@ pub fn run() {
                     windows::OverlayControlWindowManager::follow_overlay(app);
                 }
                 // An expanded control panel returns to its compact island on
-                // focus loss. The island itself remains available even while
-                // the subtitle canvas is click-through.
+                // focus loss. Locked and immersive presentations hide controls
+                // through the overlay presentation manager.
                 WindowEvent::Focused(false) if window.label() == "overlay-control" => {
                     windows::OverlayControlWindowManager::schedule_dismiss(app);
                 }
@@ -381,10 +385,8 @@ pub fn run() {
                     if window.label() == "overlay" || window.label() == "overlay-control" =>
                 {
                     api.prevent_close();
-                    #[cfg(target_os = "macos")]
-                    if window.label() == "overlay" {
-                        windows::clear_overlay_pointer_hover(app);
-                    }
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
+                    windows::remove_overlay_pointer_tracking(app, window.label());
                     if let Err(error) = window.hide() {
                         tracing::warn!(
                             window_label = window.label(),
@@ -497,7 +499,11 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Exit) {
                 mac_native_quit::remove();
-                windows::remove_overlay_pointer_tracking(app);
+                windows::remove_all_overlay_pointer_tracking(app);
+            }
+            #[cfg(target_os = "windows")]
+            if matches!(event, tauri::RunEvent::Exit) {
+                windows::remove_all_overlay_pointer_tracking(app);
             }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
@@ -1157,7 +1163,7 @@ fn refresh_native_tray_session_action(app: &tauri::AppHandle, is_active: bool) {
     }
 }
 
-/// Registers the global session, Immersive Mode, and subtitle display shortcuts. Each action
+/// Registers the global session, immersive, lock, and subtitle display shortcuts. Each action
 /// owns an independent 500ms debounce so presentation switching never blocks
 /// a session lifecycle action (or vice versa).
 fn setup_global_shortcuts(
@@ -1180,6 +1186,7 @@ fn setup_global_shortcuts(
     let modifiers = Modifiers::CONTROL | Modifiers::SHIFT;
     let session_shortcut = Shortcut::new(Some(modifiers), Code::Space);
     let immersive_shortcut = Shortcut::new(Some(modifiers), Code::KeyM);
+    let lock_shortcut = Shortcut::new(Some(modifiers), Code::KeyL);
     let display_shortcut = Shortcut::new(Some(modifiers), Code::KeyB);
 
     let last_trigger = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -1254,6 +1261,36 @@ fn setup_global_shortcuts(
         Ok(()) => tracing::info!("global immersive shortcut registered"),
         Err(error) => tracing::warn!(
             "global immersive shortcut could not be registered: {error} \
+             (another app may already own the combination)"
+        ),
+    }
+    let lock_last_trigger = std::sync::atomic::AtomicU64::new(0);
+    let lock_register = app
+        .global_shortcut()
+        .on_shortcut(lock_shortcut, move |app, _, event| {
+            if event.state() != ShortcutState::Pressed {
+                return;
+            }
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let previous = lock_last_trigger.load(Ordering::SeqCst);
+            if now_ms.saturating_sub(previous) < 500 {
+                return;
+            }
+            lock_last_trigger.store(now_ms, Ordering::SeqCst);
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if commands::toggle_overlay_lock(&app).await.is_err() {
+                    tracing::warn!("lock shortcut failed label=settings_unavailable");
+                }
+            });
+        });
+    match lock_register {
+        Ok(()) => tracing::info!("global lock shortcut registered"),
+        Err(error) => tracing::warn!(
+            "global lock shortcut could not be registered: {error} \
              (another app may already own the combination)"
         ),
     }

@@ -19,7 +19,6 @@ export interface OverlayControlPanelModel {
   effectiveTranslationMode: TranslationMode;
   immersiveModeEnabled: boolean;
   overlayLocked: boolean;
-  canSkipTranslation: boolean;
 }
 
 /** Resolve both controls from the same route-aware catalog as settings. */
@@ -39,6 +38,5 @@ export function overlayControlPanelModel(
     effectiveTranslationMode: effectiveTranslationModeForSettings(settings),
     immersiveModeEnabled: settings.subtitleBlendsWithBackground,
     overlayLocked: settings.isOverlayLocked,
-    canSkipTranslation: targetLanguagesForSettings(settings).includes("original"),
   };
 }

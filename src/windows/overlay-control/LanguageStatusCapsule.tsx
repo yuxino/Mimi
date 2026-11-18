@@ -30,9 +30,10 @@ interface LanguageStatusCapsuleProps {
   isStopping?: boolean;
   onToggle: () => void;
   onWidthChange?: (width: number) => void;
+  unlock?: { pending: boolean; failure: string | null; shortcutHint?: string };
 }
 
-/** Compact, always-reachable entry point for the subtitle control panel. */
+/** Compact control entry, or a hover-revealed way to unlock the subtitles. */
 export function LanguageStatusCapsule({
   phase,
   status,
@@ -45,6 +46,7 @@ export function LanguageStatusCapsule({
   isStopping = false,
   onToggle,
   onWidthChange,
+  unlock,
 }: LanguageStatusCapsuleProps) {
   const capsuleRef = useRef<HTMLButtonElement>(null);
   const pulseOn = useResolvedMotion(settings.pulseAnimation);
@@ -53,7 +55,7 @@ export function LanguageStatusCapsule({
       : isPaused ? "paused" : phase === "translating" || isWaitingForFinalTranslation ? "translating" : null;
   const actionLabel = expanded
     ? I18N.overlay.closeControls
-    : I18N.overlay.openControls;
+    : unlock ? I18N.overlay.unlockPosition : I18N.overlay.openControls;
   const compact = capsuleLabels(settings, transientPhase);
   const sources = audioInputLabel(settings.audioInput, settings.systemAudioTarget);
   const phaseLabel = isStopping ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
@@ -61,6 +63,10 @@ export function LanguageStatusCapsule({
   const recordingLabel = recordingStatusLabel(audioRecording, effectiveUiLanguage());
   const recordingSuffix = recordingLabel ? ` · ${recordingLabel}` : "";
   const fullLabel = `${sources} · ${phaseLabel} · ${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}`;
+  const title = unlock
+    ? [actionLabel, unlock.shortcutHint, unlock.failure].filter(Boolean).join(" · ")
+    : `${fullLabel}. ${actionLabel}`;
+  const accessibleLabel = `${sources} · ${phaseLabel}${I18N.overlay.accessibilityCurrentLanguagePrefix}${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}. ${actionLabel}`;
 
   useLayoutEffect(() => {
     const capsule = capsuleRef.current;
@@ -91,30 +97,68 @@ export function LanguageStatusCapsule({
     };
   }, [expanded, onWidthChange]);
 
+  const pulse = <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />;
+  const phaseBadge = transientPhase && !(transientPhase === "paused" && audioRecording === "paused") &&
+    <span className="overlay-control-island__phase">{compact.phase}</span>;
+  const recording = <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />;
+
+  if (expanded) {
+    return (
+      <div className="overlay-control-header">
+        <div
+          className="overlay-control-header__summary"
+          title={fullLabel}
+        >
+          <strong className="overlay-control-header__title">{I18N.overlay.controlPanel}</strong>
+          <div className="overlay-control-header__status">
+            {pulse}{phaseBadge}{recording}
+          </div>
+        </div>
+        <button
+          type="button"
+          className="overlay-control-header__collapse"
+          onClick={onToggle}
+          title={title}
+          aria-label={accessibleLabel}
+        >
+          <Icon name="chevron-up" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <button
       ref={capsuleRef}
       type="button"
-      className={expanded ? "overlay-control-header" : "overlay-control-island"}
+      className="overlay-control-island"
       onClick={onToggle}
-      title={`${fullLabel}. ${actionLabel}`}
-      aria-label={`${sources} · ${phaseLabel}${I18N.overlay.accessibilityCurrentLanguagePrefix}${sourceLabel} ${status.separator} ${status.target}${recordingSuffix}. ${actionLabel}`}
-      aria-haspopup={expanded ? undefined : "dialog"}
-      aria-expanded={expanded ? undefined : false}
-      aria-controls={expanded ? undefined : "overlay-control-panel"}
+      title={title}
+      aria-label={unlock ? actionLabel : accessibleLabel}
+      aria-haspopup={unlock ? undefined : "dialog"}
+      aria-expanded={unlock ? undefined : false}
+      aria-controls={unlock ? undefined : "overlay-control-panel"}
+      aria-busy={unlock?.pending || undefined}
+      disabled={unlock?.pending}
     >
-      <PulseRing phase={phase} compact motionEnabled={pulseOn} animationVisible={animationVisible} pulseStyle={settings.pulseStyle} />
-      <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
-      {transientPhase && !(transientPhase === "paused" && audioRecording === "paused") && (
-        <span className="overlay-control-island__phase">{compact.phase}</span>
-      )}
-      <span className="overlay-control-island__summary">
-        <strong>{compact.source}</strong>
-        <span aria-hidden="true">{status.separator}</span>
-        <span>{compact.target}</span>
-      </span>
-      <RecordingIndicator status={audioRecording} language={effectiveUiLanguage()} />
-      <Icon name={expanded ? "chevron-up" : "chevron-down"} />
+      {unlock ? <>
+        <Icon name={unlock.failure ? "exclamation-triangle" : "unlock"} className="overlay-control-island__unlock" />
+        <span className="overlay-control-island__summary" role={unlock.failure ? "alert" : undefined}>
+          <strong>{unlock.failure ?? actionLabel}</strong>
+        </span>
+        {recording}
+      </> : <>
+        {pulse}
+        <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
+        {phaseBadge}
+        <span className="overlay-control-island__summary">
+          <strong>{compact.source}</strong>
+          <span aria-hidden="true">{status.separator}</span>
+          <span>{compact.target}</span>
+        </span>
+        {recording}
+        <Icon name="chevron-down" />
+      </>}
     </button>
   );
 }

@@ -17,7 +17,7 @@ function currentTargetKey() {
 /** Selectable lists load on user intent. The chosen application's local icon
  * can refresh silently without permission or capture. Linux only reads already
  * discovered streams; it never initializes discovery in the background. */
-export function useApplicationAudioPicker(disabled = false) {
+export function useApplicationAudioPicker(disabled = false, externalBusy = false) {
   const target = useStore(state => state.settings.systemAudioTarget) ?? { kind: "system" as const };
   const ready = useStore(state => state.initializationStatus === "ready");
   const status = useStore(state => state.session.status.kind);
@@ -97,7 +97,9 @@ export function useApplicationAudioPicker(disabled = false) {
   if (failure && failure.targetKey !== targetKey) setFailure(null);
   const error = failure?.targetKey === targetKey ? failure.message : null;
   const supported = snapshot?.value.supported ?? (!isTauri || /Mac|Windows|Linux/i.test(navigator.userAgent));
-  const locked = disabled || !ready || pending || status === "connecting" || status === "stopping";
+  const unavailable = disabled || !ready;
+  const busy = externalBusy || pending || status === "connecting" || status === "stopping";
+  const locked = unavailable || busy;
   const applications = snapshot?.value.supported ? snapshot.value.applications : [];
   const missing = target.kind === "application" && snapshot?.targetKey === targetKey && snapshot.value.supported && !applications.some(app => app.id === target.id);
   const selected = target.kind === "application" ? target.id : "";
@@ -166,7 +168,7 @@ export function useApplicationAudioPicker(disabled = false) {
     }
   }
 
-  return { text, selected, valueLabel, selectedIconDataUrl: icons.get(selected), options, loading, pending, error, missing, supported, locked,
+  return { text, selected, valueLabel, selectedIconDataUrl: icons.get(selected), options, loading, pending, error, missing, supported, unavailable, busy, locked,
     empty: snapshot?.value.supported === true && applications.length === 0,
     refresh, choose };
 }

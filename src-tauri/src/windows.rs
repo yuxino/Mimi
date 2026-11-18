@@ -90,14 +90,31 @@ mod macos_control_dismiss;
 #[cfg(target_os = "macos")]
 mod macos_pointer;
 
-#[cfg(target_os = "macos")]
-pub fn remove_overlay_pointer_tracking(app: &AppHandle) {
-    macos_pointer::clear(app, true);
+#[cfg(any(target_os = "windows", test))]
+mod windows_pointer;
+
+#[cfg(target_os = "windows")]
+pub use windows_pointer::WindowsPointerTracker;
+
+#[cfg(target_os = "windows")]
+pub fn install_windows_pointer_tracking(app: &AppHandle) -> WindowsPointerTracker {
+    windows_pointer::install(app)
 }
 
-#[cfg(target_os = "macos")]
-pub fn clear_overlay_pointer_hover(app: &AppHandle) {
-    macos_pointer::clear(app, false);
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn remove_overlay_pointer_tracking(app: &AppHandle, label: &str) {
+    #[cfg(target_os = "macos")]
+    macos_pointer::remove(app, label);
+    #[cfg(target_os = "windows")]
+    windows_pointer::remove(app, label);
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn remove_all_overlay_pointer_tracking(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    macos_pointer::remove_all(app);
+    #[cfg(target_os = "windows")]
+    windows_pointer::remove_all(app);
 }
 
 #[cfg(target_os = "macos")]
@@ -194,8 +211,8 @@ fn frame_layout_is_current(version: u64) -> bool {
 pub struct SubtitleOverlayMetrics;
 
 impl SubtitleOverlayMetrics {
-    pub const REFERENCE_WIDTH: f64 = 659.0;
-    pub const REFERENCE_HEIGHT: f64 = 328.0;
+    pub const DEFAULT_WIDTH: f64 = 580.0;
+    pub const DEFAULT_HEIGHT: f64 = 240.0;
     pub const MINIMUM_WIDTH: f64 = 360.0;
     pub const MINIMUM_HEIGHT: f64 = BASE_MINIMUM_HEIGHT;
     pub const MAXIMUM_WIDTH: f64 = 1_200.0;
@@ -364,7 +381,7 @@ impl OverlayPresentationState {
             *current = Some(enabled);
             #[cfg(target_os = "macos")]
             if enabled {
-                macos_pointer::clear(window.app_handle(), false);
+                macos_pointer::clear_overlay(window.app_handle());
             }
         }
     }
@@ -483,10 +500,10 @@ impl OverlayState {
             });
         let width = trusted
             .as_ref()
-            .map_or(SubtitleOverlayMetrics::REFERENCE_WIDTH, |f| f.width);
+            .map_or(SubtitleOverlayMetrics::DEFAULT_WIDTH, |f| f.width);
         let height = trusted
             .as_ref()
-            .map_or(SubtitleOverlayMetrics::REFERENCE_HEIGHT, |f| f.height)
+            .map_or(SubtitleOverlayMetrics::DEFAULT_HEIGHT, |f| f.height)
             .max(minimum_height);
         let (x, y) = default_overlay_origin(app, width, height, &trusted);
         let mut user_frame = OverlayFrame {
@@ -765,8 +782,6 @@ impl OverlayWindowManager {
                     configure_overlay_for_software_gl(&window);
                 }
                 configure_overlay_window(&window);
-                #[cfg(target_os = "macos")]
-                macos_pointer::install(&window);
                 #[cfg(target_os = "linux")]
                 follow_linux_overlay_on_map(&window);
                 pipeline_log!("overlay window created");
@@ -777,9 +792,9 @@ impl OverlayWindowManager {
 
     /// Applies the complete native overlay presentation in one place:
     /// visibility, click-through behavior, and the child control surface.
-    /// The control island is visible only for an active, expanded,
-    /// non-immersive overlay; an already-open panel remains open across
-    /// ordinary state broadcasts.
+    /// The control island remains available for an active, expanded,
+    /// non-immersive overlay. Position lock returns an open panel to its
+    /// island; ordinary unlocked state broadcasts preserve an open panel.
     pub fn sync_presentation(
         app: &AppHandle,
         is_active: bool,
@@ -855,9 +870,8 @@ impl OverlayWindowManager {
         let is_immersive = is_immersive && !has_error;
         if is_active {
             if click_through {
-                // Ordinary position locking keeps the independent control
-                // island as an unlock escape hatch. Immersive Mode hides all
-                // overlay chrome and is exited via shortcut, tray, or settings.
+                // Position lock keeps the independent hover-to-unlock island.
+                // Immersive mode hides the complete control surface.
                 // GTK can store an input shape before the first native map.
                 // Record lock intent first so realize/map cannot briefly
                 // restore an old unlocked shape when a worker shows a window.
@@ -868,6 +882,7 @@ impl OverlayWindowManager {
                     app,
                     true,
                     is_collapsed,
+                    click_through,
                     is_immersive,
                 );
                 #[cfg(not(target_os = "linux"))]
@@ -877,12 +892,24 @@ impl OverlayWindowManager {
                 // surface, so unlocking never leaves an inert frame behind.
                 Self::update_locked(app, false);
                 Self::sync_overlay_visibility(app, true);
-                OverlayControlWindowManager::sync_presentation(app, true, is_collapsed, false);
+                OverlayControlWindowManager::sync_presentation(
+                    app,
+                    true,
+                    is_collapsed,
+                    false,
+                    is_immersive,
+                );
             }
         } else {
             // Hide the child first so it cannot linger for a frame after its
             // subtitle parent disappears.
-            OverlayControlWindowManager::sync_presentation(app, false, is_collapsed, is_immersive);
+            OverlayControlWindowManager::sync_presentation(
+                app,
+                false,
+                is_collapsed,
+                click_through,
+                is_immersive,
+            );
             Self::sync_overlay_visibility(app, false);
             Self::update_locked(app, click_through);
         }
@@ -898,10 +925,9 @@ impl OverlayWindowManager {
         // child control on every subtitle update.
         if is_active && !visible {
             show_overlay_window(&window);
-        } else if !is_active && visible {
-            #[cfg(target_os = "macos")]
-            macos_pointer::clear(app, false);
-            let _ = window.hide();
+        } else if !is_active && visible && window.hide().is_ok() {
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            remove_overlay_pointer_tracking(app, window.label());
         }
     }
 
@@ -1611,6 +1637,9 @@ fn configure_overlay_window_impl(window: &tauri::WebviewWindow, order_front: boo
         let _ = window.set_always_on_top(true);
     }
 
+    #[cfg(target_os = "windows")]
+    windows_pointer::activate(window);
+
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = window.set_visible_on_all_workspaces(true);
@@ -1659,6 +1688,8 @@ fn configure_overlay_window_impl_macos(
 
         if order_front {
             ns_window.orderFrontRegardless();
+            macos_pointer::install(&window_for_main);
+            macos_pointer::refresh_after_window_update(window_for_main.app_handle());
         }
     });
 }
@@ -2637,10 +2668,11 @@ impl OverlayControlWindowManager {
         Self::apply_geometry(app, Self::mode(app));
     }
 
-    pub const DEFAULT_ISLAND_WIDTH: f64 = 200.0;
+    pub const DEFAULT_ISLAND_WIDTH: f64 = Self::MAX_ISLAND_WIDTH;
     pub const ISLAND_HEIGHT: f64 = 30.0;
     const MIN_ISLAND_WIDTH: f64 = 80.0;
-    const MAX_ISLAND_WIDTH: f64 = 512.0;
+    // Match the CSS capsule cap and leave all six actions usable at 360px.
+    const MAX_ISLAND_WIDTH: f64 = 156.0;
     pub const PANEL_WIDTH: f64 = 280.0;
     // Matches the compact control panel on first open; React
     // immediately replaces it with the measured provider/locale-specific
@@ -2712,18 +2744,25 @@ impl OverlayControlWindowManager {
     /// Derives the persistent island visibility from the overlay lifecycle.
     /// An open panel survives ordinary subtitle/status broadcasts, but any
     /// inactive, collapsed, or immersive transition hides the entire child
-    /// surface.
+    /// surface. Position lock preserves only the compact recovery island.
     pub fn sync_presentation(
         app: &AppHandle,
         is_active: bool,
         is_collapsed: bool,
+        click_through: bool,
         is_immersive: bool,
     ) {
         let Some(state) = app.try_state::<OverlayControlState>() else {
             return;
         };
         let current = state.mode();
-        let next = control_mode_for_presentation(current, is_active, is_collapsed, is_immersive);
+        let next = control_mode_for_presentation(
+            current,
+            is_active,
+            is_collapsed,
+            click_through,
+            is_immersive,
+        );
         let mode_changed = state.set_mode(next);
         let visible_surface_needs_restore = !mode_changed
             && next != OverlayControlMode::Hidden
@@ -2891,6 +2930,8 @@ impl OverlayControlWindowManager {
         let _ = window.set_focusable(focus_policy.focusable_before_show);
         if mode == OverlayControlMode::Hidden {
             let _ = window.hide();
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            remove_overlay_pointer_tracking(app, window.label());
             let _ = window.emit(OVERLAY_CONTROL_MODE_EVENT, mode);
             return;
         }
@@ -2976,6 +3017,8 @@ impl OverlayControlWindowManager {
                 work_area.coordinate_scale,
             );
             set_desktop_position(&window, geometry.x, geometry.y);
+            #[cfg(target_os = "macos")]
+            macos_pointer::refresh_after_window_update(app);
         }
         true
     }
@@ -3048,11 +3091,12 @@ fn control_mode_for_presentation(
     current: OverlayControlMode,
     is_active: bool,
     is_collapsed: bool,
+    click_through: bool,
     is_immersive: bool,
 ) -> OverlayControlMode {
     if !is_active || is_collapsed || is_immersive {
         OverlayControlMode::Hidden
-    } else if current == OverlayControlMode::Panel {
+    } else if current == OverlayControlMode::Panel && !click_through {
         OverlayControlMode::Panel
     } else {
         OverlayControlMode::Island
@@ -3675,11 +3719,11 @@ mod geometry_tests {
     #[test]
     fn active_expanded_overlay_keeps_an_open_panel() {
         assert_eq!(
-            control_mode_for_presentation(OverlayControlMode::Panel, true, false, false),
+            control_mode_for_presentation(OverlayControlMode::Panel, true, false, false, false),
             OverlayControlMode::Panel
         );
         assert_eq!(
-            control_mode_for_presentation(OverlayControlMode::Hidden, true, false, false),
+            control_mode_for_presentation(OverlayControlMode::Hidden, true, false, false, false),
             OverlayControlMode::Island
         );
     }
@@ -3687,17 +3731,53 @@ mod geometry_tests {
     #[test]
     fn inactive_or_collapsed_overlay_hides_control_surface() {
         assert_eq!(
-            control_mode_for_presentation(OverlayControlMode::Panel, false, false, false),
+            control_mode_for_presentation(OverlayControlMode::Panel, false, false, false, false),
             OverlayControlMode::Hidden
         );
         assert_eq!(
-            control_mode_for_presentation(OverlayControlMode::Panel, true, true, false),
+            control_mode_for_presentation(OverlayControlMode::Panel, true, true, false, false),
             OverlayControlMode::Hidden
         );
         assert_eq!(
-            control_mode_for_presentation(OverlayControlMode::Panel, true, false, true),
+            control_mode_for_presentation(OverlayControlMode::Panel, true, false, true, true),
             OverlayControlMode::Hidden
         );
+    }
+
+    #[test]
+    fn locking_returns_to_the_island_and_unlocking_keeps_it_compact() {
+        for current in [
+            OverlayControlMode::Hidden,
+            OverlayControlMode::Island,
+            OverlayControlMode::Panel,
+        ] {
+            let locked = control_mode_for_presentation(current, true, false, true, false);
+            assert_eq!(locked, OverlayControlMode::Island);
+            assert_eq!(
+                control_mode_for_presentation(locked, true, false, false, false),
+                OverlayControlMode::Island,
+            );
+        }
+    }
+
+    #[test]
+    fn locked_recovery_island_stays_hidden_for_inactive_collapsed_or_immersive_overlays() {
+        for (active, collapsed, immersive) in [
+            (false, false, false),
+            (true, true, false),
+            (true, false, true),
+        ] {
+            assert_eq!(
+                control_mode_for_presentation(
+                    OverlayControlMode::Island,
+                    active,
+                    collapsed,
+                    true,
+                    immersive,
+                ),
+                OverlayControlMode::Hidden,
+            );
+        }
     }
 
     #[test]
@@ -4434,9 +4514,9 @@ mod geometry_tests {
 
     #[test]
     fn island_measurements_are_finite_rounded_and_bounded() {
-        assert_eq!(measured_island_width(173.2), Some(174.0));
+        assert_eq!(measured_island_width(143.2), Some(144.0));
         assert_eq!(measured_island_width(2.0), Some(80.0));
-        assert_eq!(measured_island_width(10000.0), Some(512.0));
+        assert_eq!(measured_island_width(10000.0), Some(156.0));
         assert_eq!(measured_island_width(f64::NAN), None);
         assert_eq!(measured_island_width(f64::INFINITY), None);
     }

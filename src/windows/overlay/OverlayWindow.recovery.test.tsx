@@ -96,7 +96,6 @@ function expectCard(background: string) {
   expect(card).not.toBeNull();
   expect(card!.style.background).toBe(background);
   expect(card!.style.border).not.toBe("");
-  expect(host.querySelector(".overlay-service")).not.toBeNull();
   return card!;
 }
 
@@ -120,13 +119,13 @@ it.each([75, 0])("keeps the saved $0% background through a real retry, connectin
   expectPreferencesUnchanged(settings);
 
   await publishSession({ status: { kind: "connecting" }, isActive: true });
-  expectCard(background);
+  const restingBorder = expectCard(background).style.border;
   await act(async () => pointer({ x: 20, y: 20 }));
-  expect(expectCard(background).style.borderWidth).toBe("1px");
+  expect(expectCard(background).style.border).toBe(restingBorder);
   await act(async () => window.dispatchEvent(new Event("blur")));
-  expect(expectCard(background).style.borderWidth).toBe("0.75px");
+  expect(expectCard(background).style.border).toBe(restingBorder);
   await act(async () => pointer({ x: 21, y: 20 }));
-  expect(expectCard(background).style.borderWidth).toBe("1px");
+  expect(expectCard(background).style.border).toBe(restingBorder);
   expectPreferencesUnchanged(settings);
 
   await publishSession({ status: { kind: "listening" } });
@@ -217,7 +216,7 @@ it("respects saved immersive mode as soon as retry leaves the temporary error pr
   expectCard("rgba(16, 16, 16, 0.96)");
   await publishSession({ status: { kind: "connecting" }, isActive: true });
   expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
-  expect(host.querySelector(".overlay-service")).toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
   expectPreferencesUnchanged(settings);
   await publishSession({ status: { kind: "listening" } });
   await act(async () => start.resolve());

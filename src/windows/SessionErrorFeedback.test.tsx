@@ -94,6 +94,7 @@ async function mount(surface: Surface) {
 
 const feedback = () => host.querySelector<HTMLElement>(".session-error-feedback")!;
 const configure = () => feedback().querySelector<HTMLButtonElement>("button")!;
+const toolbarButtons = () => [...host.querySelectorAll<HTMLButtonElement>(".overlay-action-strip button")];
 
 it.each(["zh", "en", "ja"] as const)("keeps localized unsupported-language causes and configuration actions visible on every surface in %s", async language => {
   setStoredUiLanguage(language);
@@ -110,7 +111,7 @@ it.each(["zh", "en", "ja"] as const)("keeps localized unsupported-language cause
     if (["history", "immersive", "collapsed", "locked"].includes(surface)) {
       expect(host.querySelector('[data-testid="retained-subtitles"]')?.textContent).toContain("Retained synthetic subtitle");
       expect(host.querySelector(".overlay-swap-collapsed, [data-presentation='background-blend']")).toBeNull();
-      expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')?.disabled).toBe(false);
+      expect(host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')?.disabled).toBe(false);
     }
     await act(async () => configure().focus());
     expect(document.activeElement).toBe(configure());
@@ -198,20 +199,22 @@ it.each(["zh", "en", "ja"] as const)("shows an Audio3 startup transport cause an
 });
 
 // Error presentation is interactive even when the saved reading mode is locked.
-it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("keeps movement and top actions visible through %s error presentation", async surface => {
+it.each(["overlay", "history", "immersive", "collapsed", "locked"] as const)("keeps movement, close and explicit recovery usable through %s configuration errors", async surface => {
   await mount(surface);
-  const drag = host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')!;
+  const drag = host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')!;
   expect(drag.disabled).toBe(false);
-  expect(drag.getAttribute("aria-label")).toBe(I18N.overlay.moveSubtitle);
-  const topActions = [...host.querySelectorAll<HTMLButtonElement>(".overlay-control-button")];
-  expect(topActions.map(button => button.getAttribute("aria-label"))).not.toContain(I18N.settings.openSpeechSettings);
-  const settingsAction = topActions.find(button => button.getAttribute("aria-label") === I18N.overlay.openSettings)!;
-  expect(settingsAction.disabled).toBe(false);
-  for (const id of ["collapse-subtitles", "toggle-immersive-mode", "toggle-overlay-lock"]) {
-    expect(host.querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)?.disabled).toBe(true);
-  }
-  await act(async () => settingsAction.click());
-  expect(showSettings).toHaveBeenCalledOnce();
+  expect(drag.tabIndex).toBe(-1);
+  expect(host.querySelector(".overlay-surface")?.hasAttribute("data-overlay-chrome-pinned")).toBe(true);
+  const topActions = toolbarButtons();
+  expect(topActions.map(button => button.getAttribute("aria-label"))).toEqual([
+    I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles, I18N.overlay.enterImmersiveMode,
+    I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
+  ]);
+  expect(topActions.map(button => button.disabled)).toEqual([true, surface === "overlay", true, true, false]);
+  expect(configure().textContent).toBe(I18N.settings.openSpeechSettings);
+  expect(configure().disabled).toBe(false);
+  await act(async () => configure().click());
+  expect(showSettings).toHaveBeenCalledExactlyOnceWith("voice");
   expect(setOverlayCollapsed).not.toHaveBeenCalled();
   const settings = useStore.getState().settings;
   await act(async () => useStore.setState(state => ({ session: { ...state.session, isActive: true, status: { kind: "listening" } } })));
@@ -242,12 +245,19 @@ it.each(["zh", "en", "ja"] as const)("assigns detailed %s recovery to the open o
   await act(async () => { for (const listener of native.listeners) listener(native.mode); });
   expect(feedback().querySelector("p")?.textContent).toBe(summary);
   expect(feedback().querySelector("button")).toBeNull();
-  expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(7);
-  expect(host.querySelector<HTMLButtonElement>('[data-testid="drag-handle"]')?.disabled).toBe(false);
+  const actions = toolbarButtons();
+  expect(actions.map(button => button.getAttribute("aria-label"))).toEqual([
+    I18N.overlay.retry, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
+    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
+  ]);
+  expect(actions.map(button => button.disabled)).toEqual([false, true, true, true, true, false]);
+  expect(host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')?.disabled).toBe(false);
 
   await mount("control");
   expect(feedback().querySelector("p")?.textContent).toBe(fullMessage);
-  expect(feedback().querySelectorAll("button")).toHaveLength(2);
+  expect([...feedback().querySelectorAll("button")].map(button => button.textContent)).toEqual([
+    I18N.settings.openSpeechSettings, I18N.settings.sessionRetry,
+  ]);
 
   await mount("overlay");
   expect(feedback().querySelector("button")).toBeNull();

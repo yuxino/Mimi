@@ -4,7 +4,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OverlayPointerMotion } from "../../lib/ipc";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { isClickablePointerTarget } from "../../lib/overlayPointer";
 import { useStore } from "../../lib/store";
 import { OverlayWindow } from "./OverlayWindow";
 
@@ -12,6 +11,7 @@ const listenPointer = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/ipc", async (importOriginal) => ({
   ...await importOriginal<typeof import("../../lib/ipc")>(),
   isTauri: true,
+  hasEmbeddedOverlayControls: true,
   listenOverlayPointerMotion: listenPointer,
 }));
 vi.mock("./PulseRing", () => ({ PulseRing: () => null }));
@@ -25,7 +25,7 @@ const unlisten = vi.fn();
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
   unlisten.mockClear();
   listenPointer.mockReset().mockImplementation((handler) => {
@@ -53,21 +53,31 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   const commits = vi.fn();
   await act(async () => root.render(<Profiler id="overlay" onRender={commits}><OverlayWindow /></Profiler>));
   expect(listenPointer).toHaveBeenCalledOnce();
-  const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.openSettings}"]`)!;
-  const hitTest = vi.fn(() => button.querySelector("svg"));
+  const surface = host.querySelector(".overlay-surface")!;
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
+  const button = host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.pause}"]`)!;
+  const hitTest = vi.fn(() => surface.hasAttribute("data-overlay-hover") ? button.querySelector("svg") : null);
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: hitTest });
+  const beforeEntering = commits.mock.calls.length;
+  hitTest.mockReturnValueOnce(null);
+  await act(async () => pointer({ x: 10, y: 10 }));
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(true);
+  expect(commits).toHaveBeenCalledTimes(beforeEntering);
+  await act(async () => pointer(null));
   await act(async () => pointer({ x: 20, y: 20 }));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.openSettings);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
   expect(button.dataset.hovered).toBe("true");
   expect(document.activeElement).not.toBe(button);
   const afterEntering = commits.mock.calls.length;
   for (let i = 0; i < 30; i++) await act(async () => pointer({ x: 20 + i, y: 20 }));
   expect(commits).toHaveBeenCalledTimes(afterEntering);
   await act(async () => window.dispatchEvent(new Event("blur")));
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(true);
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   await act(async () => pointer({ x: 20, y: 20 }));
   expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
   await act(async () => pointer(null));
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
   expect(button.dataset.hovered).toBeUndefined();
   await act(async () => root.unmount());
@@ -75,6 +85,21 @@ it("bridges inactive native hover without clicks, repeated window renders or an 
   const previousCalls = hitTest.mock.calls.length;
   await act(async () => pointer({ x: 20, y: 20 }));
   expect(hitTest).toHaveBeenCalledTimes(previousCalls);
+});
+
+it("keeps error recovery available when the native pointer is outside", async () => {
+  useStore.setState(state => ({ session: { ...state.session, isActive: false,
+    status: { kind: "error", message: "unavailable" },
+  } }));
+  await act(async () => root.render(<OverlayWindow />));
+  const surface = host.querySelector(".overlay-surface")!;
+  expect(surface.hasAttribute("data-overlay-hover")).toBe(false);
+  expect(surface.hasAttribute("data-overlay-chrome-pinned")).toBe(true);
+  expect(host.querySelector(".overlay-session-error-content")).not.toBeNull();
+  await act(async () => useStore.setState(state => ({ session: { ...state.session,
+    isActive: true, status: { kind: "listening" },
+  } })));
+  expect(surface.hasAttribute("data-overlay-chrome-pinned")).toBe(false);
 });
 
 it("releases a native listener that finishes registering after the overlay unmounts", async () => {
@@ -86,19 +111,15 @@ it("releases a native listener that finishes registering after the overlay unmou
   expect(unlisten).toHaveBeenCalledOnce();
 });
 
-it("keeps every toolbar action in place after clearing and rejects clicks on the empty clear slot", async () => {
+it("keeps the same toolbar buttons and hover target when another surface clears captions", async () => {
   const subtitles = {
     source: { text: "Synthetic recognition to clear.", isFinal: false },
     translation: { text: "", isFinal: false }, history: [], previewPair: null,
   };
-  const clearSubtitles = vi.fn(async () => {
-    useStore.setState(state => ({ session: { ...state.session, subtitles: {
-      source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
-      history: [], previewPair: null,
-    } } }));
-  });
   useStore.setState(state => ({
-    clearSubtitles,
+    clearSubtitles: async () => useStore.setState(current => ({ session: {
+      ...current.session, subtitles: { ...subtitles, source: { text: "", isFinal: false } },
+    } })),
     settings: { ...state.settings, sourceLanguage: "auto", targetLanguage: "zh", subtitleDisplayMode: "translation" },
     session: { ...state.session, subtitles, detectedLanguage: "en" },
   }));
@@ -106,28 +127,18 @@ it("keeps every toolbar action in place after clearing and rejects clicks on the
   const buttons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
     I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
-    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.openSettings, I18N.overlay.closeSubtitles,
+    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
   ]);
-  const clear = buttons[2];
-  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => clear.querySelector("svg") });
+  const pause = buttons[0];
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => pause.querySelector("svg") });
   await act(async () => pointer({ x: 20, y: 20 }));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.clearSubtitles);
-  expect(isClickablePointerTarget(clear)).toBe(true);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
 
-  await act(async () => clear.click());
+  await act(async () => useStore.getState().clearSubtitles());
   const emptyButtons = Array.from(host.querySelectorAll<HTMLButtonElement>(".overlay-control-button"));
   expect(emptyButtons).toHaveLength(buttons.length);
   emptyButtons.forEach((button, index) => expect(button).toBe(buttons[index]));
-  expect(clear.disabled).toBe(true);
-  expect(isClickablePointerTarget(clear)).toBe(false);
-  await act(async () => { clear.click(); pointer({ x: 21, y: 20 }); });
-  expect(clearSubtitles).toHaveBeenCalledOnce();
-  expect(document.querySelector('[role="tooltip"]')).toBeNull();
-  await act(async () => pointer(null));
-  await act(async () => pointer({ x: 20, y: 20 }));
-  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.clearSubtitles);
-
-  await act(async () => useStore.setState(state => ({ session: { ...state.session, subtitles } })));
-  expect(host.querySelector(`button[aria-label="${I18N.overlay.clearSubtitles}"]`)).toBe(clear);
-  expect(clear.disabled).toBe(false);
+  expect(emptyButtons[2].disabled).toBe(true);
+  expect(pause.disabled).toBe(false);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(I18N.overlay.pause);
 });

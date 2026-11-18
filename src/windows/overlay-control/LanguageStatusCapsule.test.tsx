@@ -2,11 +2,51 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { setStoredUiLanguage } from "../../lib/i18n";
+import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
 import { audioInputLabel } from "../../lib/audioInput";
 import { recordingStatusLabel } from "../../lib/recordingStatus";
+
+it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("names the expanded %s controls without repeating the language choices and retains status and collapse", async language => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+  setStoredUiLanguage(language);
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const onToggle = vi.fn();
+  try {
+    await act(async () => root.render(<LanguageStatusCapsule
+      phase="connecting"
+      status={{ source: "Japanese", separator: "→", target: "Chinese" }}
+      settings={useStore.getState().settings}
+      audioRecording="recording"
+      isPaused={false}
+      isWaitingForFinalTranslation={false}
+      expanded
+      onToggle={onToggle}
+    />));
+    const header = host.querySelector(".overlay-control-header")!;
+    expect(header.querySelector(".overlay-control-header__title")?.textContent).toBe(I18N.overlay.controlPanel);
+    expect(header.querySelector(".overlay-control-island__summary")).toBeNull();
+    expect(header.querySelector('[data-phase="connecting"]')).not.toBeNull();
+    expect(header.querySelector(".overlay-control-island__phase")).not.toBeNull();
+    expect(header.querySelector('[data-recording-status="recording"]')).not.toBeNull();
+    const collapse = header.querySelector<HTMLButtonElement>(".overlay-control-header__collapse")!;
+    expect(collapse.getAttribute("aria-label")?.endsWith(I18N.overlay.closeControls)).toBe(true);
+    expect(collapse.getAttribute("aria-label")).toContain(recordingStatusLabel("recording", language));
+    await act(async () => host.querySelector<HTMLElement>(".overlay-control-header__title")!.click());
+    expect(onToggle).not.toHaveBeenCalled();
+    await act(async () => collapse.click());
+    expect(onToggle).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    setStoredUiLanguage("system");
+    vi.unstubAllGlobals();
+  }
+});
 
 it("keeps actual recording feedback in the existing control and replaces duplicate paused copy", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

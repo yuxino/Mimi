@@ -107,6 +107,14 @@ Rules:
   verify that the exact executable's process exited with a read-only process
   check; a successful AX click alone does not prove shutdown. Use the explicit
   launcher mode before querying the next test instance.
+- When investigating Settings appearing unexpectedly, stop native UI automation
+  and relaunches before asking the user to reproduce it. The initial settings
+  window is explicitly visible in Tauri configuration, and macOS `Reopen` opens
+  Settings while the Dock icon is enabled. A development install/relaunch can
+  therefore produce the reported symptom without an overlay click. Record that
+  interference separately; do not claim a click-routing defect or a successful
+  repair from that observation. Keep browser-only work in an isolated page while
+  the user tries the installed app.
 - After browser interaction, a CUA click can move the pointer over a WebKit
   control without activating the settings window or invoking its action.
   If navigation remains unchanged, use Mimi's native menu → Settings to
@@ -396,7 +404,9 @@ page must include a review of other instances of the same pattern.
   input. Do not gate it on microphone selection or source-icon visibility. Test
   system, microphone and both inputs explicitly in normal and immersive views;
   the Timeline default input can otherwise hide a system-only regression. Keep
-  the Rust/TypeScript minimum-height contract in sync with the metadata row.
+  the Rust/TypeScript minimum-height contract in sync. The single-row toolbar
+  keeps the historical resize allowance; service details live in the language
+  panel, while recovery and Back to live still need room above captions.
 - The multilingual label repair in `dc2143f` did not cover the Windows-only
   output selector. Issue #132 put the selector and idle sentence in one inline
   wrapper: its intrinsic width squeezed Chinese labels into one-character

@@ -45,6 +45,9 @@ it("keeps recording state accessible when collapsed without adding another actio
   useStore.setState(state => ({ session: { ...state.session, isOverlayCollapsed: true } }));
   await act(async () => root.render(<OverlayWindow />));
   const actionCount = host.querySelectorAll("button").length;
+  expect(button(I18N.overlay.clearSubtitles)).toBeNull();
+  expect(button(I18N.overlay.enterImmersiveMode)).toBeNull();
+  expect(button(I18N.overlay.lockPosition)).toBeNull();
   for (const audioRecording of ["starting", "recording", "paused", "limited", "error", "off"] as const) {
     await act(async () => useStore.setState(state => ({ session: { ...state.session, audioRecording } })));
     expect(host.querySelectorAll("button")).toHaveLength(actionCount);
@@ -59,40 +62,25 @@ it("keeps recording state accessible when collapsed without adding another actio
   }
 });
 
-it("shows the independent translation mark and opens settings with guarded failure feedback", async () => {
-  const showSettings = vi.fn().mockRejectedValueOnce(new Error("synthetic-private-error")).mockResolvedValue(undefined);
-  useStore.setState(state => ({ showSettings, settings: { ...state.settings,
-    profiles: [{ id: "test", name: "Translation profile", provider: "alibabaCloud", textTranslation: "deepL", credentialState: "present" }],
-    activeProfileId: "test",
+it("keeps the error surface actionable and restores saved presentation after recovery", async () => {
+  useStore.setState(state => ({ settings: {
+    ...state.settings, isOverlayLocked: true, subtitleBlendsWithBackground: true,
   } }));
   await act(async () => root.render(<OverlayWindow />));
-  const service = host.querySelector<HTMLButtonElement>(".overlay-service__button")!;
-  expect(service.textContent).toBe("Alibaba CloudDeepL");
-  expect(service.querySelector('[data-stage="recognition"] [data-provider="alibabaCloud"]')).not.toBeNull();
-  expect(service.querySelector('[data-provider="deepL"]')).not.toBeNull();
-  expect(service.getAttribute("aria-label")).toContain("Translation profile");
-  await act(async () => service.click());
-  expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
-  await act(async () => service.click());
-  expect(showSettings).toHaveBeenCalledTimes(2);
-  expect(showSettings).toHaveBeenCalledWith("activeProfile");
-  expect(host.querySelector('[role="alert"]')).toBeNull();
-});
+  expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
 
-it("keeps the service visible through errors and restores immersive or collapsed chrome after recovery", async () => {
-  await act(async () => root.render(<OverlayWindow />));
-  for (const change of [{ isPaused: true }, { isActive: false, status: { kind: "error" as const, message: "unavailable" } }]) {
-    await act(async () => useStore.setState(state => ({ session: { ...state.session, ...change } })));
-    expect(host.querySelector(".overlay-service")).not.toBeNull();
-  }
-  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: true } })));
-  expect(host.querySelector(".overlay-service")).not.toBeNull();
-  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: true } })));
-  expect(host.querySelector(".overlay-service")).not.toBeNull();
-  await act(async () => useStore.setState(state => ({ session: { ...state.session, status: { kind: "listening" }, isActive: true } })));
-  expect(host.querySelector(".overlay-service")).toBeNull();
-  await act(async () => useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: false }, session: { ...state.session, isOverlayCollapsed: true } })));
-  expect(host.querySelector(".overlay-service")).toBeNull();
+  await act(async () => useStore.setState(state => ({ session: {
+    ...state.session, isActive: false, status: { kind: "error", message: "unavailable" },
+  } })));
+  expect(host.querySelector('[data-presentation="background-blend"]')).toBeNull();
+  expect(button(I18N.overlay.closeSubtitles)).not.toBeNull();
+
+  await act(async () => useStore.setState(state => ({ session: {
+    ...state.session, isActive: true, status: { kind: "listening" },
+  } })));
+  expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
 });
 
 it.each(["system", "microphone", "both"] as const)("keeps %s sources identifiable in the collapsed and paused surface", async audioInput => {
@@ -114,7 +102,6 @@ it.each([
   ["clearSubtitles", () => I18N.overlay.clearSubtitles],
   ["saveSettings", () => I18N.overlay.enterImmersiveMode],
   ["setOverlayLocked", () => I18N.overlay.lockPosition],
-  ["showSettings", () => I18N.overlay.openSettings],
   ["stop", () => I18N.overlay.closeSubtitles],
 ] as const)("guards %s until settled, shows a safe failure and permits a manual retry", async (action, label) => {
   let reject!: (error: Error) => void;
@@ -126,10 +113,11 @@ it.each([
   expect(operation).toHaveBeenCalledOnce();
   expect(selected.getAttribute("aria-busy")).toBe("true");
   expect(selected.disabled).toBe(true);
-  expect(button(I18N.overlay.openSettings).disabled).toBe(true);
-  // Both collapse affordances share the in-flight action; the keyboard drag
-  // handle must not remain active while the icon button is busy (or vice versa).
-  expect(host.querySelectorAll('[aria-busy="true"]')).toHaveLength(action === "setOverlayCollapsed" ? 2 : 1);
+  expect(button(I18N.overlay.pause).disabled).toBe(true);
+  expect(button(I18N.overlay.clearSubtitles).disabled).toBe(true);
+  expect(button(I18N.overlay.enterImmersiveMode).disabled).toBe(true);
+  expect(button(I18N.overlay.lockPosition).disabled).toBe(true);
+  expect(host.querySelectorAll('[aria-busy="true"]')).toHaveLength(1);
   await act(async () => reject(new Error("synthetic private detail must not be shown")));
   expect(selected.disabled).toBe(false);
   expect(host.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
@@ -137,6 +125,67 @@ it.each([
   await act(async () => selected.click());
   expect(operation).toHaveBeenCalledTimes(2);
   expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("enables Clear for a retained subtitle and disables it again after clearing", async () => {
+  const empty = initial.session.subtitles;
+  const clearSubtitles = vi.fn(async () => useStore.setState(state => ({ session: { ...state.session, subtitles: empty } })));
+  useStore.setState(state => ({ clearSubtitles, session: { ...state.session, subtitles: empty } }));
+  await act(async () => root.render(<OverlayWindow />));
+  const clear = button(I18N.overlay.clearSubtitles);
+  expect(clear.disabled).toBe(true);
+  await act(async () => clear.click());
+  expect(clearSubtitles).not.toHaveBeenCalled();
+
+  const history = [{ source: "Retained synthetic caption.", translation: "", createdAt: 1 }];
+  await act(async () => useStore.setState(state => ({ session: { ...state.session, subtitles: { ...empty, history } } })));
+  expect(clear.disabled).toBe(false);
+  await act(async () => clear.click());
+  expect(clearSubtitles).toHaveBeenCalledOnce();
+  expect(clear.disabled).toBe(true);
+  expect(useStore.getState().session).toMatchObject({ isActive: true, subtitles: empty });
+});
+
+it("blocks Clear, Immersive and Lock while a session action is pending", async () => {
+  let settle!: () => void;
+  const togglePaused = vi.fn(() => new Promise<void>(resolve => { settle = resolve; }));
+  const clearSubtitles = vi.fn().mockResolvedValue(undefined);
+  useStore.setState({ togglePaused, clearSubtitles });
+  await act(async () => root.render(<OverlayWindow />));
+  const clear = button(I18N.overlay.clearSubtitles);
+  await act(async () => button(I18N.overlay.pause).click());
+  expect(clear.disabled).toBe(true);
+  expect(button(I18N.overlay.enterImmersiveMode).disabled).toBe(true);
+  expect(button(I18N.overlay.lockPosition).disabled).toBe(true);
+  await act(async () => clear.click());
+  expect(clearSubtitles).not.toHaveBeenCalled();
+  await act(async () => settle());
+  expect(clear.disabled).toBe(false);
+});
+
+it("enters immersive mode through the existing setting and hides the toolbar", async () => {
+  const saveSettings = vi.fn<typeof initial.saveSettings>(async (draft) => {
+    useStore.setState(state => ({ settings: { ...state.settings, subtitleBlendsWithBackground: draft.subtitleBlendsWithBackground ?? false } }));
+  });
+  useStore.setState({ saveSettings });
+  await act(async () => root.render(<OverlayWindow />));
+  await act(async () => button(I18N.overlay.enterImmersiveMode).click());
+  expect(saveSettings).toHaveBeenCalledExactlyOnceWith({ subtitleBlendsWithBackground: true });
+  expect(host.querySelector('[data-presentation="background-blend"]')).not.toBeNull();
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
+});
+
+it("locks through the existing action and gives up subtitle toolbar targets", async () => {
+  const setOverlayLocked = vi.fn<typeof initial.setOverlayLocked>(async (locked) => {
+    useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: locked } }));
+  });
+  useStore.setState({ setOverlayLocked });
+  await act(async () => root.render(<OverlayWindow />));
+  await act(async () => button(I18N.overlay.lockPosition).click());
+  expect(setOverlayLocked).toHaveBeenCalledExactlyOnceWith(true);
+  expect(host.querySelector(".overlay-expanded-canvas")?.hasAttribute("data-overlay-locked")).toBe(true);
+  expect(host.querySelector(".overlay-action-strip")).toBeNull();
+  expect(host.querySelector<HTMLButtonElement>('[data-testid="overlay-drag-area"]')?.disabled).toBe(true);
 });
 
 it("shows expansion failures within the 54px collapsed surface and keeps its retry action", async () => {
@@ -214,10 +263,17 @@ it("keeps a collapsed close failure visible and disables close while stopping", 
   expect(button(I18N.overlay.closeSubtitles).disabled).toBe(true);
 });
 
-it("retains direct close at the minimum width without overlapping the capsule", async () => {
+it("retains all six direct actions at the minimum width", async () => {
   vi.stubGlobal("innerWidth", 360);
   await act(async () => root.render(<OverlayWindow />));
-  expect(button(I18N.overlay.closeSubtitles)).not.toBeNull();
-  expect(button(I18N.overlay.pause)).toBeNull();
-  expect(host.querySelectorAll(".overlay-control-button")).toHaveLength(1);
+  expect(Array.from(host.querySelectorAll(".overlay-control-button"), button => button.getAttribute("aria-label"))).toEqual([
+    I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles,
+    I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition, I18N.overlay.closeSubtitles,
+  ]);
+  expect(Array.from(host.querySelectorAll(".overlay-action-group"), group =>
+    Array.from(group.querySelectorAll("button"), button => button.getAttribute("aria-label")))).toEqual([
+    [I18N.overlay.pause, I18N.overlay.collapseSubtitle, I18N.overlay.clearSubtitles],
+    [I18N.overlay.enterImmersiveMode, I18N.overlay.lockPosition],
+  ]);
+  expect(host.querySelector(".overlay-action-strip > span:last-child button")).toBe(button(I18N.overlay.closeSubtitles));
 });

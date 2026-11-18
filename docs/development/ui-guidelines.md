@@ -83,6 +83,11 @@ These project rules apply to implementation and review.
 - Verify wrapping, narrow windows, long labels, empty content and light/dark
   themes. Interactive controls, including help and toast dismissal, keep pointer
   cursors; preserve disabled, text-input, slider and resize cursors.
+- Distinguish temporary busy controls from unavailable choices. A pending
+  preference or session change may block conflicting input without dimming an
+  entire floating panel. Keep its geometry and visible selection stable; use
+  accessible busy state and local progress where appropriate. Empty or
+  unsupported choices retain their unavailable appearance and explanation.
 - Live subtitle geometry needs a stable reading edge as well as unclipped text.
   Automatic glides must retain ownership across row measurement and streaming
   revisions; pointer clicks cannot turn their pending scroll events into history
@@ -270,11 +275,44 @@ Before calling a UI consistency fix complete:
    differences or unverified platform behavior. Update this guide when the
    shared rule changes; record new concrete pitfalls in `common-regressions.md`.
 
+### Desktop subtitle overlay acceptance
+
+Use these platform conventions and WCAG 2.2 criteria as review checks for the
+desktop overlay and its WebView controls.
+
+- Keep one quick-control panel for related tasks. Preserve changes on dismissal
+  through the existing instant-save flow and report failed saves. At monitor
+  edges and enlarged text sizes, fit within usable screen bounds and keep every
+  action reachable by scrolling. [Apple HIG Popovers](https://developer.apple.com/design/human-interface-guidelines/popovers), [Apple HIG Layout](https://developer.apple.com/design/human-interface-guidelines/layout)
+- Revealed controls must remain operable while the pointer moves from captions
+  to the toolbar or into the panel, and while keyboard focus remains inside.
+  For additional content shown by hover or focus, such as help, let the pointer
+  reach the content and keep it visible while hovered or focused, until
+  dismissed or no longer relevant. If it obscures other content, provide a way
+  to dismiss it without moving the pointer or focus. [WCAG 2.2 SC 1.4.13](https://www.w3.org/TR/WCAG22/#content-on-hover-or-focus)
+- Outside clicks dismiss the panel without also activating an underlying Mimi
+  close, clear or settings action. Escape dismisses the active picker or help
+  before the panel. Leave Escape to IME composition while it is active. Check
+  Tab and Shift+Tab with pickers open and at both ends of the scrolled panel.
+  Mimi requires the focused control and its focus indicator to be fully visible.
+  [Windows Flyouts](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/dialogs-and-flyouts/flyouts#light-dismiss-behavior), [WCAG 2.2 SC 2.4.11](https://www.w3.org/TR/WCAG22/#focus-not-obscured-minimum)
+- Check that actual pointer targets contain a 24 × 24 CSS px square, including
+  rounded hit areas. For undersized targets using the spacing exception, a
+  24 CSS px diameter circle centered on the target bounds must not intersect
+  another target or another undersized target's circle.
+  [WCAG 2.2 SC 2.5.8](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html)
+- Measure contrast on the rendered overlay over light and dark content.
+  Check ordinary text at 4.5:1 and essential enabled control/state graphics
+  at 3:1 against adjacent colors where the criteria apply.
+  [WCAG 2.2 SC 1.4.3](https://www.w3.org/TR/WCAG22/#contrast-minimum), [WCAG 2.2 SC 1.4.11](https://www.w3.org/TR/WCAG22/#non-text-contrast)
+
 Collapsed overlay tooltips must fit the 54px native window and leave its drag,
 pause, expand and close buttons uncovered at the minimum width in every UI
 language. Use a short gesture hint when the expanded instructions do not fit;
 retain a complete accessible action. Verify geometry with the actual overlay
 components and confirm the affected gesture in the signed native app.
+
+### Android subtitle overlay acceptance
 
 For Android, appearance preferences must refresh the existing service-owned
 subtitle views. Verify actual native text size after slider input; a changed

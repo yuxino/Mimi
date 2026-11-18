@@ -3,6 +3,7 @@ import { speechRecognitionDisplayName } from "../../lib/speechRecognitionName";
 import { I18N } from "../../lib/i18n";
 import {
   activeServiceProfile,
+  isCustomSpeechProvider,
   isIndependentAsrProfile,
   textTranslationForProfile,
 } from "../../lib/providerCapabilities";
@@ -17,6 +18,7 @@ export interface OverlayServiceStage {
 export interface TranslationService {
   stages: OverlayServiceStage[];
   detail: string;
+  showInProfileDetails: boolean;
 }
 
 /** Describes the selected route using only credential-free snapshot metadata. */
@@ -48,6 +50,8 @@ export function translationService(
 
   return {
     stages,
+    // The selected profile already shows its built-in provider mark.
+    showInProfileDetails: stages.length > 1 || isCustomSpeechProvider(profile.provider),
     detail: [
       `${I18N.settings.currentProfile}: ${profile.name}`,
       `${I18N.settings.speechRecognition}: ${speechLabel}`,

@@ -27,6 +27,7 @@ it.each([
 ] as const)("combines recognition and translation from the built-in %s service", provider => {
   const result = translationService(settings({ provider }));
   expect(result?.stages).toEqual([{ role: "combined", provider, label: providerDisplayName(provider) }]);
+  expect(result?.showInProfileDetails).toBe(false);
   expect(result?.detail).toContain(`Current configuration: ${profile.name}`);
   expect(result?.detail).toContain(`Speech recognition: ${providerDisplayName(provider)}`);
   expect(result?.detail).toContain(`Text translation: ${providerDisplayName(provider)}`);
@@ -43,6 +44,7 @@ it.each(["alibabaCloud", "customDashScopeASR", "customOpenAIASR", "appleSpeech"]
         { role: "recognition", provider, label: providerDisplayName(provider) },
         { role: "translation", provider: textTranslation, label },
       ]);
+      expect(result?.showInProfileDetails).toBe(true);
       expect(result?.detail).toContain(`Speech recognition: ${providerDisplayName(provider)}`);
       expect(result?.detail).toContain(`Text translation: ${label}`);
     }
@@ -142,6 +144,7 @@ it("does not merge different services with matching display names", () => {
   }));
   expect(result?.stages.map(stage => stage.label)).toEqual(["Alibaba Cloud", "Alibaba Cloud"]);
   expect(result?.stages.map(stage => stage.provider)).toEqual(["alibabaCloud", "openAICompatible"]);
+  expect(result?.showInProfileDetails).toBe(true);
 });
 
 it("does not leak inactive aliases into built-in or original-only translation", () => {
@@ -196,6 +199,7 @@ it.each(["customDashScopeASR", "customOpenAIASR"] as const)(
         targetLanguage: textTranslation === "chatMock" ? "original" : "zh",
       });
       expect(result?.stages).toEqual([{ role: "recognition", provider, label: "Whisper" }]);
+      expect(result?.showInProfileDetails).toBe(true);
       expect(result?.detail).toContain("Text translation: Original only");
       expect(result?.detail).not.toContain("Unused translator");
     }

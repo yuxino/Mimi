@@ -3,5 +3,5 @@
   "identifier": "overlay-control-window",
   "description": "The overlay control island may operate live choices and its own panel.",
   "windows": ["overlay-control"],
-  "permissions": ["app-overlay-control"]
+  "permissions": ["app-overlay-control", "core:event:allow-emit-to"]
 }

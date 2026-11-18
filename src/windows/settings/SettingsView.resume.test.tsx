@@ -152,15 +152,37 @@ it("permits the settings window to invoke the existing pause/resume command", ()
   expect(settingsPermission).toContain('"session_toggle_paused"');
 });
 
+it.each([
+  ["Macintosh", null, "⌘⇧L"],
+  ["Windows NT 10.0", null, "Ctrl+Shift+L"],
+  ["Linux x86_64", undefined, null],
+] as const)("shows a lock shortcut only after native support is established on %s", async (platform, commands, shortcut) => {
+  const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(platform);
+  shortcuts.commands = commands;
+  try {
+    await mount();
+    const lock = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.lockPosition}"]`)!;
+    const help = document.getElementById(lock.getAttribute("aria-describedby")!)!;
+    expect(help.textContent).toContain(I18N.settings.lockHelp);
+    if (shortcut) expect(help.textContent).toContain(shortcut);
+    else expect(help.textContent).not.toMatch(/⌘⇧L|Ctrl\+Shift\+L/);
+  } finally {
+    userAgent.mockRestore();
+  }
+});
+
 it.each(["zh", "en", "ja"] as const)("offers the exact Linux commands in a General dialog and restores entry focus on close in %s", async language => {
   setStoredUiLanguage(language);
   const commands: DesktopShortcutCommands = {
     toggleSession: "'/opt/Mimi Preview.AppImage' --toggle-session",
     toggleImmersive: "'/opt/Mimi Preview.AppImage' --toggle-immersive",
+    toggleLock: "'/opt/Mimi Preview.AppImage' --toggle-lock",
     cycleSubtitleDisplay: "'/opt/Mimi Preview.AppImage' --cycle-subtitle-display",
   };
   shortcuts.commands = commands;
   await mount();
+  const lock = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.lockPosition}"]`)!;
+  expect(document.getElementById(lock.getAttribute("aria-describedby")!)?.textContent).not.toMatch(/⌘⇧L|Ctrl\+Shift\+L/);
   expect(host.querySelector("#subtitle-settings-panel .settings-shortcut-setup, #service-profiles-panel .settings-shortcut-setup")).toBeNull();
   await act(() => host.querySelector<HTMLButtonElement>("#settings-category-general")!.click());
   const entry = host.querySelector<HTMLButtonElement>("#application-settings-panel .settings-shortcut-setup button")!;
@@ -169,7 +191,7 @@ it.each(["zh", "en", "ja"] as const)("offers the exact Linux commands in a Gener
   const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
   expect(dialog.getAttribute("aria-modal")).toBe("true");
   expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)?.textContent).toBe(I18N.settings.systemShortcutSetup);
-  expect([...dialog.querySelectorAll("code")].map(code => code.textContent)).toEqual([commands.toggleSession, commands.toggleImmersive, commands.cycleSubtitleDisplay]);
+  expect([...dialog.querySelectorAll("code")].map(code => code.textContent)).toEqual([commands.toggleSession, commands.toggleImmersive, commands.toggleLock, commands.cycleSubtitleDisplay]);
   expect(dialog.textContent).toContain(I18N.settings.systemShortcutInstructions);
   expect(dialog.querySelectorAll(".settings-confirmation__actions button")).toHaveLength(1);
   const close = dialog.querySelector<HTMLButtonElement>(".settings-confirmation__cancel")!;

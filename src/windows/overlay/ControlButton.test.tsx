@@ -77,6 +77,16 @@ it("shows on keyboard focus, dismisses with Escape, and removes the tooltip on b
   expect(document.querySelector('[role="tooltip"]')).toBeNull();
 });
 
+it("shows an available shortcut with the hover label without changing the action's accessible name", async () => {
+  await act(() => root.render(<ControlButton icon="lock" label="Lock Subtitle Position" shortcutHint="⌘⇧L" onClick={() => {}} />));
+  await hover();
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("Lock Subtitle Position ⌘⇧L");
+  expect(document.querySelector('[role="tooltip"] kbd')?.textContent).toBe("⌘⇧L");
+  expect(host.querySelector("button")?.getAttribute("aria-label")).toBe("Lock Subtitle Position");
+  await act(() => root.render(<ControlButton icon="lock" label="Lock Subtitle Position" onClick={() => {}} />));
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("Lock Subtitle Position");
+});
+
 it("follows pending labels and blocks duplicate actions while showing a busy indicator", async () => {
   const onClick = vi.fn();
   await act(async () => root.render(<ControlButton icon="play" label="Retry connection" onClick={onClick} />));

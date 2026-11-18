@@ -26,6 +26,8 @@ interface SelectProps {
   value: string;
   options: readonly SelectOption[];
   disabled?: boolean;
+  /** Temporarily blocks input without dimming an available control. */
+  busy?: boolean;
   /** Enables an explicit filter input; callers supply localized copy. */
   searchLabel?: string;
   emptyMessage?: string;
@@ -51,7 +53,7 @@ function nextEnabledOption(options: readonly SelectOption[], start: number, dire
 }
 
 /** One app-styled picker for Settings, the subtitle controls, and the tray. */
-export function Select({ label, value, options, disabled = false, searchLabel, emptyMessage, loadingMessage, valueLabel, valueIcon, onOpen, closedArrowSelection = false, onChange }: SelectProps) {
+export function Select({ label, value, options, disabled = false, busy = false, searchLabel, emptyMessage, loadingMessage, valueLabel, valueIcon, onOpen, closedArrowSelection = false, onChange }: SelectProps) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -65,7 +67,9 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
   const [portalTarget, setPortalTarget] = useState<Element | null>(null);
   const [query, setQuery] = useState("");
   const searchable = searchLabel !== undefined;
-  const open = popup !== null && !disabled;
+  const unavailable = disabled || options.length === 0;
+  const blocked = unavailable || busy;
+  const open = popup !== null && !blocked;
   const visible = useMemo(() => {
     const text = open && searchable ? query.trim().toLocaleLowerCase() : "";
     return text ? options.filter(option => option.label.toLocaleLowerCase().includes(text) || option.value.toLocaleLowerCase().includes(text)) : options;
@@ -86,7 +90,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
 
   // A native connection/busy transition closes the current interaction. Keep
   // it closed after unlocking until the user explicitly opens the picker.
-  if (disabled && popup !== null) setPopup(null);
+  if (blocked && popup !== null) setPopup(null);
   useEffect(() => { lastChoice.current = value; }, [value]);
 
   function setActive(index: number | ((previous: number) => number), reveal = true) {
@@ -102,7 +106,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
 
   function show() {
     const button = trigger.current;
-    if (!button || disabled || options.length === 0) return;
+    if (!button || blocked) return;
     button.focus();
     const rect = button.getBoundingClientRect();
     const theme = getComputedStyle(button);
@@ -206,7 +210,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement | HTMLInputElement>) {
     const editing = event.currentTarget === input.current;
-    if (disabled || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (blocked || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === "Tab" || event.key === "Escape") {
       if (open && event.key === "Escape") {
         event.preventDefault();
@@ -298,7 +302,7 @@ export function Select({ label, value, options, disabled = false, searchLabel, e
       <button ref={trigger} type="button" className="mimi-select__trigger" role="combobox"
         aria-label={label} aria-haspopup="listbox" aria-expanded={open}
         aria-controls={open ? id : undefined} aria-activedescendant={activeId}
-        disabled={disabled || options.length === 0} onKeyDown={onKeyDown}
+        disabled={blocked} aria-busy={busy && !unavailable || undefined} onKeyDown={onKeyDown}
         onClick={() => open ? setPopup(null) : show()}>
         {/* Replacing the label node also invalidates retained WebKit pixels on
             external value changes, while the focused trigger remains stable. */}

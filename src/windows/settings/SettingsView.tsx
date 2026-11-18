@@ -56,6 +56,7 @@ const CATEGORY_SECTION_IDS: Record<SettingsCategory, string> = {
 /** Compact settings surface shared by the macOS and Windows shells. */
 export function SettingsView() {
   const { nativeShortcuts, commands: desktopShortcutCommands } = useDesktopShortcuts();
+  const isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const [showShortcutSetup, setShowShortcutSetup] = useState(false);
   const [subtitleFontPreview, setSubtitleFontPreview] = useState<string | undefined>();
   const { theme, resolvedTheme, changeTheme } = useSettingsTheme();
@@ -441,10 +442,13 @@ export function SettingsView() {
                       <SettingsRow
                         label={I18N.settings.lockPosition}
                         description={I18N.settings.lockHelp}
+                        descriptionId="subtitle-position-lock-help"
+                        hint={nativeShortcuts ? isMac ? "⌘⇧L" : "Ctrl+Shift+L" : undefined}
                       >
                         <Switch
                           checked={settings.isOverlayLocked}
                           aria-label={I18N.settings.lockPosition}
+                          aria-describedby="subtitle-position-lock-help"
                           onChange={(checked) => {
                             void runWithToast(() => setOverlayLocked(checked), I18N.settings.settingSaveFailed(I18N.settings.lockPosition));
                           }}
@@ -523,6 +527,7 @@ export function SettingsView() {
                     <dl>
                       <dt>{I18N.settings.startStopShortcut}</dt><dd><code>{desktopShortcutCommands.toggleSession}</code></dd>
                       <dt>{I18N.tray.blendBackground}</dt><dd><code>{desktopShortcutCommands.toggleImmersive}</code></dd>
+                      <dt>{I18N.settings.lockPosition}</dt><dd><code>{desktopShortcutCommands.toggleLock}</code></dd>
                       <dt>{I18N.settings.subtitleDisplay}</dt><dd><code>{desktopShortcutCommands.cycleSubtitleDisplay}</code></dd>
                     </dl>
                   </div>

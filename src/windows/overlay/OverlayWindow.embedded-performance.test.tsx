@@ -78,6 +78,9 @@ async function flushPopupFrame() {
 function picker(label: string) {
   return host.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${label}"]`)!;
 }
+function subtitleDisplayControl() {
+  return host.querySelector<HTMLElement>(`[role="group"][aria-label="${I18N.settings.subtitleDisplay}"]`)!;
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -110,7 +113,7 @@ beforeEach(() => {
     settings: { ...original.settings,
       profiles: [{ id: "synthetic", name: "Synthetic Gemini", provider: "googleGeminiLive", credentialState: "present" }],
       activeProfileId: "synthetic", sourceLanguage: "en", targetLanguage: "zh", subtitleDisplayMode: "original",
-      pulseStyle: "syllable", pulseAnimation: false, subtitleAnimation: false, subtitleBlendsWithBackground: false, isOverlayLocked: true,
+      pulseStyle: "syllable", pulseAnimation: false, subtitleAnimation: false, subtitleBlendsWithBackground: false, isOverlayLocked: false,
     },
     session: { ...original.session, status: { kind: "listening" }, isActive: true, isPaused: false,
       detectedLanguage: "en", isTranslationPending: true,
@@ -136,7 +139,7 @@ it("updates a real embedded panel when its shortcut discovery resolves without a
   let resolve!: (commands: DesktopShortcutCommands | null) => void;
   native.shortcuts.mockImplementation(() => new Promise<DesktopShortcutCommands | null>(done => { resolve = done; }));
   await mount("panel");
-  const control = picker(I18N.settings.subtitleDisplay).closest<HTMLElement>(".overlay-control-picker")!;
+  const control = subtitleDisplayControl();
   expect(control.title).toBe("");
   vi.mocked(overlayControlPanelModel).mockClear();
   await act(async () => resolve(null));
@@ -149,10 +152,10 @@ it.each(["hidden", "island", "panel"] as const)("does not rebuild embedded contr
   const surface = host.querySelector(".overlay-control-embedded")!;
   const island = host.querySelector(".overlay-control-island");
   const panel = host.querySelector(".overlay-control-panel");
-  const display = mode === "panel" ? picker(I18N.settings.subtitleDisplay) : null;
-  if (display) await act(async () => display.click());
+  const targetPicker = mode === "panel" ? picker(I18N.settings.translateTo) : null;
+  if (targetPicker) await act(async () => targetPicker.click());
   const menu = document.querySelector(".mimi-select__menu");
-  if (display) expect(menu).not.toBeNull();
+  if (targetPicker) expect(menu).not.toBeNull();
   vi.mocked(overlayControlPanelModel).mockClear();
   vi.mocked(overlaySessionChromeLayout).mockClear();
   for (let index = 0; index < 50; index++) {
@@ -168,7 +171,11 @@ it.each(["hidden", "island", "panel"] as const)("does not rebuild embedded contr
   expect(overlaySessionChromeLayout).toHaveBeenCalledTimes(50);
   expect(overlayControlPanelModel).toHaveBeenCalledTimes(0);
   expect(document.querySelector(".mimi-select__menu")).toBe(menu);
-  if (display) await act(async () => display.click());
+  expect(host.querySelector(".overlay-expanded-canvas .overlay-latency__measurement")).toBeNull();
+  if (targetPicker) {
+    expect(panel?.querySelector(".overlay-session-details .overlay-latency__measurement")?.textContent).toContain("49 ms");
+    await act(async () => targetPicker.click());
+  }
   await act(async () => { await vi.advanceTimersByTimeAsync(800); });
   expect(host.querySelector('[data-utterance-id="live-utterance-synthetic-live"]')?.textContent).toContain("Synthetic source draft 49");
   expect(overlayControlPanelModel).toHaveBeenCalledTimes(0);
@@ -176,15 +183,13 @@ it.each(["hidden", "island", "panel"] as const)("does not rebuild embedded contr
   expect(surface.getAttribute("data-mode")).toBe(mode);
   expect(host.querySelector(".overlay-control-island")).toBe(island);
   expect(host.querySelector(".overlay-control-panel")).toBe(panel);
-  if (display) expect(picker(I18N.settings.subtitleDisplay)).toBe(display);
+  if (targetPicker) expect(picker(I18N.settings.translateTo)).toBe(targetPicker);
 });
 
-it.each((["none", "menu", "toast", "both"] as const).flatMap(layers =>
-  (["caption", "latency"] as const).map(channel => ({ layers, channel })),
-))("does not schedule popup measurement for displayed $channel changes with $layers layers", async ({ layers, channel }) => {
+it.each(["none", "menu", "toast", "both"] as const)("does not schedule popup measurement for displayed caption changes with %s layers", async layers => {
   await mount("panel");
   await flushPopupFrame();
-  if (layers === "menu" || layers === "both") await act(async () => picker(I18N.settings.subtitleDisplay).click());
+  if (layers === "menu" || layers === "both") await act(async () => picker(I18N.settings.translateTo).click());
   if (layers === "toast" || layers === "both") await act(async () => notify("Synthetic notification"));
   await flushPopupFrame();
   const menu = document.querySelector(".mimi-select__menu");
@@ -197,14 +202,13 @@ it.each((["none", "menu", "toast", "both"] as const).flatMap(layers =>
   vi.mocked(overlayControlPanelModel).mockClear();
   for (let index = 0; index < 3; index++) {
     await act(async () => useStore.setState(state => ({ session: { ...state.session,
-      ...(channel === "caption" ? { subtitles: { ...state.session.subtitles,
+      subtitles: { ...state.session.subtitles,
         source: { ...state.session.subtitles.source, text: `Synthetic displayed caption ${index}` },
-      } } : { apiLatencyMs: 100 + index }),
+      },
     } })));
     await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     await flushPopupFrame();
-    if (channel === "caption") expect(host.querySelector('[data-utterance-id="live-utterance-synthetic-live"]')?.textContent).toContain(`Synthetic displayed caption ${index}`);
-    else expect(host.querySelector(".overlay-latency")?.textContent).toContain(`${100 + index} ms`);
+    expect(host.querySelector('[data-utterance-id="live-utterance-synthetic-live"]')?.textContent).toContain(`Synthetic displayed caption ${index}`);
   }
   // The lookup occurs at the start of every real popup measurement, including
   // the no-layer case where there are no rectangles to read.
@@ -220,7 +224,7 @@ it.each((["none", "menu", "toast", "both"] as const).flatMap(layers =>
 it("retains popup measurement for stylesheet, ancestor, unknown sibling and mixed mutations", async () => {
   await mount("panel");
   await flushPopupFrame();
-  await act(async () => picker(I18N.settings.subtitleDisplay).click());
+  await act(async () => picker(I18N.settings.translateTo).click());
   const surface = host.querySelector<HTMLElement>(".overlay-control-embedded")!;
   const subtitleRoot = surface.parentElement!.firstElementChild!;
   expect(subtitleRoot.contains(host.querySelector(".overlay-timeline"))).toBe(true);
@@ -261,7 +265,7 @@ it("keeps menu and real notification slots current through changes, removals, re
   });
   await mount("panel");
   await flushPopupFrame();
-  await act(async () => { picker(I18N.settings.subtitleDisplay).click(); notify("Short notice"); });
+  await act(async () => { picker(I18N.settings.translateTo).click(); notify("Short notice"); });
   await flushPopupFrame();
   expect(native.bounds).toHaveBeenLastCalledWith(menuRect, toastRect);
   const menu = document.querySelector<HTMLElement>(".mimi-select__menu")!;
@@ -278,16 +282,16 @@ it("keeps menu and real notification slots current through changes, removals, re
   await act(async () => host.querySelector<HTMLButtonElement>(".settings-toast button")!.click());
   await flushPopupFrame();
   expect(native.bounds).toHaveBeenLastCalledWith(menuRect, null);
-  await act(async () => picker(I18N.settings.subtitleDisplay).click());
+  await act(async () => picker(I18N.settings.translateTo).click());
   await flushPopupFrame();
   expect(native.bounds).toHaveBeenLastCalledWith(null, null);
-  await act(async () => picker(I18N.settings.subtitleDisplay).click());
+  await act(async () => picker(I18N.settings.translateTo).click());
   await flushPopupFrame();
   expect(native.bounds).toHaveBeenLastCalledWith(menuRect, null);
   await act(async () => window.dispatchEvent(new Event("resize")));
   await flushPopupFrame();
   expect(native.bounds).toHaveBeenLastCalledWith(null, null);
-  await act(async () => picker(I18N.settings.subtitleDisplay).click());
+  await act(async () => picker(I18N.settings.translateTo).click());
   await flushPopupFrame();
   native.bounds.mockClear();
   await act(async () => { document.querySelector<HTMLElement>(".mimi-select__menu")!.style.width = "320px"; });
@@ -308,7 +312,7 @@ it("keeps locale, settings, lifecycle, native mode and resize subscriptions live
     expect(host.querySelector(".overlay-control-panel")).toBe(panel);
     expect(panel.getAttribute("aria-label")).toBe(I18N.overlay.controlPanel);
     expect(island.title).toContain(I18N.overlay.openControls);
-    expect(picker(I18N.settings.subtitleDisplay)).not.toBeNull();
+    expect(subtitleDisplayControl()).not.toBeNull();
   }
   vi.spyOn(navigator, "language", "get").mockReturnValue("fr-CA");
   await act(async () => setStoredUiLanguage("system"));

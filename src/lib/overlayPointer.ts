@@ -41,7 +41,7 @@ const updateCursor = createPointerCursorUpdater(setOverlayPointerCursor);
 export function isClickablePointerTarget(target: Element | null): boolean {
   const control = target?.closest('button, a[href], summary, select, [role="button"], [role="switch"], [role="option"], [role="tab"], input:is([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="color"])');
   return Boolean(control && !control.matches(":disabled") && !control.hasAttribute("disabled") && control.getAttribute("aria-disabled") !== "true"
-    && control.getAttribute("aria-busy") !== "true");
+    && control.getAttribute("aria-busy") !== "true" && control.getAttribute("aria-hidden") !== "true");
 }
 
 /** One hit test per native movement; only target changes notify controls. */

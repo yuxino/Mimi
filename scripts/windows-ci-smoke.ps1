@@ -476,6 +476,7 @@ $sessionStateFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-session-$([Guid]:
 $trayVisibleFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-tray-$([Guid]::NewGuid().ToString('N')).ready"
 $settingsActivationFile = Join-Path ([IO.Path]::GetTempPath()) "mimi-settings-activation-$([Guid]::NewGuid().ToString('N')).state"
 $frontendReadyDir = Join-Path ([IO.Path]::GetTempPath()) "mimi-frontend-$([Guid]::NewGuid().ToString('N'))"
+$hoverSampleOptIn = Join-Path $frontendReadyDir 'windows-hover-sample-enabled'
 $preferencesDir = $null
 $process = $null
 $spoofedProcess = $null
@@ -492,6 +493,13 @@ try {
     $env:MIMI_UI_TEST_TRAY_VISIBLE_FILE = $trayVisibleFile
     $env:MIMI_UI_TEST_SETTINGS_ACTIVATION_FILE = $settingsActivationFile
     $env:MIMI_UI_TEST_FRONTEND_READY_DIR = $frontendReadyDir
+    if ($OverlayInteraction -eq 'pointer') {
+        try {
+            New-Item -ItemType Directory -Path $frontendReadyDir | Out-Null
+            New-Item -ItemType File -Path $hoverSampleOptIn | Out-Null
+        }
+        catch { Write-Warning 'Could not enable the optional Windows hover metadata fixture.' }
+    }
     if ($OverlayInteraction -ne 'none') {
         $preferencesDir = Join-Path ([IO.Path]::GetTempPath()) "mimi-ui-test-$([Guid]::NewGuid().ToString('N'))"
         New-Item -ItemType Directory -Path $preferencesDir | Out-Null
@@ -806,7 +814,8 @@ try {
         foreach ($argument in @('-NoProfile', '-NonInteractive', '-Mta', '-File', "$PSScriptRoot/windows-overlay-interaction-smoke.ps1",
             '-OverlayWindow', $overlayWindow.ToInt64(), '-SettingsWindow', $settingsWindow.ToInt64(),
             '-SessionStateFile', $sessionStateFile, '-SettingsActivationFile', $settingsActivationFile,
-            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir)) {
+            '-Interaction', $OverlayInteraction, '-FixtureDirectory', $preferencesDir,
+            '-FrontendReadyDirectory', $frontendReadyDir)) {
             $interactionProbe.ArgumentList.Add([string]$argument)
         }
         $probeProcess = [Diagnostics.Process]::Start($interactionProbe)
@@ -824,6 +833,7 @@ try {
         }
         finally {
             $probeProcess.Dispose()
+            Remove-Item -LiteralPath $hoverSampleOptIn -Force -ErrorAction SilentlyContinue
         }
     }
 

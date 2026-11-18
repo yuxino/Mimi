@@ -18,7 +18,7 @@ describe("browser and native minimum-height contract", () => {
     for (const font of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) expect(minimum(font)).toBe(minimum(16));
   });
 
-  it("reserves the separate service row without taking height from a maximum-font bilingual body", () => {
+  it("retains the conservative chrome allowance without taking height from maximum-font bilingual text", () => {
     const settings = { audioInput: "system" as const, subtitleDisplayMode: "bilingual" as const,
       targetLanguage: "zh" as const, fontSize: 48 };
     expect(OVERLAY_MAXIMUM_CHROME_HEIGHT).toBe(61 + 20 + 12 + 10 + 2);

@@ -13,22 +13,23 @@ import { audioInputLabel } from "../../lib/audioInput";
 import { hasEmbeddedOverlayControls, isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
+import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../../lib/store";
 import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
-import { OVERLAY_ACTIVITY_PHASES, hexToRgba } from "../../lib/types";
+import { OVERLAY_ACTIVITY_PHASES } from "../../lib/types";
 import { ControlButton } from "./ControlButton";
-import { DragHandle, OverlayDragArea } from "./DragHandle";
+import { OverlayDragArea } from "./OverlayDragArea";
+import { startOverlayContentDrag } from "./overlayContentDrag";
 import { PulseRing } from "./PulseRing";
 import { OverlayLatency } from "./OverlayLatency";
-import { OverlayTranslationService } from "./OverlayTranslationService";
-import { translationService } from "./translationService";
 import { ResizeHandles } from "./ResizeHandles";
 import { Timeline } from "./Timeline";
 import { useResolvedMotion } from "./animation";
 import { useSubtitleTail } from "./useSubtitleTail";
 import type { SourceSubtitleSnapshot } from "../../lib/types";
-import { overlaySessionChromeLayout } from "./overlayChromeLayout";
+import { OVERLAY_INSET, overlaySessionChromeLayout } from "./overlayChromeLayout";
 import { minimumOverlayHeight } from "./overlayMinimumHeight";
+import { useOverlayChromePeers } from "./useOverlayChromePeers";
 import { useSessionAction } from "./useSessionAction";
 import { publishOverlayPointerMotion } from "../../lib/overlayPointer";
 import {
@@ -42,9 +43,8 @@ import {
   usesAtomicSubtitlePreview,
   usesStreamingSubtitlePreview,
 } from "./overlayModel";
+import "./overlayChrome.css";
 
-const ACCENT = "#7AA8FF";
-const OVERLAY_INSET = 6;
 const EMPTY_MICROPHONE: SourceSubtitleSnapshot = {
   audioSource: "microphone", source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },
   history: [], detectedLanguage: null, isTranslationPending: false, isTranslationTimedOut: false,
@@ -54,11 +54,16 @@ type ControlAction = "collapse" | "clear" | "immersive" | "lock" | "settings" | 
 
 /** Floating subtitle overlay driven by native session and geometry state. */
 export function OverlayWindow() {
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const compactReadingRef = useRef<HTMLDivElement>(null);
+  const updateNativePointer = useOverlayChromePeers(surfaceRef, "overlay", isTauri && !hasEmbeddedOverlayControls);
   const subtitleRootRef = useRef<HTMLDivElement>(null);
   const session = useStore((state) => state.session);
   const sessionErrorMessage = useStore(selectSessionErrorMessage);
   const sessionErrorSummary = useStore(selectSessionErrorSummary);
   const [controlMode] = useOverlayControlMode();
+  const { nativeShortcuts } = useDesktopShortcuts();
+  const shortcutPrefix = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "⌘⇧" : "Ctrl+Shift+";
   const hasSessionError = session.status.kind === "error";
   const permissionRequired = useStore(state => state.session.status.kind === "error" && isSystemAudioPermissionDenied(state.session.status.message));
   const errorSettingsTarget = session.status.kind === "error" ? sessionErrorSettingsTarget(session.status.message) : null;
@@ -69,8 +74,8 @@ export function OverlayWindow() {
   const stop = useStore((state) => state.stop);
   const clearSubtitles = useStore((state) => state.clearSubtitles);
   const setOverlayCollapsed = useStore((state) => state.setOverlayCollapsed);
-  const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const saveSettings = useStore((state) => state.saveSettings);
+  const setOverlayLocked = useStore((state) => state.setOverlayLocked);
   const showSettings = useStore((state) => state.showSettings);
   const sessionAction = useSessionAction();
   const [pauseRequested, setPauseRequested] = useState(false);
@@ -95,28 +100,19 @@ export function OverlayWindow() {
     });
   };
 
-  const [isHovering, setIsHovering] = useState(false);
   const [readingHistory, setReadingHistory] = useState(false);
   const [followTailRequest, setFollowTailRequest] = useState(0);
   useEffect(() => {
-    if (!isTauri) return;
     let disposed = false;
-    let pointerInside = false;
     let removeListener: (() => void) | undefined;
-    const blurWindow = () => {
-      pointerInside = false;
-      publishOverlayPointerMotion(null);
-      setIsHovering(false);
-    };
+    const blurWindow = () => publishOverlayPointerMotion(null);
     window.addEventListener("blur", blurWindow);
-    void listenOverlayPointerMotion((point) => {
+    if (isTauri) void listenOverlayPointerMotion((point) => {
       if (disposed) return;
+      // The first native hit test must see the revealed controls, even
+      // when the nonactivating WebView never dispatches mouseenter.
+      updateNativePointer(point !== null);
       publishOverlayPointerMotion(point);
-      const nextInside = point !== null;
-      if (pointerInside !== nextInside) {
-        pointerInside = nextInside;
-        setIsHovering(nextInside);
-      }
     }).then((unlisten) => {
       if (disposed) unlisten();
       else removeListener = unlisten;
@@ -127,20 +123,14 @@ export function OverlayWindow() {
       removeListener?.();
       publishOverlayPointerMotion(null);
     };
-  }, []);
+  }, [updateNativePointer]);
   const [overlaySize, setOverlaySize] = useState(() => ({
-    width: typeof window === "undefined" || !isTauri ? 640 : window.innerWidth,
+    width: typeof window === "undefined" || !isTauri ? 580 : window.innerWidth,
     height:
-      typeof window === "undefined" || !isTauri ? 482 : window.innerHeight,
+      typeof window === "undefined" || !isTauri ? 240 : window.innerHeight,
   }));
-  const topChromeLayout = overlaySessionChromeLayout(
-    Math.max(0, overlaySize.width - OVERLAY_INSET * 2),
-    session,
-  );
+  const topChromeLayout = overlaySessionChromeLayout(overlaySize.width, session);
   const showSessionControls = topChromeLayout.showControls;
-  const service = translationService(settings);
-  const separateMetadataRow = Boolean(service) && overlaySize.width < 552;
-  const contentTopBandHeight = topChromeLayout.topBandHeight + (separateMetadataRow ? 20 : 0);
 
   const collapsed = session.isOverlayCollapsed;
   // Native geometry temporarily expands an error surface too. Preserve both
@@ -191,7 +181,6 @@ export function OverlayWindow() {
     : buildSubtitleBlocks(displayHistory, settings.subtitleDisplayMode, primaryTail)
       .map(block => ({ ...block, audioSource: block.audioSource ?? primaryAudioSource })),
   [dual, displayHistory, settings.subtitleDisplayMode, primarySubtitles.history, primaryTail, primaryAudioSource, microphoneSubtitles.history, microphoneTail]);
-  const hasContent = hasSubtitleContent(session.subtitles);
   const phaseLabel = session.status.kind === "stopping" ? I18N.overlay.stopping : OVERLAY_ACTIVITY_PHASES[phase].accessibilityLabel;
   // The native pause snapshot can arrive while the IPC still waits for
   // capture and transport cleanup. Show Resume then, keeping it disabled
@@ -219,10 +208,6 @@ export function OverlayWindow() {
         setPauseRequested(false);
       }
     });
-  };
-
-  const toggleCollapsed = () => {
-    runControlAction("collapse", () => setOverlayCollapsed(!collapsed));
   };
 
   useEffect(() => {
@@ -272,21 +257,20 @@ export function OverlayWindow() {
     </>
   );
 
-  if (isTauri) {
-    return <div className="relative h-full w-full">{content}
-      {hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
-    </div>;
-  }
+  const surface = <div ref={surfaceRef} className="overlay-surface relative h-full w-full"
+    style={isTauri ? undefined : overlaySize}
+    data-overlay-chrome-pinned={hasSessionError || controlMode === "panel" ? "" : undefined}
+    data-overlay-island-pinned={session.audioRecording && session.audioRecording !== "off" ? "" : undefined}
+  >
+    {content}
+    {isTauri && hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
+  </div>;
+  if (isTauri) return surface;
 
   // Plain `vite dev` preview: a fixed box anchored near the bottom-center.
   return (
     <div className="flex h-screen w-screen items-end justify-center pb-[72px]">
-      <div
-        className="relative"
-        style={{ width: overlaySize.width, height: overlaySize.height }}
-      >
-        {content}
-      </div>
+      {surface}
     </div>
   );
 
@@ -294,19 +278,15 @@ export function OverlayWindow() {
     const returnToLive = readingHistory && blocks.length > 0 && !presentationCollapsed;
     const showTiming = session.isActive && !blendsWithBackground;
     const actionFailed = sessionAction.failed || controlAction.failed;
-    const visibleService = blendsWithBackground ? null : service;
-    if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive && !visibleService) return null;
-    return <div className={`overlay-status-row${separateMetadataRow ? " overlay-status-row--narrow" : ""}`}
-      style={{ top: contentTopBandHeight - 14, columnGap: separateMetadataRow || blendsWithBackground ? 8 : topChromeLayout.dragHandleWidth + 16 }}>
+    if (!showTiming && !pendingSessionLabel && !actionFailed && !returnToLive) return null;
+    return <div className="overlay-status-row"
+      style={{ top: `var(--overlay-status-top, ${topChromeLayout.topBandHeight + 3}px)` }}>
       <div className="overlay-status-row__leading">
         {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
           {pendingSessionLabel ?? actionFailureMessage}
-        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} /> : null}
+        </div> : showTiming ? <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} showMeasurements={false} /> : null}
       </div>
       <div className={`overlay-status-row__trailing${returnToLive ? " overlay-status-row__trailing--reading" : ""}`}>
-        {visibleService && <OverlayTranslationService service={visibleService}
-          onClick={() => runControlAction("settings", () => showSettings("activeProfile"))}
-          disabled={controlAction.pending} />}
         {returnToLive && <button type="button" className="overlay-return-to-live" onClick={() => {
           setReadingHistory(false);
           setFollowTailRequest(request => request + 1);
@@ -316,7 +296,7 @@ export function OverlayWindow() {
   }
 
   function renderExpanded() {
-    const topBandHeight = contentTopBandHeight;
+    const { topBandHeight } = topChromeLayout;
     const emptyDensity = emptyStateDensity(overlaySize.height);
     const compactEmptyPulse = emptyDensity === "compact";
     const pulseBaseSize = compactEmptyPulse ? 48 : 80;
@@ -371,131 +351,79 @@ export function OverlayWindow() {
       );
     }
 
-    const hoverHighlight = isHovering && !presentationLocked;
-    const borderColor = hoverHighlight
-      ? hexToRgba(ACCENT, 0.34)
-      : "rgba(255,255,255,0.12)";
-    const borderWidth = hoverHighlight ? 1 : 0.75;
     return (
       <div
-        className="relative h-full w-full overflow-hidden"
+        className="overlay-expanded-canvas relative h-full w-full overflow-hidden"
+        data-overlay-locked={presentationLocked ? "" : undefined}
+        data-overlay-draggable={!presentationLocked && !controlAction.pending ? "" : undefined}
+        data-overlay-has-captions={blocks.length > 0 ? "" : undefined}
+        onPointerDownCapture={event => startOverlayContentDrag(event, presentationLocked || controlAction.pending)}
         style={{
           borderRadius: 16,
+          border: "1px solid var(--overlay-canvas-outline, rgba(255, 255, 255, 0.12))",
           // Ordinary mode keeps the same canvas through errors and retries.
           // The error feedback owns its contrast; only a saved immersive mode
           // needs a temporary opaque canvas while recovery is interactive.
           background: hasSessionError && settings.subtitleBlendsWithBackground
             ? "rgba(16,16,16,0.96)"
             : subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
-          border: `${borderWidth}px solid ${borderColor}`,
         }}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
       >
         <div className="relative flex h-full flex-col" style={{ padding: 5 }}>
           {renderStatusLine()}
-          {/* The empty top band shares the handle's native gesture. Controls
-              and metadata sit above this layer; subtitle content and resize
-              edges retain their own pointer handling. */}
-          <div
-            className="absolute inset-x-0 top-0"
-            style={{
-              height: topChromeLayout.topBandHeight,
-              pointerEvents: "none",
-              // Keep the drag affordance legible before the user discovers it.
-              opacity: isHovering ? 1 : 0.8,
-              transition: "opacity 160ms ease-out",
-            }}
-          >
-            <OverlayDragArea
-              onToggleCollapsed={toggleCollapsed}
-              disabled={presentationLocked || controlAction.pending}
-              collapseDisabled={hasSessionError}
-              busy={pendingControl === "collapse"}
-            />
-            <div
-              style={{
-                position: "absolute",
-                left: topChromeLayout.dragHandleCenterX,
-                bottom: 0,
-                transform: "translateX(-50%)",
-                pointerEvents: "auto",
-              }}
-            >
-              <DragHandle
-                onToggleCollapsed={toggleCollapsed}
-                width={topChromeLayout.dragHandleWidth}
-                disabled={presentationLocked || controlAction.pending}
-                collapseDisabled={hasSessionError}
-                busy={pendingControl === "collapse"}
-              />
-            </div>
+          <div className="overlay-hover-control overlay-drag-layer">
+            <OverlayDragArea disabled={presentationLocked || controlAction.pending} />
           </div>
 
           {showSessionControls &&
             !presentationLocked &&
             topChromeLayout.showPrimaryAction && (
-            <div
-              className="absolute flex"
-              style={{
-                top: 10,
-                right: 10,
-                gap: 4,
-                opacity: isHovering || session.isPaused || session.status.kind === "error" ? 1 : 0.75,
-                pointerEvents: "auto",
-                transition: "opacity 120ms ease",
-              }}
-            >
-              {topChromeLayout.showSessionAction && !errorRequiresConfiguration && <ControlButton
-                key={hasSessionError ? "retry" : "pause-resume"}
-                icon={hasSessionError || session.isPaused ? "play" : "pause"}
-                label={sessionActionLabel}
-                onClick={runSessionAction}
-                busy={sessionActionProgress !== null}
-                disabled={sessionActionDisabled}
-              />}
-              {topChromeLayout.showActions && <>
-              <ControlButton
-                icon="chevron-up"
-                label={I18N.overlay.collapseSubtitle}
-                onClick={() => runControlAction("collapse", () => setOverlayCollapsed(true))}
-                busy={pendingControl === "collapse"}
-                disabled={controlAction.pending || hasSessionError}
-                data-testid="collapse-subtitles"
-              />
-              <ControlButton
-                icon="eraser"
-                label={I18N.overlay.clearSubtitles}
-                onClick={() => runControlAction("clear", clearSubtitles)}
-                busy={pendingControl === "clear"}
-                disabled={!hasContent || controlAction.pending}
-              />
-              <ControlButton
-                icon="blend"
-                label={I18N.overlay.enterImmersiveMode}
-                onClick={() =>
-                  runControlAction("immersive", () => saveSettings({ subtitleBlendsWithBackground: true }))
-                }
-                busy={pendingControl === "immersive"}
-                disabled={controlAction.pending || hasSessionError}
-                data-testid="toggle-immersive-mode"
-              />
-              <ControlButton
-                icon="lock"
-                label={I18N.overlay.lockPosition}
-                onClick={() => runControlAction("lock", () => setOverlayLocked(true))}
-                busy={pendingControl === "lock"}
-                disabled={controlAction.pending || hasSessionError}
-                data-testid="toggle-overlay-lock"
-              />
-              <ControlButton
-                icon="gear"
-                label={I18N.overlay.openSettings}
-                onClick={() => runControlAction("settings", () => showSettings())}
-                busy={pendingControl === "settings"}
-                disabled={controlAction.pending}
-              />
-              </>}
+            <div className="overlay-hover-control overlay-action-strip" role="group" aria-label={I18N.overlay.controlPanel}>
+              {((topChromeLayout.showSessionAction && !errorRequiresConfiguration) ||
+                topChromeLayout.showCollapseAction || topChromeLayout.showClearAction) &&
+                <div className="overlay-action-group">
+                  {topChromeLayout.showSessionAction && !errorRequiresConfiguration && <ControlButton
+                    key={hasSessionError ? "retry" : "pause-resume"}
+                    icon={hasSessionError || session.isPaused ? "play" : "pause"}
+                    label={sessionActionLabel}
+                    onClick={runSessionAction}
+                    busy={sessionActionProgress !== null}
+                    disabled={sessionActionDisabled}
+                  />}
+                  {topChromeLayout.showCollapseAction && <ControlButton
+                    icon="chevron-up"
+                    label={I18N.overlay.collapseSubtitle}
+                    onClick={() => runControlAction("collapse", () => setOverlayCollapsed(true))}
+                    busy={pendingControl === "collapse"}
+                    disabled={controlAction.pending || hasSessionError}
+                    data-testid="collapse-subtitles"
+                  />}
+                  {topChromeLayout.showClearAction && <ControlButton
+                    icon="eraser"
+                    label={I18N.overlay.clearSubtitles}
+                    onClick={() => runControlAction("clear", clearSubtitles)}
+                    busy={pendingControl === "clear"}
+                    disabled={sessionActionDisabled || !hasSubtitleContent(session.subtitles)}
+                  />}
+                </div>}
+              {topChromeLayout.showPresentationActions && <div className="overlay-action-group overlay-action-group--presentation">
+                <ControlButton
+                  icon="blend"
+                  label={I18N.overlay.enterImmersiveMode}
+                  shortcutHint={nativeShortcuts ? `${shortcutPrefix}M` : undefined}
+                  onClick={() => runControlAction("immersive", () => saveSettings({ subtitleBlendsWithBackground: true }))}
+                  busy={pendingControl === "immersive"}
+                  disabled={sessionActionDisabled || hasSessionError}
+                />
+                <ControlButton
+                  icon="lock"
+                  label={I18N.overlay.lockPosition}
+                  shortcutHint={nativeShortcuts ? `${shortcutPrefix}L` : undefined}
+                  onClick={() => runControlAction("lock", () => setOverlayLocked(true))}
+                  busy={pendingControl === "lock"}
+                  disabled={sessionActionDisabled || hasSessionError}
+                />
+              </div>}
               <ControlButton
                 icon="close"
                 label={I18N.overlay.closeSubtitles}
@@ -509,10 +437,9 @@ export function OverlayWindow() {
           <div
             className={`flex min-h-0 flex-col${hasSessionError ? " overlay-session-error-content" : ""}`}
             style={{
-              // The top band floats over the canvas, so reserve its exact
-              // height or subtitle rows will slide underneath the controls.
-              // The band includes space below the native control capsule.
-              paddingTop: topBandHeight,
+              // Reserve room for visible controls and use that room for
+              // captions while the chrome is quiet. Keep one timeline mounted.
+              paddingTop: `var(--overlay-caption-inset, ${topBandHeight}px)`,
               height: "100%",
             }}
           >
@@ -532,7 +459,7 @@ export function OverlayWindow() {
             >
               {showEmptyPulse && (
                 <div
-                  className="flex shrink-0 items-center justify-center"
+                  className={`flex shrink-0 items-center justify-center${session.status.kind === "listening" ? " overlay-listening-wave" : ""}`}
                   style={{ height: emptyPulseSize, width: emptyPulseSize }}
                 >
                   <div style={{ transform: `scale(${emptyPulseSize / pulseBaseSize})` }}>
@@ -589,16 +516,14 @@ export function OverlayWindow() {
     const recordingLabel = recordingStatusLabel(session.audioRecording, effectiveUiLanguage());
     return (
       <div
-        className="relative h-full w-full"
+        className="overlay-compact-canvas relative h-full w-full"
         role="group"
         aria-label={`${I18N.overlay.collapsedAccessibilityPrefix}${phaseLabel} · ${audioInputLabel(settings.audioInput, settings.systemAudioTarget)}${recordingLabel ? ` · ${recordingLabel}` : ""}`}
         style={{
           borderRadius: 14,
+          border: "0.75px solid var(--overlay-canvas-outline, rgba(122, 168, 255, 0.16))",
           background: subtitleBackgroundColor(settings.subtitleBackgroundOpacity),
-          border: `0.75px solid ${hexToRgba(ACCENT, isHovering ? 0.3 : 0.16)}`,
         }}
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
         onWheel={(event) => {
           if (event.deltaY !== 0) {
             event.preventDefault();
@@ -610,23 +535,24 @@ export function OverlayWindow() {
           className="relative flex h-full items-center"
           style={{ gap: recordingLabel ? (settings.audioInput === "system" ? 6 : 4) : 8, padding: "0 10px" }}
         >
-          <DragHandle onToggleCollapsed={toggleCollapsed} compact
-            disabled={controlAction.pending} busy={pendingControl === "collapse"} />
-          <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
-          <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
-          <RecordingIndicator status={session.audioRecording} language={effectiveUiLanguage()} compact />
-          <span
-            className="truncate"
-            role={sessionAction.failed || controlAction.failed ? "alert" : undefined}
-            title={sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
-            style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.76)" }}
-          >
-            {sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
-          </span>
-          <span className="flex-1" style={{ minWidth: 4 }} />
+          <div className="overlay-compact-reading" ref={compactReadingRef}>
+            <PulseRing phase={phase} compact motionEnabled={pulseOn} pulseStyle={settings.pulseStyle} />
+            <AudioInputIndicator input={settings.audioInput} target={settings.systemAudioTarget} />
+            <RecordingIndicator status={session.audioRecording} language={effectiveUiLanguage()} compact />
+            <span
+              className="truncate"
+              role={sessionAction.failed || controlAction.failed ? "alert" : undefined}
+              title={sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
+              style={{ minWidth: 0, fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.76)" }}
+            >
+              {sessionAction.failed || controlAction.failed ? actionFailureMessage : phaseLabel}
+            </span>
+            <div className="overlay-compact-drag-layer"><OverlayDragArea disabled={presentationLocked || controlAction.pending} /></div>
+          </div>
           <ControlButton
             icon={session.status.kind === "error" || session.isPaused ? "play" : "pause"}
             label={sessionActionLabel}
+            tooltipArea={compactReadingRef}
             onClick={runSessionAction}
             busy={sessionActionProgress !== null}
             disabled={sessionActionDisabled}
@@ -634,6 +560,7 @@ export function OverlayWindow() {
           <ControlButton
             icon="chevron-down"
             label={I18N.overlay.expandSubtitle}
+            tooltipArea={compactReadingRef}
             onClick={() => runControlAction("collapse", () => setOverlayCollapsed(false))}
             busy={pendingControl === "collapse"}
             disabled={controlAction.pending}
@@ -642,6 +569,7 @@ export function OverlayWindow() {
           <ControlButton
             icon="close"
             label={I18N.overlay.closeSubtitles}
+            tooltipArea={compactReadingRef}
             onClick={() => runControlAction("close", stop)}
             busy={pendingControl === "close"}
             disabled={controlAction.pending || sessionAction.pending || session.status.kind === "stopping"}

@@ -588,7 +588,7 @@ it.each([
   { audioInput: "microphone", immersive: false }, { audioInput: "microphone", immersive: true },
 ] as const)("fits $audioInput time and both bilingual lanes at the timestamp minimum (immersive=$immersive)", async ({ audioInput, immersive }) => {
   measuredHeight = 240;
-  // Narrow immersive canvas: 12px insets + 81px control/service band + 5px gap.
+  // Exercise the retained conservative immersive viewport budget.
   const chromeHeight = immersive ? 98 : OVERLAY_MAXIMUM_CHROME_HEIGHT;
   viewportHeight = minimumOverlayHeight({ audioInput, fontSize: 20, subtitleDisplayMode: "bilingual", targetLanguage: "zh", showSubtitleTimestamps: true }) - chromeHeight;
   await act(async () => root.render(<Timeline blocks={[{ ...confirmed, audioSource: audioInput }]} fontSize={20} alignment="center" color="white" displayMode="bilingual" audioInput={audioInput} showTimestamps blendsWithBackground={immersive} />));
@@ -598,10 +598,10 @@ it.each([
 });
 
 it.each((["system", "microphone", "both"] as const).flatMap(audioInput =>
-  [20, 48].map(fontSize => ({ audioInput, fontSize }))))("keeps $fontSize px bilingual lanes below the narrow service row for $audioInput", async ({ audioInput, fontSize }) => {
+  [20, 48].map(fontSize => ({ audioInput, fontSize }))))("keeps $fontSize px bilingual lanes below the retained chrome allowance for $audioInput", async ({ audioInput, fontSize }) => {
   measuredHeight = 240;
-  // Real narrow canvas budget: control band + separate service row + insets,
-  // padding and borders. Both sources retain timestamp metadata in this case.
+  // Retain the older, larger chrome budget so these cases also cover a
+  // tighter viewport. Both sources retain timestamp metadata in this case.
   const chromeHeight = 61 + 20 + 12 + 10 + 2;
   viewportHeight = minimumOverlayHeight({ audioInput, subtitleDisplayMode: "bilingual", targetLanguage: "zh",
     fontSize, showSubtitleTimestamps: true }) - chromeHeight;
@@ -643,10 +643,10 @@ it.each([264, 265, 270, 280])("fits dual bilingual live rows with dividers at na
   expect(rows[0].querySelector(".subtitle-separator")).not.toBeNull();
 });
 
-it.each(["original", "translation", "bilingual"] as const)("fits 48px dual-source %s captions and their divider below configured-service chrome", async subtitleDisplayMode => {
+it.each(["original", "translation", "bilingual"] as const)("fits 48px dual-source %s captions and their divider below the conservative chrome allowance", async subtitleDisplayMode => {
   measuredHeight = 240;
-  // A configured service takes its own 20px row in a narrow overlay. Reserving
-  // only the compact control band would hide a missing metadata/divider budget.
+  // Keep the historical tighter viewport while measurements move into the
+  // panel. Caption source metadata and dividers still consume their own space.
   const chromeHeight = 61 + 20 + 12 + 10 + 2;
   for (const showTimestamps of [false, true]) {
     viewportHeight = minimumOverlayHeight({ audioInput: "both", fontSize: 48,
