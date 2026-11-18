@@ -1,9 +1,6 @@
 package app.yuxino.mimi.android.capture
 
 import android.Manifest
-import android.content.pm.PackageManager
-import android.content.pm.ApplicationInfo
-import androidx.core.content.ContextCompat
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,53 +8,62 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioPlaybackCaptureConfiguration
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
-import android.os.Build
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.view.Gravity
 import android.view.ContextThemeWrapper
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import android.view.WindowInsets
-import android.widget.TextView
+import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.ScrollView
-import android.widget.Toast
 import android.widget.ImageView
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import app.yuxino.mimi.android.FirstRunEvidence
+import app.yuxino.mimi.android.InterfaceLanguage
+import app.yuxino.mimi.android.MainActivity
+import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.SettingsStore
+import app.yuxino.mimi.android.captions.CaptionAdjustmentSwitch
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionFrameContent
+import app.yuxino.mimi.android.captions.CaptionFrameStyle
+import app.yuxino.mimi.android.captions.CaptionOverlayHost
+import app.yuxino.mimi.android.captions.CaptionPanelActions
+import app.yuxino.mimi.android.captions.CaptionPanelView
+import app.yuxino.mimi.android.captions.CaptionSurface
+import app.yuxino.mimi.android.captions.CompactCaptionView
+import app.yuxino.mimi.android.captions.ImmersiveModeHelp
+import app.yuxino.mimi.android.captions.captionPanelHeight
+import app.yuxino.mimi.android.provider.EngineListener
+import app.yuxino.mimi.android.provider.NativeRuntimeConfiguration
+import app.yuxino.mimi.android.provider.ProviderEngine
+import app.yuxino.mimi.android.provider.SharedRuntimeEngine
+import app.yuxino.mimi.android.provider.SubtitleBus
+import app.yuxino.mimi.android.runtimeModelNames
 import com.google.android.material.materialswitch.MaterialSwitch
-import app.yuxino.mimi.android.CaptionAdjustmentSwitch
-import app.yuxino.mimi.android.CaptionDisplayMode
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import app.yuxino.mimi.android.R
-import app.yuxino.mimi.android.SettingsStore
-import app.yuxino.mimi.android.ImmersiveModeHelp
-import app.yuxino.mimi.android.InterfaceLanguage
-import app.yuxino.mimi.android.provider.EngineListener
-import app.yuxino.mimi.android.provider.ProviderEngine
-import app.yuxino.mimi.android.provider.NativeRuntimeConfiguration
-import org.json.JSONObject
-import app.yuxino.mimi.android.provider.SubtitleBus
-import app.yuxino.mimi.android.resample.StreamResampler
 import kotlin.concurrent.thread
+import org.json.JSONObject
 
 /**
  * Foreground service that owns independent selected audio-capture lanes and
@@ -68,12 +74,6 @@ class MimiService : Service() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var mediaProjection: MediaProjection? = null
-    private class CaptureLane(val source: CaptureSource, val engine: ProviderEngine) {
-        var record: AudioRecord? = null
-        var worker: Thread? = null
-        val capturing = AtomicBoolean(false)
-        var health: CaptureHealth? = null
-    }
     private val lanes = linkedMapOf<CaptureSource, CaptureLane>()
     private val healthTick = object : Runnable {
         override fun run() {
@@ -94,7 +94,7 @@ class MimiService : Service() {
     }
     private fun updateCaptureObservations() {
         val now = SystemClock.elapsedRealtime()
-        captureObservations = lanes.mapNotNull { (source, lane) -> lane.health?.snapshot(now)?.let { source to it } }.toMap()
+        captureObservations = lanes.mapNotNull { (source, lane) -> lane.observation(now)?.let { source to it } }.toMap()
         captureObservation = captureObservationForSources(captureObservations.values)
     }
     private var testCaptureMode = false
@@ -339,7 +339,7 @@ class MimiService : Service() {
     private fun mainActivityIntent(): PendingIntent =
         PendingIntent.getActivity(
             this, 0,
-            Intent(this, app.yuxino.mimi.android.MainActivity::class.java),
+            Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -373,7 +373,7 @@ class MimiService : Service() {
         sessionSourceLanguage = configuration?.getString("sourceLanguage") ?: "auto"
         sessionTargetLanguage = configuration?.getString("targetLanguage") ?: "original"
         sessionOriginalOnly = sessionTargetLanguage == "original"
-        activeModelNames = configuration?.let { app.yuxino.mimi.android.runtimeModelNames(it) } ?: emptyList()
+        activeModelNames = configuration?.let { runtimeModelNames(it) } ?: emptyList()
         historyStatusGeneration.incrementAndGet()
         historySaveError = false
         historyLimited = false
@@ -406,24 +406,12 @@ class MimiService : Service() {
                     }
                     override fun onClosed() = dispatch { if (!finishingSession) stopEverything() }
                 }
-                app.yuxino.mimi.android.provider.SharedRuntimeEngine(checkNotNull(configuration), listener, source.id, historyHandle)
+                SharedRuntimeEngine(checkNotNull(configuration), listener, source.id, historyHandle)
             }
             val lane = CaptureLane(source, sessionEngine)
             lanes[source] = lane
             if (testEngines == null) sessionEngine.start()
-            val channels = if (source == CaptureSource.SYSTEM) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
-            val encoding = if (source == CaptureSource.SYSTEM) AudioFormat.ENCODING_PCM_FLOAT else AudioFormat.ENCODING_PCM_16BIT
-            val format = AudioFormat.Builder().setEncoding(encoding).setSampleRate(CAPTURE_RATE_HZ).setChannelMask(channels).build()
-            val minBuffer = AudioRecord.getMinBufferSize(CAPTURE_RATE_HZ, channels, encoding)
-            check(minBuffer > 0) { "unsupported_capture_format" }
-            val builder = AudioRecord.Builder().setAudioFormat(format).setBufferSizeInBytes(minBuffer * 4)
-            if (source == CaptureSource.SYSTEM) {
-                builder.setAudioPlaybackCaptureConfig(AudioPlaybackCaptureConfiguration.Builder(checkNotNull(projection))
-                    .addMatchingUsage(AudioAttributes.USAGE_MEDIA).addMatchingUsage(AudioAttributes.USAGE_GAME)
-                    .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build())
-            } else builder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            lane.record = builder.build()
-            check(lane.record?.state == AudioRecord.STATE_INITIALIZED) { "capture_uninitialized" }
+            lane.prepare(projection)
         }
         // Prepare every selected lane before admitting any audio. A failed lane
         // tears the whole session down; it cannot silently become single-source.
@@ -434,33 +422,11 @@ class MimiService : Service() {
     }
 
     private fun startCaptureLane(lane: CaptureLane, sessionGeneration: Int) {
-        val record = checkNotNull(lane.record)
-        val resampler = StreamResampler(CAPTURE_RATE_HZ, lane.engine.sampleRateHz, lane.source.channels)
-        val floatBuffer = if (lane.source == CaptureSource.SYSTEM) FloatArray(CAPTURE_RATE_HZ / 10 * lane.source.channels) else null
-        val shortBuffer = if (lane.source == CaptureSource.MICROPHONE) ShortArray(CAPTURE_RATE_HZ / 10) else null
-        val sessionHealth = CaptureHealth(SystemClock.elapsedRealtime())
-        lane.health = sessionHealth
-        record.startRecording()
-        check(record.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "capture_not_started" }
-        lane.capturing.set(true)
-        lane.worker = thread(name = "mimi-capture-${lane.source.id}") {
-            try {
-                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
-                while (lane.capturing.get()) {
-                    val read = if (floatBuffer != null) record.read(floatBuffer, 0, floatBuffer.size, AudioRecord.READ_BLOCKING)
-                        else record.read(checkNotNull(shortBuffer), 0, shortBuffer.size, AudioRecord.READ_BLOCKING)
-                    if (!lane.capturing.get()) break
-                    check(read >= 0) { "capture_read_failed" }
-                    if (read == 0) continue
-                    val samples = floatBuffer?.copyOf(read) ?: FloatArray(read) { checkNotNull(shortBuffer)[it] / 32768f }
-                    val pcm = resampler.push(samples)
-                    sessionHealth.observe(pcm, SystemClock.elapsedRealtime())
-                    if (lane.capturing.get() && pcm.isNotEmpty()) {
-                        lane.engine.sendAudio(pcm)
-                        synchronized(firstRunEvidence) { if (lane.capturing.get()) firstRunEvidence.submitted(pcm) }
-                    }
-                }
-            } catch (_: Exception) {
+        lane.start(
+            onAudioSubmitted = { pcm ->
+                synchronized(firstRunEvidence) { if (lane.isCapturing) firstRunEvidence.submitted(pcm) }
+            },
+            onFailure = {
                 mainHandler.post {
                     if (generation == sessionGeneration) {
                         lastCaptureError = "capture.read_failed"
@@ -468,8 +434,8 @@ class MimiService : Service() {
                         stopEverything()
                     }
                 }
-            } finally { record.release() }
-        }
+            },
+        )
     }
 
     private fun releaseSession() {
@@ -483,14 +449,8 @@ class MimiService : Service() {
         captionUpdatePending.set(false)
         val retired = lanes.values.toList()
         lanes.clear()
-        retired.forEach { lane ->
-            lane.capturing.set(false)
-            try { lane.record?.stop() } catch (_: Exception) { }
-        }
-        retired.forEach { lane ->
-            try { if (lane.worker != null) lane.worker?.join(600) else lane.record?.release() } catch (_: Exception) { }
-            try { lane.engine.stop() } catch (_: Exception) { Log.w(TAG, "capture_engine_stop_failed") }
-        }
+        retired.forEach(CaptureLane::stopCapture)
+        retired.forEach(CaptureLane::release)
         historyHandle?.let { handle ->
             val operation = if (SettingsStore.retainSessionHistory(this)) "history_finish" else "history_disable"
             runCatching { NativeRuntimeConfiguration.exchange(JSONObject().put("operation", operation).put("historyHandle", handle)) }
@@ -526,13 +486,10 @@ class MimiService : Service() {
         isStopping = true
         stateListeners.forEach { it() }
         val owner = generation
-        lanes.values.forEach { lane ->
-            lane.capturing.set(false)
-            try { lane.record?.stop() } catch (_: Exception) { }
-        }
+        lanes.values.forEach(CaptureLane::stopCapture)
         mainHandler.removeCallbacks(healthTick)
         cancelAutoHide()
-        val policy = app.yuxino.mimi.android.provider.NativeRuntimeConfiguration.policy
+        val policy = NativeRuntimeConfiguration.policy
         // Cover audio drain, bounded provider finish, disconnect and publication;
         // the provider-only timeout can expire before Rust publishes its tail.
         mainHandler.postDelayed({ if (generation == owner && finishingSession) stopEverything() }, policy.getLong("sessionFinishTimeoutMs"))
@@ -639,11 +596,11 @@ class MimiService : Service() {
         adjustable = SettingsStore.overlayAdjustable(this)
         overlayPlacement.reset(SettingsStore.overlayYOffset(this), SettingsStore.immersiveSubtitles(this))
         overlayPlacement.setExpandedOffsetDp(SettingsStore.expandedYOffset(this))
-        val compact = app.yuxino.mimi.android.CompactCaptionView(this)
+        val compact = CompactCaptionView(this)
         val status = compact.status; val source = compact.source; val translation = compact.translation
-        compact.applyStyle(app.yuxino.mimi.android.CaptionFrameStyle.saved(this, sessionOriginalOnly), immersiveSession)
+        compact.applyStyle(CaptionFrameStyle.saved(this, sessionOriginalOnly), immersiveSession)
         val panel = buildExpandedPanel()
-        val root = app.yuxino.mimi.android.CaptionOverlayHost(this).apply {
+        val root = CaptionOverlayHost(this).apply {
             tag = "mimi-overlay"
             addView(compact, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER,
@@ -816,7 +773,7 @@ class MimiService : Service() {
             }
         }
         if (immersiveSession) showImmersiveExitControl(wm) else showAdjustmentSwitch(wm)
-        (panel as app.yuxino.mimi.android.CaptionPanelView).setAdjustable(adjustable)
+        (panel as CaptionPanelView).setAdjustable(adjustable)
         updateOverlayFontSize()
         renderBus()
     }
@@ -886,11 +843,11 @@ class MimiService : Service() {
     }
 
     private fun buildExpandedPanel(): View {
-        val panel = app.yuxino.mimi.android.CaptionPanelView(this,
-            app.yuxino.mimi.android.CaptionPanelActions(
-                home = { startActivity(Intent(this, app.yuxino.mimi.android.MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+        val panel = CaptionPanelView(this,
+            CaptionPanelActions(
+                home = { startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
             ))
-        panel.applyStyle(app.yuxino.mimi.android.CaptionFrameStyle.saved(this, sessionOriginalOnly))
+        panel.applyStyle(CaptionFrameStyle.saved(this, sessionOriginalOnly))
         expandedStatusView = panel.status; expandedSourceView = panel.source
         expandedTranslationView = panel.translation; historyView = panel.history
         transcriptScrollView = panel.transcriptScroll
@@ -976,7 +933,7 @@ class MimiService : Service() {
         syncingAdjustment = true
         adjustmentSwitch?.isChecked = enabled
         syncingAdjustment = false
-        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)?.setAdjustable(enabled)
+        (expandedView as? CaptionPanelView)?.setAdjustable(enabled)
         overlayParams?.let { params ->
             val flags = if (immersiveSession || !enabled) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                 else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
@@ -1032,15 +989,15 @@ class MimiService : Service() {
 
     /** Initial paint and live updates share the same renderer as the preview. */
     private fun applyOverlaySurface(compact: View, panel: View) {
-        val style = app.yuxino.mimi.android.CaptionFrameStyle.saved(this, sessionOriginalOnly)
-        app.yuxino.mimi.android.CaptionSurface.apply(compact, style, immersiveSession)
-        app.yuxino.mimi.android.CaptionSurface.apply(panel, style, false)
+        val style = CaptionFrameStyle.saved(this, sessionOriginalOnly)
+        CaptionSurface.apply(compact, style, immersiveSession)
+        CaptionSurface.apply(panel, style, false)
     }
 
     private fun updateOverlayFontSize() {
-        val style = app.yuxino.mimi.android.CaptionFrameStyle.saved(this, sessionOriginalOnly)
-        (compactView as? app.yuxino.mimi.android.CompactCaptionView)?.applyStyle(style, immersiveSession)
-        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)?.applyStyle(style)
+        val style = CaptionFrameStyle.saved(this, sessionOriginalOnly)
+        (compactView as? CompactCaptionView)?.applyStyle(style, immersiveSession)
+        (expandedView as? CaptionPanelView)?.applyStyle(style)
     }
 
     /** WindowManager applies these insets once; y is relative to its safe frame. */
@@ -1126,10 +1083,10 @@ class MimiService : Service() {
 
     private fun expandedPanelHeight(): Int {
         val availableHeight = overlayAvailableSize().second
-        val panel = expandedView as? app.yuxino.mimi.android.CaptionPanelView
-        val chrome = panel?.chromeHeight() ?: dp(app.yuxino.mimi.android.CaptionPanelView.CHROME_HEIGHT_DP)
+        val panel = expandedView as? CaptionPanelView
+        val chrome = panel?.chromeHeight() ?: dp(CaptionPanelView.CHROME_HEIGHT_DP)
         val reading = panel?.minimumReadingHeight() ?: dp(64)
-        return app.yuxino.mimi.android.captionPanelHeight(availableHeight,
+        return captionPanelHeight(availableHeight,
             resizeHeightPercent ?: SettingsStore.overlayHeightPercent(this), chrome, reading)
     }
 
@@ -1166,14 +1123,14 @@ class MimiService : Service() {
         val maxHistory = if (previewMode) (if (previewHistoryEnabled) 3 else 0)
             else SettingsStore.historyLines(this)
         val mode = if (sessionOriginalOnly) CaptionDisplayMode.ORIGINAL else SettingsStore.displayMode(this)
-        val content = app.yuxino.mimi.android.CaptionFrameContent.live(this, mode, maxHistory,
+        val content = CaptionFrameContent.live(this, mode, maxHistory,
             captureObservation?.state, isRunning, isStopping)
         val statusLine = content.status
-        (compactView as? app.yuxino.mimi.android.CompactCaptionView)?.let {
+        (compactView as? CompactCaptionView)?.let {
             it.showContent(content, mode)
             it.source.setTextColor(if (mode == CaptionDisplayMode.ORIGINAL) SettingsStore.translationColor(this) else 0xFFE7E7E7.toInt())
         }
-        (expandedView as? app.yuxino.mimi.android.CaptionPanelView)?.let {
+        (expandedView as? CaptionPanelView)?.let {
             it.showContent(content, mode, expanded)
             it.source.setTextColor(if (mode == CaptionDisplayMode.ORIGINAL) SettingsStore.translationColor(this) else 0xFFD5D5D5.toInt())
         }
@@ -1316,11 +1273,10 @@ class MimiService : Service() {
             private set
         @Volatile var captureObservations: Map<CaptureSource, CaptureHealth.Snapshot> = emptyMap()
             private set
-        val firstRunEvidence = app.yuxino.mimi.android.FirstRunEvidence()
+        val firstRunEvidence = FirstRunEvidence()
         private const val TAG = "MimiService"
         private const val CHANNEL_ID = "capture"
         private const val NOTIFICATION_ID = 41
-        private const val CAPTURE_RATE_HZ = 48_000
         private const val AUTO_HIDE_MS = 600L
         private const val WATCHDOG_MS = 3_000L
         @Volatile var isStopping: Boolean = false

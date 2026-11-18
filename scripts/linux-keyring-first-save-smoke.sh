@@ -6,7 +6,7 @@ if [[ "$(uname -s)" != Linux ]]; then
   exit 2
 fi
 
-test_name=settings_store::tests::linux_secret_service_first_save_and_restart
+test_name=settings_store::tests::native_credentials::linux_secret_service_first_save_and_restart
 if [[ "${MIMI_LINUX_FIRST_SAVE_SESSION:-}" != 1 ]]; then
   test_list="$(timeout 120s cargo test --locked --manifest-path src-tauri/Cargo.toml \
     --lib "$test_name" -- --exact --ignored --list)"

@@ -11,16 +11,18 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionFrameContent
 import app.yuxino.mimi.android.capture.CaptureInput
 import app.yuxino.mimi.android.capture.CaptureSource
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.ProviderEngine
 import app.yuxino.mimi.android.provider.SharedSubtitleCore
 import app.yuxino.mimi.android.provider.SubtitleBus
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Explicit emulator-only capture check. Discards all PCM; never creates a provider or reads credentials. */
 internal class CaptureSourcesChecks(private val instrumentation: Instrumentation) {

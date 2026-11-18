@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
-import { subtitleFontFamily } from "../../lib/subtitleFont";
-import { IMMERSIVE_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../lib/subtitleTypography";
+import { subtitleFontFamily } from "../../lib/subtitles/subtitleFont";
+import { IMMERSIVE_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../lib/subtitles/subtitleTypography";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
 import { TimelineScroll } from "./timelineScroll";

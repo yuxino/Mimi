@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ResolvedUiLanguage } from "../lib/i18n";
 import type { AudioRecordingStatus } from "../lib/types";
-import { recordingStatusLabel } from "../lib/recordingStatus";
+import { recordingStatusLabel } from "../lib/audio/recordingStatus";
 import { RecordingIndicator } from "./RecordingIndicator";
 
 let host: HTMLDivElement;

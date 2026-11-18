@@ -199,7 +199,7 @@ export async function verifySessionWorkspaceDialogs(page, baseUrl = "http://127.
       let timer;
       try {
         return await Promise.race([
-          import("/src/windows/settings/sessionWorkspaceCopy.ts").then(module => {
+          import("/src/windows/settings/history/sessionWorkspaceCopy.ts").then(module => {
             if (!module.sessionWorkspaceCopy) return { error: "sessionWorkspaceCopy export missing" };
             window.workspaceReviewCopy = module.sessionWorkspaceCopy;
             return { ready: true };

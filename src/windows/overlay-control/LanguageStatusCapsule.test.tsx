@@ -5,8 +5,8 @@ import { expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
-import { audioInputLabel } from "../../lib/audioInput";
-import { recordingStatusLabel } from "../../lib/recordingStatus";
+import { audioInputLabel } from "../../lib/audio/audioInput";
+import { recordingStatusLabel } from "../../lib/audio/recordingStatus";
 
 it.each(["zh", "zh-TW", "en", "ja", "ko", "fr", "de", "ru", "th"] as const)("names the expanded %s controls without repeating the language choices and retains status and collapse", async language => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

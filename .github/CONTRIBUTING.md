@@ -47,7 +47,7 @@ native acceptance. The first native build still needs to populate its cache.
 Windows 安装包需在 Windows 上构建 / Build Windows installers on Windows:
 
 ```bash
-npm run tauri -- build --config src-tauri/tauri.ci.conf.json -- --locked
+npm run tauri -- build --config src-tauri/config/ci.json -- --locked
 ```
 
 macOS 打包使用 / Package on macOS with `./scripts/package-app.sh`.

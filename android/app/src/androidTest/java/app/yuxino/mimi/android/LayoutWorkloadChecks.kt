@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import app.yuxino.mimi.android.captions.CaptionWorkspace
 
 /** Repeated native layout, including transitions, without an activity, capture or provider. */
 internal class LayoutWorkloadChecks(private val test: Instrumentation) {

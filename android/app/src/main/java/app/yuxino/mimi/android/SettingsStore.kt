@@ -4,11 +4,16 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import app.yuxino.mimi.android.captions.CaptionAlignment
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.capture.CaptureInput
+import app.yuxino.mimi.android.capture.MimiService
+import app.yuxino.mimi.android.provider.ServiceConfiguration
+import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.provider.TextTranslationProvider
 import app.yuxino.mimi.android.provider.TranslationConfiguration
-import app.yuxino.mimi.android.provider.validateTranslationConfiguration
 import app.yuxino.mimi.android.provider.buildRuntimeConfiguration
-import app.yuxino.mimi.android.capture.CaptureInput
+import app.yuxino.mimi.android.provider.validateTranslationConfiguration
 import org.json.JSONObject
 
 /** App-private settings. Service metadata and encrypted, profile-scoped credentials are separate. */
@@ -114,7 +119,7 @@ object SettingsStore {
         val repository = repository(context)
         return repository.profiles().firstOrNull { it.id == repository.activeId() }
     }
-    fun profileConfiguration(context: Context, id: String): app.yuxino.mimi.android.provider.ServiceConfiguration =
+    fun profileConfiguration(context: Context, id: String): ServiceConfiguration =
         repository(context).contents(id).speech
     fun profileTextTranslationProvider(context: Context, id: String): TextTranslationProvider =
         repository(context).contents(id).withIndependentXaiTranslation().effectiveTranslation
@@ -141,12 +146,12 @@ object SettingsStore {
         return true
     }
 
-    private fun canEditProfiles() = !app.yuxino.mimi.android.capture.MimiService.isStarting &&
-        !app.yuxino.mimi.android.capture.MimiService.isRunning &&
-        !app.yuxino.mimi.android.capture.MimiService.isStopping
+    private fun canEditProfiles() = !MimiService.isStarting &&
+        !MimiService.isRunning &&
+        !MimiService.isStopping
 
     @Synchronized fun saveProfile(context: Context, id: String?, name: String,
-        config: app.yuxino.mimi.android.provider.ServiceConfiguration,
+        config: ServiceConfiguration,
         translation: TranslationConfiguration? = null, translationEnabled: Boolean? = null,
         qwenMtModel: String? = null, activate: Boolean = false): String? {
         if (!canEditProfiles()) return null
@@ -158,10 +163,10 @@ object SettingsStore {
                 (config.speechTranslationMode == "simultaneous" || config.provider.supportsSpeechTranslationMode)) { "speech_mode" }
             val repository = repository(context)
             val savedPrior = id?.let(repository::contents)
-            val prior = if (config.provider == app.yuxino.mimi.android.provider.ServiceProvider.XAI && config.usesIndependentTextTranslation)
+            val prior = if (config.provider == ServiceProvider.XAI && config.usesIndependentTextTranslation)
                 savedPrior?.withIndependentXaiTranslation() else savedPrior
             val selected = if (translationEnabled == false) TextTranslationProvider.BUILTIN else translation?.provider
-                ?: prior?.selectedTranslation ?: if (config.provider == app.yuxino.mimi.android.provider.ServiceProvider.XAI && config.usesIndependentTextTranslation)
+                ?: prior?.selectedTranslation ?: if (config.provider == ServiceProvider.XAI && config.usesIndependentTextTranslation)
                     TextTranslationProvider.XAI else if (config.provider.supportsSpeechTranslationMode) TextTranslationProvider.OPENAI_COMPATIBLE
                     else TextTranslationProvider.BUILTIN
             if (config.usesIndependentTextTranslation && translation != null && selected !in setOf(TextTranslationProvider.BUILTIN, TextTranslationProvider.NONE)) {
@@ -183,39 +188,39 @@ object SettingsStore {
     fun activateProfile(context: Context, id: String): Boolean =
         canEditProfiles() && runCatching { profileConfigured(context, id) && repository(context).activate(id) }.getOrDefault(false)
 
-    private fun matchingProfile(context: Context, provider: app.yuxino.mimi.android.provider.ServiceProvider): ServiceProfile? =
+    private fun matchingProfile(context: Context, provider: ServiceProvider): ServiceProfile? =
         activeProfile(context)?.takeIf { it.provider == provider } ?: profiles(context).firstOrNull { it.provider == provider }
 
     fun provider(context: Context): String = activeProfile(context)?.provider?.id ?: PROVIDER_DASHSCOPE
 
     /** Compatibility for existing instrumentation; user-facing selection uses profile IDs. */
     fun setProvider(context: Context, value: String) {
-        val profile = matchingProfile(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(value)) ?: return
+        val profile = matchingProfile(context, ServiceProvider.fromId(value)) ?: return
         check(canEditProfiles() && repository(context).activate(profile.id)) { "profile_activation_failed" }
     }
 
     fun apiKey(context: Context, provider: String = provider(context)): String =
-        configuration(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(provider)).value("apiKey")
+        configuration(context, ServiceProvider.fromId(provider)).value("apiKey")
 
     fun setApiKey(context: Context, value: String, provider: String = provider(context)) {
-        val saved = configuration(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(provider))
-        check(saveConfiguration(context, app.yuxino.mimi.android.provider.ServiceConfiguration(saved.provider,
+        val saved = configuration(context, ServiceProvider.fromId(provider))
+        check(saveConfiguration(context, ServiceConfiguration(saved.provider,
             saved.credentials + ("apiKey" to value.trim()), saved.endpoint, saved.model, saved.alibabaRealtimeMode, saved.alibabaWorkspaceId, saved.xaiSpeechMode, saved.xaiTextModel, saved.speechTranslationMode))) { "profile_save_failed" }
     }
 
-    fun configuration(context: Context, provider: app.yuxino.mimi.android.provider.ServiceProvider? = null): app.yuxino.mimi.android.provider.ServiceConfiguration {
+    fun configuration(context: Context, provider: ServiceProvider? = null): ServiceConfiguration {
         val profile = if (provider == null) activeProfile(context) else matchingProfile(context, provider)
         return profile?.let { profileConfiguration(context, it.id) }
-            ?: app.yuxino.mimi.android.provider.ServiceConfiguration(provider ?: app.yuxino.mimi.android.provider.ServiceProvider.DASHSCOPE, emptyMap())
+            ?: ServiceConfiguration(provider ?: ServiceProvider.DASHSCOPE, emptyMap())
     }
 
-    fun isConfigured(context: Context, provider: app.yuxino.mimi.android.provider.ServiceProvider? = null): Boolean {
+    fun isConfigured(context: Context, provider: ServiceProvider? = null): Boolean {
         val profile = if (provider == null) activeProfile(context) else matchingProfile(context, provider)
         return profile != null && profileConfigured(context, profile.id)
     }
 
     /** Legacy provider-keyed entry point; never used to select a production session. */
-    fun saveConfiguration(context: Context, config: app.yuxino.mimi.android.provider.ServiceConfiguration,
+    fun saveConfiguration(context: Context, config: ServiceConfiguration,
         translation: TranslationConfiguration? = null, translationEnabled: Boolean? = null, qwenMtModel: String? = null): Boolean {
         require(qwenMtModel == null || qwenMtModel in listOf("lite", "flash", "plus")) { "translation_model" }
         if (config.usesIndependentTextTranslation && translation != null && translationEnabled != false) validateTranslationConfiguration(translation)
@@ -253,19 +258,19 @@ object SettingsStore {
     fun translationConfiguration(context: Context, provider: TextTranslationProvider = textTranslationProvider(context)): TranslationConfiguration =
         activeProfileId(context)?.let { profileTranslationConfiguration(context, it, provider) } ?: TranslationConfiguration(provider = provider)
 
-    fun activateProvider(context: Context, provider: app.yuxino.mimi.android.provider.ServiceProvider): Boolean =
+    fun activateProvider(context: Context, provider: ServiceProvider): Boolean =
         matchingProfile(context, provider)?.let { activateProfile(context, it.id) } ?: false
 
-    fun baseUrl(context: Context, provider: String): String = configuration(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(provider)).endpoint
+    fun baseUrl(context: Context, provider: String): String = configuration(context, ServiceProvider.fromId(provider)).endpoint
     fun setBaseUrl(context: Context, provider: String, value: String) {
-        val saved = configuration(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(provider))
-        check(saveConfiguration(context, app.yuxino.mimi.android.provider.ServiceConfiguration(saved.provider, saved.credentials,
+        val saved = configuration(context, ServiceProvider.fromId(provider))
+        check(saveConfiguration(context, ServiceConfiguration(saved.provider, saved.credentials,
             value.trim(), saved.model, saved.alibabaRealtimeMode, saved.alibabaWorkspaceId, saved.xaiSpeechMode, saved.xaiTextModel, saved.speechTranslationMode))) { "profile_save_failed" }
     }
-    fun model(context: Context, provider: String): String = configuration(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(provider)).model
+    fun model(context: Context, provider: String): String = configuration(context, ServiceProvider.fromId(provider)).model
     fun setModel(context: Context, provider: String, value: String) {
-        val saved = configuration(context, app.yuxino.mimi.android.provider.ServiceProvider.fromId(provider))
-        check(saveConfiguration(context, app.yuxino.mimi.android.provider.ServiceConfiguration(saved.provider, saved.credentials,
+        val saved = configuration(context, ServiceProvider.fromId(provider))
+        check(saveConfiguration(context, ServiceConfiguration(saved.provider, saved.credentials,
             saved.endpoint, value.trim(), saved.alibabaRealtimeMode, saved.alibabaWorkspaceId, saved.xaiSpeechMode, saved.xaiTextModel, saved.speechTranslationMode))) { "profile_save_failed" }
     }
 

@@ -1,5 +1,6 @@
 package app.yuxino.mimi.android
 
+import app.yuxino.mimi.android.captions.captionLaneBudget
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

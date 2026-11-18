@@ -55,8 +55,8 @@ upper-right switch (2026-11-11). This supersedes outside-above/below placement.
 
 ## Task 1: Native panel and preview
 
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/CaptionPanelView.kt`: remove route/provider/style/Watch action and its constructor/callback data. Keep drag/resize targets; hide their visual marks while locked without changing measured chrome. Keep preview controls inert.
-- Modify `android/app/src/main/java/app/yuxino/mimi/android/SubtitlePreviewView.kt`: construct the simplified panel and stop calculating removed provider/route identity. Preserve actual measured preview parity.
+- Modify `android/app/src/main/java/app/yuxino/mimi/android/captions/CaptionPanelView.kt`: remove route/provider/style/Watch action and its constructor/callback data. Keep drag/resize targets; hide their visual marks while locked without changing measured chrome. Keep preview controls inert.
+- Modify `android/app/src/main/java/app/yuxino/mimi/android/captions/SubtitlePreviewView.kt`: construct the simplified panel and stop calculating removed provider/route identity. Preserve actual measured preview parity.
 - Keep status, source identity, timestamps, bounded history, intentional reading and original/translation modes.
 
 ## Task 2: Independent adjustment switch

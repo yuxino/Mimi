@@ -4,15 +4,19 @@ import android.app.Instrumentation
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
-import android.view.MotionEvent
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import android.view.WindowManager
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionFrameContent
+import app.yuxino.mimi.android.captions.CaptionPanelView
+import app.yuxino.mimi.android.captions.SubtitlePreviewView
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 
 /** Native reading inputs on an attached synthetic panel; the caller owns its window and cleanup. */
 internal class CaptionReadingInputChecks(

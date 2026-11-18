@@ -1,6 +1,6 @@
 import { SUPPLEMENTAL_EN } from "../../lib/locales/supplemental-schema";
 import { supplemental } from "../../lib/locales/supplemental";
-import { activeServiceProfile, isCustomSpeechProvider } from "../../lib/providerCapabilities";
+import { activeServiceProfile, isCustomSpeechProvider } from "../../lib/providers/providerCapabilities";
 import { effectiveUiLanguage } from "../../lib/i18n";
 import { sourceLanguageDisplayName, targetLanguageDisplayName, type SettingsSnapshot } from "../../lib/types";
 

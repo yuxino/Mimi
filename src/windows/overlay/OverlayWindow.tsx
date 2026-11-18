@@ -1,18 +1,18 @@
-import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
+import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { subtitleBackgroundColor } from "../../lib/subtitleColor";
+import { subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
-import { isIndependentAsrProfile } from "../../lib/providerCapabilities";
-import { limitRecentSubtitles } from "../../lib/subtitleDisplay";
+import { isIndependentAsrProfile } from "../../lib/providers/providerCapabilities";
+import { limitRecentSubtitles } from "../../lib/subtitles/subtitleDisplay";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { RecordingIndicator } from "../../components/RecordingIndicator";
-import { recordingStatusLabel } from "../../lib/recordingStatus";
+import { recordingStatusLabel } from "../../lib/audio/recordingStatus";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
-import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
-import { audioInputLabel } from "../../lib/audioInput";
+import { sessionErrorSettingsTarget } from "../../lib/providers/connectionDiagnostics";
+import { audioInputLabel } from "../../lib/audio/audioInput";
 import { hasEmbeddedOverlayControls, isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
-import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
+import { useOverlayControlMode } from "../../lib/overlay/useOverlayControlMode";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../../lib/store";
 import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
@@ -31,7 +31,7 @@ import { OVERLAY_INSET, overlaySessionChromeLayout } from "./overlayChromeLayout
 import { minimumOverlayHeight } from "./overlayMinimumHeight";
 import { useOverlayChromePeers } from "./useOverlayChromePeers";
 import { useSessionAction } from "./useSessionAction";
-import { publishOverlayPointerMotion } from "../../lib/overlayPointer";
+import { publishOverlayPointerMotion } from "../../lib/overlay/overlayPointer";
 import {
   buildSubtitleBlocks,
   buildMultiSourceSubtitleBlocks,

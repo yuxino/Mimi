@@ -18,7 +18,7 @@
     "test": "vitest --config config/vite.config.ts run --maxWorkers=2",
     "test:watch": "vitest --config config/vite.config.ts --maxWorkers=2",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
+    "tauri:dev": "tauri dev --config src-tauri/config/development.json",
     "readme:images": "node scripts/readme-images.mjs",
     "icons:generate": "node scripts/app-icons.mjs generate",
     "icons:verify": "node scripts/app-icons.mjs verify"

@@ -3,7 +3,7 @@ import { act, Profiler } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { setStoredUiLanguage } from "../../lib/i18n";
-import { shareUnchangedSubtitleHistory } from "../../lib/sessionSnapshot";
+import { shareUnchangedSubtitleHistory } from "../../lib/session/sessionSnapshot";
 import { useStore } from "../../lib/store";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { SettingsView } from "./SettingsView";

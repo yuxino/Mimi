@@ -19,11 +19,13 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import app.yuxino.mimi.android.captions.CaptionPanelView
+import app.yuxino.mimi.android.captions.SubtitlePreviewView
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.provider.SubtitleBus
-import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.textfield.TextInputEditText
 import java.io.File
 
 /** Native UI checks plus an explicitly selected synthetic system-playback capture probe. */

@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SessionErrorFeedback } from "./SessionErrorFeedback";
 import { UI_LANGUAGES, setStoredUiLanguage } from "../lib/i18n";
-import { systemAudioPermissionCopy } from "../lib/systemAudioPermissions";
+import { systemAudioPermissionCopy } from "../lib/audio/systemAudioPermissions";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../lib/store";
 import permissionScopes from "../../src-tauri/permissions/app.toml?raw";
 import nativeHandlers from "../../src-tauri/src/lib.rs?raw";
@@ -48,5 +48,8 @@ it("keeps a safe manual settings path if the OS opener fails", async () => {
 
 it("authorizes the fixed privacy-page command for each bundled error surface", () => {
   expect(permissionScopes.split("[[permission]]").find(scope => scope.includes('identifier = "app-bootstrap"'))).toContain('"app_open_audio_privacy_settings"');
-  expect(nativeHandlers).toContain("commands::app_open_audio_privacy_settings,");
+  const registeredHandlers = nativeHandlers.match(
+    /\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\s*\)/,
+  )?.[1];
+  expect(registeredHandlers).toMatch(/^\s*commands::help::app_open_audio_privacy_settings,\s*$/m);
 });

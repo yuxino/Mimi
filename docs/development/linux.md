@@ -159,7 +159,7 @@ Install Rust 1.90+, Node.js 22.x (22.13+), 24.x, or 26+, and the native dependen
 ```bash
 npm ci
 ./scripts/check.sh
-./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
+./scripts/build-linux-packages.sh --config src-tauri/config/ci.json
 ```
 
 Native audio regression uses `./scripts/linux-audio-smoke.sh` with a private

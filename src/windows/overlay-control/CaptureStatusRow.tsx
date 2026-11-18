@@ -1,9 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { capturePresentation, captureStatusForSource, captureSwitchCopy, sameCaptureStatus, type CaptureStatus } from "../../lib/captureStatus";
-import { audioInputErrorMessage } from "../../lib/audioInput";
-import { applicationAudioError } from "../../lib/applicationAudio";
-import { audioSourceErrorMessage } from "../../lib/windowsAudioSource";
+import { capturePresentation, captureStatusForSource, captureSwitchCopy, sameCaptureStatus, type CaptureStatus } from "../../lib/audio/captureStatus";
+import { audioInputErrorMessage } from "../../lib/audio/audioInput";
+import { applicationAudioError } from "../../lib/audio/applicationAudio";
+import { audioSourceErrorMessage } from "../../lib/audio/windowsAudioSource";
 import { isTauri } from "../../lib/ipc";
 import { useStore } from "../../lib/store";
 import { Icon } from "../../components/Icon";

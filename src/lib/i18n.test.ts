@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { effectiveUiLanguage, I18N, localizedRecord, UI_LANGUAGES, UI_LANGUAGE_OPTIONS, setStoredUiLanguage, subscribeUiLanguage } from "./i18n";
-import { SUBTITLE_DISPLAY_OPTIONS } from "./subtitleDisplay";
+import { SUBTITLE_DISPLAY_OPTIONS } from "./subtitles/subtitleDisplay";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "./types";
 
 afterEach(() => { setStoredUiLanguage("en"); vi.unstubAllGlobals(); });

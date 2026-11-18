@@ -4,8 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ApplicationAudioPicker } from "./ApplicationAudioPicker";
-import { applicationIconCache } from "../lib/applicationAudioIcons";
-import { applicationAudioCopy, type ApplicationSnapshot } from "../lib/applicationAudio";
+import { applicationIconCache } from "../lib/audio/applicationAudioIcons";
+import { applicationAudioCopy, type ApplicationSnapshot } from "../lib/audio/applicationAudio";
 import { useStore } from "../lib/store";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));

@@ -8,13 +8,16 @@ import android.view.Gravity
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.LinearLayout
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import app.yuxino.mimi.android.captions.CaptionAlignment
+import app.yuxino.mimi.android.captions.CaptionColorPalette
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 

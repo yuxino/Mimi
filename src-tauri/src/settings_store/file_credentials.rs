@@ -347,10 +347,10 @@ impl FileCredentialStore {
         file.write_all(b"1\n")
             .and_then(|_| file.as_file().sync_all())
             .map_err(|_| SecretStoreError::Unavailable)?;
-        super::replace_file(file.path(), &self.complete_path)
+        super::persistence::replace_file(file.path(), &self.complete_path)
             .map_err(|_| SecretStoreError::Unavailable)?;
         if let Some(parent) = self.complete_path.parent() {
-            super::sync_directory(parent);
+            super::persistence::sync_directory(parent);
         }
         Ok(())
     }
@@ -372,8 +372,9 @@ impl FileCredentialStore {
         file.write_all(&bytes)
             .and_then(|_| file.as_file().sync_all())
             .map_err(|_| SecretStoreError::Unavailable)?;
-        super::replace_file(file.path(), &self.path).map_err(|_| SecretStoreError::Unavailable)?;
-        super::sync_directory(parent);
+        super::persistence::replace_file(file.path(), &self.path)
+            .map_err(|_| SecretStoreError::Unavailable)?;
+        super::persistence::sync_directory(parent);
         Ok(())
     }
     fn store(

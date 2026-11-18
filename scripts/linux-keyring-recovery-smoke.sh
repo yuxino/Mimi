@@ -4,7 +4,7 @@ if [[ "$(uname -s)" != Linux ]]; then
   echo "This test requires Linux and GNOME Keyring." >&2
   exit 2
 fi
-test_name=settings_store::tests::linux_secret_service_recovers_without_restart
+test_name=settings_store::tests::native_credentials::linux_secret_service_recovers_without_restart
 test_list="$(timeout 120s cargo test --locked --manifest-path src-tauri/Cargo.toml --lib "$test_name" -- --exact --ignored --list)"
 if ! grep -Fxq "$test_name: test" <<< "$test_list"; then
   echo "Required Linux recovery integration test was not discovered." >&2

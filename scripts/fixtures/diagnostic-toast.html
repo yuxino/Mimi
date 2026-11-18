@@ -9,7 +9,7 @@ Object.defineProperty(navigator,'clipboard',{value:{writeText:async(value)=>{if(
 const ReactModule=await import('/node_modules/.vite/deps/react.js');const React=ReactModule.default;
 const ReactDom=await import('/node_modules/.vite/deps/react-dom_client.js');
 const {setStoredUiLanguage}=await import('/src/lib/i18n.ts');setStoredUiLanguage('zh');
-const {SupportDiagnostics}=await import('/src/windows/settings/SupportDiagnostics.tsx');
+const {SupportDiagnostics}=await import('/src/windows/settings/support/SupportDiagnostics.tsx');
 await import('/src/windows/settings/settings.css');
 const host=document.createElement('div');host.className='settings-console settings-console--light';host.style.cssText='display:block;width:300px;height:auto;padding:24px;background:#f7f7f7';host.setAttribute('data-theme','light');document.getElementById('root').append(host);
 function Fixture() {

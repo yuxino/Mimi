@@ -5,13 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import languageCatalogs from "../../../shared/provider-language-catalogs.json";
 import { languageStatus } from "../overlay/overlayModel";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { profileErrorMessage } from "../../lib/connectionDiagnostics";
+import { profileErrorMessage } from "../../lib/providers/connectionDiagnostics";
 import { useStore } from "../../lib/store";
 import { OverlayControlPanel } from "./OverlayControlPanel";
 import { overlayControlPanelModel } from "./overlayControlModel";
-import { sourceLanguagesForSettings } from "../../lib/providerCapabilities";
-import { profileLanguagePresetLabel } from "../../lib/profileLanguagePreset";
-import { SUBTITLE_DISPLAY_OPTIONS } from "../../lib/subtitleDisplay";
+import { sourceLanguagesForSettings } from "../../lib/providers/providerCapabilities";
+import { profileLanguagePresetLabel } from "../../lib/profiles/profileLanguagePreset";
+import { SUBTITLE_DISPLAY_OPTIONS } from "../../lib/subtitles/subtitleDisplay";
 import { AUDIO3_RECOGNITION_LANGUAGE_CODES, SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot } from "../../lib/types";
 
 const native = vi.hoisted(() => ({ active: false, move: vi.fn() }));

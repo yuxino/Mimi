@@ -16,11 +16,11 @@ vi.mock("../../lib/ipc", async original => ({
   sessionArchiveState: native.archive, sessionHistoryList: vi.fn().mockResolvedValue([]),
 }));
 // These unrelated pages do not participate in the native navigation contract.
-vi.mock("./ServiceProfiles", () => ({ ServiceProfiles: ({ appleResourcesRequest, profileEditorRequest }: { appleResourcesRequest: number; profileEditorRequest: number }) => <div data-apple-resource-request={appleResourcesRequest} data-profile-editor-request={profileEditorRequest} /> }));
-vi.mock("./SoftwareUpdate", () => ({ SoftwareUpdate: () => null }));
-vi.mock("./WindowsAudioSource", () => ({ WindowsAudioSource: () => null }));
-vi.mock("./SupportDiagnostics", () => ({ SupportDiagnostics: () => null }));
-vi.mock("./QuickStartGuide", () => ({ QuickStartGuide: () => null }));
+vi.mock("./services/ServiceProfiles", () => ({ ServiceProfiles: ({ appleResourcesRequest, profileEditorRequest }: { appleResourcesRequest: number; profileEditorRequest: number }) => <div data-apple-resource-request={appleResourcesRequest} data-profile-editor-request={profileEditorRequest} /> }));
+vi.mock("./updates/SoftwareUpdate", () => ({ SoftwareUpdate: () => null }));
+vi.mock("./audio/WindowsAudioSource", () => ({ WindowsAudioSource: () => null }));
+vi.mock("./support/SupportDiagnostics", () => ({ SupportDiagnostics: () => null }));
+vi.mock("./guide/QuickStartGuide", () => ({ QuickStartGuide: () => null }));
 
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;

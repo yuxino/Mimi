@@ -84,7 +84,7 @@
             android:fontFamily="sans-serif-medium"
             android:paddingHorizontal="6dp" />
     </RadioGroup>
-    <app.yuxino.mimi.android.CaptionWorkspace
+    <app.yuxino.mimi.android.captions.CaptionWorkspace
         android:id="@+id/caption_workspace"
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -95,7 +95,7 @@
             android:paddingHorizontal="24dp"
             android:paddingBottom="12dp"
             android:clipToPadding="false">
-            <app.yuxino.mimi.android.SubtitlePreviewView
+            <app.yuxino.mimi.android.captions.SubtitlePreviewView
                 android:id="@+id/subtitle_preview"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
@@ -329,7 +329,7 @@
             </LinearLayout>
         </LinearLayout>
     </app.yuxino.mimi.android.ControlScrollView>
-    </app.yuxino.mimi.android.CaptionWorkspace>
+    </app.yuxino.mimi.android.captions.CaptionWorkspace>
     <app.yuxino.mimi.android.SessionControlsLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

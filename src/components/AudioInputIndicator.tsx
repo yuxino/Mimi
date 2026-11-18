@@ -1,4 +1,4 @@
-import { audioInputLabel } from "../lib/audioInput";
+import { audioInputLabel } from "../lib/audio/audioInput";
 import type { AudioInput, SystemAudioTarget } from "../lib/types";
 import { Icon } from "./Icon";
 

@@ -60,7 +60,7 @@ val verifySharedProviderCopy = tasks.register<Exec>("verifySharedProviderCopy") 
         repositoryRoot.resolve("scripts/sync-provider-copy.py"),
         repositoryRoot.resolve("src/lib/generated/providerCopy.ts"),
         repositoryRoot.resolve("src/lib/i18n.ts"),
-        repositoryRoot.resolve("src/windows/settings/AlibabaRealtimeSettings.tsx"))
+        repositoryRoot.resolve("src/windows/settings/services/AlibabaRealtimeSettings.tsx"))
     inputs.files(fileTree(repositoryRoot.resolve("src/lib/locales")) { include("*.ts") },
         fileTree(repositoryRoot.resolve("src/lib/generated/providerCopy")) { include("*.ts") },
         fileTree("src/main/res") { include("values*/*.xml") })

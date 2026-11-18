@@ -14,6 +14,10 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.inspector.WindowInspector
 import android.widget.TextView
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionPanelView
+import app.yuxino.mimi.android.captions.CompactCaptionView
+import app.yuxino.mimi.android.captions.captionPanelHeight
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.capture.OverlayPlacement
 import app.yuxino.mimi.android.provider.SharedSubtitleCore

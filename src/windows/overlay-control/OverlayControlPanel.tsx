@@ -1,7 +1,7 @@
-import { profileSelectionState } from "../../lib/profileSelection";
+import { profileSelectionState } from "../../lib/profiles/profileSelection";
 import { SettingsToastRegion } from "../settings/SettingsToast";
-import { activeServiceProfile } from "../../lib/providerCapabilities";
-import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
+import { activeServiceProfile } from "../../lib/providers/providerCapabilities";
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/providers/speechLanguageGuidance";
 import { SettingsHelp } from "../settings/SettingsHelp";
 import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
@@ -11,13 +11,13 @@ import { LanguageSelect } from "../../components/LanguageSelect";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { I18N } from "../../lib/i18n";
-import { diagnosticPlatform, languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage } from "../../lib/connectionDiagnostics";
+import { diagnosticPlatform, languageActionErrorMessage, profileErrorMessage, sessionActionErrorMessage } from "../../lib/providers/connectionDiagnostics";
 import {
   isTauri,
   overlayControlSetPanelHeight,
   type SettingsNavigationTarget,
 } from "../../lib/ipc";
-import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
+import { SUBTITLE_DISPLAY_OPTIONS, subtitleDisplayShortcut } from "../../lib/subtitles/subtitleDisplay";
 import type { SubtitleDisplayMode } from "../../lib/types";
 import {
   type OverlayActivityPhaseKind,

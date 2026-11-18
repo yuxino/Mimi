@@ -134,7 +134,7 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
                         }
                     }
                     DesktopAction::ToggleImmersive => {
-                        if crate::commands::toggle_immersive_mode(&handle)
+                        if crate::commands::settings::toggle_immersive_mode(&handle)
                             .await
                             .is_err()
                         {
@@ -142,12 +142,15 @@ pub fn dispatch_linux_launch(app: &tauri::AppHandle, args: &[String]) {
                         }
                     }
                     DesktopAction::ToggleLock => {
-                        if crate::commands::toggle_overlay_lock(&handle).await.is_err() {
+                        if crate::commands::overlay::toggle_overlay_lock(&handle)
+                            .await
+                            .is_err()
+                        {
                             tracing::warn!("desktop lock shortcut failed");
                         }
                     }
                     DesktopAction::CycleSubtitleDisplay => {
-                        if crate::commands::set_subtitle_display_mode(&handle, None)
+                        if crate::commands::settings::set_subtitle_display_mode(&handle, None)
                             .await
                             .is_err()
                         {

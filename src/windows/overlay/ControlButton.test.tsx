@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import type { IconName } from "../../components/Icon";
 import { ControlButton } from "./ControlButton";
-import { OVERLAY_POINTER_TARGET_EVENT } from "../../lib/overlayPointer";
+import { OVERLAY_POINTER_TARGET_EVENT } from "../../lib/overlay/overlayPointer";
 
 let host: HTMLDivElement;
 let root: Root;

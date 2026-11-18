@@ -3,7 +3,7 @@ import {
   sourceLanguagesForSettings,
   targetLanguagesForSettings,
   translationModesForSettings,
-} from "../../lib/providerCapabilities";
+} from "../../lib/providers/providerCapabilities";
 import {
   targetLanguageTranslatesAudio,
   type SettingsSnapshot,

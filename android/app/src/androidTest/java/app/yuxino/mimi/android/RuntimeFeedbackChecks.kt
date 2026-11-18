@@ -2,25 +2,26 @@ package app.yuxino.mimi.android
 
 import android.app.Activity
 import android.app.Instrumentation
+import android.app.LocaleManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
-import android.os.Bundle
-import android.os.SystemClock
 import android.os.Build
+import android.os.Bundle
 import android.os.LocaleList
-import android.app.LocaleManager
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.inspector.WindowInspector
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SharedSubtitleCore
 import app.yuxino.mimi.android.provider.SubtitleBus
-import org.json.JSONObject
 import java.io.File
+import org.json.JSONObject
 
 /** Synthetic shared snapshots in the real native overlay; no capture or provider. */
 internal class RuntimeFeedbackChecks(private val test: Instrumentation) {
