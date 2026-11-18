@@ -369,7 +369,8 @@ jobs:
         if: ${{ matrix.os == 'macos-latest' }}
         run: npm run tauri -- build --no-bundle -- --locked
 
-      - uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4 # v0
+      - id: windows_package
+        uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4 # v0
         if: ${{ matrix.os == 'windows-2025' }}
         with:
           args: --config src-tauri/config/ci.json
@@ -388,7 +389,7 @@ jobs:
         run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer -VerifyBothDragModes
 
       - name: Check subtitle controls and keyboard selection in every panel language
-        if: ${{ matrix.os == 'windows-2025' }}
+        if: ${{ !cancelled() && steps.windows_package.outcome == 'success' }}
         shell: pwsh
         run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory "$env:RUNNER_TEMP/panel-languages"
 
@@ -404,7 +405,7 @@ jobs:
           retention-days: 7
 
       - name: Read bilingual caption history and drag the Windows scrollbar back to live
-        if: ${{ matrix.os == 'windows-2025' }}
+        if: ${{ !cancelled() && steps.windows_package.outcome == 'success' }}
         shell: pwsh
         run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/caption-history"
 
@@ -416,6 +417,15 @@ jobs:
           path: ${{ runner.temp }}/caption-history
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Keep the exact executable from a failed manual Windows check
+        if: ${{ failure() && github.event_name == 'workflow_dispatch' && steps.windows_package.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-ui-test-executable
+          path: src-tauri/target/release/mimi.exe
+          if-no-files-found: error
+          retention-days: 2
 
       - name: Package and verify portable Windows build
         if: ${{ matrix.os == 'windows-2025' }}
