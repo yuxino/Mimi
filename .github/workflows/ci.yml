@@ -491,7 +491,9 @@ jobs:
           - arch: x86_64
             dmg_arch: x64
             archive: mimi_x64.app.tar.gz
-    runs-on: macos-latest
+    # Signature/source/DMG checks do not execute the app. Keep macOS 26
+    # runtime coverage in rust; use the macOS 15 ARM pool for these verifiers.
+    runs-on: macos-15
     # GitHub requires push access to read an unpublished release draft.
     # Limit this permission to the release-only job; ordinary CI stays read-only.
     permissions:
