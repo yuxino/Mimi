@@ -1,44 +1,89 @@
-name: Windows caption reading review
+name: Windows subtitle acceptance
 on:
   workflow_dispatch:
     inputs:
-      revision:
-        description: Exact revision of the native mouse check
-        type: string
-        required: true
+      revision: {description: Exact test revision, type: string, required: true}
+      package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
+      package_run: {description: Run that built the captured executable, type: string}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels], default: both}
 permissions:
   contents: read
   actions: read
 jobs:
   review:
     runs-on: windows-2025
-    timeout-minutes: 8
+    timeout-minutes: 22
+    env:
+      CARGO_INCREMENTAL: '0'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ inputs.revision }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
-          name: mimi-windows-2025
-          run-id: 44406242367
+          node-version: 22
+          cache: npm
+      - if: ${{ inputs.package == 'build' }}
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+      - if: ${{ inputs.package == 'build' }}
+        uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c
+        with:
+          shared-key: desktop-package
+          workspaces: |
+            src-tauri
+            shared/mimi-core -> ../target
+            shared/mimi-android-jni -> ../target
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - if: ${{ inputs.package == 'build' }}
+        name: Build offline native fixture from the selected revision
+        run: npm run tauri -- build --no-bundle --config src-tauri/config/ci.json -- --locked
+      - if: ${{ inputs.package == 'build' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: caption-history-executable
+          path: src-tauri/target/release/mimi.exe
+          retention-days: 2
+          if-no-files-found: error
+      - if: ${{ inputs.package == 'reuse' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: caption-history-executable
+          run-id: ${{ inputs.package_run }}
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/native-package
-      - name: Scroll, wait for a caption, drag the thumb and read the next caption
+          path: src-tauri/target/release
+      - if: ${{ inputs.package == 'release' }}
+        name: Check the published v1.7.4 portable archive
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $archive = @(Get-ChildItem "$env:RUNNER_TEMP/native-package" -Recurse -File -Filter '*x64-portable.zip')
-          if ($archive.Count -ne 1) { throw 'Expected one x64 portable archive from the pinned source build.' }
-          $dir = Join-Path $env:RUNNER_TEMP 'native-history-app'
-          Expand-Archive -LiteralPath $archive[0].FullName -DestinationPath $dir
-          $exe = Join-Path $dir 'mimi.exe'
-          Write-Output "Executable SHA-256: $((Get-FileHash -Algorithm SHA256 $exe).Hash)"
-          ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/caption-history"
-      - if: ${{ !cancelled() }}
+          $zip = Join-Path $env:RUNNER_TEMP 'mimi_1.7.4_x64-portable.zip'
+          Invoke-WebRequest 'https://github.com/yuxino/Mimi/releases/download/v1.7.4/mimi_1.7.4_x64-portable.zip' -OutFile $zip
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash -ine '132d9c633507cdc651b52e526cf6c9432fb6db102c5f8d528c03b46a8480cdd1') { throw 'Published archive checksum mismatch.' }
+          Expand-Archive $zip -DestinationPath ./src-tauri/target/release
+      - id: ready
+        shell: pwsh
+        run: |
+          $exe = (Get-FileHash -Algorithm SHA256 ./src-tauri/target/release/mimi.exe).Hash
+          Write-Output "Executable SHA-256: $exe"
+      - if: ${{ steps.ready.outcome == 'success' && (inputs.checks == 'history' || inputs.checks == 'both') }}
+        name: Read historical captions and return to live with a physical mouse
+        shell: pwsh
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/caption-history"
+      - if: ${{ !cancelled() && steps.ready.outcome == 'success' && (inputs.checks == 'panels' || inputs.checks == 'both') }}
+        name: Select languages with the keyboard in nine localized interfaces
+        shell: pwsh
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory "$env:RUNNER_TEMP/panel-languages"
+      - if: ${{ !cancelled() && (inputs.checks == 'history' || inputs.checks == 'both') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: windows-caption-history
           path: ${{ runner.temp }}/caption-history
+          if-no-files-found: ignore
+          retention-days: 7
+      - if: ${{ !cancelled() && (inputs.checks == 'panels' || inputs.checks == 'both') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-panel-languages
+          path: ${{ runner.temp }}/panel-languages
           if-no-files-found: ignore
           retention-days: 7
