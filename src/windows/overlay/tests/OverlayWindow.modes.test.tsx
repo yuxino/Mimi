@@ -69,8 +69,8 @@ async function mount(subtitles: SubtitleSnapshot, mode: SubtitleDisplayMode = "b
   await act(() => root.render(<OverlayWindow />));
 }
 
-async function publish(subtitles: SubtitleSnapshot, patch: Partial<SessionStateEvent> = {}) {
-  await act(() => useStore.setState(state => ({ session: shareUnchangedSubtitleHistory(state.session, snapshot(subtitles, patch)) })));
+function publish(subtitles: SubtitleSnapshot, patch: Partial<SessionStateEvent> = {}) {
+  return act(() => useStore.setState(state => ({ session: shareUnchangedSubtitleHistory(state.session, snapshot(subtitles, patch)) })));
 }
 
 async function mode(value: SubtitleDisplayMode) {
@@ -758,8 +758,9 @@ it("breaks Gemini live display lines without changing raw drafts or committed hi
   expect(historyLane?.style.whiteSpace).not.toBe("pre-line");
 });
 
-it.each([true, false])("keeps 445 Gemini drafts visible across 18 confirmations with history retained=%s", async retainHistory => {
+it.for([true, false])("keeps 445 Gemini drafts visible across 18 confirmations with history retained=%s", async (retainHistory, { signal }) => {
   await mount(empty, "translation", geminiSettings);
+  signal.throwIfAborted();
   let drafts = 0;
   let liveUpdates = 0;
   const finals: SubtitleSnapshot["history"] = [];
@@ -773,11 +774,13 @@ it.each([true, false])("keeps 445 Gemini drafts visible across 18 confirmations 
     for (let index = 0; index < count; index++) {
       translation = `合成字幕${block}：${"字".repeat(index + 1)}`;
       const priorPair = finals.at(-1);
-      await publish({ ...empty, history,
+      // Commit each draft before advancing its fake clock so the display
+      // effect has installed its timer. Both steps flush synchronously.
+      publish({ ...empty, history,
         ...(priorPair ? { displayPair: priorPair, displayPairFinal: true } : {}),
         source: { text: source, isFinal: false }, translation: { text: translation, isFinal: false } });
       drafts++;
-      await act(() => vi.advanceTimersByTime(50));
+      act(() => { vi.advanceTimersByTime(50); });
       const live = visibleLanes().find(text => text.startsWith(`合成字幕${block}：`)) ?? "";
       if (live && live !== previousLive) {
         liveUpdates++;
@@ -787,7 +790,7 @@ it.each([true, false])("keeps 445 Gemini drafts visible across 18 confirmations 
       expect(Date.now() - lastSeenAt).toBeLessThanOrEqual(250);
       expect(useStore.getState().session.subtitles.history).toEqual(history);
     }
-    await act(() => vi.advanceTimersByTime(100));
+    act(() => { vi.advanceTimersByTime(100); });
     expect(visibleLanes()).toContain(translation);
     // No confirmation has been published yet: all counted changes are drafts.
     const pair = { source, translation, createdAt: 1_000 + block };
@@ -795,14 +798,17 @@ it.each([true, false])("keeps 445 Gemini drafts visible across 18 confirmations 
     await publish({ ...empty, history: retainHistory ? [...finals] : [],
       displayPair: pair, displayPairFinal: true,
       source: { text: source, isFinal: true }, translation: { text: translation, isFinal: true } });
+    // A timed-out replay can resume after teardown. Leave the next test's
+    // store, DOM and clock alone when yielding between confirmations.
+    signal.throwIfAborted();
     expect(visibleLanes()).toContain(translation);
     expect(useStore.getState().session.subtitles.history).toHaveLength(retainHistory ? block + 1 : 0);
   }
   expect(drafts).toBe(445);
   expect(finals).toHaveLength(18);
   expect(liveUpdates).toBeGreaterThanOrEqual(89);
-  await publish(empty);
-  await act(() => vi.advanceTimersByTime(2_000));
+  publish(empty);
+  act(() => { vi.advanceTimersByTime(2_000); });
   expect(visibleLanes()).toEqual([]);
 });
 
