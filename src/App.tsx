@@ -2,9 +2,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { effectiveUiLanguage, subscribeUiLanguage } from "./lib/i18n";
 import { appUiTestFrontendReady, isTauri } from "./lib/ipc";
-import { verifyUiTestConnectionReadiness } from "./lib/uiTestConnectionReadiness";
+import { verifyUiTestConnectionReadiness } from "./lib/development/uiTestConnectionReadiness";
 import { selectSessionStatusKind, useStore } from "./lib/store";
-import { useDesktopShortcuts } from "./lib/useDesktopShortcuts";
+import { useDesktopShortcuts } from "./lib/shortcuts/useDesktopShortcuts";
 
 const OverlayWindow = lazy(() =>
   import("./windows/overlay/OverlayWindow").then((module) => ({

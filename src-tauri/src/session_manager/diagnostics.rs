@@ -3,16 +3,16 @@
 use super::publication::visible_session_latencies;
 use super::SessionManager;
 use crate::audio::send_pipeline::AudioSendPipeline;
-use crate::core::audio_input::{AudioInput, AudioSource};
-use crate::core::diagnostics::milliseconds;
-use crate::core::models::{SessionStatus, UtteranceRole};
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::provider::ProviderKind;
-use crate::core::support_diagnostics::{
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
+use crate::core::diagnostics::latency::milliseconds;
+use crate::core::diagnostics::support_diagnostics::{
     Availability, CaptureObservation, DiagnosticEvent, DiagnosticFacts, DiagnosticStatus,
     OutputSelection, RecoveryAction, SafeFailure, TextEventKind,
 };
-use mimi_runtime::core::recovery::NO_GENERATION;
+use crate::core::models::{SessionStatus, UtteranceRole};
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
+use crate::core::services::provider::ProviderKind;
+use mimi_runtime::core::lifecycle::recovery::NO_GENERATION;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -276,11 +276,11 @@ impl SessionManager {
     }
 
     pub fn support_diagnostics(&self) -> String {
-        crate::core::support_diagnostics::render(self.diagnostic_facts())
+        crate::core::diagnostics::support_diagnostics::render(self.diagnostic_facts())
     }
 
-    pub fn support_issue(&self) -> crate::core::support_diagnostics::SupportIssue {
-        crate::core::support_diagnostics::issue_link(self.diagnostic_facts())
+    pub fn support_issue(&self) -> crate::core::diagnostics::support_diagnostics::SupportIssue {
+        crate::core::diagnostics::support_diagnostics::issue_link(self.diagnostic_facts())
     }
 
     pub(super) fn diagnostic_facts(&self) -> DiagnosticFacts {
@@ -340,7 +340,12 @@ impl SessionManager {
                 self.diagnostic_capture
                     .lock()
                     .unwrap()
-                    .map(|(capture, at)| (capture, crate::core::diagnostics::milliseconds(at, now)))
+                    .map(|(capture, at)| {
+                        (
+                            capture,
+                            crate::core::diagnostics::latency::milliseconds(at, now),
+                        )
+                    })
             });
         #[cfg(target_os = "windows")]
         let (output_selection, output_availability) = {
@@ -425,22 +430,28 @@ impl SessionManager {
             translation_pending,
             translation_preview_pending,
             translation_timed_out,
-            last_error: self
-                .diagnostic_error
-                .lock()
-                .unwrap()
-                .map(|(error, at)| (error, crate::core::diagnostics::milliseconds(at, now))),
+            last_error: self.diagnostic_error.lock().unwrap().map(|(error, at)| {
+                (
+                    error,
+                    crate::core::diagnostics::latency::milliseconds(at, now),
+                )
+            }),
             recovery: self
                 .diagnostic_recovery
                 .lock()
                 .unwrap()
-                .map(|(action, at)| (action, crate::core::diagnostics::milliseconds(at, now))),
+                .map(|(action, at)| {
+                    (
+                        action,
+                        crate::core::diagnostics::latency::milliseconds(at, now),
+                    )
+                }),
             api_latency_ms,
             translation_latency_ms,
             translation_latency_kind,
             translation_recovery,
             journal,
-            elapsed_ms: crate::core::diagnostics::milliseconds(
+            elapsed_ms: crate::core::diagnostics::latency::milliseconds(
                 self.diagnostic_epoch,
                 Instant::now(),
             ),

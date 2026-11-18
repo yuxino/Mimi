@@ -11,7 +11,7 @@ mod snapshots;
 
 fn fixture(configuration: LiveTranslationConfiguration) -> Arc<Session> {
     let direct = ProxyConfig {
-        mode: mimi_runtime::core::network_proxy::ProxyMode::Direct,
+        mode: mimi_runtime::core::services::network_proxy::ProxyMode::Direct,
         url: None,
     };
     Arc::new(Session {

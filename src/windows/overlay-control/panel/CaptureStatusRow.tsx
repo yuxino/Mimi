@@ -1,0 +1,136 @@
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { capturePresentation, captureStatusForSource, captureSwitchCopy, sameCaptureStatus, type CaptureStatus } from "../../../lib/audio/captureStatus";
+import { audioInputErrorMessage } from "../../../lib/audio/audioInput";
+import { applicationAudioError } from "../../../lib/audio/applicationAudio";
+import { audioSourceErrorMessage } from "../../../lib/audio/windowsAudioSource";
+import { isTauri } from "../../../lib/ipc";
+import { useStore } from "../../../lib/store";
+import { Icon } from "../../../components/Icon";
+import { ApplicationAudioPicker } from "../../../components/audio/ApplicationAudioPicker";
+import { effectiveUiLanguage, I18N } from "../../../lib/i18n";
+import type { AudioInput, AudioSource } from "../../../lib/types";
+import { SettingsHelp } from "../../settings/feedback/SettingsHelp";
+
+const SOURCES: AudioSource[] = ["system", "microphone"];
+
+/** Mounted only in the expanded panel. Status and device details stay in help. */
+export function CaptureStatusRow({ disabled = false, busy = false }: { disabled?: boolean; busy?: boolean }) {
+  const id = useId();
+  const [snapshot, setSnapshot] = useState<{ stamp: object; value: CaptureStatus } | null>(null);
+  const [pending, setPending] = useState(false);
+  const [targetPending, setTargetPending] = useState(false);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const switching = useRef(false);
+  const disposed = useRef(false);
+  const ready = useStore(state => state.initializationStatus === "ready");
+  const active = useStore(state => state.session.isActive);
+  const paused = useStore(state => state.session.isPaused);
+  const kind = useStore(state => state.session.status.kind);
+  const input = useStore(state => state.settings.audioInput) ?? "system";
+  const microphoneAvailable = useStore(state => state.settings.microphoneInputAvailable === true);
+  const target = useStore(state => state.settings.systemAudioTarget);
+  const switchAudioInput = useStore(state => state.switchAudioInput);
+  const stamp = useMemo(() => ({ input, target, kind, active, paused }), [input, target, kind, active, paused]);
+  useEffect(() => {
+    disposed.current = false;
+    return () => { disposed.current = true; };
+  }, []);
+  useEffect(() => {
+    if (!isTauri) return;
+    let disposed = false;
+    let previous: CaptureStatus | null = null;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        const value = await invoke<CaptureStatus>("capture_status");
+        if (disposed) return;
+        if (!sameCaptureStatus(previous, value)) {
+          previous = value;
+          setSnapshot({ stamp, value });
+        }
+      } catch {
+        if (!disposed) {
+          previous = null;
+          setSnapshot(null);
+        }
+      }
+      if (!disposed) timer = setTimeout(() => void refresh(), 1000);
+    };
+    void refresh();
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [stamp]);
+  // Invalidate observations synchronously on input and lifecycle changes.
+  const current = snapshot?.stamp === stamp ? snapshot.value : null;
+  const language = effectiveUiLanguage();
+  const copy = captureSwitchCopy(language);
+  const lifecycle = { status: kind === "error" ? { kind, message: "" } : { kind }, isActive: active, isPaused: paused };
+  const unavailable = !ready || disabled;
+  const changing = busy || pending || targetPending || kind === "connecting" || kind === "stopping";
+  const locked = unavailable || changing;
+  const toggle = async (source: AudioSource) => {
+    if (locked || switching.current || input === source) return;
+    const next: AudioInput = input === "both" ? source === "system" ? "microphone" : "system" : "both";
+    switching.current = true;
+    setPending(true);
+    setOperationError(null);
+    try {
+      await switchAudioInput(next);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+      if (!disposed.current) setOperationError(applicationAudioError(message) ?? audioInputErrorMessage(message) ?? audioSourceErrorMessage(message) ?? copy.switchFailed);
+    } finally {
+      switching.current = false;
+      if (!disposed.current) setPending(false);
+    }
+  };
+  const sources = SOURCES.filter(source => microphoneAvailable || source === "system").map(source => {
+    const enabled = input === "both" || input === source;
+    const text = capturePresentation(captureStatusForSource(current, input, source), lifecycle, language, source, enabled);
+    const help = [text.observation, text.help, microphoneAvailable && input === source ? copy.minimum : null, microphoneAvailable ? copy.switchHelp : null,
+      source === "microphone" && input !== "microphone" ? copy.dualHelp : null].filter(Boolean).join("\n");
+    return { source, enabled, text, help };
+  });
+  const groupHelpId = `${id}-help`;
+  const groupHelp = [
+    ...sources.flatMap(({ enabled, text }) => [
+      `${text.source} · ${text.observation}`,
+      enabled ? text.deviceDescription ?? text.help : null,
+    ]),
+    ...(microphoneAvailable ? [copy.minimum, copy.switchHelp, copy.dualHelp] : []),
+  ].filter(Boolean).join("\n");
+  return <section className="overlay-control-section overlay-control-capture" aria-labelledby={id} aria-busy={changing}>
+    <div className="overlay-control-section__heading">
+      <h2 className="overlay-control-section__title" id={id}>{I18N.settings.audioInputTitle}</h2>
+      <SettingsHelp id={groupHelpId} text={groupHelp} label={`${I18N.settings.audioInputTitle} · ${I18N.settings.helpLabel}`} />
+    </div>
+    <div className="overlay-control-capture__sources" role="group" aria-label={I18N.settings.audioInputTitle}>
+      {sources.map(({ source, enabled, text, help }) => {
+        const helpId = `${id}-${source}-help`;
+        return <div className="overlay-control-capture__source" key={source} data-audio-source={source}>
+          {microphoneAvailable && <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label={text.source}
+            aria-describedby={helpId}
+            disabled={locked || input === source}
+            data-required={!unavailable && input === source || undefined}
+            data-busy-disabled={!unavailable && changing || undefined}
+            className="overlay-control-capture__toggle"
+            onClick={() => void toggle(source)}
+          >
+            <Icon name={source === "system" ? "speaker" : "microphone"} />
+            <span>{text.source}</span>
+            <span className="overlay-control-capture__track" aria-hidden="true" />
+          </button>}
+          <span id={helpId} className="settings-help-control__description">{help}</span>
+          {source === "system" && enabled && <div className="overlay-control-capture__application">
+            <ApplicationAudioPicker disabled={unavailable} busy={changing} onBusyChange={setTargetPending} />
+          </div>}
+        </div>;
+      })}
+    </div>
+    {operationError && <div className="overlay-control-alert" role="alert"><Icon name="exclamation-triangle" /><span>{operationError}</span></div>}
+  </section>;
+}

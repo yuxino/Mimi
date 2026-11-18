@@ -19,20 +19,20 @@ use super::SessionManager;
 use crate::audio::echo_pipeline::EchoPipeline;
 use crate::audio::send_pipeline::{AudioPipelineFailure, AudioSendPipeline};
 use crate::audio::AudioCaptureFormat;
-use crate::clients::provider_events::provider_event_channel;
-use crate::clients::translation_client::{ConnectError, TranslationClient};
-use crate::core::audio_input::{AudioInput, AudioSource};
-use crate::core::configuration::LiveTranslationConfiguration;
-use crate::core::models::SessionStatus;
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::provider::ProviderKind;
-use crate::core::session::TranslationSessionController;
-use crate::core::support_diagnostics::{
+use crate::clients::translation::translation_client::{ConnectError, TranslationClient};
+use crate::clients::transport::provider_events::provider_event_channel;
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
+use crate::core::diagnostics::support_diagnostics::{
     DiagnosticEvent, LifecycleAction, RecoveryAction, SafeFailure,
 };
+use crate::core::lifecycle::session::TranslationSessionController;
+use crate::core::models::SessionStatus;
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
+use crate::core::services::configuration::LiveTranslationConfiguration;
+use crate::core::services::provider::ProviderKind;
 use crate::pipeline_log;
-use mimi_runtime::core::health::AUDIO_DRAIN_TIMEOUT;
-use mimi_runtime::core::recovery::{
+use mimi_runtime::core::lifecycle::health::AUDIO_DRAIN_TIMEOUT;
+use mimi_runtime::core::lifecycle::recovery::{
     provider_error_requires_user_action, MTBudgetScope, NO_GENERATION,
 };
 use std::future::Future;
@@ -55,7 +55,7 @@ pub(super) fn apply_establish_failure_state(
 /// These fixed application errors cannot improve through automatic reconnect.
 /// Starting again is an explicit user action after authorization or system stop.
 pub(super) fn configuration_failure_requires_repair(error: &str) -> bool {
-    crate::core::protocols::audio3::failure_requires_configuration(error)
+    crate::core::protocols::recognition::audio3::failure_requires_configuration(error)
         || matches!(
             error,
             "apple_translation_unavailable"
@@ -282,7 +282,7 @@ impl SessionManager {
             .lock()
             .unwrap()
             .set_audio_input(preferences.audio_input);
-        let started_at_ms = crate::core::subtitle_reducer::now_epoch_ms();
+        let started_at_ms = crate::core::subtitles::subtitle_reducer::now_epoch_ms();
         let history_id = (preferences.retain_session_history || preferences.record_session_audio)
             .then(|| uuid::Uuid::new_v4().to_string());
         if let Some(id) = &history_id {

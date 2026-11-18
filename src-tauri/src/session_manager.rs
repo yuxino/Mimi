@@ -22,19 +22,19 @@ pub use publication::SessionStateEvent;
 #[allow(unused_imports)]
 pub use publication::StatusPayload;
 
-use crate::core::audio_input::{AudioInput, AudioSource};
-use crate::core::configuration::LiveTranslationConfiguration;
-use crate::core::models::SessionStatus;
-use crate::core::session::TranslationSessionController;
-use crate::core::support_diagnostics::{
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
+use crate::core::diagnostics::support_diagnostics::{
     CaptureObservation, DiagnosticJournal, RecoveryAction, SafeFailure,
 };
+use crate::core::lifecycle::session::TranslationSessionController;
+use crate::core::models::SessionStatus;
+use crate::core::services::configuration::LiveTranslationConfiguration;
 use crate::session_history::SessionHistory;
 use crate::settings_store::SettingsStore;
 use cleanup_owner::CleanupOwners;
 use history::LocalCaptureStats;
 use lanes::{EchoPipelineSlot, RuntimeLane};
-use mimi_runtime::core::recovery::{RecoveryContinuity, NO_GENERATION};
+use mimi_runtime::core::lifecycle::recovery::{RecoveryContinuity, NO_GENERATION};
 use ownership::lifecycle_activity_is_active;
 use publication::{status_should_show_overlay, HealthCheckLatency, StateBroadcasts};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -62,7 +62,7 @@ pub struct SessionManager {
     controller: Arc<Mutex<TranslationSessionController>>,
     /// Captured at manual start; pause, reconnect and recovery preserve it.
     active_audio_input: Arc<Mutex<AudioInput>>,
-    recording: Arc<Mutex<[crate::core::session_archive::AudioRecording; 2]>>,
+    recording: Arc<Mutex<[crate::core::lifecycle::session_archive::AudioRecording; 2]>>,
     archive_revision: Arc<AtomicU64>,
     history: Arc<SessionHistory>,
     history_pending_id: Arc<Mutex<Option<String>>>,

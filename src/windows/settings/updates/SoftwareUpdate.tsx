@@ -2,12 +2,12 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Icon } from "../../../components/Icon";
 import { effectiveUiLanguage, I18N } from "../../../lib/i18n";
 import { appOpenReleases } from "../../../lib/ipc";
-import { SettingsHelp } from "../SettingsHelp";
+import { SettingsHelp } from "../feedback/SettingsHelp";
 import { ReleaseNotes } from "./ReleaseNotes";
 import { downloadPercent, isErrorState, updateInteraction, type UpdateCheckState } from "./softwareUpdateModel";
 import { softwareUpdateSession } from "./softwareUpdateSession";
 import type { SoftwareUpdater } from "./softwareUpdater";
-import { useSettingsToast } from "../useSettingsToast";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 
 /** Check only on General-page entry. The window-scoped session retains pending
  * operations when this view is hidden or remounted. Downloads remain explicit. */

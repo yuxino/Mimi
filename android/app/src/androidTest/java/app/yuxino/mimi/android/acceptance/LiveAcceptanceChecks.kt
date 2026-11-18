@@ -1,0 +1,239 @@
+package app.yuxino.mimi.android.acceptance
+
+import android.app.Activity
+import android.app.Instrumentation
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.graphics.Bitmap
+import android.os.Bundle
+import android.os.SystemClock
+import android.view.View
+import android.view.inspector.WindowInspector
+import android.widget.Spinner
+import app.yuxino.mimi.android.MainActivity
+import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.captions.checkLatestCompactCaption
+import app.yuxino.mimi.android.captions.overlay.checkOverlayChromeAlignment
+import app.yuxino.mimi.android.capture.MimiService
+import app.yuxino.mimi.android.provider.SubtitleBus
+import app.yuxino.mimi.android.services.acceptance.TemporaryProviderAcceptance
+import app.yuxino.mimi.android.services.editor.ServiceSettingsActivity
+import app.yuxino.mimi.android.services.presentation.runtimeModelNames
+import app.yuxino.mimi.android.settings.SettingsStore
+import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** Explicit saved-profile acceptance. The operator starts each fresh native consent flow. */
+internal class LiveAcceptanceChecks(private val test: Instrumentation) {
+    private val context get() = test.targetContext
+    private fun status(value: String) = test.sendStatus(0, Bundle().apply { putString("stream", "$value\n") })
+    private fun onUi(action: () -> Unit) {
+        var failure: Throwable? = null
+        test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
+        // Propagate on the instrumentation thread so finally restores the
+        // temporary provider even when a native UI assertion fails.
+        failure?.let { throw it }
+    }
+    fun run(arguments: Bundle?) {
+        val seconds = arguments?.getString("observe_seconds")?.toLongOrNull()?.coerceIn(30, 1200) ?: 75
+        val rounds = arguments?.getString("rounds")?.toIntOrNull()?.coerceIn(1, 3) ?: 2
+        val events = JSONArray()
+        val results = JSONArray()
+        val started = SystemClock.elapsedRealtime()
+        var failure: String? = null
+        var stage = "preconditions"
+        val immersive = SettingsStore.immersiveSubtitles(context)
+        val adjustable = SettingsStore.overlayAdjustable(context)
+        var home: MainActivity? = null
+        var temporary: TemporaryProviderAcceptance? = null
+        var finalListener: SubtitleBus.Listener? = null
+        try {
+            check(context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            check(!MimiService.isRunning)
+            check(SettingsStore.historyLines(context) == 0) { "history_must_be_off" }
+            if (arguments?.getString("temporary_provider") == "true") {
+                stage = "temporary_provider"
+                temporary = TemporaryProviderAcceptance(context)
+                temporary.apply()
+            }
+            check(SettingsStore.isConfigured(context))
+            onUi { SettingsStore.setImmersiveSubtitles(context, false); SettingsStore.setOverlayAdjustable(context, true) }
+            val configuration = SettingsStore.configuration(context)
+            home = test.startActivitySync(Intent(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
+            for (round in 1..rounds) {
+                stage = "await_native_start_$round"
+                status("LIVE_READY round=$round provider=${configuration.provider.wireProvider} model=${SettingsStore.qwenMtModel(context)} source=${SettingsStore.sourceLang(context)} target=${SettingsStore.targetLang(context)}; use native start and fresh platform consent; no credential values logged.")
+                val deadline = SystemClock.elapsedRealtime() + 180_000
+                while (!MimiService.isRunning && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
+                check(MimiService.isRunning) { "native_start_timeout" }
+                val activeModels = MimiService.activeModelNames.toList()
+                check(activeModels == runtimeModelNames(SettingsStore.runtimeConfiguration(context)))
+                if (arguments?.getString("exercise_model_guard") == "true") {
+                    stage = "model_guard_$round"
+                    val savedModel = SettingsStore.qwenMtModel(context)
+                    val editor = test.startActivitySync(Intent(context, ServiceSettingsActivity::class.java)
+                        .putExtra("provider", configuration.provider.id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as ServiceSettingsActivity
+                    try {
+                        onUi {
+                            val spinner = editor.findViewById<View>(android.R.id.content).findViewWithTag<Spinner>("qwen-mt-model")
+                            check(!spinner.isEnabled && !editor.findViewById<View>(R.id.save).isEnabled)
+                            spinner.setSelection(if (savedModel == "plus") 0 else 2)
+                            // Exercise the defensive handler too, including stale/programmatic clicks.
+                            editor.findViewById<View>(R.id.save).performClick()
+                        }
+                        check(SettingsStore.qwenMtModel(context) == savedModel && MimiService.isRunning)
+                        check(MimiService.activeModelNames == activeModels)
+                    } finally { onUi { editor.finish() } }
+                    status("LIVE_MODEL_GUARD_PASSED round=$round model=$savedModel; disabled editor and stale save preserve active model; resume playback if paused.")
+                }
+                stage = "observe_$round"
+                val begin = SystemClock.elapsedRealtime()
+                var sourceUpdates = 0
+                var translationUpdates = 0
+                val finals = AtomicInteger()
+                val finalLock = Any()
+                var lastFinal: Pair<Int, Int>? = null
+                finalListener = object : SubtitleBus.Listener {
+                    override fun onSubtitleChanged() = synchronized(finalLock) {
+                        val pair = if (SubtitleBus.displayPairFinal) Pair(
+                            SubtitleBus.displaySource.hashCode(), SubtitleBus.displayTranslation.hashCode(),
+                        ) else null
+                        if (pair != null && pair != lastFinal) finals.incrementAndGet()
+                        lastFinal = pair
+                    }
+                }
+                // A final snapshot and Stop acknowledgement can share one UI
+                // tick. Observe native publication, not a lucky 100 ms sample.
+                SubtitleBus.addListener(checkNotNull(finalListener))
+                var previousSource = 0
+                var previousTranslation = 0
+                var previousFinal = false
+                var previousStatus = false
+                var previousCapture = ""
+                var lastSourceAt = begin
+                var largestSourceGap = 0L
+                var normalChromeInspected = false
+                var nextProgressAt = begin + 30_000
+                fun observe() {
+                    val now = SystemClock.elapsedRealtime()
+                    // Hashes are transient comparison state only; no text/hash is logged or saved.
+                    val source = SubtitleBus.displaySource
+                    val translation = SubtitleBus.displayTranslation
+                    val sourceHash = source.hashCode()
+                    val translationHash = translation.hashCode()
+                    val final = SubtitleBus.displayPairFinal
+                    val statusShown = SubtitleBus.statusLine.isNotEmpty()
+                    val capture = MimiService.captureObservation?.state?.name ?: "WAITING"
+                    val feedback = SubtitleBus.runtimeFeedback
+                    val sourceChanged = source.isNotEmpty() && sourceHash != previousSource
+                    val translationChanged = translation.isNotEmpty() && translationHash != previousTranslation
+                    if (sourceChanged) {
+                        sourceUpdates++
+                        largestSourceGap = maxOf(largestSourceGap, now - lastSourceAt)
+                        lastSourceAt = now
+                    }
+                    if (translationChanged) translationUpdates++
+                    if (events.length() < 2000 && (sourceChanged || translationChanged || final != previousFinal ||
+                            statusShown != previousStatus || capture != previousCapture)) {
+                        events.put(JSONObject().put("round", round).put("elapsedMs", now - started)
+                            .put("sourceChanged", sourceChanged).put("translationChanged", translationChanged)
+                            .put("sourceChars", source.length).put("translationChars", translation.length)
+                            .put("pairedFinal", final).put("sourceDraft", SubtitleBus.sourceDraft.isNotEmpty())
+                            .put("translationDraft", SubtitleBus.translationDraft.isNotEmpty())
+                            .put("statusShown", statusShown).put("capture", capture).put("running", MimiService.isRunning)
+                            .put("connectionStatus", feedback.connectionStatus).put("recoveryReason", feedback.recoveryReason ?: JSONObject.NULL)
+                            .put("retryScheduled", feedback.retryScheduled).put("translationTimedOut", feedback.translationTimedOut))
+                    }
+                    previousSource = sourceHash; previousTranslation = translationHash
+                    previousFinal = final; previousStatus = statusShown; previousCapture = capture
+                }
+                while (SystemClock.elapsedRealtime() - begin < seconds * 1000 && MimiService.isRunning) {
+                    onUi { observe() }
+                    val now = SystemClock.elapsedRealtime()
+                    if (now >= nextProgressAt) {
+                        status("LIVE_PROGRESS round=$round observedMs=${now - begin} sourceUpdates=$sourceUpdates translationUpdates=$translationUpdates pairedFinals=${finals.get()} sourceAgeMs=${now - lastSourceAt} capture=${MimiService.captureObservation?.state?.name ?: "WAITING"} running=${MimiService.isRunning}")
+                        nextProgressAt = now + 30_000
+                    }
+                    var overlayVisible = false
+                    onUi { overlayVisible = WindowInspector.getGlobalWindowViews().any { it.tag == "mimi-overlay" && it.isShown } }
+                    if (!normalChromeInspected && overlayVisible && activeModels.isNotEmpty() && translationUpdates > 0 && SystemClock.elapsedRealtime() - begin > 10_000) {
+                        stage = "normal_caption_chrome_$round"
+                        onUi {
+                            val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                            check(root.findViewWithTag<View>("expanded-subtitles").isShown)
+                            checkOverlayChromeAlignment(root)
+                            check(MimiService.activeModelNames == activeModels) { "Normal frame altered active model selection" }
+                        }
+                        normalChromeInspected = true; stage = "observe_$round"
+                        status("LIVE_NORMAL_CAPTION_PASSED round=$round; normal frame has no appearance editor or model/provider controls; active model selection retained.")
+                    }
+                    SystemClock.sleep(100)
+                }
+                check(MimiService.isRunning) { "session_ended_during_observation" }
+                check(activeModels.isEmpty() || normalChromeInspected) { "normal_caption_not_observed" }
+                stage = "compact_latest_$round"
+                onUi { SettingsStore.setImmersiveSubtitles(context, true) }
+                context.startService(Intent(context, MimiService::class.java).setAction(MimiService.ACTION_APPLY_APPEARANCE))
+                val compactDeadline = SystemClock.elapsedRealtime() + 2_000
+                var compactReady = false
+                while (!compactReady && SystemClock.elapsedRealtime() < compactDeadline) {
+                    onUi { compactReady = WindowInspector.getGlobalWindowViews().any { it.tag == "exit-immersive" } }
+                    if (!compactReady) SystemClock.sleep(50)
+                }
+                check(compactReady && SettingsStore.immersiveSubtitles(context)) { "legacy_immersive_not_shown" }
+                test.waitForIdleSync()
+                SystemClock.sleep(120)
+                var compactOverflowViews = 0
+                onUi {
+                    val root = WindowInspector.getGlobalWindowViews().first { it.tag == "mimi-overlay" }
+                    compactOverflowViews = checkLatestCompactCaption(root.findViewWithTag("compact-subtitle"), requireOverflow = false)
+                }
+                val compactBitmap = checkNotNull(test.uiAutomation.takeScreenshot())
+                File(context.getExternalFilesDir(null), "live-compact.png").outputStream().use {
+                    compactBitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                }
+                compactBitmap.recycle()
+                status("LIVE_COMPACT_LATEST_PASSED round=$round overflowingViews=$compactOverflowViews; latest native lines remain visible.")
+                stage = "stop_$round"
+                status("LIVE_STOP_REQUEST round=$round")
+                val stop = SystemClock.elapsedRealtime()
+                context.startService(MimiService.stopIntent(context))
+                while (MimiService.isRunning && SystemClock.elapsedRealtime() - stop < 12_000) {
+                    onUi { observe() }; SystemClock.sleep(100)
+                }
+                check(!MimiService.isRunning) { "stop_timeout" }
+                onUi { SettingsStore.setImmersiveSubtitles(context, false) }
+                results.put(JSONObject().put("round", round).put("observedMs", stop - begin)
+                    .put("provider", configuration.provider.wireProvider).put("models", JSONArray(activeModels))
+                    .put("sourceUpdates", sourceUpdates).put("translationUpdates", translationUpdates)
+                    .put("pairedFinalObservations", finals.get()).put("largestSourceUpdateGapMs", largestSourceGap)
+                    .put("compactOverflowViews", compactOverflowViews)
+                    .put("stopMs", SystemClock.elapsedRealtime() - stop))
+                SubtitleBus.removeListener(checkNotNull(finalListener)); finalListener = null
+                check(sourceUpdates > 0 && translationUpdates > 0 && finals.get() > 0) { "missing_subtitle_stages" }
+                SystemClock.sleep(1500)
+                check(!MimiService.isRunning) { "session_restarted_after_stop" }
+            }
+        } catch (_: Exception) { failure = stage }
+        finally {
+            finalListener?.let(SubtitleBus::removeListener)
+            context.startService(MimiService.stopIntent(context))
+            val deadline = SystemClock.elapsedRealtime() + 12_000
+            while (MimiService.isRunning && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
+            onUi { home?.finish(); SettingsStore.setImmersiveSubtitles(context, immersive); SettingsStore.setOverlayAdjustable(context, adjustable) }
+            try { check(!MimiService.isRunning); temporary?.close() }
+            catch (_: Exception) { failure = "restore_saved_configuration" }
+        }
+        val report = JSONObject().put("passed", failure == null).put("failureStage", failure ?: JSONObject.NULL)
+            .put("capture", "system_playback_only").put("savedCredentialsRestored", failure != "restore_saved_configuration")
+            .put("historyEnabled", false).put("rounds", results).put("events", events)
+            .put("timingScope", "Android adapter observations; not cross-platform latency or rendered frame timing")
+        File(context.getExternalFilesDir(null), "live-acceptance.json").writeText(report.toString(2), Charsets.UTF_8)
+        test.finish(if (failure == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
+            putString("stream", "LIVE_RESULT passed=${failure == null}; failureStage=${failure ?: "none"}; $results; content-free observations saved.\n")
+        })
+    }
+}

@@ -2,18 +2,18 @@
 
 use super::credentials::cache_key;
 use super::*;
-use crate::core::audio_input::AudioInput;
-use crate::core::configuration::LiveTranslationConfiguration;
-use crate::core::credentials::{
-    CredentialRevealField, ProviderCredentials, TextTranslationCredentials,
-};
+use crate::core::audio::audio_input::AudioInput;
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode};
 use crate::core::models::{SubtitleColor, SubtitleDisplayMode};
-use crate::core::network_proxy::ProxyConfig;
-use crate::core::provider::{
+use crate::core::services::configuration::LiveTranslationConfiguration;
+use crate::core::services::credentials::{
+    CredentialRevealField, ProviderCredentials, TextTranslationCredentials,
+};
+use crate::core::services::network_proxy::ProxyConfig;
+use crate::core::services::provider::{
     CustomSpeechLanguagesPatch, ProviderKind, TextTranslation, TextTranslationName,
 };
-use crate::core::provider::{ProviderPreferences, DEFAULT_ALIBABA_PROFILE_ID};
+use crate::core::services::provider::{ProviderPreferences, DEFAULT_ALIBABA_PROFILE_ID};
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
@@ -34,7 +34,7 @@ mod realtime;
 fn save_realtime_speech_mode(
     store: &SettingsStore,
     id: &str,
-    mode: crate::core::provider::SpeechTranslationMode,
+    mode: crate::core::services::provider::SpeechTranslationMode,
 ) -> Result<ServiceProfile, String> {
     store.update_profile_options_with_speech_mode(
         id,
@@ -70,7 +70,7 @@ fn realtime_speech_credentials(provider: ProviderKind) -> ProviderCredentials {
 fn save_xai_options(
     store: &SettingsStore,
     id: &str,
-    mode: Option<crate::core::provider::XAISpeechMode>,
+    mode: Option<crate::core::services::provider::XAISpeechMode>,
     model: Option<&str>,
 ) -> Result<ServiceProfile, String> {
     store.update_profile_options_with_xai(
@@ -128,12 +128,14 @@ fn save_language_preset(
             None,
             None,
             None,
-            Some(crate::core::provider::ProfileLanguagePresetPatch {
-                preset: Some(crate::core::provider::ProfileLanguagePreset {
-                    source_language: source,
-                    target_language: target,
-                }),
-            }),
+            Some(
+                crate::core::services::provider::ProfileLanguagePresetPatch {
+                    preset: Some(crate::core::services::provider::ProfileLanguagePreset {
+                        source_language: source,
+                        target_language: target,
+                    }),
+                },
+            ),
         )
         .unwrap();
 }

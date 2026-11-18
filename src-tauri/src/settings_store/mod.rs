@@ -22,17 +22,17 @@ mod secret_store;
 #[cfg(test)]
 mod tests;
 
-pub use crate::core::overlay_layout::DEFAULT_FONT_SIZE;
+pub use crate::core::ui::overlay_layout::DEFAULT_FONT_SIZE;
 pub use credentials::CredentialEditorState;
 pub use preferences::{
     clamp_visible_subtitle_count, OverlayFrame, Preferences, PulseStyle, SubtitleAlignment,
 };
 pub use secret_store::{CredentialState, SecretStore, SecretStoreError};
 
-use crate::core::audio_input::AudioInput;
-use crate::core::overlay_layout::normalize_font_size;
-use crate::core::provider::ServiceProfile;
-use crate::core::subtitle_font::normalize_family_name;
+use crate::core::audio::audio_input::AudioInput;
+use crate::core::services::provider::ServiceProfile;
+use crate::core::ui::overlay_layout::normalize_font_size;
+use crate::core::ui::subtitle_font::normalize_family_name;
 use credentials::{credential_account, is_default_alibaba};
 #[cfg(test)]
 use credentials::{OpenAICompatibleDestination, TextTranslationDestination};

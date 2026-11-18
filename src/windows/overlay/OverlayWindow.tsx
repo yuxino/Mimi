@@ -4,33 +4,33 @@ import { subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
 import { isIndependentAsrProfile } from "../../lib/providers/providerCapabilities";
 import { limitRecentSubtitles } from "../../lib/subtitles/subtitleDisplay";
-import { AudioInputIndicator } from "../../components/AudioInputIndicator";
-import { RecordingIndicator } from "../../components/RecordingIndicator";
+import { AudioInputIndicator } from "../../components/audio/AudioInputIndicator";
+import { RecordingIndicator } from "../../components/audio/RecordingIndicator";
 import { recordingStatusLabel } from "../../lib/audio/recordingStatus";
-import { SessionErrorFeedback } from "../../components/SessionErrorFeedback";
+import { SessionErrorFeedback } from "../../components/feedback/session/SessionErrorFeedback";
 import { sessionErrorSettingsTarget } from "../../lib/providers/connectionDiagnostics";
 import { audioInputLabel } from "../../lib/audio/audioInput";
 import { hasEmbeddedOverlayControls, isTauri, listenOverlayPointerMotion } from "../../lib/ipc";
 import { OverlayControlWindow } from "../overlay-control/OverlayControlWindow";
 import { useOverlayControlMode } from "../../lib/overlay/useOverlayControlMode";
-import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
+import { useDesktopShortcuts } from "../../lib/shortcuts/useDesktopShortcuts";
 import { selectSessionErrorMessage, selectSessionErrorSummary, useStore } from "../../lib/store";
-import { DevelopmentOverlayTrace } from "./DevelopmentOverlayTrace";
+import { DevelopmentOverlayTrace } from "./development/DevelopmentOverlayTrace";
 import { OVERLAY_ACTIVITY_PHASES } from "../../lib/types";
-import { ControlButton } from "./ControlButton";
-import { OverlayDragArea } from "./OverlayDragArea";
-import { startOverlayContentDrag } from "./overlayContentDrag";
-import { PulseRing } from "./PulseRing";
-import { OverlayLatency } from "./OverlayLatency";
-import { ResizeHandles } from "./ResizeHandles";
-import { Timeline } from "./Timeline";
-import { useResolvedMotion } from "./animation";
-import { useSubtitleTail } from "./useSubtitleTail";
+import { ControlButton } from "./controls/ControlButton";
+import { OverlayDragArea } from "./interaction/OverlayDragArea";
+import { startOverlayContentDrag } from "./interaction/overlayContentDrag";
+import { PulseRing } from "./status/PulseRing";
+import { OverlayLatency } from "./status/OverlayLatency";
+import { ResizeHandles } from "./interaction/ResizeHandles";
+import { Timeline } from "./timeline/Timeline";
+import { useResolvedMotion } from "./timeline/animation";
+import { useSubtitleTail } from "./timeline/useSubtitleTail";
 import type { SourceSubtitleSnapshot } from "../../lib/types";
-import { OVERLAY_INSET, overlaySessionChromeLayout } from "./overlayChromeLayout";
-import { minimumOverlayHeight } from "./overlayMinimumHeight";
-import { useOverlayChromePeers } from "./useOverlayChromePeers";
-import { useSessionAction } from "./useSessionAction";
+import { OVERLAY_INSET, overlaySessionChromeLayout } from "./layout/overlayChromeLayout";
+import { minimumOverlayHeight } from "./layout/overlayMinimumHeight";
+import { useOverlayChromePeers } from "./controls/useOverlayChromePeers";
+import { useSessionAction } from "./controls/useSessionAction";
 import { publishOverlayPointerMotion } from "../../lib/overlay/overlayPointer";
 import {
   buildSubtitleBlocks,
@@ -42,8 +42,8 @@ import {
   hasSubtitleContent,
   usesAtomicSubtitlePreview,
   usesStreamingSubtitlePreview,
-} from "./overlayModel";
-import "./overlayChrome.css";
+} from "./timeline/overlayModel";
+import "./layout/overlayChrome.css";
 
 const EMPTY_MICROPHONE: SourceSubtitleSnapshot = {
   audioSource: "microphone", source: { text: "", isFinal: false }, translation: { text: "", isFinal: false },

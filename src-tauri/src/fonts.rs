@@ -1,7 +1,7 @@
 //! Installed font-family names for the settings picker. Font files and paths
 //! never cross IPC, and enumeration does not prompt for local-font access.
 
-use crate::core::subtitle_font::normalize_family_name;
+use crate::core::ui::subtitle_font::normalize_family_name;
 use std::collections::BTreeMap;
 use tauri::AppHandle;
 
@@ -187,7 +187,7 @@ mod tests {
         ] {
             families.insert(name);
         }
-        families.insert(&"a".repeat(crate::core::subtitle_font::MAX_FAMILY_NAME_CHARS + 1));
+        families.insert(&"a".repeat(crate::core::ui::subtitle_font::MAX_FAMILY_NAME_CHARS + 1));
         families.insert("Font, With \"Quotes\"");
         assert_eq!(families.into_names(), ["Font, With \"Quotes\""]);
     }

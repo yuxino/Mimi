@@ -49,7 +49,7 @@ jobs:
             shared/mimi-core -> ../target
             shared/mimi-android-jni -> ../target
       - name: Shared Rust core and native packaging invariants
-        run: bash scripts/check-shared-core.sh
+        run: bash scripts/shared/check-shared-core.sh
       - name: Install Android SDK packages
         run: |
           ndk_version="$(sed -n 's/^ndkVersion=//p' android/shared-core.properties)"

@@ -12,16 +12,16 @@
     "dev:ui": "bash scripts/dev-app.sh --watch --ui-only",
     "typecheck": "tsc -b",
     "build:dev": "vite build --config config/vite.config.ts --mode development --minify false --sourcemap",
-    "build": "npm run icons:verify && tsc -b && vite build --config config/vite.config.ts && node scripts/check-production-debugger.mjs",
+    "build": "npm run icons:verify && tsc -b && vite build --config config/vite.config.ts && node scripts/frontend/check-production-debugger.mjs",
     "preview": "vite preview --config config/vite.config.ts",
     "lint": "eslint --config config/eslint.config.js . --cache --cache-strategy content --cache-location node_modules/.cache/eslint",
     "test": "vitest --config config/vite.config.ts run --maxWorkers=2",
     "test:watch": "vitest --config config/vite.config.ts --maxWorkers=2",
     "tauri": "tauri",
     "tauri:dev": "tauri dev --config src-tauri/config/development.json",
-    "readme:images": "node scripts/readme-images.mjs",
-    "icons:generate": "node scripts/app-icons.mjs generate",
-    "icons:verify": "node scripts/app-icons.mjs verify"
+    "readme:images": "node scripts/frontend/readme-images.mjs",
+    "icons:generate": "node scripts/frontend/app-icons.mjs generate",
+    "icons:verify": "node scripts/frontend/app-icons.mjs verify"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

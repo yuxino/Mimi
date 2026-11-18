@@ -73,7 +73,7 @@ pub fn dev_title(base: &str) -> String {
     }
 }
 
-use crate::core::overlay_layout::{minimum_overlay_height, BASE_MINIMUM_HEIGHT};
+use crate::core::ui::overlay_layout::{minimum_overlay_height, BASE_MINIMUM_HEIGHT};
 use crate::pipeline_log;
 use crate::settings_store::{OverlayFrame, Preferences, SettingsStore};
 use crate::windows::resize::{apply_drag, ResizeRegion};
@@ -120,7 +120,7 @@ pub fn remove_all_overlay_pointer_tracking(app: &AppHandle) {
 #[cfg(target_os = "macos")]
 pub async fn set_overlay_pointer_cursor(
     app: &AppHandle,
-    point: crate::core::overlay_pointer::OverlayPointerPosition,
+    point: crate::core::ui::overlay_pointer::OverlayPointerPosition,
     pointing: bool,
 ) -> Result<bool, String> {
     macos_pointer::set_pointer_cursor(app, point, pointing).await
@@ -3554,7 +3554,7 @@ mod geometry_tests {
         };
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 160.0));
-        preferences.audio_input = crate::core::audio_input::AudioInput::Both;
+        preferences.audio_input = crate::core::audio::audio_input::AudioInput::Both;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 272.0));
         preferences.font_size = 20.0;
@@ -3564,7 +3564,7 @@ mod geometry_tests {
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.minimum_height, 228.0);
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 280.0));
-        preferences.audio_input = crate::core::audio_input::AudioInput::System;
+        preferences.audio_input = crate::core::audio::audio_input::AudioInput::System;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.minimum_height, 156.0);
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 280.0));
@@ -3572,7 +3572,7 @@ mod geometry_tests {
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.minimum_height, 180.0);
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 280.0));
-        preferences.audio_input = crate::core::audio_input::AudioInput::Microphone;
+        preferences.audio_input = crate::core::audio::audio_input::AudioInput::Microphone;
         assert!(!state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.minimum_height, 180.0);
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 280.0));
@@ -3595,7 +3595,7 @@ mod geometry_tests {
         preferences.show_subtitle_timestamps = true;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 256.0));
-        preferences.audio_input = crate::core::audio_input::AudioInput::Both;
+        preferences.audio_input = crate::core::audio::audio_input::AudioInput::Both;
         assert!(state.update_minimum_height(minimum_height_for_preferences(&preferences)));
         assert_eq!(state.user_frame, frame(410.0, 300.0, 730.0, 424.0));
         preferences.font_size = 16.0;

@@ -18,7 +18,7 @@ identify an earlier session's recognition or translation route.
 
 The macOS callback could decode only the first contiguous prefix of a segmented
 CoreMedia buffer. It also confused the non-interleaved and nonmixable format
-flags. The [capture design and checks](../plans/2026-10-03-capture-completeness.md)
+flags. The [capture design and checks](../plans/desktop/audio/2026-10-03-capture-completeness.md)
 document full bounded buffer reads and corrected multichannel frame ordering.
 Native fixtures reproduce these defects without retaining user recordings.
 Requested mono capture is unaffected by the channel-layout distinction.

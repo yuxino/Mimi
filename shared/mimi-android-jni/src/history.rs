@@ -1,12 +1,10 @@
 //! JNI ownership only; journal limits, file formats and exporters are shared.
 use mimi_runtime::{
-    core::{
-        models::SubtitlePair,
-        session_archive::{TranscriptExportFormat, TranscriptExportOptions},
-        subtitle_reducer::now_epoch_ms,
-    },
-    session_history::{HistoryItem, SessionHistory},
-    session_journal::{JournalState, SessionJournal},
+    core::lifecycle::session_archive::TranscriptExportFormat,
+    core::lifecycle::session_archive::TranscriptExportOptions, core::models::SubtitlePair,
+    core::subtitles::subtitle_reducer::now_epoch_ms, session_history::HistoryItem,
+    session_history::SessionHistory, session_journal::JournalState,
+    session_journal::SessionJournal,
 };
 use serde_json::{json, Value};
 use std::{
@@ -266,7 +264,7 @@ fn directory_from_export(value: &Value) -> Result<PathBuf, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mimi_runtime::core::audio_input::AudioSource;
+    use mimi_runtime::core::audio::audio_input::AudioSource;
 
     fn registry_test_guard() -> std::sync::MutexGuard<'static, ()> {
         static TEST_LOCK: Mutex<()> = Mutex::new(());

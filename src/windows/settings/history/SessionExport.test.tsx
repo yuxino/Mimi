@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ const ipc = vi.hoisted(() => ({
 const clipboard = vi.hoisted(() => ({ write: vi.fn() }));
 const store = vi.hoisted(() => ({ session: { isActive: false }, settings: { retainSessionHistory: true, recordSessionAudio: false }, saveSettings: vi.fn() }));
 vi.mock("../../../lib/ipc", () => ({ isTauri: true, setOverlayPointerCursor: vi.fn(), ...ipc }));
-vi.mock("../../../lib/diagnosticClipboard", () => ({ writeDiagnosticClipboard: clipboard.write }));
+vi.mock("../../../lib/clipboard/diagnosticClipboard", () => ({ writeDiagnosticClipboard: clipboard.write }));
 vi.mock("../../../lib/store", () => {
   return { useStore: Object.assign((select: (state: unknown) => unknown) => select(store), { getState: () => store }) };
 });

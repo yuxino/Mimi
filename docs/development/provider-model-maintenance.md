@@ -25,8 +25,8 @@
 
 | 核对项 | 拥有这项事实的位置 |
 | --- | --- |
-| 实际路由、独立翻译与生效模型 | [共享配置](../../shared/mimi-runtime/src/core/configuration.rs)及调用它的 provider factory |
-| 内置模型、请求参数、流式及结束事件 | [共享协议](../../shared/mimi-runtime/src/core/protocols/)与 clients |
+| 实际路由、独立翻译与生效模型 | [共享配置](../../shared/mimi-runtime/src/core/services/configuration.rs)及调用它的 provider factory |
+| 内置模型、请求参数、流式及结束事件 | [共享协议](../../shared/mimi-runtime/src/core/protocols)与 clients |
 | 新配置的示例模型、服务入口、必要限制 | [共享服务文案](../../shared/provider-copy.json) |
 | 语言、模型差异及桌面／Android 行为 | [语言目录](../../shared/provider-language-catalogs.json)、[平台差异](platform-parity.md)、[共享契约](../../shared/translation-contracts.json) |
 

@@ -61,7 +61,7 @@ fn recording_write_failure_does_not_count_samples_or_claim_a_complete_dual_recor
 #[test]
 fn recording_limit_stops_writes_and_publishes_the_transition_once() {
     let mut stats = recording_stats(AudioInput::System);
-    stats.audio_bytes = crate::core::session_archive::AUDIO_BYTE_LIMIT - 2;
+    stats.audio_bytes = crate::core::lifecycle::session_archive::AUDIO_BYTE_LIMIT - 2;
     let outcome = append_recorded_audio(
         &mut stats,
         (7, 11),

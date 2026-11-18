@@ -33,7 +33,8 @@ fn target_switch_still_rejects_a_missing_independent_text_key_before_saving() {
                 },
             )
             .unwrap_err(),
-        crate::core::credentials::ProviderCredentialsError::MissingTextTranslation.to_string()
+        crate::core::services::credentials::ProviderCredentialsError::MissingTextTranslation
+            .to_string()
     );
     assert_eq!(store.preferences(), before);
     assert_eq!(original.target_language, TargetLanguage::Original);
@@ -88,7 +89,7 @@ fn profile_language_presets_restore_independent_pairs_without_tracking_temporary
                 None,
                 None,
                 None,
-                Some(crate::core::provider::ProfileLanguagePresetPatch { preset: None }),
+                Some(crate::core::services::provider::ProfileLanguagePresetPatch { preset: None }),
             )
             .unwrap();
         reopened
@@ -122,7 +123,7 @@ fn profile_language_preset_failures_leave_metadata_and_selection_unchanged() {
     );
     let before = store.preferences();
     let catalog = store.profile_catalog().unwrap();
-    let invalid = crate::core::provider::ProfileLanguagePreset {
+    let invalid = crate::core::services::provider::ProfileLanguagePreset {
         source_language: SourceLanguage::Automatic,
         target_language: TargetLanguage::Original,
     };
@@ -136,9 +137,11 @@ fn profile_language_preset_failures_leave_metadata_and_selection_unchanged() {
                 None,
                 None,
                 None,
-                Some(crate::core::provider::ProfileLanguagePresetPatch {
-                    preset: Some(invalid)
-                })
+                Some(
+                    crate::core::services::provider::ProfileLanguagePresetPatch {
+                        preset: Some(invalid)
+                    }
+                )
             )
             .unwrap_err(),
         "profile_language_preset_unsupported"
@@ -158,7 +161,7 @@ fn profile_language_preset_failures_leave_metadata_and_selection_unchanged() {
             None,
             None,
             None,
-            Some(crate::core::provider::ProfileLanguagePresetPatch { preset: None })
+            Some(crate::core::services::provider::ProfileLanguagePresetPatch { preset: None })
         )
         .is_err());
     assert_eq!(store.profile_catalog().unwrap(), catalog);
@@ -215,7 +218,7 @@ fn profile_selection_configuration_matches_saved_selection_without_mutating_it()
 
 #[test]
 fn unsaved_text_probe_never_needs_asr_or_mutates_profile_preferences_or_secrets() {
-    use crate::core::configuration::TextTranslationProbeCredentials;
+    use crate::core::services::configuration::TextTranslationProbeCredentials;
     for provider in [ProviderKind::AlibabaCloud, ProviderKind::CustomOpenAIASR] {
         let directory = tempfile::tempdir().unwrap();
         let fake = FakeSecretStore::default();
@@ -249,7 +252,7 @@ fn unsaved_text_probe_never_needs_asr_or_mutates_profile_preferences_or_secrets(
 
 #[test]
 fn text_draft_probe_merges_saved_destination_without_persisting_or_reusing_other_routes() {
-    use crate::core::configuration::TextTranslationProbeCredentials;
+    use crate::core::services::configuration::TextTranslationProbeCredentials;
     let fake = FakeSecretStore::default();
     let store = settings(&fake);
     let profile = store
@@ -639,7 +642,7 @@ fn speech_probes_and_listening_honor_declared_languages_without_widening_them() 
     );
     assert_eq!(
         store.configuration_for_profile(&custom).unwrap_err(),
-        crate::core::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage
+        crate::core::services::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage
             .to_string()
     );
     store.select_profile(&custom.id).unwrap();
@@ -834,7 +837,7 @@ fn expanded_languages_persist_and_reload_with_route_validation() {
 
 #[test]
 fn stage_probes_read_only_their_saved_credentials_without_switching_or_persisting() {
-    use crate::core::configuration::TextTranslationProbeCredentials;
+    use crate::core::services::configuration::TextTranslationProbeCredentials;
     for provider in [
         ProviderKind::AlibabaCloud,
         ProviderKind::CustomDashScopeASR,
@@ -953,7 +956,7 @@ fn text_probe_can_precede_custom_speech_setup_and_retry_only_its_locked_slot() {
 
 #[test]
 fn anonymous_openai_compatible_destination_survives_restart_and_probes_without_speech_keys() {
-    use crate::core::configuration::TextTranslationProbeCredentials;
+    use crate::core::services::configuration::TextTranslationProbeCredentials;
     for provider in [
         ProviderKind::AlibabaCloud,
         ProviderKind::CustomDashScopeASR,
@@ -1269,7 +1272,7 @@ fn subtitle_timestamps_persist_without_changing_provider_configuration() {
 
 #[test]
 fn network_proxy_persists_globally_and_probe_and_session_use_identical_configuration() {
-    use crate::core::network_proxy::ProxyMode;
+    use crate::core::services::network_proxy::ProxyMode;
     let legacy: Preferences = serde_json::from_str(r#"{"ui_language":"ja"}"#).unwrap();
     assert_eq!(legacy.network_proxy, ProxyConfig::default());
     let directory = tempfile::tempdir().unwrap();

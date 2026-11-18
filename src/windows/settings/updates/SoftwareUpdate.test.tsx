@@ -6,7 +6,7 @@ import { I18N } from "../../../lib/i18n";
 import { SoftwareUpdate } from "./SoftwareUpdate";
 import { createSoftwareUpdateSession } from "./softwareUpdateSession";
 import { createFixtureSoftwareUpdater, type UpdateDownloadEvent } from "./softwareUpdater";
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 
 vi.mock("../../../lib/ipc", () => ({ isTauri: false, appOpenReleases: vi.fn(), setOverlayPointerCursor: vi.fn() }));
 let host: HTMLDivElement, root: Root;

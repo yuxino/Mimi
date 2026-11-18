@@ -391,7 +391,8 @@ fn custom_original_recognition_does_not_read_a_missing_text_destination() {
         .unwrap();
     assert_eq!(
         store.configuration().unwrap_err(),
-        crate::core::credentials::ProviderCredentialsError::MissingTextTranslation.to_string()
+        crate::core::services::credentials::ProviderCredentialsError::MissingTextTranslation
+            .to_string()
     );
 }
 
@@ -590,7 +591,10 @@ fn custom_speech_failed_readback_restores_the_existing_item_in_place() {
     );
     assert_eq!(
         store.credentials_for_profile(&profile),
-        Err(crate::core::credentials::ProviderCredentialsError::InvalidStoredValue.to_string())
+        Err(
+            crate::core::services::credentials::ProviderCredentialsError::InvalidStoredValue
+                .to_string()
+        )
     );
     store.save_credentials(&profile.id, &replacement).unwrap();
     assert_eq!(

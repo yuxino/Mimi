@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../../../components/Icon";
-import { Switch } from "../../../components/Switch";
+import { Switch } from "../../../components/inputs/Switch";
 import { effectiveUiLanguage, I18N } from "../../../lib/i18n";
 import {
   isTauri,
@@ -18,19 +18,19 @@ import {
 import { useStore } from "../../../lib/store";
 import { useDocumentVisibility } from "../../../lib/useDocumentVisibility";
 import type { AudioSource, SessionArchiveState, SessionHistoryItem, SettingsDraft, TranscriptPage, TranscriptExportOptions } from "../../../lib/types";
-import { writeDiagnosticClipboard } from "../../../lib/diagnosticClipboard";
+import { writeDiagnosticClipboard } from "../../../lib/clipboard/diagnosticClipboard";
 import {
   InlineFeedback,
   SettingsRow,
   SettingsSelect,
   SettingsSection,
-} from "../SettingsPrimitives";
+} from "../controls/SettingsPrimitives";
 import { monitorSessionArchive, sameSessionArchiveState } from "./sessionArchiveMonitor";
-import { SettingsConfirmation } from "../DestructiveConfirmation";
-import { useSettingsToast } from "../useSettingsToast";
-import { SettingsActionMenu } from "../SettingsActionMenu";
+import { SettingsConfirmation } from "../controls/DestructiveConfirmation";
+import { useSettingsToast } from "../feedback/useSettingsToast";
+import { SettingsActionMenu } from "../controls/SettingsActionMenu";
 import { SessionAudioPlayer } from "./SessionAudioPlayer";
-import { SettingsHelp } from "../SettingsHelp";
+import { SettingsHelp } from "../feedback/SettingsHelp";
 import { sessionWorkspaceCopy } from "./sessionWorkspaceCopy";
 import "./session-workspace.css";
 

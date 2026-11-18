@@ -4,11 +4,11 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.View
-import app.yuxino.mimi.android.SettingsStore
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.provider.TextTranslationProvider
-import app.yuxino.mimi.android.serviceProviderIcon
-import app.yuxino.mimi.android.translationProviderIcon
+import app.yuxino.mimi.android.services.presentation.serviceProviderIcon
+import app.yuxino.mimi.android.services.presentation.translationProviderIcon
+import app.yuxino.mimi.android.settings.SettingsStore
 
 internal data class CaptionFrameStyle(
     val fontSize: Int,

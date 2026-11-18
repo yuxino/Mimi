@@ -13,39 +13,34 @@ mod tests;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use mimi_runtime::{
-    audio::send_pipeline::{AudioIngress, AudioIngressError, AudioSendPipeline},
-    clients::{
-        provider_events::{
-            provider_event_channel, ProviderEvent, ProviderEventReceiver, ProviderEventSender,
-        },
-        provider_network::ProviderNetwork,
-        translation_client::TranslationClient,
-    },
-    core::{
-        audio_input::{AudioInput, AudioSource},
-        configuration::LiveTranslationConfiguration,
-        credentials::{ProviderCredentials, ProviderCredentialsError},
-        diagnostics::TranslationRecovery,
-        models::{
-            SessionStatus, SourceLanguage, SubtitleSnapshot, TargetLanguage, TranslationMode,
-        },
-        network_proxy::ProxyConfig,
-        protocols::{
-            live_translate::LiveTranslateServerEvent,
-            volcano_engine::{VolcanoEngineEndpoint, VolcanoEngineServerEvent},
-        },
-        provider::{
-            AlibabaRealtimeMode, ProviderKind, ProviderPreferences, ServiceProfile,
-            SpeechTranslationMode, TextTranslation, XAISpeechMode,
-        },
-        recovery::{
-            advance_lifecycle_sequence_if_current, provider_error_is_retryable,
-            provider_recovery_minimum_delay, MTBudgetContinuity, MTBudgetScope, RecoveryContinuity,
-            RecoverySchedule,
-        },
-        session::TranslationSessionController,
-    },
-    resource_cleanup::{CleanupOwners, CleanupTicket},
+    audio::send_pipeline::AudioIngress, audio::send_pipeline::AudioIngressError,
+    audio::send_pipeline::AudioSendPipeline,
+    clients::translation::translation_client::TranslationClient,
+    clients::transport::provider_events::provider_event_channel,
+    clients::transport::provider_events::ProviderEvent,
+    clients::transport::provider_events::ProviderEventReceiver,
+    clients::transport::provider_events::ProviderEventSender,
+    clients::transport::provider_network::ProviderNetwork, core::audio::audio_input::AudioInput,
+    core::audio::audio_input::AudioSource, core::diagnostics::latency::TranslationRecovery,
+    core::lifecycle::recovery::advance_lifecycle_sequence_if_current,
+    core::lifecycle::recovery::provider_error_is_retryable,
+    core::lifecycle::recovery::provider_recovery_minimum_delay,
+    core::lifecycle::recovery::MTBudgetContinuity, core::lifecycle::recovery::MTBudgetScope,
+    core::lifecycle::recovery::RecoveryContinuity, core::lifecycle::recovery::RecoverySchedule,
+    core::lifecycle::session::TranslationSessionController, core::models::SessionStatus,
+    core::models::SourceLanguage, core::models::SubtitleSnapshot, core::models::TargetLanguage,
+    core::models::TranslationMode,
+    core::protocols::realtime::live_translate::LiveTranslateServerEvent,
+    core::protocols::realtime::volcano_engine::VolcanoEngineEndpoint,
+    core::protocols::realtime::volcano_engine::VolcanoEngineServerEvent,
+    core::services::configuration::LiveTranslationConfiguration,
+    core::services::credentials::ProviderCredentials,
+    core::services::credentials::ProviderCredentialsError,
+    core::services::network_proxy::ProxyConfig, core::services::provider::AlibabaRealtimeMode,
+    core::services::provider::ProviderKind, core::services::provider::ProviderPreferences,
+    core::services::provider::ServiceProfile, core::services::provider::SpeechTranslationMode,
+    core::services::provider::TextTranslation, core::services::provider::XAISpeechMode,
+    resource_cleanup::CleanupOwners, resource_cleanup::CleanupTicket,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -151,7 +146,7 @@ struct Connection {
     pipeline: AudioSendPipeline,
     ready: watch::Sender<bool>,
     events: ProviderEventSender,
-    budget: Option<mimi_runtime::core::preview_pacing::MTRequestBudget>,
+    budget: Option<mimi_runtime::core::subtitles::preview_pacing::MTRequestBudget>,
 }
 
 struct ConnectionIngress {
@@ -403,7 +398,7 @@ impl Session {
             move || async move {
                 let _ = released.await;
                 let _ = tokio::time::timeout(
-                    mimi_runtime::core::health::DISCONNECT_TIMEOUT,
+                    mimi_runtime::core::lifecycle::health::DISCONNECT_TIMEOUT,
                     client.disconnect(),
                 )
                 .await;
@@ -561,10 +556,15 @@ impl Session {
                     .clone();
                 let health = AbortTask(tokio::spawn(async move {
                     loop {
-                        tokio::time::sleep(mimi_runtime::core::health::HEALTH_CHECK_INTERVAL).await;
+                        tokio::time::sleep(
+                            mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL,
+                        )
+                        .await;
                         if let Err(error) =
-                            mimi_runtime::core::health::probe_connection_health(&health_client)
-                                .await
+                            mimi_runtime::core::lifecycle::health::probe_connection_health(
+                                &health_client,
+                            )
+                            .await
                         {
                             let code = error
                                 .recognition_failure_label()
@@ -578,15 +578,16 @@ impl Session {
                         health_session.record_health_success(generation, std::time::Instant::now());
                     }
                 }));
-                let mut ticks =
-                    tokio::time::interval(mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL);
+                let mut ticks = tokio::time::interval(
+                    mimi_runtime::core::lifecycle::health::SNAPSHOT_PUBLISH_INTERVAL,
+                );
                 loop {
                     tokio::select! {
                         event = receiver.recv_with_revision() => {
                             let Some(event) = event else { failure = Some("transport_error".into()); break; };
                             if event.is_content() && event.content_revision != client.content_revision() {continue;}
                             match &event.event {
-                                LiveTranslateServerEvent::Error {code,..} => { failure = Some(mimi_runtime::core::recovery::normalize_provider_error_code(code).into()); break; }
+                                LiveTranslateServerEvent::Error {code,..} => { failure = Some(mimi_runtime::core::lifecycle::recovery::normalize_provider_error_code(code).into()); break; }
                                 LiveTranslateServerEvent::SessionFinished => {
                                     health.abort();
                                     self.publish(TranslationSessionController::did_stop);
@@ -660,7 +661,7 @@ impl Session {
                 let finish = async {
                     resources
                         .pipeline
-                        .finish(mimi_runtime::core::health::AUDIO_DRAIN_TIMEOUT)
+                        .finish(mimi_runtime::core::lifecycle::health::AUDIO_DRAIN_TIMEOUT)
                         .await;
                     let _ = tokio::time::timeout(
                         resources.client.finish_timeout(),
@@ -702,8 +703,8 @@ pub fn exchange(request: &str) -> Result<String, &'static str> {
         "merge_snapshots" => crate::snapshot_merge::merge(&value)?,
         "resolve_credentials_draft" => configuration::resolve_credentials_draft(&value)?,
         "policy" => {
-            json!({"snapshotPublishIntervalMs":mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL.as_millis() as u64,
-                "sessionFinishTimeoutMs":mimi_runtime::core::health::SESSION_FINISH_TIMEOUT.as_millis() as u64})
+            json!({"snapshotPublishIntervalMs":mimi_runtime::core::lifecycle::health::SNAPSHOT_PUBLISH_INTERVAL.as_millis() as u64,
+                "sessionFinishTimeoutMs":mimi_runtime::core::lifecycle::health::SESSION_FINISH_TIMEOUT.as_millis() as u64})
         }
         "normalize_text_endpoint" => configuration::normalize_text_endpoint(&value)?,
         "text_endpoints_equivalent" => configuration::text_endpoints_equivalent(&value)?,

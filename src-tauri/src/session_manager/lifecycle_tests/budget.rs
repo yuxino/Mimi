@@ -71,7 +71,7 @@ fn custom_speech_budget_tracks_only_the_independent_translation_route() {
 #[test]
 fn chatmock_and_generic_compatible_routes_never_share_budget_continuations() {
     use crate::core::models::TargetLanguage;
-    use crate::core::preview_pacing::PreviewRequestPacer;
+    use crate::core::subtitles::preview_pacing::PreviewRequestPacer;
     let scope = |chatmock: bool| {
         let credentials = if chatmock {
             ProviderCredentials::ChatMock {
@@ -137,7 +137,7 @@ fn chatmock_and_generic_compatible_routes_never_share_budget_continuations() {
 
 #[test]
 fn pause_and_reconnect_keep_same_profile_budget_but_stop_rejects_late_teardown() {
-    use crate::core::preview_pacing::{
+    use crate::core::subtitles::preview_pacing::{
         PreviewCandidate, PreviewRequestPacer, RATE_LIMIT_PREVIEW_PAUSE,
     };
     let now = Instant::now();
@@ -172,7 +172,7 @@ fn pause_and_reconnect_keep_same_profile_budget_but_stop_rejects_late_teardown()
 
 #[test]
 fn mt_budget_continuation_never_crosses_profiles_routes_models_or_new_client_tokens() {
-    use crate::core::preview_pacing::PreviewRequestPacer;
+    use crate::core::subtitles::preview_pacing::PreviewRequestPacer;
     let scope = synthetic_mt_scope("fixture-profile", MTBudgetRoute::Qwen(REALTIME_MT_MODEL));
     for different in [
         synthetic_mt_scope("other-profile", MTBudgetRoute::Qwen(REALTIME_MT_MODEL)),

@@ -2,11 +2,13 @@
 
 use super::recording_state::AudioRecordingStatus;
 use super::SessionManager;
-use crate::core::diagnostics::{TranslationLatency, TranslationLatencyKind, TranslationRecovery};
+use crate::core::diagnostics::latency::{
+    TranslationLatency, TranslationLatencyKind, TranslationRecovery,
+};
+use crate::core::lifecycle::session::TranslationSessionState;
 use crate::core::models::SessionStatus;
-use crate::core::session::TranslationSessionState;
 use crate::windows::OverlayWindowManager;
-use mimi_runtime::core::recovery::NO_GENERATION;
+use mimi_runtime::core::lifecycle::recovery::NO_GENERATION;
 use serde::Serialize;
 use std::future::Future;
 use std::sync::atomic::Ordering;
@@ -174,7 +176,8 @@ impl StateBroadcasts {
         *self.0.lock().unwrap() = StateBroadcastStatus::Publishing;
         loop {
             publish().await;
-            tokio::time::sleep(mimi_runtime::core::health::SNAPSHOT_PUBLISH_INTERVAL).await;
+            tokio::time::sleep(mimi_runtime::core::lifecycle::health::SNAPSHOT_PUBLISH_INTERVAL)
+                .await;
             let mut state = self.0.lock().unwrap();
             if !matches!(*state, StateBroadcastStatus::Pending) {
                 *state = StateBroadcastStatus::Idle;
@@ -254,8 +257,10 @@ impl SessionManager {
             event.translation_latency_ms = translation_latency_ms;
             event.translation_latency_kind = translation_latency_kind;
         }
-        event.debug_snapshot_id =
-            crate::core::development_debug::record_snapshot(generation, &event.subtitles);
+        event.debug_snapshot_id = crate::core::development::development_debug::record_snapshot(
+            generation,
+            &event.subtitles,
+        );
         event
     }
 
@@ -306,8 +311,8 @@ impl SessionManager {
         let _delivered = self.app.emit("session-state", &event).is_ok();
         #[cfg(any(test, feature = "development-debugger"))]
         if let Some(snapshot_id) = debug_snapshot_id {
-            crate::core::development_debug::record(
-                crate::core::development_debug::DebugEvent::Published {
+            crate::core::development::development_debug::record(
+                crate::core::development::development_debug::DebugEvent::Published {
                     snapshot_id,
                     delivered: _delivered,
                     overlay_requested: should_show_overlay,

@@ -37,7 +37,7 @@ trap 'rm -rf "$work"' EXIT
 python_command="${MIMI_PYTHON:-python3}"
 # Use one plain mapping copy for both checks and the compressed release asset.
 cp "$mapping" "$work/mapping.txt"
-"$python_command" ../scripts/verify-shared-core.py --apk "$input" --mapping "$work/mapping.txt"
+"$python_command" ../scripts/shared/verify-shared-core.py --apk "$input" --mapping "$work/mapping.txt"
 "$sdk_tools/zipalign" -f -P 16 4 "$input" "$work/aligned.apk"
 "$sdk_tools/apksigner" sign \
   --ks "$ANDROID_KEYSTORE_PATH" --ks-key-alias "$ANDROID_KEY_ALIAS" \
@@ -50,7 +50,7 @@ if [[ "$actual" != "$expected" ]] || grep -qi 'CN=Android Debug' <<< "$verificat
   exit 1
 fi
 "$sdk_tools/zipalign" -c -P 16 4 "$work/signed.apk"
-"$python_command" ../scripts/verify-shared-core.py --apk "$work/signed.apk" --mapping "$work/mapping.txt"
+"$python_command" ../scripts/shared/verify-shared-core.py --apk "$work/signed.apk" --mapping "$work/mapping.txt"
 "$python_command" - "$work/mapping.txt" "$work/mapping.txt.gz" <<'PY'
 import gzip
 import shutil

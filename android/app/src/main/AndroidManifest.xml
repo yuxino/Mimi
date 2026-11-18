@@ -28,8 +28,8 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ServiceSettingsActivity" android:exported="false" android:label="@string/services_heading" />
-        <activity android:name=".SavedSessionsActivity" android:exported="false" />
+        <activity android:name=".services.editor.ServiceSettingsActivity" android:exported="false" android:label="@string/services_heading" />
+        <activity android:name=".sessions.SavedSessionsActivity" android:exported="false" />
 
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"

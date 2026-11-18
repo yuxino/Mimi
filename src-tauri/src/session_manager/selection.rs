@@ -4,14 +4,14 @@ use super::ownership::{
     retain_lifecycle_during_teardown, update_owned_value, SESSION_START_CANCELLED,
 };
 use super::SessionManager;
-use crate::core::audio_input::{AudioInput, AudioSource};
-use crate::core::configuration::LiveTranslationConfiguration;
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
+use crate::core::audio::system_audio_target::SystemAudioTarget;
+use crate::core::lifecycle::session::TranslationSessionController;
 use crate::core::models::{SessionStatus, SourceLanguage, TranslationMode};
-use crate::core::provider::ProviderKind;
-use crate::core::session::TranslationSessionController;
-use crate::core::system_audio_target::SystemAudioTarget;
+use crate::core::services::configuration::LiveTranslationConfiguration;
+use crate::core::services::provider::ProviderKind;
 use crate::pipeline_log;
-use mimi_runtime::core::recovery::{
+use mimi_runtime::core::lifecycle::recovery::{
     advance_lifecycle_sequence_if_current, lifecycle_sequence_matches, NO_GENERATION,
 };
 use std::future::Future;
@@ -410,7 +410,7 @@ impl SessionManager {
             None
         };
         let live = action != ProfileSwitchAction::SelectOnly;
-        if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
+        if profile.text_translation() == crate::core::services::provider::TextTranslation::Apple {
             if self.is_ui_test() && selection.target_language.translates_audio() {
                 return Err("apple_translation_unavailable".into());
             }
@@ -595,7 +595,7 @@ impl SessionManager {
             );
             (target, mode, needs_reconnect)
         };
-        if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
+        if profile.text_translation() == crate::core::services::provider::TextTranslation::Apple {
             if self.is_ui_test() && target_language.translates_audio() {
                 return Err("apple_translation_unavailable".into());
             }
@@ -662,7 +662,7 @@ impl SessionManager {
         self: &Arc<Self>,
         target: crate::core::models::TargetLanguage,
     ) -> Result<(), String> {
-        use crate::core::provider::ProviderPreferences;
+        use crate::core::services::provider::ProviderPreferences;
         let switch_epoch = self.lifecycle_sequence.load(Ordering::SeqCst);
         let lifecycle = self.settings_mutation_guard(false).await?;
         let status = self.controller.lock().unwrap().state.status.clone();
@@ -708,7 +708,7 @@ impl SessionManager {
                 return Err("language_switch_superseded".into());
             }
         }
-        if profile.text_translation() == crate::core::provider::TextTranslation::Apple {
+        if profile.text_translation() == crate::core::services::provider::TextTranslation::Apple {
             if self.is_ui_test() && target.translates_audio() {
                 return Err("apple_translation_unavailable".into());
             }

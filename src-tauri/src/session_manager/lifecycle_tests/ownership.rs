@@ -81,7 +81,7 @@ fn only_transient_transport_and_bounded_queue_errors_recover() {
 #[test]
 fn stale_translation_backoff_cannot_change_a_replacement_or_stopping_session() {
     let event = LiveTranslateServerEvent::TranslationDeferred(TranslationRecovery {
-        reason: crate::core::diagnostics::TranslationRecoveryReason::RateLimited,
+        reason: crate::core::diagnostics::latency::TranslationRecoveryReason::RateLimited,
         retry_after_ms: 4_000,
         retry_scheduled: true,
     });

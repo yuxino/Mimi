@@ -125,9 +125,11 @@ mod tests {
             };
             let input = case["input"].as_str().unwrap();
             let result = if case["route"] == "deepLX" {
-                crate::core::protocols::deeplx::endpoint_with_policy(input, policy)
+                crate::core::protocols::translation::deeplx::endpoint_with_policy(input, policy)
             } else {
-                crate::core::protocols::openai_compatible::endpoint_with_policy(input, policy)
+                crate::core::protocols::translation::openai_compatible::endpoint_with_policy(
+                    input, policy,
+                )
             };
             if let Some(expected) = case["expected"].as_str() {
                 assert_eq!(result.unwrap().as_str(), expected, "{}", case["id"]);
@@ -141,9 +143,9 @@ mod tests {
             }
             if case["runtimeAligned"] == true {
                 let runtime = if case["route"] == "deepLX" {
-                    crate::core::protocols::deeplx::endpoint(input).ok()
+                    crate::core::protocols::translation::deeplx::endpoint(input).ok()
                 } else {
-                    crate::core::protocols::openai_compatible::endpoint(input).ok()
+                    crate::core::protocols::translation::openai_compatible::endpoint(input).ok()
                 };
                 assert_eq!(
                     runtime.as_ref().map(url::Url::as_str),
@@ -162,7 +164,9 @@ mod tests {
             "https://@example.test/v1",
             "https://example.test\\v1",
         ] {
-            assert!(crate::core::protocols::openai_compatible::endpoint(input).is_ok());
+            assert!(
+                crate::core::protocols::translation::openai_compatible::endpoint(input).is_ok()
+            );
             assert_eq!(
                 normalize_http_endpoint(
                     input,
@@ -175,7 +179,8 @@ mod tests {
             );
         }
         assert_eq!(
-            crate::core::protocols::openai_compatible::endpoint("http://10.0.2.2/v1").is_ok(),
+            crate::core::protocols::translation::openai_compatible::endpoint("http://10.0.2.2/v1")
+                .is_ok(),
             cfg!(target_os = "android")
         );
     }

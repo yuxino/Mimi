@@ -1,8 +1,8 @@
 //! Native wire adapter for the shared source-state projection.
 use mimi_runtime::core::{
-    audio_input::AudioSource,
-    models::{DetectedLanguage, SessionStatus, SubtitleSnapshot},
-    session::{merge_independent_states, TranslationSessionState},
+    audio::audio_input::AudioSource, lifecycle::session::merge_independent_states,
+    lifecycle::session::TranslationSessionState, models::DetectedLanguage, models::SessionStatus,
+    models::SubtitleSnapshot,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -33,7 +33,7 @@ struct NativeState {
     #[serde(default)]
     is_translation_timed_out: bool,
     #[serde(default)]
-    translation_recovery: Option<mimi_runtime::core::diagnostics::TranslationRecovery>,
+    translation_recovery: Option<mimi_runtime::core::diagnostics::latency::TranslationRecovery>,
 }
 
 pub fn merge(value: &Value) -> Result<Value, &'static str> {

@@ -1,8 +1,8 @@
 //! Bounded audio send pipeline with newest-drop buffering, finite graceful
 //! drain, throttled level diagnostics, and a single fell-behind error signal.
 
-use crate::core::diagnostics::milliseconds;
-use crate::core::pending_pcm::{PendingPcmGate, PendingPcmGuard};
+use crate::core::audio::pending_pcm::{PendingPcmGate, PendingPcmGuard};
+use crate::core::diagnostics::latency::milliseconds;
 use crate::pipeline_log;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

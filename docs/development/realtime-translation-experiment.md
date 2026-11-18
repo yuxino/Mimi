@@ -37,7 +37,7 @@ use Alibaba with the default text route. Its loader is strictly read-only.
 Obtain current approval for any possible API charges before executing.
 
 Prepare one public or synthetic mono PCM16/16 kHz sample and a manifest using
-the existing [ASR fixture schema](../plans/2026-10-02-audio3-repeatable-benchmark.md).
+the existing [ASR fixture schema](../plans/development/verification/2026-10-02-audio3-repeatable-benchmark.md).
 Do not upload a private meeting recording.
 
 ```sh
@@ -64,7 +64,7 @@ Results contain test subtitles in private 0600 JSON files, with the input hash.
 Keep them outside Git. Analyze offline with:
 
 ```sh
-python3 -B scripts/analyze-translation-comparison.py \
+python3 -B scripts/diagnostics/analyze-translation-comparison.py \
   --input /absolute/private/translation-comparison-ID/results.json \
   --output /absolute/private/new-comparison-analysis.json
 ```

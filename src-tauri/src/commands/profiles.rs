@@ -4,10 +4,10 @@ use super::app::app_is_ui_test;
 use super::apple_resources::ensure_apple_provider_available;
 use super::settings::{emit_settings_snapshot, SettingsSnapshotPayload};
 use super::AppState;
-use crate::core::credentials::{CredentialRevealField, ProviderCredentials};
 use crate::core::models::SourceLanguage;
-use crate::core::network_proxy::ProxyConfig;
-use crate::core::provider::{
+use crate::core::services::credentials::{CredentialRevealField, ProviderCredentials};
+use crate::core::services::network_proxy::ProxyConfig;
+use crate::core::services::provider::{
     CustomSpeechLanguagesPatch, ProviderKind, ServiceProfile, TextTranslation, TextTranslationName,
 };
 use crate::settings_store::{CredentialState, SettingsStore};
@@ -21,13 +21,13 @@ pub struct ServiceProfilePayload {
     pub id: String,
     pub name: String,
     pub provider: ProviderKind,
-    pub qwen_mt_model: crate::core::protocols::qwen_mt::QwenMTModel,
-    pub alibaba_realtime_mode: crate::core::provider::AlibabaRealtimeMode,
+    pub qwen_mt_model: crate::core::protocols::translation::qwen_mt::QwenMTModel,
+    pub alibaba_realtime_mode: crate::core::services::provider::AlibabaRealtimeMode,
     pub alibaba_workspace_id: String,
-    pub xai_speech_mode: crate::core::provider::XAISpeechMode,
-    pub speech_translation_mode: crate::core::provider::SpeechTranslationMode,
+    pub xai_speech_mode: crate::core::services::provider::XAISpeechMode,
+    pub speech_translation_mode: crate::core::services::provider::SpeechTranslationMode,
     pub xai_text_model: String,
-    pub language_preset: Option<crate::core::provider::ProfileLanguagePreset>,
+    pub language_preset: Option<crate::core::services::provider::ProfileLanguagePreset>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speech_recognition_name: Option<String>,
     pub credential_state: CredentialState,
@@ -36,7 +36,7 @@ pub struct ServiceProfilePayload {
     pub speech_credential_state: Option<CredentialState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_credential_state: Option<CredentialState>,
-    pub text_translation: crate::core::provider::TextTranslation,
+    pub text_translation: crate::core::services::provider::TextTranslation,
     pub text_translation_names: std::collections::BTreeMap<TextTranslation, String>,
     pub speech_network_proxy: Option<ProxyConfig>,
     pub text_network_proxy: Option<ProxyConfig>,
@@ -156,13 +156,13 @@ pub async fn profile_update(
     text_translation_name: Option<TextTranslationName>,
     speech_recognition_name: Option<String>,
     custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
-    language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
-    qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
-    alibaba_realtime_mode: Option<crate::core::provider::AlibabaRealtimeMode>,
+    language_preset_patch: Option<crate::core::services::provider::ProfileLanguagePresetPatch>,
+    qwen_mt_model: Option<crate::core::protocols::translation::qwen_mt::QwenMTModel>,
+    alibaba_realtime_mode: Option<crate::core::services::provider::AlibabaRealtimeMode>,
     alibaba_workspace_id: Option<String>,
-    xai_speech_mode: Option<crate::core::provider::XAISpeechMode>,
+    xai_speech_mode: Option<crate::core::services::provider::XAISpeechMode>,
     xai_text_model: Option<String>,
-    speech_translation_mode: Option<crate::core::provider::SpeechTranslationMode>,
+    speech_translation_mode: Option<crate::core::services::provider::SpeechTranslationMode>,
 ) -> Result<SettingsSnapshotPayload, String> {
     let _lifecycle = state.session.settings_mutation_guard(true).await?;
     ensure_profile_mutation_allowed(state.session.has_active_session())?;
@@ -312,7 +312,7 @@ pub async fn profile_credential_editor_state(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
     profile_id: String,
-    text_translation: Option<crate::core::provider::TextTranslation>,
+    text_translation: Option<crate::core::services::provider::TextTranslation>,
 ) -> Result<crate::settings_store::CredentialEditorState, String> {
     ensure_credential_reveal_window(window.label())?;
     let settings = Arc::clone(&state.settings);
@@ -331,7 +331,7 @@ pub async fn profile_reveal_credential(
     state: State<'_, AppState>,
     profile_id: String,
     field: CredentialRevealField,
-    text_translation: Option<crate::core::provider::TextTranslation>,
+    text_translation: Option<crate::core::services::provider::TextTranslation>,
 ) -> Result<Option<String>, String> {
     ensure_credential_reveal_window(window.label())?;
     let settings = Arc::clone(&state.settings);

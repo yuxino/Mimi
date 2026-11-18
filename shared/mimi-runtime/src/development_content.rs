@@ -1,9 +1,9 @@
 //! Explicit private dev evidence. All persistence is supplied by the app layer;
 //! clients never log headers, credentials, endpoints, or arbitrary errors here.
-use crate::core::audio_input::AudioSource;
-use crate::core::development_debug::{Admission, ProviderObservation};
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::protocols::qwen_mt::QwenMTClientError;
+use crate::core::audio::audio_input::AudioSource;
+use crate::core::development::development_debug::{Admission, ProviderObservation};
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
+use crate::core::protocols::translation::qwen_mt::QwenMTClientError;
 use serde_json::{json, Value};
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -37,7 +37,7 @@ pub fn provider(
     generation: u64,
     revision: u64,
     sequence: Option<u64>,
-    producer: crate::core::development_debug::DebugProducer,
+    producer: crate::core::development::development_debug::DebugProducer,
     event: &LiveTranslateServerEvent,
     admission: Admission,
 ) {
@@ -305,7 +305,7 @@ impl TranslationAttempt {
     }
 }
 fn safe_attempt_error(error: &QwenMTClientError) -> (&'static str, Option<u16>, bool) {
-    use crate::core::protocols::{
+    use crate::core::protocols::translation::{
         deepl::DeepLError, deeplx::DeepLXError, openai_compatible::OpenAICompatibleError,
     };
     match error {

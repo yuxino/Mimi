@@ -52,7 +52,7 @@ npm run tauri -- build --config src-tauri/config/ci.json -- --locked
 
 macOS 打包使用 / Package on macOS with `./scripts/package-app.sh`.
 
-Linux 开发环境与安装包构建见 [Linux guide](../docs/development/linux.md)。Ubuntu 上先安装 `./scripts/linux-ci-deps.sh` 中列出的依赖，再运行 `npm run tauri:dev`。Linux CI 在独立会话中验证输出监听、Secret Service 和无凭据的 UI 启动。
+Linux 开发环境与安装包构建见 [Linux guide](../docs/development/linux.md)。Ubuntu 上先安装 `./scripts/linux/linux-ci-deps.sh` 中列出的依赖，再运行 `npm run tauri:dev`。Linux CI 在独立会话中验证输出监听、Secret Service 和无凭据的 UI 启动。
 
 For Linux dependencies, building, and isolated audio/keyring/UI checks, see the [Linux guide](../docs/development/linux.md). Packages are built on Ubuntu 22.04 for x86_64.
 
@@ -67,7 +67,7 @@ Before UI changes, read [UI consistency and feedback](../docs/development/ui-gui
 For frontend dependency upgrades, verify `npm ci` with both the local and CI npm major versions. An existing installation does not prove lockfile completeness. If optional records are missing, regenerate with CI's npm major in a temporary directory containing only the manifest and lockfile, without `node_modules`. Verify both npm majors and review existing versions and platform dependencies. Successful generation in an empty directory still does not replace clean-install validation; do not patch lock records by hand or bypass CI installation.
 
 ```bash
-./scripts/check.sh --quick frontend src/windows/settings/ConfigInput.tsx
+./scripts/check.sh --quick frontend src/windows/settings/controls/ConfigInput.tsx
 ./scripts/check.sh --quick desktop settings_store
 ./scripts/check.sh --quick shared
 ./scripts/check.sh

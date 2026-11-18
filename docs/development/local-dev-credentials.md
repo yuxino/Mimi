@@ -25,7 +25,7 @@ Development uses the same editable local credential store as production, scoped
 by its own app identifier and directory. No `.env` loader or environment-backed
 preset remains. UI-only mode continues to use synthetic, in-memory credentials.
 Legacy OS-store import is a one-time compatibility path; a completed import never
-falls back to native credentials. See [local credential storage](../plans/2026-10-04-local-credential-storage.md).
+falls back to native credentials. See [local credential storage](../plans/desktop/settings/credentials/2026-10-04-local-credential-storage.md).
 
 ## 手动服务探针
 
@@ -49,5 +49,5 @@ Alibaba 或 Gemini 配置，并停止原生应用中的服务会话。
 cargo test --manifest-path src-tauri/Cargo.toml --features development-debugger --lib --no-run
 ```
 
-ASR 比较和批次执行方法见 [ASR benchmark](../plans/2026-10-02-audio3-repeatable-benchmark.md)
+ASR 比较和批次执行方法见 [ASR benchmark](../plans/development/verification/2026-10-02-audio3-repeatable-benchmark.md)
 及 [audio replay](audio-quality-replay.md)。签名私钥访问和系统录音权限独立于服务凭据存储。

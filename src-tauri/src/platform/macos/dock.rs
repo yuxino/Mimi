@@ -26,7 +26,7 @@ pub(crate) fn apply(app: &tauri::AppHandle, show: bool) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 fn apply_on_main_thread(show: bool) -> Result<(), String> {
-    use crate::core::dock_presentation::{
+    use crate::core::ui::dock_presentation::{
         may_restore_focus, may_restore_window, WindowPresentation,
     };
     use objc2::MainThreadMarker;

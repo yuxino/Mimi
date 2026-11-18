@@ -18,7 +18,7 @@ vi.mock("../../../lib/store", async original => {
   return { useStore: (selector: (value: typeof state) => unknown) => selector(state) };
 });
 vi.mock("./AudioInputSettings", () => ({ AudioInputSettings: () => null }));
-vi.mock("../services/ProfileLanguageSettings", () => ({ ProfileLanguageSettings: () => null }));
+vi.mock("../services/languages/ProfileLanguageSettings", () => ({ ProfileLanguageSettings: () => null }));
 
 let host: HTMLDivElement;
 let root: Root;

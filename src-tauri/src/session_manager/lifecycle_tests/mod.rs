@@ -38,23 +38,25 @@ use super::selection::{
     ProfileSwitchAction,
 };
 use crate::audio::send_pipeline::AudioSendPipeline;
-use crate::clients::provider_events::{provider_event_channel, ProviderEvent};
-use crate::clients::translation_client::ConnectError;
-use crate::core::audio_input::{AudioInput, AudioSource};
-use crate::core::configuration::LiveTranslationConfiguration;
-#[cfg(test)]
-use crate::core::credentials::{ProviderCredentials, TextTranslationCredentials};
-use crate::core::diagnostics::{TranslationLatency, TranslationLatencyKind, TranslationRecovery};
+use crate::clients::translation::translation_client::ConnectError;
+use crate::clients::transport::provider_events::{provider_event_channel, ProviderEvent};
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
+use crate::core::audio::system_audio_target::SystemAudioTarget;
+use crate::core::diagnostics::latency::{
+    TranslationLatency, TranslationLatencyKind, TranslationRecovery,
+};
+use crate::core::lifecycle::session::{TranslationSessionController, TranslationSessionState};
 use crate::core::models::{SessionStatus, SourceLanguage, TranslationMode, UtteranceRole};
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
 #[cfg(test)]
-use crate::core::protocols::qwen_mt::{QwenMTModel, REALTIME_MT_MODEL};
-use crate::core::provider::ProviderKind;
-use crate::core::session::{TranslationSessionController, TranslationSessionState};
-use crate::core::system_audio_target::SystemAudioTarget;
+use crate::core::protocols::translation::qwen_mt::{QwenMTModel, REALTIME_MT_MODEL};
+use crate::core::services::configuration::LiveTranslationConfiguration;
+#[cfg(test)]
+use crate::core::services::credentials::{ProviderCredentials, TextTranslationCredentials};
+use crate::core::services::provider::ProviderKind;
 use crate::session_history::SessionHistory;
-use mimi_runtime::core::health::HEALTH_CHECK_INTERVAL;
-use mimi_runtime::core::recovery::{
+use mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL;
+use mimi_runtime::core::lifecycle::recovery::{
     advance_lifecycle_sequence_if_current, cancelled_recovery_attempt_is_retryable,
     clear_recovery_atoms, lifecycle_sequence_matches, provider_error_is_retryable,
     provider_recovery_minimum_delay, recovery_delay, recovery_exhaustion_is_still_owned,

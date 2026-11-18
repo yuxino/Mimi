@@ -453,7 +453,7 @@ fn language_capability_snapshot_is_stamped_and_tracks_the_atomic_profile_route()
     assert_eq!(deep_l.source_languages.len(), 31);
     assert_eq!(
         deep_l.target_languages.len(),
-        crate::core::protocols::deepl_languages::DEEPL_TARGET_CODES.len() + 1
+        crate::core::protocols::translation::deepl_languages::DEEPL_TARGET_CODES.len() + 1
     );
     profile.text_translation = Some(TextTranslation::OpenAICompatible);
     let custom = LanguageCapabilitiesPayload::from_profile(&profile, TargetLanguage::Original);
@@ -465,7 +465,7 @@ fn language_capability_snapshot_is_stamped_and_tracks_the_atomic_profile_route()
             .collect::<Vec<_>>(),
         std::iter::once("auto")
             .chain(
-                crate::core::protocols::audio3::LANGUAGE_CODES
+                crate::core::protocols::recognition::audio3::LANGUAGE_CODES
                     .iter()
                     .copied()
             )
@@ -611,7 +611,7 @@ fn settings_payload_is_camel_case_and_write_only() {
             credential_storage: "keychain",
             speech_credential_state: None,
             text_credential_state: None,
-            text_translation: crate::core::provider::TextTranslation::FollowService,
+            text_translation: crate::core::services::provider::TextTranslation::FollowService,
             text_translation_names: std::collections::BTreeMap::new(),
         }],
         active_profile_id: "alibaba-default".into(),
@@ -640,7 +640,7 @@ fn settings_payload_is_camel_case_and_write_only() {
         retain_session_history: false,
         record_session_audio: false,
         audio_input: AudioInput::System,
-        microphone_input_available: crate::core::audio_input::MICROPHONE_INPUT_AVAILABLE,
+        microphone_input_available: crate::core::audio::audio_input::MICROPHONE_INPUT_AVAILABLE,
         windows_audio_source: String::new(),
         system_audio_target: Default::default(),
         show_in_dock: false,
@@ -710,7 +710,7 @@ fn audio_source_changes_require_stop_even_when_resetting_to_system() {
 
 #[test]
 fn application_settings_draft_is_settings_only_and_enumeration_reaches_live_controls() {
-    use crate::core::system_audio_target::SystemAudioTarget;
+    use crate::core::audio::system_audio_target::SystemAudioTarget;
     let draft = SettingsDraft {
         system_audio_target: Some(SystemAudioTarget::Application {
             id: "test.player".into(),

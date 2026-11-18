@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn chatmock_and_generic_destinations_stay_independent_across_save_reveal_switch_and_restart() {
-    use crate::core::configuration::TextTranslationProbeCredentials;
+    use crate::core::services::configuration::TextTranslationProbeCredentials;
     for provider in [
         ProviderKind::AlibabaCloud,
         ProviderKind::CustomDashScopeASR,

@@ -1,10 +1,10 @@
 //! Local opt-in transcript history. Files contain user content and are never logged.
-use crate::core::audio_input::AudioSource;
-use crate::core::models::SubtitlePair;
-use crate::core::session_archive::{
+use crate::core::audio::audio_input::AudioSource;
+use crate::core::lifecycle::session_archive::{
     SavedTranscript, TranscriptExportOptions, TranscriptPage, TranscriptPageEntry,
     TranscriptWriter, AUDIO_BYTE_LIMIT, TRANSCRIPT_PAGE_SIZE,
 };
+use crate::core::models::SubtitlePair;
 use serde::{de, Deserialize, Serialize};
 use std::fs;
 use std::io::{self, BufRead, Read, Seek, Write};
@@ -600,7 +600,9 @@ impl SessionHistory {
             return Ok(audio);
         }
         let mut file = fs::File::open(self.audio_path(id, source, "wav")?)?;
-        if file.metadata()?.len() > crate::core::session_archive::AUDIO_BYTE_LIMIT as u64 + 44 {
+        if file.metadata()?.len()
+            > crate::core::lifecycle::session_archive::AUDIO_BYTE_LIMIT as u64 + 44
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "audio file too large",
@@ -802,8 +804,8 @@ fn write_private_export(
         fs::set_permissions(directory, fs::Permissions::from_mode(0o700))?;
     }
     let extension = match options.format {
-        crate::core::session_archive::TranscriptExportFormat::Txt => "txt",
-        crate::core::session_archive::TranscriptExportFormat::Markdown => "md",
+        crate::core::lifecycle::session_archive::TranscriptExportFormat::Txt => "txt",
+        crate::core::lifecycle::session_archive::TranscriptExportFormat::Markdown => "md",
     };
     let mut temporary = tempfile::Builder::new()
         .prefix("mimi-")
@@ -1301,7 +1303,9 @@ mod tests {
 
     #[test]
     fn streamed_pages_and_exports_preserve_saved_and_recovered_content() {
-        use crate::core::session_archive::{TranscriptExportContent, TranscriptExportFormat};
+        use crate::core::lifecycle::session_archive::{
+            TranscriptExportContent, TranscriptExportFormat,
+        };
         let directory = tempfile::tempdir().unwrap();
         let history = SessionHistory::new(directory.path().join("history"), false);
         let mut saved = synthetic_final_transcript(137);
@@ -1513,7 +1517,7 @@ mod tests {
         let history = SessionHistory::new(directory.path().join("history"), false);
         let id = uuid::Uuid::new_v4().to_string();
         history.begin(&id, 100).unwrap();
-        let count = crate::core::session_archive::TRANSCRIPT_COUNT_LIMIT;
+        let count = crate::core::lifecycle::session_archive::TRANSCRIPT_COUNT_LIMIT;
         let pair = SubtitlePair::new("Synthetic".into(), "译文".into(), 200);
         let saved = SavedTranscript {
             version: 1,

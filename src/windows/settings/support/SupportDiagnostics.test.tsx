@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -10,7 +10,7 @@ import { diagnosticsCopy } from "./diagnosticsCopy";
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), clipboard: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("../../../lib/ipc", () => ({ isTauri: true, setOverlayPointerCursor: vi.fn() }));
-vi.mock("../../../lib/diagnosticClipboard", () => ({ writeDiagnosticClipboard: mocks.clipboard }));
+vi.mock("../../../lib/clipboard/diagnosticClipboard", () => ({ writeDiagnosticClipboard: mocks.clipboard }));
 
 let host: HTMLDivElement;
 let root: Root;

@@ -3,7 +3,7 @@
 use super::fixtures::finish_ui_test_archive;
 use super::recording_state::RecordingEvidence;
 use super::SessionManager;
-use crate::core::audio_input::AudioSource;
+use crate::core::audio::audio_input::AudioSource;
 use crate::pipeline_log;
 use crate::session_history::SessionHistory;
 use std::sync::atomic::Ordering;
@@ -53,8 +53,8 @@ pub(super) fn append_recorded_audio(
         // quota to the indicator.
         stats.audio_evidence.record(owner.0, owner.1, source, false);
     } else {
-        let available =
-            crate::core::session_archive::AUDIO_BYTE_LIMIT.saturating_sub(stats.audio_bytes);
+        let available = crate::core::lifecycle::session_archive::AUDIO_BYTE_LIMIT
+            .saturating_sub(stats.audio_bytes);
         let accepted = data.len().min(available);
         if accepted == 0 {
             stats.audio_limited = true;
@@ -65,7 +65,7 @@ pub(super) fn append_recorded_audio(
             stats.sample_rate = sample_rate;
             stats.audio_bytes += accepted;
             stats.audio_limited =
-                stats.audio_bytes == crate::core::session_archive::AUDIO_BYTE_LIMIT;
+                stats.audio_bytes == crate::core::lifecycle::session_archive::AUDIO_BYTE_LIMIT;
             stats.audio_evidence.record(owner.0, owner.1, source, true);
         }
     }
@@ -188,11 +188,11 @@ impl SessionManager {
         }
     }
 
-    pub fn archive_state(&self) -> crate::core::session_archive::ArchiveState {
+    pub fn archive_state(&self) -> crate::core::lifecycle::session_archive::ArchiveState {
         if self.is_ui_test() {
             let controller = self.controller.lock().unwrap();
             let recording = self.recording.lock().unwrap();
-            return crate::core::session_archive::ArchiveState {
+            return crate::core::lifecycle::session_archive::ArchiveState {
                 transcript_count: controller.archive().count(),
                 transcript_limited: controller.archive().limited,
                 audio_sources: [AudioSource::System, AudioSource::Microphone]
@@ -218,7 +218,7 @@ impl SessionManager {
             .and_then(|id| self.history.audio_sources(id).ok())
             .unwrap_or_default();
         let stats = self.history_stats.lock().unwrap();
-        crate::core::session_archive::ArchiveState {
+        crate::core::lifecycle::session_archive::ArchiveState {
             transcript_count: stats.transcript_count,
             transcript_limited: stats.transcript_limited,
             audio_sources,
@@ -263,7 +263,7 @@ impl SessionManager {
         if let Err(error) = finalize_pending_history(
             &self.history,
             id,
-            crate::core::subtitle_reducer::now_epoch_ms(),
+            crate::core::subtitles::subtitle_reducer::now_epoch_ms(),
             limited,
             self.history_pending_text.load(Ordering::SeqCst),
             self.history_pending_audio.load(Ordering::SeqCst),
@@ -283,7 +283,7 @@ impl SessionManager {
         &self,
         query: &str,
         page: usize,
-    ) -> std::io::Result<crate::core::session_archive::TranscriptPage> {
+    ) -> std::io::Result<crate::core::lifecycle::session_archive::TranscriptPage> {
         if self.is_ui_test() {
             return Ok(self.controller.lock().unwrap().archive().page(query, page));
         }
@@ -292,7 +292,7 @@ impl SessionManager {
             .as_deref()
             .filter(|_| self.history_pending_text.load(Ordering::SeqCst))
         else {
-            return Ok(crate::core::session_archive::TranscriptPage {
+            return Ok(crate::core::lifecycle::session_archive::TranscriptPage {
                 total: 0,
                 page: 0,
                 entries: Vec::new(),
@@ -303,7 +303,7 @@ impl SessionManager {
 
     pub fn export_transcript(
         &self,
-        options: crate::core::session_archive::TranscriptExportOptions,
+        options: crate::core::lifecycle::session_archive::TranscriptExportOptions,
     ) -> std::io::Result<Option<Vec<u8>>> {
         if self.is_ui_test() {
             return Ok(self

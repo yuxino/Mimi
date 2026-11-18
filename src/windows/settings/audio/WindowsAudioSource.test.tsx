@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, Profiler } from "react";
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";

@@ -17,34 +17,34 @@ export npm_config_cache="${npm_config_cache:-$PROJECT_DIR/.npm-cache}"
 if [[ $# -gt 0 ]]; then
   if [[ "$1" == "--quick" ]]; then
     shift
-    exec bash "$SCRIPT_DIR/check-quick.sh" "$@"
+    exec bash "$SCRIPT_DIR/development/check-quick.sh" "$@"
   fi
   echo "Usage: ./scripts/check.sh [--quick frontend [src/files...] | --quick desktop [test-filter] | --quick shared]" >&2
   exit 2
 fi
 
-bash "$SCRIPT_DIR/check-quick-test.sh"
-bash "$SCRIPT_DIR/dev-app-launch-test.sh"
-node --test "$SCRIPT_DIR/dev-app-watch.node.mjs"
-bash "$SCRIPT_DIR/check-apple-translation.sh"
+bash "$SCRIPT_DIR/development/check-quick-test.sh"
+bash "$SCRIPT_DIR/development/dev-app-launch-test.sh"
+node --test "$SCRIPT_DIR/development/dev-app-watch.node.mjs"
+bash "$SCRIPT_DIR/macos/check-apple-translation.sh"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   echo "==> development install recovery safety"
-  "$SCRIPT_DIR/dev-app-recovery-test.sh"
-  "$SCRIPT_DIR/macos-signing-test.sh"
-  python3 "$SCRIPT_DIR/extract-macos-updater-test.py"
+  "$SCRIPT_DIR/development/dev-app-recovery-test.sh"
+  "$SCRIPT_DIR/macos/macos-signing-test.sh"
+  python3 "$SCRIPT_DIR/macos/extract-macos-updater-test.py"
 fi
 
-python3 "$SCRIPT_DIR/check-appimage-permissions-test.py"
-python3 -B "$SCRIPT_DIR/check-appimage-gles-test.py"
-python3 -B "$SCRIPT_DIR/check-linux-input-region-trace-test.py"
-python3 -B "$SCRIPT_DIR/linux-keyring-first-save-driver-test.py"
-python3 -B "$SCRIPT_DIR/analyze-development-case-test.py"
-python3 -B "$SCRIPT_DIR/analyze-translation-comparison-test.py"
-python3 -B "$SCRIPT_DIR/run-development-batch-test.py"
-python3 -B "$SCRIPT_DIR/ci-scope-test.py"
-python3 -B "$SCRIPT_DIR/prepare-macos-release-test.py"
-bash "$SCRIPT_DIR/check-shared-core.sh"
+python3 "$SCRIPT_DIR/linux/check-appimage-permissions-test.py"
+python3 -B "$SCRIPT_DIR/linux/check-appimage-gles-test.py"
+python3 -B "$SCRIPT_DIR/linux/check-linux-input-region-trace-test.py"
+python3 -B "$SCRIPT_DIR/linux/linux-keyring-first-save-driver-test.py"
+python3 -B "$SCRIPT_DIR/diagnostics/analyze-development-case-test.py"
+python3 -B "$SCRIPT_DIR/diagnostics/analyze-translation-comparison-test.py"
+python3 -B "$SCRIPT_DIR/development/run-development-batch-test.py"
+python3 -B "$SCRIPT_DIR/ci/ci-scope-test.py"
+python3 -B "$SCRIPT_DIR/macos/prepare-macos-release-test.py"
+bash "$SCRIPT_DIR/shared/check-shared-core.sh"
 
 echo "==> cargo fmt --check"
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
@@ -72,10 +72,10 @@ echo "==> frontend tests"
 npm run test
 
 echo "==> updater release manifest tests"
-node --test scripts/updater-manifest.node.mjs
+node --test scripts/updates/updater-manifest.node.mjs
 
 echo "==> production debugger checker tests"
-node --test scripts/check-production-debugger.node.mjs
+node --test scripts/frontend/check-production-debugger.node.mjs
 
 echo "==> frontend typecheck and build"
 npm run build

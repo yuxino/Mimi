@@ -1,10 +1,14 @@
 //! Explicit bounded text comparison through the production Qwen client.
 //! Never compiled into the app; content goes only to opted-in private files.
 use super::SettingsStore;
-use crate::clients::{provider_network::ProviderNetwork, qwen_mt_client::QwenMTClient};
+use crate::clients::{
+    translation::qwen_mt_client::QwenMTClient, transport::provider_network::ProviderNetwork,
+};
 use crate::core::models::{SourceLanguage, TargetLanguage};
-use crate::core::protocols::qwen_mt::{QwenMTClientError, QwenMTDomainHint, QwenMTModel};
-use crate::core::provider::ProviderKind;
+use crate::core::protocols::translation::qwen_mt::{
+    QwenMTClientError, QwenMTDomainHint, QwenMTModel,
+};
+use crate::core::services::provider::ProviderKind;
 use serde::Deserialize;
 use serde_json::json;
 use std::io::Write;

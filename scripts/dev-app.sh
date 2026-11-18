@@ -9,7 +9,7 @@ set -euo pipefail
 # one canonical path, and verifies the exact process that was opened.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-source "$SCRIPT_DIR/dev-app-launch.sh"
+source "$SCRIPT_DIR/development/dev-app-launch.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 TARGET_DIR="${CARGO_TARGET_DIR:-$PROJECT_DIR/src-tauri/target}"
 if [[ "$TARGET_DIR" != /* ]]; then
@@ -91,9 +91,9 @@ if [[ "$WATCH" == "1" ]]; then
   [[ "$MODE" == "ui-only" ]] && WATCH_ARGS+=(--ui-only)
   [[ -n "$EVIDENCE_WORKSPACE" ]] && WATCH_ARGS+=(--evidence-workspace "$EVIDENCE_WORKSPACE")
   if [[ ${#WATCH_ARGS[@]} -gt 0 ]]; then
-    exec node "$SCRIPT_DIR/dev-app-watch.mjs" "${WATCH_ARGS[@]}"
+    exec node "$SCRIPT_DIR/development/dev-app-watch.mjs" "${WATCH_ARGS[@]}"
   fi
-  exec node "$SCRIPT_DIR/dev-app-watch.mjs"
+  exec node "$SCRIPT_DIR/development/dev-app-watch.mjs"
 fi
 
 if [[ "${MIMI_DEV_WATCH:-0}" == "1" ]]; then
@@ -312,7 +312,7 @@ if [[ "${MIMI_DEV_RECOVERY_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-IDENTITY="$("$SCRIPT_DIR/codesign-identity.sh" --development)"
+IDENTITY="$("$SCRIPT_DIR/macos/codesign-identity.sh" --development)"
 if [[ "$IDENTITY" == "-" ]]; then
   cat >&2 <<'EOF'
 error: development launch requires a stable code-signing identity.

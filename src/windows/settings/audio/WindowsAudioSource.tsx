@@ -13,9 +13,9 @@ import {
 import { isTauri } from "../../../lib/ipc";
 import { useStore } from "../../../lib/store";
 import { useDocumentVisibility } from "../../../lib/useDocumentVisibility";
-import { SettingsRow, SettingsSelect } from "../SettingsPrimitives";
+import { SettingsRow, SettingsSelect } from "../controls/SettingsPrimitives";
 import { I18N } from "../../../lib/i18n";
-import { useSettingsToast } from "../useSettingsToast";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 
 
 export function WindowsAudioSource() {

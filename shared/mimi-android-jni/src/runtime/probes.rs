@@ -14,14 +14,17 @@ const MAX_PROBES: usize = 2;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct TextProbeInput {
-    credentials: mimi_runtime::core::credentials::TextTranslationCredentials,
+    credentials: mimi_runtime::core::services::credentials::TextTranslationCredentials,
     source_language: SourceLanguage,
     target_language: TargetLanguage,
-    qwen_mt_model: mimi_runtime::core::protocols::qwen_mt::QwenMTModel,
+    qwen_mt_model: mimi_runtime::core::protocols::translation::qwen_mt::QwenMTModel,
 }
 pub(super) fn text_probe_configuration(
     value: &Value,
-) -> Result<mimi_runtime::core::configuration::TextTranslationProbeConfiguration, &'static str> {
+) -> Result<
+    mimi_runtime::core::services::configuration::TextTranslationProbeConfiguration,
+    &'static str,
+> {
     if let Some(configuration) = value.get("sessionConfiguration") {
         let configuration: LiveTranslationConfiguration =
             serde_json::from_value(configuration.clone()).map_err(|_| "invalid_configuration")?;
@@ -32,23 +35,25 @@ pub(super) fn text_probe_configuration(
     let input: TextProbeInput =
         serde_json::from_value(value.clone()).map_err(|_| "invalid_configuration")?;
     Ok(
-        mimi_runtime::core::configuration::TextTranslationProbeConfiguration {
+        mimi_runtime::core::services::configuration::TextTranslationProbeConfiguration {
             credentials:
-                mimi_runtime::core::configuration::TextTranslationProbeCredentials::Independent(
+                mimi_runtime::core::services::configuration::TextTranslationProbeCredentials::Independent(
                     input.credentials,
                 ),
             source_language: input.source_language,
             target_language: input.target_language,
             qwen_mt_model: input.qwen_mt_model,
             network_proxy: ProxyConfig {
-                mode: mimi_runtime::core::network_proxy::ProxyMode::Direct,
+                mode: mimi_runtime::core::services::network_proxy::ProxyMode::Direct,
                 url: None,
             },
         },
     )
 }
 struct TextProbe {
-    result: Mutex<Option<mimi_runtime::clients::connection_diagnostics::ConnectionDiagnostic>>,
+    result: Mutex<
+        Option<mimi_runtime::clients::transport::connection_diagnostics::ConnectionDiagnostic>,
+    >,
     task: Mutex<Option<JoinHandle<()>>>,
 }
 fn probes() -> &'static Mutex<HashMap<u64, Arc<TextProbe>>> {
@@ -59,8 +64,10 @@ fn probes() -> &'static Mutex<HashMap<u64, Arc<TextProbe>>> {
 pub(super) fn endpoint(value: &Value) -> Result<Value, &'static str> {
     let configuration = text_probe_configuration(&value["configuration"])?;
     let endpoint =
-        mimi_runtime::clients::connection_diagnostics::text_probe_network_endpoint(&configuration)
-            .map_err(|_| "invalid_configuration")?;
+        mimi_runtime::clients::transport::connection_diagnostics::text_probe_network_endpoint(
+            &configuration,
+        )
+        .map_err(|_| "invalid_configuration")?;
     Ok(json!({"textEndpoint":endpoint}))
 }
 
@@ -101,7 +108,7 @@ pub(super) fn create(value: &Value) -> Result<Value, &'static str> {
     let worker = probe.clone();
     *probe.task.lock().unwrap() = Some(executor().spawn(async move {
         let result = if let Some(configuration) = speech_configuration {
-            mimi_runtime::clients::connection_diagnostics::check_independent_speech_with_network(
+            mimi_runtime::clients::transport::connection_diagnostics::check_independent_speech_with_network(
                 &configuration,
                 false,
                 speech_network,
@@ -109,7 +116,7 @@ pub(super) fn create(value: &Value) -> Result<Value, &'static str> {
             )
             .await
         } else {
-            mimi_runtime::clients::connection_diagnostics::check_text_service_with_network(
+            mimi_runtime::clients::transport::connection_diagnostics::check_text_service_with_network(
                 &configuration.expect("text probe configuration"),
                 text_network,
             )

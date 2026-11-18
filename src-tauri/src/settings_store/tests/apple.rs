@@ -49,7 +49,7 @@ fn apple_text_route_is_metadata_only_preserves_auto_and_ignores_broken_text_stor
             prefs.source_language = SourceLanguage::Japanese;
             prefs.target_language = TargetLanguage::English;
             prefs.network_proxy = ProxyConfig {
-                mode: crate::core::network_proxy::ProxyMode::Direct,
+                mode: crate::core::services::network_proxy::ProxyMode::Direct,
                 url: None,
             };
         })
@@ -160,7 +160,7 @@ fn apple_text_route_keeps_custom_recognition_credentials_and_original_bypasses_i
             .unwrap();
         assert_eq!(
             store.configuration().unwrap().text_network_proxy.mode,
-            crate::core::network_proxy::ProxyMode::Direct
+            crate::core::services::network_proxy::ProxyMode::Direct
         );
         assert_eq!(store.configuration().unwrap().text_credentials, None);
         assert_eq!(

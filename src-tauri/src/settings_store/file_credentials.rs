@@ -95,7 +95,7 @@ impl FileCredentialStore {
         let mut slots = Vec::new();
         for profile in profiles {
             if super::is_legacy_env_profile_id(&profile.id)
-                || profile.provider == crate::core::provider::ProviderKind::AppleSpeech
+                || profile.provider == crate::core::services::provider::ProviderKind::AppleSpeech
             {
                 continue;
             }
@@ -1637,7 +1637,7 @@ mod tests {
     }
 
     fn pending_custom_settings(
-        provider: crate::core::provider::ProviderKind,
+        provider: crate::core::services::provider::ProviderKind,
     ) -> (
         tempfile::TempDir,
         FileCredentialStore,
@@ -1694,8 +1694,10 @@ mod tests {
         (directory, local, profile, legacy)
     }
 
-    fn complete_speech_request(key: &str) -> crate::core::credentials::ProviderCredentials {
-        crate::core::credentials::ProviderCredentials::CustomSpeech {
+    fn complete_speech_request(
+        key: &str,
+    ) -> crate::core::services::credentials::ProviderCredentials {
+        crate::core::services::credentials::ProviderCredentials::CustomSpeech {
             endpoint: "wss://speech.example/realtime".into(),
             model: "synthetic-model".into(),
             api_key: key.into(),
@@ -1704,7 +1706,7 @@ mod tests {
 
     #[test]
     fn complete_custom_speech_replacement_repairs_only_its_malformed_saved_value() {
-        use crate::core::{credentials::ProviderCredentials, provider::ProviderKind};
+        use crate::core::services::{credentials::ProviderCredentials, provider::ProviderKind};
         for provider in [
             ProviderKind::CustomOpenAIASR,
             ProviderKind::CustomDashScopeASR,
@@ -1765,7 +1767,7 @@ mod tests {
                 assert_eq!(
                     store.save_credentials(&profile.id, &request),
                     Err(
-                        crate::core::credentials::ProviderCredentialsError::InvalidStoredValue
+                        crate::core::services::credentials::ProviderCredentialsError::InvalidStoredValue
                             .to_string()
                     )
                 );
@@ -1809,7 +1811,7 @@ mod tests {
 
     #[test]
     fn complete_custom_speech_replacement_retires_only_its_pending_import() {
-        use crate::core::{credentials::ProviderCredentials, provider::ProviderKind};
+        use crate::core::services::{credentials::ProviderCredentials, provider::ProviderKind};
         for provider in [
             ProviderKind::CustomOpenAIASR,
             ProviderKind::CustomDashScopeASR,
@@ -1885,7 +1887,7 @@ mod tests {
     #[test]
     fn pending_custom_speech_marker_failure_keeps_the_durable_replacement_for_retry() {
         let (directory, mut local, profile, legacy) =
-            pending_custom_settings(crate::core::provider::ProviderKind::CustomOpenAIASR);
+            pending_custom_settings(crate::core::services::provider::ProviderKind::CustomOpenAIASR);
         let path = local.path.clone();
         let blocker = directory.path().join("blocked-marker-parent");
         fs::write(&blocker, b"synthetic obstruction").unwrap();
@@ -1918,7 +1920,7 @@ mod tests {
     #[test]
     fn pending_custom_speech_failed_local_write_preserves_the_pending_document() {
         let (directory, local, profile, legacy) =
-            pending_custom_settings(crate::core::provider::ProviderKind::CustomOpenAIASR);
+            pending_custom_settings(crate::core::services::provider::ProviderKind::CustomOpenAIASR);
         let path = local.path.clone();
         let mut document: Document = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         document
@@ -1962,7 +1964,7 @@ mod tests {
     #[test]
     fn complete_custom_speech_replacement_cannot_overwrite_a_damaged_document() {
         let (directory, local, profile, legacy) =
-            pending_custom_settings(crate::core::provider::ProviderKind::CustomOpenAIASR);
+            pending_custom_settings(crate::core::services::provider::ProviderKind::CustomOpenAIASR);
         let path = local.path.clone();
         let native_reads = reads(&legacy);
         let store = SettingsStore::load_with_secret(
@@ -1985,9 +1987,8 @@ mod tests {
 
     #[test]
     fn complete_text_route_cannot_replace_an_unread_multi_route_import() {
-        use crate::core::{
-            credentials::ProviderCredentials,
-            provider::{ProviderKind, TextTranslation},
+        use crate::core::services::{
+            credentials::ProviderCredentials, provider::ProviderKind, provider::TextTranslation,
         };
         let directory = tempfile::tempdir().unwrap();
         let legacy = Legacy::default();

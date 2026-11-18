@@ -1,14 +1,14 @@
 import { useRef, useState } from "react";
-import { ProviderIcon } from "../../../components/ProviderIcon";
+import { ProviderIcon } from "../../../components/providers/ProviderIcon";
 import { I18N } from "../../../lib/i18n";
 import { profileErrorMessage } from "../../../lib/providers/connectionDiagnostics";
 import { profileSelectionState } from "../../../lib/profiles/profileSelection";
 import { useStore } from "../../../lib/store";
 import { AudioInputSettings } from "./AudioInputSettings";
-import { ProfileLanguageSettings } from "../services/ProfileLanguageSettings";
-import { SettingsRow, SettingsSection, SettingsSelect } from "../SettingsPrimitives";
-import { settingsPageCopy } from "../SettingsPageCopy";
-import { useSettingsToast } from "../useSettingsToast";
+import { ProfileLanguageSettings } from "../services/languages/ProfileLanguageSettings";
+import { SettingsRow, SettingsSection, SettingsSelect } from "../controls/SettingsPrimitives";
+import { settingsPageCopy } from "../navigation/SettingsPageCopy";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 
 export function VoiceSettings({ onOpenModels, onOpenAppleResources }: { onOpenModels: () => void; onOpenAppleResources: () => void }) {
   const settings = useStore(state => state.settings);

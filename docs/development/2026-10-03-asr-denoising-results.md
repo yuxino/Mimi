@@ -4,7 +4,7 @@ The user wants better original-language recognition before translation. This
 round evaluates noise reduction, rather than requiring music-stem separation.
 It does not identify the cause of the reported native-session omissions. Neither
 candidate is enabled in Mimi: the measured recognition regressions fail the
-promotion gate in [the design](../plans/2026-10-03-asr-denoising.md).
+promotion gate in [the design](../plans/development/verification/2026-10-03-asr-denoising.md).
 
 ## Method
 

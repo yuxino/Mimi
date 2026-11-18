@@ -12,10 +12,10 @@ import { effectiveUiLanguage } from "../../../lib/i18n";
 import { isTauri } from "../../../lib/ipc";
 import { useStore } from "../../../lib/store";
 import type { AudioSource, SessionStateEvent, SettingsSnapshot } from "../../../lib/types";
-import { SettingsHelp } from "../SettingsHelp";
-import { useSettingsToast } from "../useSettingsToast";
-import { buildMultiSourceSubtitleBlocks, buildSubtitleBlocks, usesAtomicSubtitlePreview, visibleLiveSubtitles } from "../../overlay/overlayModel";
-import { Timeline } from "../../overlay/Timeline";
+import { SettingsHelp } from "../feedback/SettingsHelp";
+import { useSettingsToast } from "../feedback/useSettingsToast";
+import { buildMultiSourceSubtitleBlocks, buildSubtitleBlocks, usesAtomicSubtitlePreview, visibleLiveSubtitles } from "../../overlay/timeline/overlayModel";
+import { Timeline } from "../../overlay/timeline/Timeline";
 import "./development-debugger.css";
 
 export interface DebugEntry { id: number; elapsedMs: number; event: { kind: string; [field: string]: unknown } }

@@ -103,7 +103,7 @@ fn typed_grok_probe_and_xai_asr_capabilities_follow_the_selected_text_route() {
     .unwrap();
     assert_eq!(
         response["textEndpoint"],
-        mimi_runtime::core::provider::XAI_TEXT_ENDPOINT
+        mimi_runtime::core::services::provider::XAI_TEXT_ENDPOINT
     );
     let capabilities = |route: &str| -> Value {
         serde_json::from_str(&exchange(&json!({"operation":"capabilities","provider":"xAIRealtime","xaiSpeechMode":"asrMt","route":route,"target":"ja"}).to_string()).unwrap()).unwrap()
@@ -121,7 +121,7 @@ fn typed_grok_probe_and_xai_asr_capabilities_follow_the_selected_text_route() {
     };
     let speech: std::collections::BTreeSet<String> = std::iter::once("auto")
         .chain(
-            mimi_runtime::core::protocols::xai_stt::LANGUAGE_CODES
+            mimi_runtime::core::protocols::recognition::xai_stt::LANGUAGE_CODES
                 .iter()
                 .copied(),
         )
@@ -131,7 +131,7 @@ fn typed_grok_probe_and_xai_asr_capabilities_follow_the_selected_text_route() {
         .iter()
         .filter(|code| {
             code.as_str() == "auto"
-                || mimi_runtime::core::protocols::deepl_languages::DEEPL_SOURCE_CODES
+                || mimi_runtime::core::protocols::translation::deepl_languages::DEEPL_SOURCE_CODES
                     .contains(&code.as_str())
         })
         .cloned()
@@ -155,7 +155,7 @@ fn typed_grok_probe_and_xai_asr_capabilities_follow_the_selected_text_route() {
             "textCredentials":{"kind":"xAI","apiKey":"independent-key","model":"selected-model"},"sourceLanguage":"en","targetLanguage":"ja","translationMode":"turbo","networkProxy":{"mode":"direct"},"textNetworkProxy":{"mode":"direct"}
         }})).unwrap();
     assert!(
-        matches!(probe.credentials,mimi_runtime::core::configuration::TextTranslationProbeCredentials::Independent(mimi_runtime::core::credentials::TextTranslationCredentials::XAI {api_key,..}) if api_key=="independent-key")
+        matches!(probe.credentials,mimi_runtime::core::services::configuration::TextTranslationProbeCredentials::Independent(mimi_runtime::core::services::credentials::TextTranslationCredentials::XAI {api_key,..}) if api_key=="independent-key")
     );
 }
 

@@ -3,7 +3,7 @@
 //! messages are persisted. Only decoded PCM and allowlisted send metadata exist
 //! here. A successful sink send is transport evidence, not provider receipt.
 
-use crate::core::audio_input::AudioSource;
+use crate::core::audio::audio_input::AudioSource;
 use base64::Engine;
 use serde::Serialize;
 use std::fs::{self, File, OpenOptions};
@@ -731,10 +731,10 @@ fn wav_header(sample_rate: u32, pcm_bytes: u32) -> [u8; 44] {
 mod tests {
     use super::*;
     use crate::core::models::{SourceLanguage, TargetLanguage};
-    use crate::core::protocols::{
-        gemini_live::{GeminiLiveEndpoint, GeminiLiveRequestEncoder},
-        openai_realtime::{OpenAIRealtimeEndpoint, OpenAIRealtimeRequestEncoder},
-        volcano_engine::{VolcanoEngineEndpoint, VolcanoEngineRequestEncoder},
+    use crate::core::protocols::realtime::{
+        gemini_live::GeminiLiveEndpoint, gemini_live::GeminiLiveRequestEncoder,
+        openai_realtime::OpenAIRealtimeEndpoint, openai_realtime::OpenAIRealtimeRequestEncoder,
+        volcano_engine::VolcanoEngineEndpoint, volcano_engine::VolcanoEngineRequestEncoder,
     };
 
     #[test]

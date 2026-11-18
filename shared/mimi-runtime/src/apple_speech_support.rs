@@ -5,7 +5,7 @@ use crate::apple_speech::{
     self, AppleSpeechCapabilities, AppleSpeechError, AppleSpeechResourceStatus,
 };
 use crate::core::models::{SourceLanguage, TargetLanguage};
-use crate::core::provider::ServiceProfile;
+use crate::core::services::provider::ServiceProfile;
 use serde::Serialize;
 use std::future::Future;
 use std::sync::{Mutex, OnceLock};
@@ -854,7 +854,7 @@ mod tests {
 
     #[test]
     fn support_revision_changes_even_when_the_route_ready_list_does_not() {
-        use crate::core::provider::{ProviderKind, TextTranslation};
+        use crate::core::services::provider::{ProviderKind, TextTranslation};
         let mut profile =
             ServiceProfile::new("synthetic", "Synthetic", ProviderKind::AppleSpeech).unwrap();
         profile.text_translation = Some(TextTranslation::DeepL);
@@ -929,7 +929,7 @@ mod tests {
 
     #[test]
     fn rejects_incompatible_text_routes_without_inventing_an_os_language() {
-        use crate::core::provider::{ProviderKind, TextTranslation};
+        use crate::core::services::provider::{ProviderKind, TextTranslation};
         let support = map_capabilities(AppleSpeechCapabilities {
             available: true,
             locales: vec![locale("en-US", true), locale("km-KH", true)],
@@ -981,7 +981,7 @@ mod tests {
 
     #[test]
     fn rejected_refreshed_selections_publish_capabilities_and_preserve_the_actual_error() {
-        use crate::core::provider::{ProviderKind, TextTranslation};
+        use crate::core::services::provider::{ProviderKind, TextTranslation};
         let mut profile =
             ServiceProfile::new("synthetic", "Synthetic", ProviderKind::AppleSpeech).unwrap();
         profile.text_translation = Some(TextTranslation::DeepL);

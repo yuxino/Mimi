@@ -5,7 +5,7 @@ PulseAudio server and Mimi's native monitor capture, with generated tones and
 isolated null sinks. They do not use a physical microphone, provider credentials,
 external speech services, or the released microphone UI.
 
-Run `dbus-run-session -- ./scripts/linux-audio-smoke.sh` on a Linux environment
+Run `dbus-run-session -- ./scripts/linux/linux-audio-smoke.sh` on a Linux environment
 with the repository build dependencies. The harness discovers every required
 ignored test before starting the private audio server. Each native test verifies
 the private directory marker, socket/runtime selection and directory permissions

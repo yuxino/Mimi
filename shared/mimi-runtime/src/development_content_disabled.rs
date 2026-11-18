@@ -1,6 +1,6 @@
 //! Production adapters do not inspect or retain recognition/translation content.
-use crate::core::audio_input::AudioSource;
-use crate::core::protocols::qwen_mt::QwenMTClientError;
+use crate::core::audio::audio_input::AudioSource;
+use crate::core::protocols::translation::qwen_mt::QwenMTClientError;
 use serde_json::Value;
 use std::future::Future;
 

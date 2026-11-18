@@ -1,8 +1,11 @@
 //! The same synthetic wire examples also run against the Android adapters.
-use super::{deepl, deeplx, gemini_live::GeminiLiveRequestEncoder, openai_compatible};
+use crate::core::protocols::{
+    realtime::gemini_live::GeminiLiveRequestEncoder, translation::deepl, translation::deeplx,
+    translation::openai_compatible,
+};
 use crate::core::{
-    credentials::TextTranslationCredentials,
-    models::{SourceLanguage, TargetLanguage},
+    models::SourceLanguage, models::TargetLanguage,
+    services::credentials::TextTranslationCredentials,
 };
 use serde_json::Value;
 
@@ -48,7 +51,7 @@ fn contract() -> Value {
 
 #[test]
 fn qwen_streaming_text_contracts_preserve_model_specific_chunks() {
-    use super::qwen_mt::{QwenMTModel, QwenMTStreamText};
+    use crate::core::protocols::translation::qwen_mt::{QwenMTModel, QwenMTStreamText};
     for case in contract()["qwenStreamingText"].as_array().unwrap() {
         let model: QwenMTModel = serde_json::from_value(case["model"].clone()).unwrap();
         let mut text = QwenMTStreamText::new(model);
@@ -72,7 +75,7 @@ fn qwen_streaming_text_contracts_preserve_model_specific_chunks() {
 
 #[test]
 fn xai_streaming_transcript_fixtures_use_the_shared_authoritative_chunk_boundaries() {
-    use super::xai_stt::{decode, TranscriptAssembler};
+    use crate::core::protocols::recognition::xai_stt::{decode, TranscriptAssembler};
     let fixtures = contract();
     let cases = fixtures["xaiStreamingTranscripts"].as_array().unwrap();
     assert!(!cases.is_empty());
@@ -107,7 +110,7 @@ fn xai_streaming_language_catalog_matches_both_native_and_frontend_selections() 
         "/../provider-language-catalogs.json"
     )))
     .unwrap();
-    let capabilities = crate::core::provider::XAISpeechMode::AsrMt.capabilities();
+    let capabilities = crate::core::services::provider::XAISpeechMode::AsrMt.capabilities();
     assert_eq!(
         serde_json::to_value(capabilities.source_languages).unwrap(),
         catalog["xAIStt"]["sourceLanguages"]
@@ -120,7 +123,7 @@ fn xai_streaming_language_catalog_matches_both_native_and_frontend_selections() 
 
 #[test]
 fn custom_recognition_completion_contracts_preserve_authoritative_empty_finals() {
-    use super::custom_speech::TurnSequencer;
+    use crate::core::protocols::recognition::custom_speech::TurnSequencer;
     for case in contract()["customRecognitionCompletions"]
         .as_array()
         .unwrap()
@@ -156,7 +159,7 @@ fn custom_recognition_completion_contracts_preserve_authoritative_empty_finals()
 #[test]
 fn initial_preview_candidate_contracts() {
     for case in contract()["initialPreviewCandidates"].as_array().unwrap() {
-        let mut committer = crate::core::committer::ASRDraftCommitter::new(
+        let mut committer = crate::core::subtitles::committer::ASRDraftCommitter::new(
             case["minimumCharacters"].as_u64().unwrap() as usize,
         );
         committer.update_draft(case["draft"].as_str().unwrap());
@@ -172,7 +175,7 @@ fn initial_preview_candidate_contracts() {
 
 #[test]
 fn preview_content_changes_preserve_meaningful_punctuation() {
-    use crate::core::preview_pacing::PreviewCandidate;
+    use crate::core::subtitles::preview_pacing::PreviewCandidate;
     for case in contract()["previewContentChanges"].as_array().unwrap() {
         let previous = PreviewCandidate::new(
             case["previousDraft"].as_str().unwrap(),
@@ -466,11 +469,11 @@ fn shared_live_setup_contracts() {
 
 #[test]
 fn shared_speech_language_setups_and_catalogs() {
-    use super::{
+    use crate::core::protocols::realtime::{
         azure_openai_realtime::AzureOpenAIRealtimeRequestEncoder,
         openai_realtime::OpenAIRealtimeRequestEncoder, xai_realtime::XAIRealtimeRequestEncoder,
     };
-    use crate::core::provider::ProviderKind;
+    use crate::core::services::provider::ProviderKind;
     for case in contract()["speechLanguageSetups"].as_array().unwrap() {
         let target = serde_json::from_value(case["target"].clone()).unwrap();
         let source = serde_json::from_value(case["source"].clone()).unwrap();
@@ -513,7 +516,7 @@ fn shared_speech_language_setups_and_catalogs() {
 
 #[test]
 fn shared_text_language_catalogs_cover_every_supported_wire_code() {
-    use super::deepl_languages;
+    use crate::core::protocols::translation::deepl_languages;
     use std::collections::BTreeSet;
     let fixtures = contract();
     for (provider, sources, targets) in [
@@ -569,8 +572,10 @@ fn shared_text_language_catalogs_cover_every_supported_wire_code() {
 
 #[test]
 fn livetranslate_catalog_and_wire_languages_follow_the_same_contract() {
-    use super::live_translate::{LiveTranslateProtocolError, LiveTranslateRequestEncoder};
-    use crate::core::provider::AlibabaRealtimeMode;
+    use crate::core::protocols::realtime::live_translate::{
+        LiveTranslateProtocolError, LiveTranslateRequestEncoder,
+    };
+    use crate::core::services::provider::AlibabaRealtimeMode;
     use std::collections::{BTreeMap, BTreeSet};
     let fixture = contract();
     let languages = fixture["alibabaRealtimeLanguages"]["languages"]
@@ -637,7 +642,7 @@ fn livetranslate_catalog_and_wire_languages_follow_the_same_contract() {
 
 #[test]
 fn gemini_streaming_fixtures_preserve_authoritative_segments() {
-    use super::gemini_transcribe::{decode, TranscriptAssembler};
+    use crate::core::protocols::recognition::gemini_transcribe::{decode, TranscriptAssembler};
     for case in contract()["geminiStreamingTranscripts"].as_array().unwrap() {
         let mut assembler = TranscriptAssembler::default();
         let outputs: Vec<Value> = case["frames"].as_array().unwrap().iter().map(|frame| {

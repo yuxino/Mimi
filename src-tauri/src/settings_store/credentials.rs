@@ -8,10 +8,10 @@ use super::{
 use super::{
     CREDENTIAL_SERVICE_UNAVAILABLE, CREDENTIAL_STORE_ACCESS_DENIED, PROFILE_CATALOG_UNAVAILABLE,
 };
-use crate::core::credentials::{
+use crate::core::services::credentials::{
     CredentialRevealField, ProviderCredentials, TextTranslationCredentials,
 };
-use crate::core::provider::{
+use crate::core::services::provider::{
     ProviderKind, ServiceProfile, TextTranslation, DEFAULT_ALIBABA_PROFILE_ID,
 };
 use serde::{Deserialize, Serialize};
@@ -258,7 +258,7 @@ impl SettingsStore {
     pub(super) fn azure_translation_deployment_is_missing(&self, profile: &ServiceProfile) -> bool {
         if profile.provider != ProviderKind::AzureOpenAIRealtime
             || profile.speech_translation_mode
-                != crate::core::provider::SpeechTranslationMode::Simultaneous
+                != crate::core::services::provider::SpeechTranslationMode::Simultaneous
         {
             return false;
         }
@@ -405,13 +405,15 @@ impl SettingsStore {
     pub(super) fn decode_speech_editor_credentials(
         profile: &ServiceProfile,
         value: &str,
-    ) -> Result<ProviderCredentials, crate::core::credentials::ProviderCredentialsError> {
+    ) -> Result<ProviderCredentials, crate::core::services::credentials::ProviderCredentialsError>
+    {
         // An Azure ASR setup may omit the translation deployment. Keep its
         // saved fields editable after switching back to simultaneous mode;
         // session/probe validation still requires the complete active route.
         let mut editable = profile.clone();
         if editable.provider == ProviderKind::AzureOpenAIRealtime {
-            editable.speech_translation_mode = crate::core::provider::SpeechTranslationMode::AsrMt;
+            editable.speech_translation_mode =
+                crate::core::services::provider::SpeechTranslationMode::AsrMt;
         }
         ProviderCredentials::decode_for_profile(&editable, value)
     }
@@ -445,8 +447,10 @@ impl SettingsStore {
                 let credentials = match credentials {
                     TextTranslationCredentials::XAI { api_key, model } if api_key.is_empty() => {
                         let model =
-                            crate::core::protocols::openai_compatible::validate_model(&model)
-                                .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?;
+                            crate::core::protocols::translation::openai_compatible::validate_model(
+                                &model,
+                            )
+                            .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?;
                         TextTranslationCredentials::XAI { api_key, model }
                     }
                     credentials => credentials
@@ -646,7 +650,8 @@ impl SettingsStore {
                 && (!text_translation.uses_chat_completions() || !token.trim().is_empty())
             {
                 return Err(
-                    crate::core::credentials::ProviderCredentialsError::InvalidField.to_string(),
+                    crate::core::services::credentials::ProviderCredentialsError::InvalidField
+                        .to_string(),
                 );
             }
             return self.save_text_translation(
@@ -801,13 +806,13 @@ impl SettingsStore {
                     return Ok(Some(credentials));
                 }
                 return Err(
-                    crate::core::credentials::ProviderCredentialsError::InvalidStoredValue
+                    crate::core::services::credentials::ProviderCredentialsError::InvalidStoredValue
                         .to_string(),
                 );
             };
             let destination: TextTranslationDestination = serde_json::from_str(&destination)
                 .map_err(|_| {
-                    crate::core::credentials::ProviderCredentialsError::InvalidStoredValue
+                    crate::core::services::credentials::ProviderCredentialsError::InvalidStoredValue
                         .to_string()
                 })?;
             let asr_api_key = credentials.alibaba_key().unwrap_or_default().into();
@@ -865,7 +870,8 @@ impl SettingsStore {
         };
         let destination: TextTranslationDestination =
             serde_json::from_str(&value).map_err(|_| {
-                crate::core::credentials::ProviderCredentialsError::InvalidStoredValue.to_string()
+                crate::core::services::credentials::ProviderCredentialsError::InvalidStoredValue
+                    .to_string()
             })?;
         if profile.text_translation() == TextTranslation::XAI
             && destination
@@ -889,7 +895,7 @@ impl SettingsStore {
         model: &str,
         api_key: &str,
     ) -> Result<(), String> {
-        use crate::core::credentials::ProviderCredentialsError as Error;
+        use crate::core::services::credentials::ProviderCredentialsError as Error;
         if !profile.provider.is_custom_speech() {
             return Err(Error::ProviderMismatch.to_string());
         }
@@ -900,16 +906,19 @@ impl SettingsStore {
             None
         } else {
             Some(
-                crate::core::protocols::custom_speech::endpoint(endpoint, profile.provider)
-                    .map_err(|_| Error::InvalidCustomSpeechEndpoint.to_string())?
-                    .to_string(),
+                crate::core::protocols::recognition::custom_speech::endpoint(
+                    endpoint,
+                    profile.provider,
+                )
+                .map_err(|_| Error::InvalidCustomSpeechEndpoint.to_string())?
+                .to_string(),
             )
         };
         let entered_model = if model.trim().is_empty() {
             None
         } else {
             Some(
-                crate::core::protocols::custom_speech::validate_model(model)
+                crate::core::protocols::recognition::custom_speech::validate_model(model)
                     .map_err(|_| Error::InvalidCustomSpeechModel.to_string())?,
             )
         };
@@ -982,7 +991,7 @@ impl SettingsStore {
         token_update: Option<&str>,
         model: &str,
     ) -> Result<(), String> {
-        use crate::core::credentials::ProviderCredentialsError as Error;
+        use crate::core::services::credentials::ProviderCredentialsError as Error;
         if self.catalog_write_blocked {
             return Err(PROFILE_CATALOG_UNAVAILABLE.into());
         }
@@ -990,13 +999,13 @@ impl SettingsStore {
             None
         } else if translation.uses_chat_completions() {
             Some(
-                crate::core::protocols::openai_compatible::endpoint(endpoint)
+                crate::core::protocols::translation::openai_compatible::endpoint(endpoint)
                     .map_err(|_| Error::InvalidOpenAICompatibleEndpoint.to_string())?
                     .to_string(),
             )
         } else if translation == TextTranslation::DeepLX {
             Some(
-                crate::core::protocols::deeplx::endpoint(endpoint)
+                crate::core::protocols::translation::deeplx::endpoint(endpoint)
                     .map_err(|_| Error::InvalidDeepLXEndpoint.to_string())?
                     .to_string(),
             )
@@ -1005,7 +1014,7 @@ impl SettingsStore {
         };
         let entered_model = if translation.uses_chat_completions() && !model.trim().is_empty() {
             Some(
-                crate::core::protocols::openai_compatible::validate_model(model)
+                crate::core::protocols::translation::openai_compatible::validate_model(model)
                     .map_err(|_| Error::InvalidOpenAICompatibleModel.to_string())?,
             )
         } else {
@@ -1085,7 +1094,7 @@ impl SettingsStore {
         profile: &ServiceProfile,
         api_key: &str,
     ) -> Result<(), String> {
-        use crate::core::credentials::ProviderCredentialsError as Error;
+        use crate::core::services::credentials::ProviderCredentialsError as Error;
         if !(profile.provider.supports_text_translation() || profile.uses_independent_asr())
             || (profile.is_standalone_asr() && !api_key.trim().is_empty())
         {
@@ -1191,7 +1200,8 @@ impl SettingsStore {
                 || !model.trim().is_empty()
             {
                 return Err(
-                    crate::core::credentials::ProviderCredentialsError::InvalidField.to_string(),
+                    crate::core::services::credentials::ProviderCredentialsError::InvalidField
+                        .to_string(),
                 );
             }
             return self.save_apple_text_translation(profile, api_key);
@@ -1215,21 +1225,21 @@ impl SettingsStore {
             return Err("Independent text translation requires Alibaba speech recognition.".into());
         }
         if translation == TextTranslation::DeepLX && !endpoint.trim().is_empty() {
-            crate::core::protocols::deeplx::endpoint(endpoint).map_err(|_| {
-                crate::core::credentials::ProviderCredentialsError::InvalidDeepLXEndpoint
+            crate::core::protocols::translation::deeplx::endpoint(endpoint).map_err(|_| {
+                crate::core::services::credentials::ProviderCredentialsError::InvalidDeepLXEndpoint
                     .to_string()
             })?;
         }
         if translation.uses_chat_completions() {
             if !endpoint.trim().is_empty() {
-                crate::core::protocols::openai_compatible::endpoint(endpoint).map_err(|_| {
-                    crate::core::credentials::ProviderCredentialsError::InvalidOpenAICompatibleEndpoint
+                crate::core::protocols::translation::openai_compatible::endpoint(endpoint).map_err(|_| {
+                    crate::core::services::credentials::ProviderCredentialsError::InvalidOpenAICompatibleEndpoint
                         .to_string()
                 })?;
             }
             if !model.trim().is_empty() {
-                crate::core::protocols::openai_compatible::validate_model(model).map_err(|_| {
-                    crate::core::credentials::ProviderCredentialsError::InvalidOpenAICompatibleModel
+                crate::core::protocols::translation::openai_compatible::validate_model(model).map_err(|_| {
+                    crate::core::services::credentials::ProviderCredentialsError::InvalidOpenAICompatibleModel
                         .to_string()
                 })?;
             }
@@ -1249,7 +1259,8 @@ impl SettingsStore {
             .map(serde_json::from_str::<TextTranslationDestination>)
             .transpose()
             .map_err(|_| {
-                crate::core::credentials::ProviderCredentialsError::InvalidStoredValue.to_string()
+                crate::core::services::credentials::ProviderCredentialsError::InvalidStoredValue
+                    .to_string()
             })?
             .or_else(|| {
                 previous_credentials
@@ -1460,7 +1471,8 @@ impl SettingsStore {
     ) -> Result<(), String> {
         if profile.provider == ProviderKind::AppleSpeech {
             return Err(
-                crate::core::credentials::ProviderCredentialsError::ProviderMismatch.to_string(),
+                crate::core::services::credentials::ProviderCredentialsError::ProviderMismatch
+                    .to_string(),
             );
         }
         let account = credential_account(profile);

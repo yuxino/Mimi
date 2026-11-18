@@ -3,9 +3,9 @@
 use super::app::app_is_ui_test;
 use super::settings::emit_settings_snapshot;
 use super::AppState;
-use crate::core::credentials::ProviderCredentials;
 use crate::core::models::SourceLanguage;
-use crate::core::provider::ProviderKind;
+use crate::core::services::credentials::ProviderCredentials;
+use crate::core::services::provider::ProviderKind;
 use tauri::AppHandle;
 
 /// Explicit authorization/readiness check. No capture or current-session changes.
@@ -14,11 +14,11 @@ pub async fn profile_test_connection(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
     profile_id: String,
-    stage: Option<crate::clients::connection_diagnostics::ConnectionCheckStage>,
+    stage: Option<crate::clients::transport::connection_diagnostics::ConnectionCheckStage>,
     credentials: Option<ProviderCredentials>,
     source_language: Option<SourceLanguage>,
-) -> Result<crate::clients::connection_diagnostics::ConnectionDiagnostic, String> {
-    use crate::clients::connection_diagnostics::{
+) -> Result<crate::clients::transport::connection_diagnostics::ConnectionDiagnostic, String> {
+    use crate::clients::transport::connection_diagnostics::{
         check_service, check_speech_service, check_text_service, preparation_failure,
         ConnectionCheckReason, ConnectionCheckStage, ConnectionDiagnostic,
     };

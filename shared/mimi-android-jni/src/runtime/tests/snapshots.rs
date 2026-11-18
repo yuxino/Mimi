@@ -61,7 +61,8 @@ fn conditional_poll_returns_complete_current_state_after_a_change() {
         controller.state.is_translation_preview_pending = true;
         controller.state.is_translation_timed_out = true;
         controller.state.translation_recovery = Some(TranslationRecovery {
-            reason: mimi_runtime::core::diagnostics::TranslationRecoveryReason::RateLimited,
+            reason:
+                mimi_runtime::core::diagnostics::latency::TranslationRecoveryReason::RateLimited,
             retry_after_ms: 4000,
             retry_scheduled: true,
         });
@@ -170,7 +171,9 @@ fn published_controller_state_and_version_stay_together_under_contention() {
 
 #[test]
 fn native_snapshot_preserves_shared_connection_and_translation_recovery() {
-    use mimi_runtime::core::diagnostics::{TranslationRecovery, TranslationRecoveryReason};
+    use mimi_runtime::core::diagnostics::latency::{
+        TranslationRecovery, TranslationRecoveryReason,
+    };
     let native = fixture(configuration());
     native.publish(TranslationSessionController::begin_session);
     assert_eq!(native.snapshot()["connectionStatus"], "connecting");
