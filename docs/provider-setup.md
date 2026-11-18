@@ -400,7 +400,7 @@ This table describes the desktop app's default and optional request paths. Model
 
 Alibaba Cloud’s ASR + MT mode uses `qwen-mt-lite` as its built-in text translator by default. It does not automatically switch to `qwen-mt-flash` or `qwen-mt-plus` for different recognition languages. In this mode, recognition receives a continuous audio stream over WebSocket, while remote independent text translation sends recognized text over HTTP. Apple Translation runs locally. Changing text translation does not change the recognition model.
 
-Model and routing references: [New and existing desktop configurations](../src-tauri/src/settings_store.rs) · [Shared service selection](../shared/mimi-runtime/src/clients/translation_client.rs) · [Current translation modes](../shared/mimi-runtime/src/core/configuration.rs) · [Shared recognizers](../shared/mimi-runtime/src/clients/recognition_client.rs) · [Provider protocols](../shared/mimi-runtime/src/core/protocols/) · [Default Qwen-MT model](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
+Model and routing references: [New and existing desktop configurations](../src-tauri/src/settings_store/mod.rs) · [Shared service selection](../shared/mimi-runtime/src/clients/translation_client.rs) · [Current translation modes](../shared/mimi-runtime/src/core/configuration.rs) · [Shared recognizers](../shared/mimi-runtime/src/clients/recognition_client.rs) · [Provider protocols](../shared/mimi-runtime/src/core/protocols/) · [Default Qwen-MT model](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
 
 ### Alibaba Cloud on Android
 

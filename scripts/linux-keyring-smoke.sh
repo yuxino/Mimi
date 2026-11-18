@@ -9,7 +9,7 @@ if [[ "${MIMI_LINUX_KEYRING_SESSION:-}" != 1 ]]; then
   exec dbus-run-session -- env MIMI_LINUX_KEYRING_SESSION=1 "$0"
 fi
 
-test_name=settings_store::tests::linux_secret_service_roundtrip
+test_name=settings_store::tests::native_credentials::linux_secret_service_roundtrip
 test_list="$(timeout 120s cargo test --locked --manifest-path src-tauri/Cargo.toml \
   --lib "$test_name" -- --exact --ignored --list)"
 if ! grep -Fxq "$test_name: test" <<< "$test_list"; then

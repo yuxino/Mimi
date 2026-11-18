@@ -400,7 +400,7 @@ Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple
 
 阿里云「ASR + MT」的内置文字翻译默认使用 `qwen-mt-lite`，不会因识别语言不同自动切换到 `qwen-mt-flash` 或 `qwen-mt-plus`。该模式的识别经 WebSocket 持续送入音频，远程独立文字翻译通过 HTTP 发送识别文字，Apple 翻译则在本地执行；更换文字翻译不会更换识别模型。
 
-模型与路由依据：[桌面新建配置与旧配置](../src-tauri/src/settings_store.rs) · [共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/configuration.rs) · [共享识别服务](../shared/mimi-runtime/src/clients/recognition_client.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols/) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
+模型与路由依据：[桌面新建配置与旧配置](../src-tauri/src/settings_store/mod.rs) · [共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/configuration.rs) · [共享识别服务](../shared/mimi-runtime/src/clients/recognition_client.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols/) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
 
 ### Android 的阿里云链路
 

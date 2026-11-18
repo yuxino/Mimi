@@ -53,7 +53,7 @@ class ScopeTests(unittest.TestCase):
         self.assertFalse(result["arm_bundle"])
 
     def test_shared_native_contract_tests_every_platform_without_packages(self):
-        for path in ["src-tauri/src/settings_store.rs", "src-tauri/Cargo.lock", ".github/workflows/ci.yml", "scripts/ci-scope.py",
+        for path in ["src-tauri/src/settings_store/mod.rs", "src-tauri/Cargo.lock", ".github/workflows/ci.yml", "scripts/ci-scope.py",
                      "shared/translation-contracts.json",
                      "shared/mimi-core/src/subtitle_reducer.rs",
                      "shared/mimi-android-jni/src/lib.rs",
