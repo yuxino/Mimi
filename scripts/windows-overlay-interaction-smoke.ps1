@@ -35,6 +35,10 @@ public static class MimiPointerSmoke {
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { internal int Left, Top, Right, Bottom; }
 
+    private static Point lastVerifiedMove;
+    private static long lastVerifiedMoveTicks;
+    private static IntPtr firstHoverWindow, firstHoverLeaf, lastHoverLeaf;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct DibInfo {
         internal uint HeaderSize;
@@ -221,6 +225,13 @@ public static class MimiPointerSmoke {
     public static void MoveOverWindow(IntPtr window, int x, int y, string action) {
         AssertHit(window, new Point { X = x, Y = y }, action);
         MoveAndVerify(x, y);
+        // One read after movement records the native leaf without adding an
+        // input event, logging delay or another wait before the pixel sensor.
+        lastHoverLeaf = WindowFromPoint(lastVerifiedMove);
+        if (firstHoverWindow == IntPtr.Zero) {
+            firstHoverWindow = window;
+            firstHoverLeaf = lastHoverLeaf;
+        }
     }
 
     public static string PointerOwnership(IntPtr overlay, IntPtr controls) {
@@ -234,6 +245,36 @@ public static class MimiPointerSmoke {
         var foreground = GetForegroundWindow();
         return String.Format("overlay_visible={0} controls_visible={1} overlay_foreground={2} controls_foreground={3}",
             IsWindowVisible(overlay), IsWindowVisible(controls), foreground == overlay, foreground == controls);
+    }
+
+    private static string HitSurface(IntPtr leaf, IntPtr overlay, IntPtr controls) {
+        var hit = GetAncestor(leaf, 2);
+        return hit == overlay ? "overlay" : hit == controls ? "controls" : hit == IntPtr.Zero ? "none" : "other";
+    }
+
+    private static string WindowGeometry(IntPtr window) {
+        Rect rect;
+        var bounds = GetWindowRect(window, out rect)
+            ? String.Format("({0},{1},{2},{3})", rect.Left, rect.Top, rect.Right, rect.Bottom)
+            : "unavailable";
+        return String.Format("rect={0} dpi={1} ex=0x{2:X}", bounds, GetDpiForWindow(window), GetWindowExStyle(window, -20));
+    }
+
+    public static string HoverGeometry(IntPtr overlay, IntPtr controls) {
+        Point point;
+        IntPtr leaf = IntPtr.Zero;
+        var hasPointer = GetCursorPos(out point);
+        if (hasPointer) leaf = WindowFromPoint(point);
+        var current = hasPointer
+            ? String.Format("point=({0},{1}) hit={2} leaf=0x{3:X}", point.X, point.Y, HitSurface(leaf, overlay, controls), leaf.ToInt64())
+            : "point=unavailable";
+        var move = lastVerifiedMoveTicks == 0 ? "unavailable" : String.Format("({0},{1}) age_ms={2} hit_now={3}",
+            lastVerifiedMove.X, lastVerifiedMove.Y,
+            (System.Diagnostics.Stopwatch.GetTimestamp() - lastVerifiedMoveTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency,
+            HitSurface(WindowFromPoint(lastVerifiedMove), overlay, controls));
+        return String.Format("verified_move={0} current_{1} first_hover_window={2} first_hover_leaf=0x{3:X} after_move_leaf=0x{4:X} same_first_leaf={5} overlay_{6} controls_{7} {8}",
+            move, current, firstHoverWindow == overlay ? "overlay" : "other", firstHoverLeaf.ToInt64(), lastHoverLeaf.ToInt64(),
+            lastHoverLeaf == firstHoverLeaf, WindowGeometry(overlay), WindowGeometry(controls), WindowVisibilityAndFocus(overlay, controls));
     }
 
     public static Point MoveOutside(IntPtr overlay, IntPtr controls) {
@@ -261,6 +302,8 @@ public static class MimiPointerSmoke {
         Point actual;
         if (!SetCursorPos(x, y) || !GetCursorPos(out actual) || actual.X != x || actual.Y != y)
             throw new InvalidOperationException("Could not verify the physical pointer position on the test desktop.");
+        lastVerifiedMove = actual;
+        lastVerifiedMoveTicks = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
@@ -332,6 +375,28 @@ function Write-HoverMetadata([ValidateSet('root-rehover', 'panel-exit')][string]
         if ($pending.Count -gt 0) { Write-Output "Native hover metadata unavailable phase=$Phase surfaces=$($pending -join ',')." }
     }
     catch { Write-Output "Native hover metadata diagnostic could not finish phase=$Phase." }
+}
+
+function Write-RootRehoverGeometry {
+    try {
+        Write-Output ('Native hover geometry phase=root-rehover ' + [MimiPointerSmoke]::HoverGeometry($overlay, $controls))
+        # Read once after the original pixel deadline; do not wait for UIA or
+        # change the input, target, assertion or timeout to obtain diagnostics.
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle($overlay)
+        $byName = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty, 'Collapse subtitles')
+        $byRole = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+        $condition = [System.Windows.Automation.AndCondition]::new([System.Windows.Automation.Condition[]]@($byName, $byRole))
+        $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($null -eq $button) { Write-Output 'Native hover target phase=root-rehover present=false' }
+        else {
+            $bounds = $button.Current.BoundingRectangle
+            Write-Output ('Native hover target phase=root-rehover present=true bounds=({0},{1},{2},{3}) empty={4} enabled={5} offscreen={6}' -f
+                $bounds.X, $bounds.Y, $bounds.Width, $bounds.Height, $bounds.IsEmpty, $button.Current.IsEnabled, $button.Current.IsOffscreen)
+        }
+    }
+    catch { Write-Output 'Native hover geometry diagnostic could not finish phase=root-rehover.' }
 }
 
 function Use-OverlayControl(
@@ -443,7 +508,10 @@ function Wait-CapsuleRevealed($Capsule, $CapsuleReference, [string]$Action, [swi
         $exposure = $CapsuleReference.Exposure($Capsule.Read())
     } until ($exposure -ge 0.80 -or $reveal.ElapsedMilliseconds -ge 1800)
     if ($exposure -lt 0.80) {
-        if ($DiagnoseRootRehover) { Write-HoverMetadata 'root-rehover' }
+        if ($DiagnoseRootRehover) {
+            Write-RootRehoverGeometry
+            Write-HoverMetadata 'root-rehover'
+        }
         throw "The language capsule did not reveal again before $Action."
     }
 }

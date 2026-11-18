@@ -23,4 +23,3 @@ export function startOverlayContentDrag(event: PointerEvent<HTMLElement>, disabl
   event.stopPropagation();
   if (isTauri) void overlayMoveStart().catch(() => {});
 }
-
