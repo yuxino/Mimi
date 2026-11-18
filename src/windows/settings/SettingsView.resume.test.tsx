@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
-import { audio3ErrorMessage } from "../../lib/audio3Errors";
+import { audio3ErrorMessage } from "../../lib/providers/audio3Errors";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { SettingsView } from "./SettingsView";

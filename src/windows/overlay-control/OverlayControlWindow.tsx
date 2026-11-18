@@ -1,11 +1,11 @@
-import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
-import { useLanguageNormalizationToast } from "../settings/useLanguageNormalizationToast";
+import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
+import { useLanguageNormalizationToast } from "../settings/services/useLanguageNormalizationToast";
 import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/useSettingsToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
-import { useOverlayControlMode } from "../../lib/useOverlayControlMode";
+import { useOverlayControlMode } from "../../lib/overlay/useOverlayControlMode";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
-import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
+import { sessionErrorSettingsTarget } from "../../lib/providers/connectionDiagnostics";
 import {
   isTauri,
   listenOverlayPointerMotion,

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionStateEvent, SettingsSnapshot } from "./types";
-import { SNAPSHOT_STEP_TIMEOUT_MS } from "./settingsState";
+import { SNAPSHOT_STEP_TIMEOUT_MS } from "./settings/settingsState";
 import { disposeStoreSnapshotStreams, useStore } from "./store";
 
 const sources = vi.hoisted(() => ({ listenSettings: vi.fn(), listenSession: vi.fn(), getSettings: vi.fn(), getSession: vi.fn() }));

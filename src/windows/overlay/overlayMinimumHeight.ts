@@ -1,7 +1,7 @@
 import type { SettingsSnapshot } from "../../lib/types";
 import {
   normalizeSubtitleFontSize, SUBTITLE_LINE_HEIGHT, SUBTITLE_SOURCE_SCALE,
-} from "../../lib/subtitleTypography";
+} from "../../lib/subtitles/subtitleTypography";
 
 export const OVERLAY_BASE_MINIMUM_HEIGHT = 136;
 const LEGACY_SERVICE_ROW_HEIGHT = 20;

@@ -5,8 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { OverlayWindow } from "./OverlayWindow";
-import { audioInputLabel } from "../../lib/audioInput";
-import { recordingStatusLabel } from "../../lib/recordingStatus";
+import { audioInputLabel } from "../../lib/audio/audioInput";
+import { recordingStatusLabel } from "../../lib/audio/recordingStatus";
 
 vi.mock("../../lib/ipc", async (original) => ({
   ...await original<typeof import("../../lib/ipc")>(),

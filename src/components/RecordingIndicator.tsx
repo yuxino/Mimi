@@ -1,6 +1,6 @@
 import type { ResolvedUiLanguage } from "../lib/i18n";
 import type { AudioRecordingStatus } from "../lib/types";
-import { recordingStatusCopy } from "../lib/recordingStatus";
+import { recordingStatusCopy } from "../lib/audio/recordingStatus";
 import { Icon } from "./Icon";
 import "./RecordingIndicator.css";
 

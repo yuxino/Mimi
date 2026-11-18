@@ -1,12 +1,12 @@
-import { textTranslationDisplayName } from "../../lib/textTranslationName";
-import { speechRecognitionDisplayName } from "../../lib/speechRecognitionName";
+import { textTranslationDisplayName } from "../../lib/providers/textTranslationName";
+import { speechRecognitionDisplayName } from "../../lib/providers/speechRecognitionName";
 import { I18N } from "../../lib/i18n";
 import {
   activeServiceProfile,
   isCustomSpeechProvider,
   isIndependentAsrProfile,
   textTranslationForProfile,
-} from "../../lib/providerCapabilities";
+} from "../../lib/providers/providerCapabilities";
 import type { ServiceProvider, SettingsSnapshot, TextTranslation } from "../../lib/types";
 
 export interface OverlayServiceStage {

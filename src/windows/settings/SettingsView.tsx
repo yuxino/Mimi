@@ -5,40 +5,40 @@ import { Switch } from "../../components/Switch";
 import { UI_LANGUAGE_OPTIONS, I18N, setStoredUiLanguage, type UiLanguage } from "../../lib/i18n";
 import { announceSettingsNavigationReady, isTauri, listenSettingsNavigation, type SettingsNavigationTarget } from "../../lib/ipc";
 import { selectSessionStatusKind, useStore } from "../../lib/store";
-import { credentialStateForTarget } from "../../lib/providerCapabilities";
+import { credentialStateForTarget } from "../../lib/providers/providerCapabilities";
 import type { SettingsDraft, SubtitleAlignment } from "../../lib/types";
-import { SUBTITLE_DISPLAY_OPTIONS, VISIBLE_SUBTITLE_COUNT_OPTIONS, visibleSubtitleCountChoice, visibleSubtitleCountDraft, subtitleDisplayShortcut } from "../../lib/subtitleDisplay";
-import { subtitleBackgroundColor } from "../../lib/subtitleColor";
+import { SUBTITLE_DISPLAY_OPTIONS, VISIBLE_SUBTITLE_COUNT_OPTIONS, visibleSubtitleCountChoice, visibleSubtitleCountDraft, subtitleDisplayShortcut } from "../../lib/subtitles/subtitleDisplay";
+import { subtitleBackgroundColor } from "../../lib/subtitles/subtitleColor";
 import type { SubtitleDisplayMode } from "../../lib/types";
-import { MAX_SUBTITLE_FONT_SIZE, MIN_SUBTITLE_FONT_SIZE, subtitleTextStyle } from "../../lib/subtitleTypography";
-import { subtitleFontFamily } from "../../lib/subtitleFont";
-import { SubtitleFontControl } from "./SubtitleFontControl";
-import { SubtitleColorControl } from "./SubtitleColorControl";
-import { ServiceProfiles } from "./ServiceProfiles";
-import { SupportDiagnostics } from "./SupportDiagnostics";
-import { SessionExport } from "./SessionExport";
-import { SoftwareUpdate } from "./SoftwareUpdate";
-import { useSettingsTheme } from "./useSettingsTheme";
+import { MAX_SUBTITLE_FONT_SIZE, MIN_SUBTITLE_FONT_SIZE, subtitleTextStyle } from "../../lib/subtitles/subtitleTypography";
+import { subtitleFontFamily } from "../../lib/subtitles/subtitleFont";
+import { SubtitleFontControl } from "./appearance/SubtitleFontControl";
+import { SubtitleColorControl } from "./appearance/SubtitleColorControl";
+import { ServiceProfiles } from "./services/ServiceProfiles";
+import { SupportDiagnostics } from "./support/SupportDiagnostics";
+import { SessionExport } from "./history/SessionExport";
+import { SoftwareUpdate } from "./updates/SoftwareUpdate";
+import { useSettingsTheme } from "./appearance/useSettingsTheme";
 import { DockPreference } from "./DockPreference";
-import { AppearancePicker } from "./AppearancePicker";
+import { AppearancePicker } from "./appearance/AppearancePicker";
 import { PulseRing } from "../overlay/PulseRing";
 import type { PulseStyle } from "../../lib/types";
 import { useResolvedMotion } from "../overlay/animation";
 import { SettingsRow, SettingsSection, SettingsSelect } from "./SettingsPrimitives";
-import { QuickStartGuide } from "./QuickStartGuide";
+import { QuickStartGuide } from "./guide/QuickStartGuide";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { SettingsQuitFooter } from "./SettingsQuitFooter";
 import { SettingsHelp } from "./SettingsHelp";
 import { SettingsConfirmation } from "./DestructiveConfirmation";
 import { SettingsInitializationStatus } from "./SettingsInitializationStatus";
-import { VoiceSettings } from "./VoiceSettings";
+import { VoiceSettings } from "./audio/VoiceSettings";
 import { settingsPageCopy } from "./SettingsPageCopy";
 import { SettingsToastRegion } from "./SettingsToast";
 import { useSettingsToast } from "./useSettingsToast";
 import "./settings.css";
 
 const DevelopmentDebugger = __MIMI_DEVELOPMENT_BUILD__
-  ? lazy(() => import("./DevelopmentDebugger").then(module => ({ default: module.DevelopmentDebugger })))
+  ? lazy(() => import("./development/DevelopmentDebugger").then(module => ({ default: module.DevelopmentDebugger })))
   : null;
 
 type SettingsCategory = "subtitles" | "voice" | "service" | "general" | "export" | "diagnostics" | "guide";

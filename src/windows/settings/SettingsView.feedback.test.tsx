@@ -6,10 +6,10 @@ import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { useStore } from "../../lib/store";
 import { SettingsView } from "./SettingsView";
 
-vi.mock("./ServiceProfiles", () => ({ ServiceProfiles: () => null }));
-vi.mock("./SoftwareUpdate", () => ({ SoftwareUpdate: () => null }));
-vi.mock("./SessionExport", () => ({ SessionExport: () => null }));
-vi.mock("./SupportDiagnostics", () => ({ SupportDiagnostics: () => null }));
+vi.mock("./services/ServiceProfiles", () => ({ ServiceProfiles: () => null }));
+vi.mock("./updates/SoftwareUpdate", () => ({ SoftwareUpdate: () => null }));
+vi.mock("./history/SessionExport", () => ({ SessionExport: () => null }));
+vi.mock("./support/SupportDiagnostics", () => ({ SupportDiagnostics: () => null }));
 const initial = useStore.getState();
 let host: HTMLDivElement, root: Root;
 const save = vi.fn(initial.saveSettings);

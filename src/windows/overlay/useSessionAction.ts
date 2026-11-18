@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { sessionActionErrorMessage } from "../../lib/connectionDiagnostics";
+import { sessionActionErrorMessage } from "../../lib/providers/connectionDiagnostics";
 import { I18N } from "../../lib/i18n";
 
 /** A click acknowledges immediately; repeated clicks share the same operation. */

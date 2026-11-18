@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it, vi } from "vitest";
-import { applicationAudioCopy } from "../../lib/applicationAudio";
+import { applicationAudioCopy } from "../../lib/audio/applicationAudio";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
 import { TARGET_LANGUAGE_DISPLAY_NAMES, type SettingsSnapshot, type TargetLanguage } from "../../lib/types";
 import type { OverlayControlMode } from "../../lib/ipc";

@@ -163,7 +163,7 @@ def generated_files() -> dict[Path, str]:
             expected_resources.add(resource)
         mode_field = entry.get("desktopModeField")
         if mode_field:
-            owner = ROOT / "src/windows/settings/AlibabaRealtimeSettings.tsx"
+            owner = ROOT / "src/windows/settings/services/AlibabaRealtimeSettings.tsx"
             if f"{mode_field}: common.{key}" not in owner.read_text(encoding="utf-8"):
                 raise ValueError(f"Missing desktop mode binding: {key}")
         if entry["desktopSetting"]:

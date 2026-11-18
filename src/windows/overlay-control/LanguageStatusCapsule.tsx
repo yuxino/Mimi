@@ -2,10 +2,10 @@ import { useLayoutEffect, useRef } from "react";
 import { Icon } from "../../components/Icon";
 import { AudioInputIndicator } from "../../components/AudioInputIndicator";
 import { RecordingIndicator } from "../../components/RecordingIndicator";
-import { audioInputLabel } from "../../lib/audioInput";
+import { audioInputLabel } from "../../lib/audio/audioInput";
 import { effectiveUiLanguage, I18N } from "../../lib/i18n";
-import { recordingStatusLabel } from "../../lib/recordingStatus";
-import { diagnosticPlatform } from "../../lib/connectionDiagnostics";
+import { recordingStatusLabel } from "../../lib/audio/recordingStatus";
+import { diagnosticPlatform } from "../../lib/providers/connectionDiagnostics";
 import {
   OVERLAY_ACTIVITY_PHASES,
   type AudioRecordingStatus,

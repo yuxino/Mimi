@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useStore } from "../../lib/store";
-import { shareUnchangedSubtitleHistory } from "../../lib/sessionSnapshot";
+import { shareUnchangedSubtitleHistory } from "../../lib/session/sessionSnapshot";
 import type { SessionStateEvent } from "../../lib/types";
 import { OverlayWindow } from "./OverlayWindow";
 

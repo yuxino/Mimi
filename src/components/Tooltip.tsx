@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { tooltipPosition } from "./tooltipPosition";
-import { OVERLAY_POINTER_TARGET_EVENT } from "../lib/overlayPointer";
+import { OVERLAY_POINTER_TARGET_EVENT } from "../lib/overlay/overlayPointer";
 import "./tooltip.css";
 
 interface TooltipProps {

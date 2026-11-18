@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { OVERLAY_POINTER_TARGET_EVENT } from "../lib/overlayPointer";
+import { OVERLAY_POINTER_TARGET_EVENT } from "../lib/overlay/overlayPointer";
 import { Tooltip } from "./Tooltip";
 
 let host: HTMLDivElement;

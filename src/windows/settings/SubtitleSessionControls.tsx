@@ -1,9 +1,9 @@
-import { isSystemAudioPermissionDenied } from "../../lib/systemAudioPermissions";
+import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SettingsNavigationTarget } from "../../lib/ipc";
 import { I18N } from "../../lib/i18n";
-import { sessionErrorSettingsTarget } from "../../lib/connectionDiagnostics";
-import { credentialStateForTarget } from "../../lib/providerCapabilities";
+import { sessionErrorSettingsTarget } from "../../lib/providers/connectionDiagnostics";
+import { credentialStateForTarget } from "../../lib/providers/providerCapabilities";
 import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
 import { selectSessionErrorMessage, selectSessionStatusKind, useStore } from "../../lib/store";
 import { useSessionAction } from "../overlay/useSessionAction";

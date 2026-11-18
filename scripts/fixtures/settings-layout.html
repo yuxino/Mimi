@@ -392,13 +392,13 @@ const { createRoot } = (await import("react-dom/client")).default;
 const { flushSync } = (await import("react-dom")).default;
 const { useStore } = await import("/src/lib/store.ts");
 const { SOURCE_LANGUAGE_DISPLAY_NAMES } = await import("/src/lib/types.ts");
-const { audioSourceCopy } = await import("/src/lib/windowsAudioSource.ts");
+const { audioSourceCopy } = await import("/src/lib/audio/windowsAudioSource.ts");
 const { setStoredUiLanguage, I18N } = await import("/src/lib/i18n.ts");
 const { SettingsView } = await import("/src/windows/settings/SettingsView.tsx");
 const { OverlayControlPanel } = await import("/src/windows/overlay-control/OverlayControlPanel.tsx");
 const { overlayControlPanelModel } = await import("/src/windows/overlay-control/overlayControlModel.ts");
 const { languageStatus } = await import("/src/windows/overlay/overlayModel.ts");
-const { targetLanguageAfterSourceSwitch } = await import("/src/lib/providerCapabilities.ts");
+const { targetLanguageAfterSourceSwitch } = await import("/src/lib/providers/providerCapabilities.ts");
 await import("/src/windows/overlay-control/overlay-control.css");
 function FixtureOverlayControl() {
   const settings = useStore(state => state.settings);

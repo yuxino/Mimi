@@ -2,17 +2,17 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
-import { subtitleColorHex } from "../../lib/subtitleColor";
-import { subtitleFontFamily } from "../../lib/subtitleFont";
+import { subtitleColorHex } from "../../lib/subtitles/subtitleColor";
+import { subtitleFontFamily } from "../../lib/subtitles/subtitleFont";
 import { Timeline } from "./Timeline";
 import { buildSubtitleBlocks } from "./overlayModel";
 
-vi.mock("../../lib/subtitleColor", async original => {
-  const actual = await original<typeof import("../../lib/subtitleColor")>();
+vi.mock("../../lib/subtitles/subtitleColor", async original => {
+  const actual = await original<typeof import("../../lib/subtitles/subtitleColor")>();
   return { ...actual, subtitleColorHex: vi.fn(actual.subtitleColorHex) };
 });
-vi.mock("../../lib/subtitleFont", async original => {
-  const actual = await original<typeof import("../../lib/subtitleFont")>();
+vi.mock("../../lib/subtitles/subtitleFont", async original => {
+  const actual = await original<typeof import("../../lib/subtitles/subtitleFont")>();
   return { ...actual, subtitleFontFamily: vi.fn(actual.subtitleFontFamily) };
 });
 

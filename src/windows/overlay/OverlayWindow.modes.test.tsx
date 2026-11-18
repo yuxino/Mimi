@@ -2,9 +2,9 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { audio3ErrorMessage } from "../../lib/audio3Errors";
+import { audio3ErrorMessage } from "../../lib/providers/audio3Errors";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { shareUnchangedSubtitleHistory } from "../../lib/sessionSnapshot";
+import { shareUnchangedSubtitleHistory } from "../../lib/session/sessionSnapshot";
 import { useStore } from "../../lib/store";
 import type { SessionStateEvent, SettingsSnapshot, SubtitleDisplayMode, SubtitleSnapshot } from "../../lib/types";
 import { OverlayWindow } from "./OverlayWindow";

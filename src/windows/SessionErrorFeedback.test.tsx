@@ -2,10 +2,10 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
-import { audio3ErrorMessage, audio3ErrorSummary } from "../lib/audio3Errors";
+import { audio3ErrorMessage, audio3ErrorSummary } from "../lib/providers/audio3Errors";
 import type { OverlayControlMode } from "../lib/ipc";
-import { localizedSessionErrorSummary } from "../lib/sessionErrorPresentation";
-import { diagnosticCopy } from "../lib/connectionDiagnostics";
+import { localizedSessionErrorSummary } from "../lib/session/sessionErrorPresentation";
+import { diagnosticCopy } from "../lib/providers/connectionDiagnostics";
 import { I18N, setStoredUiLanguage } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import { OverlayWindow } from "./overlay/OverlayWindow";

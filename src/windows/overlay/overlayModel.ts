@@ -1,6 +1,6 @@
-import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/speechLanguageGuidance";
-import { credentialErrorMessage } from "../../lib/connectionDiagnostics";
-import { subtitleLaneFontSize, subtitleLineHeight } from "../../lib/subtitleTypography";
+import { speechLanguageGuidance, targetLanguageOptionLabel } from "../../lib/providers/speechLanguageGuidance";
+import { credentialErrorMessage } from "../../lib/providers/connectionDiagnostics";
+import { subtitleLaneFontSize, subtitleLineHeight } from "../../lib/subtitles/subtitleTypography";
 /**
  * Pure derived state for the subtitle overlay. Keeping these transformations
  * outside React makes the phase and row logic deterministic and testable.

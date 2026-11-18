@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { appOpenAudioPrivacySettings } from "../lib/ipc";
-import { systemAudioPermissionCopy } from "../lib/systemAudioPermissions";
+import { systemAudioPermissionCopy } from "../lib/audio/systemAudioPermissions";
 import { Icon } from "./Icon";
 import { I18N } from "../lib/i18n";
 import "./session-error-feedback.css";

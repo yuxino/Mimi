@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUDIO3_RECOGNITION_LANGUAGE_CODES, type SettingsSnapshot, type SourceLanguage } from "../../lib/types";
-import { sourceLanguagesForSettings } from "../../lib/providerCapabilities";
+import { sourceLanguagesForSettings } from "../../lib/providers/providerCapabilities";
 import { overlayControlPanelModel } from "./overlayControlModel";
 
 const BASE_SETTINGS: SettingsSnapshot = {

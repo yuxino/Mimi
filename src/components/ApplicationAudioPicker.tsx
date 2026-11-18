@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RotateCw, Volume1 } from "lucide-react";
-import { useApplicationAudioPicker } from "../lib/useApplicationAudioPicker";
+import { useApplicationAudioPicker } from "../lib/audio/useApplicationAudioPicker";
 import { Select } from "./Select";
 import { Icon } from "./Icon";
 import "./application-audio-picker.css";

@@ -36,7 +36,7 @@ show the before/after pairs for canceled export and late deletion completion.
 
 ```sh
 npm ci
-npm test -- src/windows/settings/SessionExport.test.tsx
+npm test -- src/windows/settings/history/SessionExport.test.tsx
 ./scripts/check.sh
 ```
 

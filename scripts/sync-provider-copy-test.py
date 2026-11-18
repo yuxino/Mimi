@@ -58,7 +58,7 @@ class SharedProviderCopyTest(unittest.TestCase):
     def fixture(self, root):
         source = json.loads(MODULE.SOURCE.read_text(encoding="utf-8"))
         files = [MODULE.SOURCE, ROOT / "shared/translation-contracts.json", ROOT / "src/lib/i18n.ts",
-                 ROOT / "src/windows/settings/AlibabaRealtimeSettings.tsx"]
+                 ROOT / "src/windows/settings/services/AlibabaRealtimeSettings.tsx"]
         files += [ROOT / f"src/lib/locales/{locale}.ts" for locale in source["locales"]]
         for original in files:
             target = root / original.relative_to(ROOT)

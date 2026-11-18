@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../lib/i18n";
-import { isClickablePointerTarget } from "../../lib/overlayPointer";
+import { isClickablePointerTarget } from "../../lib/overlay/overlayPointer";
 import { useStore } from "../../lib/store";
 import { OverlayWindow } from "./OverlayWindow";
 
