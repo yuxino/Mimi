@@ -121,8 +121,14 @@ export function useOverlayChromePeers(
     if (shareWithPeer) {
       void listen<unknown>(HOVER_EVENT, ({ payload }) => {
         if (disposed || !payload || typeof payload !== "object" ||
-          !("kind" in payload) || (payload.kind !== "visibility" && payload.kind !== "ready") ||
+          !("kind" in payload) || (payload.kind !== "visibility" && payload.kind !== "ready" && payload.kind !== "native-pointer") ||
           !("visible" in payload) || typeof payload.visible !== "boolean") return;
+        if (payload.kind === "native-pointer") {
+          // Windows supplies physical ownership when its inactive WebView
+          // misses DOM entry. Attribute it locally, independently of the peer.
+          setNativeInside(payload.visible);
+          return;
+        }
         element.toggleAttribute("data-overlay-peer-hover", payload.visible);
         if (payload.kind === "ready") publish("visibility", true);
       }, { target: ownWindow }).then((remove) => {

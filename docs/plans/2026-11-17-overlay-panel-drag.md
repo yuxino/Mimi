@@ -44,6 +44,13 @@ transient feedback with a retryable action. Recording and error states retain
 their explicit visibility. Error recovery temporarily restores interaction
 without changing the saved preference.
 
+On Windows, a pointer returning to the same spot can hit the correct WebView2
+child while the page still reports no hover. While a subtitle surface is
+visible, Mimi checks which native window owns the pointer and sends changes
+to the owning surface. Covered and click-through windows do not own it.
+Hidden windows stop the checks. A reloaded renderer requests current ownership
+through the same handshake that restores hover between the two surfaces.
+
 Settings and the global Command+Shift+L shortcut on macOS (Control+Shift+L on
 Windows/X11) provide additional recovery. Wayland exposes `--toggle-lock` for the
 compositor's shortcut configuration, alongside the existing immersive command.

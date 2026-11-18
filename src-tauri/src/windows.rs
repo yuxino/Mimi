@@ -90,14 +90,31 @@ mod macos_control_dismiss;
 #[cfg(target_os = "macos")]
 mod macos_pointer;
 
-#[cfg(target_os = "macos")]
-pub fn remove_overlay_pointer_tracking(app: &AppHandle, label: &str) {
-    macos_pointer::remove(app, label);
+#[cfg(any(target_os = "windows", test))]
+mod windows_pointer;
+
+#[cfg(target_os = "windows")]
+pub use windows_pointer::WindowsPointerTracker;
+
+#[cfg(target_os = "windows")]
+pub fn install_windows_pointer_tracking(app: &AppHandle) -> WindowsPointerTracker {
+    windows_pointer::install(app)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn remove_overlay_pointer_tracking(app: &AppHandle, label: &str) {
+    #[cfg(target_os = "macos")]
+    macos_pointer::remove(app, label);
+    #[cfg(target_os = "windows")]
+    windows_pointer::remove(app, label);
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn remove_all_overlay_pointer_tracking(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
     macos_pointer::remove_all(app);
+    #[cfg(target_os = "windows")]
+    windows_pointer::remove_all(app);
 }
 
 #[cfg(target_os = "macos")]
@@ -909,8 +926,8 @@ impl OverlayWindowManager {
         if is_active && !visible {
             show_overlay_window(&window);
         } else if !is_active && visible && window.hide().is_ok() {
-            #[cfg(target_os = "macos")]
-            macos_pointer::remove(app, window.label());
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            remove_overlay_pointer_tracking(app, window.label());
         }
     }
 
@@ -1619,6 +1636,9 @@ fn configure_overlay_window_impl(window: &tauri::WebviewWindow, order_front: boo
         let _ = order_front;
         let _ = window.set_always_on_top(true);
     }
+
+    #[cfg(target_os = "windows")]
+    windows_pointer::activate(window);
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
@@ -2910,8 +2930,8 @@ impl OverlayControlWindowManager {
         let _ = window.set_focusable(focus_policy.focusable_before_show);
         if mode == OverlayControlMode::Hidden {
             let _ = window.hide();
-            #[cfg(target_os = "macos")]
-            macos_pointer::remove(app, window.label());
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            remove_overlay_pointer_tracking(app, window.label());
             let _ = window.emit(OVERLAY_CONTROL_MODE_EVENT, mode);
             return;
         }

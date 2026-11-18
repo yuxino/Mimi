@@ -96,6 +96,36 @@ it("uses independent native and DOM hover across blur and sends only exposure tr
   expect(shown("overlay") || shown("island")).toBe(false);
 });
 
+it("recovers Windows same-point native reentry without DOM entry or repeated peer notifications", async () => {
+  await act(async () => root.render(<><Surface kind="overlay" /><Surface kind="island" /></>));
+  const report = async (kind: SurfaceKind, visible: boolean) => act(async () => transport.emitTo(
+    { kind: "WebviewWindow", label: kind === "overlay" ? "overlay" : "overlay-control" },
+    "overlay-chrome-hover", { kind: "native-pointer", visible },
+  ));
+  await report("overlay", true);
+  expect(surface("overlay").hasAttribute(ownHover)).toBe(true);
+  expect(surface("overlay").hasAttribute("data-overlay-pointer-tracked")).toBe(true);
+  expect(surface("island").hasAttribute(peerHover)).toBe(true);
+  await report("overlay", false);
+  await tick(160);
+  expect(shown("overlay") || shown("island")).toBe(false);
+  // Re-enter exactly the old point: the WebView sends no DOM event.
+  await report("overlay", true);
+  expect(shown("overlay") && shown("island")).toBe(true);
+  transport.emitTo.mockClear();
+  for (let count = 0; count < 8; count++) await report("overlay", true);
+  expect(transport.emitTo.mock.calls.filter(([, , payload]) =>
+    (payload as { kind: string }).kind === "visibility")).toHaveLength(0);
+  await report("overlay", false);
+  await report("island", true);
+  await tick(180);
+  expect(surface("overlay").hasAttribute(ownHover)).toBe(false);
+  expect(surface("overlay").hasAttribute(peerHover)).toBe(true);
+  await report("island", false);
+  await tick(160);
+  expect(shown("overlay") || shown("island")).toBe(false);
+});
+
 it.each([true, false])("exposes keyboard focus only while the document has focus (share=%s)", async share => {
   await act(async () => root.render(<><Surface kind="overlay" share={share} /><Surface kind="island" share={share} /></>));
   const island = surface("island");

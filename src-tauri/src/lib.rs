@@ -201,6 +201,8 @@ pub fn run() {
             app.manage(windows::OverlayControlState::default());
             app.manage(windows::OverlayControlHost::detect());
             app.manage(windows::OverlayPresentationState::default());
+            #[cfg(target_os = "windows")]
+            app.manage(windows::install_windows_pointer_tracking(&app_handle));
             windows::OverlayWindowManager::ensure_overlay(&app_handle, &overlay);
             #[cfg(target_os = "macos")]
             windows::install_active_space_observer(&app_handle, &overlay, &settings);
@@ -264,7 +266,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "windows"))]
                 WindowEvent::Destroyed
                     if matches!(window.label(), "overlay" | "overlay-control") =>
                 {
@@ -383,7 +385,7 @@ pub fn run() {
                     if window.label() == "overlay" || window.label() == "overlay-control" =>
                 {
                     api.prevent_close();
-                    #[cfg(target_os = "macos")]
+                    #[cfg(any(target_os = "macos", target_os = "windows"))]
                     windows::remove_overlay_pointer_tracking(app, window.label());
                     if let Err(error) = window.hide() {
                         tracing::warn!(
@@ -497,6 +499,10 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Exit) {
                 mac_native_quit::remove();
+                windows::remove_all_overlay_pointer_tracking(app);
+            }
+            #[cfg(target_os = "windows")]
+            if matches!(event, tauri::RunEvent::Exit) {
                 windows::remove_all_overlay_pointer_tracking(app);
             }
             #[cfg(target_os = "macos")]
