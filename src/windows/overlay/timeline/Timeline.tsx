@@ -4,6 +4,7 @@ import { subtitleFontFamily } from "../../../lib/subtitles/subtitleFont";
 import { IMMERSIVE_TEXT_SHADOW, subtitleLineHeight, subtitleTextStyle } from "../../../lib/subtitles/subtitleTypography";
 import type { SettingsSnapshot, SubtitleAlignment, SubtitleColor } from "../../../lib/types";
 import { observeTimelineResize } from "./timelineResize";
+import { hitsVerticalScrollbar } from "../interaction/overlayContentDrag";
 import { TimelineScroll } from "./timelineScroll";
 import { Icon } from "../../../components/Icon";
 import { compactRepetition } from "./compactRepetition";
@@ -94,9 +95,9 @@ export const Timeline = memo(function Timeline({
   const [reading, setReading] = useState({ active: false, request: followTailRequest });
   const readingHistory = reading.active && reading.request === followTailRequest;
   const previousFollowRequest = useRef(followTailRequest);
-  const setReadingHistory = (active: boolean) => setReading(previous =>
+  const setReadingHistory = useCallback((active: boolean) => setReading(previous =>
     previous.active === active && previous.request === followTailRequest
-      ? previous : { active, request: followTailRequest });
+      ? previous : { active, request: followTailRequest }), [followTailRequest]);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const [laneMeasurements, setLaneMeasurements] = useState({ blockId: "", source: 0, translation: 0 });
   const lastBlockId = blocks.at(-1)?.id ?? "";
@@ -121,18 +122,23 @@ export const Timeline = memo(function Timeline({
   useLayoutEffect(() => () => onReadingHistoryChange?.(false), [onReadingHistoryChange]);
 
   useEffect(() => {
-    // Pointer release can happen outside the subtitle viewport after a click
-    // interrupted its glide. Do not leave automatic following suspended.
-    const release = () => { if (containerRef.current) scroll.pointerUp(containerRef.current); };
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
+    // A thumb can be released outside this viewport, before its last scroll event.
+    const release = () => {
+      const element = containerRef.current;
+      if (!element) return;
+      const wasFollowing = scroll.isFollowing();
+      scroll.pointerUp(element);
+      if (wasFollowing !== scroll.isFollowing()) setReadingHistory(!scroll.isFollowing());
+    };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
     window.addEventListener("blur", release);
     return () => {
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
       window.removeEventListener("blur", release);
     };
-  }, [scroll]);
+  }, [scroll, setReadingHistory]);
 
   useLayoutEffect(() => {
     if (containerRef.current) scroll.reflow(containerRef.current);
@@ -214,10 +220,12 @@ export const Timeline = memo(function Timeline({
       }}
       onTouchEnd={() => { touchStartYRef.current = null; scroll.endUserIntent(); }}
       onTouchCancel={() => { touchStartYRef.current = null; scroll.endUserIntent(); }}
-      onPointerDown={(event) => scroll.pointerDown(event.currentTarget)}
-      onPointerMove={(event) => { if (event.buttons !== 0) scroll.userIntent(event.currentTarget); }}
-      onPointerUp={(event) => scroll.pointerUp(event.currentTarget)}
-      onPointerCancel={(event) => scroll.pointerUp(event.currentTarget)}
+      onPointerDown={(event) => {
+        const scrollbar = event.target === event.currentTarget && event.pointerType === "mouse" &&
+          event.button === 0 && event.isPrimary !== false && hitsVerticalScrollbar(event.currentTarget, event.clientX);
+        scroll.pointerDown(event.currentTarget, scrollbar);
+      }}
+      onPointerMove={(event) => { if (event.buttons !== 0) scroll.pointerMove(event.currentTarget); }}
       onKeyDown={(event) => {
         if (event.key === "Home") {
           event.preventDefault();
