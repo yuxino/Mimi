@@ -4,6 +4,24 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-18：v1.7.4 发布定向复核
+
+- 基于 `06f51c27`，保留当前模型与已保存配置。OpenAI 的[模型目录](https://developers.openai.com/api/docs/models)
+  仍列专用 `gpt-realtime-translate`／`gpt-realtime-whisper`；[弃用表](https://developers.openai.com/api/docs/deprecations)
+  的旧实时模型 2027-01-20、旧文件转写模型 2027-02-26 期限不能套用成这两条
+  专用路线已经停用。未进行新模型质量比较。
+- [Gemini 生命周期表](https://aistudio.google.com/docs/deprecations)对现用 3.5
+  专用翻译／识别尚未公布停用日期。[xAI 公告](https://docs.x.ai/developers/release-notes)
+  的 transcribe 1.0 已于 2026-10-02 退役，当前代码使用 2.0；voice latest
+  已指向 3.0，保留既有滚动别名的质量未知边界，不将 API 兼容声明当作字幕质量实测。
+- [腾讯现用接口](https://cloud.tencent.com/document/product/1093/127565)仍列
+  speech_translate 和 hunyuan-translation-lite，未见下线声明；DeepL 的[旧鉴权弃用](https://developers.deepl.com/docs/resources/breaking-changes-change-notices/november-2025-deprecation-of-legacy-auth-methods)
+  不影响当前 Authorization header 路径。[阿里上新](https://help.aliyun.com/en/model-studio/newly-released-models)
+  的通用思考模型不直接替代专用字幕协议或低延迟文字路线。
+- 所查来源未发现现用路线的立即退役阻断；这不是账号可用性或全部供应商验收。
+  未调用供应商、读凭据或执行付费比较。此前候选、未覆盖项目和 2026-11-20
+  复查安排保留，完整巡检仍未完成；发布范围与实测结果见集成记录。
+
 ## 2026-11-16：OpenAI 实时翻译错误核对
 
 - 路线仍为 `gpt-realtime-translate`，源转写为 `gpt-realtime-whisper`。
