@@ -86,7 +86,6 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globali
 [target.'cfg(target_os = "linux")'.dependencies]
 tauri-plugin-single-instance = "2.4.3"
 gtk = "0.18.2"
-webkit2gtk = "=2.0.2"
 libpulse-binding = "2.30.1"
 zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
 secret-service = { version = "5.1", features = ["crypto-rust"] }

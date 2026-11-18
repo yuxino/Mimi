@@ -775,6 +775,16 @@ Check every command result and confirm that `pm list users` no longer contains
 that exact task ID before stopping the read-only emulator. A failed first
 removal is unfinished cleanup, not permission to wipe the AVD or remove Owner.
 
+Use fail-fast shell handling (`set -e` or an explicit return-code guard) around
+multi-command cleanup. A failed Python/subprocess check must stop later shell
+commands; a successful emulator shutdown must not mask that earlier failure.
+If an already-verified read-only instance is deliberately closed after a failed
+user removal, record that removal as failed. Confirm disposal of its temporary
+write layer with a fresh read-only boot of the same AVD: the original user must
+be active and the task user absent. Then close that verification instance.
+Never use this fallback to clear a writable AVD or claim the earlier removal
+succeeded.
+
 ## Android service dispatch and document export
 
 Capture requests originate from a visible Activity and carry a bounded start
