@@ -626,6 +626,22 @@
   gap: 3px;
 }
 
+.settings-row__copy:has(> .settings-row__shortcut) {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.settings-row__shortcut {
+  padding: 1px 4px;
+  border: 1px solid var(--settings-border);
+  border-radius: 3px;
+  color: var(--settings-text-muted);
+  font: 12px/1.5 var(--mimi-ui-font);
+  white-space: nowrap;
+}
+
 .settings-row__label {
   color: var(--settings-text);
   font-size: 12.5px;

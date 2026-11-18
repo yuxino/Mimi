@@ -153,21 +153,32 @@ it("permits the settings window to invoke the existing pause/resume command", ()
 });
 
 it.each([
-  ["Macintosh", null, "⌘⇧L"],
-  ["Windows NT 10.0", null, "Ctrl+Shift+L"],
-  ["Linux x86_64", undefined, null],
-] as const)("shows a lock shortcut only after native support is established on %s", async (platform, commands, shortcut) => {
+  ["Macintosh", "MacIntel", null, "⌘⇧L", "⌘⇧B"],
+  ["Windows NT 10.0", "Win32", null, "Ctrl+Shift+L", "Ctrl+Shift+B"],
+  ["Linux x86_64", "Linux x86_64", null, "Ctrl+Shift+L", "Ctrl+Shift+B"],
+  ["Linux x86_64", "Linux x86_64", undefined, null, null],
+] as const)("keeps display and lock shortcuts visible only after native support is established on %s", async (platform, platformName, commands, shortcut, displayShortcut) => {
   const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(platform);
+  const navigatorPlatform = vi.spyOn(navigator, "platform", "get").mockReturnValue(platformName);
   shortcuts.commands = commands;
   try {
     await mount();
     const lock = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.lockPosition}"]`)!;
-    const help = document.getElementById(lock.getAttribute("aria-describedby")!)!;
-    expect(help.textContent).toContain(I18N.settings.lockHelp);
-    if (shortcut) expect(help.textContent).toContain(shortcut);
-    else expect(help.textContent).not.toMatch(/⌘⇧L|Ctrl\+Shift\+L/);
+    const descriptions = lock.getAttribute("aria-describedby")!.split(/\s+/).map(id => document.getElementById(id)!);
+    expect(descriptions[0].textContent).toContain(I18N.settings.lockHelp);
+    const lockKey = lock.closest(".settings-row")!.querySelector("kbd");
+    const display = host.querySelector(`[role="combobox"][aria-label="${I18N.settings.subtitleDisplay}"]`)!;
+    expect(display.closest(".settings-row")!.querySelector("kbd")?.textContent ?? null).toBe(displayShortcut);
+    if (shortcut) {
+      expect(lockKey?.textContent).toBe(shortcut);
+      expect(descriptions).toContain(lockKey);
+    } else {
+      expect(lockKey).toBeNull();
+      expect(descriptions[0].textContent).not.toMatch(/⌘⇧L|Ctrl\+Shift\+L/);
+    }
   } finally {
     userAgent.mockRestore();
+    navigatorPlatform.mockRestore();
   }
 });
 
@@ -183,6 +194,7 @@ it.each(["zh", "en", "ja"] as const)("offers the exact Linux commands in a Gener
   await mount();
   const lock = host.querySelector<HTMLButtonElement>(`[role="switch"][aria-label="${I18N.settings.lockPosition}"]`)!;
   expect(document.getElementById(lock.getAttribute("aria-describedby")!)?.textContent).not.toMatch(/⌘⇧L|Ctrl\+Shift\+L/);
+  expect(host.querySelector(".settings-row__shortcut")).toBeNull();
   expect(host.querySelector("#subtitle-settings-panel .settings-shortcut-setup, #service-profiles-panel .settings-shortcut-setup")).toBeNull();
   await act(() => host.querySelector<HTMLButtonElement>("#settings-category-general")!.click());
   const entry = host.querySelector<HTMLButtonElement>("#application-settings-panel .settings-shortcut-setup button")!;
