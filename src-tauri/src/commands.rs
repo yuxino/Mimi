@@ -2660,10 +2660,10 @@ fn apply_settings_draft_guarded(
         })
     };
     #[cfg(target_os = "macos")]
-    crate::mac_dock::save_with_policy(
+    crate::platform::macos::dock::save_with_policy(
         state.settings.preferences().show_in_dock,
         draft.show_in_dock,
-        |show| crate::mac_dock::apply(app, show),
+        |show| crate::platform::macos::dock::apply(app, show),
         save_preferences,
     )?;
     #[cfg(not(target_os = "macos"))]

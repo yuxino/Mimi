@@ -27,14 +27,9 @@ mod development_content;
 #[cfg(any(test, feature = "development-debugger"))]
 mod development_debugger;
 mod fonts;
-#[cfg(target_os = "linux")]
-mod linux_startup;
 #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
 mod live_translate_input_probe;
-#[cfg(any(target_os = "macos", test))]
-mod mac_dock;
-#[cfg(target_os = "macos")]
-mod mac_native_quit;
+mod platform;
 #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
 mod provider_public_audio_probe;
 mod session_export;
@@ -43,10 +38,6 @@ mod session_manager;
 mod settings_store;
 mod updater_target;
 mod windows;
-#[cfg(target_os = "windows")]
-mod windows_startup;
-#[cfg(any(target_os = "windows", test))]
-mod windows_updater_cleanup;
 
 use commands::AppState;
 use core::models::SubtitleDisplayMode;
@@ -65,7 +56,8 @@ use tauri::{Listener, Manager, WindowEvent};
 pub fn run() {
     // Xlib threading must be initialized before GTK opens its display.
     #[cfg(target_os = "linux")]
-    linux_startup::initialize_x11_threads().expect("Linux window-system initialization failed");
+    platform::linux::startup::initialize_x11_threads()
+        .expect("Linux window-system initialization failed");
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -81,8 +73,9 @@ pub fn run() {
         return;
     }
     #[cfg(target_os = "windows")]
-    let startup_gate = windows_startup::StartupGate::acquire(context.config().identifier.as_str())
-        .unwrap_or_else(|label| panic!("mimi startup gate failed: {label}"));
+    let startup_gate =
+        platform::windows::startup::StartupGate::acquire(context.config().identifier.as_str())
+            .unwrap_or_else(|label| panic!("mimi startup gate failed: {label}"));
     #[cfg(target_os = "windows")]
     if startup_gate
         .handoff_if_running(context.config().identifier.as_str())
@@ -97,7 +90,7 @@ pub fn run() {
     // This must stay first so a secondary Windows launch exits before any
     // other plugin, renderer, tray, or settings store is initialized.
     #[cfg(target_os = "windows")]
-    let builder = builder.plugin(windows_startup::single_instance_plugin());
+    let builder = builder.plugin(platform::windows::startup::single_instance_plugin());
     #[cfg(target_os = "linux")]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
         desktop_shortcuts::dispatch_linux_launch(app, &args);
@@ -141,7 +134,10 @@ pub fn run() {
             if !is_ui_test && !windows::is_dev_build() {
                 let version = app.package_info().version.to_string();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let result = windows_updater_cleanup::cleanup(&std::env::temp_dir(), &version);
+                    let result = platform::windows::updater_cleanup::cleanup(
+                        &std::env::temp_dir(),
+                        &version,
+                    );
                     if result.removed > 0 || result.failed > 0 {
                         tracing::info!(
                             removed = result.removed,
@@ -177,7 +173,9 @@ pub fn run() {
             // Apply the saved global Dock preference at startup. Missing
             // preferences show Mimi in the Dock, independently of credentials.
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(crate::mac_dock::policy(settings.preferences().show_in_dock));
+            app.set_activation_policy(platform::macos::dock::policy(
+                settings.preferences().show_in_dock,
+            ));
             // A deterministic standard-overlay fixture is useful for native
             // window-level checks. It changes only the in-memory UI-test
             // snapshot; `SettingsStore` never persists UI-test writes.
@@ -219,7 +217,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             setup_application_menu(&app_handle)?;
             #[cfg(target_os = "macos")]
-            mac_native_quit::install(&app_handle)?;
+            platform::macos::native_quit::install(&app_handle)?;
             setup_global_shortcuts(&app_handle, Arc::clone(&session))?;
             #[cfg(target_os = "linux")]
             {
@@ -498,7 +496,7 @@ pub fn run() {
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if matches!(event, tauri::RunEvent::Exit) {
-                mac_native_quit::remove();
+                platform::macos::native_quit::remove();
                 windows::remove_all_overlay_pointer_tracking(app);
             }
             #[cfg(target_os = "windows")]
