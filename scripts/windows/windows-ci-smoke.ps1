@@ -6,10 +6,10 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string]$ExpectedArchitecture,
 
-    [ValidateSet('none', 'pointer', 'accessibility', 'panel-languages')]
+    [ValidateSet('none', 'pointer', 'accessibility', 'panel-languages', 'caption-history')]
     [string]$OverlayInteraction = 'none',
 
-    [string]$PanelEvidenceDirectory,
+    [Alias('PanelEvidenceDirectory')][string]$EvidenceDirectory,
 
     [ValidateRange(1, 30)]
     [int]$StartupSeconds = 5,
@@ -31,9 +31,9 @@ $ErrorActionPreference = 'Stop'
 if ($VerifyBothDragModes -and ($OverlayInteraction -ne 'pointer' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted')) {
     throw 'Checking both drag preferences requires the isolated GitHub-hosted Windows pointer job.'
 }
-if ($OverlayInteraction -eq 'panel-languages' -and
-    ($ExpectedArchitecture -ne 'x64' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or -not $PanelEvidenceDirectory)) {
-    throw 'Panel screenshots require a dedicated hosted Windows x64 desktop and an evidence directory.'
+if ($OverlayInteraction -in @('panel-languages', 'caption-history') -and
+    ($ExpectedArchitecture -ne 'x64' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or -not $EvidenceDirectory)) {
+    throw 'Screenshot checks require a dedicated hosted Windows x64 desktop and an evidence directory.'
 }
 
 Add-Type @'
@@ -466,7 +466,7 @@ function Wait-SmokeFrontendReady($TargetProcess, [string]$Directory) {
     throw "mimi frontends did not mount within 30 seconds (settings=$settingsReady overlay=$overlayReady)."
 }
 
-function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow, [string]$Mode, [int]$TimeoutMs, [string]$ExpectedFullWindows) {
+function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow, [string]$Mode, [int]$TimeoutMs, [string]$ExpectedFullWindows, [string]$EvidencePath, [string]$Locale) {
     $overlayWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$TargetProcess.Id, 'Mimi Subtitles')
     if ($overlayWindow -eq [IntPtr]::Zero -or -not [MimiWindowSmoke]::IsWindowVisible($overlayWindow)) {
         throw "The primary did not expose its visible subtitle overlay for the $Mode check."
@@ -485,16 +485,20 @@ function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow,
         $probe.ArgumentList.Add('-ExpectedFullWindows')
         $probe.ArgumentList.Add($ExpectedFullWindows)
     }
-    if ($Mode -eq 'panel-languages') {
-        $probe.ArgumentList.Add('-PanelEvidenceDirectory')
-        $probe.ArgumentList.Add($PanelEvidenceDirectory)
+    if ($EvidencePath) {
+        $probe.ArgumentList.Add('-EvidenceDirectory')
+        $probe.ArgumentList.Add($EvidencePath)
+    }
+    if ($Mode -eq 'caption-history') {
+        $probe.ArgumentList.Add('-HistoryLocale')
+        $probe.ArgumentList.Add($Locale)
     }
     $probeProcess = [Diagnostics.Process]::Start($probe)
     try {
         if (-not $probeProcess.WaitForExit($TimeoutMs)) {
             $probeProcess.Kill()
             $probeProcess.WaitForExit(5000) | Out-Null
-            if ($Mode -eq 'caption-drag' -and [MimiCaptionDragDesktop]::LeftDown()) {
+            if ($Mode -in @('caption-drag', 'caption-history') -and [MimiCaptionDragDesktop]::LeftDown()) {
                 [MimiCaptionDragDesktop]::SetLeftButton($false)
             }
             throw "The Windows overlay $Mode check did not finish."
@@ -519,6 +523,7 @@ $previousUiTest = $env:MIMI_UI_TEST
 $previousStandardOverlay = $env:MIMI_UI_TEST_STANDARD_OVERLAY
 $previousSubtitleFixture = $env:MIMI_UI_TEST_DUAL_SUBTITLES
 $previousLiveSubtitleFixture = $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES
+$previousHistoryFixture = $env:MIMI_UI_TEST_CAPTION_HISTORY
 $previousAutoStart = $env:MIMI_AUTO_START
 $previousStartupGateDelay = $env:MIMI_UI_TEST_STARTUP_GATE_DELAY_MS
 $previousStartupGateReadyFile = $env:MIMI_UI_TEST_STARTUP_GATE_READY_FILE
@@ -543,6 +548,7 @@ $fakeListenerStarted = $false
 $secondaryProcesses = @()
 try {
     $env:MIMI_UI_TEST = '1'
+    $env:MIMI_UI_TEST_CAPTION_HISTORY = $null
     $env:MIMI_UI_TEST_STANDARD_OVERLAY = '1'
     $env:MIMI_AUTO_START = '1'
     $env:MIMI_UI_TEST_SESSION_STATE_FILE = $sessionStateFile
@@ -565,9 +571,10 @@ try {
         $env:MIMI_UI_TEST_PREFERENCES_DIR = $preferencesDir
     }
 
-    if ($OverlayInteraction -eq 'panel-languages') {
-        . (Join-Path $PSScriptRoot 'tests/panel-language-sessions.ps1')
-        Test-PanelLanguageSessions
+    if ($OverlayInteraction -in @('panel-languages', 'caption-history')) {
+        . (Join-Path $PSScriptRoot 'tests/localized-overlay-sessions.ps1')
+        if ($OverlayInteraction -eq 'panel-languages') { Test-PanelLanguageSessions }
+        else { Test-CaptionHistorySessions }
         return
     }
 
@@ -1036,6 +1043,7 @@ finally {
         $env:MIMI_UI_TEST_STANDARD_OVERLAY = $previousStandardOverlay
         $env:MIMI_UI_TEST_DUAL_SUBTITLES = $previousSubtitleFixture
         $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES = $previousLiveSubtitleFixture
+        $env:MIMI_UI_TEST_CAPTION_HISTORY = $previousHistoryFixture
         $env:MIMI_AUTO_START = $previousAutoStart
         $env:MIMI_UI_TEST_STARTUP_GATE_DELAY_MS = $previousStartupGateDelay
         $env:MIMI_UI_TEST_STARTUP_GATE_READY_FILE = $previousStartupGateReadyFile

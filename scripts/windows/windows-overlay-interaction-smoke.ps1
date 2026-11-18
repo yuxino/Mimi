@@ -3,10 +3,11 @@ param(
     [Parameter(Mandatory = $true)][long]$SettingsWindow,
     [Parameter(Mandatory = $true)][string]$SessionStateFile,
     [Parameter(Mandatory = $true)][string]$SettingsActivationFile,
-    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility', 'caption-drag', 'panel-languages')][string]$Interaction,
+    [Parameter(Mandatory = $true)][ValidateSet('pointer', 'accessibility', 'caption-drag', 'panel-languages', 'caption-history')][string]$Interaction,
     [Parameter(Mandatory = $true)][string]$FixtureDirectory,
     [string]$FrontendReadyDirectory,
-    [string]$PanelEvidenceDirectory,
+    [Alias('PanelEvidenceDirectory')][string]$EvidenceDirectory,
+    [ValidateSet('zh', 'de')][string]$HistoryLocale,
     [ValidateSet('True', 'False')][string]$ExpectedFullWindows
 )
 
@@ -716,7 +717,7 @@ $settings = [IntPtr]$SettingsWindow
 $previousDpi = [IntPtr]::Zero
 $restorePointer = $false
 try {
-    if ($Interaction -in @('pointer', 'caption-drag', 'panel-languages')) {
+    if ($Interaction -in @('pointer', 'caption-drag', 'panel-languages', 'caption-history')) {
         $previousDpi = [MimiPointerSmoke]::SetThreadDpiAwarenessContext([IntPtr](-4))
         if ($previousDpi -eq [IntPtr]::Zero) { throw 'Could not enable per-monitor DPI awareness for pointer testing.' }
         $originalPointer = [MimiPointerSmoke+Point]::new()
@@ -730,7 +731,15 @@ try {
         $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
         if ($controls -eq [IntPtr]::Zero) { throw 'Could not identify the language control window.' }
         $labels = [IO.File]::ReadAllText((Join-Path $FixtureDirectory 'panel-labels.json')) | ConvertFrom-Json
-        Test-PanelLanguage $controls $labels $PanelEvidenceDirectory
+        Test-PanelLanguage $controls $labels $EvidenceDirectory
+        return
+    }
+
+    if ($Interaction -eq 'caption-history') {
+        Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
+        . (Join-Path $PSScriptRoot 'tests/panel-language-layout.ps1')
+        . (Join-Path $PSScriptRoot 'tests/overlay-caption-history.ps1')
+        Test-OverlayCaptionHistory $overlay $FixtureDirectory $EvidenceDirectory -Locale $HistoryLocale
         return
     }
 

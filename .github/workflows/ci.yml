@@ -390,7 +390,7 @@ jobs:
       - name: Check subtitle controls and keyboard selection in every panel language
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
-        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -PanelEvidenceDirectory "$env:RUNNER_TEMP/panel-languages"
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory "$env:RUNNER_TEMP/panel-languages"
 
       - name: Save native panel screenshots and control bounds
         if: ${{ !cancelled() && matrix.os == 'windows-2025' }}
@@ -400,6 +400,20 @@ jobs:
           path: |
             ${{ runner.temp }}/panel-languages/*.png
             ${{ runner.temp }}/panel-languages/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Read bilingual caption history and drag the Windows scrollbar back to live
+        if: ${{ matrix.os == 'windows-2025' }}
+        shell: pwsh
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/caption-history"
+
+      - name: Save the visible caption rows and native scrollbar measurements
+        if: ${{ !cancelled() && matrix.os == 'windows-2025' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-caption-history
+          path: ${{ runner.temp }}/caption-history
           if-no-files-found: ignore
           retention-days: 7
 
