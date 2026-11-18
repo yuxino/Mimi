@@ -694,6 +694,30 @@ try {
         if (-not $secondaryProcess.WaitForExit($remainingMs) -or $secondaryProcess.ExitTime.ToUniversalTime() -gt $deadline) {
             $remaining = @(Get-MatchingMimiProcesses $resolvedExecutable)
             Write-Output "Handoff timeout: primaryExited=$($process.HasExited), pendingPid=$($secondaryProcess.Id), matchingProcesses=$($remaining.Count)."
+            # Capture startup stages after the deadline, before cleanup removes
+            # the fixture. Read only known markers and the tested executable.
+            try {
+                $observed = [DateTime]::UtcNow.ToString('O')
+                $listener = [MimiWindowSmoke]::FindUniqueWindow([uint32]$process.Id, 'app.yuxino.mimi-siw')
+                $stages = [ordered]@{
+                    gate = $startupGateReadyFile
+                    tray = $trayVisibleFile
+                    session = $sessionStateFile
+                    activation = $settingsActivationFile
+                    settingsReady = (Join-Path $frontendReadyDir 'settings')
+                    overlayReady = (Join-Path $frontendReadyDir 'overlay')
+                }
+                $markers = foreach ($key in $stages.Keys) {
+                    '{0}={1}' -f $key, (Test-Path -LiteralPath $stages[$key] -PathType Leaf)
+                }
+                Write-Output "Cold handoff observed=$observed primaryListener=$($listener -ne [IntPtr]::Zero) $($markers -join ' ')."
+                foreach ($contender in $secondaryProcesses) {
+                    Write-Output "Cold contender pid=$($contender.Id) exited=$($contender.HasExited) deadline=$($coldLaunchDeadlines[$contender.Id].ToString('O'))."
+                }
+                $digest = (Get-FileHash -LiteralPath $resolvedExecutable -Algorithm SHA256).Hash
+                Write-Output "Cold handoff executable architecture=$actualArchitecture sha256=$digest."
+            }
+            catch { Write-Warning 'The additional cold handoff observations were incomplete.' }
             throw "A concurrent mimi launch did not hand off and exit within $HandoffExitSeconds seconds."
         }
         if ($secondaryProcess.ExitCode -ne 0) {
