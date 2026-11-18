@@ -7,16 +7,28 @@ src/                         Desktop React UI
   windows/
     overlay/                 Caption reading and overlay interaction
     overlay-control/         Quick session controls
-    settings/                Configuration and saved-session UI
+    settings/                Settings window and shared settings controls
+      services/              Profiles, credential drafts and connection checks
+      audio/, appearance/    Input/language and subtitle appearance controls
+      history/, updates/     Saved sessions and software updates
+      support/, development/ Diagnostics and explicitly enabled dev tools
+      guide/                 Onboarding and setup guidance
   components/                Controls shared across these surfaces
-  lib/                       Frontend IPC, state, models and utilities
+  lib/
+    ipc.ts, types.ts          Native IPC contract and payload types
+    store.ts, i18n.ts         Snapshot/acknowledgement and language entry points
+    audio/, providers/       Input/capture and provider/translation capabilities
+    profiles/, session/      Catalog projection and session state/errors
+    subtitles/, overlay/     Caption presentation and native overlay helpers
+    settings/                Preference-state projection
 src-tauri/
   src/
     lib.rs                   Tauri composition, plugins, tray and app events
-    commands.rs              Desktop IPC boundary
+    commands.rs              IPC state and stable payload entry point
+    commands/                Settings, profiles, session, overlay and app handlers
     settings_store/          Desktop preferences, profiles and credential storage
-    session_manager/         Native session integration helpers
-    session_manager.rs       Desktop session lifecycle coordinator
+    session_manager.rs       Desktop session state owner and construction
+    session_manager/         Lifecycle, lane ownership, selection and publication
     audio/                   Native capture and audio adapters
     windows/                 Native overlay/window interaction
     windows.rs               Window-management entry point
@@ -44,10 +56,87 @@ Tauri types out of the shared crates and the desktop `core/`/`clients/` modules.
 See [platform parity](platform-parity.md) for the shared runtime boundary and
 intentional Android differences.
 
-The frontend's three window folders already reflect product surfaces. Keep
-their established UI and shared components together; a directory cleanup is
-not a reason to change their interaction or duplicate state. The product
-website lives in the separate `yuxino-labs/mimi-web` repository.
+The three frontend windows remain normal product entry points. Settings feature
+folders and `lib` domains organize implementations; they do not introduce barrel
+files or a second store. The product website lives in the separate
+`yuxino-labs/mimi-web` repository.
+
+## Frontend state and configuration editing
+
+`store.ts` owns native bootstrap, event subscription, snapshot ordering and save
+acknowledgement. Its browser-only catalog projection has explicit inputs/outputs
+in `lib/profiles/browserProfilePreview.ts`; it does not imitate native lifecycle
+or credential storage. IPC names and types remain discoverable at `lib/ipc.ts`
+and `lib/types.ts`.
+
+The services page coordinates profile actions. `ProviderCredentialEditor`
+owns the credential draft/form boundary, `ProviderPicker` owns add confirmation,
+and `useProfileConnectionChecks` owns the mounted page's request IDs, timeout,
+stage results and invalidation when credentials, route/proxy or session state
+change. Rendering copy is projected by `serviceProfilePresentation`; no extra
+store, transport or business-rule implementation is introduced.
+
+The existing window layouts, CSS cascade, language keys and generated-copy
+entry points remain unchanged. Source moves must also update template-string
+dynamic imports, mock paths, test fixtures and Gradle's generator inputs.
+
+## Desktop IPC and session ownership
+
+`commands.rs` owns `AppState` and stable snapshot/navigation type names. The
+actual handlers live in `commands/{settings,profiles,connection,session,overlay,
+app,help,apple_resources}.rs`. `lib.rs` registers those paths directly with
+`generate_handler!`; the external command names, payloads and capability
+permissions remain the same. Bootstrap/save and post-save native feedback stay
+together in `commands/settings.rs`. The app module owns navigation and the
+normal stop/finalize/exit boundary.
+
+`session_manager.rs` constructs one `SessionManager`, which retains its original
+shared controller, locks and state. Inherent implementation blocks divide the
+actual work without adding forwarding methods or additional session owners:
+
+| Module | Owns |
+| --- | --- |
+| `lifecycle.rs` | Manual start/stop/pause/resume, establishment and failed-start/resume handling |
+| `lanes.rs` | Each source's capture/client/pipeline/pump resources, generation-tagged installation and retirement |
+| `ownership.rs` | Request epochs, admission guards, generation-bound work and teardown gates |
+| `selection.rs` | Transactional audio/profile/language/mode changes and their conditional reconnect |
+| `events.rs` | Provider application under the content gate and shared per-source translation deadlines |
+| `recovery.rs` | Native failure handoff, health tasks and generation-owned recovery admission |
+| `history.rs` | Opt-in file append/finalization, recording metadata, bounded paging and export |
+| `publication.rs` | Payload projection, ordered snapshots and coalesced native window publication |
+| `diagnostics.rs` | Content-free capture observations, status/failure journal and support facts |
+| `fixtures.rs` | Explicit credential-free UI fixtures, without native capture or provider connections |
+
+Keep portable recovery/provider/subtitle policy in the shared crates. Preserve
+the content gate around Clear/application/publication, the cleanup owner that
+survives a cancelled waiter, generation/task checks, and final drain ordering.
+The module owning an operation must show its real side effects and failures;
+do not replace those operations with a new layer of pass-through calls.
+
+## Shared Rust and Android adapters
+
+`mimi-runtime/clients/high_quality_client.rs` remains the public high-quality
+client and owns one `Arc<Mutex<PipelineState>>`. Its private `recognition`,
+`preview`, `final_translation`, `request_budget` and `text_translation` modules
+implement the respective flows. Replaceable previews and durable ordered finals
+retain their separate work/ownership while sharing the existing request budget.
+The desktop facade still re-exports this exact implementation.
+
+`mimi-android-jni/src/runtime.rs` retains the operation dispatcher, session
+handles, PCM and connect/finish lifecycle. `runtime/configuration.rs` owns native
+configuration adaptation, `contracts.rs` owns offline contract views and
+`probes.rs` owns the independent bounded probe registry. `StageNetworkInput`
+resolves the same immutable speech/text network snapshot for session and probe
+creation. JNI names, operation strings, size limits and wire schemas stay stable.
+
+Android's `captions/` package owns native caption rendering, typography, layout
+and preview. The app/activity, native resources and shared runtime entry remain
+in their existing adapters. `capture/CaptureLane.kt` owns an input's recorder,
+worker, capture state and health observations; `MimiService` still owns generation
+checks and prepares all selected lanes before starting any. It stops every
+recorder before joining/releasing lanes and finishing their shared runtimes.
+`prepare()` declares its already-granted `RECORD_AUDIO` requirement; a revoked
+permission still propagates through the service's existing startup cleanup.
 
 ## Desktop settings
 
