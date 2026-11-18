@@ -48,11 +48,7 @@ use crate::core::diagnostics::latency::{
 use crate::core::lifecycle::session::{TranslationSessionController, TranslationSessionState};
 use crate::core::models::{SessionStatus, SourceLanguage, TranslationMode, UtteranceRole};
 use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
-#[cfg(test)]
-use crate::core::protocols::translation::qwen_mt::{QwenMTModel, REALTIME_MT_MODEL};
 use crate::core::services::configuration::LiveTranslationConfiguration;
-#[cfg(test)]
-use crate::core::services::credentials::{ProviderCredentials, TextTranslationCredentials};
 use crate::core::services::provider::ProviderKind;
 use crate::session_history::SessionHistory;
 use mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL;
@@ -60,8 +56,7 @@ use mimi_runtime::core::lifecycle::recovery::{
     advance_lifecycle_sequence_if_current, cancelled_recovery_attempt_is_retryable,
     clear_recovery_atoms, lifecycle_sequence_matches, provider_error_is_retryable,
     provider_recovery_minimum_delay, recovery_delay, recovery_exhaustion_is_still_owned,
-    MTBudgetContinuity, MTBudgetRoute, MTBudgetScope, RecoveryContinuity, RecoverySchedule,
-    NO_GENERATION, RECOVERY_ATTEMPTS,
+    RecoveryContinuity, RecoverySchedule, NO_GENERATION, RECOVERY_ATTEMPTS,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -187,12 +182,4 @@ fn capture_status_test_pipeline() -> Arc<AudioSendPipeline> {
         |_| async { Ok::<(), ()>(()) },
         |_| {},
     ))
-}
-
-fn synthetic_mt_scope(profile_id: &str, route: MTBudgetRoute) -> MTBudgetScope {
-    MTBudgetScope {
-        profile_id: profile_id.into(),
-        provider: ProviderKind::AlibabaCloud,
-        route,
-    }
 }
