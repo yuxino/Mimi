@@ -387,9 +387,10 @@ function Assert-SettingsHidden {
 
 function Read-SmokeMarker([string]$Path) {
     try {
-        # The application may still have the marker open for writing. Read
-        # access must share writes so the two handles can coexist on Windows.
-        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        # Session markers can still be open for writing; preferences are
+        # replaced with MoveFileExW. An observer must allow both operations.
+        $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
         try {
             $reader = [IO.StreamReader]::new($stream)
             try { return $reader.ReadToEnd().Trim() }

@@ -85,13 +85,21 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
         }
     }
 
-    function Read-PanelLanguageCode([string]$Kind) {
-        $json = Read-SmokeMarker $preferencesPath
+    function Read-PanelLanguageCodes {
+        try { $json = Read-SmokeMarker $preferencesPath }
+        catch { throw "Could not read isolated panel preferences (locale=$($Labels.locale))." }
         if (-not $json) { return }
         try { $preferences = ConvertFrom-Json -InputObject $json -ErrorAction Stop }
-        catch { throw 'The isolated panel preferences are not valid JSON.' }
-        $key = $Kind + '_language'
-        return $preferences.$key
+        catch { throw "The isolated panel preferences are not valid JSON (locale=$($Labels.locale))." }
+        $codes = @{ source = $preferences.source_language; target = $preferences.target_language }
+        foreach ($kind in @('source', 'target')) {
+            $code = $codes.$kind
+            if ($null -eq $code) { throw "The isolated panel preferences have a missing $kind language code (locale=$($Labels.locale))." }
+            if ($code -isnot [string] -or $code -cnotmatch '\A(?:auto|original|[a-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)\z') {
+                throw "The isolated panel preferences have an invalid $kind language code (locale=$($Labels.locale))."
+            }
+        }
+        return $codes
     }
 
     function Read-PanelLanguageMenu([string]$Name) {
@@ -132,8 +140,9 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
         return $true
     }
 
-    if ((Read-PanelLanguageCode 'source') -ne 'en' -or (Read-PanelLanguageCode 'target') -ne 'zh_tw') {
-        throw 'The native language fixture must begin with en and zh_tw.'
+    $initialCodes = Wait-PanelLanguageState 'initial-preferences-readable' { Read-PanelLanguageCodes }
+    if ($initialCodes.source -cne 'en' -or $initialCodes.target -cne 'zh_tw') {
+        throw "The native language fixture must begin with en and zh_tw (locale=$($Labels.locale) source=$($initialCodes.source) target=$($initialCodes.target))."
     }
     $island = Use-OverlayControl $Labels.openControls 'listening' 'Locate the language island' -Surface $controlsHandle -NameSuffix -BoundsOnly -WaitMs 5000
     Move-OverControlBounds $controlsHandle $island 'Reveal the native language island'
@@ -152,7 +161,7 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
         if (-not [string]::IsNullOrEmpty($fixedValue) -and -not [string]::Equals($initialValue, $fixedValue, [StringComparison]::Ordinal)) {
             throw "The native language field does not match its fixed localized label (field=$kind)."
         }
-        $initialCode = Read-PanelLanguageCode $kind
+        $initialCode = $initialCodes.$kind
         $field = Wait-PanelLanguageState "$kind-field" { Get-PanelLanguageField $name }
         $bounds = $field.Current.BoundingRectangle
         if ($bounds.IsEmpty -or $bounds.Width -lt 24 -or $bounds.Height -lt 24) { throw 'A native language field has no complete click target.' }
@@ -177,13 +186,14 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
                 for ($index = 0; $index -lt $initialIndex; $index++) { [MimiPanelKeyboard]::Key($controlsHandle, 0x28) }
             }
             [MimiPanelKeyboard]::Key($controlsHandle, 0x0D) # Enter commits the actual keyboard cursor.
-            $null = Wait-PanelLanguageState "$kind-save-$boundary" {
-                $code = Read-PanelLanguageCode $kind
-                (Test-PanelLanguageClosed $name) -and $code -and
+            $savedCodes = Wait-PanelLanguageState "$kind-save-$boundary" {
+                $codes = Read-PanelLanguageCodes
+                $code = if ($null -ne $codes) { $codes.$kind } else { $null }
+                if ($codes -and (Test-PanelLanguageClosed $name) -and
                     ($expectedName -ceq $previousName -or $code -ne $previousCode) -and
-                    ($boundary -ne 'Restore' -or $code -eq $initialCode)
+                    ($boundary -ne 'Restore' -or $code -eq $initialCode)) { $codes }
             }
-            $previousCode = Read-PanelLanguageCode $kind
+            $previousCode = $savedCodes.$kind
             $previousName = $expectedName
             [MimiPanelKeyboard]::Key($controlsHandle, 0x28)
             $null = Wait-PanelLanguageState "$kind-selected-$boundary" {
@@ -197,6 +207,9 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
         }
     }
     Assert-SettingsHidden
-    if ((Read-PanelLanguageCode 'source') -ne 'en' -or (Read-PanelLanguageCode 'target') -ne 'zh_tw') { throw 'The native language check did not restore its initial language pair.' }
+    $finalCodes = Wait-PanelLanguageState 'final-preferences-readable' { Read-PanelLanguageCodes }
+    if ($finalCodes.source -cne 'en' -or $finalCodes.target -cne 'zh_tw') {
+        throw "The native language check did not restore its initial language pair (locale=$($Labels.locale) source=$($finalCodes.source) target=$($finalCodes.target))."
+    }
     Write-Output "Native panel language passed locale=$($Labels.locale): physical selection, trigger refocus, keyboard reopen and Escape; Settings hidden."
 }

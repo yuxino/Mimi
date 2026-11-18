@@ -132,7 +132,7 @@ function Save-PanelLanguageScreenshot([IntPtr]$Controls, [string]$EvidencePath, 
 
 function Save-PanelLanguageEvidence([IntPtr]$Controls, $Labels, [string]$EvidencePath) {
     $locale = [string]$Labels.locale
-    if (@('zh', 'zh-TW', 'en', 'ja', 'ko', 'de', 'fr', 'th', 'ru') -cnotcontains $locale -or @($Labels.modes).Count -ne 3) {
+    if ([string]::IsNullOrWhiteSpace($locale) -or @($Labels.modes).Count -ne 3) {
         throw 'Invalid panel language fixture.'
     }
     $capture = Save-PanelLanguageScreenshot $Controls $EvidencePath "$locale.png" -PassThru
