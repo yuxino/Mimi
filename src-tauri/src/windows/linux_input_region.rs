@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(applied, [true, true, false]);
     }
 
-    // Runs only inside scripts/linux-wayland-input-smoke.sh. This checks the
+    // Runs only inside scripts/linux/linux-wayland-input-smoke.sh. This checks the
     // same GTK helper and lifecycle hooks as Mimi, not WebKit/provider state.
     #[test]
     #[ignore = "requires an explicitly isolated native Wayland display"]

@@ -38,9 +38,8 @@ pub(super) fn resolve_credentials_draft(value: &Value) -> Result<Value, &'static
 
 pub(super) fn normalize_text_endpoint(value: &Value) -> Result<Value, &'static str> {
     use mimi_runtime::core::protocols::{
-        deepl, deeplx,
-        endpoint::{HttpEndpointError, HttpEndpointPolicy},
-        openai_compatible,
+        endpoint::HttpEndpointError, endpoint::HttpEndpointPolicy, translation::deepl,
+        translation::deeplx, translation::openai_compatible,
     };
     let route: TextTranslation = serde_json::from_value(value["route"].clone())
         .map_err(|_| "native_runtime_invalid_request")?;
@@ -87,12 +86,12 @@ pub(super) fn text_endpoints_equivalent(value: &Value) -> Result<Value, &'static
     // constructs production requests. Invalid drafts never retain auth.
     let endpoints = match route {
         TextTranslation::OpenAICompatible | TextTranslation::ChatMock => (
-            mimi_runtime::core::protocols::openai_compatible::endpoint(saved).ok(),
-            mimi_runtime::core::protocols::openai_compatible::endpoint(draft).ok(),
+            mimi_runtime::core::protocols::translation::openai_compatible::endpoint(saved).ok(),
+            mimi_runtime::core::protocols::translation::openai_compatible::endpoint(draft).ok(),
         ),
         TextTranslation::DeepLX => (
-            mimi_runtime::core::protocols::deeplx::endpoint(saved).ok(),
-            mimi_runtime::core::protocols::deeplx::endpoint(draft).ok(),
+            mimi_runtime::core::protocols::translation::deeplx::endpoint(saved).ok(),
+            mimi_runtime::core::protocols::translation::deeplx::endpoint(draft).ok(),
         ),
         _ => return Err("native_runtime_invalid_request"),
     };
@@ -146,11 +145,13 @@ pub(super) fn capabilities_or_normalize(value: &Value) -> Result<Value, &'static
     }
     let capabilities_for_target = |target| {
         if speech_mode == SpeechTranslationMode::AsrMt {
-            mimi_runtime::core::provider::realtime_asr_capabilities(provider, route, target)
+            mimi_runtime::core::services::provider::realtime_asr_capabilities(
+                provider, route, target,
+            )
         } else if mode != AlibabaRealtimeMode::Disabled {
             mode.capabilities()
         } else if provider == ProviderKind::XAIRealtime && xai_mode == XAISpeechMode::AsrMt {
-            mimi_runtime::core::provider::xai_asr_capabilities(route, target)
+            mimi_runtime::core::services::provider::xai_asr_capabilities(route, target)
         } else if provider == ProviderKind::XAIRealtime {
             xai_mode.capabilities()
         } else {

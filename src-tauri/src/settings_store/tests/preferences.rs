@@ -109,7 +109,7 @@ fn dock_visibility_defaults_on_and_preserves_saved_choices_without_credentials()
 
 #[test]
 fn application_target_defaults_and_requires_fresh_recording_opt_in() {
-    use crate::core::system_audio_target::SystemAudioTarget;
+    use crate::core::audio::system_audio_target::SystemAudioTarget;
     let mut preferences: Preferences = serde_json::from_str("{}").unwrap();
     assert_eq!(preferences.system_audio_target, SystemAudioTarget::System);
     preferences.record_session_audio = true;
@@ -131,7 +131,7 @@ fn application_target_defaults_and_requires_fresh_recording_opt_in() {
 
 #[test]
 fn playback_stream_selection_persists_only_identity_and_revokes_recording_consent() {
-    use crate::core::system_audio_target::SystemAudioTarget;
+    use crate::core::audio::system_audio_target::SystemAudioTarget;
     for input in [AudioInput::System, AudioInput::Microphone, AudioInput::Both] {
         let mut preferences = Preferences {
             audio_input: input,
@@ -565,7 +565,7 @@ fn subtitle_font_invalid_save_rolls_back_all_preferences_and_disk() {
                 prefs.font_size = 20.0;
                 prefs.subtitle_font_family = invalid;
             }),
-            Err(crate::core::subtitle_font::INVALID_FAMILY_NAME.into())
+            Err(crate::core::ui::subtitle_font::INVALID_FAMILY_NAME.into())
         );
         assert_eq!(store.preferences(), before);
         assert_eq!(
@@ -705,7 +705,7 @@ fn visible_subtitle_count_clamps_loaded_preferences_without_resetting_other_choi
 
 #[test]
 fn invalid_proxy_save_rolls_back_memory_and_disk_without_storing_authentication() {
-    use crate::core::network_proxy::ProxyMode;
+    use crate::core::services::network_proxy::ProxyMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));

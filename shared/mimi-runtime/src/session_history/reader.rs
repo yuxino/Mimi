@@ -1,6 +1,6 @@
 //! Read legacy JSON headers and recoverable JSONL with a fixed input buffer.
 use super::{HistoryMetadata, HistoryPairMetadata};
-use crate::core::{models::SubtitlePair, session_archive::TRANSCRIPT_COUNT_LIMIT};
+use crate::core::{lifecycle::session_archive::TRANSCRIPT_COUNT_LIMIT, models::SubtitlePair};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use std::io::{self, BufRead, Read};
@@ -408,7 +408,7 @@ impl Utf8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::session_archive::SavedTranscript;
+    use crate::core::lifecycle::session_archive::SavedTranscript;
 
     fn header() -> Vec<u8> {
         serde_json::to_vec(&SavedTranscript {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 vi.mock("../../../lib/ipc", async importOriginal => ({
   ...await importOriginal<typeof import("../../../lib/ipc")>(), isTauri: true,
 }));
-vi.mock("../../overlay/Timeline", () => ({ Timeline: mocks.timeline }));
+vi.mock("../../overlay/timeline/Timeline", () => ({ Timeline: mocks.timeline }));
 
 const original = useStore.getState();
 const OriginalURL = URL;

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::core::models::{SourceLanguage, TranslationMode};
-use crate::core::provider::ProviderKind;
+use crate::core::services::provider::ProviderKind;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
 fn fixture() -> (tempfile::TempDir, PathBuf) {
@@ -159,7 +159,7 @@ fn unrelated_legacy_xai_profile_does_not_block_read_only_catalog() {
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     let mut legacy =
         ServiceProfile::new("legacy-xai", "Legacy", ProviderKind::XAIRealtime).unwrap();
-    legacy.xai_speech_mode = crate::core::provider::XAISpeechMode::AsrMt;
+    legacy.xai_speech_mode = crate::core::services::provider::XAISpeechMode::AsrMt;
     legacy.xai_independent_translation_migrated = false;
     legacy.text_translation = None;
     catalog.profiles.push(legacy);

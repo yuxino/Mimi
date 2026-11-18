@@ -14,10 +14,10 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import app.yuxino.mimi.android.InterfaceLanguage
 import app.yuxino.mimi.android.R
-import app.yuxino.mimi.android.SettingsStore
 import app.yuxino.mimi.android.capture.LatestCaptionTextView
+import app.yuxino.mimi.android.localization.InterfaceLanguage
+import app.yuxino.mimi.android.settings.SettingsStore
 
 internal data class CaptionPanelActions(
     val home: (() -> Unit)? = null,

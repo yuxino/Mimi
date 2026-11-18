@@ -105,7 +105,7 @@ fn pre_catalog_preferences_preserve_the_legacy_alibaba_profile() {
 
 #[test]
 fn profile_stage_proxies_persist_and_legacy_routes_remain_isolated() {
-    use crate::core::network_proxy::ProxyMode;
+    use crate::core::services::network_proxy::ProxyMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let mut store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));
@@ -285,7 +285,7 @@ fn legacy_combined_deeplx_text_probe_retries_its_item_after_unlocking() {
     fake.state.lock().unwrap().loads.clear();
     let configuration = store.configuration_for_text_probe(&profile).unwrap();
     assert!(matches!(configuration.credentials,
-            crate::core::configuration::TextTranslationProbeCredentials::Independent(
+            crate::core::services::configuration::TextTranslationProbeCredentials::Independent(
                 TextTranslationCredentials::DeepLX { token, .. }
             ) if token == "synthetic-text"));
     assert_eq!(fake.load_count(PROFILE_KEYCHAIN_SERVICE, &account), 1);

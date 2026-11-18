@@ -19,7 +19,7 @@ fn retired_health_waiting_for_continuity_cannot_refresh_the_next_owner_budget() 
                 entered.send(()).unwrap();
                 native.record_health_success(
                     2,
-                    now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL,
+                    now + mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL,
                 )
             }
         });
@@ -67,9 +67,10 @@ fn recovery_claim_transfers_used_budget_and_rejects_the_retired_probe() {
     let mut recovery = None;
     assert!(native.claim_recovery(2, &mut recovery, Duration::ZERO));
     assert_eq!(native.epoch.load(Ordering::SeqCst), 3);
-    assert!(
-        !native.record_health_success(2, now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL)
-    );
+    assert!(!native.record_health_success(
+        2,
+        now + mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL
+    ));
     let mut resumed = recovery.unwrap();
     assert_eq!(resumed.generation(), 3);
     let attempt = resumed.next_attempt().unwrap();
@@ -80,12 +81,14 @@ fn recovery_claim_transfers_used_budget_and_rejects_the_retired_probe() {
         .lock()
         .unwrap()
         .record_connected(resumed, now);
-    assert!(
-        !native.record_health_success(2, now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL)
-    );
-    assert!(
-        native.record_health_success(3, now + mimi_runtime::core::health::HEALTH_CHECK_INTERVAL)
-    );
+    assert!(!native.record_health_success(
+        2,
+        now + mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL
+    ));
+    assert!(native.record_health_success(
+        3,
+        now + mimi_runtime::core::lifecycle::health::HEALTH_CHECK_INTERVAL
+    ));
     let mut fresh = None;
     assert!(native.claim_recovery(3, &mut fresh, Duration::ZERO));
     assert_eq!(fresh.unwrap().next_attempt().unwrap().budget_index, 0);
@@ -306,7 +309,7 @@ async fn hard_stop_waits_for_late_installation_before_retiring_the_slot() {
 
 #[tokio::test]
 async fn retiring_a_connection_preserves_request_budget_for_the_retry() {
-    use mimi_runtime::core::preview_pacing::PreviewRequestPacer;
+    use mimi_runtime::core::subtitles::preview_pacing::PreviewRequestPacer;
     let native = fixture(configuration());
     let _events = native.connection(7).unwrap();
     let client = native
@@ -353,7 +356,7 @@ async fn a_retained_stopped_session_rejects_start_before_installing_resources() 
     configuration.provider = ProviderKind::CustomOpenAIASR;
     configuration.target_language = TargetLanguage::Original;
     configuration.credentials =
-        mimi_runtime::core::credentials::ProviderCredentials::CustomSpeech {
+        mimi_runtime::core::services::credentials::ProviderCredentials::CustomSpeech {
             endpoint: "ws://127.0.0.1:9/v1/realtime".into(),
             model: "synthetic-stop-owner".into(),
             api_key: "synthetic-key".into(),
@@ -422,7 +425,7 @@ async fn setup_pcm_backpressure_recovers_the_same_handle_and_accepts_fresh_audio
     configuration.provider = ProviderKind::CustomOpenAIASR;
     configuration.target_language = TargetLanguage::Original;
     configuration.credentials =
-        mimi_runtime::core::credentials::ProviderCredentials::CustomSpeech {
+        mimi_runtime::core::services::credentials::ProviderCredentials::CustomSpeech {
             endpoint: format!("ws://{}/v1/realtime", listener.local_addr().unwrap()),
             model: "synthetic-backpressure-recovery".into(),
             api_key: "synthetic-key".into(),
@@ -547,7 +550,7 @@ async fn native_pcm_reaches_the_real_shared_transport_and_stop_rejects_the_handl
     configuration.provider = ProviderKind::CustomOpenAIASR;
     configuration.target_language = TargetLanguage::Original;
     configuration.credentials =
-        mimi_runtime::core::credentials::ProviderCredentials::CustomSpeech {
+        mimi_runtime::core::services::credentials::ProviderCredentials::CustomSpeech {
             endpoint: format!("ws://{}/v1/realtime", listener.local_addr().unwrap()),
             model: "mock-transcribe".into(),
             api_key: "synthetic-key".into(),

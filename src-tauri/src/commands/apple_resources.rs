@@ -5,7 +5,7 @@ use super::profiles::ensure_profile_mutation_allowed;
 use super::settings::emit_settings_snapshot;
 use super::AppState;
 use crate::core::models::{SourceLanguage, TargetLanguage};
-use crate::core::provider::{ProviderKind, TextTranslation};
+use crate::core::services::provider::{ProviderKind, TextTranslation};
 use tauri::{AppHandle, State};
 
 #[tauri::command]

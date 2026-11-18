@@ -7,7 +7,7 @@ draft and nearby focused error; localhost endpoint with empty token saves using
 the in-memory ASR key, and Follow restores the route. Synthetic subtitles and
 pause/resume pass. Export cancel/save/failure were blocked by UI-only archive
 clearing on stop, not established as a production defect. The minimal opt-in
-[`MIMI_UI_TEST_EXPORT=1` fixture](../plans/2026-09-30-ui-test-export-fixture.md)
+[`MIMI_UI_TEST_EXPORT=1` fixture](../plans/development/verification/2026-09-30-ui-test-export-fixture.md)
 addresses only that acceptance entrance; native dialog results on its exact
 new package are pending. Seven-phase/streaming fixture coverage remains absent.
 
@@ -31,7 +31,7 @@ with a persisted selector and recoverable classic light. This supersedes the
 source preview note suggesting selection of just one. Integration adapts the
 source shapes without importing the preview branch history, keeps classic as
 the migration default, and applies existing independent motion settings to
-preview/overlay. See [implementation and new acceptance boundaries](../plans/2026-09-30-selectable-sound-pulse.md).
+preview/overlay. See [implementation and new acceptance boundaries](../plans/desktop/overlay/2026-09-30-selectable-sound-pulse.md).
 The diagnostic help note moves into optional details. Android and held desktop
 guide copy is shorter in all three languages while true first-caption proof
 stays unchanged; new exact-head screenshots remain pending. The existing

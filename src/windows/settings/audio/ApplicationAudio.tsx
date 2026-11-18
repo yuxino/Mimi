@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { applicationAudioCopy } from "../../../lib/audio/applicationAudio";
 import { captureSwitchCopy } from "../../../lib/audio/captureStatus";
-import { ApplicationAudioPicker } from "../../../components/ApplicationAudioPicker";
-import { SettingsRow } from "../SettingsPrimitives";
-import { useSettingsToast } from "../useSettingsToast";
+import { ApplicationAudioPicker } from "../../../components/audio/ApplicationAudioPicker";
+import { SettingsRow } from "../controls/SettingsPrimitives";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 import { useStore } from "../../../lib/store";
 
 export function ApplicationAudio({ disabled = false, onBusyChange }: {

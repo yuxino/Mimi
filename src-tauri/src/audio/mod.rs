@@ -1,6 +1,7 @@
 //! Explicitly selected platform audio capture (system audio by default) and the
 //! bounded PCM send pipeline.
 
+#[path = "processing/echo_pipeline.rs"]
 pub(crate) mod echo_pipeline;
 pub mod send_pipeline;
 
@@ -20,7 +21,7 @@ pub struct CaptureDetails {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceCaptureStatus {
-    pub audio_source: crate::core::audio_input::AudioSource,
+    pub audio_source: crate::core::audio::audio_input::AudioSource,
     #[serde(flatten)]
     pub details: CaptureDetails,
 }
@@ -36,10 +37,12 @@ pub struct CaptureStatus {
 
 impl CaptureStatus {
     pub fn for_input(
-        input: crate::core::audio_input::AudioInput,
-        mut details_for_source: impl FnMut(crate::core::audio_input::AudioSource) -> CaptureDetails,
+        input: crate::core::audio::audio_input::AudioInput,
+        mut details_for_source: impl FnMut(
+            crate::core::audio::audio_input::AudioSource,
+        ) -> CaptureDetails,
     ) -> Self {
-        use crate::core::audio_input::{AudioInput, AudioSource};
+        use crate::core::audio::audio_input::{AudioInput, AudioSource};
         let sources: Vec<_> = input
             .sources()
             .iter()
@@ -84,48 +87,62 @@ pub struct CaptureSignal {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
+#[path = "capture/resampler.rs"]
 mod streaming_resampler;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+#[path = "capture/microphone.rs"]
 mod microphone;
 
 pub mod applications;
 #[cfg(target_os = "windows")]
+#[path = "windows/census.rs"]
 pub mod census;
 #[cfg(target_os = "windows")]
+#[path = "windows/applications.rs"]
 mod windows_application;
 #[cfg(target_os = "windows")]
+#[path = "windows/application_icons.rs"]
 mod windows_application_icons;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
 
 #[cfg(target_os = "macos")]
+#[path = "macos/block_buffer.rs"]
 mod macos_block_buffer;
 
 #[cfg(target_os = "macos")]
+#[path = "macos/tap.rs"]
 mod macos_tap;
 #[cfg(target_os = "macos")]
+#[path = "macos/tap_target.rs"]
 mod macos_tap_target;
 
 #[cfg(all(target_os = "macos", feature = "development-debugger"))]
+#[path = "macos/smoke.rs"]
 pub(crate) mod macos_smoke;
 
 #[cfg(target_os = "macos")]
+#[path = "macos/output.rs"]
 pub mod macos_output;
 
 #[cfg(any(target_os = "linux", target_os = "windows", test))]
+#[path = "capture/completion.rs"]
 mod capture_completion;
 #[cfg(target_os = "windows")]
 pub mod windows;
 #[cfg(any(target_os = "windows", test))]
+#[path = "windows/worker.rs"]
 mod windows_capture_worker;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "linux")]
+#[path = "linux/application_icons.rs"]
 pub(crate) mod linux_application_icons;
 #[cfg(target_os = "linux")]
+#[path = "linux/streams.rs"]
 mod linux_streams;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -419,8 +436,8 @@ impl AudioCapture {
         ingress: send_pipeline::AudioIngress,
         failure: CaptureFailureSender,
         format: AudioCaptureFormat,
-        input: crate::core::audio_input::AudioSource,
-        target: crate::core::system_audio_target::SystemAudioTarget,
+        input: crate::core::audio::audio_input::AudioSource,
+        target: crate::core::audio::system_audio_target::SystemAudioTarget,
     ) -> Result<(), SystemAudioCaptureError> {
         let token = {
             let mut state = self.state.lock().unwrap();
@@ -459,7 +476,7 @@ impl AudioCapture {
             return Err(SystemAudioCaptureError::StartCancelled);
         }
         match input {
-            crate::core::audio_input::AudioSource::System => {
+            crate::core::audio::audio_input::AudioSource::System => {
                 #[cfg(target_os = "macos")]
                 self.system.start(ingress, failure, format, target).await?;
                 #[cfg(target_os = "windows")]
@@ -491,7 +508,7 @@ impl AudioCapture {
                     self.system.start(ingress, failure, format).await?;
                 }
             }
-            crate::core::audio_input::AudioSource::Microphone => {
+            crate::core::audio::audio_input::AudioSource::Microphone => {
                 #[cfg(any(target_os = "macos", target_os = "windows"))]
                 self.microphone.start(ingress, failure, format).await?;
                 #[cfg(target_os = "linux")]
@@ -613,10 +630,10 @@ mod format_tests {
     use super::*;
 
     fn capture_fixture(
-        source: crate::core::audio_input::AudioSource,
+        source: crate::core::audio::audio_input::AudioSource,
         observation: Option<CaptureSignal>,
     ) -> CaptureDetails {
-        use crate::core::audio_input::AudioSource;
+        use crate::core::audio::audio_input::AudioSource;
         CaptureDetails {
             kind: if source == AudioSource::System {
                 "macos_system_mix"
@@ -656,7 +673,7 @@ mod format_tests {
 
     #[test]
     fn capture_status_keeps_each_selected_source_and_legacy_aggregate_fields() {
-        use crate::core::audio_input::{AudioInput, AudioSource};
+        use crate::core::audio::audio_input::{AudioInput, AudioSource};
         let status = CaptureStatus::for_input(AudioInput::Both, |source| {
             capture_fixture(
                 source,
@@ -690,7 +707,7 @@ mod format_tests {
 
     #[test]
     fn capture_status_does_not_read_or_include_an_unselected_source() {
-        use crate::core::audio_input::{AudioInput, AudioSource};
+        use crate::core::audio::audio_input::{AudioInput, AudioSource};
         for (input, selected) in [
             (AudioInput::System, AudioSource::System),
             (AudioInput::Microphone, AudioSource::Microphone),

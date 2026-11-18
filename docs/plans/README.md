@@ -14,54 +14,68 @@ Dated comparisons and QA/release reports describe the revision and conditions
 actually tested; they are not ongoing authorization to capture audio, contact a
 provider, merge or publish a later change.
 
+## Browse by responsibility
+
+Design records retain their dates and original evidence, grouped by the behavior
+or maintenance concern they explain:
+
+| Area | Records |
+| --- | --- |
+| Desktop | [Overlay](desktop/overlay), [settings and local storage](desktop/settings), [session lifecycle](desktop/lifecycle), [audio capture](desktop/audio), [native platform integration](desktop/platform) |
+| Desktop settings | [Appearance and languages](desktop/settings/appearance), [service configuration](desktop/settings/services), [credentials](desktop/settings/credentials), [history and export](desktop/settings/history), [updates](desktop/settings/updates), [feedback](desktop/settings/feedback), [navigation](desktop/settings/navigation) |
+| Android | [Native Android behavior and distribution](android) |
+| Providers | [Alibaba](providers/alibaba), [Apple](providers/apple), [Gemini](providers/gemini), [Tencent](providers/tencent), [other recognition protocols](providers/protocols), [text translation](providers/translation), [catalogs and shared service contracts](providers/catalogs) |
+| Shared runtime | [Subtitle ownership](runtime/subtitles), [translation scheduling](runtime/translation), [lifecycle and resources](runtime/lifecycle), [transport](runtime/transport) |
+| Development | [Build and distribution](development/build), [verification](development/verification), [development tools and repository organization](development/tooling) |
+
 ## Storage, development and distribution
 
-- [Private credential files and one-time OS-store import](2026-10-04-local-credential-storage.md)
+- [Private credential files and one-time OS-store import](desktop/settings/credentials/2026-10-04-local-credential-storage.md)
   — durable writes, profile isolation, import checkpoints and verified retirement.
-- [Independent development profiles without `.env`](2026-10-08-remove-dev-env-presets.md)
+- [Independent development profiles without `.env`](development/tooling/2026-10-08-remove-dev-env-presets.md)
   — separate editable data and explicit copying from a formal installation.
-- [Session history](2026-09-28-session-history-design.md)
+- [Session history](desktop/settings/history/2026-09-28-session-history-design.md)
   — default-off, bounded local transcript/audio retention, deletion and export.
-- [Stable release signing](2026-09-26-stable-release-signing-design.md)
-  and [recording permission continuity](2026-10-04-recording-permission-continuity.md)
+- [Stable release signing](development/build/2026-09-26-stable-release-signing-design.md)
+  and [recording permission continuity](desktop/platform/2026-10-04-recording-permission-continuity.md)
   — stable installed identities and separate recording grants.
-- [Build throughput](2026-10-08-build-throughput.md)
+- [Build throughput](development/build/2026-10-08-build-throughput.md)
   — local validation/package profiles, cache boundaries and updater verification.
-- [Windows portable releases](2026-09-26-windows-portable-release-design.md),
-  [Linux desktop support](2026-09-27-linux-support-design.md) and
-  [Android release signing](2026-09-27-android-release-signing.md).
-- [Signed in-app updater](2026-09-02-signed-in-app-updater-design.md)
+- [Windows portable releases](development/build/2026-09-26-windows-portable-release-design.md),
+  [Linux desktop support](desktop/platform/2026-09-27-linux-support-design.md) and
+  [Android release signing](android/2026-09-27-android-release-signing.md).
+- [Signed in-app updater](desktop/settings/updates/2026-09-02-signed-in-app-updater-design.md)
   — user-initiated download/install/relaunch and release metadata.
 
 ## Streaming and audio
 
-- [Shared subtitle core](2026-10-03-shared-subtitle-core.md)
+- [Shared subtitle core](runtime/subtitles/2026-10-03-shared-subtitle-core.md)
   — desktop/Android pairing and finalization ownership.
-- [Runtime reliability](2026-08-24-runtime-reliability-and-release-design.md)
-  and [audio/HTTP lifecycle](2026-09-07-audio-http-lifecycle-design.md)
+- [Runtime reliability](runtime/lifecycle/2026-08-24-runtime-reliability-and-release-design.md)
+  and [audio/HTTP lifecycle](runtime/lifecycle/2026-09-07-audio-http-lifecycle-design.md)
   — bounded queues, cancellation, recovery and generation ownership.
-- [Transcript publication boundaries](2026-09-08-transcript-publication-boundaries-design.md)
-  and [final request identity](2026-10-04-final-request-identity.md)
+- [Transcript publication boundaries](runtime/subtitles/2026-09-08-transcript-publication-boundaries-design.md)
+  and [final request identity](runtime/translation/2026-10-04-final-request-identity.md)
   — draft/final separation and stale-response rejection.
-- [Live profile switching](2026-10-05-live-profile-switch.md)
+- [Live profile switching](desktop/lifecycle/2026-10-05-live-profile-switch.md)
   — session replacement, rollback and selection guards.
-- [Optional microphone input](2026-10-03-optional-microphone-input.md),
-  [application audio](2026-10-03-application-audio.md) and
-  [Windows output selection](2026-09-30-windows-sound-source.md).
+- [Optional microphone input](desktop/audio/2026-10-03-optional-microphone-input.md),
+  [application audio](desktop/audio/2026-10-03-application-audio.md) and
+  [Windows output selection](desktop/audio/2026-09-30-windows-sound-source.md).
 
 ## Service and language contracts
 
-- [Custom speech recognition](2026-10-03-custom-speech-recognition.md)
-  and [recognition/translation settings](2026-10-03-service-stage-settings.md)
+- [Custom speech recognition](providers/protocols/2026-10-03-custom-speech-recognition.md)
+  and [recognition/translation settings](desktop/settings/services/2026-10-03-service-stage-settings.md)
   — independent stages, credentials and explicit checks.
-- [Provider language catalogs](2026-10-06-provider-language-catalogs.md)
-  and [per-profile language presets](2026-10-07-profile-language-presets.md).
-- [Gemini setup and protocol evidence](2026-10-04-gemini-live-translation.md)
-  and [Volcano subtitle protocol](2026-10-07-volcano-subtitle-protocol.md).
-- [Apple Speech](2026-10-05-apple-speech-design.md),
-  [Apple Translation](2026-10-06-apple-native-translation.md) and
-  [native language packs](2026-10-06-apple-language-packs.md).
-- [Alibaba translation model selection](2026-10-07-alibaba-translation-model-selection.md).
+- [Provider language catalogs](providers/catalogs/2026-10-06-provider-language-catalogs.md)
+  and [per-profile language presets](desktop/settings/services/2026-10-07-profile-language-presets.md).
+- [Gemini setup and protocol evidence](providers/gemini/2026-10-04-gemini-live-translation.md)
+  and [Volcano subtitle protocol](providers/protocols/2026-10-07-volcano-subtitle-protocol.md).
+- [Apple Speech](providers/apple/2026-10-05-apple-speech-design.md),
+  [Apple Translation](providers/apple/2026-10-06-apple-native-translation.md) and
+  [native language packs](providers/apple/2026-10-06-apple-language-packs.md).
+- [Alibaba translation model selection](providers/alibaba/2026-10-07-alibaba-translation-model-selection.md).
 
 ## Product surfaces
 
@@ -69,15 +83,15 @@ The [UI guidelines](../development/ui-guidelines.md) own shared layout, editable
 fields, automatic saves, feedback and cross-page verification rules. Keep
 surface-specific behavior in the relevant record:
 
-- [Subtitle overlay](2026-08-23-overlay-behavior-design.md),
-  [background opacity](2026-10-03-subtitle-background-opacity.md) and
-  [overlay close control](2026-10-07-overlay-close-button.md).
-- [Settings appearance](2026-09-24-settings-appearance-design.md)
-  and [explicit credential reveal](2026-10-02-explicit-credential-reveal.md).
-- [Interactive pointer behavior](2026-10-03-interactive-pointer.md)
-  and [fullscreen Space following](2026-08-26-fullscreen-space-following-design.md).
-- [Android subtitle interaction](2026-10-07-android-overlay-interaction.md)
-  and [interface languages](2026-10-07-android-interface-language.md).
+- [Subtitle overlay](desktop/overlay/2026-08-23-overlay-behavior-design.md),
+  [background opacity](desktop/overlay/2026-10-03-subtitle-background-opacity.md) and
+  [overlay close control](desktop/overlay/2026-10-07-overlay-close-button.md).
+- [Settings appearance](desktop/settings/appearance/2026-09-24-settings-appearance-design.md)
+  and [explicit credential reveal](desktop/settings/credentials/2026-10-02-explicit-credential-reveal.md).
+- [Interactive pointer behavior](desktop/overlay/2026-10-03-interactive-pointer.md)
+  and [fullscreen Space following](desktop/overlay/2026-08-26-fullscreen-space-following-design.md).
+- [Android subtitle interaction](android/2026-10-07-android-overlay-interaction.md)
+  and [interface languages](android/2026-10-07-android-interface-language.md).
 
 When behavior changes, update its owning decision and guide. Keep historical
 test counts and candidate-specific instructions out of current setup guidance.

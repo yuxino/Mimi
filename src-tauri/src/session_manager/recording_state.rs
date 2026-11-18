@@ -1,6 +1,6 @@
 //! Content-free evidence for the desktop's local recording indicator.
 //! This describes successful local writes, not recognition or microphone access.
-use crate::core::audio_input::{AudioInput, AudioSource};
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
 use crate::core::models::SessionStatus;
 use serde::Serialize;
 

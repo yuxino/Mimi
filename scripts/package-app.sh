@@ -46,7 +46,7 @@ esac
 export CARGO_TARGET_DIR="$TARGET_DIR"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   export MACOSX_DEPLOYMENT_TARGET="13.0"
-  APPLE_SIGNING_IDENTITY="$("$SCRIPT_DIR/codesign-identity.sh")"
+  APPLE_SIGNING_IDENTITY="$("$SCRIPT_DIR/macos/codesign-identity.sh")"
   export APPLE_SIGNING_IDENTITY
   if [[ "$APPLE_SIGNING_IDENTITY" == "-" ]]; then
     cat >&2 <<'EOF'
@@ -77,7 +77,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "macOS app bundle was not produced." >&2
     exit 1
   }
-  "$SCRIPT_DIR/verify-macos-app.sh" "$APP"
+  "$SCRIPT_DIR/macos/verify-macos-app.sh" "$APP"
   if [[ -n "$TARGET" ]]; then
     ACTUAL_ARCH="$(lipo -archs "$APP/Contents/MacOS/mimi")"
     EXPECTED_ARCH="${TARGET%%-*}"
@@ -93,7 +93,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 An existing /Applications/mimi.app was left untouched. This package uses
 a stable identity. Older ad-hoc GitHub releases have a different identity. Before any deliberate replacement, run:
 
-  ./scripts/verify-macos-install-identity.sh "$APP" /Applications/mimi.app
+  ./scripts/macos/verify-macos-install-identity.sh "$APP" /Applications/mimi.app
 EOF
   fi
   cat <<EOF

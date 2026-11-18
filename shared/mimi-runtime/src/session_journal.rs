@@ -1,7 +1,7 @@
 //! An opt-in file journal. Live state retains only counts and limit metadata.
 use crate::core::{
-    models::SubtitlePair,
-    session_archive::{TRANSCRIPT_BYTE_LIMIT, TRANSCRIPT_COUNT_LIMIT},
+    lifecycle::session_archive::TRANSCRIPT_BYTE_LIMIT,
+    lifecycle::session_archive::TRANSCRIPT_COUNT_LIMIT, models::SubtitlePair,
 };
 use crate::session_history::SessionHistory;
 use serde::Serialize;
@@ -112,7 +112,9 @@ impl SessionJournal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{audio_input::AudioSource, session_archive::TranscriptExportOptions};
+    use crate::core::{
+        audio::audio_input::AudioSource, lifecycle::session_archive::TranscriptExportOptions,
+    };
 
     #[test]
     fn journal_saves_every_accepted_pair_and_serializes_source_identity() {
@@ -195,10 +197,10 @@ mod tests {
 
     #[test]
     fn accepted_event_output_keeps_every_final_and_never_replays_duplicates() {
-        use crate::clients::provider_events::ProviderEvent;
+        use crate::clients::transport::provider_events::ProviderEvent;
         use crate::core::{
-            audio_input::AudioInput, protocols::live_translate::LiveTranslateServerEvent,
-            session::TranslationSessionController,
+            audio::audio_input::AudioInput, lifecycle::session::TranslationSessionController,
+            protocols::realtime::live_translate::LiveTranslateServerEvent,
         };
         let directory = tempfile::tempdir().unwrap();
         let history = SessionHistory::new(directory.path().join("history"), false);

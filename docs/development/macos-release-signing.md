@@ -1,7 +1,7 @@
 # macOS releases with a fixed identity
 
 New macOS releases use the certificate pinned in
-   `scripts/macos-release-identity.txt`. The existing private key stays in the
+   `scripts/macos/macos-release-identity.txt`. The existing private key stays in the
 maintainer Mac's Keychain. Do not export it to GitHub or replace it to unblock a
 build. The updater signing key is separate and must continue matching the
 public key in `src-tauri/tauri.conf.json`.
@@ -19,7 +19,7 @@ public key in `src-tauri/tauri.conf.json`.
    `/Applications/mimi-dev.app`. Commit reviewed source, then push `main` through
    the normal authorized publication flow. Do not push the version tag yet.
 3. On the Apple silicon signing Mac, install the Rust `x86_64-apple-darwin`
-   target, then run `./scripts/prepare-macos-release.sh` from the clean
+   target, then run `./scripts/macos/prepare-macos-release.sh` from the clean
    committed checkout. It produces and verifies:
 
    - `src-tauri/target/release/bundle/dmg/mimi_VERSION_aarch64.dmg`

@@ -10,10 +10,10 @@ use super::{
     MAXIMUM_PROFILE_COUNT, PROFILE_CATALOG_SCHEMA_VERSION, PROFILE_CATALOG_UNAVAILABLE,
     PROFILE_NOT_FOUND,
 };
-use crate::core::credentials::ProviderCredentials;
 use crate::core::models::{SourceLanguage, TranslationMode};
-use crate::core::network_proxy::ProxyConfig;
-use crate::core::provider::{
+use crate::core::services::credentials::ProviderCredentials;
+use crate::core::services::network_proxy::ProxyConfig;
+use crate::core::services::provider::{
     CustomSpeechLanguagesPatch, ProviderKind, ServiceProfile, TextTranslation, TextTranslationName,
     DEFAULT_ALIBABA_PROFILE_ID,
 };
@@ -192,9 +192,10 @@ impl SettingsStore {
                 .map_err(|error| error.to_string())?
                 .and_then(|speech| speech.direct_api_key().map(str::to_owned))
                 .unwrap_or_default();
-            let model =
-                crate::core::protocols::openai_compatible::validate_model(&profile.xai_text_model)
-                    .map_err(|error| error.to_string())?;
+            let model = crate::core::protocols::translation::openai_compatible::validate_model(
+                &profile.xai_text_model,
+            )
+            .map_err(|error| error.to_string())?;
             // Preserve a legacy setup's chosen model even without a key.
             // Authentication stays missing and is never borrowed later.
             destination.xai = Some(XAITextDestination {
@@ -216,9 +217,9 @@ impl SettingsStore {
         name: &str,
     ) -> Result<ServiceProfile, String> {
         let mode = if provider == ProviderKind::AlibabaCloud {
-            crate::core::provider::AlibabaRealtimeMode::LiveTranslate
+            crate::core::services::provider::AlibabaRealtimeMode::LiveTranslate
         } else {
-            crate::core::provider::AlibabaRealtimeMode::Disabled
+            crate::core::services::provider::AlibabaRealtimeMode::Disabled
         };
         self.create_profile_with_mode(provider, name, mode)
     }
@@ -232,7 +233,7 @@ impl SettingsStore {
         self.create_profile_with_mode(
             provider,
             name,
-            crate::core::provider::AlibabaRealtimeMode::Disabled,
+            crate::core::services::provider::AlibabaRealtimeMode::Disabled,
         )
     }
 
@@ -240,7 +241,7 @@ impl SettingsStore {
         &self,
         provider: ProviderKind,
         name: &str,
-        mode: crate::core::provider::AlibabaRealtimeMode,
+        mode: crate::core::services::provider::AlibabaRealtimeMode,
     ) -> Result<ServiceProfile, String> {
         let mut profile = ServiceProfile::new(
             format!("profile-{}", uuid::Uuid::new_v4().simple()),
@@ -355,7 +356,7 @@ impl SettingsStore {
         text_translation_name: Option<TextTranslationName>,
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
-        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
+        language_preset_patch: Option<crate::core::services::provider::ProfileLanguagePresetPatch>,
     ) -> Result<ServiceProfile, String> {
         self.update_profile_options_with_model(
             profile_id,
@@ -381,8 +382,8 @@ impl SettingsStore {
         text_translation_name: Option<TextTranslationName>,
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
-        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
-        qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
+        language_preset_patch: Option<crate::core::services::provider::ProfileLanguagePresetPatch>,
+        qwen_mt_model: Option<crate::core::protocols::translation::qwen_mt::QwenMTModel>,
     ) -> Result<ServiceProfile, String> {
         self.update_profile_options_with_realtime(
             profile_id,
@@ -410,9 +411,9 @@ impl SettingsStore {
         text_translation_name: Option<TextTranslationName>,
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
-        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
-        qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
-        alibaba_realtime_mode: Option<crate::core::provider::AlibabaRealtimeMode>,
+        language_preset_patch: Option<crate::core::services::provider::ProfileLanguagePresetPatch>,
+        qwen_mt_model: Option<crate::core::protocols::translation::qwen_mt::QwenMTModel>,
+        alibaba_realtime_mode: Option<crate::core::services::provider::AlibabaRealtimeMode>,
         alibaba_workspace_id: Option<&str>,
     ) -> Result<ServiceProfile, String> {
         self.update_profile_options_with_xai(
@@ -443,11 +444,11 @@ impl SettingsStore {
         text_translation_name: Option<TextTranslationName>,
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
-        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
-        qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
-        alibaba_realtime_mode: Option<crate::core::provider::AlibabaRealtimeMode>,
+        language_preset_patch: Option<crate::core::services::provider::ProfileLanguagePresetPatch>,
+        qwen_mt_model: Option<crate::core::protocols::translation::qwen_mt::QwenMTModel>,
+        alibaba_realtime_mode: Option<crate::core::services::provider::AlibabaRealtimeMode>,
         alibaba_workspace_id: Option<&str>,
-        xai_speech_mode: Option<crate::core::provider::XAISpeechMode>,
+        xai_speech_mode: Option<crate::core::services::provider::XAISpeechMode>,
         xai_text_model: Option<&str>,
     ) -> Result<ServiceProfile, String> {
         self.update_profile_options_with_speech_mode(
@@ -478,13 +479,13 @@ impl SettingsStore {
         text_translation_name: Option<TextTranslationName>,
         speech_recognition_name: Option<&str>,
         custom_speech_languages_patch: Option<CustomSpeechLanguagesPatch>,
-        language_preset_patch: Option<crate::core::provider::ProfileLanguagePresetPatch>,
-        qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
-        alibaba_realtime_mode: Option<crate::core::provider::AlibabaRealtimeMode>,
+        language_preset_patch: Option<crate::core::services::provider::ProfileLanguagePresetPatch>,
+        qwen_mt_model: Option<crate::core::protocols::translation::qwen_mt::QwenMTModel>,
+        alibaba_realtime_mode: Option<crate::core::services::provider::AlibabaRealtimeMode>,
         alibaba_workspace_id: Option<&str>,
-        xai_speech_mode: Option<crate::core::provider::XAISpeechMode>,
+        xai_speech_mode: Option<crate::core::services::provider::XAISpeechMode>,
         xai_text_model: Option<&str>,
-        speech_translation_mode: Option<crate::core::provider::SpeechTranslationMode>,
+        speech_translation_mode: Option<crate::core::services::provider::SpeechTranslationMode>,
     ) -> Result<ServiceProfile, String> {
         // Complete pre-existing upgrades before changing this profile. A
         // newly selected ASR route is prepared inside the same catalog update.
@@ -512,11 +513,11 @@ impl SettingsStore {
                 let mode = alibaba_realtime_mode.unwrap_or(current.alibaba_realtime_mode);
                 // Creation can persist an unfinished setup. An explicit mode /
                 // workspace edit must still validate before committing any fields.
-                if mode != crate::core::provider::AlibabaRealtimeMode::Disabled
-                    && !crate::core::provider::alibaba_workspace_id_is_valid(workspace.trim())
+                if mode != crate::core::services::provider::AlibabaRealtimeMode::Disabled
+                    && !crate::core::services::provider::alibaba_workspace_id_is_valid(workspace.trim())
                 {
                     return Err(
-                        crate::core::provider::ServiceProfileError::InvalidAlibabaWorkspaceId
+                        crate::core::services::provider::ServiceProfileError::InvalidAlibabaWorkspaceId
                             .to_string(),
                     );
                 }

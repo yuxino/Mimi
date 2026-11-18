@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { I18N } from "../../../lib/i18n";
 import { useStore } from "../../../lib/store";
-import { SettingsRow, SettingsSection } from "../SettingsPrimitives";
-import { Switch } from "../../../components/Switch";
+import { SettingsRow, SettingsSection } from "../controls/SettingsPrimitives";
+import { Switch } from "../../../components/inputs/Switch";
 import { audioInputErrorMessage } from "../../../lib/audio/audioInput";
 import { applicationAudioError } from "../../../lib/audio/applicationAudio";
 import { audioSourceErrorMessage } from "../../../lib/audio/windowsAudioSource";
@@ -10,7 +10,7 @@ import { captureSwitchCopy } from "../../../lib/audio/captureStatus";
 import type { AudioInput, AudioSource } from "../../../lib/types";
 import { ApplicationAudio } from "./ApplicationAudio";
 import { WindowsAudioSource } from "./WindowsAudioSource";
-import { useSettingsToast } from "../useSettingsToast";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 
 /** Uses the same idle, live and paused reconfiguration path as the overlay. */
 export function AudioInputSettings() {

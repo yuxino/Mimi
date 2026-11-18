@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { installedFontFamilies } from "../../../lib/ipc";
 import { I18N } from "../../../lib/i18n";
 import { SubtitleFontControl } from "./SubtitleFontControl";
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 
 vi.mock("../../../lib/ipc", async original => ({ ...await original<typeof import("../../../lib/ipc")>(), installedFontFamilies: vi.fn(), isTauri: false }));
 let host: HTMLDivElement, root: Root;

@@ -588,7 +588,7 @@ async fn pause_claim_after_switch_validation_inherits_the_saved_configuration() 
     let owner = Arc::new(AtomicU64::new(121));
     let active_settings = Arc::new(Mutex::new(Some(
         LiveTranslationConfiguration::for_provider(
-            crate::core::provider::ProviderKind::AlibabaCloud,
+            crate::core::services::provider::ProviderKind::AlibabaCloud,
             "test-key",
             SourceLanguage::English,
             crate::core::models::TargetLanguage::SimplifiedChinese,

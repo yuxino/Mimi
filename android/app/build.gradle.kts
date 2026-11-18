@@ -40,27 +40,27 @@ val sharedCoreNativeInputs = files(
     fileTree(repositoryRoot.resolve("shared/.cargo")) { include("config", "config.toml") },
     repositoryRoot.resolve("shared/provider-language-catalogs.json"),
     repositoryRoot.resolve("shared/translation-contracts.json"),
-    repositoryRoot.resolve("scripts/build-shared-core.py"),
-    repositoryRoot.resolve("scripts/verify-shared-core.py"),
-    repositoryRoot.resolve("scripts/check-shared-runtime.py"),
+    repositoryRoot.resolve("scripts/shared/build-shared-core.py"),
+    repositoryRoot.resolve("scripts/shared/verify-shared-core.py"),
+    repositoryRoot.resolve("scripts/shared/check-shared-runtime.py"),
     rootProject.file("shared-core.properties"),
 )
 val rustVersion = providers.exec { commandLine("rustc", "-vV") }.standardOutput.asText
 
 val verifySharedRuntimeArchitecture = tasks.register<Exec>("verifySharedRuntimeArchitecture") {
     workingDir(repositoryRoot)
-    commandLine(pythonExecutable.get(), "scripts/check-shared-runtime.py")
+    commandLine(pythonExecutable.get(), "scripts/shared/check-shared-runtime.py")
     // No output/cache marker: check current production sources on every build.
 }
 val verifySharedProviderCopy = tasks.register<Exec>("verifySharedProviderCopy") {
     workingDir(repositoryRoot)
-    commandLine(pythonExecutable.get(), "-B", "scripts/sync-provider-copy.py", "--check")
+    commandLine(pythonExecutable.get(), "-B", "scripts/providers/sync-provider-copy.py", "--check")
     inputs.files(repositoryRoot.resolve("shared/provider-copy.json"),
         repositoryRoot.resolve("shared/translation-contracts.json"),
-        repositoryRoot.resolve("scripts/sync-provider-copy.py"),
+        repositoryRoot.resolve("scripts/providers/sync-provider-copy.py"),
         repositoryRoot.resolve("src/lib/generated/providerCopy.ts"),
         repositoryRoot.resolve("src/lib/i18n.ts"),
-        repositoryRoot.resolve("src/windows/settings/services/AlibabaRealtimeSettings.tsx"))
+        repositoryRoot.resolve("src/windows/settings/services/providers/alibaba/AlibabaRealtimeSettings.tsx"))
     inputs.files(fileTree(repositoryRoot.resolve("src/lib/locales")) { include("*.ts") },
         fileTree(repositoryRoot.resolve("src/lib/generated/providerCopy")) { include("*.ts") },
         fileTree("src/main/res") { include("values*/*.xml") })
@@ -75,7 +75,7 @@ val buildSharedCoreHost = tasks.register<Exec>("buildSharedCoreHost") {
     dependsOn(verifySharedRuntimeArchitecture)
     dependsOn(verifySharedProviderCopy)
     workingDir(repositoryRoot)
-    commandLine(pythonExecutable.get(), "scripts/build-shared-core.py", "--platform", "host",
+    commandLine(pythonExecutable.get(), "scripts/shared/build-shared-core.py", "--platform", "host",
         "--profile", "debug", "--target-dir", sharedCoreTarget.absolutePath,
         "--output", sharedCoreHostOutput.get().asFile.absolutePath)
     inputs.files(sharedCoreNativeInputs).withPathSensitivity(PathSensitivity.RELATIVE)
@@ -141,7 +141,7 @@ for (variant in listOf("debug", "release")) {
         dependsOn(verifySharedRuntimeArchitecture)
         dependsOn(verifySharedProviderCopy)
         workingDir(repositoryRoot)
-        commandLine(pythonExecutable.get(), "scripts/build-shared-core.py", "--platform", "android",
+        commandLine(pythonExecutable.get(), "scripts/shared/build-shared-core.py", "--platform", "android",
             "--profile", variant, "--target-dir", sharedCoreTarget.absolutePath,
             "--ndk", pinnedNdk.get().asFile.absolutePath, "--output", output.get().asFile.absolutePath)
         inputs.files(sharedCoreNativeInputs).withPathSensitivity(PathSensitivity.RELATIVE)
@@ -174,14 +174,14 @@ for (variant in listOf("debug", "release")) {
     val verifyApk = tasks.register<Exec>("verifySharedCore${suffix}Apk") {
         dependsOn("package$suffix")
         workingDir(repositoryRoot)
-        commandLine(pythonExecutable.get(), "scripts/verify-shared-core.py", "--apk", apk.get().asFile.absolutePath)
+        commandLine(pythonExecutable.get(), "scripts/shared/verify-shared-core.py", "--apk", apk.get().asFile.absolutePath)
         inputs.file(apk)
         if (variant == "release") {
             val mapping = layout.buildDirectory.file("outputs/mapping/release/mapping.txt")
             args("--mapping", mapping.get().asFile.absolutePath)
             inputs.file(mapping)
         }
-        inputs.file(repositoryRoot.resolve("scripts/verify-shared-core.py"))
+        inputs.file(repositoryRoot.resolve("scripts/shared/verify-shared-core.py"))
         // Verification is intentionally run after every requested assembly.
         outputs.upToDateWhen { false }
     }

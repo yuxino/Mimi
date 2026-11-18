@@ -5,15 +5,16 @@
 ```text
 src/                         Desktop React UI
   windows/
-    overlay/                 Caption reading and overlay interaction
-    overlay-control/         Quick session controls
-    settings/                Settings window and shared settings controls
-      services/              Profiles, credential drafts and connection checks
+    overlay/                 OverlayWindow entry; timeline, controls, interaction, status
+    overlay-control/         Window entry; panel and language capsule
+    settings/                SettingsView entry; controls, feedback, session, navigation
+      services/              ServiceProfiles entry; profiles, credentials, connection,
+                             languages, network and provider-specific forms
       audio/, appearance/    Input/language and subtitle appearance controls
       history/, updates/     Saved sessions and software updates
       support/, development/ Diagnostics and explicitly enabled dev tools
       guide/                 Onboarding and setup guidance
-  components/                Controls shared across these surfaces
+  components/                Icon entry; audio, providers, inputs and feedback controls
   lib/
     ipc.ts, types.ts          Native IPC contract and payload types
     store.ts, i18n.ts         Snapshot/acknowledgement and language entry points
@@ -21,6 +22,8 @@ src/                         Desktop React UI
     profiles/, session/      Catalog projection and session state/errors
     subtitles/, overlay/     Caption presentation and native overlay helpers
     settings/                Preference-state projection
+    clipboard/, shortcuts/   Native clipboard and desktop shortcut adapters
+    development/, visibility/Explicit dev fixtures/traces and document visibility
 src-tauri/
   src/
     lib.rs                   Tauri composition, plugins, tray and app events
@@ -29,23 +32,31 @@ src-tauri/
     settings_store/          Desktop preferences, profiles and credential storage
     session_manager.rs       Desktop session state owner and construction
     session_manager/         Lifecycle, lane ownership, selection and publication
-    audio/                   Native capture and audio adapters
+    audio/                   Capture entry; macos, windows, linux, capture and processing
     windows/                 Native overlay/window interaction
     windows.rs               Window-management entry point
     platform/
       macos/                 Dock presentation and native quit delegate
       windows/               Startup ownership and updater cleanup
       linux/                 X11 initialization before Tauri/GTK
-    core/, clients/          Shared re-exports and desktop-specific adapters
+    core/                    Models plus audio, services, subtitles, lifecycle, diagnostics,
+                             development, UI and protocol modules
+    clients/                 Shared recognition, realtime, translation, pipeline and transport
+    apple/, development/     Native Apple facades and explicit development adapters/probes
   config/                    Explicit Dev/watch/CI Tauri overrides
-android/                     Native Android UI, capture, credentials and build
+android/                     MainActivity/MimiApplication; captions, capture, provider,
+                             services, settings, sessions, updates, onboarding and UI adapters
 shared/
   mimi-core/                 Common subtitle state and alignment
   mimi-runtime/              Common providers, transport and session policies
   mimi-android-jni/          Android bridge to the same Rust implementation
   *.json                     Shared copy, catalogs and behavioral contracts
 config/                      Frontend build/type/style/lint tool configuration
-scripts/                     Build, signing, checks, probes and maintenance tools
+scripts/                     check.sh, dev-app.sh and package-app.sh entry points;
+                             purpose-specific shared, providers, development, frontend, CI,
+                             diagnostics, macos, windows, linux, Android and updater tools
+docs/plans/                  Topic navigation; desktop, Android, provider/runtime and
+                             development/build/verification design records
 ```
 
 Group a native adapter with the feature that owns it: audio capture belongs in
@@ -60,6 +71,55 @@ The three frontend windows remain normal product entry points. Settings feature
 folders and `lib` domains organize implementations; they do not introduce barrel
 files or a second store. The product website lives in the separate
 `yuxino-labs/mimi-web` repository.
+
+## Tooling and design records
+
+Keep `scripts/check.sh`, `scripts/dev-app.sh` and `scripts/package-app.sh` as the
+stable daily entry points. Their helpers live under `scripts/development/`,
+`macos/`, `linux/`, `windows/`, `android/`, `shared/`, `providers/`, `diagnostics/`,
+`frontend/`, `ci/` and `updates/` according to the work they perform. Put a tool's
+regression tests and fixtures beside that tool; browser fixtures and README
+image inputs belong under `scripts/frontend/`, while the independent updater
+signature verifier belongs under `scripts/updates/`. Move callers to the actual
+implementation instead of leaving forwarding scripts at the old location.
+Each helper must resolve repository inputs from its own file location rather
+than assume the caller's working directory. Preserve canonical output and cache
+locations when moving the entry point.
+
+Keep accepted design records under `docs/plans/` grouped by their owning
+behavior: desktop overlay, settings, lifecycle, audio and native platform
+integration; native Android; provider contracts; shared runtime; or development
+build, verification and tooling. Settings records further separate appearance,
+service configuration, credentials, history/export, updates, feedback and page
+navigation. The [design index](../plans/README.md) provides navigation across
+these groups. Dates identify evidence and decision history;
+they are not the directory taxonomy. Retain necessary architecture, migration,
+security and historical verification context, and update relative links whenever
+a record moves. Reusable current rules continue to live in their owning guide.
+
+## Directory ownership
+
+A readable split must also make the file tree navigable. A folder containing
+separate product features is divided by those features, with its styles and
+tests beside the responsible implementation. A component's integrated window
+regressions live in that window's own `tests/`; there is no repository-wide test
+bucket. Normal application and contract entry points stay visible.
+
+Rust `clients` groups recognition, realtime speech translation, text translation,
+pipeline orchestration and transport. Desktop facade directories mirror the
+shared source exactly and contain re-exports only. `core` groups audio, service
+configuration, subtitle assembly, session lifecycle and diagnostics. Internal
+Rust import paths follow these owners; IPC names, JNI exports, protocol strings
+and persisted schemas do not change. Native audio modules use explicit physical
+bindings where retaining an existing platform module name keeps cfg gates clear;
+portable facade module lists cannot redirect to another path or contain logic.
+
+Tool implementations and their regression tests are grouped by purpose. The
+three public script entry points retain their established paths, and every
+auxiliary script derives the repository root from its actual location. Design
+records are organized by the problem they address and retain their original
+revision/evidence scope. Locale catalogs, Android resources, provider icons and
+public release history retain their conventional homogeneous layouts.
 
 ## Frontend state and configuration editing
 
@@ -199,3 +259,5 @@ port 1420 before switching worktrees or running the watch-server regression.
 Use the actual Dev bundle to verify startup and local state persistence; passing
 source tests does not establish Windows/Linux native acceptance or live provider
 quality. See [local regression rules](common-regressions.md).
+
+For directory-only moves, verify all retained test-module registrations and cfg gates, compare protocol/prompt literals, and compare non-text assets byte-for-byte with the baseline. Decode text strictly; skip binary inputs in import/link rewrite tools. Passing compilation alone does not prove moved tests remain registered.

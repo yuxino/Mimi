@@ -2,10 +2,10 @@
 
 use super::publication::{SessionStateEvent, StatusPayload};
 use super::SessionManager;
-use crate::core::audio_input::{AudioInput, AudioSource};
+use crate::core::audio::audio_input::{AudioInput, AudioSource};
+use crate::core::lifecycle::session::TranslationSessionController;
 use crate::core::models::UtteranceRole;
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::session::TranslationSessionController;
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
 use crate::pipeline_log;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// This helper is never used by production history finalization.
 pub(super) fn finish_ui_test_archive(
     controller: &mut TranslationSessionController,
-    recording: &mut crate::core::session_archive::AudioRecording,
+    recording: &mut crate::core::lifecycle::session_archive::AudioRecording,
     retain_for_export: bool,
 ) {
     if !retain_for_export {

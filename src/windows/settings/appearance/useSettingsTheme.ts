@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { I18N } from "../../../lib/i18n";
-import { useSettingsToast } from "../useSettingsToast";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 
 export type SettingsTheme = "system" | "light" | "dark";
 const STORAGE_KEY = "mimi.settings-theme";

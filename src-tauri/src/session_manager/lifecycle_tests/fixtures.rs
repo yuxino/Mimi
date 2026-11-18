@@ -50,7 +50,7 @@ fn ui_export_fixture_survives_stop_and_repeated_finalization_but_resets_on_new_s
         language: Some("en".into()),
         translation: "合成导出示例".into(),
     });
-    let mut recording = crate::core::session_archive::AudioRecording::default();
+    let mut recording = crate::core::lifecycle::session_archive::AudioRecording::default();
     recording.begin(true);
     recording.append(16_000, &[0, 0, 1, 0]);
     controller.did_stop();
@@ -87,7 +87,7 @@ fn ui_export_audio_fixture_is_eight_seconds_low_amplitude_and_source_specific() 
                 .collect();
             assert!(pcm.iter().any(|sample| *sample != 0));
             assert!(pcm.iter().all(|sample| sample.abs() <= 1000));
-            let mut recording = crate::core::session_archive::AudioRecording::default();
+            let mut recording = crate::core::lifecycle::session_archive::AudioRecording::default();
             recording.begin(true);
             recording.append(16_000, &samples);
             let wav = recording.export().unwrap();
@@ -112,7 +112,7 @@ fn ordinary_ui_test_finalization_still_clears_synthetic_buffers() {
         language: Some("en".into()),
         translation: "合成导出示例".into(),
     });
-    let mut recording = crate::core::session_archive::AudioRecording::default();
+    let mut recording = crate::core::lifecycle::session_archive::AudioRecording::default();
     recording.begin(true);
     recording.append(16_000, &[0, 0]);
     finish_ui_test_archive(&mut controller, &mut recording, false);

@@ -2,9 +2,9 @@
 //! These gates prevent stale work from committing into a replacement session.
 
 use super::SessionManager;
-use crate::core::audio_input::AudioSource;
+use crate::core::audio::audio_input::AudioSource;
 use crate::core::models::SessionStatus;
-use mimi_runtime::core::recovery::{
+use mimi_runtime::core::lifecycle::recovery::{
     advance_lifecycle_sequence_if_current, lifecycle_sequence_matches, NO_GENERATION,
 };
 use std::future::Future;

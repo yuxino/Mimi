@@ -7,8 +7,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.view.ContextThemeWrapper
 import androidx.core.content.ContextCompat
-import app.yuxino.mimi.android.InterfaceLanguage
 import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.localization.InterfaceLanguage
 import com.google.android.material.materialswitch.MaterialSwitch
 
 /** One compact appearance for the native caption and its inert settings preview. */

@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn realtime_modes_default_to_simultaneous_and_restore_independent_configuration() {
-    use crate::core::provider::SpeechTranslationMode;
+    use crate::core::services::provider::SpeechTranslationMode;
     for provider in [
         ProviderKind::OpenAIRealtime,
         ProviderKind::GoogleGeminiLive,
@@ -94,7 +94,7 @@ fn realtime_modes_default_to_simultaneous_and_restore_independent_configuration(
 
 #[test]
 fn azure_asr_configuration_remains_editable_when_simultaneous_needs_a_deployment() {
-    use crate::core::provider::SpeechTranslationMode;
+    use crate::core::services::provider::SpeechTranslationMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore {
         local_file: true,
@@ -222,7 +222,7 @@ fn azure_incomplete_snapshot_keeps_corrupt_or_unreadable_credentials_unavailable
 
 #[test]
 fn azure_saved_key_repairs_simultaneous_deployment_without_crossing_resource_boundaries() {
-    use crate::core::provider::SpeechTranslationMode;
+    use crate::core::services::provider::SpeechTranslationMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -297,7 +297,7 @@ fn realtime_mode_patch_rejects_other_providers_without_mutating_catalog() {
     assert!(save_realtime_speech_mode(
         &store,
         &profile.id,
-        crate::core::provider::SpeechTranslationMode::AsrMt
+        crate::core::services::provider::SpeechTranslationMode::AsrMt
     )
     .is_err());
     assert_eq!(
@@ -308,7 +308,7 @@ fn realtime_mode_patch_rejects_other_providers_without_mutating_catalog() {
 
 #[test]
 fn xai_mode_switch_preserves_independent_text_credentials_and_legacy_metadata() {
-    use crate::core::provider::XAISpeechMode;
+    use crate::core::services::provider::XAISpeechMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -318,7 +318,7 @@ fn xai_mode_switch_preserves_independent_text_credentials_and_legacy_metadata() 
     assert_eq!(profile.xai_speech_mode, XAISpeechMode::AsrMt);
     assert_eq!(
         profile.xai_text_model,
-        crate::core::provider::DEFAULT_XAI_TEXT_MODEL
+        crate::core::services::provider::DEFAULT_XAI_TEXT_MODEL
     );
     store
         .save_api_key(&profile.id, "synthetic-xai-key")
@@ -376,15 +376,15 @@ fn xai_mode_switch_preserves_independent_text_credentials_and_legacy_metadata() 
     assert!(reopened.configuration().unwrap().uses_xai_asr());
     assert!(
         matches!(reopened.configuration_for_text_probe(&profile).unwrap().credentials,
-            crate::core::configuration::TextTranslationProbeCredentials::Independent(TextTranslationCredentials::XAI { model, api_key })
+            crate::core::services::configuration::TextTranslationProbeCredentials::Independent(TextTranslationCredentials::XAI { model, api_key })
                 if model == "chosen-text-model" && api_key == "synthetic-text-key")
     );
 }
 
 #[test]
 fn xai_checks_use_independent_keys_and_proxies_without_persisting_drafts() {
-    use crate::core::configuration::TextTranslationProbeCredentials;
-    use crate::core::network_proxy::ProxyMode;
+    use crate::core::services::configuration::TextTranslationProbeCredentials;
+    use crate::core::services::network_proxy::ProxyMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -490,7 +490,7 @@ fn xai_checks_use_independent_keys_and_proxies_without_persisting_drafts() {
 #[test]
 fn legacy_xai_stt_migrates_once_and_deleted_text_credentials_never_return() {
     for legacy_voice in [false, true] {
-        use crate::core::provider::XAISpeechMode;
+        use crate::core::services::provider::XAISpeechMode;
         let directory = tempfile::tempdir().unwrap();
         let fake = FakeSecretStore::default();
         let store = fresh_store(directory.path(), &fake);
@@ -567,7 +567,7 @@ fn legacy_xai_stt_migrates_once_and_deleted_text_credentials_never_return() {
 
 #[test]
 fn failed_legacy_xai_mode_migration_preserves_the_saved_mode_and_preferences() {
-    use crate::core::provider::XAISpeechMode;
+    use crate::core::services::provider::XAISpeechMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -608,7 +608,7 @@ fn failed_legacy_xai_mode_migration_preserves_the_saved_mode_and_preferences() {
 
 #[test]
 fn legacy_xai_mode_retry_reuses_verified_destination_after_catalog_failure() {
-    use crate::core::provider::XAISpeechMode;
+    use crate::core::services::provider::XAISpeechMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -828,7 +828,7 @@ fn xai_saved_route_metadata_can_be_restored_without_revealing_an_inactive_key() 
 
 #[test]
 fn xai_voice_probes_never_change_provider_or_use_an_independent_text_route() {
-    use crate::core::provider::XAISpeechMode;
+    use crate::core::services::provider::XAISpeechMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -917,7 +917,7 @@ fn alibaba_original_to_translation_restores_the_selected_grok_destination() {
 
 #[test]
 fn xai_metadata_rejections_do_not_change_catalog_or_credentials() {
-    use crate::core::provider::XAISpeechMode;
+    use crate::core::services::provider::XAISpeechMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -945,7 +945,7 @@ fn xai_metadata_rejections_do_not_change_catalog_or_credentials() {
 
 #[test]
 fn new_alibaba_setup_defaults_to_livetranslate_and_survives_restart() {
-    use crate::core::provider::AlibabaRealtimeMode;
+    use crate::core::services::provider::AlibabaRealtimeMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -984,7 +984,7 @@ fn new_alibaba_setup_defaults_to_livetranslate_and_survives_restart() {
 
 #[test]
 fn alibaba_realtime_metadata_switch_reuses_key_and_preserves_text_destination() {
-    use crate::core::provider::AlibabaRealtimeMode;
+    use crate::core::services::provider::AlibabaRealtimeMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -1086,7 +1086,7 @@ fn alibaba_realtime_metadata_switch_reuses_key_and_preserves_text_destination() 
 
 #[test]
 fn alibaba_realtime_missing_workspace_does_not_commit_partial_profile_changes() {
-    use crate::core::provider::AlibabaRealtimeMode;
+    use crate::core::services::provider::AlibabaRealtimeMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = fresh_store(directory.path(), &fake);
@@ -1118,7 +1118,7 @@ fn alibaba_realtime_missing_workspace_does_not_commit_partial_profile_changes() 
 
 #[test]
 fn qwen_model_metadata_survives_reopening_settings_without_reading_credentials() {
-    use crate::core::protocols::qwen_mt::QwenMTModel;
+    use crate::core::protocols::translation::qwen_mt::QwenMTModel;
     let directory = tempfile::tempdir().unwrap();
     atomic_write(
         &directory.path().join(PROFILE_CATALOG_FILE),
@@ -1164,7 +1164,7 @@ fn qwen_model_metadata_survives_reopening_settings_without_reading_credentials()
 
 #[test]
 fn qwen_model_selection_is_scoped_and_reaches_both_session_and_text_probe() {
-    use crate::core::protocols::qwen_mt::QwenMTModel;
+    use crate::core::protocols::translation::qwen_mt::QwenMTModel;
     let fake = FakeSecretStore::default();
     let store = settings(&fake);
     store

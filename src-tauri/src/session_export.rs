@@ -1,7 +1,7 @@
 //! Settings-only manual export: native save picker, then atomic file replacement.
 use crate::commands::AppState;
-use crate::core::audio_input::AudioSource;
-use crate::core::session_archive::{
+use crate::core::audio::audio_input::AudioSource;
+use crate::core::lifecycle::session_archive::{
     ArchiveState, TranscriptExportFormat, TranscriptExportOptions, TranscriptPage,
 };
 use crate::session_history::HistoryItem;
@@ -512,7 +512,7 @@ mod tests {
 
     #[tokio::test]
     async fn current_audio_returns_the_existing_wav_bytes_without_reformatting() {
-        let mut recording = crate::core::session_archive::AudioRecording::default();
+        let mut recording = crate::core::lifecycle::session_archive::AudioRecording::default();
         recording.begin(true);
         recording.append(16_000, &[1, 0, 255, 127]);
         let expected = recording.export().unwrap();

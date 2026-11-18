@@ -105,7 +105,7 @@ pub async fn overlay_set_pointer_cursor(
     {
         crate::windows::set_overlay_pointer_cursor(
             &app,
-            crate::core::overlay_pointer::OverlayPointerPosition { x, y },
+            crate::core::ui::overlay_pointer::OverlayPointerPosition { x, y },
             pointing,
         )
         .await

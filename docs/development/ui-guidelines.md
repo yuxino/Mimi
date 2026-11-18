@@ -122,7 +122,7 @@ These project rules apply to implementation and review.
   Include Windows-only output choices and Linux-only recovery states even when
   developing on macOS. A hidden native capability must have an explicit local
   fixture; a successful macOS screen alone cannot cover that control. Reuse
-  `scripts/fixtures/settings-layout.html` and `scripts/verify-settings-layout.js`
+  `scripts/frontend/fixtures/settings-layout.html` and `scripts/frontend/verify-settings-layout.js`
   for actual browser geometry, and keep the native-device evidence separate.
   In a fresh checkout, load the Vite root page once before opening fixtures
   that import optimized dependencies from `/node_modules/.vite/deps/`.
@@ -225,10 +225,10 @@ actual failed operation: deleting history is not a history-read failure.
 
 ## Reuse the shared implementation
 
-Settings uses [SettingsPrimitives](../../src/windows/settings/SettingsPrimitives.tsx)
+Settings uses [SettingsPrimitives](../../src/windows/settings/controls/SettingsPrimitives.tsx)
 for rows, sections and actionable inline feedback, and mounts one
-[SettingsToastRegion](../../src/windows/settings/SettingsToast.tsx) per window.
-Use [useSettingsToast](../../src/windows/settings/useSettingsToast.ts):
+[SettingsToastRegion](../../src/windows/settings/feedback/SettingsToast.tsx) per window.
+Use [useSettingsToast](../../src/windows/settings/feedback/useSettingsToast.ts):
 
 - `beginToast()` reserves the notification slot before an asynchronous action.
   The returned notifier reports its result; pass `true` for a failure.

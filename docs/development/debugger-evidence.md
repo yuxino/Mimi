@@ -102,7 +102,7 @@ simulation of original timers, provider behavior or native window geometry.
 ## Parallel public-media baselines
 
 Keep a tagged scene matrix outside Git. The schema and fixed selection rules
-are in [the scenario plan](../plans/2026-10-03-development-scenario-matrix.md).
+are in [the scenario plan](../plans/development/verification/2026-10-03-development-scenario-matrix.md).
 Each scene has public-source/license provenance, a PCM16 mono 16 kHz file,
 an exactly matching audition WAV, a reference transcript and an explicit speech
 expectation. Record parent hashes and actual speed or measured RMS mix parameters
@@ -111,7 +111,7 @@ for transformations. Original film soundtrack SNR remains unknown without stems.
 Prepare a batch without any credentials, compilation or requests:
 
 ```bash
-python3 -B scripts/run-development-batch.py \
+python3 -B scripts/development/run-development-batch.py \
   --manifest /absolute/private/scenario-matrix.json \
   --output-root /private/tmp/mimi-debug-benchmark/batches
 ```
@@ -128,7 +128,7 @@ or passed by Python. Reuse the configured Cargo caches.
 Each new private `batch-*` folder has immutable staged inputs, preparation
 hashes, a content-free `progress.json`, individual bounded job logs and
 `baseline-index.json`. Successful index rows can be passed as `--asr-result`
-to `scripts/analyze-development-case.py`. Provider request preparation is
+to `scripts/diagnostics/analyze-development-case.py`. Provider request preparation is
 recorded separately from provider completion. These files are private: the
 individual provider events and reference contain speech.
 

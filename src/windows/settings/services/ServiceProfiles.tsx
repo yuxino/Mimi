@@ -1,13 +1,13 @@
-import { ProviderCredentialEditor } from "./ProviderCredentialEditor";
-import { ProviderPicker } from "./ProviderPicker";
-import { profileTitle, profileDescription, profileSecondaryLabel, credentialStateText } from "./serviceProfilePresentation";
-import { useProfileConnectionChecks } from "./useProfileConnectionChecks";
+import { ProviderCredentialEditor } from "./credentials/ProviderCredentialEditor";
+import { ProviderPicker } from "./profiles/ProviderPicker";
+import { profileTitle, profileDescription, profileSecondaryLabel, credentialStateText } from "./profiles/serviceProfilePresentation";
+import { useProfileConnectionChecks } from "./connection/useProfileConnectionChecks";
 import { profileSelectionChangesSettings } from "../../../lib/profiles/profileLanguagePreset";
 import type { ConnectionCheckStage } from "../../../lib/ipc";
 import { profileErrorMessage } from "../../../lib/providers/connectionDiagnostics";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../../../components/Icon";
-import { ProviderIcon } from "../../../components/ProviderIcon";
+import { ProviderIcon } from "../../../components/providers/ProviderIcon";
 import { I18N, providerDisplayName } from "../../../lib/i18n";
 import { credentialStateForTarget, isCustomSpeechProvider, isIndependentAsrProfile, subtitlePreferencesChanged, supportsSpeechTranslationMode, textTranslationForProfile, usesAlibabaRealtime, usesXaiAsr } from "../../../lib/providers/providerCapabilities";
 import { DEFAULT_NETWORK_PROXY } from "../../../lib/providers/networkProxy";
@@ -24,36 +24,36 @@ import type {
   SettingsSnapshot,
   TextTranslationNameDraft,
 } from "../../../lib/types";
-import { InlineFeedback, SettingsSection } from "../SettingsPrimitives";
-import { dismissSettingsToast, useSettingsToast } from "../useSettingsToast";
+import { InlineFeedback, SettingsSection } from "../controls/SettingsPrimitives";
+import { dismissSettingsToast, useSettingsToast } from "../feedback/useSettingsToast";
 
-import { DestructiveConfirmation } from "../DestructiveConfirmation";
-import { AlibabaCredentialEditor } from "./AlibabaCredentialEditor";
-import { CustomSpeechCredentialEditor } from "./CustomSpeechCredentialEditor";
+import { DestructiveConfirmation } from "../controls/DestructiveConfirmation";
+import { AlibabaCredentialEditor } from "./providers/alibaba/AlibabaCredentialEditor";
+import { CustomSpeechCredentialEditor } from "./credentials/CustomSpeechCredentialEditor";
 
-import { SettingsActionMenu } from "../SettingsActionMenu";
-import { SettingsHelp } from "../SettingsHelp";
-import { DraftConnectionCheck } from "./ConnectionCheck";
-import { saveAndSelectProfile } from "./saveAndSelectProfile";
-import { SettingsInitializationStatus } from "../SettingsInitializationStatus";
+import { SettingsActionMenu } from "../controls/SettingsActionMenu";
+import { SettingsHelp } from "../feedback/SettingsHelp";
+import { DraftConnectionCheck } from "./connection/ConnectionCheck";
+import { saveAndSelectProfile } from "./profiles/saveAndSelectProfile";
+import { SettingsInitializationStatus } from "../feedback/SettingsInitializationStatus";
 import { textTranslationDisplayName } from "../../../lib/providers/textTranslationName";
 import { speechRecognitionDisplayName } from "../../../lib/providers/speechRecognitionName";
-import { NetworkProxySettings } from "./NetworkProxySettings";
+import { NetworkProxySettings } from "./network/NetworkProxySettings";
 import { SOURCE_LANGUAGE_DISPLAY_NAMES, TARGET_LANGUAGE_DISPLAY_NAMES } from "../../../lib/types";
-import { ProfileLanguagePresetSettings } from "./ProfileLanguagePresetSettings";
-import { CustomSpeechLanguageSettings } from "./CustomSpeechLanguageSettings";
+import { ProfileLanguagePresetSettings } from "./languages/ProfileLanguagePresetSettings";
+import { CustomSpeechLanguageSettings } from "./languages/CustomSpeechLanguageSettings";
 import { speechLanguageGuidance } from "../../../lib/providers/speechLanguageGuidance";
-import { AutoSaveNameField } from "./AutoSaveNameField";
-import { NameDraftContext, NameDraftOwner } from "./nameDraftOwner";
-import { AppleSpeechSettings } from "./AppleSpeechSettings";
-import { useAppleSpeechSupport } from "./useAppleSpeechSupport";
+import { AutoSaveNameField } from "./profiles/AutoSaveNameField";
+import { NameDraftContext, NameDraftOwner } from "./profiles/nameDraftOwner";
+import { AppleSpeechSettings } from "./providers/apple/AppleSpeechSettings";
+import { useAppleSpeechSupport } from "./providers/apple/useAppleSpeechSupport";
 import { profileCopyName } from "../../../lib/profiles/profileCopyName";
-import { AlibabaRealtimeSettings } from "./AlibabaRealtimeSettings";
-import { QwenMTModelSettings } from "./QwenMTModelSettings";
-import { XAISpeechSettings } from "./XAISpeechSettings";
-import { SpeechTranslationModeSettings } from "./SpeechTranslationModeSettings";
+import { AlibabaRealtimeSettings } from "./providers/alibaba/AlibabaRealtimeSettings";
+import { QwenMTModelSettings } from "./providers/QwenMTModelSettings";
+import { XAISpeechSettings } from "./providers/XAISpeechSettings";
+import { SpeechTranslationModeSettings } from "./providers/SpeechTranslationModeSettings";
 import { ServiceEditorModule } from "./ServiceEditorModule";
-import { useServicePageNavigation } from "./useServicePageNavigation";
+import { useServicePageNavigation } from "./profiles/useServicePageNavigation";
 
 type Feedback = { tone: "success" | "error" | "info"; message: string };
 type PendingAction = "duplicate" | "create" | "select" | "delete" | "save-key" | "save-model" | "delete-key" | "test-connection" | "save-proxy" | "save-languages" | "switch-language" | "prepare-resource" | "prepare-apple-translation" | null;

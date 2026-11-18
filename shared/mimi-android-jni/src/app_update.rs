@@ -1,7 +1,10 @@
 //! Android's manual update request. The only destination is the public release
 //! endpoint; this adapter never accepts a provider configuration or credential.
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use mimi_runtime::{clients::provider_network::ProviderNetwork, core::network_proxy::ProxyConfig};
+use mimi_runtime::{
+    clients::transport::provider_network::ProviderNetwork,
+    core::services::network_proxy::ProxyConfig,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
@@ -169,7 +172,7 @@ async fn fetch_release(network: ProviderNetwork, endpoint: &str) -> Result<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mimi_runtime::core::network_proxy::ProxyMode;
+    use mimi_runtime::core::services::network_proxy::ProxyMode;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 

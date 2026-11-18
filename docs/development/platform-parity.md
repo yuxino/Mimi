@@ -101,7 +101,7 @@ Android does not offer PCM recording or audio export.
 
 A desktop business fix belongs in the shared crates, so an Android build uses
 the same changed source without a second manual patch. Run
-`python3 -B scripts/check-shared-runtime.py` to check repository path dependencies,
+`python3 -B scripts/shared/check-shared-runtime.py` to check repository path dependencies,
 desktop re-export facades, the production Android engine entry and references to
 retired Kotlin clients. Historical engines, protocol clients and their exclusive
 tests remain in Git history. Golden JSON contracts, direct Rust tests, actual
@@ -332,7 +332,7 @@ adjacent to caption text (below when there is space, otherwise above); the immer
 caption window remains touch-through. This is Android presentation adaptation,
 not another subtitle/translation implementation.
 
-`python3 scripts/check-android-overlay-placement.py` compiles the actual native
+`python3 scripts/android/check-android-overlay-placement.py` compiles the actual native
 placement class and runs the same cases used by Android JUnit without a SDK.
 This checks state/geometry, not WindowManager pixels, insets delivery or touch
 dispatch. The native `overlay_interaction` fixture covers Home/panel entry,

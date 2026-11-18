@@ -91,7 +91,7 @@
 - 暂停、清空、恢复、重连测试记录有意排除的时间区间和代次。相同句子
   的重复输入仍有不同身份，不能用文本相同推断回复属于同一次请求。
 
-场景准备与调度沿用 [场景矩阵设计](../plans/2026-10-03-development-scenario-matrix.md)
+场景准备与调度沿用 [场景矩阵设计](../plans/development/verification/2026-10-03-development-scenario-matrix.md)
 和 [取证、回放与分析流程](debugger-evidence.md)，不另写一套执行器。
 下一轮从 [音频质量基线重放](audio-quality-replay.md) 开始：先重开私有归档、
 校验既有输入并仅准备矩阵，再按当次范围执行服务与原生测试。

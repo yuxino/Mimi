@@ -28,7 +28,7 @@ PCM、request、events、metrics，核对保存的 hash；搬迁后的临时绝�
 在仓库根目录使用已校验的私有矩阵：
 
 ```bash
-python3 -B scripts/run-development-batch.py \
+python3 -B scripts/development/run-development-batch.py \
   --manifest /absolute/private/next-cycle-corpus-matrix.json \
   --output-root /private/tmp/mimi-debug-benchmark/replay-preparation
 ```
@@ -97,7 +97,7 @@ pair ID 与 request ID，引用 trace event ID、private event 行和 snapshot I
 有 reference 的 corpus 可沿用离线 analyzer：
 
 ```bash
-python3 -B scripts/analyze-development-case.py \
+python3 -B scripts/diagnostics/analyze-development-case.py \
   --case /absolute/private/native-case \
   --media-manifest /absolute/private/media-manifest.json \
   --clip stable-scene-label \

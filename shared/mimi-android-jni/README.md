@@ -33,11 +33,11 @@ and [NDK toolchain integration](https://developer.android.com/ndk/guides/other_b
 Artifact alignment does not establish execution on a 16 KB device; capture and
 device runtime validation remain separate checks.
 
-For an independent build without Gradle, run `scripts/build-shared-core.py`
+For an independent build without Gradle, run `scripts/shared/build-shared-core.py`
 with `--platform host|android`, `--profile debug|release`, and `--output DIR`.
 Android builds use the pinned NDK under `ANDROID_HOME`, or the explicit
 `--ndk DIR`. `MIMI_PYTHON` can select Python for Gradle on hosts without a
-`python3` executable. `scripts/check-shared-core.sh` checks all shared Rust crates.
+`python3` executable. `scripts/shared/check-shared-core.sh` checks all shared Rust crates.
 
 ## Native dependency notices
 

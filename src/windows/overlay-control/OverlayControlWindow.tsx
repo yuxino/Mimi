@@ -1,10 +1,10 @@
 import { isSystemAudioPermissionDenied } from "../../lib/audio/systemAudioPermissions";
-import { useLanguageNormalizationToast } from "../settings/services/useLanguageNormalizationToast";
-import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/useSettingsToast";
+import { useLanguageNormalizationToast } from "../settings/services/languages/useLanguageNormalizationToast";
+import { settingsToastSnapshot, subscribeSettingsToast, useSettingsToast } from "../settings/feedback/useSettingsToast";
 import { memo, useCallback, useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage } from "../../lib/i18n";
 import { useOverlayControlMode } from "../../lib/overlay/useOverlayControlMode";
-import { useDesktopShortcuts } from "../../lib/useDesktopShortcuts";
+import { useDesktopShortcuts } from "../../lib/shortcuts/useDesktopShortcuts";
 import { sessionErrorSettingsTarget } from "../../lib/providers/connectionDiagnostics";
 import {
   isTauri,
@@ -26,12 +26,12 @@ import {
   isWaitingForFinalTranslation,
   languageStatus,
   pendingSourceTranslation,
-} from "../overlay/overlayModel";
-import { useOverlayChromePeers } from "../overlay/useOverlayChromePeers";
-import { useSessionAction } from "../overlay/useSessionAction";
-import { LanguageStatusCapsule } from "./LanguageStatusCapsule";
-import { OverlayControlPanel } from "./OverlayControlPanel";
-import { overlayControlPanelModel } from "./overlayControlModel";
+} from "../overlay/timeline/overlayModel";
+import { useOverlayChromePeers } from "../overlay/controls/useOverlayChromePeers";
+import { useSessionAction } from "../overlay/controls/useSessionAction";
+import { LanguageStatusCapsule } from "./capsule/LanguageStatusCapsule";
+import { OverlayControlPanel } from "./panel/OverlayControlPanel";
+import { overlayControlPanelModel } from "./panel/overlayControlModel";
 import "./overlay-control.css";
 
 /** Child window that morphs between a compact status island and its panel. */

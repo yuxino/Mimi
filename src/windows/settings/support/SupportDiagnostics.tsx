@@ -1,15 +1,15 @@
 import { openAIRealtimeErrorMessage } from "../../../lib/locales/openaiRealtimeErrors";
 import { SUPPLEMENTAL_EN } from "../../../lib/locales/supplemental-schema";
 import { supplemental } from "../../../lib/locales/supplemental";
-import { SettingsHelp } from "../SettingsHelp";
+import { SettingsHelp } from "../feedback/SettingsHelp";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertCircle, ChevronRight, Copy, ExternalLink, RotateCw } from "lucide-react";
-import { useSettingsToast } from "../useSettingsToast";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 import { invoke } from "@tauri-apps/api/core";
 import { effectiveUiLanguage, I18N, subscribeUiLanguage, type ResolvedUiLanguage } from "../../../lib/i18n";
 import { isTauri } from "../../../lib/ipc";
 import { useDocumentVisibility } from "../../../lib/useDocumentVisibility";
-import { writeDiagnosticClipboard } from "../../../lib/diagnosticClipboard";
+import { writeDiagnosticClipboard } from "../../../lib/clipboard/diagnosticClipboard";
 import { diagnosticAudioState, diagnosticNextStep, supportDiagnosticSummary, type DiagnosticFailureCategory, type DiagnosticStatus, type DiagnosticSummaryEvent } from "./supportDiagnosticSummary";
 import { diagnosticsCopy, type DiagnosticsCopy } from "./diagnosticsCopy";
 import "./support-diagnostics.css";

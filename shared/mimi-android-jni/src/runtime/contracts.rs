@@ -67,7 +67,7 @@ pub(super) fn preview_content_changed(value: &Value) -> Result<bool, &'static st
             .filter(|text| mimi_runtime::core::models::subtitle_text_within_limit(text))
             .ok_or("native_runtime_invalid_request")
     };
-    let current = mimi_runtime::core::preview_pacing::PreviewCandidate::new(
+    let current = mimi_runtime::core::subtitles::preview_pacing::PreviewCandidate::new(
         text("draft")?,
         language(
             value
@@ -76,7 +76,7 @@ pub(super) fn preview_content_changed(value: &Value) -> Result<bool, &'static st
         )?,
         0,
     );
-    let previous = mimi_runtime::core::preview_pacing::PreviewCandidate::new(
+    let previous = mimi_runtime::core::subtitles::preview_pacing::PreviewCandidate::new(
         text("previousDraft")?,
         language(
             value
@@ -89,7 +89,7 @@ pub(super) fn preview_content_changed(value: &Value) -> Result<bool, &'static st
 }
 
 pub(super) fn qwen_streaming_text(value: &Value) -> Result<Value, &'static str> {
-    use mimi_runtime::core::protocols::qwen_mt::{QwenMTModel, QwenMTStreamText};
+    use mimi_runtime::core::protocols::translation::qwen_mt::{QwenMTModel, QwenMTStreamText};
     let model: QwenMTModel = serde_json::from_value(value["model"].clone())
         .map_err(|_| "native_runtime_invalid_request")?;
     let contents = value["contents"]
@@ -113,11 +113,14 @@ pub(super) fn gemini_streaming_transcripts(value: &Value) -> Result<Value, &'sta
         .filter(|frames| frames.len() <= 256)
         .ok_or("native_runtime_invalid_request")?;
     let mut assembler =
-        mimi_runtime::core::protocols::gemini_transcribe::TranscriptAssembler::default();
+        mimi_runtime::core::protocols::recognition::gemini_transcribe::TranscriptAssembler::default(
+        );
     let mut outputs = Vec::with_capacity(frames.len());
     for frame in frames {
-        let event = mimi_runtime::core::protocols::gemini_transcribe::decode(&frame.to_string())
-            .map_err(|_| "native_runtime_invalid_request")?;
+        let event = mimi_runtime::core::protocols::recognition::gemini_transcribe::decode(
+            &frame.to_string(),
+        )
+        .map_err(|_| "native_runtime_invalid_request")?;
         let output = assembler
             .apply(event)
             .map_err(|_| "native_runtime_invalid_request")?;
@@ -131,10 +134,11 @@ pub(super) fn xai_streaming_transcripts(value: &Value) -> Result<Value, &'static
         .as_array()
         .filter(|frames| frames.len() <= 256)
         .ok_or("native_runtime_invalid_request")?;
-    let mut assembler = mimi_runtime::core::protocols::xai_stt::TranscriptAssembler::default();
+    let mut assembler =
+        mimi_runtime::core::protocols::recognition::xai_stt::TranscriptAssembler::default();
     let mut outputs = Vec::with_capacity(frames.len());
     for frame in frames {
-        let event = mimi_runtime::core::protocols::xai_stt::decode(&frame.to_string())
+        let event = mimi_runtime::core::protocols::recognition::xai_stt::decode(&frame.to_string())
             .map_err(|_| "native_runtime_invalid_request")?;
         let output = assembler
             .apply(event)
@@ -156,7 +160,8 @@ pub(super) fn preview_candidate(value: &Value) -> Result<Value, &'static str> {
     let opening = value["opening"]
         .as_bool()
         .ok_or("native_runtime_invalid_request")?;
-    let mut committer = mimi_runtime::core::committer::ASRDraftCommitter::new(minimum as usize);
+    let mut committer =
+        mimi_runtime::core::subtitles::committer::ASRDraftCommitter::new(minimum as usize);
     committer.update_draft(draft);
     Ok(json!({"candidate":committer.preview_latest_draft(opening)}))
 }

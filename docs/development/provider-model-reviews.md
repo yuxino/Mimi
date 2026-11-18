@@ -23,7 +23,7 @@
   Realtime 和 Gemini Live 的宽松 UTF-8 替换；非法输入沿用协议失败路径。
   Qwen-MT 非流式 HTTP 响应也移除宽松替换，保留原有受限重试语义。
   腾讯/百度/xAI 的二进制音频及火山 protobuf 不适用此 JSON 修复。
-- 验证契约与剩余分类边界见[设计记录](../plans/2026-11-14-provider-binary-json.md)。
+- 验证契约与剩余分类边界见[设计记录](../plans/runtime/transport/2026-11-14-provider-binary-json.md)。
   本次未新增真实账号/音频测试，不替代下方未完成的全量模型复核。
 
 ## 2026-11-13 — 正式凭据复测与 Terra 参数修复

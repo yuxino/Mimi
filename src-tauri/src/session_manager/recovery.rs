@@ -10,14 +10,14 @@ use super::recovery_cleanup::{cancel_recovery_task, prepare_recovery_cleanup};
 use super::SessionManager;
 use crate::audio::send_pipeline::AudioPipelineFailure;
 use crate::audio::SystemAudioCaptureFailure;
-use crate::clients::provider_events::ProviderEvent;
-use crate::core::audio_input::AudioSource;
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::provider::ProviderKind;
-use crate::core::support_diagnostics::{RecoveryAction, SafeFailure};
+use crate::clients::transport::provider_events::ProviderEvent;
+use crate::core::audio::audio_input::AudioSource;
+use crate::core::diagnostics::support_diagnostics::{RecoveryAction, SafeFailure};
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
+use crate::core::services::provider::ProviderKind;
 use crate::pipeline_log;
-use mimi_runtime::core::health::{probe_connection_health, HEALTH_CHECK_INTERVAL};
-use mimi_runtime::core::recovery::{
+use mimi_runtime::core::lifecycle::health::{probe_connection_health, HEALTH_CHECK_INTERVAL};
+use mimi_runtime::core::lifecycle::recovery::{
     advance_lifecycle_sequence_if_current, clear_recovery_atoms, RecoveryContinuity, NO_GENERATION,
 };
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

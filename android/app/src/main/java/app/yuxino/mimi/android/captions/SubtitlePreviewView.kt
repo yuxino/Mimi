@@ -11,10 +11,10 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import app.yuxino.mimi.android.InterfaceLanguage
 import app.yuxino.mimi.android.R
-import app.yuxino.mimi.android.SettingsStore
 import app.yuxino.mimi.android.capture.OverlayPlacement
+import app.yuxino.mimi.android.localization.InterfaceLanguage
+import app.yuxino.mimi.android.settings.SettingsStore
 
 /** A scaled view of the actual native caption window; never starts capture or a provider. */
 class SubtitlePreviewView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : LinearLayout(context, attrs) {

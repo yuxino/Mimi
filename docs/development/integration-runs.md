@@ -1,5 +1,23 @@
 # 集成实测记录
 
+## 2026-11-18：按职责细分拥挤目录
+
+- 基于 main `09b94b59` 的本轮工作树，继续细分前后端、共享运行时、Android、
+  工具和设计记录。字幕目录直接文件从 70 降至 1，服务设置从 57 降至 2，
+  Android 应用包从 38 降至 2；客户端、协议和配套测试随实际职责归组。
+  入口、共享业务源、生产 JNI 类与持久化／协议契约保持明确。
+- 完整检查通过：713 项桌面及 8 项适配器测试、157 文件／2914 项前端测试、
+  1023 项共享运行时及 40 项 JNI crate 测试；开发功能全目标严格 Clippy 通过。
+  Android Debug／Release 各 246 项 JVM（实际 JNI 各 54 项）、双模式 lint、
+  测试 APK 编译、四 ABI 包结构／对齐／许可检查通过；未执行设备测试。
+- 独立复审核对全部原 Rust 模块注册及 cfg、401 个有效 UTF-8 前端文本，
+  另按字节验证 41 个二进制资产。架构守卫保留 26 项拒绝场景并新增 5 项
+  嵌套模块保护。目录移动需同步测试注册、完全限定调用和生成器；编译通过
+  不能代替这些边界，维护规则已补入仓库归属指南。
+- 签名 `--watch --ui-only` 的未提交工作树验证配置添加／保存、启动、暂停、
+  恢复、停止和退出；开发版签名要求未变，未替换正式版，未读取真实服务
+  凭据或采集音频。原旧分支及其未提交修改保留；原生交互证据仅限此模拟流程。
+
 ## 2026-11-18：全仓库职责整理与模拟预览
 
 - [PR #380](https://github.com/yuxino/Mimi/pull/380) 基于已合并字幕界面的
@@ -1923,7 +1941,7 @@
   同一 join 样本在单/双线程 Tokio 的 25 ms timeout 下分别等待
   184.108/185.135 ms 后仍返回成功；后台释放对照约 30 ms 返回超时，
   且释放完成前继续拒绝重启。没有采音或新增服务用量。
-- 修复设计见 [Windows capture owner](../plans/2026-10-27-windows-capture-owner.md)：
+- 修复设计见 [Windows capture owner](../plans/desktop/audio/2026-10-27-windows-capture-owner.md)：
   一个专属线程管理构建、播放、重绑定和销毁，slot 直到真正释放才开放。
   取消后的回调被忽略，构建期真实错误仍上报；活动状态属于各自 worker。
 - 本机 `--quick desktop windows_capture_worker` 四项聚焦回归通过，覆盖
@@ -1982,7 +2000,7 @@
 
 - 实现提交 `5f4f08ad`，基于 main `b9021c97`。排查 #329 时确认共享 Audio3
   心跳仅凭上次发送时间补静音，原生回调晚到后会把重叠时间的真实 PCM 也
-  全量发送。设计见 [Audio3 时间轴](../plans/2026-10-27-audio3-silence-timeline.md)。
+  全量发送。设计见 [Audio3 时间轴](../plans/providers/alibaba/2026-10-27-audio3-silence-timeline.md)。
 - 固定本地 WebSocket、16 kHz 单声道 PCM16、十个每 200 ms 到达的 200 ms
   非零包。旧码约 2,002 ms 内发送 64,000 字节真实 PCM 和 35,200 字节静音；
   同样输入修复后为 64,000 与 6,400 字节，约 2,002 ms。真实包内容及顺序
@@ -2056,7 +2074,7 @@
 
 - 实现提交 `1f6f26d5`，基于 main `57e829d0`；下列自动检查在提交前
   相同源码工作树执行，使用 Rust test/debug 与实际 host JNI。设计见
-  [会话状态可靠性](../plans/2026-10-26-session-state-reliability.md)。
+  [会话状态可靠性](../plans/runtime/lifecycle/2026-10-26-session-state-reliability.md)。
 - 先失败后修复：xAI 流式识别的传输错误未进入共享恢复分类；桌面恢复
   重试 Gemini／xAI 的认证、缺失凭据和语言配置错误；新会话相同字幕
   沿用旧显示确认时间；自定义 ASR 单个凭据值损坏后完整新值无法保存。
@@ -2081,7 +2099,7 @@
 ## 2026-10-26：Rosetta 警告排查与原生更新迁移
 
 - 本次源码基于 main `779abd07`，只改变桌面 updater 选择；设计见
-  [Rosetta 原生更新](../plans/2026-10-26-rosetta-native-updates.md)。用户报告
+  [Rosetta 原生更新](../plans/desktop/settings/updates/2026-10-26-rosetta-native-updates.md)。用户报告
   的 macOS 28 提示来自当前 Mac，但现装正式版及唯一运行进程均为
   ARM64 1.6.11，包内无其他 Mach-O 组件。前次发布验收曾运行 Intel 包，
   系统仍登记 16 条已不存在的 Intel 测试副本；逐项注销并刷新当前原生
@@ -2205,7 +2223,7 @@
   逐块追加的问题。Plus 现在替换快照，Lite／Flash 保持追加；空块、
   重复完成块、缩短修订、大小限制、截断和取消均有回归。正式字幕与
   探测本来就对 Plus 使用非流式，本轮保持该策略，不称为已复现的
-  正式字幕故障。设计见[累计流规则](../plans/2026-10-25-qwen-mt-cumulative-streaming.md)。
+  正式字幕故障。设计见[累计流规则](../plans/providers/alibaba/2026-10-25-qwen-mt-cumulative-streaming.md)。
 - 完整 `./scripts/check.sh` 通过。共享文字规则使用同一份 fixture 进入
   直接 Rust、原生适配和新增 JVM/JNI 用例；本机完整检查不代表实际
   Java 调用已执行，Android 实际 JNI 结果须核对对应 PR 的 CI。
@@ -2239,7 +2257,7 @@
 
 - 实现提交 `63a30599` 基于 main `cc11556e`。桌面和 Android 新增
   同声传译／ASR + MT，新建及缺少模式字段的配置默认同声；已有独立
-  翻译配置在切换时保留。设计见[双模式记录](../plans/2026-10-25-realtime-asr-mt-modes.md)。
+  翻译配置在切换时保留。设计见[双模式记录](../plans/providers/catalogs/2026-10-25-realtime-asr-mt-modes.md)。
 - 最终完整 `./scripts/check.sh` 通过：runtime 897、desktop 689、
   Rust JNI 27、前端 153 文件／2,752 项，runtime 和 desktop 各保留
   一项既有 ignored。严格 lint、类型、共享架构边界及生产构建通过。
@@ -2329,7 +2347,7 @@
   使用一个“全部／最近 1–10 条”选择，沿用既有持久化字段。实时跟随
   限制已确认字幕数，上翻仍展开现有历史；回到实时后重新应用限制。
   不改变字幕保存与导出。设计见
-  [显示条数](../plans/2026-10-20-visible-subtitle-count.md)。
+  [显示条数](../plans/desktop/overlay/2026-10-20-visible-subtitle-count.md)。
 - 该 revision 本地完整检查通过，含前端 150 文件／2,525 项；
   条数、模式、暂停、新字幕到达、历史锚点与回到实时有组件回归。
   实际浏览器检查覆盖 8 种语言、两种宽度与明暗主题共 32 组设置，
@@ -2369,7 +2387,7 @@
   “未分类错误／字幕启动失败”。界面合并了多个错误标签，原始底层
   原因未知；一次原配置重试恢复运行。没有把同一时间段其他系统服务
   的错误码作为 Speech 根因。修复范围见
-  [设计记录](../plans/2026-10-20-apple-speech-interruption.md)。
+  [设计记录](../plans/providers/apple/2026-10-20-apple-speech-interruption.md)。
 - clean `bc3d34a1` 的稳定签名、普通内嵌开发版使用已有独立开发配置：
   Apple Speech＋Apple Translation、英语→简体中文、系统声音。
   临时将采集应用改为全部，复用此前 13.456 秒非敏感合成样本；
@@ -2427,7 +2445,7 @@
 ## 2026-10-20：诊断与会话阅读、回听和导出
 
 - 受测实现为 `f2b33610`，基于 main `4f37e87b`；范围见
-  [设计记录](../plans/2026-10-20-diagnostics-session-workspace.md)。用户反馈
+  [设计记录](../plans/desktop/settings/history/2026-10-20-diagnostics-session-workspace.md)。用户反馈
   操作过多后，改为“会话列表 → 阅读详情”、单一导出入口和更多菜单，
   使用内嵌播放器及上下成对正文。浮窗录音标记仍是待评估方案，未实现。
 - 稳定签名 macOS 开发版 `--watch --ui-only` 使用显式合成导出夹具。
@@ -2500,7 +2518,7 @@
 - 基于 main `e009f6d2`，实现 `a124fcd4` 经
   [PR #306](https://github.com/yuxino/Mimi/pull/306) 合并为 `d64a6c60`；
   合并树与受测实现一致。范围见
-  [设计记录](../plans/2026-10-20-subtitle-readability-and-drag.md)。
+  [设计记录](../plans/desktop/overlay/2026-10-20-subtitle-readability-and-drag.md)。
 - 桌面字号改为 14–48 px，默认 16 和既有选择保留；双语原文固定为
   90%，预览与浮窗共用字体样式。顶部空白区复用既有移动命令，拖动条
   提高对比度。原文独立字号、外部位置控制及新动画仍未实现，未关闭
@@ -2533,7 +2551,7 @@
 - 基于 main `6812e4d6`，修复提交 `fb3eaadd` 经
   [PR #305](https://github.com/yuxino/Mimi/pull/305) 合并为 `5b8e68c8`；
   合并树与受测 PR head 完全一致。依据与范围见
-  [设计记录](../plans/2026-10-20-linux-icon-match-ambiguity.md)。
+  [设计记录](../plans/desktop/platform/2026-10-20-linux-icon-match-ambiguity.md)。
 - 共享 executable 的桌面入口按准确名称消歧，重复名称或无充分依据时
   使用默认图标；明确 ID 和缺少 artwork 的入口不落到更弱的其他应用。
   native／Flatpak 共用候选规则，支持官方允许的两类 Flatpak 后缀入口。
@@ -2586,7 +2604,7 @@
 
 - 基于 main `4fae21dc` 加本条目所在提交的前端修复；用户仍在使用正式
   应用，仅使用后台合成快照，没有启动原生测试、读取真实凭据、联网探测
-  服务或更换安装。范围见[设计记录](../plans/2026-10-20-profile-selection-availability.md)。
+  服务或更换安装。范围见[设计记录](../plans/desktop/settings/services/2026-10-20-profile-selection-availability.md)。
 - 浮窗与声音设置保留未完成项、禁用选择并显示原因；失效当前项不丢失，
   补齐后恢复。候选预设优先，原文模式与合法无密钥配置仍可用。独立复核
   纠正 Apple 翻译凭据不可用被误指为识别不可用的提示，未发现其他问题。
@@ -2607,7 +2625,7 @@
 
 - 从 clean main `632166a5` 开始，源码提交
   `286e8da6c567f7c3524b89adcc245192afad7906`，范围见
-  [设计记录](../plans/2026-10-19-audio3-finish-budget.md)。只运行后台离线
+  [设计记录](../plans/providers/alibaba/2026-10-19-audio3-finish-budget.md)。只运行后台离线
   loopback 和合成文本；未启动应用、播放／捕获音频、访问真实凭据或更换安装。
 - 固定样本 `audio3FinishDrain` 的缺失结束确认用例，旧实现尾句正确但
   关闭识别连接后再空等一次 bridge 确认，单次实测 2.041 秒。修复后同例
@@ -2641,7 +2659,7 @@
 ## 2026-10-19：继续优化——长字幕缩写检查与历史写入
 
 - 基于 clean main `1846507c`，范围见
-  [设计记录](../plans/2026-10-19-bounded-transcript-formatting.md)。仍只做离线
+  [设计记录](../plans/runtime/subtitles/2026-10-19-bounded-transcript-formatting.md)。仍只做离线
   合成样本和后台源码检查，不启动原生应用或访问真实凭据、录音及历史。
 - 格式化固定样本为 65,535 字符的重复 ASCII 缩写；原实现累计交给正则
   715,816,960 字符，新线性工作量回归先失败。只读取最长缩写、句点和
@@ -2678,7 +2696,7 @@
 ## 2026-10-19：继续深挖——异步历史列表与 Android 测试实现隔离
 
 - 基于 clean main `bd778732`，在 `perf/runtime-cleanup` 分支准备，范围见
-  [设计记录](../plans/2026-10-19-runtime-resource-cleanup.md)。用户继续使用
+  [设计记录](../plans/runtime/lifecycle/2026-10-19-runtime-resource-cleanup.md)。用户继续使用
   电脑，仍只进行离线合成测试与后台检查，不启动原生应用或访问私有数据。
 - 历史列表用 oneshot 屏障控制文件扫描：读取期间开始 B，旧顺序把 B
   错列为已保存历史；回归先失败。当前会话 ID 改为读取完成后取得，同例
@@ -2742,7 +2760,7 @@
 ## 2026-10-19：后台排查——滑条写入积压与停止句尾
 
 - 基于 clean main `5d487431a1ec62ed89326a4af914a696fba6dbaa`，仅修改
-  [设计记录](../plans/2026-10-19-bounded-settings-and-asr-finish.md) 所列两个边界。
+  [设计记录](../plans/desktop/lifecycle/2026-10-19-bounded-settings-and-asr-finish.md) 所列两个边界。
   用户正在使用电脑，本轮不启动应用、显示窗口、播放或捕获音频，不读取
   私有凭据，也不替换正式／开发安装。
 - 固定滑条样本：阻塞首次保存，连续 100 次调整，再关闭历史保留。修复前
@@ -3369,7 +3387,7 @@
 ## 2026-10-15：补丁版候选资源与生命周期审计
 
 - 修复源码：`2a05f15420fd75f3a8dec76b9ed60b22e4ab1a40`，基于
-  `bdc1ecc8`。范围见 [记录页资源与翻译超时](../plans/2026-10-15-session-resource-lifecycle.md)。
+  `bdc1ecc8`。范围见 [记录页资源与翻译超时](../plans/runtime/lifecycle/2026-10-15-session-resource-lifecycle.md)。
 - 旧组件在记录页隐藏 5 秒时仍增加 5 次 archive IPC；连续播放点击产生
   3 次整份音频读取。两条回归先失败再通过；修复只停止不可见类别的
   monitor，并把同一组件的在途音频读取限制为 1 份。既有跨页播放、删除、
@@ -3405,7 +3423,7 @@
 ## 2026-10-15：并行排查迟到事件与录音恢复
 
 - 修复源码：`8e1b1a71ffb40d1ead2d39bdcd178399ea70736a`，基于
-  `e5b7746e`。设计见 [生命周期边界](../plans/2026-10-15-lifecycle-boundary-regressions.md)。
+  `e5b7746e`。设计见 [生命周期边界](../plans/desktop/lifecycle/2026-10-15-lifecycle-boundary-regressions.md)。
 - 共享配对器的旧代码在已完成 A 的迟到译文草稿到达时覆盖 B，新增 reducer
   回归先失败再通过。带身份但缺映射的草稿现在丢弃；无身份兼容路径及正常
   已映射草稿保留。共用 fixture 加入 unknown／retired 两步，Rust、真实 wire
@@ -3436,7 +3454,7 @@
 
 - 发布源码：`v1.6.2` → `17cbc0300b08f28a76c4396628d0d9ea33845584`；
   本轮产品修复 `acb4847a` 基于 `844f0bde`，后续提交仅整理验证及公开文案。
-  设计见 [选择框与显式凭据恢复](../plans/2026-10-15-release-recovery-regressions.md)。
+  设计见 [选择框与显式凭据恢复](../plans/development/verification/2026-10-15-release-recovery-regressions.md)。
 - 新发现的选择框解锁后重开、完整语音草稿因旧元数据读取失败而禁用保存，
   都在 v1.6.1 已存在。正式组件与真实 voice consumer 先 4 项失败，再通过；
   部分草稿继续要求可靠旧值，真实编辑页的保存拒绝保留字段及重试。最终
@@ -3502,7 +3520,7 @@
 ## 2026-10-15：第四轮 pending 状态与 Android 虚拟机复核
 
 - 产品源码：`4793d51454d009149371fdec3ff6c31b40426fd6`，基于
-  `8a3c8de9`。设计见 [pending 状态边界](../plans/2026-10-15-pending-state-regressions.md)。
+  `8a3c8de9`。设计见 [pending 状态边界](../plans/desktop/lifecycle/2026-10-15-pending-state-regressions.md)。
   桌面三个名称字段离页后丢失失败草稿／重试，正式用户路径先 3 项失败，
   修复后通过。补查串行保存、晚到结果、不同 route、删除失败／确认删除、
   StrictMode 与中断 IME；后两项在修复审查时先复现，再补防护。
@@ -3543,7 +3561,7 @@
 ## 2026-10-14：第三轮兼容性复核与选择／凭据边界
 
 - 基于 `0d2141a1`，设计见
-  [选择器与凭据边界](../plans/2026-10-14-picker-and-credential-regressions.md)。
+  [选择器与凭据边界](../plans/desktop/settings/credentials/2026-10-14-picker-and-credential-regressions.md)。
   语音页不可用服务已经标记 disabled，但共享选择器仍派发切换；三种
   缺少配置的用户路径先变红，修复后点击、键盘、搜索及动态禁用通过。
   普通列表、当前值、恢复可用与设置／浮窗共用控件保留原行为。
@@ -3572,7 +3590,7 @@
 ## 2026-10-14：第二轮会话边界回归
 
 - 基于 `59b9475d` 的本轮修复，设计见
-  [会话边界记录](../plans/2026-10-14-session-boundary-regressions.md)。配置
+  [会话边界记录](../plans/desktop/lifecycle/2026-10-14-session-boundary-regressions.md)。配置
   目录损坏／不可读不再返回成功空快照，真实空目录与凭据不可用仍保留
   各自语义；会话与浮窗广播也不能覆盖加载错误。原目录内容保持不变。
 - 历史删除成功后离页返回不会残留已删记录，迟到列表、字幕和录音被
@@ -3596,7 +3614,7 @@
 ## 2026-10-14：主动检查的四项回归
 
 - 基于 `c0511a09` 的本轮修复，设计与边界见
-  [回归检查记录](../plans/2026-10-14-proactive-regression-audit.md)。四项新增
+  [回归检查记录](../plans/development/verification/2026-10-14-proactive-regression-audit.md)。四项新增
   用例先在旧实现失败：Qwen MT 截断／长度限制仍返回成功、Windows 输出
   来源变化仍保留录音勾选、迟到粘贴覆盖新编辑、macOS 丢失完整系统语言码。
 - 修复后 `./scripts/check.sh` 完整通过，前端 2152 项测试通过。
@@ -3927,7 +3945,7 @@
 ## 2026-10-08：云端 Android 沉浸定位与恢复（增量）
 
 - 起点是已校验的交接源码快照，原基线 `0ac005c01718412bdf599281999b00ea3040118b`；ZIP SHA-256 `9097539bcca9b883ba13db936003f82cc783daa7839abb69c38d81c2d018180e`，216 文件哈希一致。保留快照，在工作副本中增量修改；未提交、推送、创建 PR、合并、启动应用或连接 Mac。
-- 用户明确补充手机入口／恢复割裂、首屏缺沉浸按钮。增加首页共用入口，退出控件跟随字幕；原窗口切换保存紧凑 dp 锚点和展开阅读状态。旋转／insets／内容变化只约束显示位置，不覆盖用户偏好。共享运行链路审查另确认 Android 整体停止错误使用 provider-only 6 秒预算，改为共享分阶段上限及完整看门狗 9120ms。详见 [设计记录](../plans/2026-10-08-android-immersive-placement.md)。
+- 用户明确补充手机入口／恢复割裂、首屏缺沉浸按钮。增加首页共用入口，退出控件跟随字幕；原窗口切换保存紧凑 dp 锚点和展开阅读状态。旋转／insets／内容变化只约束显示位置，不覆盖用户偏好。共享运行链路审查另确认 Android 整体停止错误使用 provider-only 6 秒预算，改为共享分阶段上限及完整看门狗 9120ms。详见 [设计记录](../plans/android/2026-10-08-android-immersive-placement.md)。
 - 本轮云端实际通过：生产定位类的 11 组 Java/JVM 回归、PC 展示与布局 220 项聚焦回归、前端全套 lint/test/typecheck/build、6 项 updater、Rust fmt，79 个 XML 解析与七语言入口资源检查。Java 编译模块可用，没有 Android SDK／adb／emulator／AVD／KVM 或显示服务；约 8 核配额、8GiB 内存、14GiB 空闲磁盘。
 - canonical 在前置脚本通过后因 Cargo 缺 serde 缓存且下载被网络限制中止。Rust 编译／严格 Clippy／测试与 Android Gradle、JVM/JNI 全套、lint、APK、instrumentation 未在此增量完成；新增 JNI 尾部和原生交互回归尚待执行。交接包中的旧测试数和 APK 哈希不等于本轮结果。未采音、录制或调用真实服务，不能认定 #211 全部延迟根因或量化 PC／手机差距。
 - 下一步：本地审阅并应用增量，重跑 canonical 与两版 Android 检查，使用同一 APK hash 执行无凭据 overlay_interaction，然后验证已拖动位置、反复切换、展开恢复、长字幕／字体、横竖屏和导航栏。具体位置偏移和真实绘制仍未手机验收。
@@ -4003,7 +4021,7 @@
 ## 2026-10-07：收缩浮窗提示与集成文案补漏
 
 - 基线 `4ccde6e9` 加本次工作树修改。最新 main 为 `033b6c30`，待合并统一分支核对到 `4ece07ab`；保持独立修复，交由统一发布分支合并。
-- `scripts/verify-overlay-tooltip.js` 使用真实 OverlayWindow 组件与模拟原生边界：280／360px 宽、54px 收缩／136px 展开、七语、三音源共 84 组通过。检查提示留在窗口内、不裁切、收缩时不覆盖按钮，并验证双击展开。该模拟不证明原生窗口或服务行为。
+- `scripts/frontend/verify-overlay-tooltip.js` 使用真实 OverlayWindow 组件与模拟原生边界：280／360px 宽、54px 收缩／136px 展开、七语、三音源共 84 组通过。检查提示留在窗口内、不裁切、收缩时不覆盖按钮，并验证双击展开。该模拟不证明原生窗口或服务行为。
 - 签名 canonical UI-only 原生法语会话：实际收缩到 54px，hover 显示完整短提示，未覆盖右侧暂停／展开／关闭；双击拖动柄恢复展开，关闭停止会话，设置确认开关关闭后正常退出。未采音、联网或录制；其他语言原生 hover、Windows／Linux 仍由统一回归补充。
 - `scripts/check.sh` 全部通过：Rust 1,244 passed／2 ignored、共享核心 81 项及实际 JNI、前端 129 文件／1,994 项、fmt／Clippy／lint／类型／构建及 diff。最后只缩短提示文字并增加浏览器 fixture 后，再跑完整前端 1,994 项、lint 和生产构建通过。
 - 精确新增 Volcano 两条语言错误的安全映射，保留旧别名；测试覆盖七语、错误包装和私有附加内容拒绝。七语 README 与双语使用指南补齐集成版的配置语言记忆、顶部服务入口，并纠正时间戳适用音源与含义。官网对应七语说明同步；无共享协议或 Android 核心改动。
@@ -4443,7 +4461,7 @@
   与 content revision 后通过。无 ID 的合法 ASR 路径以不同本地确认编号
   保留独立任务，同一已知原句版本的 server/finish alias 仍去重。没有改
   提示词、模型、队列上限、重试、预算或 grace。见
-  [设计记录](../plans/2026-10-04-final-request-identity.md)。
+  [设计记录](../plans/runtime/translation/2026-10-04-final-request-identity.md)。
 - 相邻回归：59 项 HQ 测试通过，覆盖 active／queued 的已知和无 ID 尾句、
   同源 alias、内容版本、preview 抢占、HTTP 顺序／取消／预算和重试。
 - 自动检查：`./scripts/check.sh` 全部通过，桌面 Rust 1010 passed／
@@ -5214,7 +5232,7 @@
 - Repair scope: both decoders accept absent/zero `final` as ready only for a
   successful response without `result`; shared fixtures protect transcript,
   completion and rejection handling. A loopback test verifies readiness
-  before sending audio. See the [design](../plans/2026-10-05-tencent-handshake-ready.md).
+  before sending audio. See the [design](../plans/providers/tencent/2026-10-05-tencent-handshake-ready.md).
 - The old signed app's Japanese → Chinese check through the system proxy timed
   out at 5,195 ms. The patched canonical signed app (`962c2480` plus the
   uncommitted Tencent fix) passed with the same credentials and configuration
@@ -5669,7 +5687,7 @@
   region constraints were checked against the providers' official references
   and xAI's official live-interpreter cookbook. The combined Microsoft and
   OpenAI contract establishes Azure's deployment-name transcription field and
-  dedicated close lifecycle. See [protocol audit](../plans/2026-10-09-provider-protocol-audit.md).
+  dedicated close lifecycle. See [protocol audit](../plans/providers/catalogs/2026-10-09-provider-protocol-audit.md).
 - Final canonical `./scripts/check.sh` passed: app 82 tests, shared runtime
   710 tests (1 ignored), minimal runtime 567 tests (1 ignored), frontend
   131 files / 2,056 tests, plus strict lint/build and the production debugger

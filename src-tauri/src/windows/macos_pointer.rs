@@ -5,7 +5,7 @@
 //! language panel's geometry transitions also reconcile the current hit
 //! without waiting for another movement after a panel shrinks.
 
-use crate::core::overlay_pointer::{
+use crate::core::ui::overlay_pointer::{
     css_position, OverlayPointerPosition, PointerDelivery, PointerMotionGate,
 };
 use objc2::rc::Retained;

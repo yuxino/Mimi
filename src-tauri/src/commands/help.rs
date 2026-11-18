@@ -198,7 +198,7 @@ pub async fn support_diagnostics(state: State<'_, AppState>) -> Result<String, S
 pub async fn app_open_support_issue(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<crate::core::support_diagnostics::SupportIssue, String> {
+) -> Result<crate::core::diagnostics::support_diagnostics::SupportIssue, String> {
     let issue = state.session.support_issue();
     app.opener()
         .open_url(&issue.url, None::<&str>)

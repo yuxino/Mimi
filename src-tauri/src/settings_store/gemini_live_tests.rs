@@ -1,12 +1,12 @@
 //! Explicit private audio checks, excluded from normal tests and production.
 use super::SettingsStore;
-use crate::clients::gemini_live_client::GeminiLiveClient;
-use crate::clients::provider_events::provider_event_channel;
-use crate::clients::provider_network::ProviderNetwork;
+use crate::clients::realtime::gemini_live_client::GeminiLiveClient;
+use crate::clients::transport::provider_events::provider_event_channel;
+use crate::clients::transport::provider_network::ProviderNetwork;
 use crate::core::models::TargetLanguage;
-use crate::core::protocols::gemini_live::GeminiLiveEndpoint;
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::provider::ProviderKind;
+use crate::core::protocols::realtime::gemini_live::GeminiLiveEndpoint;
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
+use crate::core::services::provider::ProviderKind;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::Write;

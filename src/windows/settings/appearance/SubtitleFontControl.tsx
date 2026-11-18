@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Select } from "../../../components/Select";
+import { Select } from "../../../components/inputs/Select";
 import { installedFontFamilies } from "../../../lib/ipc";
 import { I18N } from "../../../lib/i18n";
-import { SettingsRow } from "../SettingsPrimitives";
-import { useSettingsToast } from "../useSettingsToast";
+import { SettingsRow } from "../controls/SettingsPrimitives";
+import { useSettingsToast } from "../feedback/useSettingsToast";
 import { subtitleFontChoiceOwner } from "./subtitleFontChoiceOwner";
 
 /** Enumerate only when opened; reopening also picks up newly installed fonts. */

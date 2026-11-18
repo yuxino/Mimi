@@ -422,7 +422,7 @@ fn recovery_configuration_and_permission_failures_keep_the_actual_error() {
 
 #[test]
 fn tencent_permanent_setup_rejection_does_not_retry_or_erase_the_new_reason() {
-    use crate::clients::tencent_cloud_client::TencentCloudClientError;
+    use crate::clients::realtime::tencent_cloud_client::TencentCloudClientError;
     for code in [6001, 6003, 6004, 6005] {
         let error = session_connect_error(ConnectError::TencentCloud(
             TencentCloudClientError::ProviderRejected { code },
@@ -437,11 +437,11 @@ fn tencent_permanent_setup_rejection_does_not_retry_or_erase_the_new_reason() {
 
 #[test]
 fn built_in_setup_rejection_stops_recovery_with_the_current_failure() {
-    use crate::clients::baidu_translate_client::BaiduTranslateClientError;
-    use crate::clients::gemini_live_client::GeminiLiveClientError;
-    use crate::clients::live_translate_client::LiveTranslateClientError;
-    use crate::clients::openai_realtime_client::OpenAIRealtimeClientError;
-    use crate::clients::xai_realtime_client::XAIRealtimeClientError;
+    use crate::clients::realtime::baidu_translate_client::BaiduTranslateClientError;
+    use crate::clients::realtime::gemini_live_client::GeminiLiveClientError;
+    use crate::clients::realtime::live_translate_client::LiveTranslateClientError;
+    use crate::clients::realtime::openai_realtime_client::OpenAIRealtimeClientError;
+    use crate::clients::realtime::xai_realtime_client::XAIRealtimeClientError;
 
     for (failure, expected) in [
         (
@@ -493,7 +493,7 @@ fn built_in_setup_rejection_stops_recovery_with_the_current_failure() {
 
 #[test]
 fn alibaba_transient_setup_failures_keep_bounded_recovery() {
-    use crate::clients::live_translate_client::LiveTranslateClientError;
+    use crate::clients::realtime::live_translate_client::LiveTranslateClientError;
 
     for (failure, expected) in [
         (

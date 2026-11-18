@@ -49,7 +49,7 @@ Preserve these product constraints:
 - The product website lives in the separate `yuxino-labs/mimi-web`
   repository. Never add a website copy, subtree, or generated site assets to
   this application repository.
-- `shared/provider-copy.json`: shared service descriptions, setup prerequisites and Alibaba mode copy in all nine UI languages. Run `python3 -B scripts/sync-provider-copy.py` after editing; desktop TypeScript and Android resources are generated. Keep platform-specific permissions/navigation in their native resources. See `docs/development/shared-provider-copy.md`.
+- `shared/provider-copy.json`: shared service descriptions, setup prerequisites and Alibaba mode copy in all nine UI languages. Run `python3 -B scripts/providers/sync-provider-copy.py` after editing; desktop TypeScript and Android resources are generated. Keep platform-specific permissions/navigation in their native resources. See `docs/development/shared-provider-copy.md`.
 - `README.md`: the Simplified Chinese entry point; `README_EN.md` is English.
   Other localized READMEs live in `docs/readme/`; contribution and security
   guides live in `.github/`.
@@ -84,9 +84,9 @@ Preserve these product constraints:
   The root `tsconfig.json` remains the editor discovery entry point.
 - `scripts/check.sh`: canonical automated test and strict-build entry point.
 - `scripts/package-app.sh`: release-shaped local build via `tauri build`, signed with the stable local identity; compare its identity before replacing a release, especially older ad-hoc installations.
-- `scripts/codesign-identity.sh`: honors explicit `MIMI_CODESIGN_IDENTITY`, then a per-Mac public certificate fingerprint saved after an approved local migration; otherwise it selects the exact fingerprint of the unique `mimi Local Development` identity or reports unavailable. A missing/invalid pinned identity fails closed rather than reverting to self-signing. macOS packaging and development launch fail closed rather than use ad-hoc signing.
-- `scripts/prepare-macos-release.sh`: prepares public macOS assets on the signing Mac using the certificate pinned in `scripts/macos-release-identity.txt`. Keep the private key local. Tag CI verifies the staged draft assets, source revision, updater signature, and DMG; never restore an ad-hoc fallback. See `docs/development/macos-release-signing.md`.
-- `scripts/verify-macos-install-identity.sh`: compares the complete designated requirement before a formal app is replaced.
+- `scripts/macos/codesign-identity.sh`: honors explicit `MIMI_CODESIGN_IDENTITY`, then a per-Mac public certificate fingerprint saved after an approved local migration; otherwise it selects the exact fingerprint of the unique `mimi Local Development` identity or reports unavailable. A missing/invalid pinned identity fails closed rather than reverting to self-signing. macOS packaging and development launch fail closed rather than use ad-hoc signing.
+- `scripts/macos/prepare-macos-release.sh`: prepares public macOS assets on the signing Mac using the certificate pinned in `scripts/macos/macos-release-identity.txt`. Keep the private key local. Tag CI verifies the staged draft assets, source revision, updater signature, and DMG; never restore an ad-hoc fallback. See `docs/development/macos-release-signing.md`.
+- `scripts/macos/verify-macos-install-identity.sh`: compares the complete designated requirement before a formal app is replaced.
 - `.github/workflows/ci.yml`: CI (Rust fmt/clippy/test on macOS, Windows, and Linux, frontend checks).
 
 ## Working agreements
@@ -112,6 +112,13 @@ Preserve these product constraints:
 - Group code by a coherent responsibility and lifecycle. Make mutable-state and
   resource ownership, state transitions, side effects and error handling clear
   at module boundaries so callers know which layer is responsible.
+- Review directory ownership as well as individual file length. When a folder
+  mixes independent features, group implementations, styles and their tests by
+  feature; preserve normal entry points and avoid a single catch-all test folder.
+  Verify imports, generators, script root discovery and architecture rejection
+  tests after moves. Keep non-text assets byte-identical unless intentionally
+  changed; text migration tools must skip binary inputs. Conventional locale/resource/release collections can keep
+  their existing discovery layout.
 - Extract a module or helper when it gives a responsibility a clear contract or
   removes meaningful duplication. Keep straightforward local logic local; do
   not split by arbitrary file length, add forwarding-only abstractions, or hide
@@ -171,7 +178,7 @@ Preserve these product constraints:
   Desktop portable modules stay re-export-only; Android production enters
   `SharedRuntimeEngine`. Retired Kotlin engines and text clients belong in Git
   history; do not restore them as production fallbacks or test implementations.
-- Run `python3 -B scripts/check-shared-runtime.py` for this architecture boundary.
+- Run `python3 -B scripts/shared/check-shared-runtime.py` for this architecture boundary.
   It is required by canonical/shared checks, Android preBuild/native builds and
   desktop CI. Its rejection tests prove known fork attempts fail. Do not weaken
   its checks or narrow Android CI's desktop/shared source coverage to make a

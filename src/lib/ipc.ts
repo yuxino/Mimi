@@ -6,7 +6,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { effectiveUiLanguage } from "./i18n";
-import { observeSessionWireReceived } from "./developmentTrace";
+import { observeSessionWireReceived } from "./development/developmentTrace";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppleSpeechSupport,

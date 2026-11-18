@@ -6,7 +6,7 @@ import { applicationAudioError } from "./audio/applicationAudio";
 import { audioInputErrorMessage } from "./audio/audioInput";
 import { credentialErrorMessage } from "./providers/connectionDiagnostics";
 import { shareUnchangedSubtitleHistory } from "./session/sessionSnapshot";
-import { observeSessionStoreApplied } from "./developmentTrace";
+import { observeSessionStoreApplied } from "./development/developmentTrace";
 import { DEFAULT_NETWORK_PROXY, validateNetworkProxy } from "./providers/networkProxy";
 /**
  * Global zustand store. In Tauri it forwards every action to the Rust backend

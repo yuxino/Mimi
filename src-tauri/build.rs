@@ -2,7 +2,7 @@
 mod apple_speech_build;
 #[path = "apple-translation/build.rs"]
 mod apple_translation_build;
-#[path = "src/core/development_build_permissions.rs"]
+#[path = "src/core/development/development_build_permissions.rs"]
 mod development_build_permissions;
 
 fn main() {

@@ -17,11 +17,11 @@ fn duplicate_profile_copies_private_slots_and_metadata_without_selecting() {
         .write_destination_value(&source, Some("synthetic-retained-destination"), false)
         .unwrap();
     let mut preset = source.clone();
-    preset.language_preset = Some(crate::core::provider::ProfileLanguagePreset {
+    preset.language_preset = Some(crate::core::services::provider::ProfileLanguagePreset {
         source_language: SourceLanguage::Japanese,
         target_language: TargetLanguage::SimplifiedChinese,
     });
-    preset.qwen_mt_model = crate::core::protocols::qwen_mt::QwenMTModel::Flash;
+    preset.qwen_mt_model = crate::core::protocols::translation::qwen_mt::QwenMTModel::Flash;
     store
         .mutate_catalog_with_normalization(None, |catalog| {
             catalog.profiles[0] = preset.clone();
@@ -249,7 +249,7 @@ fn speech_draft_reuses_saved_key_and_checks_new_profile_without_persistence() {
 
 #[test]
 fn profile_metadata_patches_preserve_independent_names_and_proxies() {
-    use crate::core::network_proxy::ProxyMode;
+    use crate::core::services::network_proxy::ProxyMode;
     let directory = tempfile::tempdir().unwrap();
     let fake = FakeSecretStore::default();
     let store = SettingsStore::at_path(directory.path().into(), Box::new(fake.clone()));

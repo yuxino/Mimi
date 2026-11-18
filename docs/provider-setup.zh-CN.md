@@ -400,7 +400,7 @@ Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple
 
 阿里云「ASR + MT」的内置文字翻译默认使用 `qwen-mt-lite`，不会因识别语言不同自动切换到 `qwen-mt-flash` 或 `qwen-mt-plus`。该模式的识别经 WebSocket 持续送入音频，远程独立文字翻译通过 HTTP 发送识别文字，Apple 翻译则在本地执行；更换文字翻译不会更换识别模型。
 
-模型与路由依据：[桌面新建配置与旧配置](../src-tauri/src/settings_store/mod.rs) · [共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/configuration.rs) · [共享识别服务](../shared/mimi-runtime/src/clients/recognition_client.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols/) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/qwen_mt.rs)
+模型与路由依据：[桌面新建配置与旧配置](../src-tauri/src/settings_store/mod.rs) · [共享服务选择](../shared/mimi-runtime/src/clients/translation/translation_client.rs) · [当前翻译模式](../shared/mimi-runtime/src/core/services/configuration.rs) · [共享识别服务](../shared/mimi-runtime/src/clients/recognition/recognition_client.rs) · [各家协议实现](../shared/mimi-runtime/src/core/protocols) · [Qwen-MT 默认模型](../shared/mimi-runtime/src/core/protocols/translation/qwen_mt.rs)
 
 ### Android 的阿里云链路
 
@@ -410,7 +410,7 @@ Android 的八个内置云语音服务使用上文对应凭证，但没有 Apple
 | ASR + MT | 共享 Audio3 识别（`qwen-audio-3.0-asr-flash-streaming`）＋Qwen-MT，默认 Lite |
 | ASR + MT 搭配独立文字翻译 / 不翻译 | 使用同一 Audio3 识别；启用翻译时调用所选文字服务 |
 
-Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotlin 传输类保留用于离线回归，其中的模型不是当前正式链路的默认模型。保存的高级设置不会覆盖内置链路不支持的端点或模型。实现见[共享服务选择](../shared/mimi-runtime/src/clients/translation_client.rs)和[平台差异（英文）](development/platform-parity.md)。
+Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotlin 传输类保留用于离线回归，其中的模型不是当前正式链路的默认模型。保存的高级设置不会覆盖内置链路不支持的端点或模型。实现见[共享服务选择](../shared/mimi-runtime/src/clients/translation/translation_client.rs)和[平台差异（英文）](development/platform-parity.md)。
 
 ### 独立文字翻译用什么模型
 
@@ -425,7 +425,7 @@ Android 正式会话与桌面使用同一个共享 Rust 服务工厂。旧 Kotli
 | Index-Translate 示例 | `Index-Translate-35B-A3B`，通过 OpenAI 兼容接口配置 |
 | 跳过翻译 / 不翻译 | 不调用文字翻译模型 |
 
-请求依据：[DeepL](../src-tauri/src/core/protocols/deepl.rs) · [DeepLX](../src-tauri/src/core/protocols/deeplx.rs) · [OpenAI 兼容文字翻译](../src-tauri/src/core/protocols/openai_compatible.rs) · [Index 官方示例](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py)
+请求依据：[DeepL](../src-tauri/src/core/protocols/translation/deepl.rs) · [DeepLX](../src-tauri/src/core/protocols/translation/deeplx.rs) · [OpenAI 兼容文字翻译](../src-tauri/src/core/protocols/translation/openai_compatible.rs) · [Index 官方示例](https://github.com/bilibili/Index-Translate/blob/main/inference/llm/call_api.py)
 
 配置完成后，按[启动步骤](#setup)开启字幕。录音权限、字幕样式和保存记录见[使用指南](usage.zh-CN.md)。
 

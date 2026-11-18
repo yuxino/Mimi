@@ -6,7 +6,7 @@ import { I18N } from "../../../lib/i18n";
 import { appOpenReleases } from "../../../lib/ipc";
 import { SoftwareUpdate } from "./SoftwareUpdate";
 import { createSoftwareUpdateSession } from "./softwareUpdateSession";
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { createUpdaterForEnvironment } from "./softwareUpdateEnvironment";
 
 vi.mock("./softwareUpdateEnvironment", () => ({ createUpdaterForEnvironment: vi.fn() }));

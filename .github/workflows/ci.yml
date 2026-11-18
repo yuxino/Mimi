@@ -42,16 +42,16 @@ jobs:
           fetch-depth: 0
       - name: Verify scope rules
         run: |
-          python3 -B scripts/check-shared-runtime.py
-          python3 -B scripts/check-shared-runtime-test.py
-          python3 -B scripts/ci-scope-test.py
-          python3 -B scripts/prepare-macos-release-test.py
+          python3 -B scripts/shared/check-shared-runtime.py
+          python3 -B scripts/shared/check-shared-runtime-test.py
+          python3 -B scripts/ci/ci-scope-test.py
+          python3 -B scripts/macos/prepare-macos-release-test.py
       - id: plan
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           CI_VALIDATION: ${{ inputs.validation }}
           CI_PACKAGES: ${{ inputs.packages }}
-        run: python3 scripts/ci-scope.py
+        run: python3 scripts/ci/ci-scope.py
 
   rust:
     needs: scope
@@ -68,7 +68,7 @@ jobs:
 
       - name: Install Linux build and smoke-test dependencies
         if: runner.os == 'Linux'
-        run: ./scripts/linux-ci-deps.sh
+        run: ./scripts/linux/linux-ci-deps.sh
 
       - name: Select Xcode for Apple Speech
         if: runner.os == 'macOS'
@@ -95,8 +95,8 @@ jobs:
       - name: macOS release safety tests
         if: runner.os == 'macOS'
         run: |
-          ./scripts/macos-signing-test.sh
-          python3 scripts/extract-macos-updater-test.py
+          ./scripts/macos/macos-signing-test.sh
+          python3 scripts/macos/extract-macos-updater-test.py
 
       - name: Apple bounded input tests
         if: runner.os == 'macOS' && runner.arch == 'ARM64'
@@ -114,7 +114,7 @@ jobs:
       - name: Apple Translation lifetime and weak-link tests
         if: runner.os == 'macOS' && runner.arch == 'ARM64'
         shell: bash
-        run: bash scripts/check-apple-translation.sh
+        run: bash scripts/macos/check-apple-translation.sh
 
       - name: Format
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
@@ -142,29 +142,29 @@ jobs:
 
       - name: Shared subtitle core and JNI adapter
         shell: bash
-        run: bash scripts/check-shared-core.sh
+        run: bash scripts/shared/check-shared-core.sh
 
       - name: Test native Wayland input regions with isolated Weston
         if: runner.os == 'Linux'
-        run: ./scripts/linux-wayland-input-smoke.sh
+        run: ./scripts/linux/linux-wayland-input-smoke.sh
 
       - name: Test Linux system and microphone capture with real PulseAudio
         if: runner.os == 'Linux'
-        run: dbus-run-session -- ./scripts/linux-audio-smoke.sh
+        run: dbus-run-session -- ./scripts/linux/linux-audio-smoke.sh
 
       - name: Test legacy Linux credential compatibility with isolated Secret Service
         if: runner.os == 'Linux'
-        run: ./scripts/linux-keyring-smoke.sh
+        run: ./scripts/linux/linux-keyring-smoke.sh
 
       - name: Test legacy Linux credential recovery after Secret Service appears
         if: runner.os == 'Linux'
-        run: ./scripts/linux-keyring-recovery-smoke.sh
+        run: ./scripts/linux/linux-keyring-recovery-smoke.sh
 
       - name: Test legacy credential setup with a new Linux keyring
         if: runner.os == 'Linux'
         run: |
-          python3 -B scripts/linux-keyring-first-save-driver-test.py
-          ./scripts/linux-keyring-first-save-smoke.sh
+          python3 -B scripts/linux/linux-keyring-first-save-driver-test.py
+          ./scripts/linux/linux-keyring-first-save-smoke.sh
 
       - name: Check Intel macOS target
         if: runner.os == 'macOS'
@@ -222,7 +222,7 @@ jobs:
 
       - name: Shared subtitle core and JNI adapter
         shell: bash
-        run: bash scripts/check-shared-core.sh
+        run: bash scripts/shared/check-shared-core.sh
 
       - name: Compile ARM64 app without an installer
         if: ${{ needs.scope.outputs.arm_bundle == 'true' }}
@@ -233,7 +233,7 @@ jobs:
         shell: pwsh
         # The hosted ARM64 desktop can be covered by a foreground system window.
         # Keep native mouse hit testing on x64; exercise the native control actions here.
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -OverlayInteraction accessibility
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture arm64 -OverlayInteraction accessibility
 
   msrv:
     needs: scope
@@ -286,8 +286,8 @@ jobs:
 
       - name: Shared provider copy
         run: |
-          python3 -B scripts/sync-provider-copy.py --check
-          python3 -B scripts/sync-provider-copy-test.py
+          python3 -B scripts/providers/sync-provider-copy.py --check
+          python3 -B scripts/providers/sync-provider-copy-test.py
 
       - name: Lint
         run: npm run lint
@@ -296,25 +296,25 @@ jobs:
         run: npm run test
 
       - name: Test quick-check argument safety
-        run: bash scripts/check-quick-test.sh
+        run: bash scripts/development/check-quick-test.sh
 
       - name: Test signed watch preview configuration
-        run: node --test scripts/dev-app-watch.node.mjs
+        run: node --test scripts/development/dev-app-watch.node.mjs
 
       - name: Shared native packaging invariants
-        run: python3 -B scripts/shared-core-native-test.py
+        run: python3 -B scripts/shared/shared-core-native-test.py
 
       - name: Test AppImage permission regression
-        run: python3 scripts/check-appimage-permissions-test.py
+        run: python3 scripts/linux/check-appimage-permissions-test.py
 
       - name: Test AppImage host graphics boundary
-        run: python3 -B scripts/check-appimage-gles-test.py
+        run: python3 -B scripts/linux/check-appimage-gles-test.py
 
       - name: Verify updater platform mapping
-        run: node --test scripts/updater-manifest.node.mjs
+        run: node --test scripts/updates/updater-manifest.node.mjs
 
       - name: Test production debugger checker
-        run: node --test scripts/check-production-debugger.node.mjs
+        run: node --test scripts/frontend/check-production-debugger.node.mjs
 
       - name: Typecheck and build
         run: npm run build
@@ -363,7 +363,7 @@ jobs:
 
       - name: Install Linux build and smoke-test dependencies
         if: runner.os == 'Linux'
-        run: ./scripts/linux-ci-deps.sh
+        run: ./scripts/linux/linux-ci-deps.sh
 
       - name: Compile macOS without a runnable bundle
         if: ${{ matrix.os == 'macos-latest' }}
@@ -376,23 +376,23 @@ jobs:
 
       - name: Build Linux packages
         if: runner.os == 'Linux'
-        run: ./scripts/build-linux-packages.sh --config src-tauri/config/ci.json
+        run: ./scripts/linux/build-linux-packages.sh --config src-tauri/config/ci.json
 
       - name: Install and smoke-test Linux packages
         if: runner.os == 'Linux'
-        run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
+        run: ./scripts/linux/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')"
 
       - name: Smoke launch x64 UI-test app and click overlay controls
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction pointer
 
       - name: Package and verify portable Windows build
         if: ${{ matrix.os == 'windows-2025' }}
         shell: pwsh
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version
-          ./scripts/package-windows-portable.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -Version $version -OutputDirectory ./src-tauri/target/release/bundle/portable
+          ./scripts/windows/package-windows-portable.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -Version $version -OutputDirectory ./src-tauri/target/release/bundle/portable
 
       - name: Smoke launch extracted portable x64 app
         if: ${{ matrix.os == 'windows-2025' }}
@@ -402,7 +402,7 @@ jobs:
           $archive = "./src-tauri/target/release/bundle/portable/mimi_${version}_x64-portable.zip"
           $extracted = Join-Path $env:RUNNER_TEMP 'mimi-portable-smoke'
           Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
-          ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
+          ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
 
       - name: Upload bundles
         if: runner.os != 'macOS'
@@ -515,7 +515,7 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           workspaces: |
-            scripts/updater-signature-verifier
+            scripts/updates/updater-signature-verifier
 
       - run: npm ci --prefer-offline --no-audit --no-fund
 
@@ -539,7 +539,7 @@ jobs:
         run: |
           set -euo pipefail
           staging_dir="$RUNNER_TEMP/mimi-release-assets"
-          python3 scripts/extract-macos-updater.py \
+          python3 scripts/macos/extract-macos-updater.py \
             "$staging_dir/$MAC_ARCHIVE" "$RUNNER_TEMP/mimi-verified-updater"
           app_path="$RUNNER_TEMP/mimi-verified-updater/mimi.app"
           # The disposable runner has no local self-signed trust entry. Trust
@@ -547,15 +547,15 @@ jobs:
           certificate_prefix="$RUNNER_TEMP/mimi-release-cert-"
           codesign --display --extract-certificates="$certificate_prefix" "$app_path"
           fingerprint="$(shasum -a 1 "${certificate_prefix}0" | cut -d ' ' -f 1 | tr '[:lower:]' '[:upper:]')"
-          [[ "$fingerprint" == "$(tr -d '[:space:]' < scripts/macos-release-identity.txt)" ]] || {
+          [[ "$fingerprint" == "$(tr -d '[:space:]' < scripts/macos/macos-release-identity.txt)" ]] || {
             echo "The embedded signing certificate differs from the pinned identity." >&2
             exit 1
           }
           sudo security add-trusted-cert -d -r trustRoot -p codeSign \
             -k /Library/Keychains/System.keychain "${certificate_prefix}0"
-          ./scripts/verify-macos-release.sh \
+          ./scripts/macos/verify-macos-release.sh \
             "$app_path" "$staging_dir/mimi_${GITHUB_REF_NAME#v}_${MAC_DMG_ARCH}.dmg"
-          ./scripts/verify-macos-release-source.sh "$app_path" "$GITHUB_SHA" "${GITHUB_REF_NAME#v}" "$MAC_ARCH"
+          ./scripts/macos/verify-macos-release-source.sh "$app_path" "$GITHUB_SHA" "${GITHUB_REF_NAME#v}" "$MAC_ARCH"
 
       - name: Sign verified macOS updater with the existing update key
         env:
@@ -568,7 +568,7 @@ jobs:
           staging_dir="$RUNNER_TEMP/mimi-release-assets"
           npm run tauri -- signer sign "$staging_dir/$MAC_ARCHIVE"
           public_key="$(node -p 'require("./src-tauri/tauri.conf.json").plugins.updater.pubkey')"
-          cargo run --release --locked --manifest-path scripts/updater-signature-verifier/Cargo.toml \
+          cargo run --release --locked --manifest-path scripts/updates/updater-signature-verifier/Cargo.toml \
             -- \
             "$public_key" "$staging_dir/$MAC_ARCHIVE.sig" "$staging_dir/$MAC_ARCHIVE"
 
@@ -645,12 +645,12 @@ jobs:
       - name: Verify release excludes development debugger
         shell: pwsh
         run: |
-          python scripts/check-production-native-debugger.py src-tauri/target/release/mimi.exe
+          python scripts/ci/check-production-native-debugger.py src-tauri/target/release/mimi.exe
           if ($LASTEXITCODE -ne 0) { throw "Development debugger was included in the release." }
 
       - name: Smoke launch release x64 UI-test app
         shell: pwsh
-        run: ./scripts/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64
+        run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./src-tauri/target/release/mimi.exe -ExpectedArchitecture x64
 
       - name: Verify and stage Windows release assets
         shell: pwsh
@@ -689,12 +689,12 @@ jobs:
           Copy-Item -LiteralPath $expectedPaths -Destination $stagingDir
           $publicKey = (Get-Content "$env:GITHUB_WORKSPACE/src-tauri/tauri.conf.json" | ConvertFrom-Json).plugins.updater.pubkey
           foreach ($installer in @("mimi_${version}_x64_en-US.msi", "mimi_${version}_x64-setup.exe")) {
-            cargo run --release --locked --manifest-path scripts/updater-signature-verifier/Cargo.toml -- $publicKey "$stagingDir/$installer.sig" "$stagingDir/$installer"
+            cargo run --release --locked --manifest-path scripts/updates/updater-signature-verifier/Cargo.toml -- $publicKey "$stagingDir/$installer.sig" "$stagingDir/$installer"
             if ($LASTEXITCODE -ne 0) {
               throw "Updater signature verification failed for $installer (exit $LASTEXITCODE)."
             }
           }
-          ./scripts/package-windows-portable.ps1 -ExecutablePath "$env:GITHUB_WORKSPACE/src-tauri/target/release/mimi.exe" -Version $version -OutputDirectory $stagingDir
+          ./scripts/windows/package-windows-portable.ps1 -ExecutablePath "$env:GITHUB_WORKSPACE/src-tauri/target/release/mimi.exe" -Version $version -OutputDirectory $stagingDir
 
       - name: Smoke launch extracted release portable x64 app
         shell: pwsh
@@ -703,7 +703,7 @@ jobs:
           $archive = "$env:RUNNER_TEMP/mimi-release-assets/mimi_${version}_x64-portable.zip"
           $extracted = Join-Path $env:RUNNER_TEMP 'mimi-release-portable-smoke'
           Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
-          ./scripts/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
+          ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath (Join-Path $extracted 'mimi.exe') -ExpectedArchitecture x64
 
       - name: Upload verified Windows release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -740,7 +740,7 @@ jobs:
             shared/mimi-android-jni -> ../target
 
       - name: Install Linux build and smoke-test dependencies
-        run: ./scripts/linux-ci-deps.sh
+        run: ./scripts/linux/linux-ci-deps.sh
 
       - run: npm ci --prefer-offline --no-audit --no-fund
 
@@ -751,13 +751,13 @@ jobs:
         run: rm -rf src-tauri/target/release/bundle/deb src-tauri/target/release/bundle/appimage
 
       - name: Build signed Linux packages
-        run: ./scripts/build-linux-packages.sh
+        run: ./scripts/linux/build-linux-packages.sh
 
       - name: Verify release excludes development debugger
-        run: python3 scripts/check-production-native-debugger.py src-tauri/target/release/mimi
+        run: python3 scripts/ci/check-production-native-debugger.py src-tauri/target/release/mimi
 
       - name: Verify, install, and smoke-test signed Linux packages
-        run: ./scripts/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')" --signed
+        run: ./scripts/linux/verify-linux-bundles.sh "$(node -p 'require("./package.json").version')" --signed
 
       - name: Stage verified Linux release assets
         run: |
@@ -862,10 +862,10 @@ jobs:
           '
 
           pub_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          node scripts/updater-manifest.mjs create \
+          node scripts/updates/updater-manifest.mjs create \
             release-assets release-assets/latest.json "$version" "$GH_REPO" \
             "$GITHUB_REF_NAME" "$pub_date" release-notes.md
-          node scripts/updater-manifest.mjs verify \
+          node scripts/updates/updater-manifest.mjs verify \
             release-assets release-assets/latest.json "$version" "$GH_REPO" \
             "$GITHUB_REF_NAME"
           (

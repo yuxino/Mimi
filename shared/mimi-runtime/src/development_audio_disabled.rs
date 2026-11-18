@@ -1,6 +1,6 @@
 //! Production adapters preserve network futures without observing audio.
 //! No recording state, task-local metadata, decoding, files or queues exist here.
-use crate::core::audio_input::AudioSource;
+use crate::core::audio::audio_input::AudioSource;
 use std::future::Future;
 
 pub type AudioContext = ();

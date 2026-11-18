@@ -77,7 +77,7 @@ on that basis. Hiding all Han characters would damage valid Japanese/mixed speec
 
 ## Comparison method and limits
 
-The [test-only benchmark](../plans/2026-10-02-audio3-repeatable-benchmark.md) sends
+The [test-only benchmark](../plans/development/verification/2026-10-02-audio3-repeatable-benchmark.md) sends
 each fixed PCM in real time, with the same two-second tail, endpoint, account and
 proxy. The three arms isolate current 3.0/context, 3.0/no context and 3.1/no
 context. All calls are serial; the native provider session is paused during them.
@@ -171,7 +171,7 @@ pending-PCM counter to Audio3. A guard travels with each accepted buffer until
 send completion, failure or cancellation, so this known waiting window no
 longer looks idle. Real bytes, queue capacity and normal order are preserved;
 genuinely drained input retains keepalive behavior. See the
-[bounded fix and its limits](../plans/2026-10-02-audio3-pending-pcm-heartbeat.md).
+[bounded fix and its limits](../plans/providers/alibaba/2026-10-02-audio3-pending-pcm-heartbeat.md).
 This test establishes an application bug, but not that it caused the Queen
 recognition failure. Capture callbacks that have not arrived are outside the
 counter's guarantee.

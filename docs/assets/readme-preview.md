@@ -17,7 +17,7 @@ The command writes `readme-preview-<locale>.webp`, updates only the marked image
 ## Add a language
 
 1. Ensure Mimi’s UI already supports the language in `src/lib/i18n.ts`.
-2. Add an entry to [locales.json](../../scripts/readme-images/locales.json): UI/source/target language codes, three original fictional lines and their translations, localized alt text, and the README paths. Use a different source language from the translation language.
+2. Add an entry to [locales.json](../../scripts/frontend/readme-images/locales.json): UI/source/target language codes, three original fictional lines and their translations, localized alt text, and the README paths. Use a different source language from the translation language.
 3. Add the localized README with one `<!-- mimi-preview:start -->` / `<!-- mimi-preview:end -->` block where its image belongs. Update the README language navigation as appropriate.
 4. Run `npm run readme:images`, inspect the output for glyphs, wrapping and readable subtitles, then run `npm run readme:images -- --check` and `git diff --check`.
 
@@ -26,8 +26,8 @@ The check rejects missing artwork configurations for new UI languages or new loc
 ## Sources and boundaries
 
 - `readme-background.png` is the original imagegen illustration from 2026-10-04 (1672 × 941). It is reused unchanged.
-- [stage.html](../../scripts/readme-images/stage.html) composes that background with a 760 × 300 logical-pixel overlay at 1.28 scale, in a 1920 × 1080 frame.
-- [overlay.html](../../scripts/readme-images/overlay.html) imports Mimi’s actual `OverlayWindow`, embedded controls, styles and localization. Native calls are stubbed and allowlisted; external requests are blocked. No product component or internal style is modified.
+- [stage.html](../../scripts/frontend/readme-images/stage.html) composes that background with a 760 × 300 logical-pixel overlay at 1.28 scale, in a 1920 × 1080 frame.
+- [overlay.html](../../scripts/frontend/readme-images/overlay.html) imports Mimi’s actual `OverlayWindow`, embedded controls, styles and localization. Native calls are stubbed and allowlisted; external requests are blocked. No product component or internal style is modified.
 - Captions are fictional dialogue, not a live recognition run. The image does not measure native capture, provider connectivity or latency. No personal audio, transcripts, API credentials or recording session is used. History and audio saving remain off; latency is unavailable rather than invented.
 - The retired video, poster and obsolete tour documentation have been removed. Do not re-add the old demo links or their explanatory paragraph to READMEs. A future video should be recorded anew from the current app, with matching UI/caption language and documented recording boundaries.
 

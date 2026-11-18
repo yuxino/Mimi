@@ -5,14 +5,16 @@ use super::{
     SettingsStore, DEFAULT_FONT_SIZE, DEFAULT_VISIBLE_SUBTITLE_COUNT, PREFERENCES_UNAVAILABLE,
     VISIBLE_SUBTITLE_COUNT_RANGE,
 };
-use crate::core::audio_input::AudioInput;
+use crate::core::audio::audio_input::AudioInput;
 use crate::core::models::{
     SourceLanguage, SubtitleColor, SubtitleDisplayMode, TargetLanguage, TranslationMode,
 };
-use crate::core::network_proxy::ProxyConfig;
-use crate::core::overlay_layout::normalize_font_size;
-use crate::core::provider::{ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation};
-use crate::core::subtitle_font::normalize_family_name;
+use crate::core::services::network_proxy::ProxyConfig;
+use crate::core::services::provider::{
+    ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation,
+};
+use crate::core::ui::overlay_layout::normalize_font_size;
+use crate::core::ui::subtitle_font::normalize_family_name;
 use serde::{Deserialize, Serialize};
 
 /// Clamp the recent-caption display count to its supported range.
@@ -89,7 +91,7 @@ pub struct Preferences {
     pub audio_input: AudioInput,
     /// Empty means follow the Windows default output, including live changes.
     pub windows_audio_source: String,
-    pub system_audio_target: crate::core::system_audio_target::SystemAudioTarget,
+    pub system_audio_target: crate::core::audio::system_audio_target::SystemAudioTarget,
     /// macOS Dock/Cmd-Tab presence. Missing preferences show Mimi in the Dock.
     pub show_in_dock: bool,
     pub network_proxy: ProxyConfig,
@@ -142,7 +144,7 @@ impl Preferences {
 
     pub fn apply_system_audio_target(
         &mut self,
-        target: crate::core::system_audio_target::SystemAudioTarget,
+        target: crate::core::audio::system_audio_target::SystemAudioTarget,
     ) {
         if self.system_audio_target != target {
             self.record_session_audio = false;
@@ -280,11 +282,11 @@ impl SettingsStore {
             let capabilities = profile.capabilities(next.target_language).for_source(next.source_language);
             if next.target_language != previous.target_language
                 && !capabilities.target_languages.contains(&next.target_language) {
-                return Err(crate::core::configuration::LiveTranslationConfigurationError::UnsupportedTargetLanguage.to_string());
+                return Err(crate::core::services::configuration::LiveTranslationConfigurationError::UnsupportedTargetLanguage.to_string());
             }
             if next.source_language != previous.source_language
                 && !capabilities.source_languages.contains(&next.source_language) {
-                return Err(crate::core::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage.to_string());
+                return Err(crate::core::services::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage.to_string());
             }
             normalize_preferences_value(next, profile);
             Ok(())

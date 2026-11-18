@@ -375,7 +375,7 @@ app/src/main/java/app/yuxino/mimi/android/
 Provider clients and scheduling live in `shared/mimi-runtime`, reached through
 `shared/mimi-android-jni`. Protocol cases exercise shared Rust directly and
 through actual JNI; retired Kotlin transports remain only in Git history. Run
-`python3 -B scripts/check-shared-runtime.py` to verify this boundary.
+`python3 -B scripts/shared/check-shared-runtime.py` to verify this boundary.
 
 ## Verification status
 

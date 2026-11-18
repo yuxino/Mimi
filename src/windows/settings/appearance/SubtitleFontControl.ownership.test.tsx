@@ -7,7 +7,7 @@ import { disposeStoreSnapshotStreams, useStore } from "../../../lib/store";
 import { I18N, setStoredUiLanguage } from "../../../lib/i18n";
 import type { SettingsDraft, SettingsSnapshot } from "../../../lib/types";
 import { SubtitleFontControl } from "./SubtitleFontControl";
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { subtitleFontChoiceOwner } from "./subtitleFontChoiceOwner";
 
 vi.mock("../../../lib/ipc", async original => ({

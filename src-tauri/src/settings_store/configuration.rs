@@ -5,11 +5,13 @@ use super::preferences::{
     normalize_preferences_value, profile_selection_preferences, PreferenceWrite,
 };
 use super::{Preferences, SecretStoreError, SettingsStore};
-use crate::core::configuration::LiveTranslationConfiguration;
-use crate::core::credentials::{ProviderCredentials, TextTranslationCredentials};
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode};
-use crate::core::network_proxy::ProxyConfig;
-use crate::core::provider::{ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation};
+use crate::core::services::configuration::LiveTranslationConfiguration;
+use crate::core::services::credentials::{ProviderCredentials, TextTranslationCredentials};
+use crate::core::services::network_proxy::ProxyConfig;
+use crate::core::services::provider::{
+    ProviderKind, ProviderPreferences, ServiceProfile, TextTranslation,
+};
 
 impl SettingsStore {
     /// The validated configuration used to start a session. The provider is
@@ -97,7 +99,7 @@ impl SettingsStore {
         draft: &ProviderCredentials,
         speech_only: bool,
     ) -> Result<LiveTranslationConfiguration, String> {
-        use crate::core::credentials::ProviderCredentialsError as Error;
+        use crate::core::services::credentials::ProviderCredentialsError as Error;
 
         if !speech_only
             && (profile.provider.supports_text_translation() || profile.uses_independent_asr())
@@ -152,7 +154,8 @@ impl SettingsStore {
         };
         let capabilities = if provider.is_custom_speech()
             || profile.uses_independent_asr()
-            || profile.alibaba_realtime_mode != crate::core::provider::AlibabaRealtimeMode::Disabled
+            || profile.alibaba_realtime_mode
+                != crate::core::services::provider::AlibabaRealtimeMode::Disabled
         {
             profile.capabilities(TargetLanguage::Original)
         } else {
@@ -189,9 +192,10 @@ impl SettingsStore {
         &self,
         profile: &ServiceProfile,
         draft: &ProviderCredentials,
-    ) -> Result<crate::core::configuration::TextTranslationProbeConfiguration, String> {
-        use crate::core::configuration::TextTranslationProbeCredentials;
-        use crate::core::credentials::ProviderCredentialsError as Error;
+    ) -> Result<crate::core::services::configuration::TextTranslationProbeConfiguration, String>
+    {
+        use crate::core::services::configuration::TextTranslationProbeCredentials;
+        use crate::core::services::credentials::ProviderCredentialsError as Error;
 
         if !(profile.provider.supports_text_translation() || profile.uses_independent_asr()) {
             return Err(Error::ProviderMismatch.to_string());
@@ -268,15 +272,15 @@ impl SettingsStore {
             // Validate supplied addresses/models before any saved-value access.
             if !endpoint.trim().is_empty() {
                 if route.uses_chat_completions() {
-                    crate::core::protocols::openai_compatible::endpoint(endpoint)
+                    crate::core::protocols::translation::openai_compatible::endpoint(endpoint)
                         .map_err(|_| Error::InvalidOpenAICompatibleEndpoint.to_string())?;
                 } else if route == TextTranslation::DeepLX {
-                    crate::core::protocols::deeplx::endpoint(endpoint)
+                    crate::core::protocols::translation::deeplx::endpoint(endpoint)
                         .map_err(|_| Error::InvalidDeepLXEndpoint.to_string())?;
                 }
             }
             if route.uses_chat_completions() && !model.trim().is_empty() {
-                crate::core::protocols::openai_compatible::validate_model(model)
+                crate::core::protocols::translation::openai_compatible::validate_model(model)
                     .map_err(|_| Error::InvalidOpenAICompatibleModel.to_string())?;
             }
             let complete = token_update.and_then(|_| {
@@ -386,7 +390,8 @@ impl SettingsStore {
         let prefs = self.preferences();
         let capabilities = if provider.is_custom_speech()
             || profile.uses_independent_asr()
-            || profile.alibaba_realtime_mode != crate::core::provider::AlibabaRealtimeMode::Disabled
+            || profile.alibaba_realtime_mode
+                != crate::core::services::provider::AlibabaRealtimeMode::Disabled
         {
             profile.capabilities(TargetLanguage::Original)
         } else {
@@ -422,8 +427,9 @@ impl SettingsStore {
     pub fn configuration_for_text_probe(
         &self,
         profile: &ServiceProfile,
-    ) -> Result<crate::core::configuration::TextTranslationProbeConfiguration, String> {
-        use crate::core::configuration::TextTranslationProbeCredentials;
+    ) -> Result<crate::core::services::configuration::TextTranslationProbeConfiguration, String>
+    {
+        use crate::core::services::configuration::TextTranslationProbeCredentials;
         if !(profile.provider.supports_text_translation() || profile.uses_independent_asr())
             || (profile.is_standalone_asr()
                 && profile.text_translation() == TextTranslation::FollowService)
@@ -478,13 +484,14 @@ impl SettingsStore {
     pub(super) fn text_probe_with_credentials(
         &self,
         profile: &ServiceProfile,
-        credentials: crate::core::configuration::TextTranslationProbeCredentials,
-    ) -> Result<crate::core::configuration::TextTranslationProbeConfiguration, String> {
-        use crate::core::configuration::TextTranslationProbeConfiguration;
+        credentials: crate::core::services::configuration::TextTranslationProbeCredentials,
+    ) -> Result<crate::core::services::configuration::TextTranslationProbeConfiguration, String>
+    {
+        use crate::core::services::configuration::TextTranslationProbeConfiguration;
         let prefs = self.preferences();
         let native = matches!(
             credentials,
-            crate::core::configuration::TextTranslationProbeCredentials::Independent(
+            crate::core::services::configuration::TextTranslationProbeCredentials::Independent(
                 TextTranslationCredentials::Apple
             )
         );
@@ -513,7 +520,7 @@ impl SettingsStore {
             target_language,
             network_proxy: if native {
                 ProxyConfig {
-                    mode: crate::core::network_proxy::ProxyMode::Direct,
+                    mode: crate::core::services::network_proxy::ProxyMode::Direct,
                     url: None,
                 }
             } else {
@@ -576,10 +583,10 @@ impl SettingsStore {
                 .source_languages
                 .contains(&prefs.source_language)
         {
-            return Err(crate::core::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage.to_string());
+            return Err(crate::core::services::configuration::LiveTranslationConfigurationError::UnsupportedSourceLanguage.to_string());
         }
         let credentials = self.credentials_for_profile(profile)?.ok_or_else(|| {
-            crate::core::credentials::ProviderCredentialsError::Missing(
+            crate::core::services::credentials::ProviderCredentialsError::Missing(
                 profile.effective_provider(),
             )
             .to_string()
@@ -623,7 +630,7 @@ impl SettingsStore {
         {
             let text_credentials =
                 self.text_credentials_for_profile(profile)?.ok_or_else(|| {
-                    crate::core::credentials::ProviderCredentialsError::MissingTextTranslation
+                    crate::core::services::credentials::ProviderCredentialsError::MissingTextTranslation
                         .to_string()
                 })?;
             configuration = configuration.with_text_credentials(text_credentials);

@@ -154,15 +154,15 @@ and CI requirements remain recorded below.
 ## Build and verification
 
 Install Rust 1.90+, Node.js 22.x (22.13+), 24.x, or 26+, and the native dependencies listed by
-`scripts/linux-ci-deps.sh` (Ubuntu). Then:
+`scripts/linux/linux-ci-deps.sh` (Ubuntu). Then:
 
 ```bash
 npm ci
 ./scripts/check.sh
-./scripts/build-linux-packages.sh --config src-tauri/config/ci.json
+./scripts/linux/build-linux-packages.sh --config src-tauri/config/ci.json
 ```
 
-Native audio regression uses `./scripts/linux-audio-smoke.sh` with a private
+Native audio regression uses `./scripts/linux/linux-audio-smoke.sh` with a private
 PulseAudio server and synthetic devices. It covers single-stream frequency
 isolation, paused stream identity, output moves, server loss and independent
 input lanes. It never connects to the desktop sound server or a speech provider.
@@ -219,7 +219,7 @@ acceptance checks.
 
 ### AppImage launcher permissions
 
-Use `scripts/build-linux-packages.sh` for x86_64 Linux packages, including
+Use `scripts/linux/build-linux-packages.sh` for x86_64 Linux packages, including
 signed release builds. It prepares Tauri's upstream AppRun cache with mode
 755 before bundling and updater signing. Tauri otherwise creates it as 770;
 linuxdeploy preserves that mode as `AppRun.wrapped`, blocking execution by
@@ -234,7 +234,7 @@ host. The AppImage relies on the host's graphics stack, including the GLVND
 FUSE availability, other runtime dependencies, and glibc compatibility remain
 separate checks.
 
-The isolated first-save test (`scripts/linux-keyring-first-save-smoke.sh`)
+The isolated first-save test (`scripts/linux/linux-keyring-first-save-smoke.sh`)
 starts with no default collection, cancels then accepts the real GNOME Keyring
 creation prompt using a synthetic password, and verifies the saved test value
 in a fresh process. It does not access the desktop user's keyring or test PAM
@@ -243,7 +243,7 @@ separate checks.
 
 ### Native Wayland input-region regression
 
-`./scripts/linux-wayland-input-smoke.sh` runs an isolated GTK input-region
+`./scripts/linux/linux-wayland-input-smoke.sh` runs an isolated GTK input-region
 fixture under headless Weston. It requires the development dependencies and
 Weston, and refuses an unavailable compositor rather than using an existing
 desktop or X11. It checks empty regions while locked, default input restoration

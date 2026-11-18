@@ -2,7 +2,7 @@
 
 use super::app::app_is_ui_test;
 use super::AppState;
-use crate::core::audio_input::AudioInput;
+use crate::core::audio::audio_input::AudioInput;
 use crate::core::models::{SourceLanguage, TargetLanguage, TranslationMode};
 use crate::session_manager::SessionStateEvent;
 use tauri::{AppHandle, State};
@@ -57,7 +57,7 @@ pub(super) fn ensure_audio_input_available(input: AudioInput) -> Result<(), Stri
 #[tauri::command]
 pub async fn session_switch_system_audio_target(
     state: State<'_, AppState>,
-    target: crate::core::system_audio_target::SystemAudioTarget,
+    target: crate::core::audio::system_audio_target::SystemAudioTarget,
 ) -> Result<(), String> {
     state.session.switch_system_audio_target(target).await
 }

@@ -3,34 +3,44 @@
 
 pub(crate) use mimi_runtime::pipeline_log;
 
+#[path = "apple/speech.rs"]
 mod apple_speech;
+#[path = "apple/speech_support.rs"]
 mod apple_speech_support;
+#[path = "apple/translation.rs"]
 mod apple_translation;
+#[path = "apple/translation_support.rs"]
 mod apple_translation_support;
 mod audio;
 #[cfg(test)]
+#[path = "development/probes/audio3_benchmark.rs"]
 mod audio3_benchmark;
 mod clients;
 mod commands;
 mod core;
 mod desktop_shortcuts;
 #[cfg(any(test, feature = "development-debugger"))]
+#[path = "development/audio.rs"]
 mod development_audio;
 #[cfg(not(any(test, feature = "development-debugger")))]
-#[path = "development_audio_disabled.rs"]
+#[path = "development/audio_disabled.rs"]
 mod development_audio;
 #[cfg(any(test, feature = "development-debugger"))]
+#[path = "development/content.rs"]
 mod development_content;
 #[cfg(not(any(test, feature = "development-debugger")))]
-#[path = "development_content_disabled.rs"]
+#[path = "development/content_disabled.rs"]
 mod development_content;
 #[cfg(any(test, feature = "development-debugger"))]
+#[path = "development/debugger.rs"]
 mod development_debugger;
 mod fonts;
 #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+#[path = "development/probes/live_translate_input_probe.rs"]
 mod live_translate_input_probe;
 mod platform;
 #[cfg(all(test, feature = "development-debugger", target_os = "macos"))]
+#[path = "development/probes/provider_public_audio_probe.rs"]
 mod provider_public_audio_probe;
 mod session_export;
 mod session_history;

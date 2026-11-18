@@ -3,7 +3,7 @@ import { appOpenAudioPrivacySettings } from "../../../lib/ipc";
 import { diagnosticPlatform } from "../../../lib/providers/connectionDiagnostics";
 import { systemAudioPermissionCopy } from "../../../lib/audio/systemAudioPermissions";
 import { I18N } from "../../../lib/i18n";
-import { useAppleSpeechSupport } from "../services/useAppleSpeechSupport";
+import { useAppleSpeechSupport } from "../services/providers/apple/useAppleSpeechSupport";
 
 /** Re-openable help only; every session and credential action remains explicit. */
 export function QuickStartGuide({

@@ -45,7 +45,7 @@ cause for every recognition error.
 A controlled VAD experiment used semantic segmentation off, 800 ms silence and
 multi-threshold segmentation. It did not demonstrate acceptable earlier
 confirmation or better recognition in the concert and was **reverted**. The
-shipping encoder remains unchanged. See the [rejected comparison](../plans/2026-10-02-audio3-vad-comparison.md)
+shipping encoder remains unchanged. See the [rejected comparison](../plans/development/verification/2026-10-02-audio3-vad-comparison.md)
 for official parameter contracts and limitations. Seek/start timing and
 nondeterministic recognition mean these observations are qualitative, not a WER
 benchmark or proof that the parameters caused the mistakes.

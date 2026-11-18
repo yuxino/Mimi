@@ -2,12 +2,12 @@
 
 use super::recovery::claim_generation_recovery_atoms;
 use super::SessionManager;
-use crate::clients::provider_events::ProviderEvent;
-use crate::core::audio_input::AudioSource;
-use crate::core::protocols::live_translate::LiveTranslateServerEvent;
-use crate::core::session::{ProviderEventApplication, TranslationSessionController};
+use crate::clients::transport::provider_events::ProviderEvent;
+use crate::core::audio::audio_input::AudioSource;
+use crate::core::lifecycle::session::{ProviderEventApplication, TranslationSessionController};
+use crate::core::protocols::realtime::live_translate::LiveTranslateServerEvent;
 use crate::pipeline_log;
-use mimi_runtime::core::recovery::{
+use mimi_runtime::core::lifecycle::recovery::{
     normalize_provider_error_code, provider_error_is_retryable, provider_recovery_minimum_delay,
     NO_GENERATION,
 };
@@ -98,24 +98,27 @@ impl SessionManager {
             (envelope.content_revision, envelope.transport_sequence);
         #[cfg(any(test, feature = "development-debugger"))]
         let debug_event = |event: &LiveTranslateServerEvent, admission| {
-            if crate::core::development_debug::is_enabled() {
-                let mut observation = crate::core::development_debug::ProviderObservation::new(
-                    source,
-                    generation,
-                    content_revision,
-                    event,
-                    admission,
-                );
+            if crate::core::development::development_debug::is_enabled() {
+                let mut observation =
+                    crate::core::development::development_debug::ProviderObservation::new(
+                        source,
+                        generation,
+                        content_revision,
+                        event,
+                        admission,
+                    );
                 observation.transport_sequence = transport_sequence;
-                crate::core::development_debug::record(
-                    crate::core::development_debug::DebugEvent::Provider { observation },
+                crate::core::development::development_debug::record(
+                    crate::core::development::development_debug::DebugEvent::Provider {
+                        observation,
+                    },
                 );
             }
         };
         #[cfg(not(any(test, feature = "development-debugger")))]
         let debug_event =
             |_event: &LiveTranslateServerEvent,
-             _admission: crate::core::development_debug::Admission| {};
+             _admission: crate::core::development::development_debug::Admission| {};
         if !subtitle_content_is_current(
             generation,
             &envelope,
@@ -123,7 +126,7 @@ impl SessionManager {
         ) {
             debug_event(
                 &envelope.event,
-                crate::core::development_debug::Admission::StaleContent,
+                crate::core::development::development_debug::Admission::StaleContent,
             );
             return;
         }
@@ -132,9 +135,9 @@ impl SessionManager {
             debug_event(
                 event,
                 if self.is_paused() {
-                    crate::core::development_debug::Admission::Paused
+                    crate::core::development::development_debug::Admission::Paused
                 } else {
-                    crate::core::development_debug::Admission::StaleGeneration
+                    crate::core::development::development_debug::Admission::StaleGeneration
                 },
             );
             return;
@@ -149,7 +152,7 @@ impl SessionManager {
         ) {
             debug_event(
                 event,
-                crate::core::development_debug::Admission::SetupAcknowledgement,
+                crate::core::development::development_debug::Admission::SetupAcknowledgement,
             );
             return;
         }
@@ -171,7 +174,7 @@ impl SessionManager {
             ) {
                 debug_event(
                     event,
-                    crate::core::development_debug::Admission::DuplicateFinal,
+                    crate::core::development::development_debug::Admission::DuplicateFinal,
                 );
                 return;
             }
@@ -192,7 +195,7 @@ impl SessionManager {
             {
                 debug_event(
                     event,
-                    crate::core::development_debug::Admission::DuplicateFinal,
+                    crate::core::development::development_debug::Admission::DuplicateFinal,
                 );
                 return;
             }
@@ -208,11 +211,14 @@ impl SessionManager {
         if !self.record_accepted_provider_event(source, generation, event) {
             debug_event(
                 event,
-                crate::core::development_debug::Admission::StaleGeneration,
+                crate::core::development::development_debug::Admission::StaleGeneration,
             );
             return;
         }
-        debug_event(event, crate::core::development_debug::Admission::Accepted);
+        debug_event(
+            event,
+            crate::core::development::development_debug::Admission::Accepted,
+        );
 
         if let LiveTranslateServerEvent::Error { code, message } = event {
             if provider_error_is_retryable(code) {
@@ -268,14 +274,14 @@ impl SessionManager {
         let (newly_confirmed, application) = {
             let mut controller = self.controller.lock().unwrap();
             #[cfg(any(test, feature = "development-debugger"))]
-            let debug_before = crate::core::development_debug::is_enabled()
+            let debug_before = crate::core::development::development_debug::is_enabled()
                 .then(|| controller.state.subtitles.clone());
             let previous = controller.state.subtitles.history.last().cloned();
             let application = apply_provider_envelope(&mut controller, source, &envelope);
             #[cfg(any(test, feature = "development-debugger"))]
             if let Some(before) = debug_before {
-                crate::core::development_debug::record(
-                    crate::core::development_debug::DebugEvent::Reduced {
+                crate::core::development::development_debug::record(
+                    crate::core::development::development_debug::DebugEvent::Reduced {
                         source,
                         generation,
                         changed: before != controller.state.subtitles,
@@ -304,9 +310,9 @@ impl SessionManager {
                     let bytes = pair.source.len().saturating_add(pair.translation.len());
                     if !stats.transcript_limited {
                         if stats.transcript_count
-                            >= crate::core::session_archive::TRANSCRIPT_COUNT_LIMIT
+                            >= crate::core::lifecycle::session_archive::TRANSCRIPT_COUNT_LIMIT
                             || bytes
-                                > crate::core::session_archive::TRANSCRIPT_BYTE_LIMIT
+                                > crate::core::lifecycle::session_archive::TRANSCRIPT_BYTE_LIMIT
                                     .saturating_sub(stats.transcript_bytes)
                         {
                             stats.transcript_limited = true;

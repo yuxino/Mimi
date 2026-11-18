@@ -9,7 +9,7 @@ prompts. The visible app name and version are not enough to establish identity.
 | --- | --- | --- | --- |
 | Pre-push development and UI checks | `/Applications/mimi-dev.app` | `app.yuxino.mimi.dev` | Dev-specific local pin, otherwise `mimi Local Development` |
 | Local release-shaped bundle | `src-tauri/target/local-package/bundle/macos/mimi.app` | `app.yuxino.mimi` | Formal-specific local pin, otherwise `mimi Local Development` |
-| New release pipeline | `/Applications/mimi.app` | `app.yuxino.mimi` | Certificate pinned in `scripts/macos-release-identity.txt` |
+| New release pipeline | `/Applications/mimi.app` | `app.yuxino.mimi` | Certificate pinned in `scripts/macos/macos-release-identity.txt` |
 | Historical releases through v1.4.1 | `/Applications/mimi.app` | `app.yuxino.mimi` | Ad-hoc (build-specific) |
 
 The current release pipeline uses the same fixed self-signed certificate as
@@ -60,18 +60,18 @@ Rules:
   artifacts, using the `local-package` profile with ThinLTO and parallel code
   generation. Public builds retain the size-focused `release` profile. Set
   `CARGO_TARGET_DIR` to choose the QA output root.
-  `./scripts/prepare-macos-release.sh` creates public artifacts on
+  `./scripts/macos/prepare-macos-release.sh` creates public artifacts on
   the signing Mac with the pinned certificate. CI adds the existing updater
   signature after verifying the app. The
   code-signing private key stays in that Mac's Keychain; CI verifies the
   prepared draft assets. See [release signing](macos-release-signing.md).
 - When preparing a release while the maintainer is using the Mac, run
-  `CI=true TAURI_BUNDLER_DMG_IGNORE_CI=false ./scripts/prepare-macos-release.sh`.
+  `CI=true TAURI_BUNDLER_DMG_IGNORE_CI=false ./scripts/macos/prepare-macos-release.sh`.
   Tauri's DMG bundler then skips its Finder layout AppleScript. This changes
   cosmetic DMG layout only; preserve signing and all package verification.
   Do not launch or replace the running formal app as part of this background work.
 - Before replacing a formal app, run
-  `./scripts/verify-macos-install-identity.sh NEW_APP /Applications/mimi.app`.
+  `./scripts/macos/verify-macos-install-identity.sh NEW_APP /Applications/mimi.app`.
   A mismatch fails closed. `MIMI_ALLOW_IDENTITY_CHANGE=1` is reserved for a
   deliberate, one-time certificate migration whose extra prompts are expected.
 - If a restricted executor reports `CSSMERR_TP_NOT_TRUSTED`, repeat the exact
@@ -265,7 +265,7 @@ Production and ordinary development credentials use private local files on all
 desktop platforms. Legacy OS items are read only during automatic upgrade import,
 then deleted after durable write and read-back verification. Completed imports
 must never fall back to the OS store, even if the local file later goes missing.
-See [local credential storage](../plans/2026-10-04-local-credential-storage.md).
+See [local credential storage](../plans/desktop/settings/credentials/2026-10-04-local-credential-storage.md).
 Development uses its own editable local profiles and credential file, never
 `.env` presets or automatic production-data sharing. Signing-private-key and capture authorization
 are independent of provider credential storage. Never weaken native ACLs.
@@ -575,7 +575,7 @@ guard must wait for concrete owners rather than its own global counter.
   original receiver. Keep Dock visibility on Mimi's direct AppKit activation
   policy; Tao's runtime `set_dock_visibility` reads a private ivar from the
   current delegate and is incompatible with the wrapper. See
-  [the termination design](../plans/2026-10-02-native-quit-finalization.md).
+  [the termination design](../plans/desktop/platform/2026-10-02-native-quit-finalization.md).
 - The dev bundle is named `mimi-dev.app`, while its executable may be named
   `mimi`. Read `codesign -d -r-` and match the actual bundle executable path
   when verifying processes; a `mimi-dev` binary-name filter can falsely report
@@ -616,8 +616,8 @@ compile and test the Windows adapters without launching the application.
 Python source guards and their mutation fixtures must read and write repository
 text with explicit UTF-8. Windows Python can default to cp1252: the shared-runtime
 guard once failed on non-ASCII Kotlin before checking the architecture. Keep the
-legacy-locale regressions in `scripts/check-shared-runtime-test.py` and
-`scripts/sync-provider-copy-test.py` (including generation and check-only mode); setting UTF-8
+legacy-locale regressions in `scripts/shared/check-shared-runtime-test.py` and
+`scripts/providers/sync-provider-copy-test.py` (including generation and check-only mode); setting UTF-8
 only in CI would leave direct Gradle/native build entry points broken.
 Format repository paths in guard diagnostics with `Path.as_posix()` as well;
 native Windows separators must not invalidate a correctly rejected mutation.

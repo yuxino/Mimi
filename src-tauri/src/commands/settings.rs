@@ -4,12 +4,12 @@ use super::app::app_is_ui_test;
 use super::profiles::ServiceProfilePayload;
 use super::session::ensure_audio_input_available;
 use super::{sync_overlay_minimum, AppState};
-use crate::core::audio_input::AudioInput;
+use crate::core::audio::audio_input::AudioInput;
 use crate::core::models::{
     SourceLanguage, SubtitleColor, SubtitleDisplayMode, TargetLanguage, TranslationMode,
 };
-use crate::core::network_proxy::ProxyConfig;
-use crate::core::provider::{ProviderKind, ServiceProfile, TextTranslation};
+use crate::core::services::network_proxy::ProxyConfig;
+use crate::core::services::provider::{ProviderKind, ServiceProfile, TextTranslation};
 use crate::settings_store::{PulseStyle, SettingsStore, SubtitleAlignment};
 use crate::windows::OverlayWindowManager;
 use serde::{Deserialize, Serialize};
@@ -19,10 +19,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 #[serde(rename_all = "camelCase")]
 pub struct LanguageCapabilitiesPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub qwen_mt_model: Option<crate::core::protocols::qwen_mt::QwenMTModel>,
-    pub xai_speech_mode: Option<crate::core::provider::XAISpeechMode>,
+    pub qwen_mt_model: Option<crate::core::protocols::translation::qwen_mt::QwenMTModel>,
+    pub xai_speech_mode: Option<crate::core::services::provider::XAISpeechMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub speech_translation_mode: Option<crate::core::provider::SpeechTranslationMode>,
+    pub speech_translation_mode: Option<crate::core::services::provider::SpeechTranslationMode>,
     pub profile_id: String,
     pub provider: ProviderKind,
     pub text_translation: TextTranslation,
@@ -150,7 +150,7 @@ pub struct SettingsSnapshotPayload {
     pub audio_input: AudioInput,
     pub microphone_input_available: bool,
     pub windows_audio_source: String,
-    pub system_audio_target: crate::core::system_audio_target::SystemAudioTarget,
+    pub system_audio_target: crate::core::audio::system_audio_target::SystemAudioTarget,
     pub show_in_dock: bool,
     pub network_proxy: ProxyConfig,
 }
@@ -197,7 +197,7 @@ impl SettingsSnapshotPayload {
             retain_session_history: prefs.retain_session_history,
             record_session_audio: prefs.record_session_audio,
             audio_input: prefs.audio_input,
-            microphone_input_available: crate::core::audio_input::MICROPHONE_INPUT_AVAILABLE,
+            microphone_input_available: crate::core::audio::audio_input::MICROPHONE_INPUT_AVAILABLE,
             windows_audio_source: prefs.windows_audio_source,
             system_audio_target: prefs.system_audio_target,
             show_in_dock: prefs.show_in_dock,
@@ -234,7 +234,7 @@ pub struct SettingsDraft {
     pub record_session_audio: Option<bool>,
     pub audio_input: Option<AudioInput>,
     pub windows_audio_source: Option<String>,
-    pub system_audio_target: Option<crate::core::system_audio_target::SystemAudioTarget>,
+    pub system_audio_target: Option<crate::core::audio::system_audio_target::SystemAudioTarget>,
     pub show_in_dock: Option<bool>,
     pub network_proxy: Option<ProxyConfig>,
 }

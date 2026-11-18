@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act } from "react";
-import { SettingsToastRegion } from "../SettingsToast";
+import { SettingsToastRegion } from "../feedback/SettingsToast";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi, type Mock } from "vitest";
 import { I18N, setStoredUiLanguage } from "../../../lib/i18n";

@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import app.yuxino.mimi.android.capture.MimiService
+import app.yuxino.mimi.android.services.editor.ServiceSettingsActivity
+import app.yuxino.mimi.android.sessions.SavedSessionsActivity
 
 /** Captions must not cover Mimi's own controls; capture continues in the background. */
 class MimiApplication : Application() {

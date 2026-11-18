@@ -6,8 +6,8 @@
 修改后运行：
 
 ```sh
-python3 -B scripts/sync-provider-copy.py
-python3 -B scripts/sync-provider-copy.py --check
+python3 -B scripts/providers/sync-provider-copy.py
+python3 -B scripts/providers/sync-provider-copy.py --check
 ```
 
 桌面文案按语言生成到 `src/lib/generated/providerCopy/<locale>.ts`，
