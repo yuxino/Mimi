@@ -1,4 +1,5 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
+
 
 /** A translator revision must not bring already clipped, unchanged reference lines back into view. */
 internal class CaptionSourceViewport {

@@ -13,6 +13,11 @@ import android.os.SystemClock
 import android.view.View
 import android.view.inspector.WindowInspector
 import android.widget.TextView
+import app.yuxino.mimi.android.captions.CaptionAlignment
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionPanelView
+import app.yuxino.mimi.android.captions.CompactCaptionView
+import app.yuxino.mimi.android.captions.SubtitlePreviewView
 import app.yuxino.mimi.android.capture.CaptureHealth
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SubtitleBus

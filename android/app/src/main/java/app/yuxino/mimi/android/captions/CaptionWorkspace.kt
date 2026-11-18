@@ -1,9 +1,10 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.content.Context
 import android.util.AttributeSet
 import android.view.View
 import android.widget.LinearLayout
+import app.yuxino.mimi.android.R
 
 /** Keep the single caption preview in view while its settings scroll independently. */
 class CaptionWorkspace @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :

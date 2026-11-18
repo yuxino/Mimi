@@ -1,12 +1,16 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.content.Context
 import android.view.View
 import android.widget.TextView
+import app.yuxino.mimi.android.InterfaceLanguage
+import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.SettingsStore
 import app.yuxino.mimi.android.capture.CaptureHealth
 import app.yuxino.mimi.android.capture.CaptureInput
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SubtitleBus
+import app.yuxino.mimi.android.runtimeFeedbackResource
 
 /** Native presentation of the bounded shared subtitle state; never retains a transcript. */
 internal data class CaptionFrameContent(

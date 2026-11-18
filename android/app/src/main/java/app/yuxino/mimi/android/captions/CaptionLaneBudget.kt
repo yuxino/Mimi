@@ -1,4 +1,5 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
+
 
 /** Native visual-line allocation, using measured glyph heights rather than character counts. */
 internal fun captionLaneBudget(height: Int, source: List<Int>, translation: List<Int>): Pair<Int, Int> {

@@ -14,11 +14,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inspector.WindowInspector
 import android.widget.TextView
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionPanelView
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SharedSubtitleCore
 import app.yuxino.mimi.android.provider.SubtitleBus
-import org.json.JSONObject
 import java.io.File
+import org.json.JSONObject
 
 /** API 33+ native service-resource and waiting-card regression; no capture or network. */
 internal class OverlayListeningChecks(private val test: Instrumentation) {

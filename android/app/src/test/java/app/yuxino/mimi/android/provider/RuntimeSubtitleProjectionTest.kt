@@ -1,14 +1,14 @@
 package app.yuxino.mimi.android.provider
 
+import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.forReading
+import app.yuxino.mimi.android.runtimeFeedbackResource
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import app.yuxino.mimi.android.R
-import app.yuxino.mimi.android.runtimeFeedbackResource
-import app.yuxino.mimi.android.CaptionDisplayMode
-import app.yuxino.mimi.android.forReading
 
 /** Feed real Rust reducer snapshots through the production session-to-UI boundary. */
 class RuntimeSubtitleProjectionTest {

@@ -17,6 +17,11 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.TextView
+import app.yuxino.mimi.android.captions.CaptionAlignment
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionFrameContent
+import app.yuxino.mimi.android.captions.CaptionFrameStyle
+import app.yuxino.mimi.android.captions.CaptionPanelView
 import app.yuxino.mimi.android.capture.MimiService
 import org.json.JSONArray
 import org.json.JSONObject

@@ -1,4 +1,4 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.content.Context
 import android.view.View

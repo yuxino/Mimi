@@ -1,4 +1,4 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.content.Context
 import android.graphics.Color
@@ -6,14 +6,17 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.view.MotionEvent
+import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import app.yuxino.mimi.android.InterfaceLanguage
+import app.yuxino.mimi.android.R
+import app.yuxino.mimi.android.SettingsStore
 import app.yuxino.mimi.android.capture.LatestCaptionTextView
 
 internal data class CaptionPanelActions(

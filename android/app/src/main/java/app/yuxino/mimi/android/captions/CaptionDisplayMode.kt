@@ -1,4 +1,6 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
+
+import app.yuxino.mimi.android.R
 
 /** View-only filtering. Recognition and shared paired subtitles remain unchanged. */
 enum class CaptionDisplayMode(val id: String, val label: Int, val sourceVisible: Boolean, val translationVisible: Boolean) {

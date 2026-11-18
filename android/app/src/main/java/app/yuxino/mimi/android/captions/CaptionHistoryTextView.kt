@@ -1,10 +1,10 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.widget.TextView
-import android.annotation.SuppressLint
 
 /** Optional faint sentence boundaries; blank-line spacing remains when disabled. */
 @SuppressLint("AppCompatCustomView")

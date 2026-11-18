@@ -1,4 +1,4 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.content.Context
 import android.content.DialogInterface
@@ -8,6 +8,7 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import app.yuxino.mimi.android.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /** Each entry point owns one explanation and enables immersive mode only after acknowledgement. */

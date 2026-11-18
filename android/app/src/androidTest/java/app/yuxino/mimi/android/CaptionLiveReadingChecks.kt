@@ -2,23 +2,27 @@ package app.yuxino.mimi.android
 
 import android.app.Activity
 import android.app.Instrumentation
-import android.content.Intent
-import android.os.Bundle
-import android.os.SystemClock
 import android.app.UiAutomation
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Rect
+import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewTreeObserver
 import android.view.inspector.WindowInspector
+import app.yuxino.mimi.android.captions.CaptionDisplayMode
+import app.yuxino.mimi.android.captions.CaptionPanelView
+import app.yuxino.mimi.android.captions.CompactCaptionView
+import app.yuxino.mimi.android.captions.forReading
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.provider.SubtitleBus
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Explicit operator-started saved-profile playback; diagnostics never contain caption text. */
 internal class CaptionLiveReadingChecks(private val test: Instrumentation) {

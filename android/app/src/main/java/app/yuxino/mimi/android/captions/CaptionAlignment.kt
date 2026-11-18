@@ -1,6 +1,7 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.view.Gravity
+import app.yuxino.mimi.android.R
 
 /** Text presentation only; never changes recognition or paired subtitles. */
 enum class CaptionAlignment(val id: String, val label: Int, val gravity: Int) {

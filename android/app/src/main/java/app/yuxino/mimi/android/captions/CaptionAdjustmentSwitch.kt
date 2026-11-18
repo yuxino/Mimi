@@ -1,4 +1,4 @@
-package app.yuxino.mimi.android
+package app.yuxino.mimi.android.captions
 
 import android.content.Context
 import android.graphics.Canvas
@@ -7,6 +7,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.view.ContextThemeWrapper
 import androidx.core.content.ContextCompat
+import app.yuxino.mimi.android.InterfaceLanguage
+import app.yuxino.mimi.android.R
 import com.google.android.material.materialswitch.MaterialSwitch
 
 /** One compact appearance for the native caption and its inert settings preview. */
