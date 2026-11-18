@@ -1549,7 +1549,7 @@ mod tests {
     #[test]
     fn development_tauri_config_uses_the_isolated_identifier() {
         let config: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.dev.conf.json")).unwrap();
+            serde_json::from_str(include_str!("../config/development.json")).unwrap();
         assert_eq!(
             config["identifier"].as_str(),
             Some(DEVELOPMENT_APPLICATION_IDENTIFIER)

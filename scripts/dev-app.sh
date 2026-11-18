@@ -17,7 +17,7 @@ if [[ "$TARGET_DIR" != /* ]]; then
 fi
 BUILD_DIR="$TARGET_DIR/local-dev"
 BUILD_APP="$BUILD_DIR/mimi-dev.app"
-DEV_TAURI_CONFIG="$PROJECT_DIR/src-tauri/tauri.dev.conf.json"
+DEV_TAURI_CONFIG="$PROJECT_DIR/src-tauri/config/development.json"
 RELEASE_TAURI_CONFIG="$PROJECT_DIR/src-tauri/tauri.conf.json"
 CANONICAL_APP="${MIMI_DEV_APP_PATH:-/Applications/mimi-dev.app}"
 BUNDLE_IDENTIFIER="app.yuxino.mimi.dev"
@@ -97,7 +97,7 @@ if [[ "$WATCH" == "1" ]]; then
 fi
 
 if [[ "${MIMI_DEV_WATCH:-0}" == "1" ]]; then
-  DEV_TAURI_CONFIG="$PROJECT_DIR/src-tauri/tauri.watch.conf.json"
+  DEV_TAURI_CONFIG="$PROJECT_DIR/src-tauri/config/watch.json"
 fi
 
 APP_VERSION="$(/usr/bin/plutil -extract version raw "$RELEASE_TAURI_CONFIG")"

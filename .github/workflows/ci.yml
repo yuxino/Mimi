@@ -372,11 +372,11 @@ jobs:
       - uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4 # v0
         if: ${{ matrix.os == 'windows-2025' }}
         with:
-          args: --config src-tauri/tauri.ci.conf.json
+          args: --config src-tauri/config/ci.json
 
       - name: Build Linux packages
         if: runner.os == 'Linux'
-        run: ./scripts/build-linux-packages.sh --config src-tauri/tauri.ci.conf.json
+        run: ./scripts/build-linux-packages.sh --config src-tauri/config/ci.json
 
       - name: Install and smoke-test Linux packages
         if: runner.os == 'Linux'
