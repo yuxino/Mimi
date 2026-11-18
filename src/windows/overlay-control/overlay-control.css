@@ -254,6 +254,7 @@
 .overlay-control-capture__source {
   display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
 }
 
@@ -331,16 +332,20 @@
   opacity: 1;
 }
 
-.overlay-control-capture__toggle ~ .overlay-control-capture__application {
-  margin: 0;
-}
-
 .overlay-control-capture__application .mimi-select__trigger {
   height: auto;
   min-height: 32px;
   padding-block: 4px;
   border-color: transparent;
   font-size: inherit;
+}
+
+.overlay-control-capture__application .mimi-select__trigger .mimi-select__label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .overlay-control-section .settings-help-control__button {

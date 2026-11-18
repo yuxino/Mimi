@@ -415,6 +415,29 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
               const { speechLanguageGuidance, targetLanguageOptionLabel } = await mountedModule("/src/lib/providers/speechLanguageGuidance.ts");
               const { SUBTITLE_DISPLAY_OPTIONS } = await mountedModule("/src/lib/subtitles/subtitleDisplay.ts");
               const settings = useStore.getState().settings;
+              const panel = document.querySelector(".overlay-control-panel");
+              const content = panel.querySelector(".overlay-control-panel__content");
+              const inside = (box, bounds) => box.left >= bounds.left - 1 && box.right <= bounds.right + 1 && box.top >= bounds.top - 1 && box.bottom <= bounds.bottom + 1;
+              const contentClip = () => {
+                const frame = panel.getBoundingClientRect(), box = content.getBoundingClientRect(), padding = getComputedStyle(content);
+                return {
+                  left: Math.max(0, frame.left + panel.clientLeft, box.left + parseFloat(padding.paddingLeft)),
+                  right: Math.min(innerWidth, frame.left + panel.clientLeft + panel.clientWidth, box.right - parseFloat(padding.paddingRight)),
+                  top: Math.max(0, frame.top + panel.clientTop, box.top + parseFloat(padding.paddingTop)),
+                  bottom: Math.min(innerHeight, frame.top + panel.clientTop + panel.clientHeight, box.bottom - parseFloat(padding.paddingBottom)),
+                };
+              };
+              const checkPanelTarget = (button, name) => {
+                if (!button?.getClientRects().length || getComputedStyle(button).visibility !== "visible") { issues.push(`${name}: target missing or hidden`); return; }
+                button.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+                const box = button.getBoundingClientRect();
+                if (box.width < 24 || box.height < 24 || !inside(box, contentClip())) issues.push(`${name}: incomplete click target`);
+                // Disabled choices still require complete bounds, while only
+                // available choices must receive clicks over their whole area.
+                else if (!button.disabled && ![box.left + 5, box.left + box.width / 2, box.right - 5].every(x =>
+                  [box.top + 5, box.top + box.height / 2, box.bottom - 5].every(y => button.contains(document.elementFromPoint(x, y))))) issues.push(`${name}: click target covered`);
+                return box;
+              };
               const checkUnbrokenWords = (text, issue) => {
                 // Latin/Cyrillic words include their combining accents. CJK
                 // and Thai retain their natural character/word line breaks.
@@ -460,13 +483,30 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
                     || text.scrollWidth > text.clientWidth + 1) issues.push("language text missing or clipped");
                   checkUnbrokenWords(text, "language text splits a word");
                 }
-                button.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
-                const hit = button.getBoundingClientRect();
-                if (hit.width < 24 || hit.height < 24 || hit.left < -1 || hit.right > innerWidth + 1 || hit.top < -1 || hit.bottom > innerHeight + 1) issues.push("language picker has incomplete click target");
-                // Keep the outer samples inside the trigger's rounded corners.
-                else if (!button.disabled && ![hit.left + 5, hit.left + hit.width / 2, hit.right - 5].every(x =>
-                  [hit.top + 5, hit.top + hit.height / 2, hit.bottom - 5].every(y => button.contains(document.elementFromPoint(x, y))))) issues.push("language picker click target covered");
+                checkPanelTarget(button, "language picker");
               }
+              const tracks = [];
+              for (const audioSource of ["system", "microphone"]) {
+                const row = panel.querySelector(`[data-audio-source="${audioSource}"]`);
+                const expected = audioSource === "system" || settings.microphoneInputAvailable;
+                if (Boolean(row) !== Boolean(expected)) issues.push(`${audioSource}: audio row missing or unexpected`);
+                if (!row || !settings.microphoneInputAvailable) continue;
+                const button = row.querySelector('button[role="switch"]');
+                const box = checkPanelTarget(button, `${audioSource} switch`);
+                const track = button?.querySelector(".overlay-control-capture__track");
+                if (!track?.getClientRects().length || getComputedStyle(track).visibility !== "visible") { issues.push(`${audioSource}: switch track missing or hidden`); continue; }
+                const bounds = track.getBoundingClientRect();
+                tracks.push(bounds);
+                if (!box || bounds.width <= 0 || bounds.height <= 0 || !inside(bounds, box) || !inside(bounds, contentClip())
+                  || Math.abs(bounds.top + bounds.height / 2 - box.top - box.height / 2) > 1
+                  || ![bounds.left + 3, bounds.left + bounds.width / 2, bounds.right - 3].every(x => track.contains(document.elementFromPoint(x, bounds.top + bounds.height / 2)))) issues.push(`${audioSource}: switch track clipped or covered`);
+              }
+              if (tracks.length === 2 && ["left", "right", "width", "height"].some(edge => Math.abs(tracks[0][edge] - tracks[1][edge]) > 1)) issues.push("system and microphone switch tracks misaligned");
+              const application = panel.querySelector('[data-audio-source="system"] .overlay-control-capture__application');
+              if (settings.audioInput !== "microphone") {
+                checkPanelTarget(application?.querySelector('button[role="combobox"]'), "audio application picker");
+                checkPanelTarget(application?.querySelector(".application-audio-picker__refresh"), "audio application refresh");
+              } else if (application?.getClientRects().length) issues.push("inactive system application picker visible");
               const displayButtons = [...document.querySelectorAll(".overlay-control-display button")];
               if (displayButtons.length !== SUBTITLE_DISPLAY_OPTIONS.length
                 || displayButtons.filter(button => button.getAttribute("aria-pressed") === "true").length !== 1) issues.push("subtitle display choices or unique current state missing");
@@ -476,14 +516,11 @@ export async function verifyLanguageCatalogLayouts(page, baseUrl = "http://127.0
                 const description = document.getElementById(button.getAttribute("aria-describedby"));
                 if (button.textContent !== option.shortLabel || description?.textContent !== option.label) issues.push("subtitle display short name or full description missing or stale");
                 if (button.getAttribute("aria-pressed") !== String(option.value === settings.subtitleDisplayMode) || button.disabled) issues.push("subtitle display state incorrect or unavailable");
-                button.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
-                const box = button.getBoundingClientRect(), range = document.createRange();
+                const box = checkPanelTarget(button, "subtitle display"), range = document.createRange();
                 range.selectNodeContents(button);
                 const glyphs = [...range.getClientRects()].filter(glyph => glyph.width > 0);
-                if (!glyphs.length || glyphs.some(glyph => glyph.left < box.left - 1 || glyph.right > box.right + 1 || glyph.top < box.top - 1 || glyph.bottom > box.bottom + 1)) issues.push("subtitle display glyph outside its button");
+                if (!box || !glyphs.length || glyphs.some(glyph => !inside(glyph, box))) issues.push("subtitle display glyph outside its button");
                 checkUnbrokenWords(button, "subtitle display text splits a word");
-                if (box.width < 24 || box.height < 24 || box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1
-                  || ![box.left + 5, box.left + box.width / 2, box.right - 5].every(x => button.contains(document.elementFromPoint(x, box.top + box.height / 2)))) issues.push("subtitle display click target clipped or covered");
               }
             }
             if (surface === "settings") {
