@@ -2,10 +2,10 @@ import type { SupplementalCopy } from './supplemental-schema';
 
 export const SUPPLEMENTAL = {
   applicationAudio_copy: {
-    title: "Audio erfassen von", all: "Allen Anwendungen", application: "Anwendung",
+    title: "Audio aus Anwendungen", all: "Alle Anwendungen", application: "Anwendung",
     search: "Anwendungen suchen", refresh: "Anwendungen aktualisieren", loading: "Anwendungen werden geladen…",
     empty: "Keine Anwendungen gefunden. Öffne die App und aktualisiere die Liste.", noMatch: "Keine passenden Anwendungen.", missing: "Nicht verfügbar",
-    unavailable: "Die ausgewählte Anwendung ist nicht mehr verfügbar. Öffne sie und wähle sie erneut, oder wähle Alle Anwendungen.",
+    unavailable: "Die ausgewählte Anwendung ist nicht mehr verfügbar. Öffne sie und wähle sie erneut aus oder wechsle zu „Alle Anwendungen“.",
     unsupported: "Anwendungsaudio kann unter macOS und Windows 11 (Build 20348 oder neuer) erfasst werden.",
     failed: "Anwendungen konnten nicht geladen werden. Aktualisiere die Liste, um es erneut zu versuchen.",
     saveFailed: "Die erfasste Anwendung konnte nicht gewechselt werden. Prüfe den Untertitelstatus und versuche es erneut.",
