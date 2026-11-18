@@ -87,8 +87,8 @@ pub struct SettingsStore {
     catalog_write_blocked: bool,
     secret: Box<dyn SecretStore>,
     profile_keychain_service: &'static str,
-    /// Every first read is cached, including unavailable results. This keeps
-    /// concurrent windows from triggering repeated OS authorization prompts.
+    /// Cache each app/profile credential lookup, including unavailable results.
+    /// Normal reads use the private local file, never a native-store fallback.
     /// Explicit saves/deletes replace the cached state; diagnostics retry failed
     /// reads for the selected profile, and restart retries all failed reads.
     secret_cache: Mutex<HashMap<SecretCacheKey, Result<Option<String>, SecretStoreError>>>,

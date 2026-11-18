@@ -100,7 +100,7 @@ pub(super) async fn finish_pause(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
+    use super::super::ownership::{
         lock_after_operations, start_request_can_proceed, start_request_can_proceed_after_teardown,
         TeardownOperationGuard,
     };
