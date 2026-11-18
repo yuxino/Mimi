@@ -64,9 +64,14 @@ function snapshot(subtitles: SubtitleSnapshot, patch: Partial<SessionStateEvent>
     isTranslationPending: true, detectedLanguage: "ja", subtitles, ...patch };
 }
 
-async function mount(subtitles: SubtitleSnapshot, mode: SubtitleDisplayMode = "bilingual", settings: Partial<SettingsSnapshot> = {}) {
-  await act(() => useStore.setState(state => ({ session: snapshot(subtitles), settings: { ...state.settings, ...settings, subtitleDisplayMode: mode } })));
-  await act(() => root.render(<OverlayWindow />));
+function mount(subtitles: SubtitleSnapshot, mode: SubtitleDisplayMode = "bilingual", settings: Partial<SettingsSnapshot> = {}) {
+  return act(() => {
+    useStore.setState(state => ({
+      session: snapshot(subtitles),
+      settings: { ...state.settings, ...settings, subtitleDisplayMode: mode },
+    }));
+    root.render(<OverlayWindow />);
+  });
 }
 
 function publish(subtitles: SubtitleSnapshot, patch: Partial<SessionStateEvent> = {}) {
