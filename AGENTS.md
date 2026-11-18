@@ -28,8 +28,15 @@ Preserve these product constraints:
   crates, which have direct Rust and actual JNI regression coverage.
 - `src-tauri/src/audio/`: system-audio capture (macOS ScreenCaptureKit via `screen-capture-kit`, Windows WASAPI loopback via `cpal` + `rubato`), Linux PulseAudio / PipeWire-Pulse output monitors, optional default microphone capture, and the bounded PCM send pipeline.
 - `src-tauri/src/session_manager.rs`: session lifecycle — start/stop/pause/resume, language/mode switching, health checks, automatic reconnection, state events.
-- `src-tauri/src/settings_store.rs`: preferences/profile JSON in the app config directory + provider/profile-scoped private local credential storage.
+- `src-tauri/src/settings_store/`: `mod.rs` constructs the store; `preferences.rs`,
+  `profiles.rs`, `credentials.rs` and `configuration.rs` own the respective
+  operations. `file_credentials.rs` owns private local credentials and legacy
+  import; `native_credentials.rs` is compatibility-only. Tests are grouped in
+  `tests/`. See [repository ownership](docs/development/repository-layout.md).
 - `src-tauri/src/{commands,windows,lib}.rs`: IPC commands, overlay window management, tray/shortcut wiring.
+- `src-tauri/src/platform/{macos,windows,linux}/`: native shell startup,
+  Dock/quit integration and updater cleanup. Keep capture in `audio/` and
+  overlay interaction in `windows/`.
 - `src/`: React frontend — `src/windows/{overlay,overlay-control,settings}/` contain the three product surfaces; `src/lib/{ipc,store,types,i18n}.ts` define the IPC contract.
 - The product website lives in the separate `yuxino-labs/mimi-web`
   repository. Never add a website copy, subtree, or generated site assets to
@@ -62,6 +69,8 @@ Preserve these product constraints:
   quality investigations; compare actual quality, latency and cost before changing
   defaults. Keep dated source checks and pending candidates in
   `docs/development/provider-model-reviews.md`.
+- `src-tauri/config/`: explicitly selected development/watch/CI overrides. Keep
+  Tauri-discovered `tauri.conf.json` and platform overrides in `src-tauri/`.
 - `config/`: frontend tool configuration (Vite, ESLint, PostCSS, Tailwind and
   TypeScript projects). Run the npm scripts so tools use these explicit paths.
   The root `tsconfig.json` remains the editor discovery entry point.
