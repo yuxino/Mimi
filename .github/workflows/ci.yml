@@ -1,16 +1,31 @@
-name: Windows subtitle acceptance
+name: Desktop subtitle acceptance
 on:
   workflow_dispatch:
     inputs:
       revision: {description: Exact test revision, type: string, required: true}
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that built the captured executable, type: string}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability], default: both}
 permissions:
   contents: read
   actions: read
 jobs:
+  mac-input-capability:
+    if: ${{ inputs.checks == 'mac-input-capability' }}
+    runs-on: macos-15
+    timeout-minutes: 6
+    steps:
+      - name: Check the isolated Mac desktop before sending pointer input
+        shell: bash
+        run: |
+          swift - <<'SWIFT'
+          import AppKit
+          import ApplicationServices
+          let foreground = CGSessionCopyCurrentDictionary() as? [String: Any]
+          print("Mac desktop preflight: screens=\(NSScreen.screens.count) graphicalSession=\(foreground != nil) trustedAccessibility=\(AXIsProcessTrusted()) mayPostInput=\(CGPreflightPostEventAccess()) mayReadWindows=\(CGPreflightScreenCaptureAccess())")
+          SWIFT
   review:
+    if: ${{ inputs.checks != 'mac-input-capability' }}
     runs-on: windows-2025
     timeout-minutes: 22
     env:
