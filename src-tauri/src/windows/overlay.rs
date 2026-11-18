@@ -39,7 +39,7 @@ use super::linux_input_region;
 #[cfg(target_os = "macos")]
 use super::macos_space;
 #[cfg(target_os = "linux")]
-use super::native::{configure_overlay_for_software_gl, follow_linux_overlay_on_map};
+use super::native::follow_linux_overlay_on_map;
 use super::native::{
     configure_overlay_window, convert_overlay_to_panel, desktop_scale_for_frame,
     overlay_frame_from_window, set_desktop_position, set_desktop_size, show_overlay_window,
@@ -459,10 +459,6 @@ impl OverlayWindowManager {
                 }
                 if let Some(presentation) = app.try_state::<OverlayPresentationState>() {
                     presentation.invalidate();
-                }
-                #[cfg(target_os = "linux")]
-                if uses_x11 {
-                    configure_overlay_for_software_gl(&window);
                 }
                 configure_overlay_window(&window);
                 #[cfg(target_os = "linux")]
