@@ -10,17 +10,9 @@ private enum CaptionCaptureError: Error, CustomStringConvertible {
     }
 }
 
-private let systemCaption = "Mimi system audio test: can you see the shared screen?"
-
-private func axAttribute(_ element: AXUIElement, _ name: CFString) -> CFTypeRef? {
-    var value: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(element, name, &value) == .success else { return nil }
-    return value
-}
-
-private func axFrame(_ element: AXUIElement) -> CGRect? {
-    guard let rawPosition = axAttribute(element, kAXPositionAttribute as CFString),
-          let rawSize = axAttribute(element, kAXSizeAttribute as CFString),
+func axFrame(_ element: AXUIElement) -> CGRect? {
+    guard let rawPosition = axAttribute(element, kAXPositionAttribute),
+          let rawSize = axAttribute(element, kAXSizeAttribute),
           CFGetTypeID(rawPosition) == AXValueGetTypeID(), CFGetTypeID(rawSize) == AXValueGetTypeID()
     else { return nil }
     var origin = CGPoint.zero
@@ -47,27 +39,25 @@ private func windowInfo(_ windowID: CGWindowID, _ frame: CGRect) throws -> [Stri
     return row
 }
 
-private func captionFrames(pid: pid_t, frame: CGRect) throws -> [(ax: CGRect, crop: CGRect)] {
+func visibleAXMatches(pid: pid_t, frame: CGRect, matching: (AXUIElement) -> Bool) throws
+    -> [(element: AXUIElement, ax: CGRect, crop: CGRect)] {
     let app = AXUIElementCreateApplication(pid)
-    guard let windows = axAttribute(app, kAXWindowsAttribute as CFString) as? [AXUIElement] else {
+    guard let windows = axAttribute(app, kAXWindowsAttribute) as? [AXUIElement] else {
         throw CaptionCaptureError.failed("caption_ax_windows_unavailable")
     }
     let matches = windows.filter { axFrame($0).map { sameFrame($0, frame) } ?? false }
     guard matches.count == 1 else { throw CaptionCaptureError.failed("caption_ax_window_not_unique") }
     var pending: [(AXUIElement, Int)] = [(matches[0], 0)]
     var visited = 0
-    var found: [(ax: CGRect, crop: CGRect)] = []
+    var found: [(element: AXUIElement, ax: CGRect, crop: CGRect)] = []
     while let (element, depth) = pending.popLast() {
         visited += 1
         guard visited <= 4096 else { throw CaptionCaptureError.failed("caption_ax_tree_limit") }
-        let named = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].contains {
-            (axAttribute(element, $0 as CFString) as? String) == systemCaption
-        }
-        if named, let bounds = axFrame(element) {
+        if matching(element), let bounds = axFrame(element) {
             let visible = bounds.intersection(frame.insetBy(dx: 4, dy: 4))
-            if !visible.isNull && visible.width >= 8 && visible.height >= 8 { found.append((bounds, visible)) }
+            if !visible.isNull && visible.width >= 8 && visible.height >= 8 { found.append((element, bounds, visible)) }
         }
-        if depth < 20, let children = axAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement] {
+        if depth < 20, let children = axAttribute(element, kAXChildrenAttribute) as? [AXUIElement] {
             pending.append(contentsOf: children.map { ($0, depth + 1) })
         }
     }
@@ -210,15 +200,29 @@ private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> St
 }
 
 /// Both returned coordinates use Quartz global logical points, top-left origin.
-/// `crop` is the visible original-language AX lane, not a window-relative rectangle.
-/// `output` is a directory; stage.png contains only this lane at native resolution.
-func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL, stage: String) throws -> (point: CGPoint, crop: CGRect) {
+/// `crop` is the visible AX text rectangle in the chosen native window.
+/// stage.png contains that text at the window's native resolution.
+func locateDragText(pid: pid_t, windowID: CGWindowID, frame: CGRect, scene: DragScene, output: URL, stage: String) throws -> (point: CGPoint, crop: CGRect) {
     let info = try windowInfo(windowID, frame)
     guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid else {
         throw CaptionCaptureError.failed("caption_window_pid_mismatch")
     }
-    let frames = try captionFrames(pid: pid, frame: frame)
-    guard !frames.isEmpty else { throw CaptionCaptureError.failed("caption_original_ax_lane_not_found") }
+    let frames = try visibleAXMatches(pid: pid, frame: frame) { element in
+        // The audio section and its switch group share the heading's name.
+        // Only static text identifies a non-interactive drag surface here.
+        if scene == .panel, axAttribute(element, kAXRoleAttribute) as? String != kAXStaticTextRole { return false }
+        return [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].contains {
+            (axAttribute(element, $0) as? String) == scene.text
+        }
+    }
+    guard !frames.isEmpty else { throw CaptionCaptureError.failed("\(scene.rawValue)_target_ax_text_not_found") }
+    if scene == .panel {
+        let help = try audioHeadingHelpFrame(pid: pid, panel: frame)
+        guard frames.allSatisfy({ $0.crop.intersection(help).isEmpty }) else {
+            throw CaptionCaptureError.failed("panel_heading_crop_overlaps_help_button")
+        }
+        print("Panel Audio input text crops=\(frames.map(\.crop)), separate help button=\(help).")
+    }
     let image = try readWindow(windowID, frame)
     var failures: [StrokeResult] = []
     for candidate in frames {
@@ -242,7 +246,7 @@ func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL,
         print("caption_pixel_failure index=\(index) ax=\(candidate.ax) visibleCrop=\(candidate.crop) samplePixels=\(sample.rect) background=\(sample.background) maxBrightness=\(sample.maxBrightness) maxAlpha=\(sample.maxAlpha) allTransparent=\(sample.maxAlpha == 0) thresholdHits=\(sample.thresholdHits) neighborHits=\(sample.neighborHits)")
         saveFailure(candidate.crop, suffix: "-ax-\(index)-failed")
     }
-    throw CaptionCaptureError.failed("caption_original_has_no_verified_stroke")
+    throw CaptionCaptureError.failed("\(scene.rawValue)_target_has_no_verified_stroke")
 }
 
 /// `frame` and `crop` are Quartz global logical points. Translate both after a

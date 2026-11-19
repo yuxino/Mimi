@@ -7,6 +7,11 @@ on:
         description: Published Mimi tag
         required: true
         type: string
+      gesture:
+        description: Where to start the drag
+        type: choice
+        options: [caption, panel]
+        default: caption
 
 permissions:
   contents: read
@@ -36,9 +41,11 @@ jobs:
           app="$RUNNER_TEMP/mimi-extracted/mimi.app"
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "${TAG#v}" ]]
           ditto "$app" /Applications/mimi.app
-      - name: Click and drag a visible caption in the signed Mimi overlay
+      - name: Click and drag in the selected subtitle surface
+        env:
+          MIMI_TEST_DRAG_GESTURE: ${{ inputs.gesture }}
         run: bash scripts/macos/tests/run-caption-drag.sh "$RUNNER_TEMP/caption-drag"
-      - name: Save the synthetic subtitle crops and measured window positions
+      - name: Save the fixture screenshots and measured window positions
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

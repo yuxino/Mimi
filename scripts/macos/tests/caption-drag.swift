@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-private struct DragCheckError: Error, CustomStringConvertible {
+struct DragCheckError: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
 }
@@ -10,7 +10,7 @@ private let settingsTitle = "mimi UI test settings"
 private let tolerance: CGFloat = 0.5 // Window Server reports logical points.
 private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
-private struct OwnedWindow {
+struct OwnedWindow {
     let id: CGWindowID
     let title: String
     let frame: CGRect
@@ -31,7 +31,7 @@ private func visibleWindows(of pid: pid_t) throws -> [OwnedWindow] {
     }
 }
 
-private func axAttribute(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
+func axAttribute(_ element: AXUIElement, _ attribute: String) -> CFTypeRef? {
     var value: CFTypeRef?
     return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success ? value : nil
 }
@@ -57,14 +57,7 @@ private struct AXHit {
         } else { return }
         guard AXUIElementGetPid(window, &owner) == .success else { return }
         windowPID = owner
-        guard owner == expectedPID,
-              let position = axAttribute(window, kAXPositionAttribute), CFGetTypeID(position) == AXValueGetTypeID(),
-              let size = axAttribute(window, kAXSizeAttribute), CFGetTypeID(size) == AXValueGetTypeID() else { return }
-        var origin = CGPoint.zero
-        var extent = CGSize.zero
-        if AXValueGetValue(position as! AXValue, .cgPoint, &origin), AXValueGetValue(size as! AXValue, .cgSize, &extent) {
-            windowFrame = CGRect(origin: origin, size: extent)
-        }
+        if owner == expectedPID { windowFrame = axFrame(window) }
     }
 
     func matches(pid: pid_t, frame: CGRect) -> Bool {
@@ -106,7 +99,7 @@ private func closeSettings(of pid: pid_t) throws -> CGWindowID {
     throw DragCheckError("Could not identify the fixture's visible Settings window and its AX close button: \(lastObservation)")
 }
 
-private struct WindowPair {
+struct WindowPair {
     let root: OwnedWindow
     let island: OwnedWindow
 
@@ -138,7 +131,14 @@ private struct WindowPair {
     }
 }
 
-@MainActor private final class Pointer {
+enum DragScene: String {
+    case caption, panel
+    var text: String { self == .caption ? "Mimi system audio test: can you see the shared screen?" : "Audio input" }
+    var stepY: Int { self == .caption ? 4 : 0 }
+    func window(in pair: WindowPair) -> OwnedWindow { self == .caption ? pair.root : pair.island }
+}
+
+@MainActor final class Pointer {
     let source: CGEventSource
     let pid: pid_t
     var position: CGPoint
@@ -183,7 +183,7 @@ private struct WindowPair {
                 quartzCursor = actual
                 break
             }
-            if now >= deadline { throw DragCheckError("The cursor did not reach the verified caption glyph at \(point).") }
+            if now >= deadline { throw DragCheckError("The cursor did not reach the target at \(point).") }
             Thread.sleep(forTimeInterval: 0.01)
         }
         // Quartz and AX use a top-left origin. AppKit's first screen defines
@@ -197,9 +197,9 @@ private struct WindowPair {
         let hit = NSWindow.windowNumber(at: location, belowWindowWithWindowNumber: 0)
         let ax = AXHit(at: quartzCursor, expectedPID: pid)
         guard hit == Int(root.id), ax.matches(pid: pid, frame: root.frame) else {
-            throw DragCheckError("Caption hit at \(quartzCursor) expected root \(root.id) \(root.frame), PID \(pid). AppKit hit \(hit), AX \(ax.description).")
+            throw DragCheckError("At \(quartzCursor) expected window \(root.id) \(root.frame), PID \(pid). AppKit hit \(hit), AX \(ax.description).")
         }
-        print("Caption hit at \(quartzCursor) verified root \(root.id), PID \(pid), frame \(root.frame).")
+        print("Hit at \(quartzCursor) verified window \(root.id), PID \(pid), frame \(root.frame).")
     }
 
     func hold(at point: CGPoint, in root: OwnedWindow, _ whileDown: () throws -> Void) throws {
@@ -241,28 +241,32 @@ private enum CaptionDrag {
         }
         let args = CommandLine.arguments
         let bundles = ["app.yuxino.mimi": "mimi.app", "app.yuxino.mimi.dev": "mimi-dev.app"]
-        guard args.count == 4, let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
+        guard (4...5).contains(args.count), let scene = DragScene(rawValue: args.count == 5 ? args[4] : "caption"),
+              let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
               let process = NSRunningApplication(processIdentifier: pid), process.bundleIdentifier == args[2],
               process.executableURL?.standardizedFileURL.path == "/Applications/\(bundle)/Contents/MacOS/mimi" else {
-            throw DragCheckError("Expected the PID and identifier of the verified Mimi installation, then an evidence directory.")
+            throw DragCheckError("Expected PID, signed installation identifier, evidence directory, and optional caption or panel.")
         }
         let titleSuffix = args[2] == "app.yuxino.mimi.dev" ? " (dev)" : ""
         let output = URL(fileURLWithPath: args[3], isDirectory: true)
         let settings = try closeSettings(of: pid)
         let readPair = { try WindowPair.read(pid: pid, settings: settings, titleSuffix: titleSuffix) }
-        let initial = try readPair()
-        guard initial.root.frame.contains(initial.island.frame), initial.island.frame.height < initial.root.frame.height / 2 else {
-            throw DragCheckError("The language island is not in its compact position: \(initial).")
+        let compact = try readPair()
+        guard compact.root.frame.contains(compact.island.frame), compact.island.frame.height < compact.root.frame.height / 2 else {
+            throw DragCheckError("The language island is not in its compact position: \(compact).")
         }
+        let pointer = try Pointer(pid: pid)
+        let savedPointer = pointer.position
+        defer { if !Pointer.pressed { try? pointer.post(.mouseMoved, at: savedPointer) } }
+        let initial = scene == .panel
+            ? try openControlPanel(compact: compact, pointer: pointer, readPair: readPair, output: output)
+            : compact
         let sample = { () throws -> WindowPair in
             let pair = try readPair()
             try pair.sameWindowsAndSizes(as: initial)
             return pair
         }
-        let pointer = try Pointer(pid: pid)
-        let savedPointer = pointer.position
-        defer { if !Pointer.pressed { try? pointer.post(.mouseMoved, at: savedPointer) } }
-        print("Caption drag baseline pid=\(pid) root=\(initial.root.id) \(initial.root.frame), island=\(initial.island.id) \(initial.island.frame).")
+        print("\(scene.rawValue) drag baseline pid=\(pid) root=\(initial.root.id) \(initial.root.frame), controls=\(initial.island.id) \(initial.island.frame).")
 
         // Sample continuously through a dwell. A transient visit to the goal
         // cannot certify either a held drag or a released, stable position.
@@ -282,21 +286,36 @@ private enum CaptionDrag {
         }
 
         let viewport = CGDisplayBounds(CGMainDisplayID())
-        guard viewport.contains(initial.root.frame.offsetBy(dx: 48, dy: 32)) else {
-            throw DragCheckError("The fixture lacks room for the full 48 × 32 point movement.")
+        let dy = CGFloat(scene.stepY * 8)
+        guard viewport.contains(initial.root.frame.offsetBy(dx: 48, dy: dy)),
+              viewport.contains(initial.island.frame.offsetBy(dx: 48, dy: dy)) else {
+            throw DragCheckError("The fixture lacks room to move both windows by 48 × \(dy) points.")
         }
-        try pointer.post(.mouseMoved, at: CGPoint(x: initial.root.frame.midX, y: initial.root.frame.midY))
+        let surface = scene.window(in: initial)
+        try pointer.post(.mouseMoved, at: CGPoint(x: surface.frame.midX, y: surface.frame.midY))
         guard try settled(.zero, held: false, duration: 0.25, timeout: 2) else { throw DragCheckError("The initial window geometry did not settle.") }
 
-        func caption(_ pair: WindowPair, stage: String) throws -> (point: CGPoint, crop: CGRect) {
-            let hit = try locateCaption(pid: pid, windowID: pair.root.id, frame: pair.root.frame, output: output, stage: stage)
-            guard pair.root.frame.insetBy(dx: 12, dy: 12).contains(hit.point), hit.point.y > pair.island.frame.maxY,
-                  !pair.island.frame.contains(hit.point) else { throw DragCheckError("The verified glyph is not clear of the window edges and controls.") }
+        func target(_ pair: WindowPair, stage: String) throws -> (point: CGPoint, crop: CGRect) {
+            let window = scene.window(in: pair)
+            let hit = try locateDragText(pid: pid, windowID: window.id, frame: window.frame, scene: scene, output: output, stage: stage)
+            guard window.frame.insetBy(dx: 12, dy: 12).contains(hit.point),
+                  scene == .panel || (hit.point.y > pair.island.frame.maxY && !pair.island.frame.contains(hit.point)) else {
+                throw DragCheckError("The verified glyph is not clear of the window edges and controls.")
+            }
+            if scene == .panel {
+                guard hit.crop.minY > window.frame.minY + compact.island.frame.height else {
+                    throw DragCheckError("The Audio input label is still inside the panel's top band.")
+                }
+                let rootOffset = CGPoint(x: hit.point.x - pair.root.frame.minX, y: hit.point.y - pair.root.frame.minY)
+                print("Panel Audio input stroke: depth=\(hit.point.y - window.frame.minY)/\(window.frame.height), insideSubtitleRoot=\(pair.root.frame.contains(hit.point)), rootOffset=\(rootOffset).")
+            }
             try pointer.post(.mouseMoved, at: hit.point)
             return hit
         }
-        let click = try caption(initial, stage: "before-click")
-        try captureFrame(windowID: initial.root.id, frame: initial.root.frame, crop: initial.root.frame, output: output, stage: "before-click-window")
+        let click = try target(initial, stage: "before-click")
+        if scene == .caption {
+            try captureFrame(windowID: surface.id, frame: surface.frame, crop: surface.frame, output: output, stage: "before-click-window")
+        }
         var clickStayed = true
         func observeClick(held: Bool, duration: TimeInterval) throws {
             let deadline = now + duration
@@ -315,43 +334,48 @@ private enum CaptionDrag {
                 Thread.sleep(forTimeInterval: min(0.025, remaining))
             }
         }
-        try pointer.hold(at: click.point, in: initial.root) {
+        try pointer.hold(at: click.point, in: surface) {
             try observeClick(held: true, duration: 0.065)
         }
         try observeClick(held: false, duration: max(0.4, NSEvent.doubleClickInterval))
         guard clickStayed else {
-            let pair = try sample()
-            try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: pair.root.frame, output: output, stage: "after-click-window")
+            let window = scene.window(in: try sample())
+            try captureFrame(windowID: window.id, frame: window.frame, crop: window.frame, output: output, stage: "after-click-window")
             throw DragCheckError("The subtitle window and island did not remain at their initial positions for the required click dwell.")
         }
 
         var failures: [String] = []
         for (stage, direction) in [("forward", 1), ("return", -1)] {
             let start = try sample()
-            let glyph = try caption(start, stage: stage + "-start")
-            let goal = direction == 1 ? CGPoint(x: 48, y: 32) : .zero
+            let glyph = try target(start, stage: stage + "-start")
+            let goal = direction == 1 ? CGPoint(x: 48, y: dy) : .zero
             func record(_ phase: String) throws {
                 let pair = try sample()
-                let dx = pair.root.frame.minX - start.root.frame.minX
-                let dy = pair.root.frame.minY - start.root.frame.minY
+                let window = scene.window(in: pair)
+                let original = scene.window(in: start)
+                let dx = window.frame.minX - original.frame.minX
+                let dy = window.frame.minY - original.frame.minY
                 let cursor = CGEvent(source: nil)?.location
                 print("Caption drag \(stage)-\(phase) held=\(Pointer.pressed) cursor=\(String(describing: cursor)) root=\(pair.root.frame) island=\(pair.island.frame).")
                 if stage == "return", phase == "released" {
-                    _ = try locateCaption(pid: pid, windowID: pair.root.id, frame: pair.root.frame, output: output, stage: "return-released")
+                    _ = try locateDragText(pid: pid, windowID: window.id, frame: window.frame, scene: scene, output: output, stage: "return-released")
                 } else {
-                    try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: glyph.crop.offsetBy(dx: dx, dy: dy), output: output, stage: stage + "-" + phase)
+                    try captureFrame(windowID: window.id, frame: window.frame, crop: glyph.crop.offsetBy(dx: dx, dy: dy), output: output, stage: stage + "-" + phase)
                 }
                 if stage == "forward", phase == "released" {
                     try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: pair.root.frame, output: output, stage: "forward-released-window")
+                    if scene == .panel {
+                        try captureFrame(windowID: window.id, frame: window.frame, crop: window.frame, output: output, stage: "forward-released-panel")
+                    }
                 }
             }
-            try pointer.hold(at: glyph.point, in: start.root) {
+            try pointer.hold(at: glyph.point, in: scene.window(in: start)) {
                 // Allow the WebView to forward the actual mouse-down to AppKit
                 // before delivering the native dragged events for this press.
                 Thread.sleep(forTimeInterval: 0.10)
                 for step in 1...8 {
                     guard Pointer.pressed else { throw DragCheckError("Left button lifted during the drag.") }
-                    let point = CGPoint(x: glyph.point.x + CGFloat(direction * step * 6), y: glyph.point.y + CGFloat(direction * step * 4))
+                    let point = CGPoint(x: glyph.point.x + CGFloat(direction * step * 6), y: glyph.point.y + CGFloat(direction * step * scene.stepY))
                     try pointer.post(.leftMouseDragged, at: point)
                     Thread.sleep(forTimeInterval: 0.035)
                     let current = try sample()
@@ -365,6 +389,7 @@ private enum CaptionDrag {
             guard stable else { throw DragCheckError("\(stage) did not reach and retain its expected geometry after release.") }
         }
         guard failures.isEmpty else { throw DragCheckError("Unverified native movement: \(failures.joined(separator: ", ")).") }
-        print("Verified caption click, held movement, 400 ms stability and return to the original root and island frames.")
+        if scene == .panel { try checkPanelDisplayButtons(pointer: pointer, initial: initial, sample: sample, output: output) }
+        print("Verified \(scene.rawValue) click, held movement, 400 ms stability and return to both original frames.")
     }
 }
