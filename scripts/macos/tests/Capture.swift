@@ -98,8 +98,10 @@ private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGIma
         }
         throw CaptionCaptureError.failed("caption_single_window_capture_timeout")
     }
+    // ImageIO can decode lazily. Own the PNG bytes after the scratch file is removed.
     guard process.terminationStatus == 0,
-          let source = CGImageSourceCreateWithURL(path as CFURL, nil),
+          let bytes = try? Data(contentsOf: path),
+          let source = CGImageSourceCreateWithData(bytes as CFData, nil),
           let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
     else { throw CaptionCaptureError.failed("caption_single_window_capture_failed") }
     _ = try windowInfo(windowID, frame)
@@ -240,7 +242,7 @@ func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL,
     print("caption_capture_failure root=\(frame) imagePixels=\(image.width)x\(image.height) scaleX=\(CGFloat(image.width) / frame.width) scaleY=\(CGFloat(image.height) / frame.height) bits=\(image.bitsPerComponent)/\(image.bitsPerPixel) alphaInfo=\(image.alphaInfo.rawValue) bitmapInfo=\(image.bitmapInfo.rawValue) visibleAXMatches=\(frames.count)")
     func saveFailure(_ crop: CGRect, suffix: String) {
         do { try save(image, frame: frame, crop: crop, output: output, stage: stage + suffix) }
-        catch { print("caption_failure_png suffix=\(suffix) status=failed") }
+        catch { print("caption_failure_png suffix=\(suffix) error=\(error)") }
     }
     saveFailure(frame, suffix: "-root-failed")
     for (index, candidate) in frames.enumerated() {
