@@ -23,6 +23,14 @@ pub use native::OverlayPresentationState;
 pub use overlay::{OverlayState, OverlayWindowManager};
 pub use settings_window::ensure_settings_window;
 
+pub(crate) fn panel_drag_target(
+    mode: OverlayControlMode,
+    overlay_locked: bool,
+    immersive: bool,
+) -> Option<&'static str> {
+    (mode == OverlayControlMode::Panel && !overlay_locked && !immersive).then_some("overlay")
+}
+
 #[cfg(test)]
 mod test_support;
 
@@ -79,6 +87,12 @@ mod linux_input_region;
 
 #[cfg(target_os = "macos")]
 mod macos_control_dismiss;
+
+#[cfg(target_os = "macos")]
+mod macos_drag;
+
+#[cfg(target_os = "macos")]
+pub(crate) use macos_drag::start_overlay_drag;
 
 #[cfg(target_os = "macos")]
 mod macos_pointer;

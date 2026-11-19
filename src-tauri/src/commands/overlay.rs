@@ -3,6 +3,8 @@
 use super::settings::emit_settings_snapshot;
 use super::{sync_overlay_minimum, AppState};
 use crate::settings_store::SettingsStore;
+#[cfg(any(not(target_os = "macos"), test))]
+use crate::windows::panel_drag_target;
 use crate::windows::{OverlayControlMode, OverlayControlWindowManager, OverlayWindowManager};
 use tauri::{AppHandle, Manager, State};
 
@@ -119,14 +121,6 @@ pub async fn overlay_set_pointer_cursor(
     }
 }
 
-fn panel_drag_target(
-    mode: OverlayControlMode,
-    overlay_locked: bool,
-    immersive: bool,
-) -> Option<&'static str> {
-    (mode == OverlayControlMode::Panel && !overlay_locked && !immersive).then_some("overlay")
-}
-
 /// Records a user drag and moves the subtitle root from either overlay surface.
 #[tauri::command]
 pub fn overlay_move_start(
@@ -134,30 +128,37 @@ pub fn overlay_move_start(
     window: tauri::WebviewWindow,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let target = match window.label() {
-        "overlay" => window,
-        "overlay-control" => {
-            let preferences = state.settings.preferences();
-            let Some(label) = panel_drag_target(
-                OverlayControlWindowManager::mode(&app),
-                preferences.overlay_locked,
-                preferences.subtitle_blends_with_background,
-            ) else {
-                return Ok(());
-            };
-            app.get_webview_window(label)
-                .ok_or_else(|| "Could not find the subtitle overlay.".to_string())?
+    #[cfg(target_os = "macos")]
+    {
+        crate::windows::start_overlay_drag(&app, &window, &state.overlay)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let target = match window.label() {
+            "overlay" => window,
+            "overlay-control" => {
+                let preferences = state.settings.preferences();
+                let Some(label) = panel_drag_target(
+                    OverlayControlWindowManager::mode(&app),
+                    preferences.overlay_locked,
+                    preferences.subtitle_blends_with_background,
+                ) else {
+                    return Ok(());
+                };
+                app.get_webview_window(label)
+                    .ok_or_else(|| "Could not find the subtitle overlay.".to_string())?
+            }
+            _ => return Err("overlay_move_not_allowed".into()),
+        };
+        if !OverlayWindowManager::move_start(&app, &state.overlay) {
+            return Ok(());
         }
-        _ => return Err("overlay_move_not_allowed".into()),
-    };
-    if !OverlayWindowManager::move_start(&app, &state.overlay) {
-        return Ok(());
+        if target.start_dragging().is_err() {
+            OverlayWindowManager::move_cancel(&state.overlay);
+            return Err("Could not start overlay drag.".to_string());
+        }
+        Ok(())
     }
-    if target.start_dragging().is_err() {
-        OverlayWindowManager::move_cancel(&state.overlay);
-        return Err("Could not start overlay drag.".to_string());
-    }
-    Ok(())
 }
 
 /// Toggles the child overlay control between its compact island and expanded
