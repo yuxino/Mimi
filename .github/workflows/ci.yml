@@ -6,11 +6,28 @@ on:
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that built the captured executable, type: string}
       release_tag: {description: Published Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control], default: both}
 permissions:
   contents: read
   actions: read
 jobs:
+  appkit-calibration:
+    if: ${{ inputs.checks == 'mac-appkit-control' }}
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Compare the same pointer input on a plain AppKit window
+        run: bash scripts/macos/calibration/run.sh "$RUNNER_TEMP/appkit-drag-calibration"
+      - name: Save coordinates from the isolated control window
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: appkit-drag-calibration
+          path: ${{ runner.temp }}/appkit-drag-calibration/*.log
+          retention-days: 7
   mac-input-capability:
     if: ${{ inputs.checks == 'mac-input-capability' }}
     runs-on: macos-15
