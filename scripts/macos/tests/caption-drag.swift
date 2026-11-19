@@ -42,9 +42,9 @@ private struct AXHit {
     var windowPID: pid_t?
     var windowFrame: CGRect?
 
-    init(_ application: AXUIElement, at point: CGPoint, expectedPID: pid_t) {
+    init(at point: CGPoint, expectedPID: pid_t) {
         var element: AXUIElement?
-        status = AXUIElementCopyElementAtPosition(application, Float(point.x), Float(point.y), &element)
+        status = AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &element)
         var owner: pid_t = 0
         guard status == .success, let element, AXUIElementGetPid(element, &owner) == .success else { return }
         elementPID = owner
@@ -110,13 +110,13 @@ private struct WindowPair {
     let root: OwnedWindow
     let island: OwnedWindow
 
-    static func read(pid: pid_t, settings: CGWindowID) throws -> WindowPair {
+    static func read(pid: pid_t, settings: CGWindowID, titleSuffix: String) throws -> WindowPair {
         let windows = try visibleWindows(of: pid)
         guard !windows.contains(where: { $0.id == settings || $0.title == settingsTitle }) else {
             throw DragCheckError("Settings became visible during the caption gesture.")
         }
-        let roots = windows.filter { $0.title == "Mimi Subtitles" }
-        let islands = windows.filter { $0.title == "Mimi" }
+        let roots = windows.filter { $0.title == "Mimi Subtitles" + titleSuffix }
+        let islands = windows.filter { $0.title == "Mimi" + titleSuffix }
         guard roots.count == 1, islands.count == 1, roots[0].id != islands[0].id else {
             throw DragCheckError("Could not identify the subtitle windows (roots=\(roots.count), islands=\(islands.count)); this PID's visible windows: \(windows.map(\.description)).")
         }
@@ -141,11 +141,19 @@ private struct WindowPair {
 @MainActor private final class Pointer {
     let source: CGEventSource
     let pid: pid_t
-    private var appKitReady = false
     var position: CGPoint
     static var pressed: Bool { CGEventSource.buttonState(.combinedSessionState, button: .left) }
 
     init(pid: pid_t) throws {
+        // A command-line observer needs an AppKit connection for windowNumber(at:).
+        let app = NSApplication.shared
+        if app.activationPolicy() != .prohibited, !app.setActivationPolicy(.prohibited) {
+            throw DragCheckError("Could not disable activation for the pointer observer.")
+        }
+        app.finishLaunching()
+        guard !app.isActive, !app.windows.contains(where: \.isVisible) else {
+            throw DragCheckError("The pointer observer activated or displayed a window.")
+        }
         guard let source = CGEventSource(stateID: .combinedSessionState), let cursor = CGEvent(source: nil), !Self.pressed else {
             throw DragCheckError("Could not acquire an idle mouse event source.")
         }
@@ -178,44 +186,20 @@ private struct WindowPair {
             if now >= deadline { throw DragCheckError("The cursor did not reach the verified caption glyph at \(point).") }
             Thread.sleep(forTimeInterval: 0.01)
         }
+        // Quartz and AX use a top-left origin. AppKit's first screen defines
+        // the bottom-left origin, regardless of which screen has the key window.
         let display = CGDisplayBounds(CGMainDisplayID())
-        func hit(_ point: CGPoint) -> Int { NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0) }
-        var before = "already initialized"
-        let first = !appKitReady
-        if first {
-            // Compare the same glyph before and after giving this command-line
-            // observer an AppKit connection. It must never activate or show UI.
-            let converted = CGPoint(x: point.x, y: display.maxY - point.y)
-            let mouse = NSEvent.mouseLocation
-            before = "converted=\(converted) hit=\(hit(converted)) mouse=\(mouse) mouseHit=\(hit(mouse))"
-            let app = NSApplication.shared
-            if app.activationPolicy() != .prohibited, !app.setActivationPolicy(.prohibited) {
-                throw DragCheckError("Could not set the hit-test observer to prohibited activation (before=\(before)).")
-            }
-            app.finishLaunching()
-            guard !app.isActive, !app.windows.contains(where: \.isVisible) else { throw DragCheckError("The hit-test observer activated or displayed a window.") }
-            appKitReady = true
+        guard let screen = NSScreen.screens.first, screen.frame.size == display.size else {
+            throw DragCheckError("AppKit and Quartz do not agree on the primary display.")
         }
-        // AppKit's first screen is the zero screen, even when the key window
-        // (and thus NSScreen.main) belongs to another display.
-        guard let zero = NSScreen.screens.first else { throw DragCheckError("AppKit reported no screens (before=\(before), CG main=\(display)).") }
-        func appKitPoint(_ quartz: CGPoint) -> CGPoint {
-            CGPoint(x: zero.frame.minX + quartz.x - display.minX, y: zero.frame.maxY - (quartz.y - display.minY))
+        let location = CGPoint(x: screen.frame.minX + quartzCursor.x - display.minX,
+                               y: screen.frame.maxY - (quartzCursor.y - display.minY))
+        let hit = NSWindow.windowNumber(at: location, belowWindowWithWindowNumber: 0)
+        let ax = AXHit(at: quartzCursor, expectedPID: pid)
+        guard hit == Int(root.id), ax.matches(pid: pid, frame: root.frame) else {
+            throw DragCheckError("Caption hit at \(quartzCursor) expected root \(root.id) \(root.frame), PID \(pid). AppKit hit \(hit), AX \(ax.description).")
         }
-        let projected = appKitPoint(point)
-        let actualProjected = appKitPoint(quartzCursor)
-        let mouse = NSEvent.mouseLocation
-        let projectedHit = hit(projected), mouseHit = hit(mouse), actualHit = hit(actualProjected)
-        let systemAX = AXHit(AXUIElementCreateSystemWide(), at: point, expectedPID: pid)
-        let appAX = AXHit(AXUIElementCreateApplication(pid), at: point, expectedPID: pid)
-        let expected = Int(root.id)
-        let matched = display.size == zero.frame.size && abs(mouse.x - actualProjected.x) <= 1 && abs(mouse.y - actualProjected.y) <= 1 &&
-            projectedHit == expected && actualHit == expected && mouseHit == expected &&
-            systemAX.matches(pid: pid, frame: root.frame) && appAX.matches(pid: pid, frame: root.frame)
-        if first || !matched {
-            print("Caption hit expected=\(expected) pid=\(pid) root=\(root.frame) before=(\(before)) quartzGlyph=\(point) quartzCursor=\(quartzCursor) converted=\(projected) hit=\(projectedHit) actualConverted=\(actualProjected) actualHit=\(actualHit) nsMouse=\(mouse) nsMouseHit=\(mouseHit) cgMain=\(display) nsZero=\(zero.frame) nsMain=\(String(describing: NSScreen.main?.frame)) systemAX=(\(systemAX.description)) appAX=(\(appAX.description)).")
-        }
-        guard matched else { throw DragCheckError("AppKit and Accessibility did not both identify the verified subtitle window before mouse-down.") }
+        print("Caption hit at \(quartzCursor) verified root \(root.id), PID \(pid), frame \(root.frame).")
     }
 
     func hold(at point: CGPoint, in root: OwnedWindow, _ whileDown: () throws -> Void) throws {
@@ -251,22 +235,27 @@ private enum CaptionDrag {
     }
 
     static func run() throws {
-        guard CommandLine.arguments.count == 3, let pid = pid_t(CommandLine.arguments[1]), pid > 0,
-              NSRunningApplication(processIdentifier: pid)?.bundleIdentifier == "app.yuxino.mimi" else {
-            throw DragCheckError("Expected the running signed Mimi release PID and an evidence directory.")
-        }
         guard ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted",
               AXIsProcessTrusted(), CGPreflightPostEventAccess(), CGPreflightScreenCaptureAccess() else {
             throw DragCheckError("This check requires an isolated hosted desktop with Accessibility, PostEvent and screen capture already allowed.")
         }
-        let output = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
+        let args = CommandLine.arguments
+        let bundles = ["app.yuxino.mimi": "mimi.app", "app.yuxino.mimi.dev": "mimi-dev.app"]
+        guard args.count == 4, let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
+              let process = NSRunningApplication(processIdentifier: pid), process.bundleIdentifier == args[2],
+              process.executableURL?.standardizedFileURL.path == "/Applications/\(bundle)/Contents/MacOS/mimi" else {
+            throw DragCheckError("Expected the PID and identifier of the verified Mimi installation, then an evidence directory.")
+        }
+        let titleSuffix = args[2] == "app.yuxino.mimi.dev" ? " (dev)" : ""
+        let output = URL(fileURLWithPath: args[3], isDirectory: true)
         let settings = try closeSettings(of: pid)
-        let initial = try WindowPair.read(pid: pid, settings: settings)
+        let readPair = { try WindowPair.read(pid: pid, settings: settings, titleSuffix: titleSuffix) }
+        let initial = try readPair()
         guard initial.root.frame.contains(initial.island.frame), initial.island.frame.height < initial.root.frame.height / 2 else {
             throw DragCheckError("The language island is not in its compact position: \(initial).")
         }
         let sample = { () throws -> WindowPair in
-            let pair = try WindowPair.read(pid: pid, settings: settings)
+            let pair = try readPair()
             try pair.sameWindowsAndSizes(as: initial)
             return pair
         }
@@ -308,18 +297,30 @@ private enum CaptionDrag {
         }
         let click = try caption(initial, stage: "before-click")
         try captureFrame(windowID: initial.root.id, frame: initial.root.frame, crop: initial.root.frame, output: output, stage: "before-click-window")
-        func observeClick(_ stage: String) throws {
-            let pair = try sample()
-            print("Caption click \(stage) held=\(Pointer.pressed) cursor=\(String(describing: CGEvent(source: nil)?.location)) root=\(pair.root.frame) island=\(pair.island.frame) doubleClickInterval=\(NSEvent.doubleClickInterval).")
+        var clickStayed = true
+        func observeClick(held: Bool, duration: TimeInterval) throws {
+            let deadline = now + duration
+            var first = true
+            while true {
+                let pair = try sample()
+                guard held == Pointer.pressed else { throw DragCheckError("Unexpected button state during the caption click.") }
+                let stationary = pair.reached(.zero, from: initial)
+                let remaining = deadline - now
+                if first || remaining <= 0 || (clickStayed && !stationary) {
+                    print("Caption click held=\(held) cursor=\(String(describing: CGEvent(source: nil)?.location)) root=\(pair.root.frame) island=\(pair.island.frame).")
+                }
+                if !stationary { clickStayed = false }
+                if remaining <= 0 { return }
+                first = false
+                Thread.sleep(forTimeInterval: min(0.025, remaining))
+            }
         }
         try pointer.hold(at: click.point, in: initial.root) {
-            Thread.sleep(forTimeInterval: 0.065)
-            try observeClick("held")
+            try observeClick(held: true, duration: 0.065)
         }
-        try observeClick("released")
-        guard try settled(.zero, held: false, duration: max(0.4, NSEvent.doubleClickInterval), timeout: 2) else {
+        try observeClick(held: false, duration: max(0.4, NSEvent.doubleClickInterval))
+        guard clickStayed else {
             let pair = try sample()
-            try observeClick("after-wait")
             try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: pair.root.frame, output: output, stage: "after-click-window")
             throw DragCheckError("The subtitle window and island did not remain at their initial positions for the required click dwell.")
         }

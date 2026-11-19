@@ -1,23 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This check drives a real pointer. It owns both the desktop and the signed
-# release installation on an isolated Mac runner.
-if [[ $(uname -s) != Darwin || ${RUNNER_ENVIRONMENT:-} != github-hosted || $# -ne 1 ]]; then
-  echo "Run the macOS caption drag check on a dedicated hosted Mac with an evidence directory." >&2
+# This check owns the pointer on an isolated Mac. Its one-argument form always
+# verifies the public release. Development requires an explicit signing identity.
+if [[ $(uname -s) != Darwin || ${RUNNER_ENVIRONMENT:-} != github-hosted ]]; then
+  echo "Run the macOS caption drag check on a dedicated hosted Mac." >&2
   exit 2
 fi
 
 suite=$(cd "$(dirname "$0")" && pwd)
+if [[ $# -eq 1 && -n $1 && $1 != -* ]]; then
+  app=/Applications/mimi.app
+  identifier=app.yuxino.mimi
+  signer=$(tr -d '[:space:]' < "$suite/../macos-release-identity.txt")
+elif [[ $# -eq 3 && $1 == --dev && $2 =~ ^[[:xdigit:]]{40}$ && -n $3 && $3 != -* ]]; then
+  app=/Applications/mimi-dev.app
+  identifier=app.yuxino.mimi.dev
+  signer=$2
+  shift 2
+else
+  echo "Usage: $0 [--dev EXPECTED_CERTIFICATE_SHA1] EVIDENCE_DIR" >&2
+  exit 2
+fi
 evidence=$1
-app=/Applications/mimi.app
 [[ -d "$app" && ! -e "$evidence" ]]
 if pgrep -x mimi >/dev/null; then
   echo "Another Mimi process is already using the test desktop." >&2
   exit 1
 fi
-"$suite/../verify-macos-app.sh" --release "$app"
+if [[ $identifier == app.yuxino.mimi ]]; then
+  "$suite/../verify-macos-app.sh" --release "$app"
+else
+  [[ $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist") == "$identifier" ]]
+  codesign --verify --deep --strict "$app"
+  codesign --verify --strict -R "=identifier \"$identifier\" and certificate leaf = H\"$signer\"" "$app"
+fi
 mkdir -p "$evidence"
+{
+  echo "Verified $app identifier=$identifier certificatePinSHA1=$signer"
+  echo "Executable SHA-256"
+  shasum -a 256 "$app/Contents/MacOS/mimi"
+} | tee "$evidence/drag.log"
 scene=$(mktemp -d "${TMPDIR%/}/mimi-ui-test-drag.XXXXXX")
 pid=
 cleanup() {
@@ -51,10 +74,10 @@ for ((i=0; i<150; i++)); do
 done
 ready || { echo "The two signed windows and synthetic listening session were not ready in 30 seconds." >&2; exit 1; }
 [[ ! -e "$scene/settings-activation" ]]
-"$scene/check-drag" "$pid" "$evidence"
+"$scene/check-drag" "$pid" "$identifier" "$evidence" 2>&1 | tee -a "$evidence/drag.log"
 kill -0 "$pid"
 ready && [[ ! -e "$scene/settings-activation" ]] || {
   echo "The drag changed the listening session or explicitly reopened Settings." >&2
   exit 1
 }
-echo "Signed Mimi was listening before and after the caption drag. Settings did not reopen."
+echo "Verified $identifier was listening before and after the gesture with Settings closed." | tee -a "$evidence/drag.log"

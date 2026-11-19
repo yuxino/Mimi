@@ -25,6 +25,13 @@ limit must not disable movement or take over the scrollbar's gesture.
 
 The subtitle overlay owns the user frame. A detached panel may invoke the existing `overlay_move_start` command while the native mode is Panel and both presentation locks are off. The command selects the subtitle root before recording drag intent. Existing native root movement keeps the panel attached on AppKit and follows it through geometry events on Windows and X11. On Wayland the panel already shares the same window and uses the compositor's move gesture.
 
+On macOS the press must stay anchored to its position inside the subtitle root.
+A stationary click must leave both the root and its attached language control
+in place, including when the pointer is over a visible subtitle glyph. A drag
+of that glyph moves both windows by the pointer's displacement while held.
+The native check compares both window origins before pressing, while held and
+after releasing, then drags back to the starting point.
+
 Native acceptance uses a held mouse drag from an expanded panel. Check that the subtitle root moves and the panel stays open and follows, that a click still closes the panel through its own control, and that a locked overlay, scrolling, help, and language controls retain their behavior. The command's return value alone does not confirm a native drag. On macOS also verify the child-originating mouse gesture with the signed app. Wayland acceptance needs compositor or screen evidence because its global window origin is unavailable to the client.
 
 Floating help retains hover while crossing its narrow trigger gap, and remains
