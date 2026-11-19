@@ -7,6 +7,7 @@ on:
       package_run: {description: Run that built the captured executable, type: string}
       release_tag: {description: Published Mac release tag, type: string, default: v1.7.4}
       checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag], default: both}
+      gesture: {description: macOS drag starting surface, type: choice, options: [caption, panel], default: caption}
 permissions:
   contents: read
   actions: read
@@ -46,9 +47,10 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.revision }}
         run: bash "$RUNNER_TEMP/build-caption-fixture.sh" --no-launch "$SOURCE_SHA"
-      - name: Click the same real caption and drag the window there and back
+      - name: Drag the selected subtitle surface there and back
         env:
           EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+          MIMI_TEST_DRAG_GESTURE: ${{ inputs.gesture }}
         run: bash scripts/macos/tests/run-caption-drag.sh --dev "$EXPECTED_CERT" "$RUNNER_TEMP/caption-drag"
       - name: Save public test measurements and synthetic caption windows
         if: ${{ !cancelled() }}
@@ -199,7 +201,9 @@ jobs:
           app="$RUNNER_TEMP/mimi-extracted/mimi.app"
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "${TAG#v}" ]]
           ditto "$app" /Applications/mimi.app
-      - name: Click and drag a visible caption in the signed Mimi overlay
+      - name: Drag the selected subtitle surface in the signed Mimi overlay
+        env:
+          MIMI_TEST_DRAG_GESTURE: ${{ inputs.gesture }}
         run: bash scripts/macos/tests/run-caption-drag.sh "$RUNNER_TEMP/caption-drag"
       - name: Save the synthetic subtitle crops and measured window positions
         if: ${{ !cancelled() }}
