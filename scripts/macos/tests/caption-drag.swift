@@ -308,9 +308,20 @@ private enum CaptionDrag {
         }
         let click = try caption(initial, stage: "before-click")
         try captureFrame(windowID: initial.root.id, frame: initial.root.frame, crop: initial.root.frame, output: output, stage: "before-click-window")
-        try pointer.hold(at: click.point, in: initial.root) { Thread.sleep(forTimeInterval: 0.065) }
+        func observeClick(_ stage: String) throws {
+            let pair = try sample()
+            print("Caption click \(stage) held=\(Pointer.pressed) cursor=\(String(describing: CGEvent(source: nil)?.location)) root=\(pair.root.frame) island=\(pair.island.frame) doubleClickInterval=\(NSEvent.doubleClickInterval).")
+        }
+        try pointer.hold(at: click.point, in: initial.root) {
+            Thread.sleep(forTimeInterval: 0.065)
+            try observeClick("held")
+        }
+        try observeClick("released")
         guard try settled(.zero, held: false, duration: max(0.4, NSEvent.doubleClickInterval), timeout: 2) else {
-            throw DragCheckError("A click on a caption moved its window.")
+            let pair = try sample()
+            try observeClick("after-wait")
+            try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: pair.root.frame, output: output, stage: "after-click-window")
+            throw DragCheckError("The subtitle window and island did not remain at their initial positions for the required click dwell.")
         }
 
         var failures: [String] = []
