@@ -142,16 +142,17 @@ private func save(_ image: CGImage, frame: CGRect, crop: CGRect, output: URL, st
     print("caption_capture stage=\(stage) pixels=\(clipped.width)x\(clipped.height) crop=\(crop)")
 }
 
-private struct CaptionPixels {
+private struct StrokeResult {
+    var point: CGPoint?
     let rect: CGRect
-    let width: Int
-    let height: Int
-    let rgba: [UInt8]
-    let levels: [Int]
     let background: Int
+    let maxBrightness: Int
+    let maxAlpha: UInt8
+    var thresholdHits = 0
+    var neighborHits = 0
 }
 
-private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> (point: CGPoint?, pixels: CaptionPixels) {
+private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> StrokeResult {
     let rect = try pixelRect(crop.insetBy(dx: 1, dy: 1), frame, image)
     guard let lane = image.cropping(to: rect) else { throw CaptionCaptureError.failed("caption_pixel_crop_failed") }
     let width = lane.width, height = lane.height
@@ -163,58 +164,49 @@ private func stroke(in image: CGImage, frame: CGRect, crop: CGRect) throws -> (p
         else { throw CaptionCaptureError.failed("caption_pixel_buffer_failed") }
         context.draw(lane, in: CGRect(x: 0, y: 0, width: width, height: height))
     }
-    var levels = [Int](repeating: 0, count: width * height)
-    for index in levels.indices {
+    func brightness(_ index: Int) -> Int {
         let offset = index * 4
-        levels[index] = (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
+        return (Int(pixels[offset]) + Int(pixels[offset + 1]) + Int(pixels[offset + 2])) / 3
     }
-    let background = levels.sorted()[levels.count / 2]
-    let sample = CaptionPixels(rect: rect, width: width, height: height, rgba: pixels, levels: levels, background: background)
-    guard background <= 120, width >= 6, height >= 6 else { return (nil, sample) }
+    // The histogram gives the same upper median as sorting every pixel. Only
+    // the local RGBA buffer is needed; failed AX candidates retain scalar stats.
+    var histogram = [Int](repeating: 0, count: 256)
+    var maxBrightness = 0
+    var maxAlpha: UInt8 = 0
+    for index in 0..<(width * height) {
+        let value = brightness(index)
+        histogram[value] += 1
+        maxBrightness = max(maxBrightness, value)
+        maxAlpha = max(maxAlpha, pixels[index * 4 + 3])
+    }
+    var background = 0, cumulative = 0
+    for (value, count) in histogram.enumerated() {
+        cumulative += count
+        if cumulative > width * height / 2 { background = value; break }
+    }
+    var result = StrokeResult(point: nil, rect: rect, background: background, maxBrightness: maxBrightness, maxAlpha: maxAlpha)
+    guard background <= 120, width >= 6, height >= 6 else { return result }
     var best: (score: Double, x: Int, y: Int, contrast: Int)?
     for y in 2..<(height - 2) {
         for x in 2..<(width - 2) {
             let i = y * width + x
-            let channels = [pixels[i * 4], pixels[i * 4 + 1], pixels[i * 4 + 2]]
-            guard levels[i] >= 160, levels[i] - background >= 60,
-                  Int(channels.max()!) - Int(channels.min()!) <= 24,
-                  [i - 1, i + 1, i - width, i + width].contains(where: { levels[$0] >= 140 })
-            else { continue }
+            let level = brightness(i)
+            let r = pixels[i * 4], g = pixels[i * 4 + 1], b = pixels[i * 4 + 2]
+            guard level >= 160, level - background >= 60,
+                  Int(max(r, max(g, b))) - Int(min(r, min(g, b))) <= 24 else { continue }
+            result.thresholdHits += 1
+            guard [i - 1, i + 1, i - width, i + width].contains(where: { brightness($0) >= 140 }) else { continue }
+            result.neighborHits += 1
             let score = pow(Double(x) - Double(width - 1) / 2, 2) + pow(Double(y) - Double(height - 1) / 2, 2)
-            if best == nil || score < best!.score { best = (score, x, y, levels[i] - background) }
+            if best == nil || score < best!.score { best = (score, x, y, level - background) }
         }
     }
-    guard let best else { return (nil, sample) }
+    guard let best else { return result }
     let point = CGPoint(x: frame.minX + (rect.minX + CGFloat(best.x) + 0.5) * frame.width / CGFloat(image.width),
                         y: frame.minY + (rect.minY + CGFloat(best.y) + 0.5) * frame.height / CGFloat(image.height))
     print("caption_stroke point=\(point) contrast=\(best.contrast) nativeScale=\(CGFloat(image.width) / frame.width)")
-    return (point, sample)
-}
-
-private func reportPixelFailure(_ sample: CaptionPixels, index: Int, ax: CGRect, crop: CGRect) {
-    var median: [Int] = [], peak: [Int] = []
-    for channel in 0..<4 {
-        let values = stride(from: channel, to: sample.rgba.count, by: 4).map { Int(sample.rgba[$0]) }.sorted()
-        median.append(values[values.count / 2]); peak.append(values.last!)
-    }
-    var bright = 0, contrast = 0, neutral = 0, thresholds = 0, neighbors = 0
-    if sample.width >= 6 && sample.height >= 6 {
-        for y in 2..<(sample.height - 2) {
-            for x in 2..<(sample.width - 2) {
-                let i = y * sample.width + x
-                let channels = [sample.rgba[i * 4], sample.rgba[i * 4 + 1], sample.rgba[i * 4 + 2]]
-                let isBright = sample.levels[i] >= 160
-                let hasContrast = sample.levels[i] - sample.background >= 60
-                let isNeutral = Int(channels.max()!) - Int(channels.min()!) <= 24
-                if isBright { bright += 1 }; if hasContrast { contrast += 1 }; if isNeutral { neutral += 1 }
-                if isBright && hasContrast && isNeutral {
-                    thresholds += 1
-                    if [i - 1, i + 1, i - sample.width, i + sample.width].contains(where: { sample.levels[$0] >= 140 }) { neighbors += 1 }
-                }
-            }
-        }
-    }
-    print("caption_pixel_failure index=\(index) ax=\(ax) visibleCrop=\(crop) samplePixels=\(sample.rect) rgbaPremultMedian=\(median) rgbaPremultPeak=\(peak) brightnessMedian=\(sample.background) brightnessPeak=\(sample.levels.max()!) bright160Hits=\(bright) contrast60Hits=\(contrast) neutral24Hits=\(neutral) combinedHits=\(thresholds) neighbor140Hits=\(neighbors) darkBackgroundPass=\(sample.background <= 120)")
+    result.point = point
+    return result
 }
 
 /// Both returned coordinates use Quartz global logical points, top-left origin.
@@ -228,14 +220,14 @@ func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL,
     let frames = try captionFrames(pid: pid, frame: frame)
     guard !frames.isEmpty else { throw CaptionCaptureError.failed("caption_original_ax_lane_not_found") }
     let image = try readWindow(windowID, frame)
-    var failures: [CaptionPixels] = []
+    var failures: [StrokeResult] = []
     for candidate in frames {
         let result = try stroke(in: image, frame: frame, crop: candidate.crop)
         if let point = result.point {
             try save(image, frame: frame, crop: candidate.crop, output: output, stage: stage)
             return (point, candidate.crop)
         }
-        failures.append(result.pixels)
+        failures.append(result)
     }
     // Diagnose the exact rejected image. No fresh window capture or weaker
     // pixel predicate is substituted for the original failed stroke check.
@@ -246,7 +238,8 @@ func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL,
     }
     saveFailure(frame, suffix: "-root-failed")
     for (index, candidate) in frames.enumerated() {
-        reportPixelFailure(failures[index], index: index, ax: candidate.ax, crop: candidate.crop)
+        let sample = failures[index]
+        print("caption_pixel_failure index=\(index) ax=\(candidate.ax) visibleCrop=\(candidate.crop) samplePixels=\(sample.rect) background=\(sample.background) maxBrightness=\(sample.maxBrightness) maxAlpha=\(sample.maxAlpha) allTransparent=\(sample.maxAlpha == 0) thresholdHits=\(sample.thresholdHits) neighborHits=\(sample.neighborHits)")
         saveFailure(candidate.crop, suffix: "-ax-\(index)-failed")
     }
     throw CaptionCaptureError.failed("caption_original_has_no_verified_stroke")

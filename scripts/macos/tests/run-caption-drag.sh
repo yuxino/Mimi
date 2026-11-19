@@ -57,4 +57,4 @@ ready && [[ ! -e "$scene/settings-activation" ]] || {
   echo "The drag changed the listening session or explicitly reopened Settings." >&2
   exit 1
 }
-echo "Signed Mimi kept listening throughout the caption drag, with no Settings activation."
+echo "Signed Mimi was listening before and after the caption drag. Settings did not reopen."

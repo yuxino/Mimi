@@ -36,6 +36,48 @@ private func axAttribute(_ element: AXUIElement, _ attribute: String) -> CFTypeR
     return AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success ? value : nil
 }
 
+private struct AXHit {
+    let status: AXError
+    var elementPID: pid_t?
+    var windowPID: pid_t?
+    var windowFrame: CGRect?
+
+    init(_ application: AXUIElement, at point: CGPoint, expectedPID: pid_t) {
+        var element: AXUIElement?
+        status = AXUIElementCopyElementAtPosition(application, Float(point.x), Float(point.y), &element)
+        var owner: pid_t = 0
+        guard status == .success, let element, AXUIElementGetPid(element, &owner) == .success else { return }
+        elementPID = owner
+        guard owner == expectedPID else { return } // Do not inspect another app's accessibility tree.
+        let window: AXUIElement
+        if let value = axAttribute(element, kAXWindowAttribute), CFGetTypeID(value) == AXUIElementGetTypeID() {
+            window = value as! AXUIElement
+        } else if axAttribute(element, kAXRoleAttribute) as? String == kAXWindowRole {
+            window = element
+        } else { return }
+        guard AXUIElementGetPid(window, &owner) == .success else { return }
+        windowPID = owner
+        guard owner == expectedPID,
+              let position = axAttribute(window, kAXPositionAttribute), CFGetTypeID(position) == AXValueGetTypeID(),
+              let size = axAttribute(window, kAXSizeAttribute), CFGetTypeID(size) == AXValueGetTypeID() else { return }
+        var origin = CGPoint.zero
+        var extent = CGSize.zero
+        if AXValueGetValue(position as! AXValue, .cgPoint, &origin), AXValueGetValue(size as! AXValue, .cgSize, &extent) {
+            windowFrame = CGRect(origin: origin, size: extent)
+        }
+    }
+
+    func matches(pid: pid_t, frame: CGRect) -> Bool {
+        guard elementPID == pid, windowPID == pid, let windowFrame else { return false }
+        return abs(windowFrame.minX - frame.minX) <= tolerance && abs(windowFrame.minY - frame.minY) <= tolerance &&
+            abs(windowFrame.width - frame.width) <= tolerance && abs(windowFrame.height - frame.height) <= tolerance
+    }
+
+    var description: String {
+        "status=\(status.rawValue),pid=\(String(describing: elementPID)),windowPid=\(String(describing: windowPID)),frame=\(String(describing: windowFrame))"
+    }
+}
+
 private func closeSettings(of pid: pid_t) throws -> CGWindowID {
     let app = AXUIElementCreateApplication(pid)
     let deadline = now + 8
@@ -96,16 +138,19 @@ private struct WindowPair {
     }
 }
 
-private final class Pointer {
+@MainActor private final class Pointer {
     let source: CGEventSource
+    let pid: pid_t
+    private var appKitReady = false
     var position: CGPoint
     static var pressed: Bool { CGEventSource.buttonState(.combinedSessionState, button: .left) }
 
-    init() throws {
+    init(pid: pid_t) throws {
         guard let source = CGEventSource(stateID: .combinedSessionState), let cursor = CGEvent(source: nil), !Self.pressed else {
             throw DragCheckError("Could not acquire an idle mouse event source.")
         }
         self.source = source
+        self.pid = pid
         position = cursor.location
     }
 
@@ -122,18 +167,60 @@ private final class Pointer {
         position = point
     }
 
-    func hold(at point: CGPoint, in root: OwnedWindow, _ whileDown: () throws -> Void) throws {
-        // AppKit hit testing uses bottom-left screen coordinates. Confirm the
-        // actual receiving window just before every press at a caption glyph.
+    private func verifyHit(at point: CGPoint, in root: OwnedWindow) throws {
         let deadline = now + 1
+        var quartzCursor = CGPoint.zero
         while true {
-            if let actual = CGEvent(source: nil)?.location, abs(actual.x - point.x) <= 1, abs(actual.y - point.y) <= 1 { break }
+            if let actual = CGEvent(source: nil)?.location, abs(actual.x - point.x) <= 1, abs(actual.y - point.y) <= 1 {
+                quartzCursor = actual
+                break
+            }
             if now >= deadline { throw DragCheckError("The cursor did not reach the verified caption glyph at \(point).") }
             Thread.sleep(forTimeInterval: 0.01)
         }
-        let appKitPoint = CGPoint(x: point.x, y: CGDisplayBounds(CGMainDisplayID()).maxY - point.y)
-        let hit = NSWindow.windowNumber(at: appKitPoint, belowWindowWithWindowNumber: 0)
-        guard hit == Int(root.id), !Self.pressed else { throw DragCheckError("Mouse-down point did not hit the idle subtitle window (hit=\(hit), expected=\(root.id)).") }
+        let display = CGDisplayBounds(CGMainDisplayID())
+        func hit(_ point: CGPoint) -> Int { NSWindow.windowNumber(at: point, belowWindowWithWindowNumber: 0) }
+        var before = "already initialized"
+        let first = !appKitReady
+        if first {
+            // Compare the same glyph before and after giving this command-line
+            // observer an AppKit connection. It must never activate or show UI.
+            let converted = CGPoint(x: point.x, y: display.maxY - point.y)
+            let mouse = NSEvent.mouseLocation
+            before = "converted=\(converted) hit=\(hit(converted)) mouse=\(mouse) mouseHit=\(hit(mouse))"
+            let app = NSApplication.shared
+            if app.activationPolicy() != .prohibited, !app.setActivationPolicy(.prohibited) {
+                throw DragCheckError("Could not set the hit-test observer to prohibited activation (before=\(before)).")
+            }
+            app.finishLaunching()
+            guard !app.isActive, !app.windows.contains(where: \.isVisible) else { throw DragCheckError("The hit-test observer activated or displayed a window.") }
+            appKitReady = true
+        }
+        // AppKit's first screen is the zero screen, even when the key window
+        // (and thus NSScreen.main) belongs to another display.
+        guard let zero = NSScreen.screens.first else { throw DragCheckError("AppKit reported no screens (before=\(before), CG main=\(display)).") }
+        func appKitPoint(_ quartz: CGPoint) -> CGPoint {
+            CGPoint(x: zero.frame.minX + quartz.x - display.minX, y: zero.frame.maxY - (quartz.y - display.minY))
+        }
+        let projected = appKitPoint(point)
+        let actualProjected = appKitPoint(quartzCursor)
+        let mouse = NSEvent.mouseLocation
+        let projectedHit = hit(projected), mouseHit = hit(mouse), actualHit = hit(actualProjected)
+        let systemAX = AXHit(AXUIElementCreateSystemWide(), at: point, expectedPID: pid)
+        let appAX = AXHit(AXUIElementCreateApplication(pid), at: point, expectedPID: pid)
+        let expected = Int(root.id)
+        let matched = display.size == zero.frame.size && abs(mouse.x - actualProjected.x) <= 1 && abs(mouse.y - actualProjected.y) <= 1 &&
+            projectedHit == expected && actualHit == expected && mouseHit == expected &&
+            systemAX.matches(pid: pid, frame: root.frame) && appAX.matches(pid: pid, frame: root.frame)
+        if first || !matched {
+            print("Caption hit expected=\(expected) pid=\(pid) root=\(root.frame) before=(\(before)) quartzGlyph=\(point) quartzCursor=\(quartzCursor) converted=\(projected) hit=\(projectedHit) actualConverted=\(actualProjected) actualHit=\(actualHit) nsMouse=\(mouse) nsMouseHit=\(mouseHit) cgMain=\(display) nsZero=\(zero.frame) nsMain=\(String(describing: NSScreen.main?.frame)) systemAX=(\(systemAX.description)) appAX=(\(appAX.description)).")
+        }
+        guard matched else { throw DragCheckError("AppKit and Accessibility did not both identify the verified subtitle window before mouse-down.") }
+    }
+
+    func hold(at point: CGPoint, in root: OwnedWindow, _ whileDown: () throws -> Void) throws {
+        try verifyHit(at: point, in: root)
+        guard !Self.pressed else { throw DragCheckError("The mouse was not idle before the caption press.") }
         try post(.leftMouseDown, at: point)
         var released = false
         defer { if !released { try? post(.leftMouseUp, at: position) } }
@@ -154,7 +241,7 @@ private final class Pointer {
     }
 }
 
-@main
+@main @MainActor
 private enum CaptionDrag {
     static func main() {
         do { try run() } catch {
@@ -183,7 +270,7 @@ private enum CaptionDrag {
             try pair.sameWindowsAndSizes(as: initial)
             return pair
         }
-        let pointer = try Pointer()
+        let pointer = try Pointer(pid: pid)
         let savedPointer = pointer.position
         defer { if !Pointer.pressed { try? pointer.post(.mouseMoved, at: savedPointer) } }
         print("Caption drag baseline pid=\(pid) root=\(initial.root.id) \(initial.root.frame), island=\(initial.island.id) \(initial.island.frame).")
@@ -237,7 +324,11 @@ private enum CaptionDrag {
                 let dy = pair.root.frame.minY - start.root.frame.minY
                 let cursor = CGEvent(source: nil)?.location
                 print("Caption drag \(stage)-\(phase) held=\(Pointer.pressed) cursor=\(String(describing: cursor)) root=\(pair.root.frame) island=\(pair.island.frame).")
-                try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: glyph.crop.offsetBy(dx: dx, dy: dy), output: output, stage: stage + "-" + phase)
+                if stage == "return", phase == "released" {
+                    _ = try locateCaption(pid: pid, windowID: pair.root.id, frame: pair.root.frame, output: output, stage: "return-released")
+                } else {
+                    try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: glyph.crop.offsetBy(dx: dx, dy: dy), output: output, stage: stage + "-" + phase)
+                }
                 if stage == "forward", phase == "released" {
                     try captureFrame(windowID: pair.root.id, frame: pair.root.frame, crop: pair.root.frame, output: output, stage: "forward-released-window")
                 }
