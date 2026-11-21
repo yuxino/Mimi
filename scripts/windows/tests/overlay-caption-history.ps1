@@ -118,10 +118,13 @@ function Assert-CaptionHistoryReturn($Context, $State, [bool]$Expected) {
     if ($State.ReturnCount -ne $count) { throw "The native return-to-live action has the wrong visibility (expected=$count observed=$($State.ReturnCount))." }
     if ($Expected) {
         $box = $State.ReturnBounds
+        # The reading-only footer touches the viewport's bottom edge. Both
+        # rectangles are UIA physical-screen bounds; retain the 1px rounding
+        # allowance without accepting overlap, a detached gap or root clipping.
         if ($box.IsEmpty -or $box.Width -le 0 -or $box.Height -le 0 -or -not $State.ReturnEnabled -or
             $box.Left -lt $State.View.Left - 1 -or $box.Right -gt $State.View.Right + 1 -or
-            $box.Top -lt $Context.RootBounds.Top -or $box.Bottom -gt $State.View.Top + 1) {
-            throw 'The native return-to-live action is disabled, clipped or covers the reading viewport.'
+            [Math]::Abs($box.Top - $State.View.Bottom) -gt 1 -or $box.Bottom -gt $Context.RootBounds.Bottom + 1) {
+            throw 'The native return-to-live action is disabled, clipped, overlaps the reading viewport or is detached from its footer.'
         }
         $State.ReturnBounds = $box
     }
@@ -153,7 +156,7 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
     Save-CaptionHistoryCrop $Context $crop (Join-Path $Directory "$Stage.png")
     if ($Stage -eq 'history-18' -or ($Stage -eq 'history-failed' -and $State.ReturnCount -eq 1 -and -not $State.ReturnBounds.IsEmpty)) {
         # The language capsule is a separate window to the left. Take the
-        # localized action from its own measured bounds above the timeline.
+        # localized action from its own measured footer bounds below the timeline.
         $box = $State.ReturnBounds
         $actionCrop = [Drawing.Rectangle]::FromLTRB([int][Math]::Floor($box.Left - 2 * $Context.Scale),
             [int][Math]::Floor($box.Top - $Context.Scale), [int][Math]::Ceiling($box.Right + 2 * $Context.Scale),
