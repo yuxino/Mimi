@@ -86,9 +86,10 @@ function Get-CaptionHistoryAnchor($State, [double]$Scale) {
 }
 
 function Assert-CaptionHistoryAnchor($Before, $After, [string]$Key) {
-    if (-not $After.Rows.ContainsKey($Key) -or -not $After.Rows[$Key].Visible -or
-        $Before.Rows[$Key].Name -cne $After.Rows[$Key].Name) { throw 'The visible historical caption changed or disappeared.' }
     $a = $Before.Rows[$Key]; $b = $After.Rows[$Key]
+    if ($null -eq $b -or -not $b.Visible -or $a.Name -cne $b.Name) {
+        throw "The visible historical caption $Key changed or disappeared (beforeView=$($Before.View) beforeRow=$($a.Box) afterView=$($After.View) afterRow=$($b.Box) offscreen=$($b.Offscreen) nameMatched=$($null -ne $b -and $a.Name -ceq $b.Name))."
+    }
     # Compare to the real viewport: quiet chrome changes its screen origin.
     $beforeRange = @(($a.Box.Top - $Before.View.Top), ($a.Clip.Top - $Before.View.Top), $a.Clip.Height, $a.Clip.Width)
     $afterRange = @(($b.Box.Top - $After.View.Top), ($b.Clip.Top - $After.View.Top), $b.Clip.Height, $b.Clip.Width)
@@ -153,17 +154,6 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
     $left = [int][Math]::Ceiling($view.Left); $top = [int][Math]::Ceiling($view.Top)
     $crop = [Drawing.Rectangle]::new($left, $top, [int][Math]::Floor($view.Right) - $left, [int][Math]::Floor($view.Bottom) - $top)
     if ($crop.Width -lt 8 -or $crop.Height -lt 8) { throw 'The native history capture is empty.' }
-    Save-CaptionHistoryCrop $Context $crop (Join-Path $Directory "$Stage.png")
-    if ($Stage -eq 'history-18' -or ($Stage -eq 'history-failed' -and $State.ReturnCount -eq 1 -and -not $State.ReturnBounds.IsEmpty)) {
-        # The language capsule is a separate window to the left. Take the
-        # localized action from its own measured footer bounds below the timeline.
-        $box = $State.ReturnBounds
-        $actionCrop = [Drawing.Rectangle]::FromLTRB([int][Math]::Floor($box.Left - 2 * $Context.Scale),
-            [int][Math]::Floor($box.Top - $Context.Scale), [int][Math]::Ceiling($box.Right + 2 * $Context.Scale),
-            [int][Math]::Ceiling($box.Bottom + $Context.Scale))
-        $actionName = if ($Stage -eq 'history-18') { 'return-to-live.png' } else { 'history-failed-return-to-live.png' }
-        Save-CaptionHistoryCrop $Context $actionCrop (Join-Path $Directory $actionName)
-    }
     $metadata = [ordered]@{ stage = $Stage; dpi = $dpi; root = @($frame.Left, $frame.Top, $frame.Width, $frame.Height)
         viewport = @($view.Left, $view.Top, $view.Width, $view.Height); visible = @() }
     if ($Context.ContainsKey('Anchor')) { $metadata.anchor = $Context.Anchor; $metadata.wheelDetents = $Context.WheelDetents }
@@ -183,6 +173,17 @@ function Save-CaptionHistoryEvidence($Context, $State, [string]$Directory, [stri
         })
     }
     [IO.File]::WriteAllText((Join-Path $Directory "$Stage.json"), ($metadata | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+    # The separate language window can overlap a quiet timeline. Persist the
+    # measured geometry even when the guarded desktop crop cannot be taken.
+    Save-CaptionHistoryCrop $Context $crop (Join-Path $Directory "$Stage.png")
+    if ($Stage -eq 'history-18' -or ($Stage -eq 'history-failed' -and $State.ReturnCount -eq 1 -and -not $State.ReturnBounds.IsEmpty)) {
+        $box = $State.ReturnBounds
+        $actionCrop = [Drawing.Rectangle]::FromLTRB([int][Math]::Floor($box.Left - 2 * $Context.Scale),
+            [int][Math]::Floor($box.Top - $Context.Scale), [int][Math]::Ceiling($box.Right + 2 * $Context.Scale),
+            [int][Math]::Ceiling($box.Bottom + $Context.Scale))
+        $actionName = if ($Stage -eq 'history-18') { 'return-to-live.png' } else { 'history-failed-return-to-live.png' }
+        Save-CaptionHistoryCrop $Context $actionCrop (Join-Path $Directory $actionName)
+    }
 }
 
 function Write-CaptionHistoryCheckpoints($Context, [string]$Directory) {
