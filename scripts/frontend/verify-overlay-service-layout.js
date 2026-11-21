@@ -1,7 +1,7 @@
 // Browser harness for the actual overlay components. Start Vite on port 1420,
 // then pass this complete function to the project's supported browser page API.
 // Synthetic state only; this does not verify native window or capture behavior.
-async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false } = {}) => {
+async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false, subtitleModesOnly = false } = {}) => {
   await page.goto(`${baseUrl}/?window=overlay`);
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
@@ -138,6 +138,80 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
 
   await configure({ longHistory: true });
   await resize(580, 240);
+
+  if (subtitleModesOnly) {
+    const subtitleModes = [];
+    try {
+      const fixtures = await page.evaluate(async () => {
+        const mountedModule = path => {
+          const loaded = performance.getEntriesByType("resource").filter(entry => new URL(entry.name).pathname === path);
+          return import(loaded.filter(entry => new URL(entry.name).search).at(-1)?.name ?? loaded.at(-1)?.name ?? path);
+        };
+        const { useStore } = await mountedModule("/src/lib/store.ts");
+        const { OverlayControlWindow } = await mountedModule("/src/windows/overlay-control/OverlayControlWindow.tsx");
+        const { createCaptionModeFixture } = await import("/scripts/frontend/fixtures/verify-caption-modes.js");
+        window.__captionModes = createCaptionModeFixture(useStore, OverlayControlWindow);
+        await window.__captionModes.ready();
+        return { routes: window.__captionModes.routes, modes: window.__captionModes.modes };
+      });
+      // Use real pointer input for the actual controls, including their portal
+      // options. Geometry is sampled only after intentional mode reflow settles.
+      async function click(selector, text) {
+        const locate = () => page.evaluate(({ selector, text }) => {
+          const element = [...document.querySelectorAll(selector)].find(node => text === undefined || node.textContent.trim() === text);
+          if (!element || element.disabled || element.getAttribute("aria-disabled") === "true") throw new Error(`Caption control unavailable: ${selector} ${text ?? ""}`);
+          element.scrollIntoView({ block: "nearest" });
+          const rect = element.getBoundingClientRect();
+          const point = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+          if (!element.contains(document.elementFromPoint(point.x, point.y))) throw new Error(`Caption control covered: ${selector}`);
+          return point;
+        }, { selector, text });
+        let point = await locate(), stable = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await page.mouse.move(point.x, point.y);
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          const current = await locate();
+          if (Math.abs(current.x - point.x) <= 1 && Math.abs(current.y - point.y) <= 1) { stable = true; break; }
+          point = current;
+        }
+        if (!stable) throw new Error(`Caption control did not keep a stable pointer target: ${selector}`);
+        await page.mouse.down();
+        await page.mouse.up();
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      }
+      const panel = "#caption-mode-controls";
+      for (const route of fixtures.routes) {
+        await click(`${panel} button[aria-haspopup="dialog"]`);
+        await click(`${panel} .overlay-control-picker--profile [role="combobox"]`);
+        await click('.mimi-select__menu [role="option"]', route.name);
+        await page.evaluate(id => window.__captionModes.begin(id), route.id);
+        for (const value of ["original", "translation", "bilingual", "original", "translation", "bilingual"]) {
+          await click(`${panel} .overlay-control-display button`, fixtures.modes.find(mode => mode.value === value).label);
+          await page.evaluate(value => window.__captionModes.mode(value), value);
+          await click(`${panel} .overlay-control-header__collapse`);
+          const wheel = await page.evaluate(() => {
+            const rect = document.querySelector(".overlay-surface .overlay-timeline").getBoundingClientRect();
+            return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+          });
+          await page.mouse.move(wheel.x, wheel.y);
+          await page.cdp("Input.dispatchMouseEvent", { type: "mouseWheel", ...wheel, deltaX: 0, deltaY: -90 });
+          await page.mouse.move(4, 4);
+          const reading = await page.evaluate(value => window.__captionModes.read(value), value);
+          await click(".overlay-surface .overlay-return-to-live");
+          await page.mouse.move(4, 4);
+          const following = await page.evaluate(value => window.__captionModes.follow(value), value);
+          subtitleModes.push({ route: route.id, ...reading, ...following,
+            pendingShift: Math.max(reading.pendingShift, following.pendingShift) });
+          if (subtitleModes.length % 6 !== 0) await click(`${panel} button[aria-haspopup="dialog"]`);
+        }
+      }
+      return { checked: subtitleModes.length, subtitleModes };
+    } finally {
+      await page.evaluate(() => { window.__captionModes?.dispose(); delete window.__captionModes; });
+      await page.cdp("Emulation.setEmulatedMedia", { features: [] });
+      await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
+    }
+  }
 
   const subtitleMotion = [];
   try {

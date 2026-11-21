@@ -7,7 +7,6 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { setTimeout as delay } from "node:timers/promises";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -16,41 +15,72 @@ class DevTools {
   events = new Set();
   nextId = 0;
 
-  constructor(socket) {
-    this.socket = socket;
-    socket.addEventListener("message", event => {
-      const message = JSON.parse(event.data);
-      const call = this.calls.get(message.id);
-      if (call) {
-        clearTimeout(call.timer);
-        this.calls.delete(message.id);
-        if (message.error) call.reject(new Error(`${call.method}: ${message.error.message}`));
-        else call.resolve(message.result);
+  constructor(browser, diagnostic) {
+    this.input = browser.stdio[3];
+    this.output = browser.stdio[4];
+    this.diagnostic = diagnostic;
+    let incoming = "";
+    this.output.setEncoding("utf8");
+    this.output.on("data", chunk => {
+      incoming += chunk;
+      let boundary;
+      while ((boundary = incoming.indexOf("\0")) >= 0) {
+        const frame = incoming.slice(0, boundary);
+        incoming = incoming.slice(boundary + 1);
+        if (!frame) continue;
+        let message;
+        try { message = JSON.parse(frame); }
+        catch { this.disconnected(new Error("Invalid Chromium pipe message")); return; }
+        this.receive(message);
       }
-      for (const listener of this.events) {
-        if (listener.method === message.method && listener.sessionId === message.sessionId) listener.resolve(message.params);
-      }
-      this.onEvent?.(message);
     });
-    const disconnected = () => {
-      for (const call of this.calls.values()) { clearTimeout(call.timer); call.reject(new Error("Chromium disconnected")); }
-      this.calls.clear();
-      for (const listener of this.events) listener.reject(new Error("Chromium disconnected"));
-    };
-    socket.addEventListener("close", disconnected);
-    socket.addEventListener("error", disconnected);
+    browser.once("exit", () => this.disconnected(new Error(`Chromium exited: ${diagnostic()}`)));
+    browser.once("error", error => this.disconnected(error));
+    this.input.on("error", error => this.disconnected(error));
+    this.output.on("error", error => this.disconnected(error));
+    this.output.once("end", () => this.disconnected(new Error(`Chromium pipe ended: ${diagnostic()}`)));
   }
 
-  command(method, params = {}, sessionId) {
+  receive(message) {
+    const call = this.calls.get(message.id);
+    if (call) {
+      clearTimeout(call.timer);
+      this.calls.delete(message.id);
+      if (message.error) call.reject(new Error(`${call.method}: ${message.error.message}`));
+      else call.resolve(message.result);
+    }
+    for (const listener of this.events) {
+      if (listener.method === message.method && listener.sessionId === message.sessionId) listener.resolve(message.params);
+    }
+    this.onEvent?.(message);
+  }
+
+  disconnected(error) {
+    this.closedError ??= error;
+    for (const call of this.calls.values()) { clearTimeout(call.timer); call.reject(this.closedError); }
+    this.calls.clear();
+    for (const listener of this.events) listener.reject(this.closedError);
+  }
+
+  close() {
+    this.disconnected(new Error("Chromium transport closed"));
+    this.input.end();
+    this.output.destroy();
+  }
+
+  command(method, params = {}, sessionId, timeout = 30000) {
+    if (this.closedError) return Promise.reject(this.closedError);
     return new Promise((resolve, reject) => {
       const id = ++this.nextId;
-      const timer = setTimeout(() => { this.calls.delete(id); reject(new Error(`${method} timed out`)); }, 30000);
+      const timer = setTimeout(() => { this.calls.delete(id); reject(new Error(`${method} timed out after ${timeout}ms: ${this.diagnostic()}`)); }, timeout);
       this.calls.set(id, { method, resolve, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+      this.input.write(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }) + "\0",
+        error => { if (error) this.disconnected(error); });
     });
   }
 
   event(method, sessionId) {
+    if (this.closedError) return Promise.reject(this.closedError);
     return new Promise((resolve, reject) => {
       const finish = (callback, value) => { clearTimeout(timer); this.events.delete(listener); callback(value); };
       const listener = { method, sessionId, resolve: value => finish(resolve, value), reject: error => finish(reject, error) };
@@ -60,17 +90,7 @@ class DevTools {
   }
 }
 
-async function openSocket(url) {
-  const socket = new WebSocket(url);
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { socket.close(); reject(new Error("Chromium connection timed out")); }, 10000);
-    socket.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
-    socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Chromium connection failed")); }, { once: true });
-  });
-  return socket;
-}
-
-// Only the page methods used by subtitleMotionOnly; all DOM input is real CDP
+// Only the page methods used by the caption checks; all DOM input is real CDP
 // input. Fixture state and geometric assertions remain in the existing script.
 function captionPage(devtools, sessionId) {
   const cdp = (method, params) => devtools.command(method, params, sessionId);
@@ -116,7 +136,7 @@ function captionPage(devtools, sessionId) {
   return page;
 }
 
-let vite, browser, socket, temporary;
+let vite, browser, devtools, temporary;
 try {
   let executable;
   for (const candidate of [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean)) {
@@ -130,28 +150,24 @@ try {
   await vite.listen();
   const address = vite.httpServer.address();
   const baseUrl = `http://127.0.0.1:${address.port}`;
-  browser = spawn(executable, ["--headless=new", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0",
+  const started = Date.now();
+  // Chromium's standard inherited pipe avoids endpoint-file discovery and a
+  // debugging TCP listener. The documentation renderer uses the same fd3/fd4.
+  browser = spawn(executable, ["--headless=new", "--remote-debugging-pipe",
     `--user-data-dir=${temporary}`, "--disable-background-networking", "--disable-component-update", "--disable-sync",
     "--no-first-run", "--no-default-browser-check", "--password-store=basic", "--use-mock-keychain", "about:blank"],
-  { stdio: ["ignore", "ignore", "pipe"] });
-  let browserError = "";
-  let launchError;
-  browser.stderr.on("data", data => { browserError = (browserError + data).slice(-1500); });
-  browser.once("error", error => { launchError = error; });
-  let endpoint;
-  const deadline = Date.now() + 15000;
-  while (!endpoint) {
-    if (launchError) throw launchError;
-    if (browser.exitCode !== null || browser.signalCode !== null) throw new Error(`Chromium exited: ${browserError}`);
-    try {
-      const [port, route] = (await readFile(path.join(temporary, "DevToolsActivePort"), "utf8")).trim().split("\n");
-      if (/^\d+$/.test(port) && /^\/devtools\/browser\/[a-zA-Z0-9-]+$/.test(route)) endpoint = `ws://127.0.0.1:${port}${route}`;
-    } catch (error) { if (error.code !== "ENOENT") throw error; }
-    if (Date.now() > deadline) throw new Error(`Chromium debugging endpoint did not start: ${browserError}`);
-    if (!endpoint) await delay(25);
-  }
-  socket = await openSocket(endpoint);
-  const devtools = new DevTools(socket);
+  { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
+  let firstErrors = "", lastErrors = "";
+  browser.stderr.setEncoding("utf8");
+  browser.stderr.on("data", data => {
+    firstErrors = (firstErrors + data).slice(0, 4000);
+    lastErrors = (lastErrors + data).slice(-4000);
+  });
+  const diagnostic = () => JSON.stringify({ executable, elapsedMs: Date.now() - started,
+    exitCode: browser.exitCode, signal: browser.signalCode, stderrFirst: firstErrors, stderrLast: lastErrors });
+  devtools = new DevTools(browser, diagnostic);
+  const version = await devtools.command("Browser.getVersion", {}, undefined, Math.max(1, 15000 - (Date.now() - started)));
+  console.log(JSON.stringify({ stage: "chromium-ready", transport: "pipe", browser: version.product, elapsedMs: Date.now() - started }));
   const { targetId } = await devtools.command("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await devtools.command("Target.attachToTarget", { targetId, flatten: true });
   const page = captionPage(devtools, sessionId);
@@ -180,10 +196,19 @@ try {
     assert.equal(cases.length, 1, "Missing or duplicate caption motion case");
     assert.ok(cases[0].frames > 0, "Caption geometry was not sampled");
   }
+  const modes = await verify(page, { baseUrl, subtitleModesOnly: true });
+  assert.equal(modes.checked, 24, "Expected four representative routes, each switching all three modes twice");
+  for (const route of ["caption-doubao", "caption-alibaba", "caption-gemini", "caption-independent"]) {
+    const cases = modes.subtitleModes.filter(item => item.route === route);
+    assert.deepEqual(cases.map(item => item.mode), ["original", "translation", "bilingual", "original", "translation", "bilingual"]);
+    assert.ok(cases.every(item => item.frames > 0 && item.pendingShift <= 2 && item.historyShift <= 2
+      && item.targetLanguage === "zh" && !/openai/i.test(item.provider)), "Unverified route or caption geometry");
+  }
   assert.deepEqual(errors, [], "Unexpected browser errors");
-  console.log(JSON.stringify({ browser: (await devtools.command("Browser.getVersion")).product, ...result }));
+  console.log(JSON.stringify({ browser: (await devtools.command("Browser.getVersion")).product, ...result,
+    modeChecked: modes.checked, subtitleModes: modes.subtitleModes }));
 } finally {
-  socket?.close();
+  devtools?.close();
   if (browser?.pid && browser.exitCode === null && browser.signalCode === null) {
     await new Promise(resolve => {
       const timer = setTimeout(() => browser.kill("SIGKILL"), 3000);
