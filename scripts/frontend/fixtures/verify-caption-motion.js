@@ -1,4 +1,4 @@
-import { I18N } from "/src/lib/i18n.ts";
+import { translationIndicator, verifyOverlayLatency } from "./verify-overlay-latency.js";
 
 // Runs in the mounted, memory-only overlay while the pointer stays in one place.
 export async function verifyCaptionMotion(store, { hovered, motion }) {
@@ -38,43 +38,11 @@ export async function verifyCaptionMotion(store, { hovered, motion }) {
     return rect?.width > 0 && rect.bottom > view.top && rect.top < view.bottom;
   }
   function pendingGlyph() {
-    const status = [...surface.querySelectorAll('.overlay-expanded-canvas .overlay-status-row [role="status"]')]
-      .find(node => node.textContent === I18N.overlay.translating);
-    if (!status) return { present: false, rendered: false };
-    const text = status.querySelector("strong") ?? status;
-    const range = document.createRange();
-    range.selectNodeContents(text);
-    const rects = [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0);
-    let opacity = 1, styled = true;
-    let clip = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
-    for (let node = text; node; node = node.parentElement) {
-      const style = getComputedStyle(node), rect = node.getBoundingClientRect();
-      opacity *= Number(style.opacity);
-      styled &&= style.display !== "none" && !["hidden", "collapse"].includes(style.visibility)
-        && style.contentVisibility !== "hidden";
-      if (/(hidden|clip|scroll|auto)/.test(style.overflowX)) clip = { ...clip, left: Math.max(clip.left, rect.left), right: Math.min(clip.right, rect.right) };
-      if (/(hidden|clip|scroll|auto)/.test(style.overflowY)) clip = { ...clip, top: Math.max(clip.top, rect.top), bottom: Math.min(clip.bottom, rect.bottom) };
-    }
-    const unclipped = rects.length > 0 && rects.every(rect => rect.left >= clip.left - 1 && rect.right <= clip.right + 1
-      && rect.top >= clip.top - 1 && rect.bottom <= clip.bottom + 1);
-    const color = getComputedStyle(text).color;
-    const colorAlpha = color.startsWith("rgba(") ? Number(color.match(/,\s*([\d.]+)\)$/)?.[1])
-      : Number(color.match(/\/\s*([\d.]+)\s*\)$/)?.[1] ?? 1);
-    const rendered = styled && opacity * colorAlpha > 0.01 && unclipped;
-    const view = timeline.getBoundingClientRect();
-    const captionOverlap = rects.some(rect => rect.left < view.right && rect.right > view.left && rect.top < view.bottom && rect.bottom > view.top);
-    let uncovered = false;
-    if (rendered) {
-      // Noninteractive status text can opt out of pointer hits. Temporarily
-      // include only that text in hit testing; its paint and layout stay intact.
-      const pointerEvents = text.style.pointerEvents;
-      text.style.pointerEvents = "auto";
-      uncovered = rects.every(rect => [0.2, 0.5, 0.8].every(fraction =>
-        text.contains(document.elementFromPoint(rect.left + rect.width * fraction, rect.top + rect.height / 2))));
-      text.style.pointerEvents = pointerEvents;
-    }
-    return { present: true, rendered, opacity, unclipped, uncovered, captionOverlap };
+    const indicator = translationIndicator(surface, timeline, store.getState().settings);
+    return { ...indicator.phaseGlyph, text: indicator.phase, expected: indicator.expected,
+      rootStatuses: indicator.statuses, rootWorkGlyphs: indicator.rootWorkGlyphs };
   }
+
   // Wait for the actual text and tail, then sample through the next paints so
   // a transient movement cannot pass just because the final position is right.
   async function watch(stage, ready, sample) {
@@ -111,8 +79,8 @@ export async function verifyCaptionMotion(store, { hovered, motion }) {
     await watch(stage, () => {
       const glyph = pendingGlyph();
       return visible(span(expectedText)) && Math.abs(tailGap()) <= 2 && (working
-        ? glyph.present && glyph.rendered === hovered && (!hovered || (glyph.uncovered && !glyph.captionOverlap))
-        : !glyph.present);
+        ? glyph.present && glyph.text === glyph.expected && glyph.rendered === hovered && (!hovered || (glyph.uncovered && !glyph.captionOverlap))
+        : !glyph.present) && glyph.rootStatuses.length === 0 && glyph.rootWorkGlyphs.every(node => !node.rendered);
     }, () => {
       const current = read();
       result.frames++;
@@ -133,5 +101,6 @@ export async function verifyCaptionMotion(store, { hovered, motion }) {
   await transition("translation arrived", translated, false, false, translated.translation.text);
   await transition("next sentence", next, false, false, next.source.text);
   if (initial.oldY - read().oldY <= 2) result.failure ??= { stage: "added text did not advance the history", initial, current: read() };
+  result.latencyVisibility = await verifyOverlayLatency(store, { hovered, motion });
   return result;
 }

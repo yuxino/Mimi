@@ -37,6 +37,24 @@
   min-width: 0;
 }
 .overlay-status-row .overlay-latency { max-width: 100%; }
+.overlay-status-row:not([data-placement="feedback"]) {
+  left: auto;
+  right: 12px;
+  justify-content: flex-end;
+}
+.overlay-status-row[data-placement="toolbar"] { height: 30px; }
+.overlay-status-row:not([data-placement="feedback"]) .overlay-latency {
+  flex: none;
+  gap: 7px;
+  font-size: 11px;
+  line-height: 14px;
+}
+.overlay-status-row .overlay-latency > .overlay-latency__measurement {
+  align-items: center;
+  white-space: nowrap;
+}
+.overlay-status-row .overlay-latency__measurement > svg { font-size: 13px; }
+.overlay-status-row .overlay-latency__measurement strong[data-tone="neutral"] { color: #f1f1f1; }
 .overlay-return-to-live {
   align-self: flex-end;
   flex: none;

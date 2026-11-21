@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { I18N } from "../../../lib/i18n";
 import { Select } from "../../../components/inputs/Select";
 import type { OverlayControlMode } from "../../../lib/ipc";
 import { OverlayControlWindow } from "../OverlayControlWindow";
@@ -64,6 +65,34 @@ afterEach(async () => {
   await act(async () => root.unmount());
   useStore.setState(state => ({ settings: { ...state.settings, isOverlayLocked: wasLocked } }));
   host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals();
+});
+
+it.each([false, true])("shows current streamed translation phase in the capsule (embedded=%s)", async embedded => {
+  const previous = useStore.getState();
+  const source = { text: "Hello world", isFinal: false };
+  try {
+    useStore.setState({
+      settings: { ...previous.settings, sourceLanguage: "auto", targetLanguage: "zh" },
+      session: { ...previous.session, status: { kind: "listening" }, isActive: true, isPaused: false,
+        detectedLanguage: "en", isTranslationPending: false, isTranslationPreviewPending: false,
+        subtitles: { source, translation: { text: "你好", isFinal: false }, history: [],
+          realtimePreview: { source, translation: { text: "你好", isFinal: false } },
+        },
+      },
+    });
+    await act(async () => root.render(<OverlayControlWindow embedded={embedded} />));
+    expect(host.querySelector(".sound-light")?.getAttribute("data-phase")).toBe("translating");
+    expect(host.querySelector(".overlay-control-island__phase")?.textContent).toBe(I18N.overlay.translating);
+    await act(async () => useStore.setState(state => ({ session: { ...state.session,
+      subtitles: { ...state.session.subtitles, realtimePreview: null,
+        source: { ...source, isFinal: true }, translation: { text: "你好", isFinal: true },
+      },
+    } })));
+    expect(host.querySelector(".sound-light")?.getAttribute("data-phase")).toBe("listening");
+    expect(host.querySelector(".overlay-control-island__phase")).toBeNull();
+  } finally {
+    await act(async () => useStore.setState({ settings: previous.settings, session: previous.session }));
+  }
 });
 
 it("embeds island/panel in one surface and keeps portaled picker selections inside the panel interaction", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type AudioSource,
+  type SessionStateEvent,
   type ServiceProvider,
   type SubtitleSnapshot,
 } from "../../../lib/types";
@@ -9,6 +10,7 @@ import {
   buildSubtitleBlocks,
   subtitleLaneBudget,
   computeActivityPhaseFromSignals,
+  computeActivityPhase,
   hasSubtitleContent,
   pendingSourceTranslation,
   usesAtomicSubtitlePreview,
@@ -399,6 +401,76 @@ describe("activity phase signals", () => {
       ).toBe(statusKind);
     },
   );
+});
+
+describe("current streamed translation activity", () => {
+  const empty = { text: "", isFinal: false };
+  const session = (value: SubtitleSnapshot): SessionStateEvent => ({
+    status: { kind: "listening" }, isActive: true, isPaused: false,
+    isOverlayCollapsed: false, detectedLanguage: "en", isTranslationPending: false,
+    isTranslationPreviewPending: false, isTranslationTimedOut: false, subtitles: value,
+  });
+  const preview = (text: string, isFinal = false): SubtitleSnapshot => ({
+    source: { text: "Hello world", isFinal: false }, translation: { text, isFinal }, history: [],
+    realtimePreview: { source: { text: "Hello world", isFinal: false }, translation: { text, isFinal } },
+  });
+
+  it("reports accumulated OpenAI deltas without a separate TranslationStarted event and stops on confirmation", () => {
+    // The fixed fragments are also exercised by the real OpenAI committer/core
+    // regression. The frontend consumes its projection, never the wire delta.
+    for (const text of ["你好", "你好世界"]) {
+      expect(computeActivityPhase(session(preview(text)), settings)).toBe("translating");
+    }
+    const translationFirst = preview("你好");
+    translationFirst.source = empty;
+    translationFirst.realtimePreview!.source = empty;
+    expect(computeActivityPhase({ ...session(translationFirst), detectedLanguage: null }, settings)).toBe("translating");
+    const confirmed = { ...preview("你好世界", true),
+      source: { text: "Hello world", isFinal: true }, realtimePreview: null,
+      displayPair: { source: "Hello world", translation: "你好世界" }, displayPairFinal: true,
+    };
+    expect(computeActivityPhase(session(confirmed), settings)).toBe("listening");
+    expect(computeActivityPhase(session({ ...confirmed, source: { text: "Next", isFinal: false },
+      realtimePreview: { source: { text: "Next", isFinal: false }, translation: empty },
+    }), settings)).toBe("recognizing");
+    expect(computeActivityPhase(session(subtitles(empty)), settings)).toBe("listening");
+  });
+
+  it("does not revive raw stale translations or infer translation from a source draft", () => {
+    for (const realtimePreview of [undefined, null, { source: { text: "Next", isFinal: false }, translation: empty }]) {
+      expect(computeActivityPhase(session({ ...preview("Old raw draft"), realtimePreview }), settings)).toBe("recognizing");
+    }
+    for (const [text, isFinal] of [[" \n", false], ["Completed translation", true]] as const) {
+      expect(computeActivityPhase(session(preview(text, isFinal)), settings)).toBe("recognizing");
+    }
+  });
+
+  it("keeps real translation activity independent of subtitle lane display preferences", () => {
+    const live = session(preview("你好"));
+    for (const subtitleDisplayMode of ["original", "translation", "bilingual"] as const) {
+      const preferences = { ...settings, subtitleDisplayMode, showIntermediateSubtitles: false };
+      expect(computeActivityPhase(live, preferences)).toBe("translating");
+    }
+    expect(computeActivityPhase(live, { ...settings, targetLanguage: "original" })).toBe("recognizing");
+    expect(computeActivityPhase({ ...live, detectedLanguage: "zh" }, settings)).toBe("recognizing");
+    expect(computeActivityPhase({ ...live, isPaused: true }, settings)).toBe("paused");
+    expect(computeActivityPhase({ ...live, status: { kind: "stopping" } }, settings)).toBe("connecting");
+  });
+
+  it("uses each input's own current projection and detected language", () => {
+    const track = (audioSource: AudioSource, detectedLanguage: string, draft: string) => ({
+      ...preview(draft), audioSource, detectedLanguage, isTranslationPending: false, isTranslationTimedOut: false,
+    });
+    const both = session({ ...preview("Stale aggregate"), tracks: [
+      track("system", "zh", "Same-language draft"), track("microphone", "en", "你好"),
+    ] });
+    both.detectedLanguage = "zh";
+    expect(computeActivityPhase(both, settings)).toBe("translating");
+    both.subtitles.tracks![1].realtimePreview = null;
+    expect(computeActivityPhase(both, settings)).toBe("recognizing");
+    both.subtitles.tracks![1].realtimePreview = preview("你好").realtimePreview;
+    expect(computeActivityPhase(both, { ...settings, targetLanguage: "original" })).toBe("recognizing");
+  });
 });
 
 

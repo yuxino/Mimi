@@ -51,14 +51,23 @@
 }
 
 .overlay-control-island {
+  /* Language and progress occupy separate rows; transient work never resizes
+     the native island or steals the language pair's horizontal space. */
   width: max-content;
-  padding-inline: 8px;
+  min-width: 116px;
+  gap: 2px;
+  padding-inline: 6px;
   border-radius: 10px;
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(16, 16, 16, 0.94);
   /* The compact child leaves room for the subtitle toolbar at minimum width. */
   max-width: 156px;
   opacity: 1;
+}
+
+.overlay-control-island[data-unlock] {
+  min-width: 0;
+  padding-inline: 8px;
 }
 
 /* Native Wayland controls share the subtitle surface, so compositor movement
@@ -135,8 +144,78 @@
   flex: 0 0 auto;
 }
 
-.overlay-control-island > [data-pulse-style] {
-  margin-right: 3px;
+.overlay-control-island__content {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.overlay-control-island__content > .overlay-control-island__summary {
+  flex: 0 0 auto;
+  line-height: 14px;
+}
+
+.overlay-control-island__summary > [aria-hidden="true"] {
+  flex: 0 0 auto;
+}
+
+.overlay-control-island__detail {
+  display: flex;
+  min-width: 0;
+  height: 0;
+  align-items: center;
+  gap: 3px;
+}
+
+.overlay-control-island__detail:has(.overlay-control-island__phase, .audio-input-indicator, .recording-indicator) {
+  height: 12px;
+}
+
+.overlay-control-island__progress {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 12px;
+  white-space: nowrap;
+}
+
+/* Measure the same localized progress budget even while it is not visible.
+   This avoids a width jump on every streamed sentence without a duplicate label. */
+.overlay-control-island__progress::before {
+  content: attr(data-label);
+  grid-area: 1 / 1;
+  height: 0;
+  visibility: hidden;
+}
+
+.overlay-control-island__progress > .overlay-control-island__phase {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.overlay-control-island__activity {
+  position: relative;
+  width: 20px;
+  height: 24px;
+  flex: 0 0 20px;
+}
+
+.overlay-control-island__activity > [data-pulse-style] {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.833333);
+}
+
+.overlay-control-island__detail > .audio-input-indicator > svg {
+  width: 10px;
+  height: 10px;
 }
 
 .overlay-control-island > svg {

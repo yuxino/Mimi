@@ -96,6 +96,25 @@ export function pendingSourceTranslation(subtitles: SubtitleSnapshot,
     isWaitingForFinalTranslation(settings, track.detectedLanguage, track.isTranslationPending)) : undefined;
 }
 
+function hasCurrentTranslationDraft(subtitles: Pick<SubtitleSnapshot, "realtimePreview">): boolean {
+  // Shared-core projection owns current-utterance selection and removes retained
+  // finals and unrelated owners. Raw translation can still belong to an old pair.
+  const translation = subtitles.realtimePreview?.translation;
+  return !!translation && !translation.isFinal && translation.text.trim() !== "";
+}
+
+export function currentTranslationDraftActivity(
+  session: Pick<SessionStateEvent, "subtitles" | "detectedLanguage">,
+  settings: Pick<SettingsSnapshot, "sourceLanguage" | "targetLanguage">,
+): boolean {
+  const tracks = session.subtitles.tracks;
+  return tracks?.length ? tracks.some(track => isWaitingForFinalTranslation(
+    settings, track.detectedLanguage, hasCurrentTranslationDraft(track),
+  )) : isWaitingForFinalTranslation(
+    settings, session.detectedLanguage, hasCurrentTranslationDraft(session.subtitles),
+  );
+}
+
 export function computeActivityPhase(
   session: SessionStateEvent,
   settings: Pick<SettingsSnapshot, "sourceLanguage" | "targetLanguage">,
@@ -109,6 +128,7 @@ export function computeActivityPhase(
       isTranslationPending: session.isTranslationPending,
       sourceTranslationPending: pendingSourceTranslation(session.subtitles, settings),
       isTranslationPreviewPending: session.isTranslationPreviewPending,
+      hasTranslationDraft: currentTranslationDraftActivity(session, settings),
       hasRecognizingSourceDraft: (source.text !== "" && !source.isFinal) ||
         (session.subtitles.tracks?.some(track => track.source.text !== "" && !track.source.isFinal) ?? false),
     },
@@ -123,6 +143,8 @@ interface ActivityPhaseSignals {
   isTranslationPending: boolean;
   isTranslationPreviewPending?: boolean;
   sourceTranslationPending?: boolean;
+  /** Current shared preview, already filtered by each input's language direction. */
+  hasTranslationDraft?: boolean;
   hasRecognizingSourceDraft: boolean;
 }
 
@@ -139,7 +161,7 @@ export function computeActivityPhaseFromSignals(
     case "stopping":
       return "connecting";
     case "listening": {
-      if (signals.isTranslationPreviewPending ||
+      if (signals.hasTranslationDraft || signals.isTranslationPreviewPending ||
         (signals.sourceTranslationPending ?? isWaitingForFinalTranslation(
           settings,
           signals.detectedLanguage,

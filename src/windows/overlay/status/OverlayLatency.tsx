@@ -1,46 +1,60 @@
 import { I18N } from "../../../lib/i18n";
+import { Icon } from "../../../components/Icon";
 import type { SessionStateEvent } from "../../../lib/types";
 import { formatLatency, latencyTone } from "./latencyFormat";
 import "./OverlayLatency.css";
 
 export type OverlayLatencySession = Pick<SessionStateEvent,
   "isActive" | "isPaused" | "apiLatencyMs" | "translationLatencyMs" | "translationLatencyKind" |
-  "translationRecovery" | "isTranslationPending" | "isTranslationPreviewPending"
+  "translationRecovery"
 > & { status: { kind: SessionStateEvent["status"]["kind"] } };
 
-/** The panel shows measurements. The canvas reveals ordinary work with its other hover controls. */
-export function OverlayLatency({ session, translationRequired = true, showMeasurements = true }: {
+function translationStatusLabel(session: OverlayLatencySession, translating: boolean) {
+  const recovery = session.translationRecovery;
+  if (recovery) {
+    if (recovery.retryScheduled === false) {
+      return recovery.reason === "rateLimited" ? I18N.overlay.translationLimited : I18N.overlay.translationUnavailable;
+    }
+    return recovery.reason === "rateLimited" ? I18N.overlay.translationRateLimited : I18N.overlay.translationRetrying;
+  }
+  return translating ? I18N.overlay.translating : null;
+}
+
+export function OverlayLatency({ session, translationRequired = true, translating = false, surface = "panel" }: {
   session: OverlayLatencySession;
   translationRequired?: boolean;
-  showMeasurements?: boolean;
+  translating?: boolean;
+  surface?: "canvas" | "panel";
 }) {
   if (!session.isActive || session.status.kind !== "listening" || session.isPaused) return null;
   const api = formatLatency(session.apiLatencyMs);
   const kind = session.translationLatencyKind;
   const translationSample = formatLatency(kind === "request" || kind === "follow" ? session.translationLatencyMs : null);
-  const recovery = session.translationRecovery;
-  const pending = session.isTranslationPending || session.isTranslationPreviewPending;
-  const translationStatus = recovery ? recovery.retryScheduled === false
-    ? (recovery.reason === "rateLimited" ? I18N.overlay.translationLimited : I18N.overlay.translationUnavailable)
-    : (recovery.reason === "rateLimited" ? I18N.overlay.translationRateLimited : I18N.overlay.translationRetrying)
-    : pending ? I18N.overlay.translating : null;
-  const showApi = showMeasurements && api !== "—";
-  const showTranslation = translationRequired && (translationStatus !== null || (showMeasurements && translationSample !== "—"));
-  if (!showApi && !showTranslation) return null;
+  const canvas = surface === "canvas";
+  const recovery = translationRequired && Boolean(session.translationRecovery);
+  const status = translationRequired ? translationStatusLabel(session, translating) : null;
+  const showApi = api !== "—" && !(canvas && recovery);
+  // The hover readout can show the last completed sample while the next request runs.
+  const showTranslation = translationRequired && translationSample !== "—" && !recovery && (canvas || !status);
+  if (!status && !showApi && !showTranslation) return null;
   const follow = kind === "follow";
   const translationLabel = follow ? I18N.overlay.translationFollowLatency : I18N.overlay.translationLatency;
   const translationHelp = follow ? I18N.overlay.translationFollowLatencyHelp : I18N.overlay.translationLatencyHelp;
+  const separator = <span className="overlay-latency__separator" aria-hidden="true">·</span>;
   return (
-    <div className={`overlay-latency${!showMeasurements && pending && !recovery ? " overlay-hover-control" : ""}`} data-testid="overlay-latency">
+    <div className={`overlay-latency${canvas && !recovery ? " overlay-hover-control" : ""}`} data-testid="overlay-latency">
       {showApi && <span className="overlay-latency__measurement" title={`${I18N.overlay.apiLatencyHelp} ${api}`} aria-label={`${I18N.overlay.apiLatency}: ${api}`}>
         <span>{I18N.overlay.apiLatencyShort}</span><strong data-tone={latencyTone(session.apiLatencyMs, "api")}>{api}</strong>
       </span>}
-      {showApi && showTranslation && <span className="overlay-latency__separator overlay-latency__measurement" aria-hidden="true">·</span>}
-      {showTranslation && <span className={translationStatus ? undefined : "overlay-latency__measurement"} role={translationStatus ? "status" : undefined}
-        title={translationStatus ?? `${translationHelp} ${translationSample}`}
-        aria-label={translationStatus ?? `${translationLabel}: ${translationSample}`}>
-        {!translationStatus && <span>{translationLabel}</span>}
-        <strong data-tone={translationStatus ? "neutral" : latencyTone(session.translationLatencyMs, "translation")}>{translationStatus ?? translationSample}</strong>
+      {showApi && (status || showTranslation) && separator}
+      {status && <span role="status" title={status}>
+        <strong data-tone="neutral">{status}</strong>
+      </span>}
+      {status && showTranslation && separator}
+      {showTranslation && <span className="overlay-latency__measurement" title={`${translationHelp} ${translationSample}`}
+        aria-label={`${translationLabel}: ${translationSample}`}>
+        {canvas ? <Icon name="languages" /> : <span>{translationLabel}</span>}
+        <strong data-tone={latencyTone(session.translationLatencyMs, "translation")}>{translationSample}</strong>
       </span>}
     </div>
   );

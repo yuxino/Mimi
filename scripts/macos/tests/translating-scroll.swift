@@ -23,6 +23,12 @@ private func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
 }
 
+private func buttonNames(_ element: AXUIElement) -> [String] {
+    [kAXTitleAttribute, kAXDescriptionAttribute].compactMap { attribute(element, $0) as? String }
+}
+
+private let currentLanguageMarker = ", current: "
+
 private func frame(of element: AXUIElement) -> CGRect? {
     guard let p = attribute(element, kAXPositionAttribute), CFGetTypeID(p) == AXValueGetTypeID(),
           let s = attribute(element, kAXSizeAttribute), CFGetTypeID(s) == AXValueGetTypeID() else { return nil }
@@ -86,6 +92,9 @@ private func closeSettings(pid: pid_t, app: AXUIElement) throws {
 private struct Ack: Decodable {
     let step: Int
     let pending: Bool
+    // Published releases before the readout fixture omit these two observations.
+    let previewPending: Bool?
+    let streamingTranslation: Bool?
     let phase: String
     let historyCount: Int
     let hasTranslation: Bool
@@ -117,12 +126,12 @@ private struct Sample {
     let backToLive: AXUIElement?
 
     var json: [String: Any] {
-        ["started": started, "finished": finished, "translatingVisible": translating,
+        ["started": started, "finished": finished, "controlAXTranslating": translating,
          "lanes": lanes.mapValues(\.json)]
     }
 }
 
-private func sample(_ root: AXUIElement, bounds: CGRect, inspectHistory: Bool = false) throws -> Sample {
+private func sample(_ root: AXUIElement, bounds: CGRect, compact: AXUIElement? = nil, inspectHistory: Bool = false) throws -> Sample {
     let started = now
     var pending: [(AXUIElement, Int, CGRect, Bool)] = [(root, 0, bounds, false)]
     var lanes: [String: Lane] = [:]
@@ -141,7 +150,6 @@ private func sample(_ root: AXUIElement, bounds: CGRect, inspectHistory: Bool = 
         let labels = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].compactMap {
             attribute(element, $0) as? String
         }
-        if labels.contains("Translating"), let elementFrame, !elementFrame.intersection(clip).isNull { translating = true }
         if inspectHistory, role == kAXButtonRole, labels.contains("Back to live"), let elementFrame, clip.intersects(elementFrame) {
             backToLive = element
         }
@@ -156,6 +164,14 @@ private func sample(_ root: AXUIElement, bounds: CGRect, inspectHistory: Bool = 
         if depth < 20, let children = attribute(element, kAXChildrenAttribute) as? [AXUIElement] {
             pending.append(contentsOf: children.map { ($0, depth + 1, clip, scrollFound) })
         }
+    }
+    // Quiet chrome can still expose its accessible name. Its painted appearance
+    // is checked separately in the signed Chinese hover scene.
+    if let compact {
+        guard let name = buttonNames(compact).first(where: { $0.contains(currentLanguageMarker) }) else {
+            throw LayoutError("language_capsule_accessible_name_unavailable")
+        }
+        translating = name.contains(" · Translating" + currentLanguageMarker)
     }
     return Sample(started: started, finished: now, lanes: lanes, translating: translating, backToLive: backToLive)
 }
@@ -177,7 +193,8 @@ private enum TranslatingScroll {
         let args = CommandLine.arguments
         let bundles = ["app.yuxino.mimi": "mimi.app", "app.yuxino.mimi.dev": "mimi-dev.app"]
         let checkModes = args.count == 6 && args.last == "--display-modes"
-        guard args.count == 5 || checkModes, let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
+        let checkReadout = args.count == 6 && args.last == "--status-readout"
+        guard args.count == 5 || checkModes || checkReadout, let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
               let running = NSRunningApplication(processIdentifier: pid), running.bundleIdentifier == args[2],
               running.executableURL?.standardizedFileURL.path == "/Applications/\(bundle)/Contents/MacOS/mimi" else {
             throw LayoutError("expected_verified_app_pid_identifier_fixture_evidence")
@@ -200,6 +217,48 @@ private enum TranslatingScroll {
         let axWindows = attribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []
         let axRoots = axWindows.filter { frame(of: $0).map { equal($0, root.bounds) } ?? false }
         guard axRoots.count == 1 else { throw LayoutError("caption_ax_root_not_unique") }
+        func button(in bounds: CGRect, named predicate: (String) -> Bool) throws -> AXUIElement {
+            let deadline = now + 5
+            repeat {
+                let found = try visibleAXMatches(pid: pid, frame: bounds) { element in
+                    guard let role = attribute(element, kAXRoleAttribute) as? String,
+                          [kAXButtonRole, kAXPopUpButtonRole, kAXMenuButtonRole].contains(role) else { return false }
+                    return buttonNames(element).contains(where: predicate)
+                }
+                if found.count == 1 { return found[0].element }
+                guard found.isEmpty else { throw LayoutError("readout_button_not_unique") }
+                Thread.sleep(forTimeInterval: 0.04)
+            } while now < deadline
+            throw LayoutError("readout_button_unavailable")
+        }
+        func acceptedStep(_ step: Int) -> Ack? {
+            let path = fixture.appendingPathComponent("translation-layout-state.json")
+            guard let data = try? Data(contentsOf: path), data.count <= 1024,
+                  let state = try? JSONDecoder().decode(Ack.self, from: data), state.matches(step) else { return nil }
+            return state
+        }
+        if checkReadout {
+            guard let pause = frame(of: try button(in: root.bounds, named: { $0 == "暂停翻译" })) else {
+                throw LayoutError("pause_geometry_unavailable")
+            }
+            try verifyStatusReadout(rootID: root.id, root: root.bounds, childID: island.id, pause: pause, fixture: fixture, output: output,
+                                    acknowledged: { step in
+                guard let state = acceptedStep(step) else { return false }
+                return state.previewPending == false && state.streamingTranslation == (step == 4)
+            }, caption: { key in
+                try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12)).lanes[key]?.clipped
+            }, compactBounds: {
+                let live = try windows(pid: pid)
+                guard !live.contains(where: { $0.title == settingsTitle }),
+                      live.contains(where: { $0.id == root.id && equal($0.bounds, root.bounds) }),
+                      let child = live.first(where: { $0.id == island.id }), child.bounds.height <= island.bounds.height + 1 else {
+                    throw LayoutError("status_readout_window_pair_changed")
+                }
+                return child.bounds
+            })
+            return
+        }
+        let capsule = try button(in: island.bounds, named: { $0.contains(currentLanguageMarker) })
         guard let savedCursor = CGEvent(source: nil)?.location,
               !CGEventSource.buttonState(.combinedSessionState, button: .left) else { throw LayoutError("idle_pointer_unavailable") }
         func move(_ point: CGPoint) throws {
@@ -241,21 +300,15 @@ private enum TranslatingScroll {
                   !CGEventSource.buttonState(.combinedSessionState, button: .left) else {
                 throw LayoutError("native_window_or_quiet_pointer_changed")
             }
-            let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12))
+            let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12), compact: capsule)
             var entry = value.json
             entry["requestedStep"] = step
             trace.append(entry)
             return value
         }
-        func ack(_ step: Int) -> Bool {
-            let path = fixture.appendingPathComponent("translation-layout-state.json")
-            guard let data = try? Data(contentsOf: path), data.count <= 1024,
-                  let state = try? JSONDecoder().decode(Ack.self, from: data) else { return false }
-            return state.matches(step)
-        }
-        func painted(_ value: Sample, step: Int) -> Bool {
-            value.translating == (step == 1 || step == 3) && value.lanes["source"]?.full == true &&
-                (step < 4 ? value.lanes["translation"] == nil : value.lanes["translation"]?.full == true)
+        func matchesContent(_ value: Sample, _ state: Ack) -> Bool {
+            value.translating == (state.pending || state.streamingTranslation == true) && value.lanes["source"]?.full == true &&
+                (state.step < 4 ? value.lanes["translation"] == nil : value.lanes["translation"]?.full == true)
         }
         var baseline: Sample?
         var pairBeforeConfirmation: Sample?
@@ -300,7 +353,7 @@ private enum TranslatingScroll {
                         }
                     }
                 }
-                if ack(step), painted(value, step: step) {
+                if let state = acceptedStep(step), matchesContent(value, state) {
                     visibleSince = visibleSince ?? now
                     if now - visibleSince! >= 0.4 { final = value; break }
                 } else { visibleSince = nil }
@@ -324,7 +377,7 @@ private enum TranslatingScroll {
             checkpoint["maximumSampleCostMs"] = maximumCost * 1000
             checkpoints.append(checkpoint)
             try captureFrame(windowID: root.id, frame: root.bounds, crop: root.bounds, output: output, stage: "step-\(step)")
-            print("translation_layout step=\(step) samples=\(trace.count) accepted=true pending=\(final.translating) elapsedMs=\(Int((now - requestedAt) * 1000)) failures=\(failures.count)")
+            print("translation_layout step=\(step) samples=\(trace.count) accepted=true translatingLabel=\(final.translating) elapsedMs=\(Int((now - requestedAt) * 1000)) failures=\(failures.count)")
         }
         try writeEvidence()
         guard failures.isEmpty else { throw LayoutError("caption_geometry_regression: " + failures.sorted().joined(separator: ",")) }

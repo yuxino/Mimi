@@ -1,7 +1,7 @@
 // Browser harness for the actual overlay components. Start Vite on port 1420,
 // then pass this complete function to the project's supported browser page API.
 // Synthetic state only; this does not verify native window or capture behavior.
-async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false, subtitleModesOnly = false } = {}) => {
+async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false, subtitleModesOnly = false, readoutLayoutOnly = false } = {}) => {
   await page.goto(`${baseUrl}/?window=overlay`);
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
@@ -99,7 +99,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           .filter(element => element.childElementCount === 0).map(element => element.textContent);
         fixtureState = {
           activeChrome: Boolean(canvas?.querySelector(".overlay-action-strip")),
-          noServiceDetails: Boolean(canvas && !canvas.querySelector(".overlay-service, .overlay-latency__measurement")),
+          noServiceDetails: Boolean(canvas && !canvas.querySelector(".overlay-service")),
           timelinePresent: Boolean(timeline),
           missingTexts: expectedTexts.filter(text => !actualTexts.includes(text)),
         };
@@ -136,8 +136,39 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
     });
   }
 
+  async function readoutCase(hovered) {
+    return page.evaluate(async hovered => {
+      const loaded = performance.getEntriesByType("resource").filter(entry => new URL(entry.name).pathname === "/src/lib/store.ts");
+      const { useStore } = await import(loaded.filter(entry => new URL(entry.name).search).at(-1)?.name ?? loaded.at(-1)?.name ?? "/src/lib/store.ts");
+      const { verifyReadoutLayout } = await import("/scripts/frontend/fixtures/verify-overlay-latency.js");
+      return verifyReadoutLayout(useStore, { hovered });
+    }, hovered);
+  }
+
   await configure({ longHistory: true });
   await resize(580, 240);
+
+  if (readoutLayoutOnly) {
+    const readoutLayout = [];
+    try {
+      for (const width of widths) for (const language of languages) for (const theme of themes) {
+        await configure({ language, theme, longHistory: true });
+        await resize(width, 240);
+        const exposures = [];
+        for (const hovered of [false, true, false]) {
+          if (hovered) await page.hover(".overlay-timeline");
+          else await page.mouse.move(4, 4);
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          exposures.push({ hovered, states: await readoutCase(hovered) });
+        }
+        readoutLayout.push({ width, language, theme, exposures });
+      }
+      return { checked: readoutLayout.length, readoutLayout };
+    } finally {
+      await page.cdp("Emulation.setEmulatedMedia", { features: [] });
+      await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
+    }
+  }
 
   if (subtitleModesOnly) {
     const subtitleModes = [];
@@ -365,7 +396,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         const minimumHeight = await configure({ language, theme });
         await resize(width, minimumHeight);
         await page.hover(".overlay-surface");
-        const result = await page.evaluate(() => {
+        const result = await page.evaluate(async () => {
+          const { measureTextVisibility } = await import("/scripts/frontend/fixtures/verify-overlay-latency.js");
           const canvas = document.querySelector(".overlay-expanded-canvas");
           const strip = canvas?.querySelector(".overlay-action-strip");
           const drag = canvas?.querySelector('[data-testid="overlay-drag-area"]');
@@ -380,11 +412,17 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           if (buttons.some(button => !hitCenter(button) || button.getBoundingClientRect().width < 24)) issues.push("toolbar button squeezed or blocked");
           if (!hitCenter(drag)) issues.push("drag area blocked");
           if (strip.getBoundingClientRect().bottom > timeline.getBoundingClientRect().top) issues.push("toolbar covers captions");
-          if (canvas.querySelector(".overlay-service, .overlay-latency__measurement")) issues.push("details left in caption canvas");
-          return { issues, actions: buttons.map(button => button.getAttribute("aria-label")) };
+          if (canvas.querySelector(".overlay-service")) issues.push("service details left in caption canvas");
+          const samples = [...canvas.querySelectorAll(".overlay-latency__measurement strong")];
+          const measurementGlyphs = samples.map(node => measureTextVisibility(node, timeline));
+          if (samples.map(node => node.textContent).join("\n") !== "128 ms\n246 ms") issues.push("hover latency samples missing");
+          if (measurementGlyphs.some(glyph => !glyph.rendered || !glyph.uncovered || glyph.captionOverlap)) issues.push("hover latency samples clipped or covered");
+          return { issues, actions: buttons.map(button => button.getAttribute("aria-label")), measurementGlyphs };
         });
+        const pendingReadout = await readoutCase(true);
         chromeChecked++;
         if (result.issues.length) failures.push({ check: "chrome", width, minimumHeight, language, theme, ...result });
+        if (pendingReadout.some(state => !state.ready)) failures.push({ check: "readout", width, language, theme, pendingReadout });
       }
     }
     console.log(JSON.stringify({ progress: "chrome width complete", width, chromeChecked, failures: failures.length }));
@@ -471,6 +509,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   await page.cdp("Emulation.setDeviceMetricsOverride", { width: 280, height: 520, deviceScaleFactor: 1, mobile: false });
   await page.goto(`${baseUrl}/?window=overlay-control&mode=panel`);
   await page.waitForSelector(".overlay-control-panel");
+  await page.mouse.move(4, 4);
   const candidates = serviceCases ?? [
     ...["followService", "deepL", "deepLX", "chatMock", "openAICompatible", "original"].map(route => ({ route })),
     { route: "openAICompatible", alias: "B 站 / long translator name with spaces 日本語 🌸 ".repeat(2) },
@@ -487,7 +526,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         const ordinaryProfile = !candidate.provider && !candidate.alias && !candidate.speechRecognitionName && !candidate.profileName;
         const footerWithoutScrolling = ordinaryProfile && ["zh", "en"].includes(language) && ["followService", "deepL"].includes(route);
         const { showServiceDetails } = await configure({ language, theme, profileName: ordinaryProfile ? "Mimi preview" : undefined, ...candidate, surface: "panel" });
-        const result = await page.evaluate(({ route, footerWithoutScrolling, showServiceDetails, compactRows }) => {
+        const result = await page.evaluate(async ({ route, footerWithoutScrolling, showServiceDetails, compactRows }) => {
+          const { measureTextVisibility } = await import("/scripts/frontend/fixtures/verify-overlay-latency.js");
           const panel = document.querySelector(".overlay-control-panel");
           const content = panel?.querySelector(".overlay-control-panel__content");
           const details = panel?.querySelector(".overlay-session-details");
@@ -503,6 +543,8 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           const timing = latency.getBoundingClientRect();
           const measurements = [...latency.querySelectorAll(".overlay-latency__measurement strong")].map(node => node.textContent);
           if (measurements.join("\n") !== (route === "original" ? "128 ms" : "128 ms\n246 ms")) issues.push("panel latency samples missing");
+          const measurementGlyphs = [...latency.querySelectorAll(".overlay-latency__measurement strong")].map(node => measureTextVisibility(node));
+          if (measurementGlyphs.some(glyph => !glyph.rendered || !glyph.uncovered)) issues.push("panel latency samples are not painted or are covered");
           if (icons.length !== names.length || icons.some(icon => Math.abs(icon.getBoundingClientRect().width - 16) > 0.5)) issues.push("provider icon squeezed");
           if (latency.scrollWidth > latency.clientWidth + 1 || timing.right > innerWidth + 1) issues.push("latency clipped");
           if (serviceBox && (timing.top < serviceBox.bottom || serviceBox.right > innerWidth + 1)) issues.push("panel details overlap or overflow");
@@ -562,7 +604,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
               .every(x => button.contains(document.elementFromPoint(x, y)))) issues.push(`${label}: click target covered`);
           }
           panel.scrollTop = 0;
-          return { issues, labels: names.map(name => name.textContent), nameWidths: names.map(name => name.clientWidth), measurements,
+          return { issues, labels: names.map(name => name.textContent), nameWidths: names.map(name => name.clientWidth), measurements, measurementGlyphs,
             panelHeight: panelBox.height, panelContentHeight: panel.scrollHeight, footerBottom };
         }, { route, footerWithoutScrolling, showServiceDetails, compactRows: ["zh", "en"].includes(language) });
         panelChecked++;

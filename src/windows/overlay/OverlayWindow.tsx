@@ -27,7 +27,7 @@ import { Timeline } from "./timeline/Timeline";
 import { useResolvedMotion } from "./timeline/animation";
 import { useSubtitleTail } from "./timeline/useSubtitleTail";
 import type { SourceSubtitleSnapshot } from "../../lib/types";
-import { OVERLAY_INSET, overlaySessionChromeLayout } from "./layout/overlayChromeLayout";
+import { OVERLAY_INSET, overlaySessionChromeLayout, TIMING_INSET_BESIDE_ACTIONS } from "./layout/overlayChromeLayout";
 import { minimumOverlayHeight } from "./layout/overlayMinimumHeight";
 import { useOverlayChromePeers } from "./controls/useOverlayChromePeers";
 import { useSessionAction } from "./controls/useSessionAction";
@@ -270,7 +270,8 @@ export function OverlayWindow() {
     data-overlay-island-pinned={session.audioRecording && session.audioRecording !== "off" ? "" : undefined}
   >
     {content}
-    {isTauri && hasEmbeddedOverlayControls && <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
+    {(isTauri ? hasEmbeddedOverlayControls : !presentationCollapsed && !blendsWithBackground) &&
+      <OverlayControlWindow embedded subtitleRootRef={subtitleRootRef} />}
   </div>;
   if (isTauri) return surface;
 
@@ -285,12 +286,20 @@ export function OverlayWindow() {
     const showTiming = session.isActive && !blendsWithBackground;
     const actionFailed = sessionAction.failed || controlAction.failed;
     if (!showTiming && !pendingSessionLabel && !actionFailed) return null;
+    const translationRequired = settings.targetLanguage !== "original";
+    const feedback = Boolean(pendingSessionLabel || actionFailed || (translationRequired && session.translationRecovery));
+    const inline = !feedback && topChromeLayout.timingsFitBesideActions;
     return <div className="overlay-status-row"
-      data-translation-status-space={showTiming && settings.targetLanguage !== "original" && blocks.length > 0 ? "" : undefined}
-      style={{ top: `calc(var(--overlay-toolbar-height, ${topChromeLayout.topBandHeight}px) + 3px)` }}>
+      data-placement={feedback ? "feedback" : inline ? "toolbar" : "below"}
+      data-session-details-space={showTiming && !inline && blocks.length > 0 ? "" : undefined}
+      style={{
+        top: inline ? 9 : `calc(var(--overlay-toolbar-height, ${topChromeLayout.topBandHeight}px) + 3px)`,
+        right: inline && !presentationLocked ? TIMING_INSET_BESIDE_ACTIONS : undefined,
+      }}>
       {pendingSessionLabel || actionFailed ? <div role={pendingSessionLabel ? "status" : "alert"} className="overlay-action-feedback">
         {pendingSessionLabel ?? actionFailureMessage}
-      </div> : <OverlayLatency session={session} translationRequired={settings.targetLanguage !== "original"} showMeasurements={false} />}
+      </div> : (controlMode !== "panel" || feedback) && <OverlayLatency surface="canvas" session={session}
+        translationRequired={translationRequired} translating={presentationLocked && phase === "translating"} />}
     </div>;
   }
 

@@ -19,8 +19,6 @@ export function OverlaySessionDetails({ onOpenProfile, disabled }: {
     translationLatencyMs: session.translationLatencyMs,
     translationLatencyKind: session.translationLatencyKind,
     translationRecovery: session.translationRecovery,
-    isTranslationPending: session.isTranslationPending,
-    isTranslationPreviewPending: session.isTranslationPreviewPending,
   })));
   const service = translationService(settings);
   return <div className="overlay-session-details">

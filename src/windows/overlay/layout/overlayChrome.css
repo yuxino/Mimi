@@ -112,10 +112,8 @@
   .overlay-action-group + .mimi-tooltip-trigger::before { background: ButtonText; }
 }
 
-/* Reserve the status line while controls are visible so individual requests
-   cannot resize the viewport as a sentence streams. */
-.overlay-expanded-canvas:has(.overlay-status-row[data-translation-status-space],
-  .overlay-status-row [role="status"]) {
+/* A first timing sample or a new request must not displace captions under a stationary pointer. */
+.overlay-expanded-canvas:has(.overlay-status-row[data-session-details-space], .overlay-status-row[data-placement="below"] .overlay-latency) {
   --overlay-status-height: var(--overlay-detail-height, 20px);
 }
 .overlay-expanded-canvas:has(.overlay-action-feedback, .overlay-status-row .overlay-latency:not(.overlay-hover-control) [role="status"]) {
