@@ -518,6 +518,9 @@ impl OverlayControlWindowManager {
         crate::language_probe::native(app, if visible { "show-skipped-visible" } else { "show-initial" }, "overlay-control", serde_json::json!({}));
         if !visible {
             show_overlay_control_window(app, &window);
+        } else {
+            #[cfg(target_os = "macos")]
+            macos_pointer::install(&window);
         }
         #[cfg(target_os = "windows")]
         let _ = window.set_focusable(focus_policy.focusable_after_show);
