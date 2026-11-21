@@ -100,6 +100,12 @@ mod macos_pointer;
 #[cfg(any(target_os = "windows", test))]
 mod windows_pointer;
 
+#[cfg(any(target_os = "windows", test))]
+mod windows_panel_drag;
+
+#[cfg(target_os = "windows")]
+pub(crate) use windows_panel_drag::prepare_panel_drag;
+
 #[cfg(target_os = "windows")]
 pub use windows_pointer::WindowsPointerTracker;
 

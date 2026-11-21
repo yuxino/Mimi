@@ -25,6 +25,26 @@ limit must not disable movement or take over the scrollbar's gesture.
 
 The subtitle overlay owns the user frame. A detached panel may invoke the existing `overlay_move_start` command while the native mode is Panel and both presentation locks are off. The command selects the subtitle root before recording drag intent. Existing native root movement keeps the panel attached on AppKit and follows it through geometry events on Windows and X11. On Wayland the panel already shares the same window and uses the compositor's move gesture.
 
+On Windows, this panel-authored native move transfers foreground and keyboard
+focus from the control to the subtitle root. This is an internal gesture rather
+than click-away. While the focused panel owns that gesture, retire an older
+scheduled dismissal and preserve the expanded surface. Observe actual move-mode
+ownership and button release: outline dragging can defer all movement until
+release, and a short click or cancelled drag can produce no Moved event. This
+observer exists only for that gesture. On completion, return keyboard ownership
+to the same control only if the owning root is still foreground. Settings or
+another application's foreground dismisses without reactivating Mimi.
+
+Mode changes, lock, collapse, Stop and explicit dismissal retire gesture
+ownership. A late completion must not reopen a closed or newly opened panel.
+Focus-loss scheduling and Panel-to-Island transitions check their generation and
+current mode atomically at the state owner, so a stale timer cannot replace a
+new drag or Hidden presentation. Native acceptance includes the same 48-pixel
+middle-blank gesture, a short stationary press, subsequent real language
+selection and true external click-away. Keep screenshot/video pixels restricted
+to the offline test windows and a neutral background; report actual frame PTS
+and capture gaps instead of assuming the requested frame rate.
+
 On macOS the press must stay anchored to its position inside the subtitle root.
 A stationary click must leave both the root and its attached language control
 in place, including when the pointer is over a visible subtitle glyph. A drag

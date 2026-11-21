@@ -41,6 +41,7 @@ function Test-CaptionHistorySessions {
 }
 
 function Test-PanelLanguageSessions {
+    Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs')
     $labelsPath = Join-Path $preferencesDir 'panel-languages.json'
     node (Join-Path $PSScriptRoot '../../frontend/write-panel-language-fixtures.mjs') $labelsPath
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the panel language catalog.' }

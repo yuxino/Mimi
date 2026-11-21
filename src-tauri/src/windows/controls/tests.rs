@@ -238,6 +238,79 @@ fn measured_width_updates_keep_hidden_and_panel_modes_and_dismiss_generation() {
 }
 
 #[test]
+fn windows_panel_drag_owns_focus_handoff_until_native_completion() {
+    let state = OverlayControlState::default();
+    assert_eq!(state.begin_panel_drag(), None);
+    state.set_mode(OverlayControlMode::Panel);
+    let before = state.snapshot().2;
+    let drag = state.begin_panel_drag().unwrap();
+    assert!(state.panel_drag_active());
+    assert_ne!(state.snapshot().2, before);
+    assert_eq!(state.begin_panel_drag(), None);
+    // A native focus return can cancel an older dismissal without losing the
+    // gesture that still owns its eventual completion.
+    state.cancel_scheduled_dismiss();
+    assert!(state.has_panel_drag(drag));
+    assert!(state.finish_panel_drag(drag));
+    assert!(!state.panel_drag_active());
+    assert_eq!(state.mode(), OverlayControlMode::Panel);
+    assert!(!state.finish_panel_drag(drag));
+}
+
+#[test]
+fn closing_hiding_or_reopening_controls_retires_a_windows_drag_completion() {
+    for next in [OverlayControlMode::Island, OverlayControlMode::Hidden] {
+        let state = OverlayControlState::default();
+        state.set_mode(OverlayControlMode::Panel);
+        let old_drag = state.begin_panel_drag().unwrap();
+        state.set_mode(next);
+        assert!(!state.panel_drag_active());
+        assert!(!state.has_panel_drag(old_drag));
+        assert!(!state.finish_panel_drag(old_drag));
+        state.set_mode(OverlayControlMode::Panel);
+        let current_drag = state.begin_panel_drag().unwrap();
+        assert_ne!(current_drag, old_drag);
+        assert!(!state.finish_panel_drag(old_drag));
+        assert!(state.has_panel_drag(current_drag));
+        assert!(state.finish_panel_drag(current_drag));
+    }
+}
+
+#[test]
+fn delayed_dismiss_cannot_replace_a_new_drag_or_hidden_panel() {
+    let state = OverlayControlState::default();
+    assert_eq!(state.dismissal_generation(), None);
+    state.set_mode(OverlayControlMode::Panel);
+    let scheduled = state.dismissal_generation().unwrap();
+    let drag = state.begin_panel_drag().unwrap();
+    assert_eq!(state.dismissal_generation(), None);
+    assert!(!state.dismiss_if_current(scheduled));
+    assert!(state.has_panel_drag(drag));
+    state.finish_panel_drag(drag);
+
+    let scheduled = state.dismissal_generation().unwrap();
+    state.set_mode(OverlayControlMode::Hidden);
+    assert!(!state.dismiss_if_current(scheduled));
+    assert!(!state.dismiss_panel());
+    assert_eq!(state.mode(), OverlayControlMode::Hidden);
+    state.set_mode(OverlayControlMode::Panel);
+    assert!(!state.dismiss_if_current(scheduled));
+    let current = state.dismissal_generation().unwrap();
+    assert!(state.dismiss_if_current(current));
+    assert_eq!(state.mode(), OverlayControlMode::Island);
+}
+
+#[test]
+fn explicit_panel_dismiss_retires_a_drag_and_late_completion() {
+    let state = OverlayControlState::default();
+    state.set_mode(OverlayControlMode::Panel);
+    let drag = state.begin_panel_drag().unwrap();
+    assert!(state.dismiss_panel());
+    assert!(!state.finish_panel_drag(drag));
+    assert_eq!(state.mode(), OverlayControlMode::Island);
+}
+
+#[test]
 fn island_measurements_are_finite_rounded_and_bounded() {
     assert_eq!(measured_island_width(143.2), Some(144.0));
     assert_eq!(measured_island_width(2.0), Some(80.0));

@@ -134,6 +134,8 @@ pub fn overlay_move_start(
     }
     #[cfg(not(target_os = "macos"))]
     {
+        #[cfg(target_os = "windows")]
+        let from_panel = window.label() == "overlay-control";
         let target = match window.label() {
             "overlay" => window,
             "overlay-control" => {
@@ -153,9 +155,21 @@ pub fn overlay_move_start(
         if !OverlayWindowManager::move_start(&app, &state.overlay) {
             return Ok(());
         }
+        #[cfg(target_os = "windows")]
+        let panel_drag = from_panel
+            .then(|| crate::windows::prepare_panel_drag(&app, &target))
+            .flatten();
         if target.start_dragging().is_err() {
+            #[cfg(target_os = "windows")]
+            if let Some(drag) = panel_drag {
+                drag.cancel(&app);
+            }
             OverlayWindowManager::move_cancel(&state.overlay);
             return Err("Could not start overlay drag.".to_string());
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(drag) = panel_drag {
+            drag.observe(&app);
         }
         Ok(())
     }
