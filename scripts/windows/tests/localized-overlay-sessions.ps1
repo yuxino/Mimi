@@ -1,5 +1,12 @@
 # The package smoke owns the executable and private fixture directory. Each
 # launch must mount both WebViews again before its localized controls are used.
+# The readiness marker is fixed, tiny and written once by the isolated probe.
+# An absent/in-progress write remains pending under the existing five-second bound.
+function Read-HistoryProbeReady([string]$Path) {
+    try { return [IO.File]::ReadAllText($Path).Trim() }
+    catch [IO.IOException] { return $null }
+}
+
 function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$EvidencePath) {
     if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
         throw 'The previous test process must exit before a fresh locale is started.'
@@ -20,11 +27,11 @@ function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$Eviden
         if ($historyTrace) {
             $traceReady = Join-Path $frontendReadyDir 'history-pointer-probe-ready'
             $deadline = [Diagnostics.Stopwatch]::StartNew()
-            while ((Read-SmokeMarker $traceReady) -ne 'ready' -and $deadline.ElapsedMilliseconds -lt 5000) {
+            while ((Read-HistoryProbeReady $traceReady) -ne 'ready' -and $deadline.ElapsedMilliseconds -lt 5000) {
                 if ($primary.HasExited) { throw 'History trace app exited before its observer was ready.' }
                 Start-Sleep -Milliseconds 25
             }
-            if ((Read-SmokeMarker $traceReady) -ne 'ready') { throw 'History metadata observer was not ready within 5000ms.' }
+            if ((Read-HistoryProbeReady $traceReady) -ne 'ready') { throw 'History metadata observer was not ready within 5000ms.' }
         }
         $settingsWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$primary.Id, 'mimi UI test settings')
         if ($settingsWindow -eq [IntPtr]::Zero) { throw 'The mounted Settings window could not be identified.' }
