@@ -337,9 +337,20 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
             if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'The history scrollbar did not receive a held physical left button.' }
             for ($step = 1; $step -le 8; $step++) {
                 [MimiPointerSmoke]::MoveAndVerify($thumb.X, [int][Math]::Round($thumb.Y + ($thumb.EndY - $thumb.Y) * $step / 8))
+                if ($step -eq 8 -and $env:MIMI_QA_THUMB_RELEASE -eq "immediate") { break }
                 Start-Sleep -Milliseconds 30
                 if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
                 Assert-CaptionHistoryEnvironment $context
+            }
+            if ($env:MIMI_QA_THUMB_RELEASE -eq "rested") {
+                $held = Wait-CaptionHistory 'the final caption under the held thumb' {
+                    $sample = Get-CaptionHistoryView $context
+                    if ($sample.Percent -ge 99.99 -and $sample.Rows.source19.Full -and $sample.Rows.translation19.Full) { return $sample }
+                }
+                Start-Sleep -Milliseconds 150
+                if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'The thumb was released before the native bottom was observed.' }
+                Read-CaptionHistoryReturn $context $held
+                $context.Checkpoints['held-at-bottom'] = $held
             }
             $trackWhileHeld = $context.Viewport.Current.BoundingRectangle
         } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
