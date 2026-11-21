@@ -74,7 +74,9 @@ private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGIma
     let path = directory.appendingPathComponent("window.png")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-    process.arguments = ["-x", "-o", "-l\(windowID)", path.path]
+    // The control panel is attached to the subtitle window. Exclude attached
+    // surfaces so the PNG and the requested window share a coordinate system.
+    process.arguments = ["-x", "-o", "-a", "-l\(windowID)", path.path]
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
     let finished = DispatchSemaphore(value: 0)
@@ -98,7 +100,7 @@ private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGIma
     let sx = CGFloat(image.width) / frame.width
     let sy = CGFloat(image.height) / frame.height
     guard sx >= 1, sy >= 1, abs(sx - sy) <= max(1 / frame.width, 1 / frame.height) else {
-        throw CaptionCaptureError.failed("caption_capture_scale_mismatch")
+        throw CaptionCaptureError.failed("caption_capture_scale_mismatch window=\(windowID) frame=\(frame) image=\(image.width)x\(image.height)")
     }
     return image
 }
