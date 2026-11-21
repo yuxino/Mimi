@@ -98,16 +98,24 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         $metadata.releaseAway.position=Assert-PanelDragPosition 48
         $null=Wait-PanelLanguageState 'panel-refocus-after-release-away' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
         [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
-        $offset=48;$metadata.quickMoves=@()
+        $offset=48;$metadata.quickMoves=@();$metadata.quickInputTimes=@()
         foreach ($distance in @(3,48)) {
             $point=Get-PanelBlankPoint
             [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Check a quick native panel move')
+            $downStarted=[Diagnostics.Stopwatch]::GetTimestamp()
             try {
                 [MimiCaptionDragDesktop]::SetLeftButton($true)
+                $downReturned=[Diagnostics.Stopwatch]::GetTimestamp()
                 Start-Sleep -Milliseconds 8
                 [MimiPointerSmoke]::MoveAndVerify(($point.X+$distance),$point.Y)
+                $moveReturned=[Diagnostics.Stopwatch]::GetTimestamp()
                 Start-Sleep -Milliseconds 7
-            } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
+            } finally {
+                $upStarted=[Diagnostics.Stopwatch]::GetTimestamp()
+                [MimiCaptionDragDesktop]::SetLeftButton($false)
+                $upReturned=[Diagnostics.Stopwatch]::GetTimestamp()
+            }
+            $metadata.quickInputTimes+=@{distance=$distance;frequency=[Diagnostics.Stopwatch]::Frequency;downStarted=$downStarted;downReturned=$downReturned;moveReturned=$moveReturned;upStarted=$upStarted;upReturned=$upReturned}
             Start-Sleep -Milliseconds 400
             $offset+=$distance
             $position=Assert-PanelDragPosition $offset
@@ -124,7 +132,13 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         [MimiPointerSmoke]::AssertCaptionMoveEnded($overlay)
         $metadata.passed=$true
         Write-Host 'Native panel middle drag passed: same HWNDs, +48px, expanded sizes/anchor retained; stationary/quick gestures, release-away, ordinary click and native refocus passed. Continuing original language selections.'
-    } catch { $metadata.passed=$false;$metadata.failure=[string]$_;throw }
+    } catch {
+        $metadata.passed=$false;$metadata.failure=[string]$_
+        $metadata.failureNativeState=[MimiPointerSmoke]::CaptionMoveState($overlay,$Controls)
+        $metadata.failureLeftDown=[MimiCaptionDragDesktop]::LeftDown()
+        $metadata.failurePointer=[MimiPointerSmoke]::PointerOwnership($overlay,$Controls)
+        throw
+    }
     finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)
         [IO.File]::WriteAllText((Join-Path $EvidencePath 'en-panel-drag.json'),($metadata|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))

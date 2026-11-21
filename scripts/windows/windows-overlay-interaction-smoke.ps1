@@ -372,6 +372,18 @@ public static class MimiPointerSmoke {
             throw new InvalidOperationException("The subtitle root remained in its native move modal after release.");
     }
 
+    public static string CaptionMoveState(IntPtr overlay, IntPtr controls) {
+        uint process;
+        var thread = GetWindowThreadProcessId(overlay, out process);
+        var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
+        if (thread == 0 || !GetGUIThreadInfo(thread, ref gui)) return "gui_query=unavailable";
+        var foreground = GetForegroundWindow();
+        var focus = GetAncestor(gui.Focus, 2);
+        return String.Format("move_root={0} capture_root={1} foreground_root={2} foreground_control={3} focus_root={4} focus_control={5}",
+            (gui.Flags & 0x0002) != 0 && gui.MoveSize == overlay, gui.Capture == overlay,
+            foreground == overlay, foreground == controls, focus == overlay, focus == controls);
+    }
+
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
         AssertHit(overlay, new Point { X = x, Y = y }, action);
         if (!SetCursorPos(x, y))
