@@ -17,13 +17,13 @@ import kotlin.math.roundToInt
 internal class CaptionEdgeArtwork(context: Context) : FrameLayout(context) {
     private val ink = context.getColor(R.color.mimi_on_primary)
     private val surface = context.getColor(R.color.mimi_primary)
-    private val plate = GradientDrawable().apply {
-        setColor(surface)
-        setStroke(dp(1), context.getColor(R.color.mimi_muted))
-    }
     private val logo = ImageView(context).apply {
         setImageResource(R.drawable.mimi_brand_small)
         scaleType = ImageView.ScaleType.FIT_CENTER
+        isDuplicateParentStateEnabled = true
+        // Keep press feedback inside the app icon's alpha, including when it sits against a screen edge.
+        foreground = RippleDrawable(ColorStateList.valueOf(ColorUtils.setAlphaComponent(ink, 55)), null,
+            context.getDrawable(R.drawable.mimi_brand_small))
     }
     private val action = ImageView(context).apply {
         background = GradientDrawable().apply {
@@ -39,8 +39,6 @@ internal class CaptionEdgeArtwork(context: Context) : FrameLayout(context) {
     init {
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         isDuplicateParentStateEnabled = true
-        foreground = RippleDrawable(ColorStateList.valueOf(ColorUtils.setAlphaComponent(ink, 55)), null,
-            GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(ink) })
         addView(logo)
         addView(action, LayoutParams(dp(16), dp(16), Gravity.BOTTOM or Gravity.END))
     }
@@ -62,17 +60,9 @@ internal class CaptionEdgeArtwork(context: Context) : FrameLayout(context) {
             null -> Gravity.CENTER
         }
         layoutParams = LayoutParams(dp(width), dp(height), alignment)
-        val radius = dp(if (edge == null) 19 else 15).toFloat()
-        fun corner(a: CaptionEdge, b: CaptionEdge) = if (edge == a || edge == b) 0f else radius
-        val tl = corner(CaptionEdge.TOP, CaptionEdge.LEFT)
-        val tr = corner(CaptionEdge.TOP, CaptionEdge.RIGHT)
-        val br = corner(CaptionEdge.BOTTOM, CaptionEdge.RIGHT)
-        val bl = corner(CaptionEdge.BOTTOM, CaptionEdge.LEFT)
-        plate.cornerRadii = floatArrayOf(tl, tl, tr, tr, br, br, bl, bl)
         // The launcher art includes transparent padding. Keep the same complete mark at both sizes.
         val logoSize = dp(if (edge == null) 44 else 34)
         logo.layoutParams = LayoutParams(logoSize, logoSize, Gravity.CENTER)
-        background = if (edge == null) null else plate
         action.visibility = if (edge == null) VISIBLE else GONE
         alpha = if (edge == null) 1f else 0.8f
     }
