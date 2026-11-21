@@ -23,6 +23,11 @@ public sealed class MimiPanelDragObservation : IDisposable
         public uint Size, Style; public WindowProc Procedure; public int ClassExtra, WindowExtra; public IntPtr Instance, Icon, Cursor, Brush;
         public string Menu, Name; public IntPtr SmallIcon;
     }
+    private delegate IntPtr MouseHook(int code,IntPtr message,IntPtr data);
+    [StructLayout(LayoutKind.Sequential)] private struct MouseEvent { public Point Point; public uint Data,Flags,Time; public UIntPtr ExtraInfo; }
+    [DllImport("user32.dll",EntryPoint="SetWindowsHookExW",SetLastError=true)] private static extern IntPtr SetWindowsHookEx(int kind,MouseHook callback,IntPtr module,uint thread);
+    [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook,int code,IntPtr message,IntPtr data);
     private delegate void WinEvent(IntPtr hook,uint id,IntPtr window,int objectId,int childId,uint thread,uint time);
     private delegate IntPtr WindowProc(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint min,uint max,IntPtr module,WinEvent callback,uint process,uint thread,uint flags);
@@ -44,6 +49,7 @@ public sealed class MimiPanelDragObservation : IDisposable
     [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] private static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
+    [DllImport("user32.dll",EntryPoint="PostMessageW")] private static extern bool PostMessage(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLong(IntPtr window,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLong(IntPtr window,int index,IntPtr value);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
@@ -57,11 +63,13 @@ public sealed class MimiPanelDragObservation : IDisposable
     public sealed class Sample {
         public long HostTicks, UtcTicks; public ulong SystemTickMs; public double ElapsedMs;
         public uint Event, EventTickMs; public string Stage, Target, Foreground, Focus, Capture;
-        public bool LeftDown, RootMoveModal; public bool? PointerLeafSameProcess, PointerLeafOnRootThread; public Rect Root, Control; public int PointerX, PointerY;
+        public bool LeftDown, RootMoveModal; public Rect Root, Control; public int PointerX, PointerY;
     }
     private readonly IntPtr root,control; private readonly uint processId,rootThread;
     private readonly object sync=new object(); private readonly List<Sample> samples=new List<Sample>();
     private readonly ManualResetEventSlim ready=new ManualResetEventSlim(false); private readonly Thread thread;
+    private readonly MouseHook mouseHook; private IntPtr releaseHook;
+    private Point? releasedPoint; private uint releaseTime; private string releaseFailure;
     private readonly WinEvent callback; private readonly WindowProc procedure;
     private readonly long started=Stopwatch.GetTimestamp(); private string stage="installed"; private uint observerThread;
     private IntPtr backplate; private Exception failure; private bool disposed;
@@ -70,10 +78,10 @@ public sealed class MimiPanelDragObservation : IDisposable
     public MimiPanelDragObservation(IntPtr rootWindow,IntPtr controlWindow) {
         root=rootWindow; control=controlWindow; rootThread=GetWindowThreadProcessId(root,out processId);
         Rect a,b; if(!GetWindowRect(root,out a)||!GetWindowRect(control,out b))throw new InvalidOperationException("Could not bound test windows.");
-        Region=new Rect {Left=Math.Min(a.Left,b.Left)-24,Top=Math.Min(a.Top,b.Top)-24,Right=Math.Max(a.Right,b.Right)+104,Bottom=Math.Max(a.Bottom,b.Bottom)+24};
+        Region=new Rect {Left=Math.Min(a.Left,b.Left)-24,Top=Math.Min(a.Top,b.Top)-24,Right=Math.Max(a.Right,b.Right)+72,Bottom=Math.Max(a.Bottom,b.Bottom)+24};
         if((Region.Width&1)!=0)Region=new Rect{Left=Region.Left,Top=Region.Top,Right=Region.Right+1,Bottom=Region.Bottom};
         if((Region.Height&1)!=0)Region=new Rect{Left=Region.Left,Top=Region.Top,Right=Region.Right,Bottom=Region.Bottom+1};
-        callback=OnEvent; procedure=DefWindowProc; thread=new Thread(Run); thread.IsBackground=true; thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        mouseHook=OnMouse;callback=OnEvent; procedure=DefWindowProc; thread=new Thread(Run); thread.IsBackground=true; thread.SetApartmentState(ApartmentState.STA); thread.Start();
         if(!ready.Wait(5000))throw new InvalidOperationException("Native observer did not become ready.");
         if(failure!=null)throw new InvalidOperationException("Native observer setup failed.",failure);
         AssertPrivateRegion(); Mark("observer-ready");
@@ -90,9 +98,12 @@ public sealed class MimiPanelDragObservation : IDisposable
             hooks.Add(SetWinEventHook(10,11,IntPtr.Zero,callback,processId,0,0));
             hooks.Add(SetWinEventHook(0x8002,0x800B,IntPtr.Zero,callback,processId,0,0));
             foreach(var hook in hooks)if(hook==IntPtr.Zero)throw new InvalidOperationException("Native event observer could not subscribe.");
-            ready.Set(); Message message; while(GetMessage(out message,IntPtr.Zero,0,0)>0){TranslateMessage(ref message);DispatchMessage(ref message);}
+            ready.Set(); Message message; while(GetMessage(out message,IntPtr.Zero,0,0)>0){
+                if(message.Id==0x8017){InstallReleaseHook();continue;}
+                TranslateMessage(ref message);DispatchMessage(ref message);
+            }
         } catch(Exception error){failure=error;ready.Set();}
-        finally {foreach(var hook in hooks)if(hook!=IntPtr.Zero)UnhookWinEvent(hook);if(backplate!=IntPtr.Zero)DestroyWindow(backplate);if(brush!=IntPtr.Zero)DeleteObject(brush);UnregisterClass(name,GetModuleHandle(null));}
+        finally {if(releaseHook!=IntPtr.Zero)UnhookWindowsHookEx(releaseHook);foreach(var hook in hooks)if(hook!=IntPtr.Zero)UnhookWinEvent(hook);if(backplate!=IntPtr.Zero)DestroyWindow(backplate);if(brush!=IntPtr.Zero)DeleteObject(brush);UnregisterClass(name,GetModuleHandle(null));}
     }
     private string Category(IntPtr window) {
         if(window==IntPtr.Zero)return "none";var top=GetAncestor(window,2);
@@ -107,11 +118,49 @@ public sealed class MimiPanelDragObservation : IDisposable
     }
     private void Record(uint id,uint time,string target) {
         var gui=new GuiInfo{Size=(uint)Marshal.SizeOf(typeof(GuiInfo))};GetGUIThreadInfo(rootThread,ref gui);
-        Rect a,b;GetWindowRect(root,out a);GetWindowRect(control,out b);Point p;bool hasPointer=GetCursorPos(out p);uint leafProcess=0;uint leafThread=0;if(id==0&&hasPointer)leafThread=GetWindowThreadProcessId(WindowFromPoint(p),out leafProcess);long now=Stopwatch.GetTimestamp();
-        lock(sync){if(samples.Count>=2048){DroppedSamples++;return;}samples.Add(new Sample{HostTicks=now,UtcTicks=DateTime.UtcNow.Ticks,SystemTickMs=GetTickCount64(),ElapsedMs=(now-started)*1000.0/Stopwatch.Frequency,Event=id,EventTickMs=time,Stage=stage,Target=target,Foreground=Category(GetForegroundWindow()),Focus=Category(gui.Focus),Capture=Category(gui.Capture),LeftDown=(GetAsyncKeyState(1)&0x8000)!=0,RootMoveModal=(gui.Flags&2)!=0&&gui.MoveSize==root,Root=a,Control=b,PointerX=p.X,PointerY=p.Y,PointerLeafSameProcess=leafThread==0?(bool?)null:leafProcess==processId,PointerLeafOnRootThread=leafThread==0?(bool?)null:leafThread==rootThread});}
+        Rect a,b;GetWindowRect(root,out a);GetWindowRect(control,out b);Point p;GetCursorPos(out p);long now=Stopwatch.GetTimestamp();
+        lock(sync){if(samples.Count>=2048){DroppedSamples++;return;}samples.Add(new Sample{HostTicks=now,UtcTicks=DateTime.UtcNow.Ticks,SystemTickMs=GetTickCount64(),ElapsedMs=(now-started)*1000.0/Stopwatch.Frequency,Event=id,EventTickMs=time,Stage=stage,Target=target,Foreground=Category(GetForegroundWindow()),Focus=Category(gui.Focus),Capture=Category(gui.Capture),LeftDown=(GetAsyncKeyState(1)&0x8000)!=0,RootMoveModal=(gui.Flags&2)!=0&&gui.MoveSize==root,Root=a,Control=b,PointerX=p.X,PointerY=p.Y});}
     }
     public void Mark(string value){lock(sync)stage=value;Record(0,0,"mark");}
     public Sample[] Snapshot(){lock(sync)return samples.ToArray();}
+    public void ArmReleaseCache(){
+        if((GetAsyncKeyState(1)&0x8000)==0)throw new InvalidOperationException("Release cache is limited to the actual held gesture.");
+        lock(sync){releasedPoint=null;releaseTime=0;releaseFailure=null;}
+        if(!PostThreadMessage(observerThread,0x8017,UIntPtr.Zero,IntPtr.Zero))throw new InvalidOperationException("Could not arm release observation.");
+    }
+    private void InstallReleaseHook(){
+        if((GetAsyncKeyState(1)&0x8000)==0){lock(sync)releaseFailure="already-released-before-install";return;}
+        if(releaseHook!=IntPtr.Zero){lock(sync)releaseFailure="duplicate-owned-release-hook";return;}
+        releaseHook=SetWindowsHookEx(14,mouseHook,GetModuleHandle(null),0);
+        if(releaseHook==IntPtr.Zero){lock(sync)releaseFailure="native-hook-unavailable";}
+    }
+    private IntPtr OnMouse(int code,IntPtr message,IntPtr data){
+        if(code>=0&&message.ToInt64()==0x0202){
+            var hook=releaseHook;releaseHook=IntPtr.Zero;
+            if(hook!=IntPtr.Zero)UnhookWindowsHookEx(hook);
+            // Ignore every other message without reading its payload. Even a
+            // foreign release ends this held-only lease without storing a point.
+            string foreground=Category(GetForegroundWindow());
+            if(foreground=="root"||foreground=="control"){
+                var actual=(MouseEvent)Marshal.PtrToStructure(data,typeof(MouseEvent));
+                lock(sync){if(!releasedPoint.HasValue){releasedPoint=actual.Point;releaseTime=actual.Time;}}
+                Record(0x0202,actual.Time,"first-owned-release");
+            }else{lock(sync)releaseFailure="external-foreground-no-point-stored";}
+        }
+        return CallNextHookEx(IntPtr.Zero,code,message,data);
+    }
+    public object ReleaseCache(){lock(sync){return new {Point=releasedPoint.HasValue?new[]{releasedPoint.Value.X,releasedPoint.Value.Y}:null,Time=releaseTime,Failure=releaseFailure,HookStillInstalled=releaseHook!=IntPtr.Zero};}}
+    public bool ObserveReleaseSignal(){
+        var gui=new GuiInfo{Size=(uint)Marshal.SizeOf(typeof(GuiInfo))};
+        if(!GetGUIThreadInfo(rootThread,ref gui))throw new InvalidOperationException("Could not observe root GUI state.");
+        if((gui.Flags&2)==0||gui.MoveSize!=root){Mark("diagnostic-already-completed");return false;}
+        if(gui.Capture!=root||Category(GetForegroundWindow())!="root"||(GetAsyncKeyState(1)&0x8000)!=0)throw new InvalidOperationException("Release observation requires the owned released root move modal.");
+        Point p;lock(sync){if(!releasedPoint.HasValue)throw new InvalidOperationException("No corresponding first release point was captured.");p=releasedPoint.Value;}
+        long position=((long)(ushort)p.Y<<16)|(ushort)p.X;
+        Mark("diagnostic-cached-release-screen-point");
+        if(!PostMessage(root,0x0202,IntPtr.Zero,new IntPtr(position)))throw new InvalidOperationException("Could not queue observed nonclient release.");
+        return true;
+    }
     public IntPtr BackgroundWindow { get { return backplate; } }
     public string HitSurface(int x,int y){return Category(WindowFromPoint(new Point{X=x,Y=y}));}
     public Point EnableExternalClickAway(){

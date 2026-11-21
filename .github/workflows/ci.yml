@@ -1,5 +1,5 @@
-name: Windows panel drag focus A/B QA
-run-name: Native focus/video — original 9ee0 vs candidate 719e82c2
+name: Windows blank panel drag QA
+run-name: Native short-gesture focus trace — held-only release-point observation bc43e23c
 on:
   workflow_dispatch:
 permissions:
@@ -14,39 +14,23 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - name: Verify isolated hosted runner and original Portable artifact
+      - name: Verify isolated hosted runner and exact candidate executable
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows') { throw 'Disposable hosted Windows runner required.' }
-          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14707985546 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'mimi-windows-2025' -or
-              $artifact.workflow_run.id -ne 44904152782 -or
-              $artifact.workflow_run.head_sha -cne '9ee07ad09f21fa7e3d7de794c2b5ceb317a7eb1f' -or
-              $artifact.digest -cne 'sha256:04c8c0b0509d0772e8004cc5fda56bb82a82af309f4f5943716d7ad49efc33f5') { throw 'Original artifact identity changed.' }
+          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14711350578 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'windows-ui-test-executable' -or
+              $artifact.workflow_run.id -ne 44913038057 -or
+              $artifact.workflow_run.head_sha -cne 'bc43e23cf3d27571f3030361bf749a384f0f0bd9' -or
+              $artifact.digest -cne 'sha256:01583e96665241182686c1e171d8a30b5476f9f2237ddc378d868557ded7330d') { throw 'Candidate artifact identity changed.' }
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: mimi-windows-2025
-          run-id: 44904152782
+          name: windows-ui-test-executable
+          run-id: 44913038057
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/original-package
-      - name: Verify exact candidate Portable artifact
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14713137123 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'mimi-windows-2025' -or
-              $artifact.workflow_run.id -ne 44918149488 -or
-              $artifact.workflow_run.head_sha -cne '719e82c216e735a4a9e0bc586d7bacb21ecfe072' -or
-              $artifact.digest -cne 'sha256:e8570e239fe60e73caeff05b2372b6e268cf0d6ceee1f1090ef71dcede4c363a') { throw 'Candidate artifact identity changed.' }
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: mimi-windows-2025
-          run-id: 44918149488
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/candidate-package
+          path: ${{ runner.temp }}/candidate-executable
       - name: Prepare existing locale generator dependencies
         shell: pwsh
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -55,7 +39,7 @@ jobs:
         run: |
           $source = @'
           $ErrorActionPreference = 'Stop'
-          foreach ($file in @('scripts/windows/tests/panel-blank-drag.ps1','scripts/windows/tests/panel-drag-observation.ps1','scripts/windows/windows-overlay-interaction-smoke.ps1','scripts/windows/tests/localized-overlay-sessions.ps1')) {
+          foreach ($file in @('scripts/windows/tests/panel-blank-drag.ps1','scripts/windows/windows-overlay-interaction-smoke.ps1','scripts/windows/tests/localized-overlay-sessions.ps1')) {
             $tokens=$null; $errors=$null
             $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
@@ -82,74 +66,22 @@ jobs:
           $encoder[0].FullName | ForEach-Object { "MIMI_QA_FFMPEG=$_" } | Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding utf8
           & $encoder[0].FullName -version
           if($LASTEXITCODE -ne 0){throw 'Pinned QA encoder could not initialize.'}
-      - name: Same-host original and candidate physical gestures
+      - name: Exact long and short physical gestures with native trace
         shell: pwsh
         run: |
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $evidence=Join-Path $env:RUNNER_TEMP 'panel-focus-ab'
+          $files=@(Get-ChildItem (Join-Path $env:RUNNER_TEMP 'candidate-executable') -Recurse -File -Filter 'mimi.exe')
+          if($files.Count -ne 1){throw 'Exactly one candidate executable required.'}
+          $executable=$files[0].FullName
+          $sha=(Get-FileHash -Algorithm SHA256 $executable).Hash
+          $evidence=Join-Path $env:RUNNER_TEMP 'panel-short-evidence'
           New-Item -ItemType Directory -Path $evidence | Out-Null
-          $arms=@(
-            @{name='baseline';package='original-package';source='9ee07ad09f21fa7e3d7de794c2b5ceb317a7eb1f';run=44904152782;artifact=14707985546;sha='55A838A186BB5C66611704C0C615D6BFAD3CFF03AE249DB1D0404A218A30F8B5'},
-            @{name='candidate';package='candidate-package';source='719e82c216e735a4a9e0bc586d7bacb21ecfe072';run=44918149488;artifact=14713137123;sha='F87E705AC6C417627184BD275641DBFBA683A4557DD176A015B88D959F49DC45'}
-          )
-          Add-Type -Path ./scripts/windows/tests/CaptionDragDesktop.cs
-          $originalPolicy=[MimiCaptionDragDesktop]::FullWindows()
-          $opposite=@{};foreach($key in $arms[1].Keys){$opposite[$key]=$arms[1][$key]}
-          $opposite.name='candidate-opposite';$opposite.policy=(-not $originalPolicy)
-          $arms+=$opposite
-          $away=@{};foreach($key in $arms[1].Keys){$away[$key]=$arms[1][$key]};$away.name='candidate-release-away';$arms+=$away
-          $results=@()
-          try {
-          foreach($arm in $arms) {
-            $policy=if($arm.ContainsKey('policy')){$arm.policy}else{$originalPolicy}
-            [MimiCaptionDragDesktop]::SetFullWindows($policy)
-            if(@(Get-Process mimi -ErrorAction SilentlyContinue).Count){throw 'A previous offline Mimi process is still active.'}
-            $archives=@(Get-ChildItem (Join-Path $env:RUNNER_TEMP $arm.package) -Recurse -File -Filter '*_x64-portable.zip')
-            if($archives.Count -ne 1){throw 'Exactly one exact Portable archive required per arm.'}
-            $zip=[IO.Compression.ZipFile]::OpenRead($archives[0].FullName)
-            try {
-              $names=@($zip.Entries.FullName | Sort-Object)
-              if($names.Count -ne 2 -or (Compare-Object $names @('mimi.exe','mimi.portable'))){throw 'Unexpected Portable archive entries.'}
-            } finally {$zip.Dispose()}
-            $extracted=Join-Path $env:RUNNER_TEMP ('panel-portable-'+$arm.package)
-            if(-not (Test-Path (Join-Path $extracted 'mimi.exe'))){Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath $extracted}
-            $executable=Join-Path $extracted 'mimi.exe'
-            $sha=(Get-FileHash -Algorithm SHA256 $executable).Hash
-            if($sha -cne $arm.sha){throw 'Exact Portable executable bytes changed.'}
-            $directory=Join-Path $evidence $arm.name
-            New-Item -ItemType Directory -Path $directory | Out-Null
-            @{source=$arm.source;sourceRun=$arm.run;artifact=$arm.artifact;executableSha256=$sha} | ConvertTo-Json | Set-Content (Join-Path $directory 'executable-identity.json') -Encoding utf8NoBOM
-            & pwsh.exe -NoProfile -NonInteractive -File ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $directory
-            $code=$LASTEXITCODE
-            $data=Get-Content (Join-Path $directory 'panel-blank-drag.json') -Raw | ConvertFrom-Json
-            if($data.fullWindows -ne $policy){throw 'The child did not observe the requested actual Windows drag policy.'}
-            $meta=Get-Content (Join-Path $directory 'capture-metadata.json') -Raw | ConvertFrom-Json
-            if($data.observationFailure -or $meta.setupFailure -or $meta.videoAccepted -ne $true -or $meta.droppedObserverSamples -ne 0){throw 'Native observation did not finalize cleanly.'}
-            $drops=@([regex]::Matches($meta.finalProgress,'(?m)^drop_frames=(\d+)\s*$'))
-            if($drops.Count -eq 0 -or [int]$drops[-1].Groups[1].Value -ne 0){throw 'Actual captured video frames were dropped by the encoder.'}
-            $result=@{name=$arm.name;fullWindows=$policy;exitCode=$code;failure=$data.failure;videoFrames=$meta.decodedFrames;videoFps=$meta.measuredFps;maxFrameGap=$meta.maxFrameGapSeconds}
-            $results+=$result
-            $results | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $evidence 'results.json') -Encoding utf8NoBOM
-            if($arm.name -ceq 'baseline'){
-              if($code -eq 0 -or $data.passed -ne $false -or $data.failure -notlike 'Unexpected control geometry at horizontal offset 48*' -or
-                 $data.rootMoveModalVerified -ne $true -or $data.held.leftDown -ne $true -or
-                 $data.settled.control[2] -ne 156 -or $data.settled.control[3] -ne 30 -or
-                 $data.settled.root[0] -ne $data.before.root[0]+48 -or $data.settled.root[1] -ne $data.before.root[1]){throw 'Original arm did not reproduce the exact retained panel-collapse assertion.'}
-              Write-Host 'Negative control reproduced: real root move modal, +48px root, child collapsed to 156x30. Original assertion retained.'
-            } elseif($code -ne 0 -or $data.passed -ne $true){
-              if($arm.name -ceq 'candidate-release-away'){throw 'The separate post-release-away observation failed; completed original/candidate A/B arms are retained.'}
-              throw 'Candidate did not pass the same original geometry and physical menu assertions.'
-            }
-          }
-          } finally {
-            [MimiCaptionDragDesktop]::SetLeftButton($false)
-            [MimiCaptionDragDesktop]::SetFullWindows($originalPolicy)
-            if([MimiCaptionDragDesktop]::FullWindows() -ne $originalPolicy){throw 'The hosted desktop drag preference was not restored.'}
-          }
+          @{source='bc43e23cf3d27571f3030361bf749a384f0f0bd9';sourceRun=44913038057;artifact=14711350578;executableSha256=$sha} |
+            ConvertTo-Json | Set-Content (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
+          ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $evidence
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: windows-panel-focus-ab
-          path: ${{ runner.temp }}/panel-focus-ab
+          name: windows-panel-short-focus
+          path: ${{ runner.temp }}/panel-short-evidence
           if-no-files-found: ignore
           retention-days: 3
