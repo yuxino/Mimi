@@ -171,15 +171,15 @@ func verifyOverlayHoverControls(pid: pid_t, rootID: CGWindowID, root: CGRect,
         }
         return child
     }
-    func windowAX(_ expected: CGRect) throws -> AXUIElement {
-        let matches = (hoverAttribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter {
-            overlayTestFrame($0).map { same($0, expected) } == true
-        }
-        guard matches.count == 1 else { throw HoverError("hover_ax_window_not_unique") }
-        return matches[0]
-    }
     func controls(_ window: CGRect) throws -> [(name: String, role: String, rect: CGRect)] {
-        var pending = [(try windowAX(window), 0)], result: [(String, String, CGRect)] = [], visited = 0
+        let matches = (hoverAttribute(app, kAXWindowsAttribute) as? [AXUIElement] ?? []).filter {
+            overlayTestFrame($0).map { same($0, window) } == true
+        }
+        guard matches.count <= 1 else { throw HoverError("hover_ax_window_not_unique") }
+        // WindowServer can report an intermediate panel size before AX sees it.
+        // The caller polls up to the original deadline for both painted fields.
+        guard let matchingWindow = matches.first else { return [] }
+        var pending = [(matchingWindow, 0)], result: [(String, String, CGRect)] = [], visited = 0
         while let (node, depth) = pending.popLast() {
             visited += 1
             guard visited <= 2048 else { throw HoverError("hover_ax_tree_limit") }
