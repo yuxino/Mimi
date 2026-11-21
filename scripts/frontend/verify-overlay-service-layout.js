@@ -1,14 +1,14 @@
 // Browser harness for the actual overlay components. Start Vite on port 1420,
 // then pass this complete function to the project's supported browser page API.
 // Synthetic state only; this does not verify native window or capture behavior.
-async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true } = {}) => {
+async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640], languages = ["zh", "zh-TW", "en", "ja", "de", "fr", "ko", "th", "ru"], themes = ["dark", "light"], serviceCases, checkSubtitleLanes = true, subtitleMotionOnly = false } = {}) => {
   await page.goto(`${baseUrl}/?window=overlay`);
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: true });
   await page.waitForSelector(".overlay-surface");
 
-  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, profileName, theme = "dark", hasCaptions = true, longHistory = false, surface = "overlay", rejectStop = false }) {
+  async function configure({ language = "en", route = "deepL", audioInput = "system", timestamps = false, provider, alias, speechRecognitionName, profileName, theme = "dark", hasCaptions = true, longHistory = false, surface = "overlay", rejectStop = false, captionMotion }) {
     await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: theme }] });
-    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop }) => {
+    return page.evaluate(async ({ language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop, captionMotion }) => {
       if (typeof window.__TAURI_INTERNALS__ !== "undefined") throw new Error("Memory-only browser preview required");
       // Vite may keep timestamped dependency imports even after page reload.
       // Import the actual module already loaded by the mounted UI; importing
@@ -54,7 +54,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
           microphoneInputAvailable: surface === "panel" || state.settings.microphoneInputAvailable,
           subtitleAlignment: "center", showSubtitleTimestamps: timestamps, showSubtitleDividers: false,
           subtitleBlendsWithBackground: false, isOverlayLocked: false,
-          pulseAnimation: false, subtitleAnimation: false, customSubtitleCountEnabled: false,
+          pulseAnimation: false, subtitleAnimation: captionMotion?.motion ?? false, customSubtitleCountEnabled: false,
           activeProfileId: "preview",
           profiles: [{
             id: "preview", name: profileName ?? "Long configuration name · 長い設定名 · 较长的配置名称",
@@ -105,11 +105,15 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
         };
         if (fixtureState.noServiceDetails && fixtureState.activeChrome && fixtureState.timelinePresent === hasCaptions
           && fixtureState.missingTexts.length === 0 && effectiveUiLanguage() === language) {
+          if (captionMotion) {
+            const { verifyCaptionMotion } = await import("/scripts/frontend/fixtures/verify-caption-motion.js");
+            return verifyCaptionMotion(useStore, captionMotion);
+          }
           return minimumOverlayHeight(useStore.getState().settings);
         }
       }
       throw new Error(`Overlay fixture did not reach the mounted UI. Restart Vite and reload after HMR/rebase changes before retrying. ${JSON.stringify({ language, route, audioInput, timestamps, ...fixtureState })}`);
-    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop });
+    }, { language, route, audioInput, timestamps, provider, alias, speechRecognitionName, profileName, hasCaptions, longHistory, surface, rejectStop, captionMotion });
   }
 
   async function resize(width, height) {
@@ -134,6 +138,28 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
 
   await configure({ longHistory: true });
   await resize(580, 240);
+
+  const subtitleMotion = [];
+  try {
+    for (const hovered of [false, true]) {
+      if (hovered) await page.hover(".overlay-timeline");
+      else await page.mouse.move(4, 4, { label: "Read captions with the tools hidden" });
+      for (const motion of [false, true]) {
+        subtitleMotion.push(await configure({ longHistory: true, provider: "volcanoEngine",
+          route: "followService", captionMotion: { hovered, motion } }));
+      }
+    }
+    if (subtitleMotion.some(sample => sample.failure)) {
+      throw new Error("Caption geometry changed during continuous speech: " + JSON.stringify(subtitleMotion));
+    }
+  } finally {
+    if (subtitleMotionOnly) {
+      await page.cdp("Emulation.setEmulatedMedia", { features: [] });
+      await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
+    }
+  }
+  if (subtitleMotionOnly) return { checked: subtitleMotion.length, subtitleMotion };
+  await configure({ longHistory: true });
 
   async function captionViewport(remember = false) {
     return page.evaluate(async remember => {
@@ -475,7 +501,7 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
   await page.cdp("Emulation.clearDeviceMetricsOverride");
   await page.cdp("Emulation.setEmulatedMedia", { features: [] });
   await page.cdp("Emulation.setFocusEmulationEnabled", { enabled: false });
-  const result = { checked: chromeChecked + subtitleCases.length + panelChecked, chromeChecked, subtitleChecked: subtitleCases.length, panelChecked, subtitleCases, failures };
+  const result = { checked: chromeChecked + subtitleCases.length + panelChecked + subtitleMotion.length, chromeChecked, subtitleChecked: subtitleCases.length, panelChecked, subtitleCases, subtitleMotion, failures };
   console.log(JSON.stringify(result));
   if (failures.length) throw new Error(JSON.stringify(failures));
   return result;
