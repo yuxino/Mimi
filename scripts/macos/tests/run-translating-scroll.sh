@@ -56,7 +56,7 @@ mkdir "$scene/ready"
 cat > "$scene/preferences.json" <<JSON
 {"ui_language":"en","source_language":"en","target_language":"zh","audio_input":"system","subtitle_display_mode":"bilingual","font_size":16,"subtitle_animation":$animation,"subtitle_background_opacity":100,"retain_session_history":false,"record_session_audio":false}
 JSON
-xcrun swiftc "$suite/translating-scroll.swift" "$suite/DisplayModes.swift" "$suite/Capture.swift" -o "$scene/check-translating-scroll"
+xcrun swiftc "$suite/translating-scroll.swift" "$suite/DisplayModes.swift" "$suite/OverlayHoverControls.swift" "$suite/Capture.swift" -o "$scene/check-translating-scroll"
 MIMI_UI_TEST=1 MIMI_AUTO_START=1 MIMI_UI_TEST_STANDARD_OVERLAY=1 \
   MIMI_UI_TEST_TRANSLATION_LAYOUT=1 MIMI_UI_TEST_PREFERENCES_DIR="$scene" \
   MIMI_UI_TEST_FRONTEND_READY_DIR="$scene/ready" MIMI_UI_TEST_SESSION_STATE_FILE="$scene/session" \
