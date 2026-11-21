@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: Native short-gesture focus trace — held-only release-point observation bc43e23c
+run-name: Native short-gesture focus trace — exact 42da7a53 quick-gesture observation
 on:
   workflow_dispatch:
 permissions:
@@ -20,15 +20,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows') { throw 'Disposable hosted Windows runner required.' }
-          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14711350578 | ConvertFrom-Json
+          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14715014975 | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'windows-ui-test-executable' -or
-              $artifact.workflow_run.id -ne 44913038057 -or
-              $artifact.workflow_run.head_sha -cne 'bc43e23cf3d27571f3030361bf749a384f0f0bd9' -or
-              $artifact.digest -cne 'sha256:01583e96665241182686c1e171d8a30b5476f9f2237ddc378d868557ded7330d') { throw 'Candidate artifact identity changed.' }
+              $artifact.workflow_run.id -ne 44924800548 -or
+              $artifact.workflow_run.head_sha -cne '42da7a53396b4f96a7f2dc7c953e4535721ad6d1' -or
+              $artifact.digest -cne 'sha256:cfb1dd86673e47e7c5ca90fb1b09b4b0d03e8a8c07a424fb3822ad09dfe7d850') { throw 'Candidate artifact identity changed.' }
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: windows-ui-test-executable
-          run-id: 44913038057
+          run-id: 44924800548
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate-executable
       - name: Prepare existing locale generator dependencies
@@ -39,7 +39,7 @@ jobs:
         run: |
           $source = @'
           $ErrorActionPreference = 'Stop'
-          foreach ($file in @('scripts/windows/tests/panel-blank-drag.ps1','scripts/windows/windows-overlay-interaction-smoke.ps1','scripts/windows/tests/localized-overlay-sessions.ps1')) {
+          foreach ($file in @('scripts/windows/tests/panel-drag-interaction.ps1','scripts/windows/tests/panel-drag-observation.ps1','scripts/windows/windows-overlay-interaction-smoke.ps1','scripts/windows/tests/localized-overlay-sessions.ps1')) {
             $tokens=$null; $errors=$null
             $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
@@ -73,9 +73,10 @@ jobs:
           if($files.Count -ne 1){throw 'Exactly one candidate executable required.'}
           $executable=$files[0].FullName
           $sha=(Get-FileHash -Algorithm SHA256 $executable).Hash
+          if($sha -cne '990187FE925F8E8930872C14FDCE327DB33BB89D643EBCB5050D5A5263819243'){throw 'Exact candidate executable bytes changed.'}
           $evidence=Join-Path $env:RUNNER_TEMP 'panel-short-evidence'
           New-Item -ItemType Directory -Path $evidence | Out-Null
-          @{source='bc43e23cf3d27571f3030361bf749a384f0f0bd9';sourceRun=44913038057;artifact=14711350578;executableSha256=$sha} |
+          @{source='42da7a53396b4f96a7f2dc7c953e4535721ad6d1';sourceRun=44924800548;artifact=14715014975;executableSha256=$sha} |
             ConvertTo-Json | Set-Content (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
           ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $evidence
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
