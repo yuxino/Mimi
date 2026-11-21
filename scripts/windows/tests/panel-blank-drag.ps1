@@ -42,18 +42,44 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         if ($prefs.source_language -cne 'en' -or $prefs.target_language -cne 'zh_tw') { throw 'The isolated source/target changed from en/zh_tw.' }
         return @{ source = $prefs.source_language; target = $prefs.target_language }
     }
+    function Trace-BlankPoint([int]$X,[int]$Y) {
+        $trace = @{ point=@($X,$Y); controlHwndHit=[MimiPointerSmoke]::IsCaptionPoint($Controls,$X,$Y); path=@() }
+        $e=[System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($X,$Y))
+        for ($i=0;$i -lt 24 -and $null -ne $e;$i++) {
+            $b=$e.Current.BoundingRectangle
+            $trace.path += @{ type=$e.Current.ControlType.ProgrammaticName; hasName=(-not [string]::IsNullOrEmpty($e.Current.Name))
+                panelId=($e.Current.AutomationId -ceq 'overlay-control-panel'); bounds=@($b.Left,$b.Top,$b.Width,$b.Height)
+                patterns=@($e.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) }
+            if ($e.Current.AutomationId -ceq 'overlay-control-panel') { break }
+            $e=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($e)
+        }
+        if ($trace.controlHwndHit) {
+            $pixels=[MimiPointerSmoke+PixelPatch]::new($X-4,$Y-4,9,9).Read()
+            $values=@($pixels | ForEach-Object { (($_ -band 255)+(($_ -shr 8)-band 255)+(($_ -shr 16)-band 255))/3.0 })
+            $range=$values | Measure-Object -Minimum -Maximum
+            $trace.patch=@{width=9;height=9;pixels=$pixels;min=$range.Minimum;max=$range.Maximum}
+        }
+        return $trace
+    }
+    function Reject-BlankHit([string]$Reason,[int]$X,[int]$Y) {
+        if (-not $metadata.hitRejectCounts.Contains($Reason)) { $metadata.hitRejectCounts[$Reason]=0 }
+        $metadata.hitRejectCounts[$Reason]=$metadata.hitRejectCounts[$Reason]+1
+        if (-not $metadata.firstHitRejection.Contains($Reason)) { $metadata.firstHitRejection[$Reason]=Trace-BlankPoint $X $Y }
+    }
     # UIA hit must lie in the actual dialog hierarchy, outside every text and
     # actionable rectangle. Pixel flatness independently excludes a glyph.
     function Read-BlankHit([int]$X,[int]$Y) {
-        if (-not [MimiPointerSmoke]::IsCaptionPoint($Controls,$X,$Y)) { return }
+        if (-not [MimiPointerSmoke]::IsCaptionPoint($Controls,$X,$Y)) { Reject-BlankHit 'nativeHwnd' $X $Y; return }
         $e = [System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($X,$Y))
-        if ($null -eq $e -or $e.Current.ControlType -notin @($type::Group,$type::Pane,$type::Document,$type::Custom)) { return }
+        if ($null -eq $e) { Reject-BlankHit 'nullFromPoint' $X $Y; return }
+        if ($e.Current.ControlType -notin @($type::Group,$type::Pane,$type::Document,$type::Custom)) { Reject-BlankHit 'leafType' $X $Y; return }
         $leafType = $e.Current.ControlType.ProgrammaticName
         for ($i=0;$i -lt 24 -and $null -ne $e;$i++) {
-            if ($e.Current.ControlType -in $forbidden) { return }
+            if ($e.Current.ControlType -in $forbidden) { Reject-BlankHit 'ancestorType' $X $Y; return }
             if ($e.Current.AutomationId -ceq 'overlay-control-panel') { return @{ leafType=$leafType; dialogAncestor=$true; controlHwndHit=$true } }
             $e = [System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($e)
         }
+        Reject-BlankHit 'noPanelAncestor' $X $Y
     }
     $forbidden = @($type::Text,$type::Button,$type::Edit,$type::ComboBox,$type::CheckBox,$type::RadioButton,
         $type::Slider,$type::ScrollBar,$type::Hyperlink,$type::List,$type::ListItem,$type::MenuItem,$type::Menu,
@@ -71,17 +97,45 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         if ($null -eq $dialog) { throw 'No actual panel dialog is exposed for blank-area hit validation.' }
         $box = $dialog.Current.BoundingRectangle
         $scale = [MimiPanelCrop]::GetDpiForWindow($Controls)/96.0
-        $blocked = @($dialog.FindAll($scope,[System.Windows.Automation.Condition]::TrueCondition) | Where-Object {
-            -not $_.Current.IsOffscreen -and $_.Current.ControlType -in $forbidden
-        } | ForEach-Object { $_.Current.BoundingRectangle } | Where-Object { -not $_.IsEmpty -and $_.Width -gt 0 -and $_.Height -gt 0 })
+        $metadata.nativeStart=Read-BlankGeometry
+        $shot=Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-map.png' -PassThru
+        $metadata.panelMap=@{ dpi=$shot.dpi; dialog=@($box.Left,$box.Top,$box.Width,$box.Height)
+            crop=@($shot.crop.Left,$shot.crop.Top,$shot.crop.Width,$shot.crop.Height)
+            rootHwnd=$overlay.ToInt64(); controlHwnd=$Controls.ToInt64() }
+        $metadata.hitRejectCounts=[ordered]@{}; $metadata.firstHitRejection=[ordered]@{}
+        $metadata.pixelRejected=0; $metadata.scanPoints=0; $metadata.blockedPoints=0; $metadata.blockedRects=@()
+        $blocked=@()
+        foreach ($element in $dialog.FindAll($scope,[System.Windows.Automation.Condition]::TrueCondition)) {
+            if ($element.Current.IsOffscreen -or $element.Current.ControlType -notin $forbidden) { continue }
+            $b=$element.Current.BoundingRectangle
+            if ($b.IsEmpty -or $b.Width -le 0 -or $b.Height -le 0) { continue }
+            $blocked += $b
+            $metadata.blockedRects += @{type=$element.Current.ControlType.ProgrammaticName;bounds=@($b.Left,$b.Top,$b.Width,$b.Height);area=$b.Width*$b.Height;exclusions=0}
+        }
+        # Explicit observation points correspond to visually flat gaps in the
+        # prior 280x403 native crop. They are never substituted as gesture points.
+        $metadata.referencePoints=@()
+        foreach ($relative in @(@(160,160),@(180,184),@(180,316))) {
+            $x=[int]($box.Left+$relative[0]*$scale); $y=[int]($box.Top+$relative[1]*$scale)
+            if ($x -gt $box.Left+5 -and $x -lt $box.Right-5 -and $y -gt $box.Top+5 -and $y -lt $box.Bottom-5) {
+                $metadata.referencePoints += Trace-BlankPoint $x $y
+            }
+        }
         $candidates = @()
         for ($y=[int]($box.Top+40*$scale);$y -lt $box.Bottom-40*$scale;$y+=8) {
             for ($x=[int]($box.Left+16*$scale);$x -lt $box.Right-16*$scale;$x+=8) {
-                $occupied=$false
-                foreach ($b in $blocked) { if ($x -ge $b.Left-5*$scale -and $x -le $b.Right+5*$scale -and $y -ge $b.Top-5*$scale -and $y -le $b.Bottom+5*$scale) { $occupied=$true;break } }
+                $occupied=$false; $metadata.scanPoints=$metadata.scanPoints+1
+                for ($i=0;$i -lt $blocked.Count;$i++) {
+                    $b=$blocked[$i]
+                    if ($x -ge $b.Left-5*$scale -and $x -le $b.Right+5*$scale -and $y -ge $b.Top-5*$scale -and $y -le $b.Bottom+5*$scale) {
+                        $occupied=$true; $metadata.blockedPoints=$metadata.blockedPoints+1
+                        $metadata.blockedRects[$i].exclusions=$metadata.blockedRects[$i].exclusions+1; break
+                    }
+                }
                 if (-not $occupied) { $candidates += @{X=$x;Y=$y;Score=[Math]::Pow($x-($box.Left+$box.Width/2),2)+[Math]::Pow($y-($box.Top+$box.Height/2),2)} }
             }
         }
+        $metadata.afterRectangleExclusion=$candidates.Count
         $point=$null
         foreach ($candidate in @($candidates | Sort-Object Score)) {
             $hit=Read-BlankHit $candidate.X $candidate.Y
@@ -89,7 +143,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
             $patch=[MimiPointerSmoke+PixelPatch]::new($candidate.X-4,$candidate.Y-4,9,9).Read()
             $luma=@($patch | ForEach-Object { (($_ -band 255)+(($_ -shr 8)-band 255)+(($_ -shr 16)-band 255))/3.0 })
             $range=($luma|Measure-Object -Minimum -Maximum)
-            if ($range.Maximum-$range.Minimum -gt 6) { continue }
+            if ($range.Maximum-$range.Minimum -gt 6) { $metadata.pixelRejected=$metadata.pixelRejected+1; continue }
             $point=$candidate;$metadata.hit=$hit;$metadata.patch=@{width=9;height=9;min=$range.Minimum;max=$range.Maximum};break
         }
         if ($null -eq $point) { throw 'No verifiable noninteractive, nontext, nonedge blank point was found.' }
@@ -170,6 +224,6 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         throw
     } finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)
-        [IO.File]::WriteAllText((Join-Path $EvidencePath 'panel-blank-drag.json'),($metadata|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $EvidencePath 'panel-blank-drag.json'),($metadata|ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
     }
 }
