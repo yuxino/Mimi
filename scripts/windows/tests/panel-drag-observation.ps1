@@ -40,17 +40,25 @@ function Start-PanelDragObservation([IntPtr]$Root,[IntPtr]$Control,[string]$Dire
         $observer.Dispose();throw
     }
 }
-function Stop-PanelDragObservation($Record) {
-    $observer=$Record.Observer;$process=$Record.Process
+function Stop-PanelDragVideo($Record) {
+    if($Record.Metadata.videoStopped){return}
+    $observer=$Record.Observer;$process=$Record.Process;$privacyFailure=$null
     try {
-        $observer.Mark('video-stop-requested');$observer.AssertPrivateRegion()
+        $observer.Mark('video-stop-requested')
+        try{$observer.AssertPrivateRegion()}catch{$privacyFailure=$_}
+        # Finalize even after a failed guard: never leave desktop capture running.
         if (-not $process.HasExited) { $process.StandardInput.WriteLine('q');$process.StandardInput.Flush() }
         if (-not $process.WaitForExit(5000)) { $process.Kill();throw 'Native video did not finalize within 5000ms.' }
         $stderr=$process.StandardError.ReadToEnd()
         [IO.File]::WriteAllText((Join-Path $Record.Directory 'capture-stderr.log'),$stderr,[Text.UTF8Encoding]::new($false))
         if ($process.ExitCode -ne 0) { throw 'Native video recorder failed.' }
         $Record.Metadata.completedHostTicks=[Diagnostics.Stopwatch]::GetTimestamp()
-        $Record.Metadata.droppedObserverSamples=$observer.DroppedSamples
+        if($privacyFailure){
+            $Record.Metadata.videoScopeValid=$false
+            Remove-Item -LiteralPath $Record.Video -Force
+            throw $privacyFailure
+        }
+        $Record.Metadata.videoScopeValid=$true
         $probe=Join-Path ([IO.Path]::GetDirectoryName($env:MIMI_QA_FFMPEG)) 'ffprobe.exe'
         $info=& $probe -v error -select_streams v:0 -show_entries 'stream=nb_frames,avg_frame_rate,time_base,width,height:frame=best_effort_timestamp_time,pkt_duration_time' -of json $Record.Video
         if ($LASTEXITCODE -ne 0) { throw 'Recorded video PTS inspection failed.' }
@@ -63,8 +71,18 @@ function Stop-PanelDragObservation($Record) {
         $Record.Metadata.measuredFps=($pts.Count-1)/($pts[-1]-$pts[0]);$Record.Metadata.maxFrameGapSeconds=($gaps|Measure-Object -Maximum).Maximum
         $Record.Metadata.finalProgress=Read-SmokeMarker $Record.Progress
     } finally {
+        if(-not $process.HasExited){$process.Kill();$null=$process.WaitForExit(2000)}
+        $Record.Metadata.videoStopped=$true
+        $process.Dispose()
+    }
+}
+function Stop-PanelDragObservation($Record) {
+    $observer=$Record.Observer
+    try { Stop-PanelDragVideo $Record }
+    finally {
+        $Record.Metadata.droppedObserverSamples=$observer.DroppedSamples
         [IO.File]::WriteAllText((Join-Path $Record.Directory 'native-events.json'),(@{frequency=$observer.Frequency;samples=$observer.Snapshot();dropped=$observer.DroppedSamples}|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
         [IO.File]::WriteAllText((Join-Path $Record.Directory 'capture-metadata.json'),($Record.Metadata|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-        $observer.Dispose();$process.Dispose()
+        $observer.Dispose()
     }
 }

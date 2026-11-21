@@ -301,6 +301,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.finalCodes=Read-BlankPrefs
         $metadata.final=Read-BlankGeometry
         Assert-BlankGeometry $metadata.final 48
+        Stop-PanelDragVideo $observation
         $observation.Observer.Mark('external-click-away')
         $outside=$observation.Observer.EnableExternalClickAway()
         [MimiPointerSmoke]::ClickOverlay($observation.Observer.BackgroundWindow,$outside.X,$outside.Y,'Click the controlled external neutral window')
@@ -354,6 +355,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.passed=$false;$metadata.failure=[string]$_
         if($observation){$observation.Observer.Mark('assertion-failure');Start-Sleep -Milliseconds 750}
         try {
+            if($observation -and $observation.Metadata.videoStopped){throw 'No pixel capture after ending the controlled neutral recording.'}
             if($observation){
                 $frame=[MimiPointerSmoke]::ReadBounds($Controls);$region=$observation.Observer.Region
                 if($frame.Left -lt $region.Left -or $frame.Top -lt $region.Top -or $frame.Right -gt $region.Right -or $frame.Bottom -gt $region.Bottom){throw 'Failure crop is outside the controlled neutral background.'}
