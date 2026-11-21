@@ -498,7 +498,7 @@ function Invoke-OverlayInteractionProbe($TargetProcess, [IntPtr]$SettingsWindow,
         if (-not $probeProcess.WaitForExit($TimeoutMs)) {
             $probeProcess.Kill()
             $probeProcess.WaitForExit(5000) | Out-Null
-            if ($Mode -in @('caption-drag', 'caption-history') -and [MimiCaptionDragDesktop]::LeftDown()) {
+            if ($Mode -in @('caption-drag', 'caption-history', 'panel-languages') -and [MimiCaptionDragDesktop]::LeftDown()) {
                 [MimiCaptionDragDesktop]::SetLeftButton($false)
             }
             throw "The Windows overlay $Mode check did not finish."

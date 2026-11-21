@@ -214,6 +214,10 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
     Use-OverlayControl $Labels.moreSettings 'listening' 'Wait for the native language panel' -Surface $controlsHandle -WaitOnly -WaitMs 5000
     $null = Wait-PanelLanguageState 'panel-focus' { [MimiPanelKeyboard]::OwnsFocus($controlsHandle) }
     $visibleValues = Save-PanelLanguageEvidence $controlsHandle $Labels $EvidencePath
+    if ($Labels.locale -ceq 'en') {
+        . (Join-Path $PSScriptRoot 'panel-drag-interaction.ps1')
+        Test-PanelDragInteraction $controlsHandle $EvidencePath
+    }
 
     foreach ($kind in @('source', 'target')) {
         $name = $Labels.$kind

@@ -38,6 +38,25 @@ struct OverlayControlStateInner {
     panel_height: f64,
     webview_zoom: f64,
     generation: u64,
+    #[cfg(any(target_os = "windows", test))]
+    panel_drag: Option<u64>,
+    #[cfg(any(target_os = "windows", test))]
+    next_panel_drag: u64,
+}
+
+impl OverlayControlStateInner {
+    fn set_mode(&mut self, mode: OverlayControlMode) -> bool {
+        if self.mode == mode {
+            return false;
+        }
+        self.mode = mode;
+        self.generation = self.generation.wrapping_add(1);
+        #[cfg(any(target_os = "windows", test))]
+        {
+            self.panel_drag = None;
+        }
+        true
+    }
 }
 
 /// Tauri-managed state for the overlay control child window. Keeping this
@@ -54,6 +73,10 @@ impl Default for OverlayControlState {
             panel_height: OverlayControlWindowManager::DEFAULT_PANEL_HEIGHT,
             webview_zoom: 1.0,
             generation: 0,
+            #[cfg(any(target_os = "windows", test))]
+            panel_drag: None,
+            #[cfg(any(target_os = "windows", test))]
+            next_panel_drag: 0,
         }))
     }
 }
@@ -63,17 +86,94 @@ impl OverlayControlState {
         self.0.lock().unwrap().mode
     }
 
+    #[cfg(test)]
     fn snapshot(&self) -> (OverlayControlMode, f64, u64) {
         let state = self.0.lock().unwrap();
         (state.mode, state.panel_height, state.generation)
     }
 
     fn set_mode(&self, mode: OverlayControlMode) -> bool {
+        self.0.lock().unwrap().set_mode(mode)
+    }
+
+    fn dismissal_generation(&self) -> Option<u64> {
+        let state = self.0.lock().unwrap();
+        if state.mode != OverlayControlMode::Panel {
+            return None;
+        }
+        #[cfg(any(target_os = "windows", test))]
+        if state.panel_drag.is_some() {
+            return None;
+        }
+        Some(state.generation)
+    }
+
+    fn dismiss_if_current(&self, generation: u64) -> bool {
         let mut state = self.0.lock().unwrap();
-        if state.mode == mode {
+        if state.mode != OverlayControlMode::Panel || state.generation != generation {
             return false;
         }
-        state.mode = mode;
+        #[cfg(any(target_os = "windows", test))]
+        if state.panel_drag.is_some() {
+            return false;
+        }
+        state.set_mode(OverlayControlMode::Island)
+    }
+
+    fn dismiss_panel(&self) -> bool {
+        let mut state = self.0.lock().unwrap();
+        state.mode == OverlayControlMode::Panel && state.set_mode(OverlayControlMode::Island)
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn retire_panel_drag(&self) -> bool {
+        let mut state = self.0.lock().unwrap();
+        if state.panel_drag.take().is_none() {
+            return false;
+        }
+        state.generation = state.generation.wrapping_add(1);
+        true
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn with_current_panel_drag(&self, token: u64, post: impl FnOnce() -> bool) -> bool {
+        let state = self.0.lock().unwrap();
+        // The caller only reads native metadata and queues a message. Never
+        // focus a window or wait for a native callback under this state lock.
+        state.mode == OverlayControlMode::Panel && state.panel_drag == Some(token) && post()
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn begin_panel_drag(&self) -> Option<u64> {
+        let mut state = self.0.lock().unwrap();
+        if state.mode != OverlayControlMode::Panel || state.panel_drag.is_some() {
+            return None;
+        }
+        state.next_panel_drag = state.next_panel_drag.wrapping_add(1);
+        let token = state.next_panel_drag;
+        state.panel_drag = Some(token);
+        // Retire a focus-loss task queued before the native drag began.
+        state.generation = state.generation.wrapping_add(1);
+        Some(token)
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn has_panel_drag(&self, token: u64) -> bool {
+        self.0.lock().unwrap().panel_drag == Some(token)
+    }
+
+    #[cfg(test)]
+    fn panel_drag_active(&self) -> bool {
+        self.0.lock().unwrap().panel_drag.is_some()
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    pub(super) fn finish_panel_drag(&self, token: u64) -> bool {
+        let mut state = self.0.lock().unwrap();
+        if state.mode != OverlayControlMode::Panel || state.panel_drag != Some(token) {
+            return false;
+        }
+        state.panel_drag = None;
         state.generation = state.generation.wrapping_add(1);
         true
     }
@@ -356,9 +456,15 @@ impl OverlayControlWindowManager {
         let Some(state) = app.try_state::<OverlayControlState>() else {
             return;
         };
-        if state.mode() == OverlayControlMode::Panel && state.set_mode(OverlayControlMode::Island) {
+        if state.dismiss_panel() {
             Self::apply_mode(app, OverlayControlMode::Island, false);
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    pub(crate) fn retire_panel_drag(app: &AppHandle) -> bool {
+        app.try_state::<OverlayControlState>()
+            .is_some_and(|state| state.retire_panel_drag())
     }
 
     /// Delayed focus-loss handling avoids a hide/show race when a click inside
@@ -367,18 +473,16 @@ impl OverlayControlWindowManager {
         let Some(state) = app.try_state::<OverlayControlState>() else {
             return;
         };
-        let (_, _, generation) = state.snapshot();
+        let Some(generation) = state.dismissal_generation() else {
+            return;
+        };
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(180)).await;
             let Some(state) = app.try_state::<OverlayControlState>() else {
                 return;
             };
-            let (mode, _, current_generation) = state.snapshot();
-            if current_generation != generation || mode != OverlayControlMode::Panel {
-                return;
-            }
-            if state.set_mode(OverlayControlMode::Island) {
+            if state.dismiss_if_current(generation) {
                 Self::apply_mode(&app, OverlayControlMode::Island, false);
             }
         });
