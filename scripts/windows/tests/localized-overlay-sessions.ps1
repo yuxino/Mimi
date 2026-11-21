@@ -12,7 +12,16 @@ function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$Eviden
         Wait-SmokeFrontendReady $primary $frontendReadyDir
         $settingsWindow = [MimiWindowSmoke]::FindUniqueWindow([uint32]$primary.Id, 'mimi UI test settings')
         if ($settingsWindow -eq [IntPtr]::Zero) { throw 'The mounted Settings window could not be identified.' }
-        Invoke-OverlayInteractionProbe $primary $settingsWindow $OverlayInteraction 60000 -EvidencePath $EvidencePath -Locale $Preferences.ui_language
+        if ($OverlayInteraction -ne 'caption-history' -or $env:RUNNER_ENVIRONMENT -cne 'github-hosted') { throw 'Expected the isolated hosted history fixture.' }
+        $probe = Join-Path $PSScriptRoot 'observe-native-scroll.mjs'
+        node $probe install $EvidencePath
+        if ($LASTEXITCODE -ne 0) { throw 'Could not install the bounded input observation.' }
+        try {
+            Invoke-OverlayInteractionProbe $primary $settingsWindow $OverlayInteraction 60000 -EvidencePath $EvidencePath -Locale $Preferences.ui_language
+        } finally {
+            node $probe dump $EvidencePath
+            if ($LASTEXITCODE -ne 0) { throw 'Could not save the bounded input observation.' }
+        }
     }
     finally {
         Stop-SmokeProcess $primary

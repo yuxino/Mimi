@@ -1,4 +1,4 @@
-name: Compare physical Windows scrollbar release timing
+name: Observe native scrollbar release under renderer scheduling
 on: workflow_dispatch
 permissions:
   contents: read
@@ -11,6 +11,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22
       - name: Verify the recorded package and source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -25,14 +28,19 @@ jobs:
           github-token: ${{ github.token }}
           path: src-tauri/target/release
           merge-multiple: true
-      - name: Compare original, immediate and rested releases on the same executable
+      - name: Compare native release with and without a bounded renderer delay
         shell: pwsh
         run: |
           $exe = (Resolve-Path ./src-tauri/target/release/mimi.exe).Path
           Write-Host "Executable SHA-256 $((Get-FileHash $exe).Hash)"
           $failed = @()
-          foreach ($gesture in @('original', 'immediate', 'rested')) {
-            $env:MIMI_QA_THUMB_RELEASE = $gesture
+          $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+          $listener.Start()
+          $env:MIMI_QA_WEBVIEW_PORT = $listener.LocalEndpoint.Port.ToString()
+          $listener.Stop()
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$env:MIMI_QA_WEBVIEW_PORT"
+          foreach ($gesture in @('observe', 'down', 'last-scroll')) {
+            $env:MIMI_QA_SCHEDULE = $gesture
             Write-Host "Physical release $gesture"
             & pwsh -NoProfile -File ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/compare-history/$gesture"
             if ($LASTEXITCODE -ne 0) { $failed += $gesture }
@@ -41,7 +49,7 @@ jobs:
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: windows-release-comparison
+          name: windows-release-scheduling
           path: ${{ runner.temp }}/compare-history
           retention-days: 7
           if-no-files-found: error
