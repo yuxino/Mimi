@@ -63,7 +63,9 @@ private final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unche
                 AVVideoAverageBitRateKey: max(2_000_000, width * height * 12),
                 AVVideoMaxKeyFrameIntervalKey: 60, AVVideoAllowFrameReorderingKey: false],
         ])
-        input.mediaTimeScale = 1_000_000_000
+        // Real still frames can last several seconds. Microseconds preserve their
+        // timestamps without overflowing the encoder on a long presentation.
+        input.mediaTimeScale = 1_000_000
         input.expectsMediaDataInRealTime = true
         guard writer.canAdd(input) else { throw RecordingError("video_writer_cannot_add_input") }
         writer.add(input)
@@ -101,7 +103,12 @@ private final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, @unche
         guard let ticks, ticks > 0 else { failure = "native_display_clock_missing"; return }
         guard input.isReadyForMoreMediaData else { backpressure += 1; return }
         if firstPTS == nil { writer.startSession(atSourceTime: pts) }
-        guard input.append(buffer) else { failure = "native_sample_append_failed"; return }
+        guard input.append(buffer) else {
+            let error = writer.error as NSError?
+            let cause = error?.userInfo[NSUnderlyingErrorKey] as? NSError
+            failure = "native_sample_append_failed: " + [error, cause].compactMap { $0 }.map { "\($0.domain) \($0.code)" }.joined(separator: ", ")
+            return
+        }
         var clock: [String: Any] = ["callbackSystemUptime": callbackUptime, "callbackHostClockSeconds": callbackHost,
                                   "nativePTS": timeJSON(pts), "status": status,
                                   "pixelWidth": CVPixelBufferGetWidth(image), "pixelHeight": CVPixelBufferGetHeight(image)]
@@ -229,7 +236,7 @@ private func finishLastPresentation(_ movie: URL, end: CMTime) async throws {
     let target = movie.deletingLastPathComponent().appendingPathComponent("capture-final.mov")
     let writer = try AVAssetWriter(outputURL: target, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: formats[0])
-    input.mediaTimeScale = 1_000_000_000
+    input.mediaTimeScale = 1_000_000
     writer.add(input)
     guard reader.startReading(), writer.startWriting() else { throw RecordingError("presentation_passthrough_start_failed") }
     writer.startSession(atSourceTime: .zero)
