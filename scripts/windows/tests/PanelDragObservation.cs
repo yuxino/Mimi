@@ -120,8 +120,8 @@ public sealed class MimiPanelDragObservation : IDisposable
         if(gui.Capture!=root||Category(GetForegroundWindow())!="root"||(GetAsyncKeyState(1)&0x8000)!=0)throw new InvalidOperationException("Release observation requires the owned released root move modal.");
         Point p;if(!GetCursorPos(out p))throw new InvalidOperationException("Could not observe physical release point.");
         long position=((long)(ushort)p.Y<<16)|(ushort)p.X;
-        Mark("diagnostic-nonclient-release");
-        if(!PostMessage(root,0x00A2,new IntPtr(2),new IntPtr(position)))throw new InvalidOperationException("Could not queue observed nonclient release.");
+        Mark("diagnostic-client-release-screen-point");
+        if(!PostMessage(root,0x0202,IntPtr.Zero,new IntPtr(position)))throw new InvalidOperationException("Could not queue observed nonclient release.");
         return true;
     }
     public IntPtr BackgroundWindow { get { return backplate; } }

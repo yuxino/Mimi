@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: Native short-gesture focus trace — nonclient-release observation bc43e23c
+run-name: Native short-gesture focus trace — client-release screen-point observation bc43e23c
 on:
   workflow_dispatch:
 permissions:
