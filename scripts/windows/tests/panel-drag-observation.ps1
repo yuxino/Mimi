@@ -6,7 +6,7 @@ function Start-PanelDragObservation([IntPtr]$Root,[IntPtr]$Control,[string]$Dire
     try {
         if (-not $env:MIMI_QA_FFMPEG -or -not (Test-Path -LiteralPath $env:MIMI_QA_FFMPEG -PathType Leaf)) { throw 'Verified QA ffmpeg executable is required.' }
         $r=$observer.Region;$record.Metadata.region=@($r.Left,$r.Top,$r.Width,$r.Height)
-        $path=Join-Path $Directory 'capture.mp4';$progress=Join-Path $Directory 'capture-progress.txt'
+        $path=Join-Path ([IO.Path]::GetTempPath()) ('mimi-panel-native-'+[guid]::NewGuid().ToString('N')+'.mp4');$record.Video=$path;$progress=Join-Path $Directory 'capture-progress.txt'
         $encoderArguments=@('-hide_banner','-loglevel','warning','-y','-f','gdigrab','-framerate','60','-draw_mouse','1',
             '-offset_x',[string]$r.Left,'-offset_y',[string]$r.Top,'-video_size',("{0}x{1}" -f $r.Width,$r.Height),'-i','desktop',
             '-an','-c:v','libx264','-preset','ultrafast','-tune','zerolatency','-bf','0','-crf','18','-pix_fmt','yuv420p',
@@ -37,6 +37,7 @@ function Start-PanelDragObservation([IntPtr]$Root,[IntPtr]$Control,[string]$Dire
         $record.Metadata.setupFailure=[string]$_
         [IO.File]::WriteAllText((Join-Path $Directory 'native-events.json'),(@{frequency=$observer.Frequency;samples=$observer.Snapshot();dropped=$observer.DroppedSamples}|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
         [IO.File]::WriteAllText((Join-Path $Directory 'capture-metadata.json'),($record.Metadata|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
+        if($record.Video -and (Test-Path -LiteralPath $record.Video)){Remove-Item -LiteralPath $record.Video -Force}
         $observer.Dispose();throw
     }
 }
@@ -70,10 +71,13 @@ function Stop-PanelDragVideo($Record) {
         $Record.Metadata.decodedFrames=$pts.Count;$Record.Metadata.firstPts=$pts[0];$Record.Metadata.lastPts=$pts[-1]
         $Record.Metadata.measuredFps=($pts.Count-1)/($pts[-1]-$pts[0]);$Record.Metadata.maxFrameGapSeconds=($gaps|Measure-Object -Maximum).Maximum
         $Record.Metadata.finalProgress=Read-SmokeMarker $Record.Progress
+        Move-Item -LiteralPath $Record.Video -Destination (Join-Path $Record.Directory 'capture.mp4')
+        $Record.Metadata.videoAccepted=$true
     } finally {
         if(-not $process.HasExited){$process.Kill();$null=$process.WaitForExit(2000)}
         $Record.Metadata.videoStopped=$true
         $process.Dispose()
+        if(-not $Record.Metadata.videoAccepted -and (Test-Path -LiteralPath $Record.Video)){Remove-Item -LiteralPath $Record.Video -Force}
     }
 }
 function Stop-PanelDragObservation($Record) {

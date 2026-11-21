@@ -55,7 +55,7 @@ jobs:
         run: |
           $source = @'
           $ErrorActionPreference = 'Stop'
-          foreach ($file in @('scripts/windows/tests/panel-blank-drag.ps1','scripts/windows/windows-overlay-interaction-smoke.ps1','scripts/windows/tests/localized-overlay-sessions.ps1')) {
+          foreach ($file in @('scripts/windows/tests/panel-blank-drag.ps1','scripts/windows/tests/panel-drag-observation.ps1','scripts/windows/windows-overlay-interaction-smoke.ps1','scripts/windows/tests/localized-overlay-sessions.ps1')) {
             $tokens=$null; $errors=$null
             $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
@@ -124,7 +124,7 @@ jobs:
             $data=Get-Content (Join-Path $directory 'panel-blank-drag.json') -Raw | ConvertFrom-Json
             if($data.fullWindows -ne $policy){throw 'The child did not observe the requested actual Windows drag policy.'}
             $meta=Get-Content (Join-Path $directory 'capture-metadata.json') -Raw | ConvertFrom-Json
-            if($data.observationFailure -or $meta.setupFailure -or $meta.droppedObserverSamples -ne 0){throw 'Native observation did not finalize cleanly.'}
+            if($data.observationFailure -or $meta.setupFailure -or $meta.videoAccepted -ne $true -or $meta.droppedObserverSamples -ne 0){throw 'Native observation did not finalize cleanly.'}
             $drops=@([regex]::Matches($meta.finalProgress,'(?m)^drop_frames=(\d+)\s*$'))
             if($drops.Count -eq 0 -or [int]$drops[-1].Groups[1].Value -ne 0){throw 'Actual captured video frames were dropped by the encoder.'}
             $result=@{name=$arm.name;fullWindows=$policy;exitCode=$code;failure=$data.failure;videoFrames=$meta.decodedFrames;videoFps=$meta.measuredFps;maxFrameGap=$meta.maxFrameGapSeconds}
