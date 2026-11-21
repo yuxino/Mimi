@@ -15,10 +15,11 @@ private struct ModeError: Error, CustomStringConvertible {
 
 private struct ModePreference: Decodable { let subtitle_display_mode: String }
 
-/// Use the public global shortcut and WebKit's real scrolling and button actions.
-/// The caller already owns this signed app, its private preferences and synthetic captions.
+/// Optionally cycle the public shortcut, then always scroll history and return
+/// with the first physical button click. The caller owns this signed fixture.
 func verifyDisplayModes(pid: pid_t, window: CGWindowID, bounds: CGRect, fixture: URL, output: URL,
-                        observe: () throws -> DisplayModeView) throws {
+                        cycleModes: Bool, observe: () throws -> DisplayModeView,
+                        afterPhysicalReturn: () throws -> Void) throws {
     func clock() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
     func waitFor(_ stage: String, mode: String, _ accepts: (DisplayModeView) -> Bool) throws -> DisplayModeView {
         let deadline = clock() + 5
@@ -43,6 +44,8 @@ func verifyDisplayModes(pid: pid_t, window: CGWindowID, bounds: CGRect, fixture:
     }
 
     guard let input = CGEventSource(stateID: .combinedSessionState) else { throw ModeError("No input event source") }
+    let pointer = try OverlayTestPointer()
+    defer { pointer.restore() }
     var lastKey: TimeInterval = 0
     func nextMode() throws {
         // The product ignores repeat shortcuts within 500 ms.
@@ -59,26 +62,27 @@ func verifyDisplayModes(pid: pid_t, window: CGWindowID, bounds: CGRect, fixture:
         up.post(tap: .cghidEventTap)
     }
 
-    try nextMode()
-    _ = try waitFor("original", mode: "original") { view in
-        view.full.contains("source") && ["translation", "oldTranslation", "firstTranslation"].allSatisfy { view.visible[$0] == nil }
+    if cycleModes {
+        try nextMode()
+        _ = try waitFor("original", mode: "original") { view in
+            view.full.contains("source") && ["translation", "oldTranslation", "firstTranslation"].allSatisfy { view.visible[$0] == nil }
+        }
+        try nextMode()
+        _ = try waitFor("translation", mode: "translation") { view in
+            view.full.contains("translation") && ["source", "oldSource", "firstSource"].allSatisfy { view.visible[$0] == nil }
+        }
+        try nextMode()
     }
-    try nextMode()
-    _ = try waitFor("translation", mode: "translation") { view in
-        view.full.contains("translation") && ["source", "oldSource", "firstSource"].allSatisfy { view.visible[$0] == nil }
-    }
-    try nextMode()
     let live: (DisplayModeView) -> Bool = { $0.full.isSuperset(of: ["source", "translation"]) && $0.backToLive == nil }
     let bilingual = try waitFor("bilingual", mode: "bilingual", live)
 
     guard let line = bilingual.visible["translation"] else { throw ModeError("Latest translated line missing") }
     let point = CGPoint(x: line.midX, y: line.midY)
-    guard let move = CGEvent(mouseEventSource: input, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left),
-          let wheel = CGEvent(scrollWheelEvent2Source: input, units: .pixel, wheelCount: 1,
+    guard let wheel = CGEvent(scrollWheelEvent2Source: input, units: .pixel, wheelCount: 1,
                               wheel1: Int32(ceil(bounds.height * 4)), wheel2: 0, wheel3: 0) else {
         throw ModeError("Could not produce the history scroll")
     }
-    move.post(tap: .cghidEventTap)
+    try pointer.move(point)
     var hit: AXUIElement?
     var hitPid: pid_t = -1
     guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit) == .success,
@@ -90,8 +94,18 @@ func verifyDisplayModes(pid: pid_t, window: CGWindowID, bounds: CGRect, fixture:
     let history = try waitFor("history", mode: "bilingual") {
         $0.full.isSuperset(of: ["firstSource", "firstTranslation"]) && $0.visible["source"] == nil && $0.backToLive != nil
     }
-    guard let button = history.backToLive, AXUIElementPerformAction(button, kAXPressAction as CFString) == .success else {
-        throw ModeError("Could not press Back to live")
+    guard let button = history.backToLive, let returnBounds = overlayTestFrame(button), bounds.contains(returnBounds) else {
+        throw ModeError("Visible Back to live button missing")
     }
+    let returnPoint = CGPoint(x: returnBounds.midX, y: returnBounds.midY)
+    try pointer.move(returnPoint)
+    let painted = try captureGlyphWitness(windowID: window, frame: bounds, crop: returnBounds.insetBy(dx: 4, dy: 4),
+                                          output: output, stage: "display-return-target")
+    try JSONSerialization.data(withJSONObject: painted.json, options: [.prettyPrinted, .sortedKeys])
+        .write(to: output.appendingPathComponent("display-return-target.json"), options: .atomic)
+    guard painted.visible else { throw ModeError("Back to live has no painted label at the physical target") }
+    try pointer.click(returnPoint, pid: pid, windowID: window, window: bounds, stage: "display-return", output: output,
+                      buttonName: "Back to live")
     _ = try waitFor("returned", mode: "bilingual") { live($0) && $0.visible["firstSource"] == nil }
+    try afterPhysicalReturn()
 }

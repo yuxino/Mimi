@@ -334,13 +334,16 @@ private enum TranslatingScroll {
         try verifyOverlayHoverControls(pid: pid, rootID: root.id, root: root.bounds,
                                        childID: island.id, compact: island.bounds, caption: caption.bounds,
                                        fixture: fixture, output: output)
-        if checkModes {
-            try verifyDisplayModes(pid: pid, window: root.id, bounds: root.bounds, fixture: fixture, output: output) {
-                let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12), inspectHistory: true)
-                return DisplayModeView(visible: value.lanes.mapValues(\.clipped), full: Set(value.lanes.filter { $0.value.full }.keys),
-                                       backToLive: value.backToLive)
-            }
-        }
+        try verifyDisplayModes(pid: pid, window: root.id, bounds: root.bounds, fixture: fixture, output: output,
+                               cycleModes: checkModes, observe: {
+            let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12), inspectHistory: true)
+            return DisplayModeView(visible: value.lanes.mapValues(\.clipped), full: Set(value.lanes.filter { $0.value.full }.keys),
+                                   backToLive: value.backToLive)
+        }, afterPhysicalReturn: {
+            try verifyOverlayHoverControls(pid: pid, rootID: root.id, root: root.bounds,
+                                           childID: island.id, compact: island.bounds, caption: caption.bounds,
+                                           fixture: fixture, output: output, entry: .fastAfterReturn)
+        })
         completed = true
     }
 }
