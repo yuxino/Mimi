@@ -4,6 +4,15 @@
 每轮记录核对日期、源码、官方来源、范围、结论及下一步；实际模型对比结果
 另入[集成实测记录](integration-runs.md)。本页不保存媒体、译文或账户信息。
 
+## 2026-11-21 — 豆包同传与 11 月 20 日到期项
+
+从 11 月 18 日的 `06f51c27` 到 `c134bd3b`，共享运行时和服务预设没有变化。本轮核对公开文档，未调用供应商或读取账户配置。
+
+- 豆包同传走 AST v2 的 `/api/v4/ast/v2/translate`，请求 `s2t` 和固定资源 `volc.service_type.10053`。原文与译文各有开始、更新、结束事件。11 月 13 日的升级指引适用于 RTC 应用，Mimi 直接连接 AST。服务端权重版本未知。[豆包同传协议](https://docs.volcengine.com/docs/doubao-voice/simultaneous-interpretation2-0-api-access-documentation?lang=zh) · [RTC 升级范围](https://docs.volcengine.com/docs/real-time-communication/real-time-call-subtitles-and-translation?lang=zh)
+- Azure 将 `gpt-realtime-translate` 和 `gpt-realtime-whisper` 的 **2026-05-06** 版本列为 **2027-11-09** 退役。Mimi 使用配置中的部署名，实际版本需由部署方确认。OpenAI 直连现用的两个专用模型未列入 2027 年 1、2 月的退役批次。Gemini 3.5 专用同传和识别仍未公布关闭日期。[Azure 退役表](https://learn.microsoft.com/en-us/azure/foundry/openai/concepts/model-retirement-schedule?view=foundry) · [OpenAI 弃用表](https://developers.openai.com/api/docs/deprecations) · [Gemini 生命周期](https://aistudio.google.com/docs/deprecations)
+- DeepL 已明确省略 `model_type` 时按 `latency_optimized` 目标路由，与 Mimi 的请求一致。具体模型由服务按语言对和请求选择，显式质量优先的收益仍待比较。xAI 的 `grok-voice-latest` 指向 3.0，独立识别已用 2.0。DeepSeek 上次公布的 `deepseek-flash` 版本为 V4.1-Flash-1017。[DeepL 选型规则](https://developers.deepl.com/docs/translate/understanding-model-types) · [xAI 更新](https://docs.x.ai/developers/release-notes) · [DeepSeek 更新](https://api-docs.deepseek.com/updates/)
+- 保留腾讯轻量版和 Qwen-MT Lite。下次同样本评测先比较腾讯轻量／标准版，再补 Qwen-MT 三档的术语样本、阿里 ASR 3.0／3.1 以及文字预设 `qwen-flash`／`qwen3.8-flash` 的长尾失败。账户可用性、实付费用、其余兼容预设和本地模型仍未覆盖，完整巡检继续待办。[腾讯翻译模型](https://cloud.tencent.com/document/product/1093/127565) · [Qwen-MT 选择](https://help.aliyun.com/zh/model-studio/machine-translation) · [阿里模型上架记录](https://help.aliyun.com/zh/model-studio/newly-released-models)
+
 ## 2026-11-18：v1.7.4 发布定向复核
 
 - 基于 `06f51c27`，保留当前模型与已保存配置。OpenAI 的[模型目录](https://developers.openai.com/api/docs/models)
