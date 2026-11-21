@@ -103,13 +103,13 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
             crop=@($shot.crop.Left,$shot.crop.Top,$shot.crop.Width,$shot.crop.Height)
             rootHwnd=$overlay.ToInt64(); controlHwnd=$Controls.ToInt64() }
         $metadata.hitRejectCounts=[ordered]@{}; $metadata.firstHitRejection=[ordered]@{}
-        $metadata.pixelRejected=0; $metadata.scanPoints=0; $metadata.blockedPoints=0; $metadata.blockedRects=@()
+        $metadata.pixelRejected=0; $metadata.scanPoints=0; $metadata.blockedPoints=0; $metadata.blockedRects=@(); $blockedElements=@()
         $blocked=@()
         foreach ($element in $dialog.FindAll($scope,[System.Windows.Automation.Condition]::TrueCondition)) {
             if ($element.Current.IsOffscreen -or $element.Current.ControlType -notin $forbidden) { continue }
             $b=$element.Current.BoundingRectangle
             if ($b.IsEmpty -or $b.Width -le 0 -or $b.Height -le 0) { continue }
-            $blocked += $b
+            $blocked += $b; $blockedElements += $element
             $metadata.blockedRects += @{type=$element.Current.ControlType.ProgrammaticName;bounds=@($b.Left,$b.Top,$b.Width,$b.Height);area=$b.Width*$b.Height;exclusions=0}
         }
         # Explicit observation points correspond to visually flat gaps in the
@@ -146,7 +146,71 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
             if ($range.Maximum-$range.Minimum -gt 6) { $metadata.pixelRejected=$metadata.pixelRejected+1; continue }
             $point=$candidate;$metadata.hit=$hit;$metadata.patch=@{width=9;height=9;min=$range.Minimum;max=$range.Maximum};break
         }
-        if ($null -eq $point) { throw 'No verifiable noninteractive, nontext, nonedge blank point was found.' }
+        $metadata.originalStrictPointAvailable=($null -ne $point)
+        # This separately named visual observation retains the original strict
+        # result above. Only the exact, publicly identified clipped help text
+        # may overlap this one independently checked middle blank point.
+        $expected=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'panel-blank-description.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($expected.clipPath -cne 'inset(50%)' -or $expected.ownerSize[0] -ne 1 -or $expected.ownerSize[1] -ne 1) { throw 'The independent clipped-description evidence is invalid.' }
+        $point=@{X=[int]($box.Left+160*$scale);Y=[int]($box.Top+160*$scale)}
+        if ($point.X -le $box.Left+16*$scale -or $point.X -ge $box.Right-16*$scale -or
+            $point.Y -le $box.Top+40*$scale -or $point.Y -ge $box.Bottom-40*$scale) { throw 'The middle blank point is near an edge.' }
+        $clip=[System.Windows.Rect]::new($expected.ownerRect[0],$expected.ownerRect[1],$expected.ownerRect[2],$expected.ownerRect[3])
+        if ($clip.Contains([System.Windows.Point]::new(160,160))) { throw 'The independently measured clipped description includes the point.' }
+        $overlap=@()
+        for ($i=0;$i -lt $blocked.Count;$i++) {
+            $b=$blocked[$i]
+            if ($point.X -ge $b.Left-5*$scale -and $point.X -le $b.Right+5*$scale -and
+                $point.Y -ge $b.Top-5*$scale -and $point.Y -le $b.Bottom+5*$scale) { $overlap += $i }
+        }
+        if ($overlap.Count -ne 1) { throw 'The middle point does not have exactly one identified auxiliary-text overlap.' }
+        $ghost=$blockedElements[$overlap[0]]
+        if ($ghost.Current.ControlType -ne $type::Text) { throw 'The middle point overlaps an interactive control.' }
+        $condition=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty,$expected.helpLabel)
+        $help=@($root.FindAll($scope,$condition) | Where-Object { $_.Current.ControlType -eq $type::Button -and -not $_.Current.IsOffscreen })
+        if ($help.Count -ne 1) { throw 'The exact public audio-help owner is ambiguous.' }
+        $help=$help[0];$hb=$help.Current.BoundingRectangle;$gb=$ghost.Current.BoundingRectangle
+        if ($gb.Left -ne $hb.Left -or $gb.Top -ne $hb.Top -or $gb.Width -le $box.Width -or $gb.Height -gt $hb.Height) { throw 'The overlapping text is not aligned with the known clipped help owner.' }
+        function Normalize-BlankDescription([string]$Text) { return [regex]::Replace($Text,'\s+',' ').Trim() }
+        $actual=Normalize-BlankDescription $ghost.Current.Name
+        $public=Normalize-BlankDescription $expected.text
+        $publicMatch=($actual -ceq $public)
+        $descriptionProperties=@();$associatedMatch=$false
+        foreach ($property in $help.GetSupportedProperties()) {
+            if ($property.ProgrammaticName -notmatch '(HelpText|FullDescription|DescribedBy)Property$') { continue }
+            $value=$help.GetCurrentPropertyValue($property,$true)
+            $propertyMatches=$false
+            if ($value -is [string]) { $propertyMatches=(Normalize-BlankDescription $value) -ceq $actual }
+            elseif ($value -is [System.Windows.Automation.AutomationElement[]]) {
+                $propertyMatches=@($value | Where-Object { $_.Equals($ghost) -or (Normalize-BlankDescription $_.Current.Name) -ceq $actual }).Count -eq 1
+            }
+            $descriptionProperties += @{property=$property.ProgrammaticName;available=($value -ne [System.Windows.Automation.AutomationElement]::NotSupported);matchesAuxiliaryText=$propertyMatches}
+            if ($propertyMatches) { $associatedMatch=$true }
+        }
+        if (-not $publicMatch) { throw 'The overlapping text does not equal the complete public offline audio-help description.' }
+        $hit=Read-BlankHit $point.X $point.Y
+        if ($null -eq $hit -or $hit.leafType -cne 'ControlType.Group') { throw 'The middle point did not hit the same noninteractive native group.' }
+        $element=[System.Windows.Automation.AutomationElement]::FromPoint([System.Windows.Point]::new($point.X,$point.Y))
+        for ($i=0;$i -lt 24 -and $null -ne $element;$i++) {
+            $isPanel=$element.Equals($dialog)
+            $allowed=@([System.Windows.Automation.ScrollItemPattern]::Pattern)
+            if ($isPanel) { $allowed += [System.Windows.Automation.WindowPattern]::Pattern }
+            foreach ($pattern in $element.GetSupportedPatterns()) { if ($pattern -notin $allowed) { throw 'The middle point has an actionable UIA pattern.' } }
+            if ($isPanel) { break }
+            $element=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($element)
+        }
+        if ($null -eq $element -or -not $element.Equals($dialog)) { throw 'The middle group does not belong to the exact same dialog.' }
+        $patch=[MimiPointerSmoke+PixelPatch]::new($point.X-4,$point.Y-4,9,9).Read()
+        $luma=@($patch | ForEach-Object { (($_ -band 255)+(($_ -shr 8)-band 255)+(($_ -shr 16)-band 255))/3.0 })
+        $range=$luma | Measure-Object -Minimum -Maximum
+        if ($range.Maximum-$range.Minimum -gt 6) { throw 'The middle point is not visibly flat under the original pixel threshold.' }
+        $metadata.scenario='visible-middle-blank-horizontal-drag'
+        $metadata.visibleBlank=@{local=@(160,160);nativeHit=Trace-BlankPoint $point.X $point.Y;uniqueTextOverlap=$true
+            completePublicDescriptionMatch=$publicMatch;descriptionLength=$actual.Length;nativeAssociationMatched=$associatedMatch;associationProperties=$descriptionProperties
+            helpBounds=@($hb.Left,$hb.Top,$hb.Width,$hb.Height);auxiliaryBounds=@($gb.Left,$gb.Top,$gb.Width,$gb.Height)
+            offlineOwnerRect=$expected.ownerRect;offlineClipPath=$expected.clipPath;offlineReference=$expected.sourceReference}
+        $metadata.patch=@{width=9;height=9;min=$range.Minimum;max=$range.Maximum}
+
         [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Hold verified panel blank space')
         $metadata.point=@($point.X,$point.Y);$metadata.before=Read-BlankGeometry
         Start-Sleep -Milliseconds 400
@@ -217,7 +281,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.final=Read-BlankGeometry
         Assert-BlankGeometry $metadata.final 48
         $metadata.passed=$true
-        Write-Host "Panel blank drag passed: horizontal=48 vertical=0; same root/child HWNDs and sizes; real selected menu option clicked; source=en target=zh_tw; Settings hidden/listening."
+        Write-Host "Visible middle blank observation passed: horizontal=48 vertical=0; same root/child HWNDs and sizes; real selected menu option clicked; source=en target=zh_tw; Settings hidden/listening."
     } catch {
         $metadata.passed=$false;$metadata.failure=[string]$_
         try { Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-failed.png' } catch { Write-Warning 'Guarded synthetic panel failure screenshot unavailable.' }

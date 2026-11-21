@@ -1,0 +1,23 @@
+{
+  "helpLabel": "Audio input · Show help",
+  "text": "System audio · Waiting for audio\nCaptures sound played by applications.\nMicrophone · Off\nKeep at least one input on. Enable the other first to switch sources.\nSwitching turns recording off. Paused subtitles stay paused.\nBoth inputs have separate recognition and usage. Echo cancellation runs when both are on. Use headphones if speaker audio is still picked up.",
+  "textSha256": "be699374c06d44c65885e93da740c424ef80010307796553656b9762bfa423a2",
+  "ownerSize": [
+    1,
+    1
+  ],
+  "ownerRect": [
+    84.1875,
+    160,
+    1,
+    1
+  ],
+  "clipPath": "inset(50%)",
+  "sourceReference": {
+    "productSource": "9ee07ad09f21fa7e3d7de794c2b5ceb317a7eb1f",
+    "offlineSource": "e0c3c667",
+    "nativeCropSha256": "6eeda49301001785c9e9451e2aa45c65b85ede9d18776abca65d39efb1a0200f",
+    "descriptionSha256": "be699374c06d44c65885e93da740c424ef80010307796553656b9762bfa423a2",
+    "evidenceKind": "independent same-layout DOM and byte-identical native screenshot; not runtime Windows DOM"
+  }
+}

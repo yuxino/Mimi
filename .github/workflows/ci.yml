@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: One native panel blank drag — verified 9ee0 Portable
+run-name: One native middle visual blank drag — verified 9ee0 Portable
 on:
   workflow_dispatch:
 permissions:
