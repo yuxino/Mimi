@@ -250,17 +250,19 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
 
     private fun tile(image: String? = null) {
         shell("cmd statusbar expand-settings")
-        await { systemNode { it.viewIdResourceName?.endsWith("/tile_label") == true } != null }
+        fun pager() = systemNode { it.viewIdResourceName?.endsWith("/qs_pager") == true }
+        fun page() = systemNode { it.viewIdResourceName?.endsWith("/footer_page_indicator") == true }?.contentDescription
+        // The compact shade also exposes tile_label before the expanded pager accepts input.
+        await { pager() != null && page() != null }
         val name = label(R.string.shortcut_tile_label)
         fun tileVisible() = systemNode { it.text?.toString() == name } != null
         // SystemUI retains its last page. Navigate the actual pager and wait for each settled page.
         for (direction in listOf(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) {
             while (!tileVisible()) {
-                val pager = systemNode { it.viewIdResourceName?.endsWith("/qs_pager") == true } ?: break
-                if (pager.actionList.none { it.id == direction }) break
-                fun page() = systemNode { it.viewIdResourceName?.endsWith("/footer_page_indicator") == true }?.contentDescription
+                val visiblePager = checkNotNull(pager())
+                if (visiblePager.actionList.none { it.id == direction }) break
                 val previous = page()
-                check(pager.performAction(direction)) { "Quick Settings refused to change page" }
+                check(visiblePager.performAction(direction)) { "Quick Settings refused to change page" }
                 await { page()?.let { it != previous } == true }
             }
             if (tileVisible()) return tapSystem(name, image)
