@@ -154,15 +154,16 @@ private enum HoverInput {
             m.merge(more) { _, new in new }
             events.append(m)
         }
-        func phase(_ name: String, _ expectation: String, _ controls: String, pendingPaint: String? = nil, delay: Double = 0.35, _ operation: @MainActor () throws -> Void = {}) throws {
+        func phase(_ name: String, _ expectation: String, _ controls: String, pendingPaint: String? = nil, delay: Double = 0.35, _ operation: (@MainActor () throws -> Void)? = nil) throws {
             guard recorder.isRunning else { throw LayoutError("recorder_exited_before_\(name)") }
             let start = now
             mark("begin-" + name)
-            try operation()
+            try operation?()
             Thread.sleep(forTimeInterval: delay)
             let sampled = try current()
             mark("end-" + name, sampled)
             var result: [String: Any] = ["name": name, "start": start, "end": now, "expectation": expectation, "controls": controls]
+            result["observationOnly"] = operation == nil
             if let pendingPaint { result["pendingPaint"] = pendingPaint }
             phases.append(result)
             try save()
@@ -463,9 +464,12 @@ private enum HoverInput {
         let latestTranslation = layout ? "translation" : "t20"
         let earlySource = layout ? "firstSource" : "s01"
         let earlyTranslation = layout ? "firstTranslation" : "t01"
+        func firstTranslationWhileReading(_ s: Sample) -> Bool {
+            s.lanes[earlyTranslation]?.full == true && s.lanes[latestSource] == nil &&
+                s.lanes[latestTranslation] == nil && s.backToLive != nil
+        }
         func reading(_ s: Sample) -> Bool {
-            s.lanes[earlySource]?.full == true && s.lanes[earlyTranslation]?.full == true &&
-                s.lanes[latestSource] == nil && s.lanes[latestTranslation] == nil && s.backToLive != nil
+            s.lanes[earlySource]?.full == true && firstTranslationWhileReading(s)
         }
         func live(_ s: Sample) -> Bool {
             s.lanes[latestSource]?.full == true && s.lanes[latestTranslation]?.full == true &&
@@ -554,12 +558,15 @@ private enum HoverInput {
         try still("reading-while-hovered", "visible")
         try phase("pointer-leaves-while-reading", "free", "ignore") { try move(outside) }
         try still("reading-while-quiet", "hidden")
-        let quiet = try wait("quiet-return-button", reading)
-        guard let button = quiet.backToLive, let quietBounds = frame(of: button) else { throw LayoutError("quiet_button_geometry_missing") }
+        // Hiding the toolbar can move the first source above the viewport; the same full translation anchors both views.
+        let quiet = try wait("quiet-return-button", firstTranslationWhileReading)
+        guard let anchor = quiet.lanes[earlyTranslation], let button = quiet.backToLive,
+              let quietBounds = frame(of: button) else { throw LayoutError("quiet_return_anchor_or_button_geometry_missing") }
         let remembered = center(quietBounds)
         outcome["quietButtonBounds"] = rect(quietBounds)
         outcome["rememberedClickPoint"] = ["x": remembered.x, "y": remembered.y]
-        mark("quiet-return-target-measured", quiet, ["buttonBounds": rect(quietBounds)])
+        mark("quiet-return-target-measured", quiet, ["buttonBounds": rect(quietBounds),
+             "historyAnchorLane": earlyTranslation, "historyAnchorBounds": rect(anchor.clipped)])
         try photo("return-quiet")
         try phase("pointer-to-remembered-return-target", "free", "ignore", delay: 0.12) { try move(remembered) }
         let hovered = try current()
