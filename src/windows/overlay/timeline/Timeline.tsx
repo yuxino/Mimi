@@ -128,9 +128,8 @@ export const Timeline = memo(function Timeline({
       const element = containerRef.current;
       if (!element) return;
       traceReact(event, element);
-      const wasFollowing = scroll.isFollowing();
       scroll.pointerUp(element);
-      if (wasFollowing !== scroll.isFollowing()) setReadingHistory(!scroll.isFollowing());
+      setReadingHistory(!scroll.isFollowing());
     };
     window.addEventListener("pointerup", release, true);
     window.addEventListener("pointercancel", release, true);
@@ -252,7 +251,7 @@ export const Timeline = memo(function Timeline({
       }}
       onScroll={(event) => {
         scroll.scrolled(event.currentTarget);
-        setReadingHistory(!scroll.isFollowing());
+        if (!scroll.isDraggingScrollbar() || !scroll.isFollowing()) setReadingHistory(!scroll.isFollowing());
       }}
       className={`overlay-timeline ${timelineClassName(blendsWithBackground)}`}
       style={{

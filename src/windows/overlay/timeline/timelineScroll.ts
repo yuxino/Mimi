@@ -119,6 +119,10 @@ export class TimelineScroll {
     }
   }
 
+  isDraggingScrollbar(): boolean {
+    return this.userScrolling?.kind === "scrollbar";
+  }
+
   isFollowing(): boolean {
     return this.following;
   }
