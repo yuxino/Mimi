@@ -76,7 +76,7 @@ private func captionFrames(pid: pid_t, frame: CGRect) throws -> [(ax: CGRect, cr
     return found.sorted { $0.crop.width * $0.crop.height < $1.crop.width * $1.crop.height }
 }
 
-private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGImage {
+private func readWindowImage(_ windowID: CGWindowID, _ frame: CGRect, isolateAttachedWindows: Bool = false) throws -> CGImage {
     _ = try windowInfo(windowID, frame)
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("mimi-caption-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -84,7 +84,7 @@ private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGIma
     let path = directory.appendingPathComponent("window.png")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-    process.arguments = ["-x", "-o", "-l\(windowID)", path.path]
+    process.arguments = ["-x", "-o"] + (isolateAttachedWindows ? ["-a"] : []) + ["-l\(windowID)", path.path]
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
     let finished = DispatchSemaphore(value: 0)
@@ -105,6 +105,11 @@ private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGIma
           let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
     else { throw CaptionCaptureError.failed("caption_single_window_capture_failed") }
     _ = try windowInfo(windowID, frame)
+    return image
+}
+
+private func readWindow(_ windowID: CGWindowID, _ frame: CGRect) throws -> CGImage {
+    let image = try readWindowImage(windowID, frame)
     let sx = CGFloat(image.width) / frame.width
     let sy = CGFloat(image.height) / frame.height
     guard sx >= 1, sy >= 1, abs(sx - sy) <= max(1 / frame.width, 1 / frame.height) else {
@@ -249,4 +254,58 @@ func locateCaption(pid: pid_t, windowID: CGWindowID, frame: CGRect, output: URL,
 /// native drag; the same windowID is captured without reading any other app.
 func captureFrame(windowID: CGWindowID, frame: CGRect, crop: CGRect, output: URL, stage: String) throws {
     try save(readWindow(windowID, frame), frame: frame, crop: crop, output: output, stage: stage)
+}
+
+struct GlyphWitness {
+    let point: CGPoint?
+    let neighborPixels: Int
+    let background: Int
+    let maxAlpha: UInt8
+    let width: Int
+    let height: Int
+    var visible: Bool { point != nil && neighborPixels >= 8 }
+    var json: [String: Any] {
+        ["visibleGlyph": visible, "neighborPixels": neighborPixels, "background": background,
+         "maxAlpha": maxAlpha, "pixelWidth": width, "pixelHeight": height]
+    }
+}
+
+/// Inspect the requested window alone, including a detached child. AX supplies
+/// the crop, but only contrasting neutral glyph pixels count as painted content.
+/// A completely transparent child can be returned as a trimmed 1x1 image; keep
+/// that original evidence rather than substituting its opaque parent or screen.
+func captureGlyphWitness(windowID: CGWindowID, frame: CGRect, crop: CGRect, output: URL, stage: String) throws -> GlyphWitness {
+    let image = try readWindowImage(windowID, frame, isolateAttachedWindows: true)
+    guard stage.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil,
+          let destination = CGImageDestinationCreateWithURL(output.appendingPathComponent(stage + ".png") as CFURL,
+                                                           UTType.png.identifier as CFString, 1, nil) else {
+        throw CaptionCaptureError.failed("control_witness_destination_invalid")
+    }
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { throw CaptionCaptureError.failed("control_witness_write_failed") }
+    return try glyphWitness(in: image, frame: frame, crop: crop)
+}
+
+func glyphWitness(in image: CGImage, frame: CGRect, crop: CGRect) throws -> GlyphWitness {
+    let sx = CGFloat(image.width) / frame.width, sy = CGFloat(image.height) / frame.height
+    if sx >= 1, sy >= 1, abs(sx - sy) <= max(1 / frame.width, 1 / frame.height) {
+        let result = try stroke(in: image, frame: frame, crop: crop)
+        return GlyphWitness(point: result.point, neighborPixels: result.neighborHits, background: result.background,
+                            maxAlpha: result.maxAlpha, width: image.width, height: image.height)
+    }
+    // Only transparency explains an accepted size mismatch. An opaque or
+    // partly painted cropped window must fail instead of being called hidden.
+    var rgba = [UInt8](repeating: 0, count: image.width * image.height * 4)
+    try rgba.withUnsafeMutableBytes { bytes in
+        guard let context = CGContext(data: bytes.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
+                                      bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else {
+            throw CaptionCaptureError.failed("control_witness_alpha_buffer_failed")
+        }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    }
+    guard stride(from: 3, to: rgba.count, by: 4).allSatisfy({ rgba[$0] == 0 }) else {
+        throw CaptionCaptureError.failed("control_witness_nontransparent_scale_mismatch")
+    }
+    return GlyphWitness(point: nil, neighborPixels: 0, background: 0, maxAlpha: 0, width: image.width, height: image.height)
 }

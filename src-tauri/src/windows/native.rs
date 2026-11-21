@@ -183,6 +183,15 @@ pub(in crate::windows) fn show_overlay_control_window(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
 ) {
+    if window.is_visible().unwrap_or(false) {
+        // AppKit can order in the child together with its parent. That path
+        // skips our explicit show, so the compact window still needs its
+        // tracking area to receive the first mouse entry while inactive.
+        #[cfg(target_os = "macos")]
+        macos_pointer::install(window);
+        return;
+    }
+
     #[cfg(not(target_os = "macos"))]
     {
         let _ = app;

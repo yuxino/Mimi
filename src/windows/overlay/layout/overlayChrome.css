@@ -112,9 +112,14 @@
   .overlay-action-group + .mimi-tooltip-trigger::before { background: ButtonText; }
 }
 
-.overlay-expanded-canvas:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
-  --overlay-caption-inset: 60px;
-  --overlay-status-top: 43px;
+/* Reserve the status line while controls are visible so individual requests
+   cannot resize the viewport as a sentence streams. */
+.overlay-expanded-canvas:has(.overlay-status-row[data-translation-status-space],
+  .overlay-status-row [role="status"]) {
+  --overlay-status-height: var(--overlay-detail-height, 20px);
+}
+.overlay-expanded-canvas:has(.overlay-action-feedback, .overlay-status-row .overlay-latency:not(.overlay-hover-control) [role="status"]) {
+  --overlay-status-height: 20px;
 }
 
 /* A nonactivating WebView can lose focus while still hovered. The browser's
@@ -130,14 +135,10 @@
     pointer-events: none;
   }
 
-  /* A quiet caption view gives back the toolbar's space. Only visible
-     feedback or a way back to live needs a slim status line at the top. */
+  /* In quiet mode ordinary translation work gives both lines back to captions.
+     An actionable error or a session action still has its own visible line. */
   .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions] {
-    --overlay-caption-inset: 0px;
-  }
-
-  .overlay-surface:not(:hover:not([data-overlay-pointer-tracked]), [data-overlay-hover], [data-overlay-peer-hover], [data-overlay-chrome-pinned], [data-overlay-island-pinned], [data-overlay-keyboard-focus]:has(:focus-visible)) .overlay-expanded-canvas[data-overlay-has-captions]:has(.overlay-status-row :is([role="status"], [role="alert"], .overlay-return-to-live)) {
-    --overlay-caption-inset: 20px;
-    --overlay-status-top: 3px;
+    --overlay-toolbar-height: 0px;
+    --overlay-detail-height: 0px;
   }
 }

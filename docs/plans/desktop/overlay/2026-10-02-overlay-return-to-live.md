@@ -96,13 +96,19 @@ outline instead of WebKit's default focus ring, with a forced-colors fallback.
 
 ## Geometry and copy
 
-Use the existing status band with a small neutral text button on its right.
-Timing or action-error feedback flexes into the remaining width and is still
-available. The active band remains 61px high; its status row starts at 47px and
-is 14px high, below the native language capsule and above the subtitle body.
-This preserves the 51px bilingual body budget at the native 360×136 minimum.
-The button has a visible focus outline and ordinary hover/pressed affordances.
-Idle history uses the existing smaller band's status position.
+While reading history, place the return button just below the scrollable text,
+aligned to the right and inset from the resize handle. Its position stays fixed
+when the pointer enters and reveals the top controls. A reader can move straight
+from outside the window to the visible button and click it once. The footer is
+present only while reading, including in Immersive Mode. The normal live caption
+viewport uses the available height. Timing and action feedback use the top band
+independently. The return button retains its keyboard focus outline.
+
+Keep the reading footer in place when a held scrollbar thumb reaches the bottom.
+Removing it during the gesture changes the track length under the pointer. On
+release, use the final position to show live captions or keep the reader in
+history. Moving the thumb away from the bottom before release keeps the same
+reading layout throughout.
 
 Copy is synchronized in Chinese, English, and Japanese: “回到实时”, “Back to
 live”, and “リアルタイムへ”. There is no automatic jump on resume and no new mode.

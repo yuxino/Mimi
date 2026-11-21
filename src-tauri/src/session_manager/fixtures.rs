@@ -1,6 +1,7 @@
 //! Credential-free native UI fixtures. These paths never start capture or provider connections.
 
 mod caption_history;
+mod translation_layout;
 
 use super::publication::{SessionStateEvent, StatusPayload};
 use super::SessionManager;
@@ -116,6 +117,10 @@ impl SessionManager {
 
     pub(super) fn establish_ui_test_session(self: &Arc<Self>) -> Result<(), String> {
         let caption_history = caption_history::requested_directory()?;
+        let translation_layout = translation_layout::requested_directory()?;
+        if caption_history.is_some() && translation_layout.is_some() {
+            return Err("ui_test_fixture_conflict".into());
+        }
         self.cancel_translation_timeout();
         self.clear_active_settings();
         let generation = self.active_generation.load(Ordering::SeqCst);
@@ -157,6 +162,16 @@ impl SessionManager {
             .lock()
             .unwrap()
             .set_audio_input(preferences.audio_input);
+        if let Some(directory) = translation_layout {
+            if preferences.audio_input != AudioInput::System
+                || preferences.retain_session_history
+                || preferences.record_session_audio
+            {
+                return Err("ui_test_translation_layout_requires_unrecorded_system_audio".into());
+            }
+            self.start_ui_test_translation_layout(directory, generation, attempt)?;
+            return Ok(());
+        }
         if let Some(directory) = caption_history {
             self.start_ui_test_caption_history(
                 directory,

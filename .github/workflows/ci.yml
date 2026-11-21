@@ -295,6 +295,10 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Caption motion geometry in Chromium
+        timeout-minutes: 3
+        run: xvfb-run -a node scripts/frontend/check-caption-motion.mjs
+
       - name: Test quick-check argument safety
         run: bash scripts/development/check-quick-test.sh
 

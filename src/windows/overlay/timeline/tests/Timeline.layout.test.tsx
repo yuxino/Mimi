@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Timeline } from "../Timeline";
 import type { SubtitleBlock } from "../overlayModel";
@@ -82,8 +83,18 @@ it("keeps full confirmed history open when sentence dividers are toggled", async
   expect(timeline.querySelector(".subtitle-separator")).toBeNull();
 });
 
-it("uses only the actual line height for a short translation, then bounds later growth", async () => {
-  const timeline = await render([{ ...confirmed, source: null, translation: "短句" }]);
+it("starts short text in normal flow before measured clipping bounds later growth", async () => {
+  const blocks = [{ ...confirmed, source: null, translation: "短句" }];
+  const initial = document.createElement("div");
+  initial.innerHTML = renderToStaticMarkup(<Timeline blocks={blocks} fontSize={18}
+    alignment="center" color="white" displayMode="bilingual" motionEnabled={false} />);
+  const unmeasured = initial.querySelector<HTMLElement>('[aria-label="短句"]')!;
+  expect(unmeasured.style.height).toBe("");
+  expect(Number.parseFloat(unmeasured.style.maxHeight)).toBeGreaterThan(24);
+  expect((unmeasured.firstElementChild as HTMLElement).style.position).not.toBe("absolute");
+  expect(unmeasured.textContent).toBe("短句");
+
+  const timeline = await render(blocks);
   let viewport = timeline.querySelector<HTMLElement>('[aria-label="短句"]')!;
   expect(viewport.style.height).toBe("24px"); // Two reserved lines would waste another 24px.
   measuredHeight = 240;
@@ -91,6 +102,7 @@ it("uses only the actual line height for a short translation, then bounds later 
   viewport = timeline.querySelector<HTMLElement>('[aria-label="短句"]')!;
   expect(viewport.style.height).toBe("72px");
   expect(viewport.firstElementChild?.textContent).toBe("短句");
+  expect((viewport.firstElementChild as HTMLElement).style.bottom).toBe("0px");
 });
 
 it.each(["Wait... really?", "等等……真的吗？", "待って…本当？", "잠깐... 정말?"])("keeps plain %s text and measured lane heights stable as streaming settles", async (source) => {

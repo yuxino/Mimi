@@ -124,6 +124,10 @@ it("recovers Windows same-point native reentry without DOM entry or repeated pee
   await report("island", false);
   await tick(160);
   expect(shown("overlay") || shown("island")).toBe(false);
+  // WebView2 can report the next entry between Windows' native pointer samples.
+  await move("island", "pointerenter");
+  expect(surface("island").hasAttribute(ownHover)).toBe(true);
+  expect(surface("overlay").hasAttribute(peerHover)).toBe(true);
 });
 
 it.each([true, false])("exposes keyboard focus only while the document has focus (share=%s)", async share => {
@@ -219,4 +223,26 @@ it("lets confirmed native departure cancel stale detached DOM hover", async () =
   await act(async () => nativePointer.island?.(false));
   await tick(160);
   expect(shown("island") || shown("overlay")).toBe(false);
+});
+
+it("keeps both controls hidden when WebKit replays entry after the caption window regains focus", async () => {
+  await act(async () => root.render(<><Surface kind="overlay" /><Surface kind="island" /></>));
+  await move("island", "pointerenter");
+  expect(shown("overlay") && shown("island")).toBe(true);
+  await act(async () => {
+    nativePointer.overlay?.(false);
+    nativePointer.island?.(false);
+  });
+  await tick(160);
+  transport.emitTo.mockClear();
+
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await move("overlay", "pointerenter");
+  await move("overlay", "pointermove");
+  expect(shown("overlay") || shown("island")).toBe(false);
+  expect(transport.emitTo).not.toHaveBeenCalled();
+
+  await act(async () => nativePointer.overlay?.(true));
+  expect(surface("overlay").hasAttribute(ownHover)).toBe(true);
+  expect(surface("island").hasAttribute(peerHover)).toBe(true);
 });

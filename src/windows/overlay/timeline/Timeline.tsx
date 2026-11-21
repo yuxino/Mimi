@@ -126,9 +126,9 @@ export const Timeline = memo(function Timeline({
     const release = () => {
       const element = containerRef.current;
       if (!element) return;
-      const wasFollowing = scroll.isFollowing();
+      const wasDraggingScrollbar = scroll.isDraggingScrollbar();
       scroll.pointerUp(element);
-      if (wasFollowing !== scroll.isFollowing()) setReadingHistory(!scroll.isFollowing());
+      if (wasDraggingScrollbar) setReadingHistory(!scroll.isFollowing());
     };
     window.addEventListener("pointerup", release, true);
     window.addEventListener("pointercancel", release, true);
@@ -246,7 +246,10 @@ export const Timeline = memo(function Timeline({
       }}
       onScroll={(event) => {
         scroll.scrolled(event.currentTarget);
-        setReadingHistory(!scroll.isFollowing());
+        // Hiding the reading footer lengthens the track under the held thumb.
+        // Publish the return to live after release, when the track can resize.
+        const following = scroll.isFollowing();
+        if (!following || !scroll.isDraggingScrollbar()) setReadingHistory(!following);
       }}
       className={`overlay-timeline ${timelineClassName(blendsWithBackground)}`}
       style={{
@@ -488,8 +491,7 @@ interface CompactLaneProps {
  * A lane that keeps only its newest `lines` visual lines. The full text is laid
  * out by the browser and anchored to the bottom, so the line breaker, CJK
  * wrapping, and font metrics stay the platform's job; the viewport clips the
- * old content from the top. A continuation marker appears only once the text
- * actually overflows, and the accessible name stays the full sentence.
+ * old content from the top. The accessible name stays the full sentence.
  */
 function CompactLane({
   text,
@@ -520,11 +522,15 @@ function CompactLane({
       aria-hidden={hidden || undefined}
       hidden={hidden}
       style={{
-        display: hidden ? "none" : undefined,
+        display: hidden ? "none" : "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
         position: "relative",
-        // Reserve the limit only until the browser supplies its first layout;
-        // short sentences then take exactly the space their actual lines need.
-        height: innerHeight > 0 ? Math.min(innerHeight, maximumHeight) : maximumHeight,
+        // Before measurement, normal flow gives short text its actual height;
+        // the same bottom-aligned limit already clips long text from the top.
+        // Later measurements retain the existing explicit clipping/glide path.
+        height: innerHeight > 0 ? Math.min(innerHeight, maximumHeight) : undefined,
+        maxHeight: maximumHeight,
         overflow: "hidden",
       }}
     >
@@ -533,7 +539,8 @@ function CompactLane({
         className={entering ? "subtitle-lane" : undefined}
         aria-hidden="true"
         style={{
-          position: "absolute",
+          position: innerHeight > 0 ? "absolute" : "relative",
+          flexShrink: 0,
           left: 0,
           right: 0,
           // Text starts on the first line while it fits; once it fills the
@@ -566,8 +573,8 @@ function useLaneOverflow(viewportRef: RefObject<HTMLDivElement | null>, onMeasur
       if (inner === null) return;
       const height = Math.round(inner.getBoundingClientRect().height);
       reportHeight.current?.(height);
-      // Two pixels of hysteresis keep the marker from flickering on the exact
-      // boundary while the text streams in.
+      // Two pixels of tolerance avoid switching the clipping alignment on
+      // the exact boundary while the text streams in.
       const overflowed = height > viewport.clientHeight + 2;
       setMeasured(previous => previous.innerHeight === height && previous.overflowed === overflowed
         ? previous

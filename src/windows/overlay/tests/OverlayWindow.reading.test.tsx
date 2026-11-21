@@ -136,7 +136,7 @@ it("opens an unconfirmed long pair through pause and mode changes and returns it
   expect(useStore.getState().session.subtitles.history).toEqual([]);
 });
 
-it.each(["zh", "en", "ja"] as const)("keeps the return action beside translation status and actionable errors at 360×136 in %s", async language => {
+it.each(["zh", "en", "ja"] as const)("keeps return to live below the timeline alongside status and error feedback at the minimum width in %s", async language => {
   vi.stubGlobal("innerWidth", 360); setStoredUiLanguage(language);
   useStore.setState(state => ({
     stop: vi.fn().mockRejectedValue(new Error("synthetic-action-failure")),
@@ -147,8 +147,7 @@ it.each(["zh", "en", "ja"] as const)("keeps the return action beside translation
   expect(returnButton()?.textContent).toBe({ zh: "回到实时", en: "Back to live", ja: "リアルタイムへ" }[language]);
   expect(row.querySelector('[role="status"]')?.textContent).toBe(I18N.overlay.translating);
   expect(row.querySelector(".overlay-latency__measurement")).toBeNull();
-  expect(returnButton()?.closest(".overlay-status-row")).toBe(row);
-  expect(timeline().contains(returnButton())).toBe(false);
+  expect(timeline().nextElementSibling).toBe(returnButton());
   await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.overlay.closeSubtitles}"]`)!.click());
   expect(row.querySelector('[role="alert"]')?.textContent).toBe(I18N.overlay.controlActionFailed);
   expect(returnButton()).not.toBeNull();

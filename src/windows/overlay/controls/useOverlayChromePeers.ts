@@ -2,6 +2,7 @@ import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
 type ChromeSurface = "overlay" | "island";
+type NativePointerSource = "appkit" | "windows";
 type HoverMessage = { kind: "ready" | "visibility"; visible: boolean };
 
 const HOVER_EVENT = "overlay-chrome-hover";
@@ -25,7 +26,7 @@ export function useOverlayChromePeers(
     const peerWindow = { kind: "WebviewWindow", label: WINDOW_LABEL[surface === "overlay" ? "island" : "overlay"] } as const;
     let domInside = element.matches(":hover");
     let nativeInside = false;
-    let receivedNativeMotion = false;
+    let nativeTracking: NativePointerSource | undefined;
     let pointerVisible = false;
     let leaveTimer: number | undefined;
     let disposed = false;
@@ -73,12 +74,10 @@ export function useOverlayChromePeers(
       }
     };
 
-    const setNativeInside = (inside: boolean) => {
-      if (receivedNativeMotion && nativeInside === inside && (inside || !domInside)) return;
-      if (!receivedNativeMotion) {
-        receivedNativeMotion = true;
-        element.setAttribute("data-overlay-pointer-tracked", "");
-      }
+    const setNativeInside = (inside: boolean, source: NativePointerSource) => {
+      if (nativeTracking === source && nativeInside === inside && (inside || !domInside)) return;
+      if (!nativeTracking) element.setAttribute("data-overlay-pointer-tracked", "");
+      nativeTracking = source;
       nativeInside = inside;
       // AppKit has verified departure even if a non-key WebView kept its
       // old :hover state or never delivered a DOM leave after resizing.
@@ -86,7 +85,9 @@ export function useOverlayChromePeers(
       updatePointer();
     };
     const enter = (event: PointerEvent) => {
-      if (event.pointerType === "touch" || domInside) return;
+      // After a panel closes, WebKit can replay entry as focus returns to the
+      // caption window. AppKit's tracking area reports actual re-entry itself.
+      if (nativeTracking === "appkit" || event.pointerType === "touch" || domInside) return;
       domInside = true;
       updatePointer();
     };
@@ -105,7 +106,7 @@ export function useOverlayChromePeers(
       publish();
     };
 
-    nativeHover.current = setNativeInside;
+    nativeHover.current = inside => setNativeInside(inside, "appkit");
     element.addEventListener("pointerenter", enter);
     element.addEventListener("pointermove", enter);
     element.addEventListener("pointerleave", leave);
@@ -126,7 +127,7 @@ export function useOverlayChromePeers(
         if (payload.kind === "native-pointer") {
           // Windows supplies physical ownership when its inactive WebView
           // misses DOM entry. Attribute it locally, independently of the peer.
-          setNativeInside(payload.visible);
+          setNativeInside(payload.visible, "windows");
           return;
         }
         element.toggleAttribute("data-overlay-peer-hover", payload.visible);
