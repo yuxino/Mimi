@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: Native stationary-cancel observation — original bc43e23c
+run-name: Native short-gesture focus trace — rejected candidate 4d554cf6
 on:
   workflow_dispatch:
 permissions:
@@ -20,15 +20,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows') { throw 'Disposable hosted Windows runner required.' }
-          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14711350578 | ConvertFrom-Json
+          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14711483844 | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'windows-ui-test-executable' -or
-              $artifact.workflow_run.id -ne 44913038057 -or
-              $artifact.workflow_run.head_sha -cne 'bc43e23cf3d27571f3030361bf749a384f0f0bd9' -or
-              $artifact.digest -cne 'sha256:01583e96665241182686c1e171d8a30b5476f9f2237ddc378d868557ded7330d') { throw 'Candidate artifact identity changed.' }
+              $artifact.workflow_run.id -ne 44915153504 -or
+              $artifact.workflow_run.head_sha -cne '4d554cf6b6a1239466bccfb772b27aca9b1e8841' -or
+              $artifact.digest -cne 'sha256:8679582f11fc0548e130dc4b4ffca583aee3991e17d33ba1c4a0d8498a92a400') { throw 'Candidate artifact identity changed.' }
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: windows-ui-test-executable
-          run-id: 44913038057
+          run-id: 44915153504
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate-executable
       - name: Prepare existing locale generator dependencies
@@ -75,7 +75,7 @@ jobs:
           $sha=(Get-FileHash -Algorithm SHA256 $executable).Hash
           $evidence=Join-Path $env:RUNNER_TEMP 'panel-short-evidence'
           New-Item -ItemType Directory -Path $evidence | Out-Null
-          @{source='bc43e23cf3d27571f3030361bf749a384f0f0bd9';sourceRun=44913038057;artifact=14711350578;executableSha256=$sha} |
+          @{source='4d554cf6b6a1239466bccfb772b27aca9b1e8841';sourceRun=44915153504;artifact=14711483844;executableSha256=$sha} |
             ConvertTo-Json | Set-Content (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
           ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $evidence
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

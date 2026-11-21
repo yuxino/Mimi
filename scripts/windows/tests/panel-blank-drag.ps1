@@ -253,12 +253,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         Start-Sleep -Milliseconds 400
         $observation.Observer.Mark('short-settled')
         $metadata.shortGesture=Read-BlankGeometry;Assert-BlankGeometry $metadata.shortGesture 48
-        $metadata.diagnosticOnly='Explicit cancellation of the existing short-press stuck modal; not a product pass.'
-        $observation.Observer.ObserveStationaryCancel()
         $null=Wait-BlankPanel 'short-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
-        $metadata.afterDiagnosticCancel=Read-BlankGeometry;Assert-BlankGeometry $metadata.afterDiagnosticCancel 48
-        $metadata.stationaryCancelVerified=$true
-        throw 'DIAGNOSTIC ONLY: injected stationary cancel kept the original geometry and restored focus. Unmodified product remains failing without this diagnostic action.'
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after-short.png'
         $field=Wait-BlankPanel 'the moved source language trigger' { Find-BlankField }
         if ((Get-PanelPickerValueEvidence $field 'moved source').value -cne $closed) { throw 'The blank gesture changed the source field value.' }
@@ -352,7 +347,13 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
     } catch {
         $metadata.passed=$false;$metadata.failure=[string]$_
         if($observation){$observation.Observer.Mark('assertion-failure');Start-Sleep -Milliseconds 750}
-        try { Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-failed.png' } catch { Write-Warning 'Guarded synthetic panel failure screenshot unavailable.' }
+        try {
+            if($observation){
+                $frame=[MimiPointerSmoke]::ReadBounds($Controls);$region=$observation.Observer.Region
+                if($frame.Left -lt $region.Left -or $frame.Top -lt $region.Top -or $frame.Right -gt $region.Right -or $frame.Bottom -gt $region.Bottom){throw 'Failure crop is outside the controlled neutral background.'}
+            }
+            Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-failed.png'
+        } catch { Write-Warning 'Guarded synthetic panel failure screenshot unavailable.' }
         throw
     } finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)
