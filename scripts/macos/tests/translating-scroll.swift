@@ -15,6 +15,8 @@ private let names = [
     "source": "The next boat leaves at noon.",
     "translation": "下一班船在中午出发。",
 ]
+private let historyNames = names.merging(["firstSource": "History 01 rests beside the quiet river.",
+                                         "firstTranslation": "旧句 01 静静地停在河边。"]) { first, _ in first }
 
 private func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     var value: CFTypeRef?
@@ -112,6 +114,7 @@ private struct Sample {
     let finished: TimeInterval
     let lanes: [String: Lane]
     let translating: Bool
+    let backToLive: AXUIElement?
 
     var json: [String: Any] {
         ["started": started, "finished": finished, "translatingVisible": translating,
@@ -119,24 +122,30 @@ private struct Sample {
     }
 }
 
-private func sample(_ root: AXUIElement, bounds: CGRect) throws -> Sample {
+private func sample(_ root: AXUIElement, bounds: CGRect, inspectHistory: Bool = false) throws -> Sample {
     let started = now
     var pending: [(AXUIElement, Int, CGRect, Bool)] = [(root, 0, bounds, false)]
     var lanes: [String: Lane] = [:]
     var translating = false
+    var backToLive: AXUIElement?
+    let expected = inspectHistory ? historyNames : names
     var visited = 0
     while let (element, depth, inheritedClip, inheritedScroll) = pending.popLast() {
         visited += 1
         guard visited <= 2048 else { throw LayoutError("caption_ax_tree_limit") }
         let elementFrame = frame(of: element)
-        let scrolling = attribute(element, kAXRoleAttribute) as? String == kAXScrollAreaRole
+        let role = attribute(element, kAXRoleAttribute) as? String
+        let scrolling = role == kAXScrollAreaRole
         let clip = scrolling ? inheritedClip.intersection(elementFrame ?? inheritedClip) : inheritedClip
         let scrollFound = inheritedScroll || scrolling
         let labels = [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute].compactMap {
             attribute(element, $0) as? String
         }
         if labels.contains("Translating"), let elementFrame, !elementFrame.intersection(clip).isNull { translating = true }
-        for (key, text) in names where labels.contains(text) {
+        if inspectHistory, role == kAXButtonRole, labels.contains("Back to live"), let elementFrame, clip.intersects(elementFrame) {
+            backToLive = element
+        }
+        for (key, text) in expected where labels.contains(text) {
             if let elementFrame, !elementFrame.intersection(clip).isNull {
                 let candidate = Lane(bounds: elementFrame, viewport: clip, scrollAreaFound: scrollFound)
                 if lanes[key].map({ elementFrame.width * elementFrame.height < $0.bounds.width * $0.bounds.height }) ?? true {
@@ -148,7 +157,7 @@ private func sample(_ root: AXUIElement, bounds: CGRect) throws -> Sample {
             pending.append(contentsOf: children.map { ($0, depth + 1, clip, scrollFound) })
         }
     }
-    return Sample(started: started, finished: now, lanes: lanes, translating: translating)
+    return Sample(started: started, finished: now, lanes: lanes, translating: translating, backToLive: backToLive)
 }
 
 @main @MainActor
@@ -167,7 +176,8 @@ private enum TranslatingScroll {
         }
         let args = CommandLine.arguments
         let bundles = ["app.yuxino.mimi": "mimi.app", "app.yuxino.mimi.dev": "mimi-dev.app"]
-        guard args.count == 5, let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
+        let checkModes = args.count == 6 && args.last == "--display-modes"
+        guard args.count == 5 || checkModes, let pid = pid_t(args[1]), pid > 0, let bundle = bundles[args[2]],
               let running = NSRunningApplication(processIdentifier: pid), running.bundleIdentifier == args[2],
               running.executableURL?.standardizedFileURL.path == "/Applications/\(bundle)/Contents/MacOS/mimi" else {
             throw LayoutError("expected_verified_app_pid_identifier_fixture_evidence")
@@ -318,6 +328,13 @@ private enum TranslatingScroll {
         }
         try writeEvidence()
         guard failures.isEmpty else { throw LayoutError("caption_geometry_regression: " + failures.sorted().joined(separator: ",")) }
+        if checkModes {
+            try verifyDisplayModes(pid: pid, window: root.id, bounds: root.bounds, fixture: fixture, output: output) {
+                let value = try sample(axRoots[0], bounds: root.bounds.insetBy(dx: 12, dy: 12), inspectHistory: true)
+                return DisplayModeView(visible: value.lanes.mapValues(\.clipped), full: Set(value.lanes.filter { $0.value.full }.keys),
+                                       backToLive: value.backToLive)
+            }
+        }
         completed = true
     }
 }

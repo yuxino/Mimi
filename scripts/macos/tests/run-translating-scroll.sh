@@ -18,8 +18,10 @@ if [[ ${1:-} == --dev && $# -ge 3 && $2 =~ ^[[:xdigit:]]{40}$ ]]; then
 fi
 animation=false
 if [[ ${1:-} == --animation ]]; then animation=true; shift; fi
+display_modes=false
+if [[ ${1:-} == --display-modes ]]; then display_modes=true; shift; fi
 if [[ $# -ne 1 || -z $1 || $1 == -* ]]; then
-  echo "Usage: $0 [--dev CERTIFICATE_SHA1] [--animation] EVIDENCE_DIR" >&2
+  echo "Usage: $0 [--dev CERTIFICATE_SHA1] [--animation] [--display-modes] EVIDENCE_DIR" >&2
   exit 2
 fi
 evidence=$1
@@ -54,7 +56,7 @@ mkdir "$scene/ready"
 cat > "$scene/preferences.json" <<JSON
 {"ui_language":"en","source_language":"en","target_language":"zh","audio_input":"system","subtitle_display_mode":"bilingual","font_size":16,"subtitle_animation":$animation,"subtitle_background_opacity":100,"retain_session_history":false,"record_session_audio":false}
 JSON
-xcrun swiftc "$suite/translating-scroll.swift" "$suite/Capture.swift" -o "$scene/check-translating-scroll"
+xcrun swiftc "$suite/translating-scroll.swift" "$suite/DisplayModes.swift" "$suite/Capture.swift" -o "$scene/check-translating-scroll"
 MIMI_UI_TEST=1 MIMI_AUTO_START=1 MIMI_UI_TEST_STANDARD_OVERLAY=1 \
   MIMI_UI_TEST_TRANSLATION_LAYOUT=1 MIMI_UI_TEST_PREFERENCES_DIR="$scene" \
   MIMI_UI_TEST_FRONTEND_READY_DIR="$scene/ready" MIMI_UI_TEST_SESSION_STATE_FILE="$scene/session" \
@@ -72,7 +74,9 @@ for ((i=0; i<150; i++)); do
 done
 ready || { echo "Signed UI-test windows and listening state were not ready in 30 seconds." >&2; exit 1; }
 [[ ! -e "$scene/settings-activation" ]]
-"$scene/check-translating-scroll" "$pid" "$identifier" "$scene" "$evidence" 2>&1 | tee -a "$evidence/translating-scroll.log"
+check_args=("$pid" "$identifier" "$scene" "$evidence")
+if [[ $display_modes == true ]]; then check_args+=(--display-modes); fi
+"$scene/check-translating-scroll" "${check_args[@]}" 2>&1 | tee -a "$evidence/translating-scroll.log"
 kill -0 "$pid"
 ready && [[ ! -e "$scene/settings-activation" ]]
 echo "Verified synthetic translating-scroll scene stayed listening with Settings closed." | tee -a "$evidence/translating-scroll.log"
