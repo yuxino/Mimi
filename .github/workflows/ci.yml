@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: Native short-gesture focus trace — candidate bc43e23c
+run-name: Native stationary-cancel observation — original bc43e23c
 on:
   workflow_dispatch:
 permissions:

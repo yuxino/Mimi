@@ -253,7 +253,12 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         Start-Sleep -Milliseconds 400
         $observation.Observer.Mark('short-settled')
         $metadata.shortGesture=Read-BlankGeometry;Assert-BlankGeometry $metadata.shortGesture 48
+        $metadata.diagnosticOnly='Explicit cancellation of the existing short-press stuck modal; not a product pass.'
+        $observation.Observer.ObserveStationaryCancel()
         $null=Wait-BlankPanel 'short-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        $metadata.afterDiagnosticCancel=Read-BlankGeometry;Assert-BlankGeometry $metadata.afterDiagnosticCancel 48
+        $metadata.stationaryCancelVerified=$true
+        throw 'DIAGNOSTIC ONLY: injected stationary cancel kept the original geometry and restored focus. Unmodified product remains failing without this diagnostic action.'
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after-short.png'
         $field=Wait-BlankPanel 'the moved source language trigger' { Find-BlankField }
         if ((Get-PanelPickerValueEvidence $field 'moved source').value -cne $closed) { throw 'The blank gesture changed the source field value.' }
