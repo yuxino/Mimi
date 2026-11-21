@@ -8,17 +8,23 @@ function Test-HistoryProbeReady([string]$Path) {
 
 # The package smoke owns the executable and private fixture directory. Each
 # launch must mount both WebViews again before its localized controls are used.
-function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$EvidencePath) {
+function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$EvidencePath, [string]$HistoryScenario = 'normal') {
     if (@(Get-MatchingMimiProcesses $resolvedExecutable).Count -ne 0) {
         throw 'The previous test process must exit before a fresh locale is started.'
     }
     Reset-SmokeFrontendMarkers $frontendReadyDir
     $historyTrace = $OverlayInteraction -eq 'caption-history'
     if ($historyTrace) {
-        foreach ($name in @('history-pointer-probe-enabled', 'history-pointer-probe-ready', 'history-pointer-probe.jsonl')) {
+        foreach ($name in @('history-pointer-probe-enabled', 'history-pointer-probe-ready', 'history-pointer-probe.jsonl', 'history-pointer-probe-busy-180-enabled', 'history-pointer-probe-fast-release-enabled')) {
             Remove-Item -LiteralPath (Join-Path $frontendReadyDir $name) -Force -ErrorAction SilentlyContinue
         }
         [IO.File]::WriteAllBytes((Join-Path $frontendReadyDir 'history-pointer-probe-enabled'), [byte[]]@())
+        if ($HistoryScenario -eq 'busy180') {
+            [IO.File]::WriteAllBytes((Join-Path $frontendReadyDir 'history-pointer-probe-busy-180-enabled'), [byte[]]@())
+        }
+        if ($HistoryScenario -eq 'fast-release') {
+            [IO.File]::WriteAllBytes((Join-Path $frontendReadyDir 'history-pointer-probe-fast-release-enabled'), [byte[]]@())
+        }
     }
     Remove-Item -LiteralPath $sessionStateFile, $settingsActivationFile -Force -ErrorAction SilentlyContinue
     $Preferences | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $preferencesDir 'preferences.json') -Encoding utf8NoBOM
@@ -53,42 +59,21 @@ function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$Eviden
 
 function Test-CaptionHistorySessions {
     $binaryHash = (Get-FileHash -LiteralPath $resolvedExecutable -Algorithm SHA256).Hash
-    if ($binaryHash -cne '1714D0FE84ED2BEED893A0B12FA7A91A4C2ED31F10F5E30719D7953B2EE42E22') {
-        throw 'This bounded history observation requires the unchanged diagnostic executable from run 44894562404.'
-    }
     [void][IO.Directory]::CreateDirectory($EvidenceDirectory)
-    $manifest = [ordered]@{ productBase = '810e5a15'; binarySource = '8ffb58aa2017c03ff88b3664fd742248520b039c'
-        binarySha256 = $binaryHash; reusedRun = 44894562404; cycles = 3; locales = @('zh', 'de')
-        preconditions = @('pointer-both-drag-preferences', 'nine-language-panels'); stopAtFirstFailure = $true }
+    $manifest = [ordered]@{ productBase = '810e5a15'; binarySha256 = $binaryHash
+        scenarios = @('normal', 'fast-release', 'busy180'); locales = @('zh', 'de')
+        busyDurationMs = 180; busyGapPx = @(2, 70); stopAtFirstFailure = $true }
     [IO.File]::WriteAllText((Join-Path $EvidenceDirectory 'observation-matrix.json'), ($manifest | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
-
-    # Match the bundle job's two preceding checks on this same hosted desktop.
-    # Separate PowerShell processes preserve the outer fixture environment and
-    # the original scripts' exact input, private-directory and cleanup rules.
-    $smokeScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../windows-ci-smoke.ps1'))
-    $probeArguments = @('-NoProfile', '-NonInteractive', '-File', $smokeScript,
-        '-ExecutablePath', $resolvedExecutable, '-ExpectedArchitecture', 'x64')
-    Write-Output "History observation uses unchanged executable SHA-256 $binaryHash."
-    Write-Output 'History observation precondition: native pointer controls and both Windows drag preferences.'
-    & (Join-Path $PSHOME 'pwsh.exe') @probeArguments -OverlayInteraction pointer -VerifyBothDragModes 2>&1 |
-        Tee-Object -FilePath (Join-Path $EvidenceDirectory 'precondition-pointer.log')
-    if ($LASTEXITCODE -ne 0) { throw 'The pointer precondition failed; no history cycle was started.' }
-    Write-Output 'History observation precondition: all nine native panel languages.'
-    $panelEvidence = Join-Path $EvidenceDirectory 'precondition-panels'
-    & (Join-Path $PSHOME 'pwsh.exe') @probeArguments -OverlayInteraction panel-languages -EvidenceDirectory $panelEvidence 2>&1 |
-        Tee-Object -FilePath (Join-Path $EvidenceDirectory 'precondition-panels.log')
-    if ($LASTEXITCODE -ne 0) { throw 'The panel precondition failed; no history cycle was started.' }
-
+    Write-Output "History observation uses one diagnostic executable SHA-256 $binaryHash."
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs')
     $env:MIMI_UI_TEST_CAPTION_HISTORY = '1'
     $null = New-Item -ItemType Directory -Force -Path $frontendReadyDir
-    # Do not catch a failed session and continue: keep the first red's trace,
-    # screenshot and original failure rather than searching for a green run.
-    foreach ($cycle in 1..3) {
+    # No retries: preserve the first red, including a failed normal control.
+    foreach ($scenario in @('normal', 'fast-release', 'busy180')) {
         foreach ($locale in @('zh', 'de')) {
-            $casePath = Join-Path $EvidenceDirectory ('cycle-{0:00}/{1}' -f $cycle, $locale)
+            $casePath = Join-Path $EvidenceDirectory "$scenario/$locale"
             $evidence = New-Item -ItemType Directory -Force -Path $casePath
-            Write-Output "History observation cycle=$cycle locale=$locale after both native preconditions."
+            Write-Output "History observation scenario=$scenario locale=$locale."
             Invoke-LocalizedOverlaySession @{
                 ui_language = $locale
                 source_language = 'en'
@@ -97,7 +82,7 @@ function Test-CaptionHistorySessions {
                 subtitle_animation = $false
                 subtitle_background_opacity = 100
                 audio_input = 'system'
-            } $evidence.FullName
+            } $evidence.FullName $scenario
         }
     }
 }

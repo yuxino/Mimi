@@ -2,7 +2,7 @@
 type Method = "pointerDown" | "pointerMove" | "pointerUp" | "userIntent" | "endUserIntent" | "beginReading" | "readFromStart" | "followTail" | "followIfAtTail" | "scrolled" | "displayChanged" | "contentChanged" | "reflow" | "syncScrollPosition";
 type EventKind = "pointerdown" | "pointermove" | "pointerup" | "pointercancel" | "mousedown" | "mousemove" | "mouseup" | "scroll" | "blur";
 type Sample = {
-  stage: "hello" | "ready" | "method" | "capture" | "react" | "limit";
+  stage: "hello" | "ready" | "method" | "capture" | "react" | "busyBegin" | "busyEnd" | "limit";
   method: Method | null; edge: "enter" | "exit" | null; event: EventKind | null;
   following: boolean | null; userKind: "down" | "pointer" | "scrollbar" | null;
   intentTop: number | null; intentRange: number | null;
@@ -17,6 +17,7 @@ const api = typeof window !== "undefined" ? (window as Window & {
   __TAURI_INTERNALS__?: { invoke: (command: string, args: unknown) => Promise<unknown> };
 }).__TAURI_INTERNALS__ : undefined;
 let enabled = false, sequence = 0, pending = Promise.resolve(), lastMove = 0;
+let busy180Enabled = false, busy180Started = false, trustedScrollbarPress = false, scrollbarOwned = false;
 function current(): HTMLElement | null {
   return typeof document === "undefined" ? null : document.querySelector<HTMLElement>(".overlay-timeline");
 }
@@ -44,6 +45,10 @@ export function traceHistory(stage: "method" | "capture" | "react", element: HTM
 export function traceMethod(method: Method, edge: "enter" | "exit", following: boolean,
   intent: { kind: "down" | "pointer" | "scrollbar"; top: number; range?: number } | null,
   element = current()) {
+  if (enabled && edge === "exit") {
+    if (method === "pointerDown") scrollbarOwned = trustedScrollbarPress && intent?.kind === "scrollbar";
+    if (method === "pointerUp" || method === "endUserIntent") scrollbarOwned = false;
+  }
   traceHistory("method", element, { method, edge, following, userKind: intent?.kind ?? null,
     intentTop: intent?.top ?? null, intentRange: intent?.range ?? null });
 }
@@ -60,7 +65,9 @@ export function traceReact(event: Event, element: HTMLElement) {
 }
 if (api) {
   // The backend rejects this unless the explicit isolated synthetic-history opt-in exists.
-  void api.invoke("app_ui_test_frontend_ready", { historyProbe: sample("hello", current()) }).then(() => {
+  void api.invoke("app_ui_test_frontend_ready", { historyProbe: sample("hello", current()) }).then(reply => {
+    // Only the backend's strictly gated, fixed empty marker enables this one-shot experiment.
+    busy180Enabled = reply === true;
     enabled = true;
     submit(sample("ready", current()));
     for (const kind of ["pointerdown", "pointermove", "pointerup", "pointercancel", "mousedown", "mousemove", "mouseup", "scroll", "blur"] as EventKind[]) {
@@ -68,6 +75,12 @@ if (api) {
         const element = current();
         if (!element) return;
         const e = event as MouseEvent;
+        if (kind === "pointerdown") {
+          const p = event as PointerEvent;
+          trustedScrollbarPress = p.isTrusted && p.pointerType === "mouse" && p.button === 0 && p.buttons === 1 &&
+            event.target === element && p.clientX >= element.getBoundingClientRect().right - Math.max(6, element.offsetWidth - element.clientWidth);
+        }
+        if (kind === "pointerup" || kind === "pointercancel" || kind === "blur") trustedScrollbarPress = false;
         if (kind.endsWith("move")) {
           if (!e.buttons || performance.now() - lastMove < 25) return;
           lastMove = performance.now();
@@ -80,6 +93,19 @@ if (api) {
           primary: kind.startsWith("pointer") ? (e as PointerEvent).isPrimary : null,
           gutter: Number.isFinite(e.clientX) ? e.clientX >= element.getBoundingClientRect().right - Math.max(6, element.offsetWidth - element.clientWidth) : null,
         });
+        const range = element.scrollHeight - element.clientHeight;
+        const gap = range - element.scrollTop;
+        if (kind === "scroll" && event.target === element && busy180Enabled && !busy180Started && scrollbarOwned &&
+          gap >= 2 && gap <= 70) {
+          busy180Started = true;
+          submit(sample("busyBegin", element, { intentTop: element.scrollTop, intentRange: range, userKind: "scrollbar" }));
+          const stop = performance.now() + 180;
+          // Deliberate bounded main-thread work in this disposable opt-in QA build.
+          // Do not write scrollTop, call React, dispatch input, or repeat the stall.
+          while (performance.now() < stop) { /* timing stimulus only */ }
+          submit(sample("busyEnd", element, { intentTop: element.scrollTop,
+            intentRange: element.scrollHeight - element.clientHeight, userKind: "scrollbar" }));
+        }
       }, true);
     }
   }).catch(() => {});

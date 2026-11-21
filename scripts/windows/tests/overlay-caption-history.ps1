@@ -244,11 +244,15 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         [string][char]0x56de + [char]0x5230 + [char]0x5b9e + [char]0x65f6
     }
     $context = @{ Window = $window; Controls = $controls; RootBounds = [MimiPointerSmoke]::ReadBounds($window); ReturnName = $returnName
-        Locale = $Locale; Checkpoints = [ordered]@{}
+        Locale = $Locale; Checkpoints = [ordered]@{}; NativeInput = [Collections.Generic.List[object]]::new()
         ControlBounds = [MimiPointerSmoke]::ReadBounds($controls); Scale = [MimiPanelCrop]::GetDpiForWindow($window) / 96.0
         CaptionPattern = '(?<kind>Original|' + $translationPrefix + ') (?<number>[0-9]{2}) '; Viewport = $null; Scroll = $null }
     $state = $null
     $earlyFailure = $null
+    $fastMarker = Join-Path $FrontendReadyDirectory 'history-pointer-probe-fast-release-enabled'
+    $fastRelease = $env:RUNNER_ENVIRONMENT -eq 'github-hosted' -and $env:MIMI_UI_TEST -eq '1' -and
+        $env:MIMI_UI_TEST_CAPTION_HISTORY -eq '1' -and (Test-Path -LiteralPath $fastMarker -PathType Leaf) -and
+        (Get-Item -LiteralPath $fastMarker).Length -eq 0
     try {
         $rows = Wait-CaptionHistory 'the initial 18 synthetic bilingual captions' {
             if ((Read-SmokeMarker (Join-Path $FixtureDirectory 'caption-history-count')) -ne '18') { return $null }
@@ -333,17 +337,34 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         $trackBeforeDrag = $state.View
         [MimiPointerSmoke]::MoveOverWindow($window, $thumb.X, $thumb.Y, 'Press the rendered history scrollbar thumb')
         try {
+            $context.NativeInput.Add(@{ event = 'downBegin'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
             [MimiCaptionDragDesktop]::SetLeftButton($true)
+            $context.NativeInput.Add(@{ event = 'downEnd'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
             if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'The history scrollbar did not receive a held physical left button.' }
-            for ($step = 1; $step -le 8; $step++) {
+            $steps = if ($fastRelease) { 7 } else { 8 }
+            for ($step = 1; $step -le $steps; $step++) {
                 [MimiPointerSmoke]::MoveAndVerify($thumb.X, [int][Math]::Round($thumb.Y + ($thumb.EndY - $thumb.Y) * $step / 8))
                 Start-Sleep -Milliseconds 30
                 if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
                 Assert-CaptionHistoryEnvironment $context
             }
+            $context.NativeInput.Add(@{ event = 'heldUiaBegin'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
             $trackWhileHeld = $context.Viewport.Current.BoundingRectangle
-        } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
+            $context.NativeInput.Add(@{ event = 'heldUiaEnd'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
+            if ($fastRelease) {
+                # Only this separate variant omits the wait/UIA between the last
+                # physical move and mouse-up. The normal eight-step gesture is unchanged.
+                $context.NativeInput.Add(@{ event = 'finalMoveBegin'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
+                [MimiPointerSmoke]::MoveAndVerify($thumb.X, $thumb.EndY)
+                $context.NativeInput.Add(@{ event = 'finalMoveEnd'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
+            }
+        } finally {
+            $context.NativeInput.Add(@{ event = 'upBegin'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
+            [MimiCaptionDragDesktop]::SetLeftButton($false)
+            $context.NativeInput.Add(@{ event = 'upEnd'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
+        }
         if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the history scrollbar button after release.' }
+        $context.NativeInput.Add(@{ event = 'releasedVerified'; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() })
         $state = Wait-CaptionHistory 'the physical scrollbar reaching the real bottom' {
             Assert-CaptionHistoryEnvironment $context
             $sample = Get-CaptionHistoryView $context
@@ -401,5 +422,10 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
     } finally {
         try { Write-CaptionHistoryCheckpoints $context $PanelEvidenceDirectory }
         catch { Write-Warning 'Could not save the bounded caption history checkpoints.' }
+        try {
+            [void][IO.Directory]::CreateDirectory($PanelEvidenceDirectory)
+            $metadata = @{ locale = $Locale; fastRelease = $fastRelease; events = @($context.NativeInput.ToArray()) }
+            [IO.File]::WriteAllText((Join-Path $PanelEvidenceDirectory 'native-input-timing.json'), ($metadata | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+        } catch { Write-Warning 'Could not save the content-free native input timing.' }
     }
 }

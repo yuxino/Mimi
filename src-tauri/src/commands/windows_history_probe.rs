@@ -21,6 +21,8 @@ enum Stage {
     Method,
     Capture,
     React,
+    BusyBegin,
+    BusyEnd,
     Limit,
 }
 #[derive(Deserialize, Serialize)]
@@ -140,7 +142,7 @@ fn directory(window: &WebviewWindow) -> Option<PathBuf> {
     let opt = fs::symlink_metadata(path.join("history-pointer-probe-enabled")).ok()?;
     (opt.is_file() && opt.len() == 0).then_some(path)
 }
-pub(crate) fn record(window: &WebviewWindow, sample: HistoryProbeSample) -> Result<(), String> {
+pub(crate) fn record(window: &WebviewWindow, sample: HistoryProbeSample) -> Result<bool, String> {
     static COUNT: AtomicUsize = AtomicUsize::new(0);
     static WRITE: Mutex<()> = Mutex::new(());
     let directory = directory(window).ok_or("history probe disabled")?;
@@ -168,6 +170,9 @@ pub(crate) fn record(window: &WebviewWindow, sample: HistoryProbeSample) -> Resu
     {
         return Err("invalid history probe number".into());
     }
+    let busy_180 = matches!(sample.stage, Stage::Hello)
+        && fs::symlink_metadata(directory.join("history-pointer-probe-busy-180-enabled"))
+            .is_ok_and(|marker| marker.is_file() && marker.len() == 0);
     let ready = matches!(sample.stage, Stage::Ready);
     let received_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -194,5 +199,5 @@ pub(crate) fn record(window: &WebviewWindow, sample: HistoryProbeSample) -> Resu
         fs::write(directory.join("history-pointer-probe-ready"), b"ready\n")
             .map_err(|_| "ready")?;
     }
-    Ok(())
+    Ok(busy_180)
 }

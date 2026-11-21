@@ -37,9 +37,9 @@ pub fn app_is_ui_test() -> bool {
 pub fn app_ui_test_frontend_ready(
     window: tauri::WebviewWindow,
     history_probe: Option<super::windows_history_probe::HistoryProbeSample>,
-) -> Result<(), String> {
+) -> Result<Option<bool>, String> {
     if let Some(sample) = history_probe {
-        return super::windows_history_probe::record(&window, sample);
+        return super::windows_history_probe::record(&window, sample).map(Some);
     }
     let is_ui_test = app_is_ui_test();
     let directory = std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR");
@@ -49,7 +49,7 @@ pub fn app_ui_test_frontend_ready(
     if is_ui_test {
         windows_hover_fixture::observe_ready(&window, directory.as_deref());
     }
-    Ok(())
+    Ok(None)
 }
 
 fn write_ui_test_frontend_ready(
