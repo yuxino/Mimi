@@ -153,7 +153,7 @@ try {
   const started = Date.now();
   // Chromium's standard inherited pipe avoids endpoint-file discovery and a
   // debugging TCP listener. The documentation renderer uses the same fd3/fd4.
-  browser = spawn(executable, ["--headless=new", "--remote-debugging-pipe",
+  browser = spawn(executable, ["--remote-debugging-pipe",
     `--user-data-dir=${temporary}`, "--disable-background-networking", "--disable-component-update", "--disable-sync",
     "--no-first-run", "--no-default-browser-check", "--password-store=basic", "--use-mock-keychain", "about:blank"],
   { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] });
@@ -187,6 +187,12 @@ try {
   await page.cdp("Runtime.enable");
   await page.cdp("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
   await page.cdp("Emulation.setDeviceMetricsOverride", { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false });
+  const pointer = await page.evaluate(() => ({
+    hover: matchMedia("(hover: hover)").matches,
+    fine: matchMedia("(pointer: fine)").matches,
+  }));
+  console.log(JSON.stringify({ stage: "input-capabilities", ...pointer }));
+  assert.ok(pointer.hover && pointer.fine, "Run the desktop hover checks with a mouse-capable display (xvfb-run on Linux)");
   const script = await readFile(path.join(root, "scripts/frontend/verify-overlay-service-layout.js"), "utf8");
   const verify = new Function(`return (${script}\n);`)();
   const result = await verify(page, { baseUrl, subtitleMotionOnly: true });

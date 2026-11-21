@@ -23,8 +23,9 @@ The locked capsule exposes one-click unlock while the subtitle canvas remains
 click-through. An error temporarily restores the regular recovery controls.
 Devices without fine hover keep the controls visible. Hidden controls stay
 reachable by keyboard and release their pointer targets. Live subtitles
-reclaim the control row when quiet. Pending or failed actions, translation
-recovery and Back to live can still occupy one short status line. The listening
+reclaim the control and progress rows when quiet. Session actions, failures and
+translation recovery retain a short status line. While reading history, Back to
+live stays below the captions, within reach as the controls appear. The listening
 indicator and its text retain their place before captions arrive.
 
 Detached surfaces exchange exposure updates through targeted Tauri events
