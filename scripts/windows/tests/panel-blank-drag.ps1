@@ -253,7 +253,32 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         Start-Sleep -Milliseconds 400
         $observation.Observer.Mark('short-settled')
         $metadata.shortGesture=Read-BlankGeometry;Assert-BlankGeometry $metadata.shortGesture 48
+        $metadata.diagnosticRelease=$observation.Observer.ObserveReleaseSignal()
         $null=Wait-BlankPanel 'short-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        $metadata.afterDiagnosticRelease=Read-BlankGeometry;Assert-BlankGeometry $metadata.afterDiagnosticRelease 48
+        $metadata.releaseSignalVerified=$true
+        $metadata.quickMoveObservations=@()
+        foreach($distance in @(3,48)){
+            $start=Read-BlankGeometry;$c=[MimiPointerSmoke]::ReadBounds($Controls)
+            $x=[int]($c.Left+160*$scale);$y=[int]($c.Top+160*$scale)
+            [MimiPointerSmoke]::MoveOverWindow($Controls,$x,$y,'Observe a bounded quick owned move')
+            $observation.Observer.Mark(('quick-'+$distance+'-before'))
+            try{
+                [MimiCaptionDragDesktop]::SetLeftButton($true)
+                Start-Sleep -Milliseconds 8
+                [MimiPointerSmoke]::MoveAndVerify(($x+$distance),$y)
+                Start-Sleep -Milliseconds 7
+            }finally{[MimiCaptionDragDesktop]::SetLeftButton($false)}
+            $observation.Observer.Mark(('quick-'+$distance+'-released'))
+            Start-Sleep -Milliseconds 400
+            $first=Read-BlankGeometry
+            $forwarded=$observation.Observer.ObserveReleaseSignal()
+            $null=Wait-BlankPanel 'quick-gesture native completion' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+            $last=Read-BlankGeometry
+            $metadata.quickMoveObservations+=@{distance=$distance;start=$start;first=$first;forwarded=$forwarded;completed=$last}
+            $observation.Observer.Mark(('quick-'+$distance+'-completed'))
+        }
+        throw 'DIAGNOSTIC ONLY: real short/quick gestures with observed nonclient release. Inspect original geometry and native trace; no product pass.'
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after-short.png'
         $field=Wait-BlankPanel 'the moved source language trigger' { Find-BlankField }
         if ((Get-PanelPickerValueEvidence $field 'moved source').value -cne $closed) { throw 'The blank gesture changed the source field value.' }

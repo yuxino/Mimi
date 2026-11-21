@@ -44,6 +44,7 @@ public sealed class MimiPanelDragObservation : IDisposable
     [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] private static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
+    [DllImport("user32.dll",EntryPoint="PostMessageW")] private static extern bool PostMessage(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLong(IntPtr window,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLong(IntPtr window,int index,IntPtr value);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
@@ -112,6 +113,17 @@ public sealed class MimiPanelDragObservation : IDisposable
     }
     public void Mark(string value){lock(sync)stage=value;Record(0,0,"mark");}
     public Sample[] Snapshot(){lock(sync)return samples.ToArray();}
+    public bool ObserveReleaseSignal(){
+        var gui=new GuiInfo{Size=(uint)Marshal.SizeOf(typeof(GuiInfo))};
+        if(!GetGUIThreadInfo(rootThread,ref gui))throw new InvalidOperationException("Could not observe root GUI state.");
+        if((gui.Flags&2)==0||gui.MoveSize!=root){Mark("diagnostic-already-completed");return false;}
+        if(gui.Capture!=root||Category(GetForegroundWindow())!="root"||(GetAsyncKeyState(1)&0x8000)!=0)throw new InvalidOperationException("Release observation requires the owned released root move modal.");
+        Point p;if(!GetCursorPos(out p))throw new InvalidOperationException("Could not observe physical release point.");
+        long position=((long)(ushort)p.Y<<16)|(ushort)p.X;
+        Mark("diagnostic-nonclient-release");
+        if(!PostMessage(root,0x00A2,new IntPtr(2),new IntPtr(position)))throw new InvalidOperationException("Could not queue observed nonclient release.");
+        return true;
+    }
     public IntPtr BackgroundWindow { get { return backplate; } }
     public string HitSurface(int x,int y){return Category(WindowFromPoint(new Point{X=x,Y=y}));}
     public Point EnableExternalClickAway(){
