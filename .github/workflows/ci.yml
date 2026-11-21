@@ -17,9 +17,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $old = gh api repos/yuxino/Mimi/actions/artifacts/14703231834 | ConvertFrom-Json
-          $fixed = gh api repos/yuxino/Mimi/actions/runs/44897522655/artifacts | ConvertFrom-Json
+          $fixed = gh api repos/yuxino/Mimi/actions/runs/44898694618/artifacts | ConvertFrom-Json
           $packages = @($fixed.artifacts | Where-Object name -CEQ 'mimi-windows-2025')
-          if ($LASTEXITCODE -ne 0 -or $old.workflow_run.head_sha -cne '810e5a1582705da7467d300831368bde6720950f' -or $old.digest -cne 'sha256:7731c48358b89dde4905d0bd17d2118186238bea4b9265c7df40bf2dd1b15ffa' -or $packages.Count -ne 1 -or $packages[0].workflow_run.head_sha -cne '21bd148d253686de6013f761cc93d79e8a4afbf3') { throw 'Unexpected package source' }
+          if ($LASTEXITCODE -ne 0 -or $old.workflow_run.head_sha -cne '810e5a1582705da7467d300831368bde6720950f' -or $old.digest -cne 'sha256:7731c48358b89dde4905d0bd17d2118186238bea4b9265c7df40bf2dd1b15ffa' -or $packages.Count -ne 1 -or $packages[0].workflow_run.head_sha -cne '79e0c7ef0d2d1a6e58ae2b3658e2f56001e8bdfa') { throw 'Unexpected package source' }
           Write-Host "Approved package digests $($old.digest) and $($packages[0].digest)"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: mimi-windows-2025
-          run-id: 44897522655
+          run-id: 44898694618
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate-package
       - name: Extract the matching executable
