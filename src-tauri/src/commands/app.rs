@@ -34,7 +34,13 @@ pub fn app_is_ui_test() -> bool {
 /// A native smoke test must observe a mounted frontend, not just a window title.
 /// Neither the destination nor marker contents can be supplied by the frontend.
 #[tauri::command]
-pub fn app_ui_test_frontend_ready(window: tauri::WebviewWindow) -> Result<(), String> {
+pub fn app_ui_test_frontend_ready(window: tauri::WebviewWindow, hover_observation: Option<serde_json::Value>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if let Some(sample) = hover_observation {
+        return crate::post_collapse_probe::record(&window, sample);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = hover_observation;
     let is_ui_test = app_is_ui_test();
     let directory = std::env::var_os("MIMI_UI_TEST_FRONTEND_READY_DIR");
     write_ui_test_frontend_ready(is_ui_test, window.label(), directory.as_deref())

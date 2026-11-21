@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 
@@ -32,6 +33,51 @@ export function useOverlayChromePeers(
     let unlisten: UnlistenFn | undefined;
     let lastShared: boolean | undefined;
 
+    let traceSeq = 0, lastTrace = "", lastAt = 0;
+    function category(node: Element | null) {
+      if (!node) return "none";
+      if (node === document.body) return "body";
+      if (node.closest(".overlay-return-to-live")) return "return";
+      if (node.closest(".overlay-control-header__collapse")) return "collapse";
+      if (node.closest(".overlay-control-island")) return "capsule";
+      if (node.closest("[role=combobox]")) return "combobox";
+      if (node.closest(".overlay-action-strip")) return "toolbar";
+      if (node.closest(".overlay-timeline, [role=log], [data-follow-mode]")) return "timeline";
+      if (node.getAttribute("tabindex") === "0" && node.tagName === "DIV") return "tabbable-div";
+      if (node.closest(".overlay-control-panel")) return "panel";
+      if (node === element) return "surface";
+      if (node.closest("button")) return "button";
+      return "other";
+    }
+    function trace(why: string, extra: Record<string, unknown> = {}, periodic = false) {
+      if (!shareWithPeer || !element || traceSeq >= 1300) return;
+      const focus = element.querySelector(":focus-visible");
+      const witness = element.querySelector(surface === "overlay" ? ".overlay-action-strip" : ".overlay-control-island");
+      const style = witness ? getComputedStyle(witness) : null;
+      const state = { domInside, nativeInside, receivedNativeMotion, pointerVisible, leavePending: leaveTimer !== undefined,
+        fine: fineHover.matches, documentHasFocus: document.hasFocus(), active: category(document.activeElement), focusVisible: category(focus),
+        focusInToolbar: Boolean(focus?.closest(".overlay-action-strip, .overlay-control-island")), matchesHover: element.matches(":hover"),
+        keyboard: element.hasAttribute("data-overlay-keyboard-focus"), peer: element.hasAttribute("data-overlay-peer-hover"),
+        own: element.hasAttribute("data-overlay-hover"), pinned: element.hasAttribute("data-overlay-chrome-pinned"),
+        quietIsland: element.hasAttribute("data-quiet-island"), panel: Boolean(element.querySelector(".overlay-control-panel")),
+        opacity: style?.opacity, painted: style?.visibility, acceptsPointer: style?.pointerEvents,
+        viewport: [innerWidth, innerHeight], lastShared: lastShared ?? null };
+      const t = performance.now(), key = JSON.stringify(state);
+      if (periodic && key === lastTrace && t - lastAt < 900) return;
+      lastTrace = key; lastAt = t;
+      void invoke("app_ui_test_frontend_ready", { hoverObservation:
+        { kind: "chrome-react", surface, why, seq: ++traceSeq, wallMs: Date.now(), ...state, ...extra } }).catch(() => {});
+    }
+    const rawTrace = (e: Event) => {
+      if (!e.isTrusted) return;
+      const target = category(e.target instanceof Element ? e.target : null);
+      const eventKey = e instanceof KeyboardEvent ? (["Escape", "Enter", " ", "Tab"].includes(e.key) ? e.key : "other") : null;
+      trace("dom-" + e.type, {target, eventKey});
+    };
+    const traceEvents = ["focus", "blur", "focusin", "focusout", "pointerdown", "pointerup", "click", "keydown"];
+    traceEvents.forEach(name => window.addEventListener(name, rawTrace, true));
+    const observationTimer = window.setInterval(() => trace("sample", {}, true), 220);
+
     const send = (message: HoverMessage) => {
       outgoing.current = (outgoing.current ?? Promise.resolve())
         .then(() => emitTo(peerWindow, HOVER_EVENT, message)).catch(() => {});
@@ -44,6 +90,7 @@ export function useOverlayChromePeers(
       const visible = fineHover.matches && (pointerVisible || keyboardVisible);
       if (!force && visible === lastShared) return;
       lastShared = visible;
+      trace("publish", { kind, visible, forced: force });
       send({ kind, visible });
     };
 
@@ -79,6 +126,7 @@ export function useOverlayChromePeers(
         receivedNativeMotion = true;
         element.setAttribute("data-overlay-pointer-tracked", "");
       }
+      trace("native-received", {inside});
       nativeInside = inside;
       // AppKit has verified departure even if a non-key WebView kept its
       // old :hover state or never delivered a DOM leave after resizing.
@@ -88,11 +136,13 @@ export function useOverlayChromePeers(
     const enter = (event: PointerEvent) => {
       if (event.pointerType === "touch" || domInside) return;
       domInside = true;
+      trace("dom-enter", {eventType:event.type});
       updatePointer();
     };
     const leave = (event: PointerEvent) => {
       if (event.pointerType === "touch" || !domInside) return;
       domInside = false;
+      trace("dom-leave", {eventType:event.type});
       updatePointer();
     };
     // Read the focus state after the browser handles focus and input modality.
@@ -130,6 +180,7 @@ export function useOverlayChromePeers(
           return;
         }
         element.toggleAttribute("data-overlay-peer-hover", payload.visible);
+        trace("peer", { kind: payload.kind, visible:payload.visible });
         if (payload.kind === "ready") publish("visibility", true);
       }, { target: ownWindow }).then((remove) => {
         if (disposed) {
@@ -144,6 +195,9 @@ export function useOverlayChromePeers(
     }
 
     return () => {
+      trace("dispose");
+      window.clearInterval(observationTimer);
+      traceEvents.forEach(name => window.removeEventListener(name, rawTrace, true));
       disposed = true;
       nativeHover.current = () => {};
       cancelLeave();

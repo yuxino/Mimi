@@ -16,6 +16,8 @@ mod audio;
 #[path = "development/probes/audio3_benchmark.rs"]
 mod audio3_benchmark;
 mod clients;
+#[cfg(target_os = "macos")]
+mod post_collapse_probe;
 mod commands;
 mod core;
 mod desktop_shortcuts;

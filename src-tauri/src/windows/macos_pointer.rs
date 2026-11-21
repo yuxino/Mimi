@@ -71,17 +71,20 @@ define_class!(
     impl MimiOverlayPointerOwner {
         #[unsafe(method(mouseEntered:))]
         fn entered(&self, event: &NSEvent) {
+            crate::post_collapse_probe::native(&self.ivars().app, "pointer-entered", self.ivars().surface.label(), serde_json::json!({"insideBefore": self.ivars().inside.get(), "eventWindow":event.windowNumber(), "eventTime":event.timestamp()}));
             self.clear(false);
             self.motion(event);
         }
 
         #[unsafe(method(mouseMoved:))]
         fn moved(&self, event: &NSEvent) {
+            crate::post_collapse_probe::native(&self.ivars().app, "pointer-moved", self.ivars().surface.label(), serde_json::json!({"insideBefore": self.ivars().inside.get(), "eventWindow":event.windowNumber(), "eventTime":event.timestamp()}));
             self.motion(event);
         }
 
         #[unsafe(method(mouseExited:))]
         fn exited(&self, _event: &NSEvent) {
+            crate::post_collapse_probe::native(&self.ivars().app, "pointer-exited", self.ivars().surface.label(), serde_json::json!({"insideBefore": self.ivars().inside.get(), "eventWindow": _event.windowNumber(), "eventTime": _event.timestamp()}));
             self.clear(true);
         }
     }
@@ -160,6 +163,9 @@ impl MimiOverlayPointerOwner {
 
     fn emit(&self, point: Option<OverlayPointerPosition>) {
         let ivars = self.ivars();
+        if ivars.surface == Surface::Control || point.is_none() {
+            crate::post_collapse_probe::native(&ivars.app, "pointer-relay", ivars.surface.label(), serde_json::json!({"inside":point.is_some()}));
+        }
         let _ = ivars.app.emit_to(
             EventTarget::webview_window(ivars.surface.label()),
             EVENT,
@@ -206,7 +212,9 @@ impl MimiOverlayPointerOwner {
     }
 
     fn clear(&self, report_outside: bool) {
-        if self.reset() || report_outside {
+        let was_inside = self.reset();
+        if was_inside || report_outside {
+            crate::post_collapse_probe::native(&self.ivars().app, "pointer-cleared", self.ivars().surface.label(), serde_json::json!({"wasInside": was_inside, "reportOutside": report_outside}));
             self.emit(None);
         }
     }
