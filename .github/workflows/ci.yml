@@ -8,6 +8,7 @@ on:
       release_tag: {description: Expected Mac release tag, type: string, default: v1.7.4}
       checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video, linux-hover-input, mac-language], default: both}
       display_modes: {description: Also cycle all three subtitle display modes in the running Mac app, type: boolean, default: false}
+      language: {description: Language for the independent language-window check, type: choice, options: [en, zh], default: en}
       strict_hover: {description: Require the original quiet button target to accept its first click, type: boolean, default: false}
       gesture: {description: macOS drag starting surface, type: choice, options: [caption, panel], default: caption}
 permissions:
@@ -106,6 +107,7 @@ jobs:
         if: ${{ inputs.checks == 'mac-language' && steps.candidate.outcome == 'success' }}
         env:
           EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+          MIMI_CAPSULE_TEST_LANGUAGE: ${{ inputs.language }}
         run: bash "$RUNNER_TEMP/video-tools/run-hover-video.sh" --dev "$EXPECTED_CERT" language "$RUNNER_TEMP/language-proof"
       - name: Keep the independent child, physical input and menu observations
         if: ${{ !cancelled() && inputs.checks == 'mac-language' }}

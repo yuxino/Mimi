@@ -60,8 +60,13 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir "$scene/ready"
+locale=${MIMI_CAPSULE_TEST_LANGUAGE:-en}
+[[ $locale == en || $locale == zh ]]
+source_locale=en
+if [[ $locale == zh ]]; then source_locale=auto; fi
+export MIMI_CAPSULE_TEST_LANGUAGE=$locale
 cat > "$scene/preferences.json" <<JSON
-{"ui_language":"en","source_language":"en","target_language":"zh","audio_input":"system","subtitle_display_mode":"bilingual","font_size":16,"subtitle_animation":$animation,"subtitle_background_opacity":100,"retain_session_history":false,"record_session_audio":false}
+{"ui_language":"$locale","source_language":"$source_locale","target_language":"zh","audio_input":"system","subtitle_display_mode":"bilingual","font_size":16,"subtitle_animation":$animation,"subtitle_background_opacity":100,"retain_session_history":false,"record_session_audio":false}
 JSON
 python3 "$tools/build-hover-input.py" "$suite" "$scene/check-hover"
 scene_flag=MIMI_UI_TEST_TRANSLATION_LAYOUT=1

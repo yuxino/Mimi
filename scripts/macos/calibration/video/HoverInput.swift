@@ -29,6 +29,9 @@ private enum HoverInput {
             throw LayoutError("private_scene_required")
         }
         let capsuleOnly = args[5] == "language"
+        let chinese = ProcessInfo.processInfo.environment["MIMI_CAPSULE_TEST_LANGUAGE"] == "zh"
+        let languageFields = chinese ? ["识别语言","翻译成"] : ["Recognize","Translate To"]
+        let collapseName = chinese ? "收起字幕控制" : "Collapse subtitle controls"
         let layout = args[5] != "history"
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.25)
@@ -278,8 +281,8 @@ private enum HoverInput {
                         let labels = [kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute].compactMap { attribute(e, $0) as? String }
                         let role = attribute(e, kAXRoleAttribute) as? String
                         if let b = frame(of: e), w.bounds.intersects(b) {
-                            fields.formUnion(labels.filter { ["Recognize", "Translate To"].contains($0) })
-                            if role == kAXButtonRole, labels.contains(where: { $0.hasSuffix("Collapse subtitle controls") }) { collapse = b }
+                            fields.formUnion(labels.filter { languageFields.contains($0) })
+                            if role == kAXButtonRole, labels.contains(where: { $0.hasSuffix(collapseName) }) { collapse = b }
                         }
                         nodes.append(contentsOf: attribute(e, kAXChildrenAttribute) as? [AXUIElement] ?? [])
                     }
@@ -292,7 +295,7 @@ private enum HoverInput {
             outcome["openedLanguagePanel"] = expanded != nil
             outcome["islandPostClickWindowBounds"] = rect(postClick.bounds)
             guard let expanded else { throw LayoutError("physical_island_click_did_not_open_verified_language_controls") }
-            mark("language-panel-both-fields-visible", nil, ["windowID": expanded.id, "fields": ["Recognize", "Translate To"], "bounds": rect(expanded.bounds)])
+            mark("language-panel-both-fields-visible", nil, ["windowID": expanded.id, "fields": languageFields, "bounds": rect(expanded.bounds)])
             guard let collapse else { throw LayoutError("opened_language_panel_but_collapse_button_not_located") }
             try physical(center(collapse), expected: expanded.bounds, stage: "collapse-language-panel")
             let closeDeadline = now + 4
@@ -311,9 +314,11 @@ private enum HoverInput {
         }
         if capsuleOnly {
             islandPicture("island-quiet")
+            try captureFrame(windowID: root.id, frame: root.bounds, crop: root.bounds, output: out, stage: "canvas-quiet")
             try move(lanePoint("source"))
             Thread.sleep(forTimeInterval: 0.35)
             islandPicture("island-from-caption-hover")
+            try captureFrame(windowID: root.id, frame: root.bounds, crop: root.bounds, output: out, stage: "canvas-hover")
             try move(center(island.bounds))
             Thread.sleep(forTimeInterval: 0.35)
             islandPicture("island-direct-hover")
