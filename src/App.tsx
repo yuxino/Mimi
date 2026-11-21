@@ -12,9 +12,10 @@ const OverlayWindow = lazy(() =>
   })),
 );
 const OverlayControlWindow = lazy(() =>
-  import("./windows/overlay-control/OverlayControlWindow").then((module) => ({
-    default: module.OverlayControlWindow,
-  })),
+  import("./windows/overlay-control/OverlayControlWindow").then((module) => {
+    (window as Window & { __MIMI_CAPSULE_PROBE_STAGE__?: (stage: string, value?: string) => void }).__MIMI_CAPSULE_PROBE_STAGE__?.("lazy-resolved");
+    return { default: module.OverlayControlWindow };
+  }),
 );
 const SettingsView = lazy(() =>
   import("./windows/settings/SettingsView").then((module) => ({
@@ -34,6 +35,7 @@ type WindowLabel = "overlay" | "overlay-control" | "settings";
 export default function App({ settingsView: PreloadedSettingsView }: { settingsView?: ComponentType }) {
   const uiLanguage = useSyncExternalStore(subscribeUiLanguage, effectiveUiLanguage);
   const [label] = useState<WindowLabel>(resolveInitialLabel);
+  (window as Window & { __MIMI_CAPSULE_PROBE_STAGE__?: (stage: string, value?: string) => void }).__MIMI_CAPSULE_PROBE_STAGE__?.("route", label);
   const init = useStore((state) => state.init);
 
   useLayoutEffect(() => {
