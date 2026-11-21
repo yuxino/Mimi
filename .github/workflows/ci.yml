@@ -6,7 +6,7 @@ on:
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that produced the selected artifact, type: string}
       release_tag: {description: Expected Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video, linux-hover-input, mac-language, mac-direct-language], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video, linux-hover-input, mac-language, mac-direct-language, mac-recover-controls], default: both}
       display_modes: {description: Also cycle all three subtitle display modes in the running Mac app, type: boolean, default: false}
       language: {description: Language for the independent language-window check, type: choice, options: [en, zh], default: en}
       strict_hover: {description: Require the original quiet button target to accept its first click, type: boolean, default: false}
@@ -35,7 +35,7 @@ jobs:
       - run: npm ci
       - run: xvfb-run -a python3 "$RUNNER_TEMP/linux-hover-check.py"
   signed-candidate:
-    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' || inputs.checks == 'mac-hover-video' || inputs.checks == 'mac-language' || inputs.checks == 'mac-direct-language' }}
+    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' || inputs.checks == 'mac-hover-video' || inputs.checks == 'mac-language' || inputs.checks == 'mac-direct-language' || inputs.checks == 'mac-recover-controls' }}
     runs-on: macos-15
     timeout-minutes: 65
     env:
@@ -49,6 +49,7 @@ jobs:
         run: |
           install -m 700 scripts/macos/calibration/hosted-build.sh "$RUNNER_TEMP/build-caption-fixture.sh"
           if [[ -d scripts/macos/calibration/video ]]; then cp -R scripts/macos/calibration/video "$RUNNER_TEMP/video-tools"; fi
+          if [[ -d scripts/macos/calibration/recover ]]; then cp -R scripts/macos/calibration/recover "$RUNNER_TEMP/recover-controls"; fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ inputs.revision }}
@@ -84,6 +85,24 @@ jobs:
           name: macos-caption-drag
           path: ${{ runner.temp }}/caption-drag
           if-no-files-found: ignore
+          retention-days: 7
+      - name: Recover locked controls with one physical click
+        if: ${{ !cancelled() && inputs.checks == 'mac-recover-controls' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+        run: bash "$RUNNER_TEMP/recover-controls/run-recover-controls.sh" --dev "$EXPECTED_CERT" lock "$RUNNER_TEMP/recover-evidence/lock"
+      - name: Keep blank panel clicks separate from More Settings
+        if: ${{ !cancelled() && inputs.checks == 'mac-recover-controls' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+        run: bash "$RUNNER_TEMP/recover-controls/run-recover-controls.sh" --dev "$EXPECTED_CERT" settings "$RUNNER_TEMP/recover-evidence/settings"
+      - name: Keep both recovery results and independent native window images
+        if: ${{ !cancelled() && inputs.checks == 'mac-recover-controls' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-recover-controls
+          path: ${{ runner.temp }}/recover-evidence
+          if-no-files-found: error
           retention-days: 7
       - name: Follow the same caption with animation off
         if: ${{ !cancelled() && inputs.checks == 'mac-follow' && steps.candidate.outcome == 'success' }}
