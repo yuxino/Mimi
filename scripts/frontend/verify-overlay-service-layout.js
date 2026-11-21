@@ -130,17 +130,31 @@ async (page, { baseUrl = "http://127.0.0.1:1420", widths = [360, 420, 552, 640],
       if (!handle) throw new Error("Overlay bottom-right resize handle is missing");
       const rect = handle.getBoundingClientRect();
       const overlay = handle.parentElement.getBoundingClientRect();
-      return { x: rect.x + 7, y: rect.y + 7, width: overlay.width, height: overlay.height };
+      const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return { x, y, width: overlay.width, height: overlay.height, hit: hit === handle,
+        target: hit?.getAttribute("class") ?? hit?.tagName, viewport: [innerWidth, innerHeight] };
     });
     if (Math.abs(from.width - width) <= 1 && Math.abs(from.height - height) <= 1) return;
+    if (!from.hit) throw new Error("Resize handle is outside the input surface: " + JSON.stringify({ from, width, height }));
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
-    await page.mouse.move(from.x + width - from.width, from.y + height - from.height);
-    await page.mouse.up();
-    // ResizeObserver and compact-lane measurement each trigger another render.
-    await page.evaluate(async () => {
-      for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame);
-    });
+    try {
+      await page.mouse.move(from.x + width - from.width, from.y + height - from.height);
+      // Observe the requested frame while dragging, before judging the
+      // readout against a width the application might never have received.
+      await page.evaluate(async ({ width, height, from }) => {
+        const start = performance.now();
+        for (;;) {
+          await new Promise(requestAnimationFrame);
+          const rect = document.querySelector(".overlay-surface").getBoundingClientRect();
+          if (Math.abs(rect.width - width) <= 1 && Math.abs(rect.height - height) <= 1) return;
+          if (performance.now() - start > 2000) throw new Error("Resize gesture missed its requested frame: "
+            + JSON.stringify({ from, requested: [width, height], actual: [rect.width, rect.height] }));
+        }
+      }, { width, height, from });
+    } finally { await page.mouse.up(); }
+    await page.evaluate(async () => { for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame); });
   }
 
   async function readoutCase(hovered) {
