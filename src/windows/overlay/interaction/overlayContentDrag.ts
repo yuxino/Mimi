@@ -1,11 +1,13 @@
 import { isTauri, overlayMoveStart } from "../../../lib/ipc";
 import type { PointerEvent } from "react";
 
-export function hitsVerticalScrollbar(element: HTMLElement, clientX: number) {
+export function hitsVerticalScrollbar(element: HTMLElement, clientX: number, clientY?: number) {
   if (element.scrollHeight <= element.clientHeight) return false;
   // AppKit can overlay Mimi's 6px scrollbar without shrinking clientWidth.
   const width = Math.max(6, element.offsetWidth - element.clientWidth);
-  return clientX >= element.getBoundingClientRect().right - width;
+  const { right, top, bottom } = element.getBoundingClientRect();
+  return clientX >= right - width && clientX < right &&
+    (clientY === undefined || (clientY >= top && clientY < bottom));
 }
 
 /** Move from subtitle content or panel labels without taking a control's gesture. */

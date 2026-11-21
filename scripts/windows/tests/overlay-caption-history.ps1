@@ -335,13 +335,17 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         try {
             [MimiCaptionDragDesktop]::SetLeftButton($true)
             if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'The history scrollbar did not receive a held physical left button.' }
-            for ($step = 1; $step -le 8; $step++) {
-                [MimiPointerSmoke]::MoveAndVerify($thumb.X, [int][Math]::Round($thumb.Y + ($thumb.EndY - $thumb.Y) * $step / 8))
-                Start-Sleep -Milliseconds 30
-                if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
-                Assert-CaptionHistoryEnvironment $context
+            [MimiPointerSmoke]::MoveAndVerify($thumb.X, $thumb.Y + 3)
+            $moved = Wait-CaptionHistory 'the start of a real held thumb drag' {
+                $beforeJump = Get-CaptionHistoryView $context
+                if ($beforeJump.Percent -gt $state.Percent -and $beforeJump.Percent -lt 99.99) { return $beforeJump }
             }
-            $trackWhileHeld = $context.Viewport.Current.BoundingRectangle
+            if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'The native thumb must remain pressed before the last movement.' }
+            $trackWhileHeld = $moved.View
+            Read-CaptionHistoryReturn $context $moved
+            $context.Checkpoints['before-terminal-drag'] = $moved
+            # No UIA query or sleep between the last large movement and button up.
+            [MimiPointerSmoke]::MoveAndVerify($thumb.X, $thumb.EndY)
         } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
         if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the history scrollbar button after release.' }
         $state = Wait-CaptionHistory 'the physical scrollbar reaching the real bottom' {

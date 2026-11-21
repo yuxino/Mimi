@@ -1,4 +1,4 @@
-name: Observe native scrollbar release under renderer scheduling
+name: Compare the packaged Windows app after a quick scrollbar release
 on: workflow_dispatch
 permissions:
   contents: read
@@ -11,45 +11,56 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
-        with:
-          node-version: 22
-      - name: Verify the recorded package and source
+      - name: Verify the two package sources
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: pwsh
         run: |
-          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14703231834 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'windows-ui-test-executable' -or $artifact.workflow_run.head_sha -cne '810e5a1582705da7467d300831368bde6720950f' -or $artifact.digest -cne 'sha256:7731c48358b89dde4905d0bd17d2118186238bea4b9265c7df40bf2dd1b15ffa') { throw 'Unexpected Windows package' }
+          $old = gh api repos/yuxino/Mimi/actions/artifacts/14703231834 | ConvertFrom-Json
+          $fixed = gh api repos/yuxino/Mimi/actions/runs/44897522655/artifacts | ConvertFrom-Json
+          $packages = @($fixed.artifacts | Where-Object name -CEQ 'mimi-windows-2025')
+          if ($LASTEXITCODE -ne 0 -or $old.workflow_run.head_sha -cne '810e5a1582705da7467d300831368bde6720950f' -or $old.digest -cne 'sha256:7731c48358b89dde4905d0bd17d2118186238bea4b9265c7df40bf2dd1b15ffa' -or $packages.Count -ne 1 -or $packages[0].workflow_run.head_sha -cne '21bd148d253686de6013f761cc93d79e8a4afbf3') { throw 'Unexpected package source' }
+          Write-Host "Approved package digests $($old.digest) and $($packages[0].digest)"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           artifact-ids: '14703231834'
           run-id: 44892832960
           github-token: ${{ github.token }}
-          path: src-tauri/target/release
+          path: ${{ runner.temp }}/previous-mimi
           merge-multiple: true
-      - name: Compare native release with and without a bounded renderer delay
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: mimi-windows-2025
+          run-id: 44897522655
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/candidate-package
+      - name: Extract the matching executable
         shell: pwsh
         run: |
-          $exe = (Resolve-Path ./src-tauri/target/release/mimi.exe).Path
-          Write-Host "Executable SHA-256 $((Get-FileHash $exe).Hash)"
-          $failed = @()
-          $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
-          $listener.Start()
-          $env:MIMI_QA_WEBVIEW_PORT = $listener.LocalEndpoint.Port.ToString()
-          $listener.Stop()
-          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-address=127.0.0.1 --remote-debugging-port=$env:MIMI_QA_WEBVIEW_PORT"
-          foreach ($gesture in @('observe', 'down', 'last-scroll')) {
-            $env:MIMI_QA_SCHEDULE = $gesture
-            Write-Host "Physical release $gesture"
-            & pwsh -NoProfile -File ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/compare-history/$gesture"
-            if ($LASTEXITCODE -ne 0) { $failed += $gesture }
+          $archives = @(Get-ChildItem -LiteralPath "$env:RUNNER_TEMP/candidate-package" -File -Recurse -Filter 'mimi_1.7.6_x64-portable.zip')
+          if ($archives.Count -ne 1) { throw 'Expected one x64 portable archive' }
+          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath "$env:RUNNER_TEMP/unpacked"
+          if ((Get-FileHash "$env:RUNNER_TEMP/previous-mimi/mimi.exe").Hash -ine 'D43A8537D1D2604F6924E439160E04C5AC96813168E9BC77405D3089DA66D896') { throw 'Unexpected original executable' }
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/test-binary" | Out-Null
+      - name: Exercise the before and after builds on the same desktop
+        shell: pwsh
+        run: |
+          $outcomes = [ordered]@{}
+          foreach ($variant in @('previous-mimi','unpacked')) {
+            $source = "$env:RUNNER_TEMP/$variant/mimi.exe"
+            $exe = "$env:RUNNER_TEMP/test-binary/mimi.exe"
+            Copy-Item -LiteralPath $source -Destination $exe -Force
+            Write-Host "$variant SHA-256 $((Get-FileHash $exe).Hash)"
+            & pwsh -NoProfile -File ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $exe -ExpectedArchitecture x64 -OverlayInteraction caption-history -EvidenceDirectory "$env:RUNNER_TEMP/quick-history/$variant"
+            $outcomes[$variant] = $LASTEXITCODE
           }
-          if ($failed.Count -gt 0) { throw "Failed releases: $($failed -join ', ')" }
+          $outcomes | ConvertTo-Json | Set-Content -LiteralPath "$env:RUNNER_TEMP/quick-history/outcomes.json"
+          if ($outcomes.unpacked -ne 0) { throw 'The new package did not follow the next caption' }
+          exit 0
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: windows-release-scheduling
-          path: ${{ runner.temp }}/compare-history
+          name: packaged-windows-quick-history
+          path: ${{ runner.temp }}/quick-history
           retention-days: 7
           if-no-files-found: error

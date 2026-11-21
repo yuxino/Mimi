@@ -104,7 +104,12 @@ function captionPage(devtools, sessionId) {
   };
   let buttons = 0;
   let position = { x: 0, y: 0 };
-  const move = (x, y) => { position = { x, y }; return cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...position, buttons }); };
+  const move = (x, y) => {
+    position = { x, y };
+    // Chromium uses the active button to deliver a drag to the captured
+    // handle. The buttons bitmask alone delivers the move beneath the pointer.
+    return cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...position, button: buttons ? "left" : "none", buttons });
+  };
   const page = {
     cdp, evaluate,
     async goto(url) {

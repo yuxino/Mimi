@@ -1,6 +1,11 @@
 type ScrollIntent =
   | { kind: "down" | "pointer"; top: number }
-  | { kind: "scrollbar"; top: number; range: number };
+  | { kind: "scrollbar"; top: number; range: number }
+  | { kind: "released-scrollbar"; top: number; range: number; expiresAt: number };
+
+// scrollend normally closes the gesture. Also expire its eligibility on
+// engines that omit scrollend, without delaying a single caption or frame.
+const SCROLLBAR_RELEASE_WINDOW_MS = 250;
 
 function maxScrollTop(element: HTMLElement) {
   return Math.max(0, element.scrollHeight - element.clientHeight);
@@ -31,18 +36,24 @@ export class TimelineScroll {
     if (this.userScrolling?.kind !== "scrollbar") this.userIntent(element);
   }
 
-  pointerUp(element: HTMLElement) {
+  pointerUp(element: HTMLElement, releasedDownGutter = false) {
     const scrollbar = this.userScrolling?.kind === "scrollbar";
-    // A quick release can precede the last scroll event from the browser.
+    // The latest native offset may be available before its scroll event.
     if (scrollbar) this.scrolled(element);
     this.endUserIntent();
+    if (scrollbar && releasedDownGutter && !this.following && !this.atTail(element)) {
+      // Chromium can deliver pointerup before applying the last thumb movement.
+      // Resume only if the trailing scroll reaches the end of the same track.
+      this.userScrolling = { kind: "released-scrollbar", top: element.scrollTop,
+        range: maxScrollTop(element), expiresAt: performance.now() + SCROLLBAR_RELEASE_WINDOW_MS };
+    }
     const resume = this.pointerInterruptedGlide && this.following;
     this.pointerInterruptedGlide = false;
     if (resume) this.contentChanged(element, "smooth");
     else if (scrollbar && this.following && !this.atTail(element)) this.contentChanged(element, "instant");
   }
 
-  userIntent(element: HTMLElement, kind: ScrollIntent["kind"] = "pointer") {
+  userIntent(element: HTMLElement, kind: "down" | "pointer" | "scrollbar" = "pointer") {
     this.smoothFollowing = false;
     this.readingStart = false;
     const top = element.scrollTop;
@@ -52,6 +63,10 @@ export class TimelineScroll {
 
   endUserIntent() {
     this.userScrolling = null;
+  }
+
+  finishScrollbarRelease() {
+    if (this.userScrolling?.kind === "released-scrollbar") this.endUserIntent();
   }
 
   /** Enter full confirmed-history reading even if the compact rows do not
@@ -102,14 +117,21 @@ export class TimelineScroll {
   scrolled(element: HTMLElement) {
     const atTail = this.atTail(element);
     if (atTail) this.smoothFollowing = false;
+    const range = maxScrollTop(element);
+    const released = this.userScrolling;
+    if (released?.kind === "released-scrollbar" &&
+      (released.range !== range || element.scrollTop < released.top || performance.now() > released.expiresAt)) {
+      this.endUserIntent();
+    }
     const intent = this.userScrolling;
-    if (intent && (intent.kind !== "scrollbar" || intent.range === maxScrollTop(element))) {
+    if (intent && (!("range" in intent) || intent.range === range)) {
       const downward = element.scrollTop > intent.top ||
         (intent.kind === "down" && element.scrollTop === intent.top);
       if (atTail && downward) this.following = true;
       else if (!atTail && element.scrollTop !== intent.top) this.following = false;
     }
-    this.syncScrollPosition(element);
+    if (intent?.kind === "released-scrollbar" && !atTail) intent.top = element.scrollTop;
+    else this.syncScrollPosition(element);
     // Native layout/anchor corrections may emit scroll without user input.
     // Keep the actual visible anchor, but never use them to leave reading.
     if (!this.following) this.rememberReading(element);
@@ -123,6 +145,7 @@ export class TimelineScroll {
   }
 
   contentChanged(element: HTMLElement, behavior: ScrollBehavior, motionEnabled = true) {
+    this.finishScrollbarRelease();
     this.modeAnchor = false;
     if (!motionEnabled) this.pointerInterruptedGlide = false;
     if (this.following && (this.pointerInterruptedGlide || this.userScrolling?.kind === "scrollbar")) return;
@@ -135,6 +158,7 @@ export class TimelineScroll {
   }
 
   reflow(element: HTMLElement) {
+    this.finishScrollbarRelease();
     if (!this.following) {
       this.restoreReading(element);
       return;
