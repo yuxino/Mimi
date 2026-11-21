@@ -41,10 +41,11 @@ function Test-CaptionHistorySessions {
 }
 
 function Test-PanelLanguageSessions {
+    Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs')
     $labelsPath = Join-Path $preferencesDir 'panel-languages.json'
     node (Join-Path $PSScriptRoot '../../frontend/write-panel-language-fixtures.mjs') $labelsPath
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the panel language catalog.' }
-    $languages = @(([IO.File]::ReadAllText($labelsPath) | ConvertFrom-Json) | Where-Object { $_.locale -ceq 'en' })
+    $languages = [IO.File]::ReadAllText($labelsPath) | ConvertFrom-Json
     $null = New-Item -ItemType Directory -Force -Path $frontendReadyDir, $EvidenceDirectory
     $env:MIMI_UI_TEST_DUAL_SUBTITLES = $null
     $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES = $null
@@ -72,5 +73,5 @@ function Test-PanelLanguageSessions {
         }
     }
     if ($failures.Count) { throw "Panel language review failed for $($failures -join ', ')." }
-    Write-Output "Verified one Windows English panel blank-drag scenario on the same executable."
+    Write-Output "Verified $($languages.Count) Windows panel languages on the same executable."
 }

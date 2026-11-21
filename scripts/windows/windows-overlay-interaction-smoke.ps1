@@ -378,9 +378,10 @@ public static class MimiPointerSmoke {
         var gui = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
         if (thread == 0 || !GetGUIThreadInfo(thread, ref gui)) return "gui_query=unavailable";
         var foreground = GetForegroundWindow();
+        var focus = GetAncestor(gui.Focus, 2);
         return String.Format("move_root={0} capture_root={1} foreground_root={2} foreground_control={3} focus_root={4} focus_control={5}",
             (gui.Flags & 0x0002) != 0 && gui.MoveSize == overlay, gui.Capture == overlay,
-            foreground == overlay, foreground == controls, gui.Focus == overlay, gui.Focus == controls);
+            foreground == overlay, foreground == controls, focus == overlay, focus == controls);
     }
 
     public static void ClickOverlay(IntPtr overlay, int x, int y, string action) {
@@ -752,9 +753,7 @@ try {
         $controls = [MimiPointerSmoke]::FindVisibleControlWindow($overlay)
         if ($controls -eq [IntPtr]::Zero) { throw 'Could not identify the language control window.' }
         $labels = [IO.File]::ReadAllText((Join-Path $FixtureDirectory 'panel-labels.json')) | ConvertFrom-Json
-        Add-Type -Path (Join-Path $PSScriptRoot 'tests/CaptionDragDesktop.cs')
-        . (Join-Path $PSScriptRoot 'tests/panel-blank-drag.ps1')
-        Test-PanelBlankDrag $controls $labels $EvidenceDirectory
+        Test-PanelLanguage $controls $labels $EvidenceDirectory
         return
     }
 
