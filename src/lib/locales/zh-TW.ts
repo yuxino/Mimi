@@ -52,6 +52,7 @@ export const OVERLAY = {
   enterImmersiveMode: "開啟沉浸模式",
   lockPosition: "鎖定字幕位置",
   unlockPosition: "解鎖字幕位置",
+  unlockPositionShort: "解鎖",
   moreSettings: "更多設定…",
   controlActionFailed: "操作未完成，請再試一次。",
   originalOnly: "只顯示原文",

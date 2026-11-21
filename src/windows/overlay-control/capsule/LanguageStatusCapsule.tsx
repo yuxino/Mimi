@@ -146,7 +146,7 @@ export function LanguageStatusCapsule({
       {unlock ? <>
         <Icon name={unlock.failure ? "exclamation-triangle" : "unlock"} className="overlay-control-island__unlock" />
         <span className="overlay-control-island__summary" role={unlock.failure ? "alert" : undefined}>
-          <strong>{unlock.failure ?? actionLabel}</strong>
+          <strong>{unlock.failure ?? I18N.overlay.unlockPositionShort}</strong>
         </span>
         {recording}
       </> : <>

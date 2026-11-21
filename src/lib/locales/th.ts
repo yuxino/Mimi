@@ -52,6 +52,7 @@ export const OVERLAY = {
   enterImmersiveMode: "เปิดโหมดเต็มอรรถรส",
   lockPosition: "ล็อกตำแหน่งคำบรรยาย",
   unlockPosition: "ปลดล็อกตำแหน่งคำบรรยาย",
+  unlockPositionShort: "ปลดล็อก",
   moreSettings: "การตั้งค่าเพิ่มเติม…",
   controlActionFailed: "ดำเนินการไม่สำเร็จ ลองอีกครั้ง",
   originalOnly: "ต้นฉบับเท่านั้น",

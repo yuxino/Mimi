@@ -61,6 +61,7 @@ export const OVERLAY = {
   enterImmersiveMode: "Включить иммерсивный режим",
   lockPosition: "Закрепить положение субтитров",
   unlockPosition: "Открепить положение субтитров",
+  unlockPositionShort: "Открепить",
   moreSettings: "Другие настройки…",
   controlActionFailed: "Не удалось выполнить действие. Повторите попытку.",
   originalOnly: "Только оригинал",

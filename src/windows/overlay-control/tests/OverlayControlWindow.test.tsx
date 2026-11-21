@@ -147,6 +147,7 @@ it.each([false, true])("keeps a quiet hover unlock entry with safe retry and nor
     expect(surface.hasAttribute("inert")).toBe(false);
     expect(surface.hasAttribute("data-quiet-island")).toBe(true);
     expect(capsule.getAttribute("aria-label")).toBe(I18N.overlay.unlockPosition);
+    expect(capsule.querySelector("strong")?.textContent).toBe(I18N.overlay.unlockPositionShort);
     expect(capsule.title).toContain("Shift+L");
     expect(capsule.querySelector("[data-pulse-style]")).toBeNull();
     expect(capsule.hasAttribute("aria-haspopup")).toBe(false);
