@@ -6,14 +6,14 @@ on:
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that built the captured executable, type: string}
       release_tag: {description: Published Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow], default: both}
       gesture: {description: macOS drag starting surface, type: choice, options: [caption, panel], default: caption}
 permissions:
   contents: read
   actions: read
 jobs:
   signed-candidate:
-    if: ${{ inputs.checks == 'mac-dev-drag' }}
+    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' }}
     runs-on: macos-15
     timeout-minutes: 65
     env:
@@ -48,6 +48,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.revision }}
         run: bash "$RUNNER_TEMP/build-caption-fixture.sh" --no-launch "$SOURCE_SHA"
       - name: Drag the selected subtitle surface there and back
+        if: ${{ inputs.checks == 'mac-dev-drag' }}
         env:
           EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
           MIMI_TEST_DRAG_GESTURE: ${{ inputs.gesture }}
@@ -58,6 +59,24 @@ jobs:
         with:
           name: macos-caption-drag
           path: ${{ runner.temp }}/caption-drag
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Follow the same caption with animation off
+        if: ${{ !cancelled() && inputs.checks == 'mac-follow' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" "$RUNNER_TEMP/caption-follow/off"
+      - name: Follow the same caption with animation on
+        if: ${{ !cancelled() && inputs.checks == 'mac-follow' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" --animation "$RUNNER_TEMP/caption-follow/on"
+      - name: Save caption coordinates and synthetic window images
+        if: ${{ !cancelled() && inputs.checks == 'mac-follow' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-caption-follow
+          path: ${{ runner.temp }}/caption-follow
           if-no-files-found: ignore
           retention-days: 7
       - name: Remove this runner's private test signing identity
