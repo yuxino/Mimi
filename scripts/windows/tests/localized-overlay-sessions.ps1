@@ -58,12 +58,13 @@ function Test-PanelLanguageSessions {
     foreach ($labels in $languages) {
         $locale = $labels.locale
         $labels | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $preferencesDir 'panel-labels.json') -Encoding utf8NoBOM
-        Write-Output "Starting panel review for $locale."
+        Write-Output "Starting the separate controlled resize for $locale; original run44903824780 is not repeated."
+        [IO.File]::WriteAllBytes((Join-Path $preferencesDir 'panel-focus-controlled-resize-only'), [byte[]]@())
         try {
             Invoke-LocalizedOverlaySession @{
                 ui_language = $locale
                 source_language = 'en'
-                target_language = 'zh_tw'
+                target_language = 'fa'
                 subtitle_display_mode = 'bilingual'
             } $EvidenceDirectory
         }

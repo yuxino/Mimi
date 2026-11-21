@@ -1,6 +1,12 @@
-name: Windows Russian picker focus observation
+name: Windows controlled picker resize observation
 on:
   workflow_dispatch:
+    inputs:
+      artifact_run: {description: Exact executable artifact run, type: string, required: true}
+      artifact_name: {description: Executable artifact name, type: string, default: windows-ui-test-executable}
+      artifact_kind: {description: Artifact format, type: choice, options: [executable, portable], default: executable}
+      executable_sha256: {description: Expected executable SHA256, type: string, required: true}
+      source_revision: {description: Executable source revision for the record, type: string, required: true}
 permissions:
   contents: read
   actions: read
@@ -20,24 +26,64 @@ jobs:
       - run: npm ci --prefer-offline --no-audit --no-fund
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: windows-ui-test-executable
-          run-id: 44898694618
+          name: ${{ inputs.artifact_name }}
+          run-id: ${{ inputs.artifact_run }}
           github-token: ${{ github.token }}
-          path: candidate
+          path: downloaded
       - name: Verify the unchanged Windows candidate
         shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ inputs.executable_sha256 }}
+          ARTIFACT_RUN: ${{ inputs.artifact_run }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          ARTIFACT_KIND: ${{ inputs.artifact_kind }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          if ($env:SOURCE_REVISION -notmatch '\A[0-9a-f]{40}\z' -or $env:ARTIFACT_RUN -notmatch '\A[0-9]+\z') { throw 'Invalid executable provenance.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$($env:ARTIFACT_RUN)" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.head_sha -cne $env:SOURCE_REVISION) { throw 'Artifact run source differs from the requested executable.' }
+          New-Item -ItemType Directory -Path ./candidate | Out-Null
+          $zipSha = $null
+          if ($env:ARTIFACT_KIND -eq 'executable') {
+            $files = @(Get-ChildItem ./downloaded -Recurse -File | Where-Object { $_.Name -ceq 'mimi.exe' })
+            if ($files.Count -ne 1) { throw 'Expected one exact mimi.exe in the raw artifact.' }
+            Copy-Item -LiteralPath $files[0].FullName -Destination ./candidate/mimi.exe
+          } else {
+            $files = @(Get-ChildItem ./downloaded -Recurse -File | Where-Object { $_.Name -cmatch '\Amimi_[0-9]+\.[0-9]+\.[0-9]+_x64-portable\.zip\z' })
+            if ($files.Count -ne 1) { throw 'Expected one unique x64 portable ZIP in the bundle artifact.' }
+            $zipSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $files[0].FullName).Hash
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $archive = [IO.Compression.ZipFile]::OpenRead($files[0].FullName)
+            try {
+              $names = @($archive.Entries | ForEach-Object { $_.FullName })
+              if ($names.Count -ne 2 -or -not ($names -ccontains 'mimi.exe') -or -not ($names -ccontains 'mimi.portable')) { throw 'Portable ZIP entries differ from the product package contract.' }
+              foreach ($name in @('mimi.exe', 'mimi.portable')) {
+                $entry = $archive.GetEntry($name)
+                if (($name -eq 'mimi.exe' -and ($entry.Length -le 0 -or $entry.Length -gt 268435456)) -or
+                    ($name -eq 'mimi.portable' -and $entry.Length -ne 0)) { throw 'Invalid portable entry size.' }
+                $inputFile = $entry.Open()
+                $outputFile = [IO.File]::Open((Join-Path ./candidate $name), [IO.FileMode]::CreateNew)
+                try { $inputFile.CopyTo($outputFile) } finally { $outputFile.Dispose(); $inputFile.Dispose() }
+              }
+            } finally { $archive.Dispose() }
+          }
           $sha = (Get-FileHash -Algorithm SHA256 ./candidate/mimi.exe).Hash
-          if ($sha -cne '63B682A18AB7C616F089635239305F0DB13E6DDAA5581D25BDDD3838D8894AD8') { throw 'Candidate executable differs from original run.' }
-          Write-Output "Unchanged candidate SHA-256: $sha (source=79e0c7ef, artifactRun=44898694618)."
-      - name: Observe the original Russian keyboard path once
+          if ($env:EXPECTED_SHA -notmatch '\A[0-9A-Fa-f]{64}\z' -or $sha -ine $env:EXPECTED_SHA) { throw 'Candidate executable differs from the expected artifact.' }
+          $evidence = Join-Path $env:RUNNER_TEMP 'russian-focus'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          @{ artifactRun = $env:ARTIFACT_RUN; artifactName = $env:ARTIFACT_NAME; artifactKind = $env:ARTIFACT_KIND
+            sourceRevision = $run.head_sha; executableSha256 = $sha; portableZipSha256 = $zipSha } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'candidate-provenance.json') -Encoding utf8NoBOM
+          Write-Output "Unchanged candidate SHA-256: $sha (source=$env:SOURCE_REVISION artifactRun=$env:ARTIFACT_RUN)."
+      - name: Observe only one controlled resize and its first physical key
         shell: pwsh
         run: ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath ./candidate/mimi.exe -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory "$env:RUNNER_TEMP/russian-focus"
       - name: Keep initial pictures and content-free focus and resize observations
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: windows-russian-picker-focus
+          name: windows-controlled-picker-resize
           path: ${{ runner.temp }}/russian-focus
           if-no-files-found: error
           retention-days: 7

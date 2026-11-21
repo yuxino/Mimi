@@ -88,6 +88,29 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
     $preferencesPath = Join-Path $FixtureDirectory 'preferences.json'
     $observation = @{ active = $false; key = $null; firstMenuRead = $null; firstReopen = $null; baselinePassed = $false; snapshots = [Collections.Generic.List[object]]::new() }
 
+    # UIA may project aria-activedescendant as the focused ListItem instead of
+    # exposing the DOM search input. Require the actual target popup hierarchy.
+    function Get-PanelPopupFocus($Menu, $Focused) {
+        if (-not $Menu -or -not $Focused -or -not [MimiPanelKeyboard]::OwnsFocus($controlsHandle)) { return 'other-panel-element' }
+        if ($Menu.List.Current.IsOffscreen) { return 'other-panel-element' }
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle($controlsHandle)
+        $listType = [System.Windows.Automation.PropertyCondition]::new($typeProperty, [System.Windows.Automation.ControlType]::List)
+        $lists = @($root.FindAll($scope, $listType) | Where-Object { -not $_.Current.IsOffscreen })
+        if ($lists.Count -ne 1 -or -not $lists[0].Equals($Menu.List)) { return 'other-panel-element' }
+        $searchByName = [System.Windows.Automation.PropertyCondition]::new($nameProperty, $Labels.searchLanguages)
+        $searches = @($root.FindAll($scope, $searchByName) | Where-Object {
+            -not $_.Current.IsOffscreen -and $_.Current.ControlType -in @([System.Windows.Automation.ControlType]::ComboBox, [System.Windows.Automation.ControlType]::Edit)
+        })
+        if ($searches.Count -eq 1 -and $Focused.Equals($searches[0])) { return 'search' }
+        if ($Focused.Current.ControlType -ne [System.Windows.Automation.ControlType]::ListItem) { return 'other-panel-element' }
+        $ancestor = $Focused
+        for ($depth = 0; $depth -lt 16 -and $null -ne $ancestor; $depth++) {
+            if ($ancestor.Equals($Menu.List)) { return 'active-option' }
+            $ancestor = [System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($ancestor)
+        }
+        return 'other-panel-element'
+    }
+
     function Read-PanelFocusObservation([string]$Phase) {
         $codes = Read-PanelLanguageCodes
         $menu = Read-PanelLanguageMenu $Labels.target
@@ -103,8 +126,7 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             $focusBox = @($box.X, $box.Y, $box.Width, $box.Height)
             $focus = if ($target -and $focused.Equals($target)) { 'target' }
                 elseif ($source -and $focused.Equals($source)) { 'source' }
-                elseif ([string]::Equals($focused.Current.Name, $Labels.searchLanguages, [StringComparison]::Ordinal)) { 'search' }
-                else { 'other-panel-element' }
+                else { Get-PanelPopupFocus $menu $focused }
         }
         $row = @{ phase = $Phase; wallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             sourceCode = $codes.source; targetCode = $codes.target; focus = $focus; focusType = $focusType; focusBounds = $focusBox
@@ -117,27 +139,32 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
 
     function Save-PanelFocusObservation {
         [void][IO.Directory]::CreateDirectory($EvidencePath)
-        $observation.key = [MimiPanelKeyboard]::LastObservedKey
+        if ($observation.mode -ne 'controlled-resize-only' -and $null -eq $observation.key) { $observation.key = [MimiPanelKeyboard]::LastObservedKey }
         [IO.File]::WriteAllText((Join-Path $EvidencePath 'ru-target-end-focus.json'),
             ($observation | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
     }
 
     function Test-SeparatePanelResize {
-        $control = @{ separate = $true; started = $false; completed = $false }
+        $control = @{ separate = $true; started = $false; completed = $false; arrowOpenedMenu = $false }
         $observation.controlledResize = $control
         try {
+            $field = Get-PanelLanguageField $Labels.target
+            if (-not $field) { throw 'The separate resize has no available target trigger.' }
+            $closed = Get-PanelPickerValueEvidence $field 'target'
+            $codes = Read-PanelLanguageCodes
+            if ($codes.source -cne 'en' -or $codes.target -cne 'fa') { throw 'The separate resize requires persisted en and fa.' }
             $menu = Read-PanelLanguageMenu $Labels.target
             if (-not $menu) {
-                $field = Get-PanelLanguageField $Labels.target
-                if (-not $field) { throw 'The separate resize has no available target trigger.' }
                 $box = $field.Current.BoundingRectangle
-                [MimiPointerSmoke]::ClickOverlay($controlsHandle, [int]($box.X + $box.Width / 2), [int]($box.Y + $box.Height / 2), 'Open a real search only after the untouched baseline')
+                [MimiPointerSmoke]::ClickOverlay($controlsHandle, [int]($box.X + $box.Width / 2), [int]($box.Y + $box.Height / 2), 'Open the controlled target search')
                 $control.openMethod = 'physical-trigger-click'
             } else { $control.openMethod = 'existing-menu' }
-            $null = Wait-PanelLanguageState 'separate-resize-open-menu' { Read-PanelLanguageMenu $Labels.target }
+            $menu = Wait-PanelLanguageState 'separate-resize-open-menu' { Read-PanelLanguageMenu $Labels.target }
+            $control.selectedMatchesClosed = [string]::Equals($closed.value, $menu.Selected, [StringComparison]::Ordinal)
             $before = Read-PanelFocusObservation 'separate-resize-before'
-            if ($before.focus -cne 'search' -or -not $before.nativeOwnsFocus -or -not $before.menu.present) {
-                throw 'The separate resize requires actual search focus in the owned menu.'
+            if ($before.focus -notin @('search', 'active-option') -or -not $before.nativeOwnsFocus -or
+                -not $before.menu.present -or -not $control.selectedMatchesClosed -or $before.targetCode -cne 'fa') {
+                throw 'The separate resize requires owned target search or its actual current option and persisted fa.'
             }
             $control.started = $true
             $control.beginWallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -145,11 +172,22 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             $control.endWallMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             $null = Wait-PanelLanguageState 'separate-resize-closed-menu' { -not (Read-PanelLanguageMenu $Labels.target) }
             $after = Read-PanelFocusObservation 'separate-resize-after'
+            $control.focusAfterResize = $after.focus
+            $control.focusTypeAfterResize = $after.focusType
+            $control.targetCodeAfterResize = $after.targetCode
+            # One real key, with no click/refocus workaround after the resize.
+            [MimiPanelKeyboard]::ObserveNextKey()
+            [MimiPanelKeyboard]::Key($controlsHandle, 0x28)
+            $control.arrowKey = [MimiPanelKeyboard]::LastObservedKey
+            try {
+                $null = Wait-PanelLanguageState 'target-controlled-reopen' {
+                    $current = Read-PanelLanguageMenu $Labels.target
+                    if ($current -and [string]::Equals($current.Selected, $closed.value, [StringComparison]::Ordinal)) { $current }
+                }
+                $control.arrowOpenedMenu = $true
+            } catch { $control.arrowFailureType = $_.Exception.GetType().Name }
+            $null = Read-PanelFocusObservation 'separate-resize-after-one-ArrowDown'
             $control.completed = $true
-            $control.focusAfter = $after.focus
-            $control.focusTypeAfter = $after.focusType
-            $control.menuAfter = $after.menu.present
-            $control.targetCodeAfter = $after.targetCode
         } catch {
             $control.failureType = $_.Exception.GetType().Name
             Write-Output 'The separate resize observation did not complete; original baseline outcome is retained.'
@@ -236,7 +274,7 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             $observation.firstMenuRead.selectedIndices = @($selected)
         }
         if ($items.Count -gt 1 -and $items.Count -le 256 -and $selected.Count -eq 1) {
-            return @{ Names = $items; Index = $selected[0]; Selected = $items[$selected[0]] }
+            return @{ Names = $items; Index = $selected[0]; Selected = $items[$selected[0]]; List = $list }
         }
     }
 
@@ -313,6 +351,33 @@ function Test-PanelLanguage($Controls, $Labels, $EvidencePath) {
             $details += "field=($field) menu=($menu) uia_focus=$focus"
         } catch { $details += "uia_unavailable=$($_.Exception.GetType().Name)" }
         return $details -join ' '
+    }
+
+    $controlledMarker = Join-Path $FixtureDirectory 'panel-focus-controlled-resize-only'
+    if ($env:RUNNER_ENVIRONMENT -ceq 'github-hosted' -and $env:MIMI_UI_TEST -ceq '1' -and
+        (Test-Path -LiteralPath $controlledMarker -PathType Leaf) -and (Get-Item -LiteralPath $controlledMarker).Length -eq 0) {
+        $observation.mode = 'controlled-resize-only'
+        $observation.baselinePassed = $null
+        $observation.historicalBaseline = @{ run = 44903824780; passed = $true; notRepeated = $true }
+        try {
+            $codes = Read-PanelLanguageCodes
+            if ($codes.source -cne 'en' -or $codes.target -cne 'fa') { throw 'The controlled-only fixture must begin with persisted en and fa.' }
+            $island = Use-OverlayControl $Labels.openControls 'listening' 'Locate the controlled language island' -Surface $controlsHandle -NameSuffix -BoundsOnly -WaitMs 5000
+            Move-OverControlBounds $controlsHandle $island 'Reveal the controlled language island'
+            Start-Sleep -Milliseconds 240
+            Use-OverlayControl $Labels.openControls 'listening' 'Open the controlled language panel' -Surface $controlsHandle -NameSuffix -WaitMs 5000
+            Use-OverlayControl $Labels.moreSettings 'listening' 'Wait for the controlled language panel' -Surface $controlsHandle -WaitOnly -WaitMs 5000
+            $null = Wait-PanelLanguageState 'controlled-panel-focus' { [MimiPanelKeyboard]::OwnsFocus($controlsHandle) }
+            Test-SeparatePanelResize
+        } finally {
+            try { Save-PanelFocusObservation } catch { Write-Output 'Could not save the controlled-only focus observation.' }
+        }
+        if (-not $observation.controlledResize.completed) { throw 'The controlled-only resize did not complete its required native input.' }
+        if (-not $observation.controlledResize.arrowOpenedMenu -or $observation.controlledResize.focusAfterResize -cne 'target') {
+            throw 'The controlled resize did not preserve target-field focus and its first physical ArrowDown reopening.'
+        }
+        Write-Output 'Controlled resize passed: persisted fa, owned target search, one native 12px resize, target focus and first physical ArrowDown.'
+        return
     }
 
     try {
