@@ -13,6 +13,7 @@ pub(crate) mod session;
 pub(crate) mod settings;
 #[cfg(test)]
 mod tests;
+mod windows_history_probe;
 #[cfg(target_os = "windows")]
 mod windows_hover_fixture;
 
