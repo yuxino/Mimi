@@ -14,6 +14,15 @@ fn drag_finished(saw_move: bool, moving: bool, left_down: bool, foreground: Fore
     foreground == Foreground::External || (saw_move && !moving) || (!moving && !left_down)
 }
 
+fn forward_released_button(
+    moving: bool,
+    captured: bool,
+    left_down: bool,
+    foreground: Foreground,
+) -> bool {
+    moving && captured && !left_down && foreground == Foreground::Root
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FocusAfterDrag {
     RestoreControl,
@@ -31,14 +40,17 @@ fn focus_after_drag(foreground: Foreground) -> FocusAfterDrag {
 
 #[cfg(target_os = "windows")]
 mod native {
-    use super::{drag_finished, focus_after_drag, FocusAfterDrag, Foreground};
+    use super::{
+        drag_finished, focus_after_drag, forward_released_button, FocusAfterDrag, Foreground,
+    };
     use crate::windows::controls::focus_overlay_control;
     use crate::windows::{OverlayControlState, OverlayControlWindowManager};
-    use ::windows::Win32::Foundation::HWND;
+    use ::windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
+    use ::windows::Win32::Graphics::Gdi::ScreenToClient;
     use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
     use ::windows::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsWindow, GUITHREADINFO,
-        GUI_INMOVESIZE,
+        GetCursorPos, GetForegroundWindow, GetGUIThreadInfo, GetWindowThreadProcessId, IsWindow,
+        PostMessageW, GUITHREADINFO, GUI_INMOVESIZE, WM_LBUTTONUP,
     };
     use std::time::Duration;
     use tauri::{AppHandle, Manager, WebviewWindow};
@@ -107,6 +119,7 @@ mod native {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let mut saw_move = false;
+                let mut release_forwarded = false;
                 loop {
                     if !app
                         .try_state::<OverlayControlState>()
@@ -131,7 +144,37 @@ mod native {
                                 && gui.flags.0 & GUI_INMOVESIZE.0 != 0
                                 && gui.hwndMoveSize == root;
                             let left_down = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } < 0;
-                            Some((moving, left_down, self.foreground()))
+                            let foreground = self.foreground();
+                            if !release_forwarded
+                                && forward_released_button(
+                                    moving,
+                                    gui.hwndCapture == root,
+                                    left_down,
+                                    foreground,
+                                )
+                            {
+                                // A short cross-WebView press can release before
+                                // the root acquires capture. Forward that already
+                                // released button once to finish the owned move;
+                                // cancelling would discard outline-mode movement.
+                                let mut point = POINT::default();
+                                if unsafe { GetCursorPos(&mut point) }.is_ok()
+                                    && unsafe { ScreenToClient(root, &mut point) }.as_bool()
+                                {
+                                    let position =
+                                        ((point.y as u16 as u32) << 16) | point.x as u16 as u32;
+                                    release_forwarded = unsafe {
+                                        PostMessageW(
+                                            Some(root),
+                                            WM_LBUTTONUP,
+                                            WPARAM(0),
+                                            LPARAM(position as isize),
+                                        )
+                                    }
+                                    .is_ok();
+                                }
+                            }
+                            Some((moving, left_down, foreground))
                         } else {
                             None
                         }
@@ -208,6 +251,27 @@ mod tests {
             FocusAfterDrag::Dismiss
         );
         assert_eq!(focus_after_drag(Foreground::None), FocusAfterDrag::Dismiss);
+    }
+
+    #[test]
+    fn only_an_owned_native_move_can_receive_the_already_released_button() {
+        assert!(forward_released_button(true, true, false, Foreground::Root));
+        assert!(!forward_released_button(true, true, true, Foreground::Root));
+        assert!(!forward_released_button(
+            false,
+            true,
+            false,
+            Foreground::Root
+        ));
+        assert!(!forward_released_button(
+            true,
+            false,
+            false,
+            Foreground::Root
+        ));
+        for foreground in [Foreground::Control, Foreground::External, Foreground::None] {
+            assert!(!forward_released_button(true, true, false, foreground));
+        }
     }
 
     #[test]

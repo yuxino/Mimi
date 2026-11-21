@@ -35,6 +35,16 @@ observer exists only for that gesture. On completion, return keyboard ownership
 to the same control only if the owning root is still foreground. Settings or
 another application's foreground dismisses without reactivating Mimi.
 
+A stationary short press has a separate native boundary: the physical release
+can precede the root acquiring capture. The hosted WinEvent trace observed the
+root remain in its move modal after that release, until the test's final cleanup
+released again. Only the current owned gesture may forward the already-released
+left button once to the original root, while it is foreground, owns capture and
+is still in its native move modal. Use the real client-relative cursor position;
+never synthesize a system input or cancel outline movement. Continue to wait for
+native completion before restoring panel focus. Keep the 15ms stationary-press
+focus assertion and the long-drag geometry assertion unchanged.
+
 Mode changes, lock, collapse, Stop and explicit dismissal retire gesture
 ownership. A late completion must not reopen a closed or newly opened panel.
 Focus-loss scheduling and Panel-to-Island transitions check their generation and
