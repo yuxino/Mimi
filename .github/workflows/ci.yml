@@ -114,6 +114,11 @@ jobs:
         env:
           EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
         run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" --animation ${{ inputs.display_modes && '--display-modes' || '' }} "$RUNNER_TEMP/caption-follow/on"
+      - name: Read the hovered Chinese status and timing numbers on both native windows
+        if: ${{ !cancelled() && inputs.checks == 'mac-follow' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+        run: bash scripts/macos/tests/run-translating-scroll.sh --dev "$EXPECTED_CERT" --status-readout "$RUNNER_TEMP/caption-follow/readout"
       - name: Save caption coordinates and synthetic window images
         if: ${{ !cancelled() && inputs.checks == 'mac-follow' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
