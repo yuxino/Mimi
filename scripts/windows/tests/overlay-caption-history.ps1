@@ -341,6 +341,14 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
                 if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
                 Assert-CaptionHistoryEnvironment $context
             }
+            # Rest the thumb at the bottom with the actual button still down.
+            # A single UIA read immediately after moving can precede WebView2's paint.
+            $heldBottom = Wait-CaptionHistory 'the held thumb reaching the last caption' {
+                $sample = Get-CaptionHistoryView $context
+                if ($sample.Percent -ge 99.99 -and $sample.Rows.source19.Full -and $sample.Rows.translation19.Full) { return $sample }
+            }
+            Start-Sleep -Milliseconds 150
+            if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the thumb before reading its held track.' }
             $trackWhileHeld = $context.Viewport.Current.BoundingRectangle
         } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
         if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the history scrollbar button after release.' }
@@ -377,11 +385,12 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
             if (-not $state.ContainsKey('ReturnCount')) { Read-CaptionHistoryReturn $context $state }
             $context.Checkpoints['20-after-400ms'] = $state
         }
+        Write-Host "Rested thumb at real bottom before release: start=$trackBeforeDrag reached=$($heldBottom.View) held=$trackWhileHeld."
         Save-CaptionHistoryEvidence $context $state $PanelEvidenceDirectory 'live-20'
         if ($null -ne $earlyFailure) { throw $earlyFailure }
         if ($trackWhileHeld.IsEmpty -or [Math]::Abs($trackWhileHeld.Top - $trackBeforeDrag.Top) -gt 1 -or
             [Math]::Abs($trackWhileHeld.Bottom - $trackBeforeDrag.Bottom) -gt 1) {
-            throw "The reading track resized under the held thumb (before=$trackBeforeDrag held=$trackWhileHeld)."
+            throw "The reading track resized under the held thumb (before=$trackBeforeDrag reachedBottom=$($heldBottom.View) held=$trackWhileHeld)."
         }
         Write-Host "Native history passed: physical wheel preserved $anchor on append; rendered thumb=$($thumb.Height)px contrast=$($thumb.Contrast); scrollbar release restored bilingual caption 20 at the bottom, same windows, Settings hidden, listening."
     } catch {
