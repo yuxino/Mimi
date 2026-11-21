@@ -20,7 +20,8 @@ Set up your credentials on the phone; they do not sync from the desktop app.
 
 ## Using subtitles
 
-- **Start or stop from another app.** In **More → Caption shortcuts**, add **Mimi captions** to Quick Settings. You can also enable a floating edge button or a notification when captions are off. Drag the button to place it. After three seconds it tucks against the nearest edge. Tap to reveal it, then tap to start or stop. Starting system audio opens Android’s sharing prompt each time. Stopping releases capture.
+- **Start or stop from another app.** In **More → Caption shortcuts**, add **Mimi captions** to Quick Settings. The floating edge button and idle notification have separate switches, both off by default. Turning either off leaves the other shortcut and active captions unchanged. Drag the button to place it. After three seconds it tucks against the nearest edge. Tap to reveal it, then tap to start or stop. Starting system audio opens Android’s sharing prompt each time. Stopping releases capture.
+- **Find other settings.** More also contains **Interface language** and **Help and about**: the usage guide, content-free capture diagnostics, installed version and update check. Captions contains the selected service, input, languages and display controls. During an active session, every page keeps its status and Stop action available.
 - **Continue after unlocking.** If locking the phone interrupts system-audio captions, Mimi offers **Continue captions** after unlock when notifications are allowed. Tap it and confirm sharing to return to the video. You can dismiss the reminder or start again from the tile. Microphone sessions stay stopped.
 - **Audio input:** system audio is selected by default. Choose **Microphone** or **Both** to translate your voice. Both keeps the inputs separate and labels their captions. Stop before switching inputs. System-only capture never opens the microphone, but Android still requires audio-recording permission for playback capture.
 - **No subtitles:** make sure captions are running, a saved service is selected, and speech is playing. Some apps block playback capture; protected audio cannot be captured. Android asks for playback-capture consent each time you start system audio.
@@ -40,12 +41,14 @@ code does not prove availability on every device; see [verification status](#ver
 
 ## Features
 
-- **Main interface** — Captions, Services and More share one page shell and a
-  persistent status/Start/Stop footer. Captions contains language choices, one
+- **Main interface** — Captions, Services and More share one page shell. Captions
+  always keeps its primary Start/Stop action, configured Services can start directly,
+  and all pages retain session controls while starting, running or stopping.
+  Idle More omits that footer. Captions contains language choices, one
   live/sample preview, display mode and immersion. Width, font, color and
   opacity are directly adjustable beside the pinned preview on that same page. Services owns service
-  selection and setup; More contains interface language, diagnostics and the
-  setup guide. Switching sections retains their scroll positions.
+  selection and setup; More puts caption shortcuts first, followed by interface
+  language and Help and about. Switching sections retains their scroll positions.
 - **System-audio capture** — `MediaProjection` + `AudioPlaybackCapture`
   (API 29+). Requires Android’s `RECORD_AUDIO` runtime grant for playback capture;
   never uses a microphone source unless selected. Captures what other apps play

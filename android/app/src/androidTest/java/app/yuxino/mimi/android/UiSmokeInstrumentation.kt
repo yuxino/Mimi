@@ -532,7 +532,7 @@ class UiSmokeInstrumentation : Instrumentation() {
             }
             check(!SettingsStore.immersiveSubtitles(targetContext))
             prefs.edit().remove("immersive_seen").commit()
-            val appearance = openSettings(home, appearance = true)
+            val appearance = openAppearance(home)
             settings = appearance
             val toggle = appearance.findViewById<MaterialSwitch>(R.id.immersive_subtitles)
             click(appearance, R.id.immersive_subtitles)
@@ -598,9 +598,8 @@ class UiSmokeInstrumentation : Instrumentation() {
         onUi { WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull { it.findViewWithTag<View>("guide-skip") }?.performClick() }
         check(!home.findViewById<View>(R.id.copy_capture_diagnostics).isShown) { "Diagnostics must stay in More" }
         checkMainNavigation(home)
-        val diagnostics = openSettings(home, appearance = false)
-        click(diagnostics, R.id.tab_general)
-        click(diagnostics, R.id.copy_capture_diagnostics)
+        click(home, R.id.tab_general)
+        click(home, R.id.copy_capture_diagnostics)
         onUi {
             val clipboard = targetContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
             val diagnostic = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: error("No diagnostic copied")
@@ -625,7 +624,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         // that transient surface close before injecting actual slider gestures.
         SystemClock.sleep(8000)
         capture("navigation-more-$theme")
-        click(diagnostics, R.id.tab_caption)
+        click(home, R.id.tab_caption)
         val originalTarget = SettingsStore.targetLang(targetContext)
         val testTarget = if (originalTarget == "ja") "en" else "ja"
         click(home, R.id.target_language_action)
@@ -642,7 +641,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         val initialFont = SettingsStore.fontSize(targetContext)
         val initialColor = SettingsStore.translationColorIndex(targetContext)
         val initialHistory = SettingsStore.historyLines(targetContext)
-        val settings = openSettings(home, appearance = true)
+        val settings = openAppearance(home)
         check(settings.findViewById<View>(R.id.appearance_panel).isShown)
         check(settings.findViewById<View>(R.id.service_panel).visibility == View.GONE)
         check(SettingsStore.fontSize(targetContext) == initialFont)
@@ -675,7 +674,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         check(SettingsStore.historyLines(targetContext) == initialHistory) { "Appearance enabled history" }
         capture("settings-appearance-$theme")
         click(settings, R.id.tab_caption)
-        val reopened = openSettings(home, appearance = true)
+        val reopened = openAppearance(home)
         check(reopened.findViewById<SeekBar>(R.id.font_size).progress == changedFont) { "Back discarded appearance" }
         check(reopened.findViewById<View>(R.id.history_lines).isShown)
         onUi { reopened.findViewById<ScrollView>(R.id.settings_scroll).scrollTo(0, 10000) }
@@ -900,8 +899,12 @@ class UiSmokeInstrumentation : Instrumentation() {
             click(home, tab)
             onUi {
                 check(home.hasWindowFocus()) { "Navigation left the primary activity" }
-                check(home.findViewById<View>(R.id.start_stop).isShown && home.findViewById<View>(R.id.status).isShown) {
-                    "Navigation hid the session controls"
+                val active = MimiService.isStarting || MimiService.isRunning || MimiService.isStopping
+                val needsSessionControl = tab == R.id.tab_caption || active ||
+                    tab == R.id.tab_service && SettingsStore.isConfigured(targetContext)
+                check(home.findViewById<View>(R.id.start_stop).isShown == needsSessionControl &&
+                    home.findViewById<View>(R.id.status).isShown == needsSessionControl) {
+                    "Navigation repeated idle setup in More or hid an available session action"
                 }
                 for ((_, section) in sections) check(home.findViewById<View>(section).isShown == (section == panel))
                 for ((id, _) in sections) {
@@ -911,6 +914,7 @@ class UiSmokeInstrumentation : Instrumentation() {
                 }
             }
         }
+        checkNavigationRetainsReadFailure(home)
         onUi { openCaptionStyles(home) }
         onUi { home.findViewById<ScrollView>(R.id.settings_scroll).scrollTo(0, 10000) }
         waitForIdleSync()
@@ -929,6 +933,39 @@ class UiSmokeInstrumentation : Instrumentation() {
             home.findViewById<ScrollView>(R.id.settings_scroll).scrollTo(0, 0)
         }
         click(home, R.id.tab_caption)
+    }
+
+    private fun checkNavigationRetainsReadFailure(home: MainActivity) {
+        check(!MimiService.isStarting && !MimiService.isRunning && !MimiService.isStopping)
+        val field = SettingsStore::class.java.getDeclaredField("prefs").apply { isAccessible = true }
+        val preferences = checkNotNull(field.get(null) as? android.content.SharedPreferences)
+        var failures = 0
+        val failing = object : android.content.SharedPreferences by preferences {
+            override fun getInt(key: String?, defaultValue: Int): Int {
+                if (key == "font_size") {
+                    failures++
+                    throw IllegalStateException("synthetic_settings_read_failure")
+                }
+                return preferences.getInt(key, defaultValue)
+            }
+        }
+        val refresh = MainActivity::class.java.getDeclaredMethod("refreshUi").apply { isAccessible = true }
+        try {
+            onUi { field.set(null, failing); refresh.invoke(home) }
+            for (tab in listOf(R.id.tab_general, R.id.tab_service, R.id.tab_general)) {
+                click(home, tab)
+                onUi {
+                    check(home.findViewById<View>(R.id.start_stop).isShown)
+                    check(home.findViewById<TextView>(R.id.status).text.toString() == home.getString(R.string.service_save_failed)) {
+                        "Page navigation lost the settings read failure"
+                    }
+                    check(failures == 1) { "Page navigation retried settings instead of preserving its last outcome" }
+                }
+            }
+        } finally {
+            onUi { field.set(null, preferences); refresh.invoke(home) }
+        }
+        onUi { check(!home.findViewById<View>(R.id.start_stop).isShown) { "Successful refresh did not restore idle More" } }
     }
 
     private fun checkLongExpandedCaption(panel: View) {
@@ -1128,7 +1165,7 @@ class UiSmokeInstrumentation : Instrumentation() {
         pause("原声语言也在首页", 1600)
         selectLanguage("en")
         pause("无需进入设置或点保存", 2600)
-        val settings = openSettings(home, appearance = true)
+        val settings = openAppearance(home)
         pause("点字幕预览，直达外观", 2500)
         drag(settings.findViewById(R.id.font_size), 21)
         pause("调整字号，自动保存", 2200)
@@ -1165,10 +1202,10 @@ class UiSmokeInstrumentation : Instrumentation() {
         return activity
     }
 
-    private fun openSettings(home: MainActivity, appearance: Boolean): MainActivity {
-        if (appearance) onUi { openCaptionStyles(home) } else click(home, R.id.tab_service)
+    private fun openAppearance(home: MainActivity): MainActivity {
+        onUi { openCaptionStyles(home) }
         waitForIdleSync()
-        check(home.findViewById<View>(if (appearance) R.id.appearance_panel else R.id.service_panel).isShown)
+        check(home.findViewById<View>(R.id.appearance_panel).isShown)
         check(home.findViewById<View>(R.id.start_stop).isShown) { "Navigation hid the session action" }
         return home
     }

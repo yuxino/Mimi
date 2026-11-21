@@ -3,11 +3,8 @@ package app.yuxino.mimi.android.shortcuts
 import android.annotation.SuppressLint
 import android.animation.ValueAnimator
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
@@ -18,8 +15,6 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
-import android.widget.ImageView
-import androidx.core.graphics.ColorUtils
 import androidx.core.animation.doOnEnd
 import androidx.core.view.ViewCompat
 import app.yuxino.mimi.android.R
@@ -36,8 +31,7 @@ internal class CaptionEdgeWindow(
     private val button = object : FrameLayout(context) {
         override fun getAccessibilityClassName(): CharSequence = ImageButton::class.java.name
     }
-    private val glyph = ImageView(context)
-    private val shape = GradientDrawable()
+    private val artwork = CaptionEdgeArtwork(context)
     private val accessibility = context.getSystemService(AccessibilityManager::class.java)
     private val touchSize = dp(48)
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
@@ -68,19 +62,7 @@ internal class CaptionEdgeWindow(
     }
 
     init {
-        val foreground = context.getColor(R.color.mimi_on_primary)
-        glyph.apply {
-            shape.apply {
-                setColor(context.getColor(R.color.mimi_primary))
-                setStroke(dp(1), context.getColor(R.color.mimi_muted))
-            }
-            background = RippleDrawable(ColorStateList.valueOf(ColorUtils.setAlphaComponent(foreground, 60)), shape, null)
-            imageTintList = ColorStateList.valueOf(foreground)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            isDuplicateParentStateEnabled = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }
-        button.addView(glyph)
+        button.addView(artwork)
         button.isFocusable = true
         button.filterTouchesWhenObscured = true
         // An inward drag on a docked button shares the system Back gesture's starting edge.
@@ -147,7 +129,13 @@ internal class CaptionEdgeWindow(
         button.isEnabled = state == CaptionShortcutState.INACTIVE || state == CaptionShortcutState.ACTIVE
         describeAction()
         val stop = state == CaptionShortcutState.ACTIVE || state == CaptionShortcutState.STOPPING
-        glyph.setImageResource(if (stop) R.drawable.ic_stop else R.drawable.ic_play)
+        artwork.setStop(stop)
+        val status = when (state) {
+            CaptionShortcutState.INACTIVE -> R.string.shortcut_captions_off
+            CaptionShortcutState.ACTIVE -> R.string.notification_title
+            else -> label
+        }
+        ViewCompat.setStateDescription(button, InterfaceLanguage.context(context).getString(status))
     }
 
     private fun describeAction() {
@@ -188,31 +176,9 @@ internal class CaptionEdgeWindow(
         if (added) manager.updateViewLayout(button, params)
     }
 
-    @SuppressLint("RtlHardcoded")
     private fun present(edge: CaptionEdge?) {
         tucked = edge
-        val horizontal = edge == CaptionEdge.LEFT || edge == CaptionEdge.RIGHT
-        val width = if (edge == null) 38 else if (horizontal) 30 else 36
-        val height = if (edge == null) 38 else if (horizontal) 36 else 30
-        val gravity = when (edge) {
-            CaptionEdge.LEFT -> Gravity.LEFT or Gravity.CENTER_VERTICAL
-            CaptionEdge.RIGHT -> Gravity.RIGHT or Gravity.CENTER_VERTICAL
-            CaptionEdge.TOP -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            CaptionEdge.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            null -> Gravity.CENTER
-        }
-        glyph.layoutParams = FrameLayout.LayoutParams(dp(width), dp(height), gravity)
-        val radius = dp(if (edge == null) 19 else 15).toFloat()
-        fun radiusAt(a: CaptionEdge, b: CaptionEdge) = if (edge == a || edge == b) 0f else radius
-        val tl = radiusAt(CaptionEdge.TOP, CaptionEdge.LEFT)
-        val tr = radiusAt(CaptionEdge.TOP, CaptionEdge.RIGHT)
-        val br = radiusAt(CaptionEdge.BOTTOM, CaptionEdge.RIGHT)
-        val bl = radiusAt(CaptionEdge.BOTTOM, CaptionEdge.LEFT)
-        shape.cornerRadii = floatArrayOf(tl, tl, tr, tr, br, br, bl, bl)
-        // Keep the 24dp play/stop artwork at full size as the surrounding shape recedes.
-        val inset = dp(if (edge == null) 7 else 3)
-        glyph.setPadding(inset, inset, inset, inset)
-        glyph.alpha = if (edge == null) 1f else 0.8f
+        artwork.place(edge)
         describeAction()
     }
 

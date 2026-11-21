@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="guide_open">Erste Schritte</string>
+    <string name="guide_open">Anleitung</string>
     <string name="guide_intro">Übersetzungsdienst auswählen</string>
     <string name="guide_saved_hint">Zugangsdaten verschlüsselt auf diesem Telefon speichern. Speichern kontaktiert den Dienst nicht und prüft keine Authentifizierung.</string>
     <string name="guide_saved">Zugangsdaten gespeichert · Verbindung wird im Probelauf geprüft</string>

@@ -62,15 +62,15 @@ internal class CaptionShortcutSettings(private val activity: AppCompatActivity) 
         orientation = VERTICAL
         addView(HelpUi.heading(activity, activity.getString(R.string.shortcut_heading),
             activity.getString(R.string.shortcut_help), 17f, "caption-shortcuts-help"))
-        addView(edge)
-        addView(notification)
-        addView(MaterialButton(activity, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+        addView(MaterialButton(activity, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             tag = "caption-add-tile"
             setText(R.string.shortcut_add_tile)
             isAllCaps = false
             minHeight = ServiceSettingsUi.dp(activity, 48)
             setOnClickListener { addTile() }
-        }, LayoutParams(-2, -2).apply { gravity = Gravity.END })
+        }, LayoutParams(-1, -2).apply { topMargin = ServiceSettingsUi.dp(activity, 8); bottomMargin = ServiceSettingsUi.dp(activity, 8) })
+        addView(edge)
+        addView(notification)
         sync()
     }
 
@@ -80,9 +80,10 @@ internal class CaptionShortcutSettings(private val activity: AppCompatActivity) 
         textSize = 16f
         setTextColor(ContextCompat.getColor(activity, R.color.mimi_text))
         minHeight = ServiceSettingsUi.dp(activity, 52)
-        val verticalInset = ServiceSettingsUi.dp(activity, 6)
-        setPaddingRelative(paddingStart, verticalInset, paddingEnd, verticalInset)
         switchPadding = ServiceSettingsUi.dp(activity, 12)
+        gravity = Gravity.CENTER_VERTICAL
+        val verticalInset = ServiceSettingsUi.dp(activity, 8)
+        setPaddingRelative(0, verticalInset, 0, verticalInset)
         trackTintList = ContextCompat.getColorStateList(activity, R.color.mimi_switch_track)
         thumbTintList = ContextCompat.getColorStateList(activity, R.color.mimi_switch_thumb)
         setOnCheckedChangeListener { _, enabled ->

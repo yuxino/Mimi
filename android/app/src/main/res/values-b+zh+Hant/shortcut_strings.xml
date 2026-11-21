@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="shortcut_heading">字幕捷徑</string>
-    <string name="shortcut_help">螢幕側邊按鈕閒置三秒後會靠邊收起，輕點即可展開。字幕關閉時，可以從通知重新開啟。每次擷取系統音訊前，Android 都會請你確認分享。</string>
-    <string name="shortcut_edge_label">螢幕側邊浮動按鈕</string>
+    <string name="shortcut_help">浮球閒置三秒後會靠邊收起，輕點即可展開。字幕關閉時，可以從通知重新開啟。每次擷取系統音訊前，Android 都會請你確認分享。</string>
+    <string name="shortcut_edge_label">螢幕側邊浮球</string>
     <string name="shortcut_notification_label">字幕關閉時保留通知</string>
     <string name="shortcut_add_tile">新增至快速設定</string>
     <string name="shortcut_tile_label">Mimi 字幕</string>

@@ -11,6 +11,8 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.inspector.WindowInspector
 import app.yuxino.mimi.android.MainActivity
@@ -25,6 +27,8 @@ import app.yuxino.mimi.android.provider.ServiceConfiguration
 import app.yuxino.mimi.android.provider.ServiceProvider
 import app.yuxino.mimi.android.settings.SettingsStore
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /** Runs on an empty API 35 emulator with its host microphone disabled. The OS owns every grant. */
@@ -111,6 +115,7 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
             await { !MimiService.ownUiVisible && activePackage() == previousApp }
             await { hasNotification("capture") && !hasNotification("caption_shortcuts") }
             shot("03-returned-to-playback")
+            if (args?.getString("edge_preference") == "true") checkEdgePreferenceDuringPlayback(previousApp, chunks)
 
             stage = "stop from tile"
             tile("04-tile-on")
@@ -205,6 +210,87 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
     private fun stopped() = await { !MimiService.isRunning && !MimiService.isStarting && !MimiService.isStopping &&
         MimiService.captureProjectionForTests == null && !hasNotification("capture") && hasNotification("caption_shortcuts") }
 
+    private fun checkEdgePreferenceDuringPlayback(player: String, chunks: AtomicLong) {
+        val tucked = label(R.string.shortcut_reveal_edge)
+        val stop = label(R.string.stop_capture)
+        val projection = checkNotNull(MimiService.captureProjectionForTests)
+        await { edge(tucked) != null }
+        val restingBounds = checkNotNull(edge(tucked))
+        val playerRecord = Regex("""topResumedActivity=ActivityRecord\{\S+ u\d+ ${Regex.escape(player)}/\S+ t(\d+)\b""")
+        val playing = checkNotNull(playerRecord.find(readShell("dumpsys activity activities"))) { "Missing resumed playback task" }
+        for (enabled in listOf(false, true)) {
+            val change = if (enabled) "show" else "hide"
+            stage = "open Mimi over playback to $change the floating button"
+            shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 " +
+                "-n ${context.packageName}/${MainActivity::class.java.name}")
+            fun more() = appNode { it.viewIdResourceName == "${context.packageName}:id/tab_general" }
+            await { more() != null && MimiService.ownUiVisible }
+            stage = "select More to $change the floating button"
+            check(checkNotNull(more()).performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            await { more()?.isChecked == true }
+            awaitMorePanelDrawn()
+            val switchLabel = label(R.string.shortcut_edge_label)
+            fun edgeSwitch() = appNode { it.isCheckable && it.text?.toString() == switchLabel }
+            stage = "find the floating button switch before $change"
+            await { edgeSwitch()?.isChecked == !enabled }
+            val target = Rect().also { checkNotNull(edgeSwitch()).getBoundsInScreen(it) }
+            test.sendStatus(1, Bundle().apply { putString("stream", "Physical edge switch tap ($change) at $target\n") })
+            tapAfterWindowTransition(target)
+            stage = "confirm the switch saved after $change"
+            await { edgeSwitch()?.isChecked == enabled && host.showEdge == enabled }
+            check(host.showNotification)
+            shot(if (enabled) "15-edge-switch-on" else "13-edge-switch-off")
+
+            stage = "return from More to playback after $change"
+            shell("input keyevent KEYCODE_BACK")
+            await { appNode { it.viewIdResourceName == "${context.packageName}:id/tab_caption" && it.isChecked } != null }
+            // Select the already-open video in Recents. Back follows Mimi's own task history.
+            shell("am task focus ${playing.groupValues[1]}")
+            await { activePackage() == player && !MimiService.ownUiVisible &&
+                readShell("dumpsys activity activities").contains(playing.value) }
+            stage = "verify the floating button and live audio after $change"
+            if (enabled) await { edge(tucked) == restingBounds }
+            else check(edge(tucked) == null && edge(stop) == null)
+            val received = chunks.get()
+            await { chunks.get() > received }
+            check(MimiService.isRunning && MimiService.captureProjectionForTests === projection &&
+                MimiService.captureInput == CaptureInput.SYSTEM && hasNotification("capture") && !hasNotification("caption_shortcuts"))
+            shot(if (enabled) "16-edge-restored-at-playback" else "14-playback-without-edge")
+        }
+    }
+
+    /** Switching tabs removes the pinned preview and moves the whole scrolling settings surface. */
+    private fun awaitMorePanelDrawn() {
+        val committed = CountDownLatch(1)
+        await {
+            var scheduled = false
+            onMain {
+                val root = WindowInspector.getGlobalWindowViews().firstOrNull {
+                    it.hasWindowFocus() && it.findViewById<android.widget.RadioButton>(R.id.tab_general)?.isChecked == true
+                } ?: return@onMain
+                root.viewTreeObserver.registerFrameCommitCallback { committed.countDown() }
+                root.invalidate()
+                scheduled = true
+            }
+            scheduled
+        }
+        check(committed.await(15, TimeUnit.SECONDS)) { "More page did not draw a frame" }
+    }
+
+    // An activity can be focused and drawn while its surface is still sliding over the player.
+    // UiAutomation synchronizes window animations before sending the touch to Android's input dispatcher.
+    private fun tapAfterWindowTransition(bounds: Rect) {
+        val down = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val touch = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
+                bounds.exactCenterX(), bounds.exactCenterY(), 0)
+            try {
+                touch.source = InputDevice.SOURCE_TOUCHSCREEN
+                check(test.uiAutomation.injectInputEvent(touch, true)) { "Android rejected the touch event" }
+            } finally { touch.recycle() }
+        }
+    }
+
     private fun checkResumeAfterUnlock(previousApp: String, chunks: AtomicLong) {
         val power = context.getSystemService(android.os.PowerManager::class.java)
         val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
@@ -278,9 +364,11 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
         tap(Rect().also { checkNotNull(target()).getBoundsInScreen(it) })
     }
 
-    private fun systemNode(matches: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+    private fun appNode(matches: (AccessibilityNodeInfo) -> Boolean) = visibleNode(context.packageName, matches)
+    private fun systemNode(matches: (AccessibilityNodeInfo) -> Boolean) = visibleNode("com.android.systemui", matches)
+    private fun visibleNode(packageName: String, matches: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
         val root = test.uiAutomation.rootInActiveWindow ?: return null
-        if (root.packageName != "com.android.systemui") return null
+        if (root.packageName?.toString() != packageName) return null
         fun find(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
             if (node.isVisibleToUser && matches(node)) return node
             return (0 until node.childCount).firstNotNullOfOrNull { node.getChild(it)?.let(::find) }
@@ -323,7 +411,10 @@ internal class CaptionShortcutChecks(private val test: Instrumentation) {
     private fun await(condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + 15_000
         while (!condition()) {
-            check(SystemClock.elapsedRealtime() < deadline) { "timed out" }
+            check(SystemClock.elapsedRealtime() < deadline) {
+                val selectedTab = appNode { it.isChecked && it.className == "android.widget.RadioButton" }
+                "timed out (foreground=${activePackage()}, ownUi=${MimiService.ownUiVisible}, tab=${selectedTab?.viewIdResourceName})"
+            }
             SystemClock.sleep(75)
         }
     }

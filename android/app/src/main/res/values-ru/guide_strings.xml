@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="guide_open">Начало работы</string>
+    <string name="guide_open">Руководство</string>
     <string name="guide_intro">Выберите службу перевода</string>
     <string name="guide_saved_hint">Сохраните учётные данные службы в зашифрованном хранилище на этом телефоне. Сохранение не связывается со службой и не проверяет аутентификацию.</string>
     <string name="guide_saved">Учётные данные сохранены · подключение проверяется во время пробного сеанса</string>

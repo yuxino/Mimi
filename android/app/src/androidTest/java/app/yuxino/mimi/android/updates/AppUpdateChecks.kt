@@ -84,6 +84,18 @@ internal class AppUpdateChecks(private val test: Instrumentation) {
                 check(field<TextView>(activity, "app-update-version").text.isNotBlank())
                 check(field<View>(activity, "app-update-check").isEnabled)
                 check(field<View>(activity, "app-update-download").visibility == View.GONE)
+                val version = field<TextView>(activity, "app-update-version")
+                val action = field<TextView>(activity, "app-update-check")
+                for (label in listOf(version, action)) {
+                    check(label.layout.height <= label.height - label.compoundPaddingTop - label.compoundPaddingBottom) {
+                        "Version or update action clips vertically"
+                    }
+                    for (line in 0 until label.lineCount) check(label.layout.getEllipsisCount(line) == 0 &&
+                        label.layout.getLineWidth(line) <= label.width - label.compoundPaddingLeft - label.compoundPaddingRight + 1) {
+                        "Version or update action is truncated"
+                    }
+                }
+                check(version.right <= action.left || version.bottom <= action.top) { "Version overlaps update action" }
                 // Keep MainActivity's navigation and lifecycle wiring; replace only the request boundary.
                 val original = field<AppUpdateControls>(activity, "app-updates")
                 val parent = original.parent as LinearLayout

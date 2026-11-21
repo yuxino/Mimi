@@ -68,6 +68,8 @@ class MainActivity : AppCompatActivity() {
     private val sectionScroll = SparseIntArray()
     private var currentSection = R.id.tab_caption
     private var lastSessionState: Pair<Boolean, Boolean>? = null
+    // Only a complete refresh publishes availability; null preserves its error across tabs.
+    private var configuredService: Boolean? = null
     private val subtitleListener = object : app.yuxino.mimi.android.provider.SubtitleBus.Listener {
         override fun onSubtitleChanged() { previewHandler.removeCallbacks(previewUpdate); previewHandler.post(previewUpdate) }
     }
@@ -187,14 +189,15 @@ class MainActivity : AppCompatActivity() {
         R.id.tab_general to R.id.general_panel)
 
     private fun bindSections(savedInstanceState: Bundle?) {
+        // Material applies its themed padding during construction. Clear the
+        // leading content inset afterwards so these list actions align with labels.
+        for (id in listOf(R.id.first_run_guide, R.id.copy_capture_diagnostics)) {
+            findViewById<MaterialButton>(id).apply { setPaddingRelative(0, paddingTop, paddingEnd, paddingBottom) }
+        }
         InterfaceLanguage.bind(this, findViewById(R.id.interface_language))
         appUpdates = AppUpdateControls(this)
-        findViewById<LinearLayout>(R.id.general_panel).apply {
-            addView(appUpdates, indexOfChild(findViewById(R.id.interface_language)) + 1,
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28) })
-            addView(CaptionShortcutSettings(this@MainActivity), indexOfChild(appUpdates),
-                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
-        }
+        findViewById<LinearLayout>(R.id.app_updates_container).addView(appUpdates, LinearLayout.LayoutParams(-1, -2))
+        findViewById<LinearLayout>(R.id.caption_shortcuts_container).addView(CaptionShortcutSettings(this), LinearLayout.LayoutParams(-1, -2))
         appearance = AppearanceControls(this) { enabled ->
             if (enabled) immersiveHelp.requestEnable(onConfirmed = {
                 runCatching { SettingsStore.setImmersiveSubtitles(this, true) }
@@ -204,11 +207,11 @@ class MainActivity : AppCompatActivity() {
             else { immersiveHelp.dismiss(); SettingsStore.setImmersiveSubtitles(this, false) }
         }
         findViewById<LinearLayout>(R.id.home_panel).apply {
-            addView(appearance, indexOfChild(findViewById(R.id.service_settings)), LinearLayout.LayoutParams(-1, -2))
+            addView(appearance, LinearLayout.LayoutParams(-1, -2))
         }
         sessionStorage = SessionStorageControls(this)
         findViewById<LinearLayout>(R.id.home_panel).apply {
-            addView(sessionStorage, indexOfChild(findViewById(R.id.service_settings)), LinearLayout.LayoutParams(-1, -2))
+            addView(sessionStorage, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         }
         val tabs = findViewById<RadioGroup>(R.id.settings_tabs)
         val scroll = findViewById<ScrollView>(R.id.settings_scroll)
@@ -223,6 +226,7 @@ class MainActivity : AppCompatActivity() {
             sections.forEach { (tab, panel) -> findViewById<View>(panel).visibility = if (tab == selected) View.VISIBLE else View.GONE }
             findViewById<CaptionWorkspace>(R.id.caption_workspace).showsPreview = selected == R.id.tab_caption
             currentSection = selected
+            syncSessionControls()
             appUpdates.setPageVisible(selected == R.id.tab_general)
             back.isEnabled = selected != R.id.tab_caption
             scroll.post { if (currentSection == selected) scroll.scrollTo(0, sectionScroll[selected]) }
@@ -296,6 +300,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         try { refreshAvailableUi() } catch (_: Exception) {
+            configuredService = null
+            syncSessionControls()
             startStop.isEnabled = MimiService.isRunning && !MimiService.isStopping
             if (MimiService.isRunning) {
                 startStop.setText(if (MimiService.isStopping) R.string.stopping_capture else R.string.stop_capture)
@@ -307,6 +313,13 @@ class MainActivity : AppCompatActivity() {
             findViewById<View>(R.id.status_hint).visibility = View.VISIBLE
             findViewById<View>(R.id.status_help).visibility = View.GONE
         }
+    }
+
+    private fun syncSessionControls() {
+        val active = starting || MimiService.isStarting || MimiService.isRunning || MimiService.isStopping
+        val visible = configuredService == null || currentSection == R.id.tab_caption || active ||
+            currentSection == R.id.tab_service && configuredService == true
+        findViewById<View>(R.id.session_controls).visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun refreshAvailableUi() {
@@ -406,6 +419,8 @@ class MainActivity : AppCompatActivity() {
         if (running || app.yuxino.mimi.android.provider.SubtitleBus.hasRetainedContent) {
             refreshLivePreview()
         }
+        configuredService = keyOk
+        syncSessionControls()
     }
 
     private fun refreshLivePreview() {

@@ -1,5 +1,7 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/mimi_launcher_bg" />
     <foreground android:drawable="@drawable/mimi_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_mimi" />
+    <monochrome>
+        <inset android:drawable="@drawable/ic_mimi" android:inset="18%" />
+    </monochrome>
 </adaptive-icon>

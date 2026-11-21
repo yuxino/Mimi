@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="shortcut_heading">字幕快捷入口</string>
-    <string name="shortcut_help">屏边按钮闲置三秒后会贴边收起，轻点即可展开。字幕关闭时，可以从通知里重新开启。每次采集系统声音前，Android 都会请你确认共享。</string>
-    <string name="shortcut_edge_label">屏边悬浮按钮</string>
+    <string name="shortcut_help">悬浮球闲置三秒后会贴边收起，轻点即可展开。字幕关闭时，可以从通知里重新开启。每次采集系统声音前，Android 都会请你确认共享。</string>
+    <string name="shortcut_edge_label">屏边悬浮球</string>
     <string name="shortcut_notification_label">字幕关闭时保留通知</string>
     <string name="shortcut_add_tile">添加到快捷设置</string>
     <string name="shortcut_tile_label">Mimi 字幕</string>

@@ -1,5 +1,5 @@
 <resources>
-    <string name="guide_open">เริ่มใช้งาน</string>
+    <string name="guide_open">คู่มือการใช้งาน</string>
     <string name="guide_intro">เลือกบริการแปล</string>
     <string name="guide_saved_hint">บันทึกข้อมูลรับรองบริการในพื้นที่เข้ารหัสบนโทรศัพท์นี้ การบันทึกไม่ติดต่อบริการหรือยืนยันตัวตน</string>
     <string name="guide_saved">บันทึกข้อมูลรับรองแล้ว · จะตรวจสอบการเชื่อมต่อระหว่างทดลอง</string>
