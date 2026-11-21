@@ -109,6 +109,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("caption_shortcuts") == "true") {
+            app.yuxino.mimi.android.shortcuts.CaptionShortcutChecks(this).run(captureArguments)
+            return
+        }
         if (captureArguments?.getString("app_update") == "true") {
             AppUpdateChecks(this).run(captureArguments)
             return

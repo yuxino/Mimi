@@ -1,0 +1,17 @@
+# Start and stop Android captions from another app
+
+People watching a video can add the Mimi captions tile to Android Quick Settings. Two independent preferences in More also offer a floating edge button and an idle notification. Both preferences start off. The tile uses the selected inputs and service from Mimi. When capture stops, every entry reflects the same service state. These controls do not switch inputs or enable recording.
+
+## Starting and returning
+
+All three start actions enter a private translucent activity in a separate task. It shares the main window's capture-start flow and shows Android's permission dialogs over the app being watched. Each system-audio session needs fresh sharing consent. An external start is consumed once, including across rotation or a second tap while a dialog is open. Missing configuration opens the service settings. After cancellation or service acceptance the shortcut task closes, returning to the previous app.
+
+## Edge and notification
+
+The optional edge control keeps a 48 dp touch target and reserves that area for dragging on gesture-navigation devices. After three idle seconds it moves to the nearest edge, respecting the system animation setting. The tucked artwork is 80% opaque. A deliberate drag saves its position along that edge as a fraction of usable space. The first tap reveals it and the next tap operates captions. Touch exploration keeps it expanded and offers an action to move it. It disappears while Mimi is in front or the device is locked. Opening Mimi restores the button and its position after Android reclaims the idle process.
+
+The optional idle notification contains a Start action. During capture the service already owns an ongoing notification with Stop. Once the service releases its resources, the idle notification can return. Android controls channel availability, lock screen presentation and user dismissal. Turning off the idle notification preference never stops an active session.
+
+Locking the device ends capture. When an active system-audio-only session ends because of the lock, the process remembers that interruption until unlock. If notifications are allowed, it offers one dismissible Continue action using the same notification slot. This works with the persistent idle notice disabled. Continuing requires fresh Android consent and a matching system-only input selection. An explicit Stop, a permission failure, or a session using the microphone never creates this reminder.
+
+The tile, edge button and notifications belong to the Android adapter. Gemini connection rotation remains in the shared provider runtime. [Android Quick Settings](https://developer.android.com/develop/ui/views/quicksettings-tiles) · [Screen-sharing consent](https://developer.android.com/media/grow/media-projection#user_consent)

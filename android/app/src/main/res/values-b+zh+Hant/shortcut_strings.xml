@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">字幕捷徑</string>
+    <string name="shortcut_help">螢幕側邊按鈕閒置三秒後會靠邊收起，輕點即可展開。字幕關閉時，可以從通知重新開啟。每次擷取系統音訊前，Android 都會請你確認分享。</string>
+    <string name="shortcut_edge_label">螢幕側邊浮動按鈕</string>
+    <string name="shortcut_notification_label">字幕關閉時保留通知</string>
+    <string name="shortcut_add_tile">新增至快速設定</string>
+    <string name="shortcut_tile_label">Mimi 字幕</string>
+    <string name="shortcut_tile_manual">下拉快速設定，點選「編輯」，再新增「Mimi 字幕」。</string>
+    <string name="shortcut_tile_already_added">「Mimi 字幕」已在快速設定中。</string>
+    <string name="shortcut_captions_off">字幕已關閉</string>
+    <string name="shortcut_notifications_blocked">允許 Mimi 傳送通知後即可使用此捷徑。</string>
+    <string name="shortcut_open_settings">設定</string>
+    <string name="shortcut_settings_unavailable">無法開啟系統設定。</string>
+    <string name="caption_edge_move">移到螢幕另一側</string>
+    <string name="shortcut_reveal_edge">展開字幕按鈕</string>
+    <string name="shortcut_resume_captions">繼續字幕</string>
+    <string name="shortcut_resume_after_unlock">鎖定螢幕期間螢幕分享已停止。點按後重新確認，繼續系統聲音字幕。</string>
+</resources>

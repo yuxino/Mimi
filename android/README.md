@@ -20,6 +20,8 @@ Set up your credentials on the phone; they do not sync from the desktop app.
 
 ## Using subtitles
 
+- **Start or stop from another app.** In **More → Caption shortcuts**, add **Mimi captions** to Quick Settings. You can also enable a floating edge button or a notification when captions are off. Drag the button to place it. After three seconds it tucks against the nearest edge. Tap to reveal it, then tap to start or stop. Starting system audio opens Android’s sharing prompt each time. Stopping releases capture.
+- **Continue after unlocking.** If locking the phone interrupts system-audio captions, Mimi offers **Continue captions** after unlock when notifications are allowed. Tap it and confirm sharing to return to the video. You can dismiss the reminder or start again from the tile. Microphone sessions stay stopped.
 - **Audio input:** system audio is selected by default. Choose **Microphone** or **Both** to translate your voice. Both keeps the inputs separate and labels their captions. Stop before switching inputs. System-only capture never opens the microphone, but Android still requires audio-recording permission for playback capture.
 - **No subtitles:** make sure captions are running, a saved service is selected, and speech is playing. Some apps block playback capture; protected audio cannot be captured. Android asks for playback-capture consent each time you start system audio.
 - **Recent captions:** new installs keep the three most recent confirmed captions in memory; existing installations keep their previous setting. You can change that limit. Stopping leaves these captions readable; the next session clears them.
@@ -253,10 +255,18 @@ adb shell am instrument -w -e theme light app.yuxino.mimi.android.dev.test/app.y
 adb shell am instrument -w -e theme dark app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_interaction true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e caption_shortcuts true -e host_microphone_disabled true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_listening true -e locale zh-Hans app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e caption_scroll_probe true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
+
+For `caption_shortcuts`, use a blank emulator with host microphone input disabled.
+Enable the two shortcuts in More and add the Mimi captions tile in Android Quick Settings.
+Pass `-e media_id <id>` to use a guest-local video from Android's media library. The
+check accepts Android's real playback-sharing dialog and discards captured audio locally.
+On an emulator without a device credential, add `-e screen_lock_resume true` to
+exercise screen off, unlock and fresh sharing consent with the idle notification disabled.
 
 The interface-language check requires a blank, idle emulator. It exercises the
 native picker, settings recreation and localized overlay controls without capture

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">ทางลัดคำบรรยาย</string>
+    <string name="shortcut_help">ปุ่มจะพับเข้าขอบจอเมื่อไม่ได้ใช้เป็นเวลา 3 วินาที แตะเพื่อกางออกอีกครั้ง เมื่อปิดคำบรรยาย คุณเปิดใหม่ได้จากการแจ้งเตือน Android จะขออนุญาตทุกครั้งที่เริ่มบันทึกเสียงระบบใหม่</string>
+    <string name="shortcut_edge_label">ปุ่มลอยที่ขอบจอ</string>
+    <string name="shortcut_notification_label">แสดงการแจ้งเตือนเมื่อปิดคำบรรยาย</string>
+    <string name="shortcut_add_tile">เพิ่มในการตั้งค่าด่วน</string>
+    <string name="shortcut_tile_label">คำบรรยาย Mimi</string>
+    <string name="shortcut_tile_manual">เปิดการตั้งค่าด่วน แตะแก้ไข แล้วเพิ่มคำบรรยาย Mimi</string>
+    <string name="shortcut_tile_already_added">มีไทล์นี้ในการตั้งค่าด่วนแล้ว</string>
+    <string name="shortcut_captions_off">ปิดคำบรรยายอยู่</string>
+    <string name="shortcut_notifications_blocked">อนุญาตการแจ้งเตือนเพื่อใช้ทางลัดนี้</string>
+    <string name="shortcut_open_settings">การตั้งค่า</string>
+    <string name="shortcut_settings_unavailable">เปิดการตั้งค่าระบบไม่ได้</string>
+    <string name="caption_edge_move">ย้ายไปยังขอบจอฝั่งตรงข้าม</string>
+    <string name="shortcut_reveal_edge">แสดงปุ่มคำบรรยาย</string>
+    <string name="shortcut_resume_captions">แสดงคำบรรยายต่อ</string>
+    <string name="shortcut_resume_after_unlock">การแชร์หน้าจอหยุดลงขณะล็อกหน้าจอ แตะเพื่อยืนยันอีกครั้งและแสดงคำบรรยายเสียงจากระบบต่อ</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">Raccourcis des sous-titres</string>
+    <string name="shortcut_help">Après trois secondes, le bouton se replie sur le bord de l’écran. Touchez-le pour le déployer. La notification permet de réactiver les sous-titres. Android demande votre accord à chaque nouvelle capture du son système.</string>
+    <string name="shortcut_edge_label">Bouton flottant au bord de l’écran</string>
+    <string name="shortcut_notification_label">Notification quand les sous-titres sont désactivés</string>
+    <string name="shortcut_add_tile">Ajouter aux réglages rapides</string>
+    <string name="shortcut_tile_label">Sous-titres Mimi</string>
+    <string name="shortcut_tile_manual">Ouvrez les réglages rapides, touchez Modifier, puis ajoutez Sous-titres Mimi.</string>
+    <string name="shortcut_tile_already_added">La tuile est déjà dans les réglages rapides.</string>
+    <string name="shortcut_captions_off">Sous-titres désactivés</string>
+    <string name="shortcut_notifications_blocked">Autorisez les notifications pour utiliser ce raccourci.</string>
+    <string name="shortcut_open_settings">Paramètres</string>
+    <string name="shortcut_settings_unavailable">Impossible d’ouvrir les paramètres système.</string>
+    <string name="caption_edge_move">Déplacer vers le bord opposé</string>
+    <string name="shortcut_reveal_edge">Déployer le bouton des sous-titres</string>
+    <string name="shortcut_resume_captions">Reprendre les sous-titres</string>
+    <string name="shortcut_resume_after_unlock">Le partage d’écran s’est arrêté pendant le verrouillage. Touchez pour confirmer à nouveau et reprendre les sous-titres de l’audio système.</string>
+</resources>

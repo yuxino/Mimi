@@ -15,8 +15,8 @@
     <string name="openai_realtime_service_error">OpenAI reported a service error. Try again shortly.</string>
     <string name="need_api_key">Add an API key in Settings first.</string>
     <string name="notification_channel">Caption service</string>
-    <string name="notification_title">Mimi is capturing playback audio</string>
-    <string name="notification_text">Live captions and translation are running</string>
+    <string name="notification_title">Captions are on</string>
+    <string name="notification_text">Capturing audio from other apps</string>
     <string name="stop_action">Stop</string>
     <string name="overlay_exit_immersive">Exit immersive captions</string>
     <string name="overlay_adjust">Adjust captions</string>

@@ -16,8 +16,8 @@
     <string name="openai_realtime_service_error">Bei OpenAI ist ein Dienstfehler aufgetreten. Versuche es in Kürze erneut.</string>
     <string name="need_api_key">Zuerst einen API-Schlüssel in den Einstellungen hinzufügen.</string>
     <string name="notification_channel">Untertiteldienst</string>
-    <string name="notification_title">Mimi erfasst Wiedergabe-Audio</string>
-    <string name="notification_text">Live-Untertitel und Übersetzung laufen</string>
+    <string name="notification_title">Untertitel sind an</string>
+    <string name="notification_text">Audio aus anderen Apps wird erfasst</string>
     <string name="stop_action">Stoppen</string>
     <string name="overlay_exit_immersive">Immersive Untertitel verlassen</string>
     <string name="overlay_adjust">Untertitel anpassen</string>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">Untertitel-Kurzbefehle</string>
+    <string name="shortcut_help">Die Schaltfläche rückt nach drei Sekunden an den Bildschirmrand. Tippe sie an, um sie wieder einzublenden. Bei ausgeschalteten Untertiteln kannst du sie über die Benachrichtigung starten. Android fragt vor jeder neuen Aufnahme des Systemtons nach.</string>
+    <string name="shortcut_edge_label">Schaltfläche am Bildschirmrand</string>
+    <string name="shortcut_notification_label">Benachrichtigung bei ausgeschalteten Untertiteln</string>
+    <string name="shortcut_add_tile">Zu Schnelleinstellungen hinzufügen</string>
+    <string name="shortcut_tile_label">Mimi-Untertitel</string>
+    <string name="shortcut_tile_manual">Öffne die Schnelleinstellungen, tippe auf „Bearbeiten“ und füge „Mimi-Untertitel“ hinzu.</string>
+    <string name="shortcut_tile_already_added">Die Kachel ist bereits in den Schnelleinstellungen.</string>
+    <string name="shortcut_captions_off">Untertitel sind aus</string>
+    <string name="shortcut_notifications_blocked">Erlaube Benachrichtigungen, um diesen Kurzbefehl zu verwenden.</string>
+    <string name="shortcut_open_settings">Einstellungen</string>
+    <string name="shortcut_settings_unavailable">Die Systemeinstellungen sind nicht verfügbar.</string>
+    <string name="caption_edge_move">An den gegenüberliegenden Rand verschieben</string>
+    <string name="shortcut_reveal_edge">Untertitel-Schaltfläche einblenden</string>
+    <string name="shortcut_resume_captions">Untertitel fortsetzen</string>
+    <string name="shortcut_resume_after_unlock">Die Bildschirmfreigabe wurde bei gesperrtem Bildschirm beendet. Zum Fortsetzen der Untertitel für Systemaudio tippen und erneut bestätigen.</string>
+</resources>

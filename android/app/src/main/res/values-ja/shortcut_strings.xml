@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_heading">字幕のショートカット</string>
+    <string name="shortcut_help">画面端のボタンは3秒後に折りたたまれ、タップすると元に戻ります。字幕がオフのときは通知から再開できます。システム音声の収録を始めるたびに、Android が共有の許可を求めます。</string>
+    <string name="shortcut_edge_label">画面端のフローティングボタン</string>
+    <string name="shortcut_notification_label">字幕がオフの間も通知を表示</string>
+    <string name="shortcut_add_tile">クイック設定に追加</string>
+    <string name="shortcut_tile_label">Mimi 字幕</string>
+    <string name="shortcut_tile_manual">クイック設定を開いて「編集」をタップし、「Mimi 字幕」を追加してください。</string>
+    <string name="shortcut_tile_already_added">クイック設定に追加済みです。</string>
+    <string name="shortcut_captions_off">字幕はオフです</string>
+    <string name="shortcut_notifications_blocked">このショートカットを使うには通知を許可してください。</string>
+    <string name="shortcut_open_settings">設定</string>
+    <string name="shortcut_settings_unavailable">システム設定を開けません。</string>
+    <string name="caption_edge_move">画面の反対側に移動</string>
+    <string name="shortcut_reveal_edge">字幕ボタンを表示</string>
+    <string name="shortcut_resume_captions">字幕を再開</string>
+    <string name="shortcut_resume_after_unlock">画面のロック中に画面共有が停止しました。タップして再度確認すると、システム音声の字幕を再開できます。</string>
+</resources>
