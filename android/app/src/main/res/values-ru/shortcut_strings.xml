@@ -15,5 +15,6 @@
     <string name="caption_edge_move">Переместить к противоположному краю</string>
     <string name="shortcut_reveal_edge">Развернуть кнопку субтитров</string>
     <string name="shortcut_resume_captions">Продолжить субтитры</string>
-    <string name="shortcut_resume_after_unlock">Показ экрана остановлен во время блокировки. Нажмите и подтвердите разрешение ещё раз, чтобы продолжить субтитры системного звука.</string>
+    <string name="shortcut_captions_paused">Субтитры приостановлены</string>
+    <string name="shortcut_resume_after_unlock">Блокировка экрана прервала трансляцию.</string>
 </resources>

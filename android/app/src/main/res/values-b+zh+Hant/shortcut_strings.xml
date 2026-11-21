@@ -15,5 +15,6 @@
     <string name="caption_edge_move">移到螢幕另一側</string>
     <string name="shortcut_reveal_edge">展開字幕按鈕</string>
     <string name="shortcut_resume_captions">繼續字幕</string>
-    <string name="shortcut_resume_after_unlock">鎖定螢幕期間螢幕分享已停止。點按後重新確認，繼續系統聲音字幕。</string>
+    <string name="shortcut_captions_paused">字幕已暫停</string>
+    <string name="shortcut_resume_after_unlock">鎖定螢幕時已停止共享。</string>
 </resources>

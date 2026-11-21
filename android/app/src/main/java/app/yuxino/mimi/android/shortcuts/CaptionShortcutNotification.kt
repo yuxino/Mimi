@@ -37,8 +37,14 @@ internal class CaptionShortcutNotification(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_mimi)
-            .setContentTitle(localized.getString(if (continuing) R.string.shortcut_resume_captions else R.string.shortcut_captions_off))
-            .apply { if (continuing) setContentText(localized.getString(R.string.shortcut_resume_after_unlock)) }
+            .setContentTitle(localized.getString(if (continuing) R.string.shortcut_captions_paused else R.string.shortcut_captions_off))
+            .apply {
+                if (continuing) {
+                    val reason = localized.getString(R.string.shortcut_resume_after_unlock)
+                    setContentText(reason)
+                    setStyle(Notification.BigTextStyle().bigText(reason))
+                }
+            }
             .setContentIntent(start)
             .setDeleteIntent(dismissed)
             .addAction(Notification.Action.Builder(null, localized.getString(if (continuing) R.string.shortcut_resume_captions else R.string.start_capture), start).build())

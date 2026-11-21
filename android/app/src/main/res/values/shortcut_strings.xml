@@ -15,5 +15,6 @@
     <string name="caption_edge_move">Move to the opposite edge</string>
     <string name="shortcut_reveal_edge">Show caption button</string>
     <string name="shortcut_resume_captions">Continue captions</string>
-    <string name="shortcut_resume_after_unlock">Screen sharing stopped while the screen was locked. Tap to confirm again and continue system-audio captions.</string>
+    <string name="shortcut_captions_paused">Captions paused</string>
+    <string name="shortcut_resume_after_unlock">Locking your phone stopped screen sharing.</string>
 </resources>

@@ -15,5 +15,6 @@
     <string name="caption_edge_move">An den gegenüberliegenden Rand verschieben</string>
     <string name="shortcut_reveal_edge">Untertitel-Schaltfläche einblenden</string>
     <string name="shortcut_resume_captions">Untertitel fortsetzen</string>
-    <string name="shortcut_resume_after_unlock">Die Bildschirmfreigabe wurde bei gesperrtem Bildschirm beendet. Zum Fortsetzen der Untertitel für Systemaudio tippen und erneut bestätigen.</string>
+    <string name="shortcut_captions_paused">Untertitel pausiert</string>
+    <string name="shortcut_resume_after_unlock">Beim Sperren wurde die Bildschirmfreigabe beendet.</string>
 </resources>

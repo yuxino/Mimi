@@ -15,5 +15,6 @@
     <string name="caption_edge_move">Déplacer vers le bord opposé</string>
     <string name="shortcut_reveal_edge">Déployer le bouton des sous-titres</string>
     <string name="shortcut_resume_captions">Reprendre les sous-titres</string>
-    <string name="shortcut_resume_after_unlock">Le partage d’écran s’est arrêté pendant le verrouillage. Touchez pour confirmer à nouveau et reprendre les sous-titres de l’audio système.</string>
+    <string name="shortcut_captions_paused">Sous-titres en pause</string>
+    <string name="shortcut_resume_after_unlock">Le verrouillage a interrompu le partage d’écran.</string>
 </resources>

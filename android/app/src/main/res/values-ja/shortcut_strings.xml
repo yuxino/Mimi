@@ -15,5 +15,6 @@
     <string name="caption_edge_move">画面の反対側に移動</string>
     <string name="shortcut_reveal_edge">字幕ボタンを表示</string>
     <string name="shortcut_resume_captions">字幕を再開</string>
-    <string name="shortcut_resume_after_unlock">画面のロック中に画面共有が停止しました。タップして再度確認すると、システム音声の字幕を再開できます。</string>
+    <string name="shortcut_captions_paused">字幕を一時停止しました</string>
+    <string name="shortcut_resume_after_unlock">画面ロックで共有が停止しました。</string>
 </resources>

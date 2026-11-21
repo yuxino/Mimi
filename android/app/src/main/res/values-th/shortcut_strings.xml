@@ -15,5 +15,6 @@
     <string name="caption_edge_move">ย้ายไปยังขอบจอฝั่งตรงข้าม</string>
     <string name="shortcut_reveal_edge">แสดงปุ่มคำบรรยาย</string>
     <string name="shortcut_resume_captions">แสดงคำบรรยายต่อ</string>
-    <string name="shortcut_resume_after_unlock">การแชร์หน้าจอหยุดลงขณะล็อกหน้าจอ แตะเพื่อยืนยันอีกครั้งและแสดงคำบรรยายเสียงจากระบบต่อ</string>
+    <string name="shortcut_captions_paused">หยุดคำบรรยายชั่วคราว</string>
+    <string name="shortcut_resume_after_unlock">การล็อกหน้าจอทำให้การแชร์หน้าจอหยุดลง</string>
 </resources>

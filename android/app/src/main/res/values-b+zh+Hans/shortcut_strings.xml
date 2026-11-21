@@ -15,5 +15,6 @@
     <string name="caption_edge_move">移到屏幕另一侧</string>
     <string name="shortcut_reveal_edge">展开字幕按钮</string>
     <string name="shortcut_resume_captions">继续字幕</string>
-    <string name="shortcut_resume_after_unlock">锁屏期间屏幕共享已停止。点按后重新确认，继续系统声音字幕。</string>
+    <string name="shortcut_captions_paused">字幕已暂停</string>
+    <string name="shortcut_resume_after_unlock">锁屏中断了屏幕共享。</string>
 </resources>
