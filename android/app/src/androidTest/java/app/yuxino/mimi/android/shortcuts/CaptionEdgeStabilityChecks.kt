@@ -1,5 +1,6 @@
 package app.yuxino.mimi.android.shortcuts
 
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
@@ -15,6 +16,8 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.view.inspector.WindowInspector
 import app.yuxino.mimi.android.CaptureProbeActivity
@@ -22,6 +25,8 @@ import app.yuxino.mimi.android.MimiApplication
 import app.yuxino.mimi.android.R
 import app.yuxino.mimi.android.capture.MimiService
 import app.yuxino.mimi.android.localization.InterfaceLanguage
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 /** Actual light-right screen pixels across the normal edge gestures; no capture or provider. */
@@ -33,6 +38,11 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     private var stage = "setup"
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).roundToInt()
     private fun label(resource: Int) = InterfaceLanguage.context(context).getString(resource)
+    private fun artwork(button: View) = (button as ViewGroup).getChildAt(0) as CaptionEdgeArtwork
+    private fun badgeOpacity(art: CaptionEdgeArtwork): Int {
+        val badge = art.getChildAt(1)
+        return if (badge.isShown) (badge.alpha * 255).roundToInt() else 0
+    }
     private fun ui(action: () -> Unit) {
         var failure: Throwable? = null
         test.runOnMainSync { try { action() } catch (error: Throwable) { failure = error } }
@@ -41,13 +51,14 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
     }
 
     private fun edge(resource: Int): View {
+        val finalOpacity = if (resource == R.string.shortcut_reveal_edge) 0 else 255
         val deadline = SystemClock.elapsedRealtime() + 5_000
         do {
             var found: View? = null
             ui {
                 found = WindowInspector.getGlobalWindowViews().singleOrNull {
                     it.isShown && it.contentDescription == label(resource) && it.width == dp(48) && it.height == dp(48)
-                }
+                }?.takeIf { badgeOpacity(artwork(it)) == finalOpacity }
             }
             found?.let { return it }
             SystemClock.sleep(25)
@@ -97,11 +108,63 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) heldSince = null
     }
 
+    /** Retarget the same attached badge during a real draw, without estimating when a frame will run. */
+    private fun checkBadgeTransition(): String {
+        val button = edge(R.string.shortcut_reveal_edge)
+        lateinit var art: CaptionEdgeArtwork
+        ui { art = artwork(button) }
+        if (!ValueAnimator.areAnimatorsEnabled()) {
+            ui {
+                art.showAction(true)
+                check(badgeOpacity(art) == 255) { "disabled_animation_delayed_reveal" }
+                art.showAction(false)
+                check(badgeOpacity(art) == 0) { "disabled_animation_delayed_retuck" }
+            }
+            return "disabled: immediate"
+        }
+
+        val finished = CountDownLatch(1)
+        var turningOpacity = -1
+        var afterTurn = -1
+        var fallingOpacity = -1
+        var lastDraw = -1
+        val draw = ViewTreeObserver.OnPreDrawListener {
+            lastDraw = badgeOpacity(art)
+            if (turningOpacity < 0 && lastDraw in 96..254) {
+                turningOpacity = lastDraw
+                art.showAction(false)
+                afterTurn = badgeOpacity(art)
+            } else if (lastDraw in 1 until turningOpacity) {
+                fallingOpacity = lastDraw
+            } else if ((turningOpacity >= 0 && lastDraw == 0) || lastDraw == 255) {
+                finished.countDown()
+            }
+            true
+        }
+        try {
+            ui {
+                art.viewTreeObserver.addOnPreDrawListener(draw)
+                art.showAction(true)
+                check(badgeOpacity(art) == 0) { "edge_badge_flashed_on_reveal" }
+            }
+            val completed = finished.await(5, TimeUnit.SECONDS)
+            ui {
+                check(completed && afterTurn == turningOpacity && fallingOpacity > 0 && lastDraw == 0) {
+                    "edge_badge_transition_incomplete: turn=$turningOpacity after=$afterTurn falling=$fallingOpacity last=$lastDraw"
+                }
+            }
+            return "reversed at $turningOpacity/255, drew $fallingOpacity/255 on return"
+        } finally {
+            ui { art.viewTreeObserver.removeOnPreDrawListener(draw) }
+        }
+    }
+
     fun run() {
         var activity: CaptureProbeActivity? = null
         var window: CaptionEdgeWindow? = null
         var originalEdge: Boolean? = null
         var toggles = 0
+        var badgeMotion = ""
         var failure: Throwable? = null
         try {
             check(Build.VERSION.SDK_INT >= 29 && Build.HARDWARE in setOf("ranchu", "goldfish")) { "Use an isolated emulator" }
@@ -139,6 +202,8 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
             check(SystemClock.elapsedRealtime() - released in 2_500L..5_000L) { "edge_retuck_timing" }
             check(reference.contentEquals(retucked)) { "edge_retuck_changed_logo" }
             check(toggles == 0) { "edge_reveal_or_hold_activated_a_toggle" }
+            stage = "badge transition"
+            badgeMotion = checkBadgeTransition()
         } catch (error: Throwable) { failure = error }
         finally {
             try {
@@ -151,7 +216,7 @@ internal class CaptionEdgeStabilityChecks(private val test: Instrumentation) {
         val error = failure
         test.finish(if (error == null) Activity.RESULT_OK else Activity.RESULT_CANCELED, Bundle().apply {
             putString("stream", if (error == null)
-                "Caption edge stability passed: light-right; 48dp; badge-only changes; retuck identical; no toggle.\n"
+                "Caption edge stability passed: light-right; 48dp; badge-only changes; retuck identical; no toggle; $badgeMotion.\n"
             else "Caption edge stability failed at $stage: ${error.javaClass.simpleName}: ${error.message}\n")
         })
     }
