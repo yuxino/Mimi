@@ -52,21 +52,53 @@ function Invoke-LocalizedOverlaySession([hashtable]$Preferences, [string]$Eviden
 }
 
 function Test-CaptionHistorySessions {
+    $binaryHash = (Get-FileHash -LiteralPath $resolvedExecutable -Algorithm SHA256).Hash
+    if ($binaryHash -cne '1714D0FE84ED2BEED893A0B12FA7A91A4C2ED31F10F5E30719D7953B2EE42E22') {
+        throw 'This bounded history observation requires the unchanged diagnostic executable from run 44894562404.'
+    }
+    [void][IO.Directory]::CreateDirectory($EvidenceDirectory)
+    $manifest = [ordered]@{ productBase = '810e5a15'; binarySource = '8ffb58aa2017c03ff88b3664fd742248520b039c'
+        binarySha256 = $binaryHash; reusedRun = 44894562404; cycles = 3; locales = @('zh', 'de')
+        preconditions = @('pointer-both-drag-preferences', 'nine-language-panels'); stopAtFirstFailure = $true }
+    [IO.File]::WriteAllText((Join-Path $EvidenceDirectory 'observation-matrix.json'), ($manifest | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+
+    # Match the bundle job's two preceding checks on this same hosted desktop.
+    # Separate PowerShell processes preserve the outer fixture environment and
+    # the original scripts' exact input, private-directory and cleanup rules.
+    $smokeScript = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../windows-ci-smoke.ps1'))
+    $probeArguments = @('-NoProfile', '-NonInteractive', '-File', $smokeScript,
+        '-ExecutablePath', $resolvedExecutable, '-ExpectedArchitecture', 'x64')
+    Write-Output "History observation uses unchanged executable SHA-256 $binaryHash."
+    Write-Output 'History observation precondition: native pointer controls and both Windows drag preferences.'
+    & (Join-Path $PSHOME 'pwsh.exe') @probeArguments -OverlayInteraction pointer -VerifyBothDragModes 2>&1 |
+        Tee-Object -FilePath (Join-Path $EvidenceDirectory 'precondition-pointer.log')
+    if ($LASTEXITCODE -ne 0) { throw 'The pointer precondition failed; no history cycle was started.' }
+    Write-Output 'History observation precondition: all nine native panel languages.'
+    $panelEvidence = Join-Path $EvidenceDirectory 'precondition-panels'
+    & (Join-Path $PSHOME 'pwsh.exe') @probeArguments -OverlayInteraction panel-languages -EvidenceDirectory $panelEvidence 2>&1 |
+        Tee-Object -FilePath (Join-Path $EvidenceDirectory 'precondition-panels.log')
+    if ($LASTEXITCODE -ne 0) { throw 'The panel precondition failed; no history cycle was started.' }
+
     Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs')
     $env:MIMI_UI_TEST_CAPTION_HISTORY = '1'
     $null = New-Item -ItemType Directory -Force -Path $frontendReadyDir
-    foreach ($locale in @('zh', 'de')) {
-        $evidence = New-Item -ItemType Directory -Force -Path (Join-Path $EvidenceDirectory $locale)
-        Write-Output "Checking the bilingual caption reading position in the $locale interface."
-        Invoke-LocalizedOverlaySession @{
-            ui_language = $locale
-            source_language = 'en'
-            target_language = 'zh'
-            subtitle_display_mode = 'bilingual'
-            subtitle_animation = $false
-            subtitle_background_opacity = 100
-            audio_input = 'system'
-        } $evidence.FullName
+    # Do not catch a failed session and continue: keep the first red's trace,
+    # screenshot and original failure rather than searching for a green run.
+    foreach ($cycle in 1..3) {
+        foreach ($locale in @('zh', 'de')) {
+            $casePath = Join-Path $EvidenceDirectory ('cycle-{0:00}/{1}' -f $cycle, $locale)
+            $evidence = New-Item -ItemType Directory -Force -Path $casePath
+            Write-Output "History observation cycle=$cycle locale=$locale after both native preconditions."
+            Invoke-LocalizedOverlaySession @{
+                ui_language = $locale
+                source_language = 'en'
+                target_language = 'zh'
+                subtitle_display_mode = 'bilingual'
+                subtitle_animation = $false
+                subtitle_background_opacity = 100
+                audio_input = 'system'
+            } $evidence.FullName
+        }
     }
 }
 
