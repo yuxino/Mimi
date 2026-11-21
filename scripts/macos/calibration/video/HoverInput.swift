@@ -32,7 +32,12 @@ private enum HoverInput {
         let chinese = ProcessInfo.processInfo.environment["MIMI_CAPSULE_TEST_LANGUAGE"] == "zh"
         let languageFields = chinese ? ["识别语言","翻译成"] : ["Recognize","Translate To"]
         let collapseName = chinese ? "收起字幕控制" : "Collapse subtitle controls"
-        let layout = args[5] != "history"
+        let entry = ProcessInfo.processInfo.environment["MIMI_CAPSULE_ENTRY_PATH"]
+        if let entry {
+            guard capsuleOnly, !chinese, ["fast-first", "slow-first", "fast-return", "slow-return"].contains(entry)
+            else { throw LayoutError("invalid_direct_entry_fixture") }
+        }
+        let layout = args[5] != "history" && entry == nil
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.25)
         try closeSettings(pid: pid, app: app)
@@ -238,7 +243,7 @@ private enum HoverInput {
         // The recording has a frozen two-window crop. Check the real expandable
         // island afterwards, so its enlarged native panel is captured in full.
         var checkedPanel = false
-        func inspectLanguagePanel() throws {
+        func inspectLanguagePanel(alreadyAtTarget: Bool = false) throws {
             checkedPanel = true
             _ = try current()
             func surface() throws -> Window {
@@ -249,8 +254,11 @@ private enum HoverInput {
                       let child = own.first(where: { $0.id == island.id }) else { throw LayoutError("panel_root_or_settings_changed") }
                 return child
             }
-            func physical(_ point: CGPoint, expected: CGRect, stage: String) throws {
-                try move(point)
+            func physical(_ point: CGPoint, expected: CGRect, stage: String, alreadyThere: Bool = false) throws {
+                if !alreadyThere { try move(point) }
+                guard let actual = CGEvent(source: nil)?.location, hypot(actual.x - point.x, actual.y - point.y) < 2 else {
+                    throw LayoutError("direct_click_pointer_displaced")
+                }
                 var hit: AXUIElement?
                 var owner: pid_t = -1
                 guard expected.contains(point),
@@ -265,10 +273,12 @@ private enum HoverInput {
                 try pointer(.leftMouseUp, point)
                 mark(stage + "-physical-up")
             }
-            try move(center(island.bounds))
-            Thread.sleep(forTimeInterval: 0.3)
+            if !alreadyAtTarget {
+                try move(center(island.bounds))
+                Thread.sleep(forTimeInterval: 0.3)
+            }
             islandPicture("island-before-open")
-            try physical(center(island.bounds), expected: island.bounds, stage: "open-language-panel")
+            try physical(center(island.bounds), expected: island.bounds, stage: "open-language-panel", alreadyThere: alreadyAtTarget)
             var expanded: Window?, collapse: CGRect?
             let deadline = now + 4
             repeat {
@@ -300,6 +310,7 @@ private enum HoverInput {
             try physical(center(collapse), expected: expanded.bounds, stage: "collapse-language-panel")
             let closeDeadline = now + 4
             while !equal(try surface().bounds, island.bounds), now < closeDeadline { Thread.sleep(forTimeInterval: 0.05) }
+            guard equal(try surface().bounds, island.bounds) else { throw LayoutError("entry_panel_did_not_restore_compact_bounds") }
             _ = try current()
             islandPicture("island-restored-after-panel")
             outcome["collapsedLanguagePanel"] = true
@@ -311,6 +322,81 @@ private enum HoverInput {
                 do { try inspectLanguagePanel() }
                 catch { outcome["languagePanelDiagnostic"] = String(describing: error); print("Language panel diagnostic: \(error)") }
             }
+        }
+        if let entry {
+            checkedPanel = true // Do not run the older, pre-warmed fallback on failure.
+            outcome["entryCase"] = entry
+            if entry.hasSuffix("-return") {
+                let snapshot = try current()
+                let candidates = snapshot.lanes.filter { key, lane in
+                    (key.hasPrefix("s") || key.hasPrefix("t")) && key.count == 3 && lane.full
+                }
+                guard let lane = candidates.values.min(by: { abs($0.clipped.midY - root.bounds.midY) < abs($1.clipped.midY - root.bounds.midY) })
+                else { throw LayoutError("missing_real_history_lane_for_entry") }
+                let p = center(lane.clipped)
+                try move(p)
+                _ = try pointerOwner(p)
+                for i in 1...2 {
+                    guard let wheel = CGEvent(scrollWheelEvent2Source: input, units: .pixel, wheelCount: 1,
+                        wheel1: Int32(ceil(root.bounds.height * 0.65)), wheel2: 0, wheel3: 0) else {
+                        throw LayoutError("entry_wheel_unavailable")
+                    }
+                    wheel.location = p
+                    mark("entry-wheel-\(i)")
+                    wheel.post(tap: .cghidEventTap)
+                    Thread.sleep(forTimeInterval: 0.15)
+                }
+                let historical = try wait("entry-historical") {
+                    $0.backToLive != nil && $0.lanes["s18"] == nil && $0.lanes["t18"] == nil
+                }
+                mark("entry-history-confirmed", historical)
+                guard let button = historical.backToLive, let rect = frame(of: button) else { throw LayoutError("entry_missing_back_to_live") }
+                let returnPoint = center(rect)
+                try move(returnPoint)
+                guard hitsReturnButton(try pointerOwner(returnPoint)) else { throw LayoutError("entry_return_hit_missed") }
+                try click(returnPoint, "entry-return")
+                let live = try wait("entry-returned-to-live") {
+                    $0.backToLive == nil && $0.lanes["s18"]?.full == true && $0.lanes["t18"]?.full == true
+                }
+                mark("entry-returned-to-live", live)
+                try move(outside)
+            }
+            Thread.sleep(forTimeInterval: 0.6)
+            mark("entry-quiet", try current())
+            islandPicture("island-quiet")
+            let target = center(island.bounds)
+            if entry.hasPrefix("slow-") {
+                let aboveRoot = CGPoint(x: target.x, y: root.bounds.minY - 5)
+                try move(aboveRoot)
+                mark("entry-above-root")
+                let aboveChild = island.bounds.minY - 4
+                var markedRoot = false, markedChild = false, y = aboveRoot.y
+                while y < target.y {
+                    y = min(target.y, y + 2)
+                    try pointer(.mouseMoved, CGPoint(x: target.x, y: y))
+                    Thread.sleep(forTimeInterval: 0.035)
+                    if !markedRoot && y >= aboveChild { markedRoot = true; mark("entry-four-points-above-child") }
+                    if !markedChild && y >= island.bounds.minY { markedChild = true; mark("entry-crossed-child") }
+                }
+            } else {
+                // Match the actual fast desktop-to-child path. None of the five
+                // intermediate points should warm the parent caption WebView.
+                for i in 1...5 {
+                    let t = CGFloat(i) / 6
+                    let p = CGPoint(x: outside.x + (target.x - outside.x) * t, y: outside.y + (target.y - outside.y) * t)
+                    guard !root.bounds.contains(p), !island.bounds.contains(p) else { throw LayoutError("entry_fast_crossed_root_before_child") }
+                }
+                mark("entry-fast-from-outside")
+                try move(target)
+            }
+            mark("entry-arrived")
+            Thread.sleep(forTimeInterval: 0.35)
+            // No reposition, click warmup, activation, AXPress or recovery click.
+            do { try inspectLanguagePanel(alreadyAtTarget: true) }
+            catch { outcome["languagePanelDiagnostic"] = String(describing: error); throw error }
+            outcome["finalListening"] = true
+            outcome["settingsClosed"] = true
+            return
         }
         if capsuleOnly {
             islandPicture("island-quiet")

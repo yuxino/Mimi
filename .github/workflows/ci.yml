@@ -6,7 +6,7 @@ on:
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that produced the selected artifact, type: string}
       release_tag: {description: Expected Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video, linux-hover-input, mac-language], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video, linux-hover-input, mac-language, mac-direct-language], default: both}
       display_modes: {description: Also cycle all three subtitle display modes in the running Mac app, type: boolean, default: false}
       language: {description: Language for the independent language-window check, type: choice, options: [en, zh], default: en}
       strict_hover: {description: Require the original quiet button target to accept its first click, type: boolean, default: false}
@@ -35,7 +35,7 @@ jobs:
       - run: npm ci
       - run: xvfb-run -a python3 "$RUNNER_TEMP/linux-hover-check.py"
   signed-candidate:
-    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' || inputs.checks == 'mac-hover-video' || inputs.checks == 'mac-language' }}
+    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' || inputs.checks == 'mac-hover-video' || inputs.checks == 'mac-language' || inputs.checks == 'mac-direct-language' }}
     runs-on: macos-15
     timeout-minutes: 65
     env:
@@ -115,6 +115,27 @@ jobs:
         with:
           name: macos-language-proof
           path: ${{ runner.temp }}/language-proof
+          if-no-files-found: error
+          retention-days: 7
+      - name: Enter the quiet language island on four independent app launches
+        if: ${{ inputs.checks == 'mac-direct-language' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+        run: |
+          failed=0
+          for entry in fast-first slow-first fast-return slow-return; do
+            if ! MIMI_CAPSULE_ENTRY_PATH="$entry" MIMI_CAPSULE_TEST_LANGUAGE=en \
+                 bash "$RUNNER_TEMP/video-tools/run-hover-video.sh" --dev "$EXPECTED_CERT" language "$RUNNER_TEMP/language-direct/$entry"; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Keep every direct approach including first-click failures
+        if: ${{ !cancelled() && inputs.checks == 'mac-direct-language' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-language-entry
+          path: ${{ runner.temp }}/language-direct
           if-no-files-found: error
           retention-days: 7
       - name: Compile the window-only video recorder
