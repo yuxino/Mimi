@@ -25,4 +25,4 @@ probe = output.parent / 'HistoryProbe.swift'
 probe.write_text(source + (harness / 'Driver.swift').read_text())
 pointer = output.parent / 'NativePointer.swift'
 pointer.write_text(prefix('caption-drag.swift'))
-subprocess.run(['xcrun','swiftc',str(probe),str(pointer),str(suite/'Capture.swift'),str(harness/'PaintedThumb.swift'),'-o', str(output)],check=True)
+subprocess.run(['xcrun','swiftc',str(probe),str(pointer),str(suite/'Capture.swift'),str(harness/'PaintedThumb.swift'),str(harness/'QuickEvents.swift'),'-o', str(output)],check=True)

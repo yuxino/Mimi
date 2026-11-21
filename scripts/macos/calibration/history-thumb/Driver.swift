@@ -142,7 +142,17 @@ private enum HistoryThumbCheck {
                                       "releasePoint": ["x": end.x, "y": end.y]])
         try pointer.post(.mouseMoved, at: from)
         let ownedRoot = OwnedWindow(id: root.id, title: root.title, frame: box)
-        var heldFooter = false, hadTailWhileHeld = false
+        let observed = QuickEvents(pid: pid)
+        defer {
+            observed.stop()
+            let trace: [String: Any] = ["targetTapInstalled": observed.installed, "rootWindow": root.id,
+                                       "events": observed.snapshot().map(\.json)]
+            if let data = try? JSONSerialization.data(withJSONObject: trace, options: .prettyPrinted) {
+                try? data.write(to: output.appendingPathComponent("target-mouse.json"))
+            }
+        }
+        pointer.source.userData = QuickEvents.tag
+        var finalDragStart = 0.0, finalDragPosted = 0.0
         try pointer.hold(at: from, in: ownedRoot) {
             note("down", nil)
             for i in 1...4 {
@@ -152,22 +162,24 @@ private enum HistoryThumbCheck {
             }
             let half = try read(), pic = try image("held-half")
             let moved = try paintedThumb(in: pic, window: box, search: trackSearch(footer))
-            note("drag-middle", half, ["thumb": rect(moved)])
+            let sameFooter = half.backToLive.flatMap { frame(of: $0) }.map { equal($0, footer) } ?? false
+            note("drag-middle", half, ["thumb": rect(moved), "footerUnmoved": sameFooter])
             guard Pointer.pressed, moved.midY > start.midY + 2, moved.midY < end.y - 2,
-                  half.backToLive != nil else { throw LayoutError("scrollbar_did_not_move_under_held_mouse") }
-            for i in 5...8 {
-                let y = from.y + (end.y - from.y) * CGFloat(i) / 8
-                try pointer.post(.leftMouseDragged, at: CGPoint(x: from.x, y: y))
-                Thread.sleep(forTimeInterval: 0.035)
-            }
-            let tail = try read(), picTail = try image("held-bottom")
-            let tailThumb = try paintedThumb(in: picTail, window: box, search: CGRect(x: box.maxX-24, y: box.minY+45, width: 18, height: box.height-53))
-            heldFooter = tail.backToLive.flatMap { frame(of: $0) }.map { equal($0, footer) } ?? false
-            hadTailWhileHeld = try ink(tail, "s19", picTail) && ink(tail, "t19", picTail)
-            note("drag-bottom", tail, ["thumb": rect(tailThumb), "footerTrackUnchanged": heldFooter, "pair19Painted": hadTailWhileHeld])
-            guard Pointer.pressed else { throw LayoutError("mouse_released_before_bottom") }
+                  sameFooter else { throw LayoutError("scrollbar_or_footer_changed_before_final_segment") }
+            // hold() posts mouse-up at exactly this point on return. No
+            // screenshot, AX read, wait, or second drag occurs at the bottom.
+            finalDragStart = now
+            try pointer.post(.leftMouseDragged, at: end)
+            finalDragPosted = now
         }
-        note("up", nil)
+        let releaseAcknowledged = now
+        note("up", nil, ["finalDragStartedUptime": finalDragStart, "finalDragPostedUptime": finalDragPosted,
+                         "releaseAcknowledgedUptime": releaseAcknowledged,
+                         "postAndReleaseUpperBoundMs": (releaseAcknowledged - finalDragStart) * 1000,
+                         "nativeWindow": root.id, "targetTapInstalled": observed.installed])
+        let early = try read()
+        _ = try image("first-after-up")
+        note("first-sample-after-up", early, ["sampleStartedUptime": early.started, "sampleFinishedUptime": early.finished])
         Thread.sleep(forTimeInterval: 0.35)
         let released = try read(), rp = try image("released")
         let follows19 = try released.backToLive == nil && ink(released, "s19", rp) && ink(released, "t19", rp)
@@ -178,9 +190,27 @@ private enum HistoryThumbCheck {
         let next = try read(), nextPic = try image("next20")
         let nextSource = try ink(next, "s20", nextPic), nextTranslation = try ink(next, "t20", nextPic)
         note("20-after-release", next, ["source20Painted": nextSource, "translation20Painted": nextTranslation])
-        guard heldFooter, hadTailWhileHeld, follows19, nextSource, nextTranslation, next.backToLive == nil else {
-            throw LayoutError("gesture_or_painted_following_incomplete")
+        let events = observed.snapshot()
+        var quick = false
+        var timing: [String:Any] = ["events": events.map(\.json), "targetTapInstalled": observed.installed]
+        if let drag = events.dropLast().last, let up = events.last, drag.type == .leftMouseDragged, up.type == .leftMouseUp,
+           up.timestamp >= drag.timestamp {
+            let quartzGap = Double(up.timestamp - drag.timestamp) / 1_000_000
+            let receiptGap = (up.receipt - drag.receipt) * 1000
+            func atPoint(_ point: CGPoint, _ expected: CGPoint) -> Bool {
+                abs(point.x - expected.x) <= 1 && abs(point.y - expected.y) <= 1
+            }
+            let downs = events.filter { $0.type == .leftMouseDown }
+            let ups = events.filter { $0.type == .leftMouseUp }
+            quick = downs.count == 1 && ups.count == 1 && atPoint(downs[0].point, from) &&
+                atPoint(drag.point, end) && atPoint(up.point, end) && quartzGap <= 16.7 && (0...16.7).contains(receiptGap)
+            timing["quartzGapMs"] = quartzGap
+            timing["receiverGapMs"] = receiptGap
         }
+        timing["verifiedFastPairAtTarget"] = quick
+        note("native-event-sequence", nil, timing)
+        guard quick else { throw LayoutError("fast_release_at_target_unverified") }
+        guard follows19, nextSource, nextTranslation, next.backToLive == nil else { throw LayoutError("release_did_not_resume_painted_following") }
         finished = true
     }
 }

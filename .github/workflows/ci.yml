@@ -1,4 +1,4 @@
-name: Check the signed macOS app with a physical scrollbar drag
+name: Check a fast scrollbar release in the signed macOS app
 on: workflow_dispatch
 permissions:
   contents: read
@@ -29,12 +29,12 @@ jobs:
           app="$RUNNER_TEMP/mimi-extracted/mimi.app"
           [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" == "${TAG#v}" ]]
           ditto "$app" /Applications/mimi.app
-      - name: Press the painted thumb, drag to the bottom and read the next caption
+      - name: Drag the painted thumb and release immediately at the bottom
         run: bash scripts/macos/calibration/history-thumb/run.sh "$RUNNER_TEMP/history-thumb"
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: macos-signed-history-thumb
+          name: macos-signed-history-fast-release
           path: ${{ runner.temp }}/history-thumb
           retention-days: 7
           if-no-files-found: ignore
