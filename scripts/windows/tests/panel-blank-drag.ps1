@@ -4,6 +4,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
     $type = [System.Windows.Automation.ControlType]
     $observation=$null
     . (Join-Path $PSScriptRoot 'panel-drag-observation.ps1')
+    $releaseAway=(Split-Path -Leaf $EvidencePath) -ceq 'candidate-release-away'
     $metadata = [ordered]@{ scenario = 'panel-blank-horizontal-drag'; locale = $Labels.locale; fullWindows = [MimiCaptionDragDesktop]::FullWindows() }
     [void][IO.Directory]::CreateDirectory($EvidencePath)
     function Wait-BlankPanel([string]$Stage, [scriptblock]$Observe) {
@@ -218,7 +219,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         if (-not [MimiPanelKeyboard]::OwnsFocus($Controls)) { throw 'The control lost native foreground before input.' }
         $heldFailure=$null
         try {
-            [MimiCaptionDragDesktop]::SetLeftButton($true);$observation.Observer.ArmReleaseCache()
+            [MimiCaptionDragDesktop]::SetLeftButton($true)
             $observation.Observer.Mark('pressed')
             Start-Sleep -Milliseconds 80
             for ($step=1;$step -le 8;$step++) {
@@ -247,19 +248,18 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $frame=[MimiPointerSmoke]::ReadBounds($Controls)
         $shortX=[int]($frame.Left+160*$scale);$shortY=[int]($frame.Top+160*$scale)
         [MimiPointerSmoke]::MoveOverWindow($Controls,$shortX,$shortY,'Check a short stationary panel gesture')
-        try{[MimiCaptionDragDesktop]::SetLeftButton($true);$observation.Observer.ArmReleaseCache();Start-Sleep -Milliseconds 15}
-        finally{[MimiCaptionDragDesktop]::SetLeftButton($false);[MimiPointerSmoke]::MoveAndVerify(($shortX+30),$shortY)}
+        try{[MimiCaptionDragDesktop]::SetLeftButton($true);Start-Sleep -Milliseconds 15}
+        finally{
+            [MimiCaptionDragDesktop]::SetLeftButton($false)
+            if($releaseAway){[MimiPointerSmoke]::MoveAndVerify(($shortX+30),$shortY)}
+        }
+        if($releaseAway){$metadata.releaseAway=@{releasedAt=@($shortX,$shortY);movedAfterReleaseTo=@(($shortX+30),$shortY)}}
         $observation.Observer.Mark('short-released')
         Start-Sleep -Milliseconds 400
         $observation.Observer.Mark('short-settled')
         $metadata.shortGesture=Read-BlankGeometry;Assert-BlankGeometry $metadata.shortGesture 48
-        $metadata.cachedRelease=$observation.Observer.ReleaseCache()
-        $metadata.releaseAway=@{releasedAt=@($shortX,$shortY);movedAfterReleaseTo=@(($shortX+30),$shortY)}
-        $metadata.diagnosticRelease=$observation.Observer.ObserveReleaseSignal()
         $null=Wait-BlankPanel 'short-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
-        $metadata.afterDiagnosticRelease=Read-BlankGeometry;Assert-BlankGeometry $metadata.afterDiagnosticRelease 48
-        $metadata.releaseSignalVerified=$true
-        throw 'DIAGNOSTIC ONLY: held-only first-owned-up cache and original screen-point end; inspect geometry, not a product pass.'
+        if($releaseAway){$metadata.passed=$true;$observation.Observer.Mark('release-away-completed');Start-Sleep -Milliseconds 500;return}
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after-short.png'
         $field=Wait-BlankPanel 'the moved source language trigger' { Find-BlankField }
         if ((Get-PanelPickerValueEvidence $field 'moved source').value -cne $closed) { throw 'The blank gesture changed the source field value.' }
@@ -301,6 +301,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.finalCodes=Read-BlankPrefs
         $metadata.final=Read-BlankGeometry
         Assert-BlankGeometry $metadata.final 48
+        Stop-PanelDragVideo $observation
         $observation.Observer.Mark('external-click-away')
         $outside=$observation.Observer.EnableExternalClickAway()
         [MimiPointerSmoke]::ClickOverlay($observation.Observer.BackgroundWindow,$outside.X,$outside.Y,'Click the controlled external neutral window')
@@ -330,7 +331,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         [MimiPointerSmoke]::MoveAndVerify($bodyX,$bodyY)
         if($observation.Observer.HitSurface($bodyX,$bodyY) -cne 'qa-background'){throw 'The locked root did not pass its body hit through to the controlled neutral background.'}
         try{
-            [MimiCaptionDragDesktop]::SetLeftButton($true);$observation.Observer.ArmReleaseCache()
+            [MimiCaptionDragDesktop]::SetLeftButton($true)
             [MimiPointerSmoke]::MoveAndVerify(($bodyX+48),$bodyY)
         }finally{[MimiCaptionDragDesktop]::SetLeftButton($false)}
         Start-Sleep -Milliseconds 400
@@ -354,6 +355,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.passed=$false;$metadata.failure=[string]$_
         if($observation){$observation.Observer.Mark('assertion-failure');Start-Sleep -Milliseconds 750}
         try {
+            if($observation -and $observation.Metadata.videoStopped){throw 'No pixel capture after ending the controlled neutral recording.'}
             if($observation){
                 $frame=[MimiPointerSmoke]::ReadBounds($Controls);$region=$observation.Observer.Region
                 if($frame.Left -lt $region.Left -or $frame.Top -lt $region.Top -or $frame.Right -gt $region.Right -or $frame.Bottom -gt $region.Bottom){throw 'Failure crop is outside the controlled neutral background.'}

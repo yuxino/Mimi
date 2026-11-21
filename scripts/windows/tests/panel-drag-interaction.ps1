@@ -3,8 +3,6 @@
 # can extend across it, so pixel and actionable-hit checks remain independent.
 function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
     if (-not ('MimiCaptionDragDesktop' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs') }
-    Add-Type -Path (Join-Path $PSScriptRoot 'PanelDragObservation.cs')
-    $observation=@{Observer=[MimiPanelDragObservation]::new($overlay,$Controls)}
     $main=[MimiPointerSmoke]::ReadBounds($overlay);$child=[MimiPointerSmoke]::ReadBounds($Controls)
     $scale=$child.Width/280.0
     $metadata=@{rootBefore=@($main.Left,$main.Top,$main.Width,$main.Height);controlBefore=@($child.Left,$child.Top,$child.Width,$child.Height);fullWindows=[MimiCaptionDragDesktop]::FullWindows()}
@@ -104,7 +102,6 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         foreach ($distance in @(3,48)) {
             $point=Get-PanelBlankPoint
             [MimiPointerSmoke]::MoveOverWindow($Controls,$point.X,$point.Y,'Check a quick native panel move')
-            $observation.Observer.SetStage(('quick-'+$distance+'-before-input'))
             $downStarted=[Diagnostics.Stopwatch]::GetTimestamp()
             try {
                 [MimiCaptionDragDesktop]::SetLeftButton($true)
@@ -119,7 +116,6 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
                 $upReturned=[Diagnostics.Stopwatch]::GetTimestamp()
             }
             $metadata.quickInputTimes+=@{distance=$distance;frequency=[Diagnostics.Stopwatch]::Frequency;downStarted=$downStarted;downReturned=$downReturned;moveReturned=$moveReturned;upStarted=$upStarted;upReturned=$upReturned}
-            $observation.Observer.SetStage(('quick-'+$distance+'-released'))
             Start-Sleep -Milliseconds 400
             $offset+=$distance
             $position=Assert-PanelDragPosition $offset
@@ -138,15 +134,13 @@ function Test-PanelDragInteraction([IntPtr]$Controls,[string]$EvidencePath) {
         Write-Host 'Native panel middle drag passed: same HWNDs, +48px, expanded sizes/anchor retained; stationary/quick gestures, release-away, ordinary click and native refocus passed. Continuing original language selections.'
     } catch {
         $metadata.passed=$false;$metadata.failure=[string]$_
-        $observation.Observer.Mark('original-assertion-failed')
-        $observation.Observer.AssertPrivateRegion()
-        Save-PanelLanguageScreenshot $Controls $EvidencePath 'en-panel-failed.png'
+        $metadata.failureNativeState=[MimiPointerSmoke]::CaptionMoveState($overlay,$Controls)
+        $metadata.failureLeftDown=[MimiCaptionDragDesktop]::LeftDown()
+        $metadata.failurePointer=[MimiPointerSmoke]::PointerOwnership($overlay,$Controls)
         throw
     }
     finally {
         [MimiCaptionDragDesktop]::SetLeftButton($false)
         [IO.File]::WriteAllText((Join-Path $EvidencePath 'en-panel-drag.json'),($metadata|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
-        [IO.File]::WriteAllText((Join-Path $EvidencePath 'native-events.json'),(@{frequency=$observation.Observer.Frequency;samples=$observation.Observer.Snapshot();dropped=$observation.Observer.DroppedSamples}|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-        $observation.Observer.Dispose()
     }
 }

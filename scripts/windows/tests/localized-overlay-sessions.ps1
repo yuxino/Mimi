@@ -41,11 +41,10 @@ function Test-CaptionHistorySessions {
 }
 
 function Test-PanelLanguageSessions {
-    Add-Type -Path (Join-Path $PSScriptRoot 'CaptionDragDesktop.cs')
     $labelsPath = Join-Path $preferencesDir 'panel-languages.json'
     node (Join-Path $PSScriptRoot '../../frontend/write-panel-language-fixtures.mjs') $labelsPath
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the panel language catalog.' }
-    $languages = [IO.File]::ReadAllText($labelsPath) | ConvertFrom-Json
+    $languages = @(([IO.File]::ReadAllText($labelsPath) | ConvertFrom-Json) | Where-Object { $_.locale -ceq 'en' })
     $null = New-Item -ItemType Directory -Force -Path $frontendReadyDir, $EvidenceDirectory
     $env:MIMI_UI_TEST_DUAL_SUBTITLES = $null
     $env:MIMI_UI_TEST_DUAL_LIVE_SUBTITLES = $null
@@ -55,7 +54,7 @@ function Test-PanelLanguageSessions {
     Write-Output "Panel language review for Windows x64 executable SHA-256 $sha."
 
     $failures = @()
-    foreach ($labels in @($languages | Where-Object { $_.locale -ceq 'en' })) {
+    foreach ($labels in $languages) {
         $locale = $labels.locale
         $labels | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $preferencesDir 'panel-labels.json') -Encoding utf8NoBOM
         Write-Output "Starting panel review for $locale."
@@ -73,5 +72,5 @@ function Test-PanelLanguageSessions {
         }
     }
     if ($failures.Count) { throw "Panel language review failed for $($failures -join ', ')." }
-    Write-Output "Verified $($languages.Count) Windows panel languages on the same executable."
+    Write-Output "Verified one Windows English panel blank-drag scenario on the same executable."
 }
