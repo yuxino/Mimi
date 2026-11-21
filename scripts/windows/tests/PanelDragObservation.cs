@@ -44,7 +44,6 @@ public sealed class MimiPanelDragObservation : IDisposable
     [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] private static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
-    [DllImport("user32.dll",EntryPoint="PostMessageW")] private static extern bool PostMessage(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLong(IntPtr window,int index);
     [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLong(IntPtr window,int index,IntPtr value);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
@@ -58,7 +57,7 @@ public sealed class MimiPanelDragObservation : IDisposable
     public sealed class Sample {
         public long HostTicks, UtcTicks; public ulong SystemTickMs; public double ElapsedMs;
         public uint Event, EventTickMs; public string Stage, Target, Foreground, Focus, Capture;
-        public bool LeftDown, RootMoveModal; public Rect Root, Control; public int PointerX, PointerY;
+        public bool LeftDown, RootMoveModal; public bool? PointerLeafSameProcess, PointerLeafOnRootThread; public Rect Root, Control; public int PointerX, PointerY;
     }
     private readonly IntPtr root,control; private readonly uint processId,rootThread;
     private readonly object sync=new object(); private readonly List<Sample> samples=new List<Sample>();
@@ -71,7 +70,7 @@ public sealed class MimiPanelDragObservation : IDisposable
     public MimiPanelDragObservation(IntPtr rootWindow,IntPtr controlWindow) {
         root=rootWindow; control=controlWindow; rootThread=GetWindowThreadProcessId(root,out processId);
         Rect a,b; if(!GetWindowRect(root,out a)||!GetWindowRect(control,out b))throw new InvalidOperationException("Could not bound test windows.");
-        Region=new Rect {Left=Math.Min(a.Left,b.Left)-24,Top=Math.Min(a.Top,b.Top)-24,Right=Math.Max(a.Right,b.Right)+72,Bottom=Math.Max(a.Bottom,b.Bottom)+24};
+        Region=new Rect {Left=Math.Min(a.Left,b.Left)-24,Top=Math.Min(a.Top,b.Top)-24,Right=Math.Max(a.Right,b.Right)+104,Bottom=Math.Max(a.Bottom,b.Bottom)+24};
         if((Region.Width&1)!=0)Region=new Rect{Left=Region.Left,Top=Region.Top,Right=Region.Right+1,Bottom=Region.Bottom};
         if((Region.Height&1)!=0)Region=new Rect{Left=Region.Left,Top=Region.Top,Right=Region.Right,Bottom=Region.Bottom+1};
         callback=OnEvent; procedure=DefWindowProc; thread=new Thread(Run); thread.IsBackground=true; thread.SetApartmentState(ApartmentState.STA); thread.Start();
@@ -108,22 +107,11 @@ public sealed class MimiPanelDragObservation : IDisposable
     }
     private void Record(uint id,uint time,string target) {
         var gui=new GuiInfo{Size=(uint)Marshal.SizeOf(typeof(GuiInfo))};GetGUIThreadInfo(rootThread,ref gui);
-        Rect a,b;GetWindowRect(root,out a);GetWindowRect(control,out b);Point p;GetCursorPos(out p);long now=Stopwatch.GetTimestamp();
-        lock(sync){if(samples.Count>=2048){DroppedSamples++;return;}samples.Add(new Sample{HostTicks=now,UtcTicks=DateTime.UtcNow.Ticks,SystemTickMs=GetTickCount64(),ElapsedMs=(now-started)*1000.0/Stopwatch.Frequency,Event=id,EventTickMs=time,Stage=stage,Target=target,Foreground=Category(GetForegroundWindow()),Focus=Category(gui.Focus),Capture=Category(gui.Capture),LeftDown=(GetAsyncKeyState(1)&0x8000)!=0,RootMoveModal=(gui.Flags&2)!=0&&gui.MoveSize==root,Root=a,Control=b,PointerX=p.X,PointerY=p.Y});}
+        Rect a,b;GetWindowRect(root,out a);GetWindowRect(control,out b);Point p;bool hasPointer=GetCursorPos(out p);uint leafProcess=0;uint leafThread=0;if(id==0&&hasPointer)leafThread=GetWindowThreadProcessId(WindowFromPoint(p),out leafProcess);long now=Stopwatch.GetTimestamp();
+        lock(sync){if(samples.Count>=2048){DroppedSamples++;return;}samples.Add(new Sample{HostTicks=now,UtcTicks=DateTime.UtcNow.Ticks,SystemTickMs=GetTickCount64(),ElapsedMs=(now-started)*1000.0/Stopwatch.Frequency,Event=id,EventTickMs=time,Stage=stage,Target=target,Foreground=Category(GetForegroundWindow()),Focus=Category(gui.Focus),Capture=Category(gui.Capture),LeftDown=(GetAsyncKeyState(1)&0x8000)!=0,RootMoveModal=(gui.Flags&2)!=0&&gui.MoveSize==root,Root=a,Control=b,PointerX=p.X,PointerY=p.Y,PointerLeafSameProcess=leafThread==0?(bool?)null:leafProcess==processId,PointerLeafOnRootThread=leafThread==0?(bool?)null:leafThread==rootThread});}
     }
     public void Mark(string value){lock(sync)stage=value;Record(0,0,"mark");}
     public Sample[] Snapshot(){lock(sync)return samples.ToArray();}
-    public bool ObserveReleaseSignal(){
-        var gui=new GuiInfo{Size=(uint)Marshal.SizeOf(typeof(GuiInfo))};
-        if(!GetGUIThreadInfo(rootThread,ref gui))throw new InvalidOperationException("Could not observe root GUI state.");
-        if((gui.Flags&2)==0||gui.MoveSize!=root){Mark("diagnostic-already-completed");return false;}
-        if(gui.Capture!=root||Category(GetForegroundWindow())!="root"||(GetAsyncKeyState(1)&0x8000)!=0)throw new InvalidOperationException("Release observation requires the owned released root move modal.");
-        Point p;if(!GetCursorPos(out p))throw new InvalidOperationException("Could not observe physical release point.");
-        long position=((long)(ushort)p.Y<<16)|(ushort)p.X;
-        Mark("diagnostic-client-release-screen-point");
-        if(!PostMessage(root,0x0202,IntPtr.Zero,new IntPtr(position)))throw new InvalidOperationException("Could not queue observed nonclient release.");
-        return true;
-    }
     public IntPtr BackgroundWindow { get { return backplate; } }
     public string HitSurface(int x,int y){return Category(WindowFromPoint(new Point{X=x,Y=y}));}
     public Point EnableExternalClickAway(){

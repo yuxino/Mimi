@@ -4,6 +4,7 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
     $type = [System.Windows.Automation.ControlType]
     $observation=$null
     . (Join-Path $PSScriptRoot 'panel-drag-observation.ps1')
+    $releaseAway=(Split-Path -Leaf $EvidencePath) -ceq 'candidate-release-away'
     $metadata = [ordered]@{ scenario = 'panel-blank-horizontal-drag'; locale = $Labels.locale; fullWindows = [MimiCaptionDragDesktop]::FullWindows() }
     [void][IO.Directory]::CreateDirectory($EvidencePath)
     function Wait-BlankPanel([string]$Stage, [scriptblock]$Observe) {
@@ -248,37 +249,17 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $shortX=[int]($frame.Left+160*$scale);$shortY=[int]($frame.Top+160*$scale)
         [MimiPointerSmoke]::MoveOverWindow($Controls,$shortX,$shortY,'Check a short stationary panel gesture')
         try{[MimiCaptionDragDesktop]::SetLeftButton($true);Start-Sleep -Milliseconds 15}
-        finally{[MimiCaptionDragDesktop]::SetLeftButton($false)}
+        finally{
+            [MimiCaptionDragDesktop]::SetLeftButton($false)
+            if($releaseAway){[MimiPointerSmoke]::MoveAndVerify(($shortX+30),$shortY)}
+        }
+        if($releaseAway){$metadata.releaseAway=@{releasedAt=@($shortX,$shortY);movedAfterReleaseTo=@(($shortX+30),$shortY)}}
         $observation.Observer.Mark('short-released')
         Start-Sleep -Milliseconds 400
         $observation.Observer.Mark('short-settled')
         $metadata.shortGesture=Read-BlankGeometry;Assert-BlankGeometry $metadata.shortGesture 48
-        $metadata.diagnosticRelease=$observation.Observer.ObserveReleaseSignal()
         $null=Wait-BlankPanel 'short-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
-        $metadata.afterDiagnosticRelease=Read-BlankGeometry;Assert-BlankGeometry $metadata.afterDiagnosticRelease 48
-        $metadata.releaseSignalVerified=$true
-        $metadata.quickMoveObservations=@()
-        foreach($distance in @(3,48)){
-            $start=Read-BlankGeometry;$c=[MimiPointerSmoke]::ReadBounds($Controls)
-            $x=[int]($c.Left+160*$scale);$y=[int]($c.Top+160*$scale)
-            [MimiPointerSmoke]::MoveOverWindow($Controls,$x,$y,'Observe a bounded quick owned move')
-            $observation.Observer.Mark(('quick-'+$distance+'-before'))
-            try{
-                [MimiCaptionDragDesktop]::SetLeftButton($true)
-                Start-Sleep -Milliseconds 8
-                [MimiPointerSmoke]::MoveAndVerify(($x+$distance),$y)
-                Start-Sleep -Milliseconds 7
-            }finally{[MimiCaptionDragDesktop]::SetLeftButton($false)}
-            $observation.Observer.Mark(('quick-'+$distance+'-released'))
-            Start-Sleep -Milliseconds 400
-            $first=Read-BlankGeometry
-            $forwarded=$observation.Observer.ObserveReleaseSignal()
-            $null=Wait-BlankPanel 'quick-gesture native completion' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
-            $last=Read-BlankGeometry
-            $metadata.quickMoveObservations+=@{distance=$distance;start=$start;first=$first;forwarded=$forwarded;completed=$last}
-            $observation.Observer.Mark(('quick-'+$distance+'-completed'))
-        }
-        throw 'DIAGNOSTIC ONLY: real short/quick gestures with observed nonclient release. Inspect original geometry and native trace; no product pass.'
+        if($releaseAway){$metadata.passed=$true;$observation.Observer.Mark('release-away-completed');Start-Sleep -Milliseconds 500;return}
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after-short.png'
         $field=Wait-BlankPanel 'the moved source language trigger' { Find-BlankField }
         if ((Get-PanelPickerValueEvidence $field 'moved source').value -cne $closed) { throw 'The blank gesture changed the source field value.' }
