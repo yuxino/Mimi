@@ -6,15 +6,16 @@ on:
       package: {description: Application to test, type: choice, options: [build, reuse, release], default: build}
       package_run: {description: Run that produced the selected artifact, type: string}
       release_tag: {description: Expected Mac release tag, type: string, default: v1.7.4}
-      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow], default: both}
+      checks: {description: Native interactions, type: choice, options: [both, history, panels, mac-input-capability, mac-caption-drag, mac-appkit-control, mac-dev-drag, mac-follow, mac-release-follow, mac-hover-video], default: both}
       display_modes: {description: Also cycle all three subtitle display modes in the running Mac app, type: boolean, default: false}
+      strict_hover: {description: Require the original quiet button target to accept its first click, type: boolean, default: false}
       gesture: {description: macOS drag starting surface, type: choice, options: [caption, panel], default: caption}
 permissions:
   contents: read
   actions: read
 jobs:
   signed-candidate:
-    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' }}
+    if: ${{ inputs.checks == 'mac-dev-drag' || inputs.checks == 'mac-follow' || inputs.checks == 'mac-hover-video' }}
     runs-on: macos-15
     timeout-minutes: 65
     env:
@@ -25,7 +26,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Preserve the test desktop's isolated development builder
-        run: install -m 700 scripts/macos/calibration/hosted-build.sh "$RUNNER_TEMP/build-caption-fixture.sh"
+        run: |
+          install -m 700 scripts/macos/calibration/hosted-build.sh "$RUNNER_TEMP/build-caption-fixture.sh"
+          if [[ -d scripts/macos/calibration/video ]]; then cp -R scripts/macos/calibration/video "$RUNNER_TEMP/video-tools"; fi
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ inputs.revision }}
@@ -79,6 +82,35 @@ jobs:
           name: macos-caption-follow
           path: ${{ runner.temp }}/caption-follow
           if-no-files-found: ignore
+          retention-days: 7
+      - name: Compile the window-only video recorder
+        if: ${{ inputs.checks == 'mac-hover-video' && steps.candidate.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/video-tools/build-recorder.sh"
+      - name: Record synthetic layout while moving the real pointer
+        if: ${{ !cancelled() && inputs.checks == 'mac-hover-video' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+          STRICT: ${{ inputs.strict_hover }}
+        run: |
+          args=()
+          if [[ "$STRICT" == true ]]; then args+=(--require-first-click); fi
+          bash "$RUNNER_TEMP/video-tools/run-hover-video.sh" --dev "$EXPECTED_CERT" --animation ${args[@]+"${args[@]}"} layout "$RUNNER_TEMP/hover-video/layout"
+      - name: Record synthetic history while moving the real pointer
+        if: ${{ !cancelled() && inputs.checks == 'mac-hover-video' && steps.candidate.outcome == 'success' }}
+        env:
+          EXPECTED_CERT: ${{ steps.candidate.outputs.identity_sha1 }}
+          STRICT: ${{ inputs.strict_hover }}
+        run: |
+          args=()
+          if [[ "$STRICT" == true ]]; then args+=(--require-first-click); fi
+          bash "$RUNNER_TEMP/video-tools/run-hover-video.sh" --dev "$EXPECTED_CERT" --animation ${args[@]+"${args[@]}"} history "$RUNNER_TEMP/hover-video/history"
+      - name: Keep this test window's video, frame times, gestures and reference images
+        if: ${{ !cancelled() && inputs.checks == 'mac-hover-video' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-hover-video
+          path: ${{ runner.temp }}/hover-video
+          if-no-files-found: error
           retention-days: 7
       - name: Remove this runner's private test signing identity
         if: always()
