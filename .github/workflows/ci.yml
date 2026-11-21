@@ -1,5 +1,5 @@
 name: Windows blank panel drag QA
-run-name: Native focus trace and video — original 9ee0 Portable
+run-name: Native short-gesture focus trace — candidate bc43e23c
 on:
   workflow_dispatch:
 permissions:
@@ -14,23 +14,23 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - name: Verify isolated hosted runner and original Portable artifact
+      - name: Verify isolated hosted runner and exact candidate executable
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ($env:RUNNER_ENVIRONMENT -cne 'github-hosted' -or $env:RUNNER_OS -cne 'Windows') { throw 'Disposable hosted Windows runner required.' }
-          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14707985546 | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'mimi-windows-2025' -or
-              $artifact.workflow_run.id -ne 44904152782 -or
-              $artifact.workflow_run.head_sha -cne '9ee07ad09f21fa7e3d7de794c2b5ceb317a7eb1f' -or
-              $artifact.digest -cne 'sha256:04c8c0b0509d0772e8004cc5fda56bb82a82af309f4f5943716d7ad49efc33f5') { throw 'Original artifact identity changed.' }
+          $artifact = gh api repos/yuxino/Mimi/actions/artifacts/14711350578 | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $artifact.name -cne 'windows-ui-test-executable' -or
+              $artifact.workflow_run.id -ne 44913038057 -or
+              $artifact.workflow_run.head_sha -cne 'bc43e23cf3d27571f3030361bf749a384f0f0bd9' -or
+              $artifact.digest -cne 'sha256:01583e96665241182686c1e171d8a30b5476f9f2237ddc378d868557ded7330d') { throw 'Candidate artifact identity changed.' }
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: mimi-windows-2025
-          run-id: 44904152782
+          name: windows-ui-test-executable
+          run-id: 44913038057
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/original-package
+          path: ${{ runner.temp }}/candidate-executable
       - name: Prepare existing locale generator dependencies
         shell: pwsh
         run: npm ci --ignore-scripts --no-audit --no-fund
@@ -66,31 +66,22 @@ jobs:
           $encoder[0].FullName | ForEach-Object { "MIMI_QA_FFMPEG=$_" } | Out-File -LiteralPath $env:GITHUB_ENV -Append -Encoding utf8
           & $encoder[0].FullName -version
           if($LASTEXITCODE -ne 0){throw 'Pinned QA encoder could not initialize.'}
-      - name: One physical blank drag and original language selection
+      - name: Exact long and short physical gestures with native trace
         shell: pwsh
         run: |
-          $archives = @(Get-ChildItem (Join-Path $env:RUNNER_TEMP 'original-package') -Recurse -File -Filter '*_x64-portable.zip')
-          if ($archives.Count -ne 1) { throw 'Exactly one original Portable archive required.' }
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [IO.Compression.ZipFile]::OpenRead($archives[0].FullName)
-          try {
-            $names = @($zip.Entries.FullName | Sort-Object)
-            if ($names.Count -ne 2 -or (Compare-Object $names @('mimi.exe','mimi.portable'))) { throw 'Unexpected Portable archive entries.' }
-          } finally { $zip.Dispose() }
-          $extracted = Join-Path $env:RUNNER_TEMP 'panel-blank-portable'
-          Expand-Archive -LiteralPath $archives[0].FullName -DestinationPath $extracted
-          $executable = Join-Path $extracted 'mimi.exe'
-          $sha = (Get-FileHash -Algorithm SHA256 $executable).Hash
-          if ($sha -cne '55A838A186BB5C66611704C0C615D6BFAD3CFF03AE249DB1D0404A218A30F8B5') { throw 'Original Portable executable bytes changed.' }
-          $evidence = Join-Path $env:RUNNER_TEMP 'panel-blank-evidence'
-          New-Item -ItemType Directory -Force $evidence | Out-Null
-          @{ source='9ee07ad09f21fa7e3d7de794c2b5ceb317a7eb1f'; sourceRun=44904152782; artifact=14707985546; executableSha256=$sha } |
-            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
+          $files=@(Get-ChildItem (Join-Path $env:RUNNER_TEMP 'candidate-executable') -Recurse -File -Filter 'mimi.exe')
+          if($files.Count -ne 1){throw 'Exactly one candidate executable required.'}
+          $executable=$files[0].FullName
+          $sha=(Get-FileHash -Algorithm SHA256 $executable).Hash
+          $evidence=Join-Path $env:RUNNER_TEMP 'panel-short-evidence'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          @{source='bc43e23cf3d27571f3030361bf749a384f0f0bd9';sourceRun=44913038057;artifact=14711350578;executableSha256=$sha} |
+            ConvertTo-Json | Set-Content (Join-Path $evidence 'executable-identity.json') -Encoding utf8NoBOM
           ./scripts/windows/windows-ci-smoke.ps1 -ExecutablePath $executable -ExpectedArchitecture x64 -OverlayInteraction panel-languages -EvidenceDirectory $evidence
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: windows-panel-focus-baseline
-          path: ${{ runner.temp }}/panel-blank-evidence
+          name: windows-panel-short-focus
+          path: ${{ runner.temp }}/panel-short-evidence
           if-no-files-found: ignore
           retention-days: 3

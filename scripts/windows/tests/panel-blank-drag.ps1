@@ -242,6 +242,19 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         Assert-BlankGeometry $metadata.settled 48
         if ($null -ne $heldFailure) { throw $heldFailure }
         Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after.png'
+        $null=Wait-BlankPanel 'long-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        $observation.Observer.Mark('short-press')
+        $frame=[MimiPointerSmoke]::ReadBounds($Controls)
+        $shortX=[int]($frame.Left+160*$scale);$shortY=[int]($frame.Top+160*$scale)
+        [MimiPointerSmoke]::MoveOverWindow($Controls,$shortX,$shortY,'Check a short stationary panel gesture')
+        try{[MimiCaptionDragDesktop]::SetLeftButton($true);Start-Sleep -Milliseconds 15}
+        finally{[MimiCaptionDragDesktop]::SetLeftButton($false)}
+        $observation.Observer.Mark('short-released')
+        Start-Sleep -Milliseconds 400
+        $observation.Observer.Mark('short-settled')
+        $metadata.shortGesture=Read-BlankGeometry;Assert-BlankGeometry $metadata.shortGesture 48
+        $null=Wait-BlankPanel 'short-gesture native focus recovery' { [MimiPanelKeyboard]::OwnsFocus($Controls) }
+        Save-PanelLanguageScreenshot $Controls $EvidencePath 'panel-after-short.png'
         $field=Wait-BlankPanel 'the moved source language trigger' { Find-BlankField }
         if ((Get-PanelPickerValueEvidence $field 'moved source').value -cne $closed) { throw 'The blank gesture changed the source field value.' }
         $b=$field.Current.BoundingRectangle
@@ -282,6 +295,53 @@ function Test-PanelBlankDrag([IntPtr]$Controls, $Labels, [string]$EvidencePath) 
         $metadata.finalCodes=Read-BlankPrefs
         $metadata.final=Read-BlankGeometry
         Assert-BlankGeometry $metadata.final 48
+        $observation.Observer.Mark('external-click-away')
+        $outside=$observation.Observer.EnableExternalClickAway()
+        [MimiPointerSmoke]::ClickOverlay($observation.Observer.BackgroundWindow,$outside.X,$outside.Y,'Click the controlled external neutral window')
+        $null=Wait-BlankPanel 'true external focus closes the expanded panel' {
+            $c=[MimiPointerSmoke]::ReadBounds($Controls)
+            if($c.Height -eq [int](30*$scale) -and -not [MimiPanelKeyboard]::OwnsFocus($Controls)){return $true}
+        }
+        $metadata.externalClickAway=Read-BlankGeometry
+        $observation.Observer.Mark('external-focus-dismissed')
+        Start-Sleep -Milliseconds 400
+        # Explicit reopen and collapse stay ordinary physical actions.
+        $capsule=Use-OverlayControl $Labels.openControls 'listening' 'Locate the compact entry after click-away' -Surface $Controls -NameSuffix -BoundsOnly
+        Move-OverControlBounds $Controls $capsule 'Reveal the compact entry after click-away'
+        Start-Sleep -Milliseconds 240
+        Use-OverlayControl $Labels.openControls 'listening' 'Reopen controls after external click-away' -Surface $Controls -NameSuffix
+        $null=Wait-BlankPanel 'explicit reopen' { $c=[MimiPointerSmoke]::ReadBounds($Controls);if($c.Width -eq $metadata.before.control[2] -and $c.Height -eq $metadata.before.control[3]){$true} }
+        Use-OverlayControl 'Collapse subtitle controls' 'listening' 'Explicitly collapse the control panel' -Surface $Controls -NameSuffix
+        $null=Wait-BlankPanel 'explicit collapse remains effective' { $c=[MimiPointerSmoke]::ReadBounds($Controls);if($c.Height -eq [int](30*$scale)){$true} }
+        $metadata.explicitCollapse=Read-BlankGeometry
+        $observation.Observer.Mark('lock-check')
+        $lock=Use-OverlayControl 'Lock Subtitle Position' 'listening' 'Locate position lock in the root toolbar' -BoundsOnly
+        Move-OverControlBounds $overlay $lock 'Reveal position lock in the root toolbar'
+        Start-Sleep -Milliseconds 240
+        Use-OverlayControl 'Lock Subtitle Position' 'listening' 'Lock subtitle position from its real toolbar button'
+        $null=Wait-BlankPanel 'the saved position lock' { $p=(Read-SmokeMarker (Join-Path $FixtureDirectory 'preferences.json'))|ConvertFrom-Json;if($p.overlay_locked -eq $true){$true} }
+        $r=[MimiPointerSmoke]::ReadBounds($overlay);$bodyX=[int]($r.Left+$r.Width/2);$bodyY=[int]($r.Top+$r.Height/2)
+        [MimiPointerSmoke]::MoveAndVerify($bodyX,$bodyY)
+        if($observation.Observer.HitSurface($bodyX,$bodyY) -cne 'qa-background'){throw 'The locked root did not pass its body hit through to the controlled neutral background.'}
+        try{
+            [MimiCaptionDragDesktop]::SetLeftButton($true)
+            [MimiPointerSmoke]::MoveAndVerify(($bodyX+48),$bodyY)
+        }finally{[MimiCaptionDragDesktop]::SetLeftButton($false)}
+        Start-Sleep -Milliseconds 400
+        $metadata.locked=Read-BlankGeometry
+        $r=[MimiPointerSmoke]::ReadBounds($overlay)
+        if($r.Left -ne $metadata.before.root[0]+48 -or $r.Top -ne $metadata.before.root[1] -or $r.Width -ne $metadata.before.root[2] -or $r.Height -ne $metadata.before.root[3]){throw 'Position lock allowed a root move or resize.'}
+        $unlock=Use-OverlayControl 'Unlock Subtitle Position' 'listening' 'Locate the independent unlock entry' -Surface $Controls -BoundsOnly
+        Move-OverControlBounds $Controls $unlock 'Reveal the independent unlock entry'
+        Start-Sleep -Milliseconds 240
+        Use-OverlayControl 'Unlock Subtitle Position' 'listening' 'Unlock through the independent capsule once' -Surface $Controls
+        $null=Wait-BlankPanel 'the saved unlock' { $p=(Read-SmokeMarker (Join-Path $FixtureDirectory 'preferences.json'))|ConvertFrom-Json;if($p.overlay_locked -eq $false){$true} }
+        $null=Wait-BlankPanel 'unlocked root interaction' { if([MimiPointerSmoke]::IsCaptionPoint($overlay,$bodyX,$bodyY)){$true} }
+        $metadata.unlocked=Read-BlankGeometry
+        $metadata.finalCodes=Read-BlankPrefs
+        Assert-SettingsHidden
+        $observation.Observer.Mark('all-native-cases-complete')
+        Start-Sleep -Milliseconds 500
         $metadata.passed=$true
         Write-Host "Visible middle blank observation passed: horizontal=48 vertical=0; same root/child HWNDs and sizes; real selected menu option clicked; source=en target=zh_tw; Settings hidden/listening."
     } catch {

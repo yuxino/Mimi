@@ -14,7 +14,7 @@ public sealed class MimiPanelDragObservation : IDisposable
         public int Width { get { return Right - Left; } }
         public int Height { get { return Bottom - Top; } }
     }
-    [StructLayout(LayoutKind.Sequential)] private struct Point { public int X,Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct Point { public int X,Y; }
     [StructLayout(LayoutKind.Sequential)] private struct GuiInfo {
         public uint Size, Flags; public IntPtr Active, Focus, Capture, Menu, MoveSize, Caret; public Rect CaretRect;
     }
@@ -44,6 +44,8 @@ public sealed class MimiPanelDragObservation : IDisposable
     [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)] private static extern IntPtr CreateWindowEx(uint ex,string cls,string title,uint style,int x,int y,int width,int height,IntPtr parent,IntPtr menu,IntPtr instance,IntPtr param);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr window,uint message,IntPtr wparam,IntPtr lparam);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr window);
+    [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")] private static extern IntPtr GetWindowLong(IntPtr window,int index);
+    [DllImport("user32.dll",EntryPoint="SetWindowLongPtrW")] private static extern IntPtr SetWindowLong(IntPtr window,int index,IntPtr value);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window,IntPtr after,int x,int y,int width,int height,uint flags);
     [DllImport("user32.dll",CharSet=CharSet.Unicode)] private static extern bool UnregisterClass(string name,IntPtr instance);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateSolidBrush(uint color);
@@ -110,6 +112,14 @@ public sealed class MimiPanelDragObservation : IDisposable
     }
     public void Mark(string value){lock(sync)stage=value;Record(0,0,"mark");}
     public Sample[] Snapshot(){lock(sync)return samples.ToArray();}
+    public IntPtr BackgroundWindow { get { return backplate; } }
+    public string HitSurface(int x,int y){return Category(WindowFromPoint(new Point{X=x,Y=y}));}
+    public Point EnableExternalClickAway(){
+        long style=GetWindowLong(backplate,-20).ToInt64();SetWindowLong(backplate,-20,new IntPtr(style&~0x08000000L));
+        if((GetWindowLong(backplate,-20).ToInt64()&0x08000000L)!=0||!SetWindowPos(backplate,new IntPtr(-2),0,0,0,0,0x0033))throw new InvalidOperationException("Could not expose the controlled external-focus target.");
+        AssertPrivateRegion();return new Point{X=Region.Left+6,Y=Region.Top+6};
+    }
+
     public void AssertPrivateRegion(){for(int y=Region.Top+2;y<Region.Bottom;y+=24)for(int x=Region.Left+2;x<Region.Right;x+=24){string owner=Category(WindowFromPoint(new Point{X=x,Y=y}));if(owner!="root"&&owner!="control"&&owner!="qa-background")throw new InvalidOperationException("Recording region contains a window outside the offline application and neutral background.");}}
     public void Dispose(){if(disposed)return;disposed=true;PostThreadMessage(observerThread,0x0012,UIntPtr.Zero,IntPtr.Zero);if(!thread.Join(5000))throw new InvalidOperationException("Native observer did not stop.");ready.Dispose();}
 }

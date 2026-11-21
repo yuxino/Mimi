@@ -10,7 +10,7 @@ function Start-PanelDragObservation([IntPtr]$Root,[IntPtr]$Control,[string]$Dire
         $encoderArguments=@('-hide_banner','-loglevel','warning','-y','-f','gdigrab','-framerate','60','-draw_mouse','1',
             '-offset_x',[string]$r.Left,'-offset_y',[string]$r.Top,'-video_size',("{0}x{1}" -f $r.Width,$r.Height),'-i','desktop',
             '-an','-c:v','libx264','-preset','ultrafast','-tune','zerolatency','-bf','0','-crf','18','-pix_fmt','yuv420p',
-            '-fps_mode','vfr','-movflags','+faststart','-stats_period','0.1','-progress',$progress,$path)
+            '-fps_mode','passthrough','-enc_time_base','1:1000000','-video_track_timescale','1000000','-movflags','+faststart','-stats_period','0.1','-progress',$progress,$path)
         $start=[Diagnostics.ProcessStartInfo]::new($env:MIMI_QA_FFMPEG)
         $start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardInput=$true;$start.RedirectStandardError=$true
         $start.Arguments=($encoderArguments | ForEach-Object { '"'+$_+'"' }) -join ' '
