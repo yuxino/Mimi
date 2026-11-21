@@ -21,7 +21,7 @@ function Start-PanelDragObservation([IntPtr]$Root,[IntPtr]$Control,[string]$Dire
             if ($record.Process.HasExited) { throw ('Native video recorder exited before a frame: '+$record.Process.StandardError.ReadToEnd()) }
             if (Test-Path -LiteralPath $progress) {
                 $text=Read-SmokeMarker $progress
-                $frame=[regex]::Matches($text,'(?m)^frame=(\d+)\s*$')
+                $frame=@([regex]::Matches($text,'(?m)^frame=(\d+)\s*$'))
                 if ($frame.Count -and [int]$frame[-1].Groups[1].Value -gt 0) {
                     $record.Metadata.firstFrameProgressObservedHostTicks=[Diagnostics.Stopwatch]::GetTimestamp()
                     $record.Metadata.firstProgress=$text
@@ -34,6 +34,9 @@ function Start-PanelDragObservation([IntPtr]$Root,[IntPtr]$Control,[string]$Dire
         throw 'Native video recorder did not report an encoded frame within 5000ms.'
     } catch {
         if ($record.Process -and -not $record.Process.HasExited) { $record.Process.Kill();$record.Process.WaitForExit(2000)|Out-Null }
+        $record.Metadata.setupFailure=[string]$_
+        [IO.File]::WriteAllText((Join-Path $Directory 'native-events.json'),(@{frequency=$observer.Frequency;samples=$observer.Snapshot();dropped=$observer.DroppedSamples}|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $Directory 'capture-metadata.json'),($record.Metadata|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
         $observer.Dispose();throw
     }
 }

@@ -44,6 +44,8 @@ jobs:
             $null=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $file),[ref]$tokens,[ref]$errors)
             if ($errors.Count) { throw ($errors | Out-String) }
           }
+          $frames=@([regex]::Matches("frame=1`n",'(?m)^frame=(\d+)\s*$'))
+          if([int]$frames[-1].Groups[1].Value -ne 1){throw 'Encoder progress collection indexing failed.'}
           Add-Type -Path scripts/windows/tests/PanelDragObservation.cs
           Write-Host 'Windows PowerShell parsing and native observer compilation passed.'
           '@
