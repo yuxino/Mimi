@@ -1,15 +1,12 @@
 package app.yuxino.mimi.android.shortcuts
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import androidx.core.graphics.ColorUtils
 import app.yuxino.mimi.android.R
 import kotlin.math.roundToInt
 
@@ -20,10 +17,8 @@ internal class CaptionEdgeArtwork(context: Context) : FrameLayout(context) {
     private val logo = ImageView(context).apply {
         setImageResource(R.drawable.mimi_brand_small)
         scaleType = ImageView.ScaleType.FIT_CENTER
-        isDuplicateParentStateEnabled = true
-        // Keep press feedback inside the app icon's alpha, including when it sits against a screen edge.
-        foreground = RippleDrawable(ColorStateList.valueOf(ColorUtils.setAlphaComponent(ink, 55)), null,
-            context.getDrawable(R.drawable.mimi_brand_small))
+        // Use the docked opacity in both states. Only the action badge changes on touch.
+        alpha = 0.8f
     }
     private val action = ImageView(context).apply {
         background = GradientDrawable().apply {
@@ -38,8 +33,7 @@ internal class CaptionEdgeArtwork(context: Context) : FrameLayout(context) {
 
     init {
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        isDuplicateParentStateEnabled = true
-        addView(logo)
+        addView(logo, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(action, LayoutParams(dp(16), dp(16), Gravity.BOTTOM or Gravity.END))
     }
 
@@ -47,24 +41,8 @@ internal class CaptionEdgeArtwork(context: Context) : FrameLayout(context) {
         action.setImageResource(if (stop) R.drawable.ic_edge_stop else R.drawable.ic_edge_start)
     }
 
-    @SuppressLint("RtlHardcoded") // Dock against the physical display edge selected by the drag.
-    fun place(edge: CaptionEdge?) {
-        val side = edge == CaptionEdge.LEFT || edge == CaptionEdge.RIGHT
-        val width = if (edge == null) 38 else if (side) 30 else 36
-        val height = if (edge == null) 38 else if (side) 36 else 30
-        val alignment = when (edge) {
-            CaptionEdge.LEFT -> Gravity.LEFT or Gravity.CENTER_VERTICAL
-            CaptionEdge.RIGHT -> Gravity.RIGHT or Gravity.CENTER_VERTICAL
-            CaptionEdge.TOP -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            CaptionEdge.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            null -> Gravity.CENTER
-        }
-        layoutParams = LayoutParams(dp(width), dp(height), alignment)
-        // The launcher art includes transparent padding. Keep the same complete mark at both sizes.
-        val logoSize = dp(if (edge == null) 44 else 34)
-        logo.layoutParams = LayoutParams(logoSize, logoSize, Gravity.CENTER)
-        action.visibility = if (edge == null) VISIBLE else GONE
-        alpha = if (edge == null) 1f else 0.8f
+    fun showAction(visible: Boolean) {
+        action.visibility = if (visible) VISIBLE else INVISIBLE
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).roundToInt()

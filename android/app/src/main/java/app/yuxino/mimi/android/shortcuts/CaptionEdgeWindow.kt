@@ -34,6 +34,7 @@ internal class CaptionEdgeWindow(
     private val artwork = CaptionEdgeArtwork(context)
     private val accessibility = context.getSystemService(AccessibilityManager::class.java)
     private val touchSize = dp(48)
+    private val artworkSize = dp(34)
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     @SuppressLint("RtlHardcoded") // Offsets are physical pixels from the left of WindowManager's fitted frame.
     private val params = WindowManager.LayoutParams(touchSize, touchSize,
@@ -62,7 +63,7 @@ internal class CaptionEdgeWindow(
     }
 
     init {
-        button.addView(artwork)
+        button.addView(artwork, FrameLayout.LayoutParams(artworkSize, artworkSize, Gravity.CENTER))
         button.isFocusable = true
         button.filterTouchesWhenObscured = true
         // An inward drag on a docked button shares the system Back gesture's starting edge.
@@ -168,6 +169,11 @@ internal class CaptionEdgeWindow(
     }
 
     private fun moveWindow() {
+        // Align the mark with the physical edge while keeping the full touch target on screen.
+        // Dragging moves it continuously. Revealing or tucking the badge never moves the mark.
+        val artworkTravel = touchSize - artworkSize
+        artwork.translationX = (placement.left(artworkTravel) - artworkTravel / 2).toFloat()
+        artwork.translationY = (placement.top(artworkTravel) - artworkTravel / 2).toFloat()
         val x = placement.left(travelX)
         val y = placement.top(travelY)
         if (params.x == x && params.y == y) return
@@ -178,7 +184,7 @@ internal class CaptionEdgeWindow(
 
     private fun present(edge: CaptionEdge?) {
         tucked = edge
-        artwork.place(edge)
+        artwork.showAction(edge == null)
         describeAction()
     }
 
