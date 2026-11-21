@@ -258,11 +258,15 @@ adb shell am instrument -w -e theme light app.yuxino.mimi.android.dev.test/app.y
 adb shell am instrument -w -e theme dark app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_preview true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_interaction true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
+adb shell am instrument -w -e edge_stability true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e caption_shortcuts true -e host_microphone_disabled true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e interface_language true -e theme light app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e overlay_listening true -e locale zh-Hans app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 adb shell am instrument -w -e caption_scroll_probe true app.yuxino.mimi.android.dev.test/app.yuxino.mimi.android.UiSmokeInstrumentation
 ```
+
+For `edge_stability`, grant the development app permission to display over other apps.
+On a fixed light background, it taps and holds the docked icon and checks that only the action badge changes before the icon tucks again.
 
 For `caption_shortcuts`, use a blank emulator with host microphone input disabled.
 Enable the two shortcuts in More and add the Mimi captions tile in Android Quick Settings.

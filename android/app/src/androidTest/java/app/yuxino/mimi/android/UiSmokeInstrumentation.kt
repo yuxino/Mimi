@@ -55,6 +55,7 @@ import app.yuxino.mimi.android.services.translation.TextCheckStateChecks
 import app.yuxino.mimi.android.sessions.SavedSessionChecks
 import app.yuxino.mimi.android.sessions.SavedSessionOverlayChecks
 import app.yuxino.mimi.android.settings.SettingsStore
+import app.yuxino.mimi.android.shortcuts.CaptionEdgeStabilityChecks
 import app.yuxino.mimi.android.ui.HelpInteractionChecks
 import app.yuxino.mimi.android.ui.LayoutWorkloadChecks
 import app.yuxino.mimi.android.ui.RuntimeFeedbackChecks
@@ -109,6 +110,10 @@ class UiSmokeInstrumentation : Instrumentation() {
 
     override fun onStart() {
         super.onStart()
+        if (captureArguments?.getString("edge_stability") == "true") {
+            CaptionEdgeStabilityChecks(this).run()
+            return
+        }
         if (captureArguments?.getString("caption_shortcuts") == "true") {
             app.yuxino.mimi.android.shortcuts.CaptionShortcutChecks(this).run(captureArguments)
             return
