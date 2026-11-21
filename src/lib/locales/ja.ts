@@ -52,6 +52,7 @@ export const OVERLAY = {
   enterImmersiveMode: "没入モードをオン",
   lockPosition: "字幕の位置を固定",
   unlockPosition: "字幕の位置固定を解除",
+  unlockPositionShort: "固定を解除",
   moreSettings: "その他の設定…",
   controlActionFailed: "操作を完了できませんでした。もう一度お試しください。",
   originalOnly: "原文のみ表示",

@@ -56,6 +56,8 @@
 }
 
 .overlay-control-island[data-unlock] {
+  /* Match the native island minimum so the whole hover region remains a hit target. */
+  min-width: 80px;
   padding-inline: 8px;
 }
 

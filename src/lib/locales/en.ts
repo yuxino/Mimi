@@ -52,6 +52,7 @@ export const OVERLAY = {
   enterImmersiveMode: "Enter Immersive Mode",
   lockPosition: "Lock Subtitle Position",
   unlockPosition: "Unlock Subtitle Position",
+  unlockPositionShort: "Unlock",
   moreSettings: "More Settings…",
   controlActionFailed: "The action could not be completed. Try again.",
   originalOnly: "Original only",
