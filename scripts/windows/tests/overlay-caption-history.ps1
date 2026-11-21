@@ -27,8 +27,18 @@ function Get-CaptionHistoryRows($Context) {
     return $candidates
 }
 
-function Get-CaptionHistoryView($Context) {
-    $view = $Context.Viewport.Current.BoundingRectangle
+function Read-CaptionHistoryPosition($Context) {
+    # Current is an accessor, not a frozen batch. ScrollPattern exposes
+    # percentages rather than a pixel scrollTop, so retain both position and size.
+    return @{ View = $Context.Viewport.Current.BoundingRectangle
+        Percent = $Context.Scroll.Current.VerticalScrollPercent
+        ViewSize = $Context.Scroll.Current.VerticalViewSize }
+}
+
+function Get-CaptionHistoryView($Context, [string]$Stage = 'history') {
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $before = Read-CaptionHistoryPosition $Context
+    $view = $before.View
     $frame = [MimiPointerSmoke]::ReadBounds($Context.Window)
     if ($view.IsEmpty -or $view.Width -lt 40 -or $view.Height -lt 40 -or
         $view.Left -lt $frame.Left - 1 -or $view.Right -gt $frame.Right + 1 -or
@@ -36,6 +46,28 @@ function Get-CaptionHistoryView($Context) {
         throw 'The native history scroll viewport is empty or outside the subtitle window.'
     }
     $rows = Get-CaptionHistoryRows $Context
+    $after = Read-CaptionHistoryPosition $Context
+    if (-not [System.Windows.Rect]::Equals($before.View, $after.View) -or
+        $before.Percent -ne $after.Percent -or $before.ViewSize -ne $after.ViewSize) {
+        $Context.RejectedSamples = $Context.RejectedSamples + 1
+        if (-not $Context.FirstRejectedSamples.Contains($Stage)) {
+            $position = { param($sample)
+                @{ viewport = @($sample.View.Left, $sample.View.Top, $sample.View.Width, $sample.View.Height)
+                    percent = $sample.Percent; viewSize = $sample.ViewSize }
+            }
+            $sample = @{ before = & $position $before; after = & $position $after
+                elapsedMs = $timer.ElapsedMilliseconds }
+            if ($Context.ContainsKey('Anchor') -and $rows.ContainsKey($Context.Anchor)) {
+                $row = $rows[$Context.Anchor]
+                $sample.anchor = $Context.Anchor
+                $sample.anchorBounds = @($row.Box.Left, $row.Box.Top, $row.Box.Width, $row.Box.Height)
+                $sample.anchorOffscreen = $row.Offscreen
+            }
+            $Context.FirstRejectedSamples[$Stage] = $sample
+            Write-Host "Native history rejected a cross-transition UIA read stage=$Stage beforeView=$($before.View) afterView=$($after.View) beforePercent=$($before.Percent) afterPercent=$($after.Percent)."
+        }
+        return $null
+    }
     foreach ($row in $rows.Values) {
         $clip = if ($row.Area -gt 0) { [System.Windows.Rect]::Intersect($row.Box, $view) } else { [System.Windows.Rect]::Empty }
         $row.Visible = -not $row.Offscreen -and -not $clip.IsEmpty -and $clip.Width -gt 1 -and $clip.Height -gt 1
@@ -43,10 +75,10 @@ function Get-CaptionHistoryView($Context) {
         $row.Full = $row.Visible -and $row.Box.Left -ge $view.Left - 1 -and $row.Box.Right -le $view.Right + 1 -and
             $row.Box.Top -ge $view.Top - 1 -and $row.Box.Bottom -le $view.Bottom + 1
     }
-    # Bounds, caption nodes and scroll properties are independent UIA reads;
-    # a layout transition can occur between them. Do not infer a single frame.
-    $percent = $Context.Scroll.Current.VerticalScrollPercent
-    $viewSize = $Context.Scroll.Current.VerticalViewSize
+    # Equal bookends reject a transition during enumeration. This is still an
+    # observational UIA sample, not an atomic framebuffer or DOM transaction.
+    $percent = $after.Percent
+    $viewSize = $after.ViewSize
     if ($viewSize -le 0) { throw 'The native scroll viewport has no observable content extent.' }
     return @{ View = $view; Rows = $rows; Percent = $percent; ViewSize = $viewSize
         ContentExtent = $view.Height * 100.0 / $viewSize }
@@ -201,6 +233,7 @@ function Write-CaptionHistoryCheckpoints($Context, [string]$Directory) {
     })
     [void][IO.Directory]::CreateDirectory($Directory)
     $metadata = @{ locale = $Context.Locale; independentUiaReads = $true; checkpoints = $points
+        rejectedSamples = $Context.RejectedSamples; firstRejectedSamples = $Context.FirstRejectedSamples
         root = $Context.RootBounds.ToString(); controls = $Context.ControlBounds.ToString() }
     [IO.File]::WriteAllText((Join-Path $Directory 'history-checkpoints.json'), ($metadata | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 }
@@ -244,7 +277,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         [string][char]0x56de + [char]0x5230 + [char]0x5b9e + [char]0x65f6
     }
     $context = @{ Window = $window; Controls = $controls; RootBounds = [MimiPointerSmoke]::ReadBounds($window); ReturnName = $returnName
-        Locale = $Locale; Checkpoints = [ordered]@{}
+        Locale = $Locale; Checkpoints = [ordered]@{}; RejectedSamples = 0; FirstRejectedSamples = [ordered]@{}
         ControlBounds = [MimiPointerSmoke]::ReadBounds($controls); Scale = [MimiPanelCrop]::GetDpiForWindow($window) / 96.0
         CaptionPattern = '(?<kind>Original|' + $translationPrefix + ') (?<number>[0-9]{2}) '; Viewport = $null; Scroll = $null }
     $state = $null
@@ -266,6 +299,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         if ($null -eq $context.Viewport) { throw 'The real caption lane has no observable native scroll viewport.' }
         $state = Wait-CaptionHistory 'the initial visible bilingual caption 18' {
             $sample = Get-CaptionHistoryView $context
+            if ($null -eq $sample) { return $null }
             if ($sample.Rows.source18.Full -and $sample.Rows.translation18.Full) { return $sample }
         }
         # Initial layout is complete; all subsequent input must preserve these HWNDs/rects.
@@ -279,12 +313,12 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         for ($detents = 1; $detents -le 10; $detents++) {
             [MimiCaptionDragDesktop]::Wheel(120)
             Start-Sleep -Milliseconds 120
-            $state = Get-CaptionHistoryView $context
+            $state = Wait-CaptionHistory 'a coherent wheel position' { Get-CaptionHistoryView $context }
             if ($state.Percent -lt 99 -and -not $state.Rows.source18.Visible -and -not $state.Rows.translation18.Visible) { break }
         }
         if ($detents -gt 10) { throw 'Physical wheel input did not expose history away from the live caption.' }
         Start-Sleep -Milliseconds 250
-        $before = Get-CaptionHistoryView $context
+        $before = Wait-CaptionHistory 'a coherent reading anchor' { Get-CaptionHistoryView $context }
         $anchor = Get-CaptionHistoryAnchor $before $context.Scale
         $context.Anchor = $anchor; $context.WheelDetents = $detents
         Assert-CaptionHistoryEnvironment $context
@@ -294,6 +328,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         $state = Wait-CaptionHistory 'caption 19 delivery while reading' {
             if ((Read-SmokeMarker (Join-Path $FixtureDirectory 'caption-history-count')) -ne '19') { return $null }
             $sample = Get-CaptionHistoryView $context
+            if ($null -eq $sample) { return $null }
             if ($sample.Rows.ContainsKey('source19') -and $sample.Rows.ContainsKey('translation19')) {
                 $sample.DeliveryEvidence = 'uia-names'; return $sample
             }
@@ -305,7 +340,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         }
         $deliveryEvidence = $state.DeliveryEvidence
         Start-Sleep -Milliseconds 250
-        $state = Get-CaptionHistoryView $context
+        $state = Wait-CaptionHistory 'a coherent appended reading position' { Get-CaptionHistoryView $context }
         $state.DeliveryEvidence = $deliveryEvidence
         Assert-CaptionHistoryAnchor $before $state $anchor
         if ($state.Rows.source19.Visible -or $state.Rows.translation19.Visible) { throw 'Caption 19 replaced the historical reading viewport.' }
@@ -316,7 +351,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
 
         [void][MimiPointerSmoke]::MoveOutside($window, $controls)
         Start-Sleep -Milliseconds 250
-        $quiet = Get-CaptionHistoryView $context
+        $quiet = Wait-CaptionHistory 'a coherent quiet reading position' { Get-CaptionHistoryView $context 'quiet-reading' }
         Assert-CaptionHistoryAnchor $state $quiet $anchor
         Assert-CaptionHistoryReturn $context $quiet $true
         Assert-CaptionHistoryEnvironment $context
@@ -324,7 +359,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         $pointY = [int][Math]::Round($quiet.View.Top + $quiet.View.Height / 2)
         [MimiPointerSmoke]::MoveOverWindow($window, $pointX, $pointY, 'Return to the unchanged historical reading viewport')
         Start-Sleep -Milliseconds 250
-        $state = Get-CaptionHistoryView $context
+        $state = Wait-CaptionHistory 'a coherent hovered reading position' { Get-CaptionHistoryView $context 'hover-reading' }
         Assert-CaptionHistoryAnchor $quiet $state $anchor
         Assert-CaptionHistoryReturn $context $state $true
 
@@ -347,6 +382,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         $state = Wait-CaptionHistory 'the physical scrollbar reaching the real bottom' {
             Assert-CaptionHistoryEnvironment $context
             $sample = Get-CaptionHistoryView $context
+            if ($null -eq $sample) { return $null }
             if ($sample.Percent -ge 99.99 -and $sample.Rows.source19.Full -and $sample.Rows.translation19.Full) { return $sample }
         }
         try { Assert-CaptionHistoryReturn $context $state $false }
@@ -358,6 +394,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         $state = Wait-CaptionHistory 'caption 20 following after scrollbar release' {
             if ((Read-SmokeMarker (Join-Path $FixtureDirectory 'caption-history-count')) -ne '20') { return $null }
             $sample = Get-CaptionHistoryView $context
+            if ($null -eq $sample) { return $null }
             if ($sample.Rows.ContainsKey('source20') -and $sample.Rows.ContainsKey('translation20') -and
                 $sample.Rows.source20.Full -and $sample.Rows.translation20.Full) {
                 if (-not $context.Checkpoints.Contains('20-visible')) {
@@ -368,7 +405,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
             }
         }
         Start-Sleep -Milliseconds 400
-        $state = Get-CaptionHistoryView $context
+        $state = Wait-CaptionHistory 'a coherent settled live position' { Get-CaptionHistoryView $context }
         try {
             if ($state.Percent -lt 99.99 -or -not $state.Rows.source20.Full -or -not $state.Rows.translation20.Full) { throw 'The resumed live caption did not remain fully in view.' }
             Assert-CaptionHistoryEnvironment $context
@@ -388,7 +425,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         $failure = if ($null -ne $earlyFailure) { $earlyFailure } else { $_ }
         try {
             if ($null -ne $context.Viewport) {
-                $state = Get-CaptionHistoryView $context
+                $state = Wait-CaptionHistory 'a coherent failure snapshot' { Get-CaptionHistoryView $context 'failure' }
                 Read-CaptionHistoryReturn $context $state
                 $context.Checkpoints['failure'] = $state
             }
