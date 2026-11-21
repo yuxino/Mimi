@@ -126,9 +126,9 @@ export const Timeline = memo(function Timeline({
     const release = () => {
       const element = containerRef.current;
       if (!element) return;
-      const wasFollowing = scroll.isFollowing();
+      const wasDraggingScrollbar = scroll.isDraggingScrollbar();
       scroll.pointerUp(element);
-      if (wasFollowing !== scroll.isFollowing()) setReadingHistory(!scroll.isFollowing());
+      if (wasDraggingScrollbar) setReadingHistory(!scroll.isFollowing());
     };
     window.addEventListener("pointerup", release, true);
     window.addEventListener("pointercancel", release, true);
@@ -246,7 +246,10 @@ export const Timeline = memo(function Timeline({
       }}
       onScroll={(event) => {
         scroll.scrolled(event.currentTarget);
-        setReadingHistory(!scroll.isFollowing());
+        // Hiding the reading footer lengthens the track under the held thumb.
+        // Publish the return to live after release, when the track can resize.
+        const following = scroll.isFollowing();
+        if (!following || !scroll.isDraggingScrollbar()) setReadingHistory(!following);
       }}
       className={`overlay-timeline ${timelineClassName(blendsWithBackground)}`}
       style={{

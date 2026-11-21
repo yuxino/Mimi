@@ -104,6 +104,12 @@ present only while reading, including in Immersive Mode. The normal live caption
 viewport uses the available height. Timing and action feedback use the top band
 independently. The return button retains its keyboard focus outline.
 
+Keep the reading footer in place when a held scrollbar thumb reaches the bottom.
+Removing it during the gesture changes the track length under the pointer. On
+release, use the final position to show live captions or keep the reader in
+history. Moving the thumb away from the bottom before release keeps the same
+reading layout throughout.
+
 Copy is synchronized in Chinese, English, and Japanese: “回到实时”, “Back to
 live”, and “リアルタイムへ”. There is no automatic jump on resume and no new mode.
 

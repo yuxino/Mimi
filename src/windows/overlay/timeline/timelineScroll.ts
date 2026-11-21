@@ -79,6 +79,10 @@ export class TimelineScroll {
     return this.following;
   }
 
+  isDraggingScrollbar(): boolean {
+    return this.userScrolling?.kind === "scrollbar";
+  }
+
   followTail(element: HTMLElement) {
     this.endUserIntent();
     this.pointerInterruptedGlide = false;

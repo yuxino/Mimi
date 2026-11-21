@@ -330,6 +330,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
 
         $thumb = Get-CaptionHistoryThumb $context $state
         $context.Thumb = $thumb
+        $trackBeforeDrag = $state.View
         [MimiPointerSmoke]::MoveOverWindow($window, $thumb.X, $thumb.Y, 'Press the rendered history scrollbar thumb')
         try {
             [MimiCaptionDragDesktop]::SetLeftButton($true)
@@ -340,6 +341,7 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
                 if (-not [MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows released the left button during scrollbar dragging.' }
                 Assert-CaptionHistoryEnvironment $context
             }
+            $trackWhileHeld = $context.Viewport.Current.BoundingRectangle
         } finally { [MimiCaptionDragDesktop]::SetLeftButton($false) }
         if ([MimiCaptionDragDesktop]::LeftDown()) { throw 'Windows retained the history scrollbar button after release.' }
         $state = Wait-CaptionHistory 'the physical scrollbar reaching the real bottom' {
@@ -377,6 +379,10 @@ function Test-OverlayCaptionHistory([long]$OverlayWindow, [string]$FixtureDirect
         }
         Save-CaptionHistoryEvidence $context $state $PanelEvidenceDirectory 'live-20'
         if ($null -ne $earlyFailure) { throw $earlyFailure }
+        if ($trackWhileHeld.IsEmpty -or [Math]::Abs($trackWhileHeld.Top - $trackBeforeDrag.Top) -gt 1 -or
+            [Math]::Abs($trackWhileHeld.Bottom - $trackBeforeDrag.Bottom) -gt 1) {
+            throw "The reading track resized under the held thumb (before=$trackBeforeDrag held=$trackWhileHeld)."
+        }
         Write-Host "Native history passed: physical wheel preserved $anchor on append; rendered thumb=$($thumb.Height)px contrast=$($thumb.Contrast); scrollbar release restored bilingual caption 20 at the bottom, same windows, Settings hidden, listening."
     } catch {
         $failure = if ($null -ne $earlyFailure) { $earlyFailure } else { $_ }

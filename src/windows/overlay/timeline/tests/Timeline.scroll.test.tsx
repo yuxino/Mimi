@@ -303,7 +303,7 @@ const nextAfterScrollbar: SubtitleBlock = {
   translation: "Synthetic next caption after the scrollbar gesture.",
 };
 
-it("returns to live after consecutive scrollbar scrolls without pointermove and follows new captions", async () => {
+it("keeps the reading footer until the scrollbar is released at the bottom, then follows new captions", async () => {
   const reading = await mountHistoryReader();
   await pressTimeline();
 
@@ -312,13 +312,28 @@ it("returns to live after consecutive scrollbar scrolls without pointermove and 
     expect(reading).toHaveBeenLastCalledWith(true);
   }
   await nativeScroll(120); // Fifth scroll reaches the actual 200 - 80 tail.
-  expect(reading).toHaveBeenLastCalledWith(false);
+  // Removing the footer here would enlarge the track under the held thumb.
+  expect(reading).toHaveBeenLastCalledWith(true);
   await act(() => window.dispatchEvent(new Event("pointerup")));
+  expect(reading).toHaveBeenLastCalledWith(false);
 
   scrollHeight = 320;
   await render("translation", [...blocks, nextAfterScrollbar], 0, reading);
   expect(scrollTop).toBe(240);
   expect(reading).toHaveBeenLastCalledWith(false);
+});
+
+it("keeps the reader in history when the held thumb leaves the bottom before release", async () => {
+  const reading = await mountHistoryReader();
+  await pressTimeline();
+  await nativeScroll(120);
+  await nativeScroll(95);
+  await act(() => window.dispatchEvent(new Event("pointerup")));
+  expect(reading.mock.calls.map(([active]) => active)).toEqual([false, true]);
+
+  scrollHeight = 320;
+  await render("translation", [...blocks, nextAfterScrollbar], 0, reading);
+  expect(scrollTop).toBe(95);
 });
 
 it("returns to live on window pointerup before the final scrollbar scroll event", async () => {
